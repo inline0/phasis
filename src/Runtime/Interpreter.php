@@ -58,6 +58,7 @@ use PhpJs\Ast\Statement\SwitchStatement;
 use PhpJs\Ast\Statement\ThrowStatement;
 use PhpJs\Ast\Statement\TryStatement;
 use PhpJs\Ast\Statement\WhileStatement;
+use PhpJs\Ast\Statement\WithStatement;
 use PhpJs\Exceptions\InternalError;
 use PhpJs\Exceptions\ReferenceError;
 use PhpJs\Exceptions\TypeError;
@@ -73,6 +74,7 @@ use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
+use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -80,6 +82,7 @@ class Interpreter
 {
     private CallStack $callStack;
     private int $maxLoopIterations;
+    private bool $strictMode = false;
 
     public function __construct(
         private Environment $globalEnv,
@@ -95,8 +98,37 @@ class Interpreter
         });
     }
 
+    public function isStrictMode(): bool
+    {
+        return $this->strictMode;
+    }
+
+    /** Check whether a list of statements begins with a "use strict" directive. */
+    private function hasUseStrictDirective(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if (!$stmt instanceof ExpressionStatement) {
+                break;
+            }
+            $expr = $stmt->expression;
+            if ($expr instanceof Literal && is_string($expr->value) && $expr->value === 'use strict') {
+                return true;
+            }
+            // Only string literal expression statements can be directives.
+            if (!$expr instanceof Literal || !is_string($expr->value)) {
+                break;
+            }
+        }
+        return false;
+    }
+
     public function execute(Program $program): JsValue
     {
+        // Detect strict mode from directive prologue.
+        if ($this->hasUseStrictDirective($program->body)) {
+            $this->strictMode = true;
+        }
+
         $this->hoistDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);
     }
@@ -150,6 +182,7 @@ class Interpreter
             $node instanceof BreakStatement => Completion::break($node->label),
             $node instanceof ContinueStatement => Completion::continue($node->label),
             $node instanceof LabeledStatement => $this->execLabeledStatement($node, $env),
+            $node instanceof WithStatement => $this->execWithStatement($node, $env),
             $node instanceof EmptyStatement,
             $node instanceof DebuggerStatement => Completion::normal(JsUndefined::instance()),
             default => throw new InternalError('Unknown statement type: ' . $node->type()),
@@ -461,17 +494,39 @@ class Interpreter
 
     private function evalCallExpression(CallExpression $node, Environment $env): JsValue
     {
+        // Direct eval detection: eval(code) called with the identifier 'eval'.
+        // Direct eval executes in the current scope, not a fresh environment.
+        if ($node->callee instanceof Identifier && $node->callee->name === 'eval') {
+            try {
+                $callee = $env->get('eval');
+            } catch (ReferenceError) {
+                $callee = null;
+            }
+            if ($callee instanceof JsFunction && $callee->getName() === 'eval' && $callee->isNative()) {
+                $arg = isset($node->arguments[0])
+                    ? $this->evaluate($node->arguments[0], $env)
+                    : JsUndefined::instance();
+                return $this->performDirectEval($arg, $env);
+            }
+        }
+
         $thisValue = JsUndefined::instance();
+        $isMethodCall = false;
 
         if ($node->callee instanceof MemberExpression) {
             $rawObj = $this->evaluate($node->callee->object, $env);
-            $key = $node->callee->computed
-                ? TypeConversion::toString($this->evaluate($node->callee->property, $env))
+            $rawCallKey = null;
+            if ($node->callee->computed) {
+                $rawCallKey = $this->evaluate($node->callee->property, $env);
+            }
+            $isSymbolCallKey = $rawCallKey instanceof JsSymbol;
+            $key = $isSymbolCallKey ? '' : ($node->callee->computed
+                ? TypeConversion::toString($rawCallKey)
                 : ($node->callee->property instanceof Identifier
-                    ? $node->callee->property->name : '');
+                    ? $node->callee->property->name : ''));
 
             // String method calls: look up on __StringPrototype__
-            if ($rawObj instanceof JsString && $env->has('__StringPrototype__')) {
+            if ($rawObj instanceof JsString && !$isSymbolCallKey && $env->has('__StringPrototype__')) {
                 $proto = $env->get('__StringPrototype__');
                 if ($proto instanceof JsObject) {
                     $method = $proto->get($key);
@@ -483,8 +538,9 @@ class Interpreter
             }
 
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
-            $callee = $obj->get($key);
+            $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
             $thisValue = $obj;
+            $isMethodCall = true;
         } else {
             $callee = $this->evaluate($node->callee, $env);
         }
@@ -494,8 +550,43 @@ class Interpreter
             throw new TypeError("{$desc} is not a function");
         }
 
+        // In sloppy mode, unbound function calls receive the global object as this.
+        // In strict mode, this remains undefined.
+        if (!$isMethodCall && !$this->strictMode && $callee->getBoundThis() === null) {
+            $thisValue = $this->getGlobalObject();
+        }
+
         $args = $this->evaluateArguments($node->arguments, $env);
         return $this->callFunction($callee, $thisValue, $args);
+    }
+
+    /**
+     * Perform a direct eval: parse and execute code in the given environment.
+     *
+     * Direct eval (called as `eval(code)`) has access to the calling scope's
+     * variables and can declare new variables in that scope. If the argument
+     * is not a string, it is returned as-is.
+     */
+    private function performDirectEval(JsValue $arg, Environment $env): JsValue
+    {
+        if (!$arg instanceof JsString) {
+            return $arg;
+        }
+
+        $parser = new \PhpJs\Parser\Parser($arg->value);
+        $program = $parser->parse();
+
+        // Hoist var declarations and function declarations into the current scope.
+        $this->hoistDeclarations($program->body, $env);
+
+        // Execute the parsed program body in the current scope.
+        $completion = $this->executeBody($program->body, $env);
+
+        if ($completion->type === CompletionType::Throw) {
+            $this->throwJsValue($completion->value);
+        }
+
+        return $completion->value;
     }
 
     private function evalNewExpression(NewExpression $node, Environment $env): JsValue
@@ -528,17 +619,46 @@ class Interpreter
         foreach ($argNodes as $argNode) {
             if ($argNode instanceof SpreadElement) {
                 $iterable = $this->evaluate($argNode->argument, $env);
-                if ($iterable instanceof JsArray) {
-                    $len = $iterable->getLength();
-                    for ($i = 0; $i < $len; $i++) {
-                        $args[] = $iterable->get((string) $i);
-                    }
-                }
+                $this->spreadInto($iterable, $args);
             } else {
                 $args[] = $this->evaluate($argNode, $env);
             }
         }
         return $args;
+    }
+
+    /**
+     * Spread an iterable value into the target array using the iterator protocol.
+     *
+     * @param list<JsValue> $target
+     */
+    private function spreadInto(JsValue $iterable, array &$target): void
+    {
+        $iterator = $this->getIterator($iterable);
+        if ($iterator !== null) {
+            $nextMethod = $iterator->get('next');
+            if ($nextMethod instanceof JsFunction) {
+                while (true) {
+                    $result = $this->callFunction($nextMethod, $iterator, []);
+                    if (!$result instanceof JsObject) {
+                        break;
+                    }
+                    if (TypeConversion::toBoolean($result->get('done'))) {
+                        break;
+                    }
+                    $target[] = $result->get('value');
+                }
+                return;
+            }
+        }
+
+        // Fallback for plain JsArray without Symbol.iterator.
+        if ($iterable instanceof JsArray) {
+            $len = $iterable->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $target[] = $iterable->get((string) $i);
+            }
+        }
     }
 
     /** @param JsValue[] $args */
@@ -574,8 +694,29 @@ class Interpreter
     ): JsValue {
         $this->callStack->push($fn->getName(), 0);
 
+        // Save and potentially update strict mode for this function body.
+        $previousStrictMode = $this->strictMode;
+
         try {
             $fnEnv = $fn->getClosure()->createChild();
+
+            // Detect function-level "use strict" directive.
+            $body = $fn->getBody();
+            if ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body)) {
+                $this->strictMode = true;
+            }
+
+            // In strict mode, if this is an unbound non-arrow function call
+            // with the global object as this, replace with undefined.
+            if (
+                $this->strictMode
+                && !$fn->isArrow()
+                && $fn->getBoundThis() === null
+                && $thisValue instanceof JsObject
+                && $thisValue === $this->getGlobalObject()
+            ) {
+                $thisValue = JsUndefined::instance();
+            }
 
             // Bind this
             if ($fn->isArrow()) {
@@ -590,11 +731,14 @@ class Interpreter
             // Bind arguments object (non-arrow only)
             if (!$fn->isArrow()) {
                 $argsObj = JsArray::fromArray($args);
+                // In sloppy mode, arguments.callee references the current function.
+                if (!$this->strictMode) {
+                    $argsObj->set('callee', $fn);
+                }
                 $fnEnv->defineVar('arguments', $argsObj);
             }
 
             // Execute body
-            $body = $fn->getBody();
             if ($body instanceof BlockStatement) {
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
@@ -610,6 +754,7 @@ class Interpreter
             // Arrow with expression body
             return $this->evaluate($body, $fnEnv);
         } finally {
+            $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
         }
     }
@@ -812,9 +957,24 @@ class Interpreter
             return JsUndefined::instance();
         }
 
-        $key = $node->computed
-            ? TypeConversion::toString($this->evaluate($node->property, $env))
-            : ($node->property instanceof Identifier ? $node->property->name : '');
+        // Evaluate the property key. For computed access, the key may be a Symbol.
+        $rawKey = null;
+        if ($node->computed) {
+            $rawKey = $this->evaluate($node->property, $env);
+        }
+        $isSymbolKey = $rawKey instanceof JsSymbol;
+        $key = $isSymbolKey ? '' : ($node->computed
+            ? TypeConversion::toString($rawKey)
+            : ($node->property instanceof Identifier ? $node->property->name : ''));
+
+        // Symbol-keyed access on strings: only Symbol.iterator is meaningful.
+        if ($obj instanceof JsString && $isSymbolKey) {
+            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            if ($rawKey === $iterSym) {
+                return $this->createStringIteratorFactory($obj);
+            }
+            return JsUndefined::instance();
+        }
 
         // String property access (length, indices, prototype methods)
         if ($obj instanceof JsString) {
@@ -845,16 +1005,54 @@ class Interpreter
         }
 
         if ($obj instanceof JsObject) {
+            if ($isSymbolKey) {
+                return $obj->getBySymbol($rawKey);
+            }
             return $obj->get($key);
         }
 
         // Auto-boxing for primitives
         try {
             $boxed = TypeConversion::toObject($obj);
+            if ($isSymbolKey) {
+                return $boxed->getBySymbol($rawKey);
+            }
             return $boxed->get($key);
         } catch (\Throwable) {
             return JsUndefined::instance();
         }
+    }
+
+    /** Create a factory function that returns a string iterator (for Symbol.iterator). */
+    private function createStringIteratorFactory(JsString $str): JsFunction
+    {
+        $iteratorFactory = function () use ($str): JsValue {
+            $chars = [];
+            $len = mb_strlen($str->value, 'UTF-8');
+            for ($i = 0; $i < $len; $i++) {
+                $chars[] = mb_substr($str->value, $i, 1, 'UTF-8');
+            }
+            $index = 0;
+            $total = count($chars);
+
+            $iterator = new JsObject();
+            $nextFn = function () use (&$index, $total, &$chars): JsValue {
+                $result = new JsObject();
+                if ($index < $total) {
+                    $result->set('value', new JsString($chars[$index]));
+                    $result->set('done', new JsBoolean(false));
+                    $index++;
+                } else {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                }
+                return $result;
+            };
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            return $iterator;
+        };
+
+        return JsFunction::fromCallable('[Symbol.iterator]', $iteratorFactory);
     }
 
     private function evalArrayExpression(ArrayExpression $node, Environment $env): JsValue
@@ -867,12 +1065,7 @@ class Interpreter
             }
             if ($elem instanceof SpreadElement) {
                 $iterable = $this->evaluate($elem->argument, $env);
-                if ($iterable instanceof JsArray) {
-                    $len = $iterable->getLength();
-                    for ($i = 0; $i < $len; $i++) {
-                        $elements[] = $iterable->get((string) $i);
-                    }
-                }
+                $this->spreadInto($iterable, $elements);
                 continue;
             }
             $elements[] = $this->evaluate($elem, $env);
@@ -1329,7 +1522,19 @@ class Interpreter
     {
         $blockEnv = $env->createChild();
         $this->hoistDeclarations($node->body, $blockEnv);
-        return $this->executeBody($node->body, $blockEnv);
+        $completion = $this->executeBody($node->body, $blockEnv);
+
+        // Annex B: in sloppy mode, propagate function declaration values from
+        // block scope back to the enclosing scope so they are visible outside.
+        if (!$this->strictMode) {
+            foreach ($node->body as $stmt) {
+                if ($stmt instanceof FunctionDeclaration && $env->has($stmt->id->name)) {
+                    $env->defineVar($stmt->id->name, $blockEnv->get($stmt->id->name));
+                }
+            }
+        }
+
+        return $completion;
     }
 
     private function execIfStatement(IfStatement $node, Environment $env): Completion
@@ -1438,35 +1643,133 @@ class Interpreter
     private function execForOfStatement(ForOfStatement $node, Environment $env): Completion
     {
         $iterable = $this->evaluate($node->right, $env);
-        if (!$iterable instanceof JsArray) {
-            // Simplified: only support arrays for now
+        $iterations = 0;
+
+        // Try the iterator protocol first.
+        $iterator = $this->getIterator($iterable);
+
+        if ($iterator !== null) {
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('Iterator result next is not a function');
+            }
+
+            while (true) {
+                if (++$iterations > $this->maxLoopIterations) {
+                    throw new InternalError('Maximum loop iterations exceeded');
+                }
+
+                $result = $this->callFunction($nextMethod, $iterator, []);
+                if (!$result instanceof JsObject) {
+                    throw new TypeError('Iterator result is not an object');
+                }
+
+                $done = $result->get('done');
+                if (TypeConversion::toBoolean($done)) {
+                    break;
+                }
+
+                $value = $result->get('value');
+                $iterEnv = $env->createChild();
+                $this->assignForBinding($node->left, $value, $iterEnv);
+                $completion = $this->executeStatement($node->body, $iterEnv);
+
+                if ($completion->type === CompletionType::Break && $completion->target === null) {
+                    break;
+                }
+                if ($completion->type === CompletionType::Continue && $completion->target === null) {
+                    continue;
+                }
+                if ($completion->isAbrupt()) {
+                    return $completion;
+                }
+            }
+
             return Completion::normal(JsUndefined::instance());
         }
 
-        $len = $iterable->getLength();
-        $iterations = 0;
+        // Fallback for JsArray without Symbol.iterator (should not normally happen).
+        if ($iterable instanceof JsArray) {
+            $len = $iterable->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                if (++$iterations > $this->maxLoopIterations) {
+                    throw new InternalError('Maximum loop iterations exceeded');
+                }
 
-        for ($i = 0; $i < $len; $i++) {
-            if (++$iterations > $this->maxLoopIterations) {
-                throw new InternalError('Maximum loop iterations exceeded');
+                $iterEnv = $env->createChild();
+                $this->assignForBinding($node->left, $iterable->get((string) $i), $iterEnv);
+                $completion = $this->executeStatement($node->body, $iterEnv);
+
+                if ($completion->type === CompletionType::Break && $completion->target === null) {
+                    break;
+                }
+                if ($completion->type === CompletionType::Continue && $completion->target === null) {
+                    continue;
+                }
+                if ($completion->isAbrupt()) {
+                    return $completion;
+                }
             }
 
-            $iterEnv = $env->createChild();
-            $this->assignForBinding($node->left, $iterable->get((string) $i), $iterEnv);
-            $completion = $this->executeStatement($node->body, $iterEnv);
-
-            if ($completion->type === CompletionType::Break && $completion->target === null) {
-                break;
-            }
-            if ($completion->type === CompletionType::Continue && $completion->target === null) {
-                continue;
-            }
-            if ($completion->isAbrupt()) {
-                return $completion;
-            }
+            return Completion::normal(JsUndefined::instance());
         }
 
-        return Completion::normal(JsUndefined::instance());
+        throw new TypeError(TypeConversion::toString($iterable) . ' is not iterable');
+    }
+
+    /**
+     * Get an iterator from a value using the Symbol.iterator protocol.
+     *
+     * Returns the iterator object, or null if the value does not implement
+     * the iterator protocol.
+     */
+    private function getIterator(JsValue $iterable): ?JsObject
+    {
+        // String iteration: produce a character iterator.
+        if ($iterable instanceof JsString) {
+            $chars = [];
+            $len = mb_strlen($iterable->value, 'UTF-8');
+            for ($i = 0; $i < $len; $i++) {
+                $chars[] = mb_substr($iterable->value, $i, 1, 'UTF-8');
+            }
+            $index = 0;
+            $total = count($chars);
+
+            $iterator = new JsObject();
+            $nextFn = function () use (&$index, $total, &$chars): JsValue {
+                $result = new JsObject();
+                if ($index < $total) {
+                    $result->set('value', new JsString($chars[$index]));
+                    $result->set('done', new JsBoolean(false));
+                    $index++;
+                } else {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                }
+                return $result;
+            };
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            return $iterator;
+        }
+
+        if (!$iterable instanceof JsObject) {
+            return null;
+        }
+
+        // Check for Symbol.iterator method.
+        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $iteratorMethod = $iterable->getBySymbol($iterSym);
+
+        if (!$iteratorMethod instanceof JsFunction) {
+            return null;
+        }
+
+        $iterator = $this->callFunction($iteratorMethod, $iterable, []);
+        if (!$iterator instanceof JsObject) {
+            throw new TypeError('Result of the Symbol.iterator method is not an object');
+        }
+
+        return $iterator;
     }
 
     private function assignForBinding(Node $left, JsValue $value, Environment $env): void
@@ -1665,6 +1968,19 @@ class Interpreter
         return $completion;
     }
 
+    private function execWithStatement(WithStatement $node, Environment $env): Completion
+    {
+        $obj = $this->evaluate($node->object, $env);
+        if (!$obj instanceof JsObject) {
+            $obj = TypeConversion::toObject($obj);
+        }
+        $withEnv = $env->createChild();
+        foreach ($obj->getOwnPropertyNames() as $key) {
+            $withEnv->defineVar($key, $obj->get($key));
+        }
+        return $this->executeStatement($node->body, $withEnv);
+    }
+
     // -------------------------------------------------------------------------
     // Hoisting
     // -------------------------------------------------------------------------
@@ -1688,6 +2004,48 @@ class Interpreter
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
                 foreach ($stmt->declarations as $decl) {
                     $this->hoistVarNames($decl->id, $env);
+                }
+            }
+
+            // Annex B: in sloppy mode, hoist function declaration names from
+            // nested blocks (if, for, while, etc.) to the enclosing scope.
+            if (!$this->strictMode) {
+                $this->hoistBlockFunctionDeclarations($stmt, $env);
+            }
+        }
+    }
+
+    /**
+     * Annex B block-scoped function hoisting for sloppy mode.
+     *
+     * Recurse into block-like structures and hoist any function declaration
+     * names found inside to the given environment as undefined. The actual
+     * value is assigned when the block executes.
+     */
+    private function hoistBlockFunctionDeclarations(Node $stmt, Environment $env): void
+    {
+        $children = match (true) {
+            $stmt instanceof BlockStatement => $stmt->body,
+            $stmt instanceof IfStatement => array_filter([
+                $stmt->consequent,
+                $stmt->alternate,
+            ]),
+            $stmt instanceof LabeledStatement => [$stmt->body],
+            default => [],
+        };
+
+        foreach ($children as $child) {
+            if ($child instanceof FunctionDeclaration) {
+                if (!$env->has($child->id->name)) {
+                    $env->defineVar($child->id->name, JsUndefined::instance());
+                }
+            } elseif ($child instanceof BlockStatement) {
+                foreach ($child->body as $inner) {
+                    if ($inner instanceof FunctionDeclaration) {
+                        if (!$env->has($inner->id->name)) {
+                            $env->defineVar($inner->id->name, JsUndefined::instance());
+                        }
+                    }
                 }
             }
         }
@@ -1734,7 +2092,7 @@ class Interpreter
     private function resolveReference(Node $node, Environment $env): Reference
     {
         if ($node instanceof Identifier) {
-            return new Reference($env, $node->name);
+            return new Reference($env, $node->name, $this->strictMode);
         }
 
         if ($node instanceof MemberExpression) {
@@ -1742,10 +2100,17 @@ class Interpreter
             if (!$obj instanceof JsObject) {
                 $obj = TypeConversion::toObject($obj);
             }
+            $rawRefKey = null;
+            if ($node->computed) {
+                $rawRefKey = $this->evaluate($node->property, $env);
+            }
+            if ($rawRefKey instanceof JsSymbol) {
+                return new Reference($obj, '', $this->strictMode, $rawRefKey);
+            }
             $key = $node->computed
-                ? TypeConversion::toString($this->evaluate($node->property, $env))
+                ? TypeConversion::toString($rawRefKey)
                 : ($node->property instanceof Identifier ? $node->property->name : '');
-            return new Reference($obj, $key);
+            return new Reference($obj, $key, $this->strictMode);
         }
 
         throw new ReferenceError('Invalid assignment target');
@@ -1897,5 +2262,16 @@ class Interpreter
     public function getGlobalEnv(): Environment
     {
         return $this->globalEnv;
+    }
+
+    /** Lazily created global object used as the default this in sloppy mode. */
+    private ?JsObject $globalObject = null;
+
+    public function getGlobalObject(): JsObject
+    {
+        if ($this->globalObject === null) {
+            $this->globalObject = new JsObject();
+        }
+        return $this->globalObject;
     }
 }

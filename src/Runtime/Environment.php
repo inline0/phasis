@@ -90,8 +90,14 @@ class Environment
         throw new ReferenceError("{$name} is not defined");
     }
 
-    /** Set a binding value, walking the scope chain. Throws on const or missing binding. */
-    public function set(string $name, JsValue $value): void
+    /**
+     * Set a binding value, walking the scope chain.
+     *
+     * In strict mode, throws ReferenceError if the binding is not found.
+     * In sloppy mode, creates the binding on the global (root) environment
+     * when not found anywhere in the chain.
+     */
+    public function set(string $name, JsValue $value, bool $strict = true): void
     {
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->tdz[$name])) {
@@ -107,11 +113,17 @@ class Environment
         }
 
         if ($this->parent !== null) {
-            $this->parent->set($name, $value);
+            $this->parent->set($name, $value, $strict);
             return;
         }
 
-        throw new ReferenceError("{$name} is not defined");
+        // At the global (root) environment and the binding was not found.
+        if ($strict) {
+            throw new ReferenceError("{$name} is not defined");
+        }
+
+        // Sloppy mode: implicitly create a global variable.
+        $this->bindings[$name] = $value;
     }
 
     /** Check whether a binding exists anywhere in the scope chain. */

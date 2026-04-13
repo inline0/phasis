@@ -84,6 +84,11 @@ class Lexer
             return $this->readIdentifier($start);
         }
 
+        // Unicode escape at identifier start: \uXXXX or \u{XXXX}
+        if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
+            return $this->readIdentifierWithEscapes($start);
+        }
+
         // Numeric literals
         if ($ch === '.' && $this->pos + 1 < $this->length && ctype_digit($this->source[$this->pos + 1])) {
             return $this->readNumber($start);
@@ -109,11 +114,60 @@ class Lexer
     private function readIdentifier(SourceLocation $start): Token
     {
         $result = '';
-        while ($this->pos < $this->length && $this->isIdentifierPart($this->source[$this->pos])) {
-            $result .= $this->source[$this->pos];
-            $this->advance();
+        while ($this->pos < $this->length) {
+            $ch = $this->source[$this->pos];
+            if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
+                $this->advance(); // skip backslash
+                $this->advance(); // skip 'u'
+                $decoded = $this->readUnicodeEscape();
+                $result .= $decoded;
+                continue;
+            }
+            if ($this->isIdentifierPart($ch)) {
+                $result .= $ch;
+                $this->advance();
+            } else {
+                break;
+            }
         }
 
+        $keyword = TokenType::fromKeyword($result);
+        if ($keyword !== null) {
+            return new Token($keyword, $result, $start);
+        }
+
+        return new Token(TokenType::Identifier, $result, $start);
+    }
+
+    private function readIdentifierWithEscapes(SourceLocation $start): Token
+    {
+        $result = '';
+
+        // Read the first character via unicode escape
+        $this->advance(); // skip backslash
+        $this->advance(); // skip 'u'
+        $decoded = $this->readUnicodeEscape();
+        $result .= $decoded;
+
+        // Continue reading identifier parts (including more escapes)
+        while ($this->pos < $this->length) {
+            $ch = $this->source[$this->pos];
+            if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
+                $this->advance(); // skip backslash
+                $this->advance(); // skip 'u'
+                $decoded = $this->readUnicodeEscape();
+                $result .= $decoded;
+                continue;
+            }
+            if ($this->isIdentifierPart($ch)) {
+                $result .= $ch;
+                $this->advance();
+            } else {
+                break;
+            }
+        }
+
+        // Check if the decoded identifier matches a keyword
         $keyword = TokenType::fromKeyword($result);
         if ($keyword !== null) {
             return new Token($keyword, $result, $start);
@@ -138,8 +192,10 @@ class Lexer
                 if ($this->pos >= $this->length || !ctype_xdigit($this->source[$this->pos])) {
                     throw new SyntaxError('Invalid hex literal', $start);
                 }
-                while ($this->pos < $this->length && ctype_xdigit($this->source[$this->pos])) {
-                    $result .= $this->source[$this->pos];
+                while ($this->pos < $this->length && $this->isHexDigitOrSeparator()) {
+                    if ($this->source[$this->pos] !== '_') {
+                        $result .= $this->source[$this->pos];
+                    }
                     $this->advance();
                 }
                 return new Token(TokenType::Number, $result, $start);
@@ -153,12 +209,10 @@ class Lexer
                 if ($this->pos >= $this->length || $this->source[$this->pos] < '0' || $this->source[$this->pos] > '7') {
                     throw new SyntaxError('Invalid octal literal', $start);
                 }
-                while (
-                    $this->pos < $this->length
-                    && $this->source[$this->pos] >= '0'
-                    && $this->source[$this->pos] <= '7'
-                ) {
-                    $result .= $this->source[$this->pos];
+                while ($this->pos < $this->length && $this->isOctalDigitOrSeparator()) {
+                    if ($this->source[$this->pos] !== '_') {
+                        $result .= $this->source[$this->pos];
+                    }
                     $this->advance();
                 }
                 return new Token(TokenType::Number, $result, $start);
@@ -173,11 +227,10 @@ class Lexer
                 if ($ch2 !== '0' && $ch2 !== '1') {
                     throw new SyntaxError('Invalid binary literal', $start);
                 }
-                while (
-                    $this->pos < $this->length
-                    && ($this->source[$this->pos] === '0' || $this->source[$this->pos] === '1')
-                ) {
-                    $result .= $this->source[$this->pos];
+                while ($this->pos < $this->length && $this->isBinaryDigitOrSeparator()) {
+                    if ($this->source[$this->pos] !== '_') {
+                        $result .= $this->source[$this->pos];
+                    }
                     $this->advance();
                 }
                 return new Token(TokenType::Number, $result, $start);
@@ -185,8 +238,10 @@ class Lexer
         }
 
         // Decimal (including leading dot)
-        while ($this->pos < $this->length && ctype_digit($this->source[$this->pos])) {
-            $result .= $this->source[$this->pos];
+        while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
+            if ($this->source[$this->pos] !== '_') {
+                $result .= $this->source[$this->pos];
+            }
             $this->advance();
         }
 
@@ -194,8 +249,10 @@ class Lexer
         if ($this->pos < $this->length && $this->source[$this->pos] === '.') {
             $result .= '.';
             $this->advance();
-            while ($this->pos < $this->length && ctype_digit($this->source[$this->pos])) {
-                $result .= $this->source[$this->pos];
+            while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
+                if ($this->source[$this->pos] !== '_') {
+                    $result .= $this->source[$this->pos];
+                }
                 $this->advance();
             }
         }
@@ -207,15 +264,20 @@ class Lexer
         ) {
             $result .= $this->source[$this->pos];
             $this->advance();
-            if ($this->pos < $this->length && ($this->source[$this->pos] === '+' || $this->source[$this->pos] === '-')) {
+            if (
+                $this->pos < $this->length
+                && ($this->source[$this->pos] === '+' || $this->source[$this->pos] === '-')
+            ) {
                 $result .= $this->source[$this->pos];
                 $this->advance();
             }
             if ($this->pos >= $this->length || !ctype_digit($this->source[$this->pos])) {
                 throw new SyntaxError('Invalid exponent', $start);
             }
-            while ($this->pos < $this->length && ctype_digit($this->source[$this->pos])) {
-                $result .= $this->source[$this->pos];
+            while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
+                if ($this->source[$this->pos] !== '_') {
+                    $result .= $this->source[$this->pos];
+                }
                 $this->advance();
             }
         }
@@ -642,6 +704,30 @@ class Lexer
     private function isIdentifierPart(string $ch): bool
     {
         return ctype_alnum($ch) || $ch === '_' || $ch === '$';
+    }
+
+    private function isDigitOrSeparator(): bool
+    {
+        $ch = $this->source[$this->pos];
+        return ctype_digit($ch) || $ch === '_';
+    }
+
+    private function isHexDigitOrSeparator(): bool
+    {
+        $ch = $this->source[$this->pos];
+        return ctype_xdigit($ch) || $ch === '_';
+    }
+
+    private function isOctalDigitOrSeparator(): bool
+    {
+        $ch = $this->source[$this->pos];
+        return ($ch >= '0' && $ch <= '7') || $ch === '_';
+    }
+
+    private function isBinaryDigitOrSeparator(): bool
+    {
+        $ch = $this->source[$this->pos];
+        return $ch === '0' || $ch === '1' || $ch === '_';
     }
 
     public function getPosition(): int

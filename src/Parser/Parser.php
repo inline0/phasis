@@ -60,6 +60,7 @@ use PhpJs\Ast\Statement\SwitchStatement;
 use PhpJs\Ast\Statement\ThrowStatement;
 use PhpJs\Ast\Statement\TryStatement;
 use PhpJs\Ast\Statement\WhileStatement;
+use PhpJs\Ast\Statement\WithStatement;
 use PhpJs\Lexer\Lexer;
 use PhpJs\Lexer\SourceLocation;
 use PhpJs\Lexer\Token;
@@ -96,8 +97,24 @@ class Parser
     {
         $token = $this->current();
 
+        // In sloppy mode, `let` is only a keyword when followed by an identifier,
+        // `[`, or `{` (binding pattern starts). Otherwise treat it as an identifier.
+        if ($token->type === TokenType::Let) {
+            $next = $this->peek();
+            $isDeclaration = $next->type === TokenType::Identifier
+                || $next->type === TokenType::LeftBracket
+                || $next->type === TokenType::LeftBrace
+                || $next->type === TokenType::Yield
+                || $next->type === TokenType::Await
+                || $next->type === TokenType::Let;
+            if ($isDeclaration) {
+                return $this->parseVariableDeclaration();
+            }
+            return $this->parseStatement();
+        }
+
         return match ($token->type) {
-            TokenType::Var, TokenType::Let, TokenType::Const_ => $this->parseVariableDeclaration(),
+            TokenType::Var, TokenType::Const_ => $this->parseVariableDeclaration(),
             TokenType::Function_ => $this->parseFunctionDeclaration(),
             TokenType::Class_ => $this->parseClassDeclaration(),
             TokenType::Async => $this->maybeParseAsyncFunction(),
@@ -123,6 +140,7 @@ class Parser
             TokenType::Continue => $this->parseContinueStatement(),
             TokenType::Semicolon => $this->parseEmptyStatement(),
             TokenType::Debugger => $this->parseDebuggerStatement(),
+            TokenType::With => $this->parseWithStatement(),
             default => $this->parseExpressionOrLabeledStatement(),
         };
     }
@@ -707,6 +725,16 @@ class Parser
         return new DebuggerStatement($location);
     }
 
+    private function parseWithStatement(): WithStatement
+    {
+        $location = $this->expect(TokenType::With)->location;
+        $this->expect(TokenType::LeftParen);
+        $object = $this->parseExpression();
+        $this->expect(TokenType::RightParen);
+        $body = $this->parseStatement();
+        return new WithStatement($location, $object, $body);
+    }
+
     private function parseExpressionOrLabeledStatement(): Node
     {
         $expr = $this->parseExpression();
@@ -945,7 +973,7 @@ class Parser
             TokenType::String => $this->parseStringLiteral(),
             TokenType::True, TokenType::False => $this->parseBooleanLiteral(),
             TokenType::Null => $this->parseNullLiteral(),
-            TokenType::Identifier => $this->parseIdentifierExpression(),
+            TokenType::Identifier, TokenType::Let => $this->parseIdentifierExpression(),
             TokenType::This => $this->parseThisExpression(),
             TokenType::LeftParen => $this->parseParenthesizedOrArrow(),
             TokenType::LeftBracket => $this->parseArrayExpression(),
@@ -1010,7 +1038,14 @@ class Parser
     private function parseIdentifier(): Identifier
     {
         $token = $this->current();
-        if ($token->type !== TokenType::Identifier) {
+        // In sloppy mode, `let`, `static`, `of`, and `yield` can be used as identifiers.
+        if (
+            $token->type !== TokenType::Identifier
+            && $token->type !== TokenType::Let
+            && $token->type !== TokenType::Static_
+            && $token->type !== TokenType::Of
+            && $token->type !== TokenType::Yield
+        ) {
             throw new ParseError('Expected identifier', $token);
         }
         $this->advance();

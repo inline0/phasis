@@ -12,6 +12,9 @@ class JsObject implements JsValue
     protected PropertyMap $properties;
     private ?JsObject $prototype;
 
+    /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
+    protected array $symbolProperties = [];
+
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();
@@ -54,6 +57,65 @@ class JsObject implements JsValue
         }
 
         $this->properties->set($name, PropertyDescriptor::data($value));
+    }
+
+    /** Get a property value by symbol key. */
+    public function getBySymbol(JsSymbol $symbol): JsValue
+    {
+        $id = $symbol->getId();
+        if (isset($this->symbolProperties[$id])) {
+            $desc = $this->symbolProperties[$id];
+            if ($desc->get !== null) {
+                return $desc->get->call($this, []);
+            }
+            return $desc->value ?? JsUndefined::instance();
+        }
+
+        if ($this->prototype !== null) {
+            return $this->prototype->getBySymbol($symbol);
+        }
+
+        return JsUndefined::instance();
+    }
+
+    /** Set a property value by symbol key. */
+    public function setBySymbol(JsSymbol $symbol, JsValue $value): void
+    {
+        $id = $symbol->getId();
+        if (isset($this->symbolProperties[$id])) {
+            $desc = $this->symbolProperties[$id];
+            if ($desc->set !== null) {
+                $desc->set->call($this, [$value]);
+                return;
+            }
+            if ($desc->writable === false) {
+                return;
+            }
+            $desc->value = $value;
+            return;
+        }
+
+        $this->symbolProperties[$id] = PropertyDescriptor::data($value);
+    }
+
+    /** Check if the object has a symbol-keyed property. */
+    public function hasBySymbol(JsSymbol $symbol): bool
+    {
+        if (isset($this->symbolProperties[$symbol->getId()])) {
+            return true;
+        }
+
+        if ($this->prototype !== null) {
+            return $this->prototype->hasBySymbol($symbol);
+        }
+
+        return false;
+    }
+
+    /** Define a property descriptor by symbol key. */
+    public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): void
+    {
+        $this->symbolProperties[$symbol->getId()] = $desc;
     }
 
     public function has(string $name): bool

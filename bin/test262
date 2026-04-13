@@ -30,9 +30,8 @@ $runner->setSkipFeatures([
     // Modules
     'import-assertions', 'import-attributes', 'dynamic-import',
     'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
-    // Symbols (well-known)
-    'Symbol.species', 'Symbol.toPrimitive', 'Symbol.toStringTag',
-    'Symbol.iterator', 'Symbol.hasInstance', 'Symbol.match', 'Symbol.replace',
+    // Symbols (well-known) - unsupported ones
+    'Symbol.species', 'Symbol.match', 'Symbol.replace',
     'Symbol.search', 'Symbol.split', 'Symbol.asyncIterator',
     // Promise
     'Promise', 'Promise.allSettled', 'Promise.any', 'Promise.prototype.finally',
@@ -47,7 +46,7 @@ $runner->setSkipFeatures([
     // Misc advanced
     'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
     'decorators', 'explicit-resource-management',
-    'hashbang', 'template-literal-revision',
+    'hashbang',
     'iterator-helpers', 'set-methods', 'Array.fromAsync',
     'change-array-by-copy', 'Math.sumPrecise',
     'well-formed-json-stringify', 'json-parse-with-source',

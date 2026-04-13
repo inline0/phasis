@@ -246,6 +246,13 @@ class JsGenerator extends JsObject
         $this->defineProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
         $this->defineProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
         $this->defineProperty('throw', PropertyDescriptor::data($throwFn, true, false, true));
+
+        // Generators are their own iterators: [Symbol.iterator]() returns this.
+        $self = $this;
+        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', static function () use ($self): JsValue {
+            return $self;
+        });
+        $this->setBySymbol(\PhpJs\BuiltIn\SymbolConstructor::iterator(), $iteratorFn);
     }
 
     public function typeof(): string

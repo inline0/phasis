@@ -20,6 +20,34 @@ class JsArray extends JsObject
         }
 
         $this->length = count($elements);
+        $this->installSymbolIterator();
+    }
+
+    /** Install Symbol.iterator so arrays support the iterator protocol. */
+    private function installSymbolIterator(): void
+    {
+        $array = $this;
+        $factory = function () use ($array): JsValue {
+            $index = 0;
+            $iterator = new JsObject();
+            $nextFn = function () use ($array, &$index): JsValue {
+                $result = new JsObject();
+                if ($index < $array->getLength()) {
+                    $result->set('value', $array->get((string) $index));
+                    $result->set('done', new JsBoolean(false));
+                    $index++;
+                } else {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                }
+                return $result;
+            };
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            return $iterator;
+        };
+        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
+        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $this->setBySymbol($iterSym, $iteratorFn);
     }
 
     public function getLength(): int

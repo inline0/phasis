@@ -146,6 +146,72 @@ class JsFunction extends JsObject
         return JsUndefined::instance();
     }
 
+    public function get(string $name): JsValue
+    {
+        // Check own properties first (prototype, etc.)
+        $own = parent::get($name);
+        if (!$own instanceof JsUndefined) {
+            return $own;
+        }
+
+        return match ($name) {
+            'call' => self::getCallMethod(),
+            'apply' => self::getApplyMethod(),
+            'bind' => self::getBindMethod(),
+            'name' => new JsString($this->name),
+            'length' => new JsNumber((float) count($this->params)),
+            default => JsUndefined::instance(),
+        };
+    }
+
+    private static function getCallMethod(): self
+    {
+        return self::fromCallable('call', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                return JsUndefined::instance();
+            }
+            $thisArg = $args[0] ?? JsUndefined::instance();
+            $callArgs = array_slice($args, 1);
+            return $this_->call($thisArg, $callArgs);
+        });
+    }
+
+    private static function getApplyMethod(): self
+    {
+        return self::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                return JsUndefined::instance();
+            }
+            $thisArg = $args[0] ?? JsUndefined::instance();
+            $argsArray = $args[1] ?? JsUndefined::instance();
+            $callArgs = [];
+            if ($argsArray instanceof JsArray) {
+                for ($i = 0; $i < $argsArray->getLength(); $i++) {
+                    $callArgs[] = $argsArray->get((string) $i);
+                }
+            }
+            return $this_->call($thisArg, $callArgs);
+        });
+    }
+
+    private static function getBindMethod(): self
+    {
+        return self::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                return JsUndefined::instance();
+            }
+            $boundThis = $args[0] ?? JsUndefined::instance();
+            $boundArgs = array_slice($args, 1);
+            $target = $this_;
+            return self::fromCallable(
+                'bound ' . $target->getName(),
+                function (JsValue $this2_, array $callArgs) use ($target, $boundThis, $boundArgs): JsValue {
+                    return $target->call($boundThis, array_merge($boundArgs, $callArgs));
+                },
+            );
+        });
+    }
+
     public function typeof(): string
     {
         return 'function';

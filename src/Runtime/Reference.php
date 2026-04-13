@@ -6,16 +6,21 @@ namespace PhpJs\Runtime;
 
 use PhpJs\Exceptions\ReferenceError;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
 class Reference
 {
+    private ?JsSymbol $symbolKey;
+
     public function __construct(
         public readonly JsValue|Environment $base,
         public readonly string $name,
         public readonly bool $strict = false,
+        ?JsSymbol $symbolKey = null,
     ) {
+        $this->symbolKey = $symbolKey;
     }
 
     /** Resolve the reference to its current value. */
@@ -26,6 +31,9 @@ class Reference
         }
 
         if ($this->base instanceof JsObject) {
+            if ($this->symbolKey !== null) {
+                return $this->base->getBySymbol($this->symbolKey);
+            }
             return $this->base->get($this->name);
         }
 
@@ -36,11 +44,15 @@ class Reference
     public function setValue(JsValue $value): void
     {
         if ($this->base instanceof Environment) {
-            $this->base->set($this->name, $value);
+            $this->base->set($this->name, $value, $this->strict);
             return;
         }
 
         if ($this->base instanceof JsObject) {
+            if ($this->symbolKey !== null) {
+                $this->base->setBySymbol($this->symbolKey, $value);
+                return;
+            }
             $this->base->set($this->name, $value);
             return;
         }
