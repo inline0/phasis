@@ -1011,16 +1011,20 @@ class Interpreter
             return $obj->get($key);
         }
 
-        // Auto-boxing for primitives
-        try {
-            $boxed = TypeConversion::toObject($obj);
-            if ($isSymbolKey) {
-                return $boxed->getBySymbol($rawKey);
-            }
-            return $boxed->get($key);
-        } catch (\Throwable) {
-            return JsUndefined::instance();
+        // null/undefined property access is always a TypeError
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            throw new TypeError(
+                "Cannot read properties of " . ($obj instanceof JsNull ? 'null' : 'undefined')
+                . " (reading '{$key}')",
+            );
         }
+
+        // Auto-boxing for primitives (number, boolean)
+        $boxed = TypeConversion::toObject($obj);
+        if ($isSymbolKey) {
+            return $boxed->getBySymbol($rawKey);
+        }
+        return $boxed->get($key);
     }
 
     /** Create a factory function that returns a string iterator (for Symbol.iterator). */
@@ -2226,14 +2230,31 @@ class Interpreter
      */
     private function phpExceptionToJsValue(\PhpJs\Exceptions\RuntimeError $e): JsValue
     {
-        $errorObj = new JsObject();
-        $errorObj->set('message', new JsString($e->getMessage()));
-        $errorObj->set('name', new JsString(match (true) {
+        $name = match (true) {
             $e instanceof TypeError => 'TypeError',
             $e instanceof ReferenceError => 'ReferenceError',
             $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
+            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
             default => 'Error',
-        }));
+        };
+
+        $errorObj = new JsObject();
+        $errorObj->set('message', new JsString($e->getMessage()));
+        $errorObj->set('name', new JsString($name));
+        $errorObj->set('stack', new JsString($name . ': ' . $e->getMessage()));
+
+        // Set constructor to the global error constructor for instanceof/constructor checks
+        if ($this->globalEnv->has($name)) {
+            $constructor = $this->globalEnv->get($name);
+            if ($constructor instanceof JsFunction) {
+                $errorObj->set('constructor', $constructor);
+                $proto = $constructor->get('prototype');
+                if ($proto instanceof JsObject) {
+                    $errorObj->setPrototype($proto);
+                }
+            }
+        }
+
         return $errorObj;
     }
 
