@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+
+// Parses a JS file with Acorn and outputs AST JSON in normalized format.
+// Properties are sorted alphabetically for stable comparison.
+
+const acorn = require('acorn');
+const fs = require('fs');
+
+const file = process.argv[2];
+if (!file) {
+    process.stderr.write('Usage: parse-oracle <file.js>\n');
+    process.exit(1);
+}
+
+const source = fs.readFileSync(file, 'utf8');
+const ast = acorn.parse(source, {
+    ecmaVersion: 'latest',
+    sourceType: 'script',
+});
+
+function simplify(node) {
+    if (node === null || node === undefined) return null;
+    if (typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(simplify);
+
+    const result = {};
+
+    for (const [key, value] of Object.entries(node)) {
+        // Skip position data and Acorn-specific extras
+        if (['start', 'end', 'loc', 'sourceType', 'directive'].includes(key)) continue;
+
+        // Normalize string literal raw to not include quotes
+        if (key === 'raw' && node.type === 'Literal' && typeof node.value === 'string') {
+            result[key] = node.value;
+            continue;
+        }
+
+        result[key] = simplify(value);
+    }
+
+    // Sort keys alphabetically for stable comparison
+    const sorted = {};
+    for (const key of Object.keys(result).sort()) {
+        sorted[key] = result[key];
+    }
+    return sorted;
+}
+
+const simplified = simplify(ast);
+console.log(JSON.stringify(simplified, null, 2));

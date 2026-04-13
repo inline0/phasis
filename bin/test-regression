@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SCENARIOS_DIR="$ROOT_DIR/scenarios"
+
+CATEGORY=""
+FAST=false
+JOBS=1
+PASS=0
+FAIL=0
+SKIP=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --category) CATEGORY="$2"; shift 2 ;;
+        --fast) FAST=true; shift ;;
+        --jobs) JOBS="$2"; shift 2 ;;
+        *) echo "Unknown option: $1" >&2; exit 1 ;;
+    esac
+done
+
+# Find all scenarios (directories containing setup/test.js)
+if [[ -n "$CATEGORY" ]]; then
+    SEARCH_DIR="$SCENARIOS_DIR/$CATEGORY"
+else
+    SEARCH_DIR="$SCENARIOS_DIR"
+fi
+
+if [[ ! -d "$SEARCH_DIR" ]]; then
+    echo "No scenarios found in $SEARCH_DIR"
+    exit 0
+fi
+
+SCENARIOS=$(find "$SEARCH_DIR" -name "test.js" -path "*/setup/*" 2>/dev/null | sort)
+
+if [[ -z "$SCENARIOS" ]]; then
+    echo "No scenarios found."
+    exit 0
+fi
+
+while IFS= read -r SETUP_FILE; do
+    SCENARIO_DIR=$(dirname "$(dirname "$SETUP_FILE")")
+    SCENARIO_NAME=$(basename "$SCENARIO_DIR")
+    ORACLE_FILE="$SCENARIO_DIR/oracle/output.txt"
+    ACTUAL_DIR="$SCENARIO_DIR/actual"
+    ACTUAL_FILE="$ACTUAL_DIR/output.txt"
+
+    # Skip if no oracle
+    if [[ ! -f "$ORACLE_FILE" ]]; then
+        ((SKIP++)) || true
+        if [[ "$FAST" == "false" ]]; then
+            echo "SKIP: $SCENARIO_NAME (no oracle)"
+        fi
+        continue
+    fi
+
+    # Run actual (default: parse mode for AST comparison)
+    mkdir -p "$ACTUAL_DIR"
+    php "$ROOT_DIR/bin/php-js" --ast "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1 || true
+
+    # Compare
+    if diff -q "$ORACLE_FILE" "$ACTUAL_FILE" > /dev/null 2>&1; then
+        ((PASS++)) || true
+        if [[ "$FAST" == "false" ]]; then
+            echo "PASS: $SCENARIO_NAME"
+        fi
+    else
+        ((FAIL++)) || true
+        if [[ "$FAST" == "false" ]]; then
+            echo "FAIL: $SCENARIO_NAME"
+        fi
+    fi
+done <<< "$SCENARIOS"
+
+TOTAL=$((PASS + FAIL + SKIP))
+echo ""
+echo "Results: $PASS passed, $FAIL failed, $SKIP skipped (total: $TOTAL)"
+
+if [[ $FAIL -gt 0 ]]; then
+    exit 1
+fi

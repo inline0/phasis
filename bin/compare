@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SCENARIOS_DIR="$ROOT_DIR/scenarios"
+
+usage() {
+    echo "Usage: compare <scenario-name>"
+    echo "  Diffs oracle vs actual output for a scenario."
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+SCENARIO="$1"
+
+# Find scenario directory
+SCENARIO_DIR=$(find "$SCENARIOS_DIR" -type d -name "$SCENARIO" 2>/dev/null | head -1)
+
+if [[ -z "$SCENARIO_DIR" ]]; then
+    echo "Error: Scenario '$SCENARIO' not found in $SCENARIOS_DIR" >&2
+    exit 1
+fi
+
+ORACLE_FILE="$SCENARIO_DIR/oracle/output.txt"
+ACTUAL_FILE="$SCENARIO_DIR/actual/output.txt"
+REPORTS_DIR="$SCENARIO_DIR/reports"
+
+if [[ ! -f "$ORACLE_FILE" ]]; then
+    echo "Error: Oracle output not found. Run: oracle $SCENARIO" >&2
+    exit 1
+fi
+
+if [[ ! -f "$ACTUAL_FILE" ]]; then
+    echo "Error: Actual output not found. Run: actual $SCENARIO" >&2
+    exit 1
+fi
+
+mkdir -p "$REPORTS_DIR"
+
+if diff -u "$ORACLE_FILE" "$ACTUAL_FILE" > /dev/null 2>&1; then
+    echo "PASS: $SCENARIO"
+    echo '{"status":"pass","scenario":"'"$SCENARIO"'"}' > "$REPORTS_DIR/comparison.json"
+    exit 0
+else
+    echo "FAIL: $SCENARIO"
+    diff -u "$ORACLE_FILE" "$ACTUAL_FILE" || true
+    echo '{"status":"fail","scenario":"'"$SCENARIO"'"}' > "$REPORTS_DIR/comparison.json"
+    exit 1
+fi

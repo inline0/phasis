@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$ROOT_DIR"
+
+FAILED=0
+
+echo "=== PHPStan ==="
+if vendor/bin/phpstan analyse; then
+    echo "PHPStan: PASS"
+else
+    echo "PHPStan: FAIL"
+    FAILED=1
+fi
+
+echo ""
+echo "=== Code Standards ==="
+if vendor/bin/phpcs --warning-severity=0; then
+    echo "PHPCS: PASS"
+else
+    echo "PHPCS: FAIL"
+    FAILED=1
+fi
+
+echo ""
+echo "=== PHPUnit ==="
+if vendor/bin/phpunit; then
+    echo "PHPUnit: PASS"
+else
+    echo "PHPUnit: FAIL"
+    FAILED=1
+fi
+
+echo ""
+echo "=== Oracle Regression ==="
+if "$SCRIPT_DIR/test-regression" --fast; then
+    echo "Oracle: PASS"
+else
+    echo "Oracle: FAIL"
+    FAILED=1
+fi
+
+echo ""
+if [[ $FAILED -eq 0 ]]; then
+    echo "ALL CHECKS PASSED"
+else
+    echo "SOME CHECKS FAILED"
+    exit 1
+fi

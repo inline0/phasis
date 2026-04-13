@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+SCENARIOS_DIR="$ROOT_DIR/scenarios"
+
+usage() {
+    echo "Usage: oracle <scenario-name> [--refresh]"
+    echo "  Captures oracle output for a scenario."
+    echo ""
+    echo "  For parse scenarios: produces Acorn AST JSON."
+    echo "  For exec scenarios: produces Node.js execution output."
+    echo ""
+    echo "Options:"
+    echo "  --refresh    Re-capture output (overwrite existing oracle)"
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+SCENARIO="$1"
+REFRESH=false
+
+if [[ "${2:-}" == "--refresh" ]]; then
+    REFRESH=true
+fi
+
+# Find scenario directory
+SCENARIO_DIR=$(find "$SCENARIOS_DIR" -type d -name "$SCENARIO" 2>/dev/null | head -1)
+
+if [[ -z "$SCENARIO_DIR" ]]; then
+    echo "Error: Scenario '$SCENARIO' not found in $SCENARIOS_DIR" >&2
+    exit 1
+fi
+
+SETUP_FILE="$SCENARIO_DIR/setup/test.js"
+ORACLE_DIR="$SCENARIO_DIR/oracle"
+ORACLE_FILE="$ORACLE_DIR/output.txt"
+
+if [[ ! -f "$SETUP_FILE" ]]; then
+    echo "Error: Setup file not found: $SETUP_FILE" >&2
+    exit 1
+fi
+
+if [[ -f "$ORACLE_FILE" && "$REFRESH" == "false" ]]; then
+    echo "Oracle output already exists. Use --refresh to re-capture."
+    exit 0
+fi
+
+mkdir -p "$ORACLE_DIR"
+
+if ! command -v node &>/dev/null; then
+    echo "Error: Node.js is required for oracle capture" >&2
+    exit 1
+fi
+
+# Check if scenario.json specifies mode; default to "parse" for Phase 1
+MODE="parse"
+if [[ -f "$SCENARIO_DIR/scenario.json" ]]; then
+    MODE=$(node -e "const s=require('$SCENARIO_DIR/scenario.json'); console.log(s.mode||'parse')" 2>/dev/null || echo "parse")
+fi
+
+if [[ "$MODE" == "exec" ]]; then
+    node "$SETUP_FILE" > "$ORACLE_FILE" 2>&1
+else
+    "$SCRIPT_DIR/parse-oracle" "$SETUP_FILE" > "$ORACLE_FILE" 2>&1
+fi
+
+echo "Oracle captured: $ORACLE_FILE"

@@ -1,0 +1,82 @@
+{
+  "body": [
+    {
+      "async": false,
+      "body": {
+        "body": [
+          {
+            "argument": {
+              "left": {
+                "name": "a",
+                "type": "Identifier"
+              },
+              "operator": "+",
+              "right": {
+                "name": "b",
+                "type": "Identifier"
+              },
+              "type": "BinaryExpression"
+            },
+            "type": "ReturnStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "expression": false,
+      "generator": false,
+      "id": {
+        "name": "add",
+        "type": "Identifier"
+      },
+      "params": [
+        {
+          "name": "a",
+          "type": "Identifier"
+        },
+        {
+          "name": "b",
+          "type": "Identifier"
+        }
+      ],
+      "type": "FunctionDeclaration"
+    },
+    {
+      "async": false,
+      "body": {
+        "body": [
+          {
+            "argument": {
+              "left": {
+                "raw": "hello ",
+                "type": "Literal",
+                "value": "hello "
+              },
+              "operator": "+",
+              "right": {
+                "name": "name",
+                "type": "Identifier"
+              },
+              "type": "BinaryExpression"
+            },
+            "type": "ReturnStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "expression": false,
+      "generator": false,
+      "id": {
+        "name": "greet",
+        "type": "Identifier"
+      },
+      "params": [
+        {
+          "name": "name",
+          "type": "Identifier"
+        }
+      ],
+      "type": "FunctionDeclaration"
+    }
+  ],
+  "type": "Program"
+}

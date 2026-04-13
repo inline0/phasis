@@ -1,0 +1,90 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use PhpJs\Parser\Parser;
+
+// Phase 1: parse-only mode (interpreter comes in Phase 2)
+$opts = getopt('e:', ['repl', 'ast']);
+$args = array_slice($argv, 1);
+
+if (isset($opts['e'])) {
+    $source = $opts['e'];
+    $parser = new Parser($source);
+    $program = $parser->parse();
+    echo jsonIndent2(astToArray($program)) . "\n";
+    exit(0);
+}
+
+if (in_array('--ast', $args, true)) {
+    $file = $args[array_search('--ast', $args) + 1] ?? null;
+    if ($file === null || !file_exists($file)) {
+        fwrite(STDERR, "Usage: php-js --ast <file.js>\n");
+        exit(1);
+    }
+    $source = file_get_contents($file);
+    $parser = new Parser($source);
+    $program = $parser->parse();
+    echo jsonIndent2(astToArray($program)) . "\n";
+    exit(0);
+}
+
+// Default: parse a file
+$file = $args[0] ?? null;
+if ($file === null || !file_exists($file)) {
+    fwrite(STDERR, "Usage: php-js <file.js> | php-js -e '<expr>' | php-js --ast <file.js>\n");
+    exit(1);
+}
+
+$source = file_get_contents($file);
+$parser = new Parser($source);
+$program = $parser->parse();
+echo json_encode(astToArray($program), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n";
+
+function astToArray(object $node): array
+{
+    $result = ['type' => $node->type()];
+    $ref = new ReflectionClass($node);
+
+    foreach ($ref->getProperties(ReflectionProperty::IS_PUBLIC) as $prop) {
+        $name = $prop->getName();
+        if ($name === 'location') {
+            continue;
+        }
+        $value = $prop->getValue($node);
+        $result[$name] = convertValue($value);
+    }
+
+    // Sort keys alphabetically for stable comparison with oracle
+    ksort($result);
+    return $result;
+}
+
+function convertValue(mixed $value): mixed
+{
+    if ($value === null) {
+        return null;
+    }
+    if (is_scalar($value)) {
+        return $value;
+    }
+    if (is_array($value)) {
+        return array_map(fn($v) => convertValue($v), $value);
+    }
+    if (is_object($value) && method_exists($value, 'type')) {
+        return astToArray($value);
+    }
+    return (string) $value;
+}
+
+function jsonIndent2(mixed $data): string
+{
+    $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // Convert 4-space indent to 2-space to match Acorn output
+    return preg_replace_callback('/^( +)/m', function ($matches) {
+        return str_repeat(' ', (int) (strlen($matches[1]) / 2));
+    }, $json);
+}

@@ -1,0 +1,89 @@
+{
+  "body": [
+    {
+      "declarations": [
+        {
+          "id": {
+            "name": "x",
+            "type": "Identifier"
+          },
+          "init": {
+            "raw": "1",
+            "type": "Literal",
+            "value": 1
+          },
+          "type": "VariableDeclarator"
+        }
+      ],
+      "kind": "let",
+      "type": "VariableDeclaration"
+    },
+    {
+      "declarations": [
+        {
+          "id": {
+            "name": "y",
+            "type": "Identifier"
+          },
+          "init": {
+            "raw": "2",
+            "type": "Literal",
+            "value": 2
+          },
+          "type": "VariableDeclarator"
+        }
+      ],
+      "kind": "const",
+      "type": "VariableDeclaration"
+    },
+    {
+      "declarations": [
+        {
+          "id": {
+            "name": "z",
+            "type": "Identifier"
+          },
+          "init": {
+            "raw": "3",
+            "type": "Literal",
+            "value": 3
+          },
+          "type": "VariableDeclarator"
+        }
+      ],
+      "kind": "var",
+      "type": "VariableDeclaration"
+    },
+    {
+      "declarations": [
+        {
+          "id": {
+            "name": "a",
+            "type": "Identifier"
+          },
+          "init": {
+            "raw": "1",
+            "type": "Literal",
+            "value": 1
+          },
+          "type": "VariableDeclarator"
+        },
+        {
+          "id": {
+            "name": "b",
+            "type": "Identifier"
+          },
+          "init": {
+            "raw": "2",
+            "type": "Literal",
+            "value": 2
+          },
+          "type": "VariableDeclarator"
+        }
+      ],
+      "kind": "let",
+      "type": "VariableDeclaration"
+    }
+  ],
+  "type": "Program"
+}

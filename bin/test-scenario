@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+    echo "Usage: test-scenario <scenario-name>"
+    echo "  Full pipeline: oracle -> actual -> compare"
+    exit 1
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+SCENARIO="$1"
+
+echo "=== Testing scenario: $SCENARIO ==="
+
+echo "--- Oracle ---"
+"$SCRIPT_DIR/oracle" "$SCENARIO"
+
+echo "--- Actual ---"
+"$SCRIPT_DIR/actual" "$SCENARIO"
+
+echo "--- Compare ---"
+"$SCRIPT_DIR/compare" "$SCENARIO"

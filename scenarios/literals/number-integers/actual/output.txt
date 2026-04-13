@@ -1,0 +1,61 @@
+{
+  "body": [
+    {
+      "expression": {
+        "raw": "0",
+        "type": "Literal",
+        "value": 0
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "42",
+        "type": "Literal",
+        "value": 42
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "100",
+        "type": "Literal",
+        "value": 100
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "0xFF",
+        "type": "Literal",
+        "value": 255
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "0o77",
+        "type": "Literal",
+        "value": 63
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "0b1010",
+        "type": "Literal",
+        "value": 10
+      },
+      "type": "ExpressionStatement"
+    },
+    {
+      "expression": {
+        "raw": "1e3",
+        "type": "Literal",
+        "value": 1000
+      },
+      "type": "ExpressionStatement"
+    }
+  ],
+  "type": "Program"
+}
