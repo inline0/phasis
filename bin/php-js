@@ -5,44 +5,64 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use PhpJs\Engine;
 use PhpJs\Parser\Parser;
 
-// Phase 1: parse-only mode (interpreter comes in Phase 2)
-$opts = getopt('e:', ['repl', 'ast']);
 $args = array_slice($argv, 1);
+$opts = getopt('e:', ['ast', 'repl']);
 
 if (isset($opts['e'])) {
     $source = $opts['e'];
-    $parser = new Parser($source);
-    $program = $parser->parse();
-    echo jsonIndent2(astToArray($program)) . "\n";
+
+    if (isset($opts['ast'])) {
+        outputAst($source);
+    } else {
+        executeSource($source);
+    }
     exit(0);
 }
 
 if (in_array('--ast', $args, true)) {
-    $file = $args[array_search('--ast', $args) + 1] ?? null;
+    $fileIdx = array_search('--ast', $args);
+    $file = $args[$fileIdx + 1] ?? null;
     if ($file === null || !file_exists($file)) {
         fwrite(STDERR, "Usage: php-js --ast <file.js>\n");
         exit(1);
     }
-    $source = file_get_contents($file);
-    $parser = new Parser($source);
-    $program = $parser->parse();
-    echo jsonIndent2(astToArray($program)) . "\n";
+    outputAst(file_get_contents($file));
     exit(0);
 }
 
-// Default: parse a file
+// Default: execute a file
 $file = $args[0] ?? null;
 if ($file === null || !file_exists($file)) {
     fwrite(STDERR, "Usage: php-js <file.js> | php-js -e '<expr>' | php-js --ast <file.js>\n");
     exit(1);
 }
 
-$source = file_get_contents($file);
-$parser = new Parser($source);
-$program = $parser->parse();
-echo json_encode(astToArray($program), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n";
+executeSource(file_get_contents($file));
+
+function executeSource(string $source): void
+{
+    $engine = new Engine();
+    try {
+        $engine->eval($source);
+        $output = $engine->getConsoleOutput();
+        if ($output !== '') {
+            echo $output . "\n";
+        }
+    } catch (\Throwable $e) {
+        fwrite(STDERR, $e->getMessage() . "\n");
+        exit(1);
+    }
+}
+
+function outputAst(string $source): void
+{
+    $parser = new Parser($source);
+    $program = $parser->parse();
+    echo jsonIndent2(astToArray($program)) . "\n";
+}
 
 function astToArray(object $node): array
 {
@@ -58,7 +78,6 @@ function astToArray(object $node): array
         $result[$name] = convertValue($value);
     }
 
-    // Sort keys alphabetically for stable comparison with oracle
     ksort($result);
     return $result;
 }
@@ -83,7 +102,6 @@ function convertValue(mixed $value): mixed
 function jsonIndent2(mixed $data): string
 {
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    // Convert 4-space indent to 2-space to match Acorn output
     return preg_replace_callback('/^( +)/m', function ($matches) {
         return str_repeat(' ', (int) (strlen($matches[1]) / 2));
     }, $json);

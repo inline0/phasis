@@ -56,9 +56,18 @@ while IFS= read -r SETUP_FILE; do
         continue
     fi
 
-    # Run actual (default: parse mode for AST comparison)
+    # Detect mode from scenario.json
+    MODE="parse"
+    if [[ -f "$SCENARIO_DIR/scenario.json" ]]; then
+        MODE=$(node -e "console.log(require('$SCENARIO_DIR/scenario.json').mode||'parse')" 2>/dev/null || echo "parse")
+    fi
+
     mkdir -p "$ACTUAL_DIR"
-    php "$ROOT_DIR/bin/php-js" --ast "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1 || true
+    if [[ "$MODE" == "exec" ]]; then
+        php "$ROOT_DIR/bin/php-js" "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1 || true
+    else
+        php "$ROOT_DIR/bin/php-js" --ast "$SETUP_FILE" > "$ACTUAL_FILE" 2>&1 || true
+    fi
 
     # Compare
     if diff -q "$ORACLE_FILE" "$ACTUAL_FILE" > /dev/null 2>&1; then

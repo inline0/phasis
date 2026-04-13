@@ -70,13 +70,10 @@ class Parser
     /** @var Token[] */
     private array $tokens;
     private int $pos = 0;
-    private Lexer $lexer;
-
-    public function __construct(
-        private readonly string $source,
-    ) {
-        $this->lexer = new Lexer($source);
-        $this->tokens = $this->lexer->tokenize();
+    public function __construct(string $source)
+    {
+        $lexer = new Lexer($source);
+        $this->tokens = $lexer->tokenize();
     }
 
     public function parse(): Program
@@ -1553,75 +1550,32 @@ class Parser
             return new TemplateLiteral($location, $quasis, $expressions);
         }
 
-        // TemplateHead
+        // TemplateHead — tokens are already split by the lexer
         $this->advance();
         $quasis[] = new TemplateElement($token->location, $token->value, $token->value, false);
 
         while (true) {
             $expressions[] = $this->parseExpression();
 
-            // Read continuation: } ... ${ or } ... `
-            $continuation = $this->lexer->readTemplateContinuation();
+            // The lexer has already tokenized the continuation as TemplateTail or TemplateMiddle
+            $cont = $this->current();
 
-            if ($continuation->type === TokenType::TemplateTail) {
-                $quasis[] = new TemplateElement(
-                    $continuation->location,
-                    $continuation->value,
-                    $continuation->value,
-                    true,
-                );
-                // Sync parser tokens: replace remaining tokens from this position
-                $this->resyncAfterTemplate();
+            if ($cont->type === TokenType::TemplateTail) {
+                $this->advance();
+                $quasis[] = new TemplateElement($cont->location, $cont->value, $cont->value, true);
                 break;
             }
 
-            // TemplateMiddle
-            $quasis[] = new TemplateElement(
-                $continuation->location,
-                $continuation->value,
-                $continuation->value,
-                false,
-            );
+            if ($cont->type === TokenType::TemplateMiddle) {
+                $this->advance();
+                $quasis[] = new TemplateElement($cont->location, $cont->value, $cont->value, false);
+                continue;
+            }
+
+            throw new ParseError('Expected template continuation', $cont);
         }
 
         return new TemplateLiteral($location, $quasis, $expressions);
-    }
-
-    private function resyncAfterTemplate(): void
-    {
-        // Re-tokenize the remaining source from the lexer's current position
-        $remaining = substr($this->source, $this->lexer->getPosition());
-        if ($remaining === '') {
-            $this->tokens = [new Token(
-                TokenType::EOF,
-                '',
-                new SourceLocation($this->tokens[count($this->tokens) - 1]->location->line, 0, strlen($this->source)),
-            )];
-            $this->pos = 0;
-            return;
-        }
-
-        $subLexer = new Lexer($remaining);
-        $newTokens = $subLexer->tokenize();
-
-        // Adjust offsets
-        $baseOffset = $this->lexer->getPosition();
-        $adjusted = [];
-        foreach ($newTokens as $t) {
-            $adjusted[] = new Token(
-                $t->type,
-                $t->value,
-                new SourceLocation(
-                    $t->location->line,
-                    $t->location->column,
-                    $t->location->offset + $baseOffset,
-                ),
-                $t->lineTerminatorBefore,
-            );
-        }
-
-        $this->tokens = $adjusted;
-        $this->pos = 0;
     }
 
     /** @return Node[] */

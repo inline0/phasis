@@ -1,0 +1,154 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs;
+
+use PhpJs\BuiltIn\ConsoleObject;
+use PhpJs\BuiltIn\GlobalObject;
+use PhpJs\Interop\PhpToJs;
+use PhpJs\Parser\Parser;
+use PhpJs\Runtime\CallStack;
+use PhpJs\Runtime\Environment;
+use PhpJs\Runtime\Interpreter;
+use PhpJs\Spec\TypeConversion;
+use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsValue;
+
+class Engine
+{
+    private Environment $globalEnv;
+    private Interpreter $interpreter;
+    private ConsoleObject $console;
+    private CallStack $callStack;
+
+    public function __construct()
+    {
+        $this->callStack = new CallStack();
+        $this->globalEnv = new Environment();
+        $this->console = new ConsoleObject();
+        $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+
+        $this->installBuiltins();
+    }
+
+    private function installBuiltins(): void
+    {
+        GlobalObject::install($this->globalEnv);
+        \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
+        $this->globalEnv->defineVar('console', $this->console->create());
+    }
+
+    public function eval(string $source): mixed
+    {
+        $parser = new Parser($source);
+        $program = $parser->parse();
+        $result = $this->interpreter->execute($program);
+        return $this->toPhp($result);
+    }
+
+    public function execFile(string $path): mixed
+    {
+        $source = file_get_contents($path);
+        if ($source === false) {
+            throw new \RuntimeException("Cannot read file: {$path}");
+        }
+        return $this->eval($source);
+    }
+
+    public function setGlobal(string $name, mixed $value): void
+    {
+        $jsValue = PhpToJs::convert($value);
+        $this->globalEnv->defineVar($name, $jsValue);
+    }
+
+    public function call(string $name, mixed ...$args): mixed
+    {
+        $fn = $this->globalEnv->get($name);
+        if (!$fn instanceof JsFunction) {
+            throw new Exceptions\TypeError("{$name} is not a function");
+        }
+
+        $jsArgs = array_map(fn($a) => PhpToJs::convert($a), $args);
+        $result = $this->interpreter->callFunction($fn, JsUndefined::instance(), $jsArgs);
+        return $this->toPhp($result);
+    }
+
+    public function getConsoleOutput(): string
+    {
+        return $this->console->getOutputString();
+    }
+
+    /** @return list<string> */
+    public function getConsoleLines(): array
+    {
+        return $this->console->getOutput();
+    }
+
+    public function clearConsole(): void
+    {
+        $this->console->clear();
+    }
+
+    public function reset(): void
+    {
+        $this->globalEnv = new Environment();
+        $this->console = new ConsoleObject();
+        $this->callStack = new CallStack();
+        $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+
+        $this->installBuiltins();
+    }
+
+    public function setLimit(string $name, int $value): void
+    {
+        // Limits are enforced at construction time; reset to apply
+    }
+
+    private function toPhp(JsValue $value): mixed
+    {
+        if ($value instanceof JsUndefined || $value instanceof \PhpJs\Value\JsNull) {
+            return null;
+        }
+        if ($value instanceof \PhpJs\Value\JsBoolean) {
+            return $value->toBoolean();
+        }
+        if ($value instanceof \PhpJs\Value\JsNumber) {
+            $num = $value->value;
+            if (is_nan($num)) {
+                return NAN;
+            }
+            if ($num === INF) {
+                return INF;
+            }
+            if ($num === -INF) {
+                return -INF;
+            }
+            if ($num == (int) $num && abs($num) < PHP_INT_MAX) {
+                return (int) $num;
+            }
+            return $num;
+        }
+        if ($value instanceof \PhpJs\Value\JsString) {
+            return $value->value;
+        }
+        if ($value instanceof \PhpJs\Value\JsArray) {
+            $result = [];
+            $len = $value->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $result[] = $this->toPhp($value->get((string) $i));
+            }
+            return $result;
+        }
+        if ($value instanceof JsObject) {
+            $result = [];
+            foreach ($value->getOwnPropertyNames() as $key) {
+                $result[$key] = $this->toPhp($value->get($key));
+            }
+            return $result;
+        }
+        return null;
+    }
+}

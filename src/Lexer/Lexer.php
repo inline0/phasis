@@ -14,6 +14,7 @@ class Lexer
     private int $line = 1;
     private int $column = 0;
     private bool $lineTerminatorBefore = false;
+    private int $templateDepth = 0;
 
     /** @var Token[] */
     private array $tokens = [];
@@ -40,7 +41,20 @@ class Lexer
                 break;
             }
 
-            $token = $this->readToken();
+            // Inside template expression: } means template continuation
+            if ($this->templateDepth > 0 && $this->source[$this->pos] === '}') {
+                $this->advance(); // skip }
+                $token = $this->readTemplateContinuation();
+                if ($token->type === TokenType::TemplateTail) {
+                    $this->templateDepth--;
+                }
+                // TemplateMiddle: templateDepth stays the same
+            } else {
+                $token = $this->readToken();
+                if ($token->type === TokenType::TemplateHead) {
+                    $this->templateDepth++;
+                }
+            }
             $token = new Token(
                 $token->type,
                 $token->value,
