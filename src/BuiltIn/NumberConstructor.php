@@ -95,6 +95,8 @@ class NumberConstructor
         $proto = new JsObject();
 
         $proto->set('toFixed', JsFunction::fromCallable('toFixed', self::toFixed()));
+        $proto->set('toPrecision', JsFunction::fromCallable('toPrecision', self::toPrecision()));
+        $proto->set('toExponential', JsFunction::fromCallable('toExponential', self::toExponential()));
         $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn()));
         $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::valueOf()));
 
@@ -243,6 +245,97 @@ class NumberConstructor
                 }
             }
             return new JsNumber(NAN);
+        };
+    }
+
+    private static function toPrecision(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $numValue = self::extractNumberValue($this_);
+
+            if (!isset($args[0]) || $args[0] instanceof JsUndefined) {
+                return new JsString((new JsNumber($numValue))->toJsString());
+            }
+
+            $precision = (int) TypeConversion::toNumber($args[0]);
+
+            if ($precision < 1 || $precision > 100) {
+                throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
+            }
+
+            if (is_nan($numValue)) {
+                return new JsString('NaN');
+            }
+            if (is_infinite($numValue)) {
+                return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
+            }
+
+            $result = sprintf('%.' . ($precision - 1) . 'e', $numValue);
+            $parts = explode('e', $result);
+            $exp = (int) $parts[1];
+
+            if ($exp >= 0 && $exp < $precision) {
+                $formatted = number_format($numValue, max(0, $precision - $exp - 1), '.', '');
+                return new JsString($formatted);
+            }
+            if ($exp < 0 && $exp >= -4) {
+                $formatted = number_format($numValue, $precision - 1 - $exp, '.', '');
+                return new JsString($formatted);
+            }
+
+            $formatted = number_format((float) $parts[0], $precision - 1, '.', '');
+            $formatted = rtrim(rtrim($formatted, '0'), '.');
+            $expSign = $exp >= 0 ? '+' : '-';
+            return new JsString($formatted . 'e' . $expSign . abs($exp));
+        };
+    }
+
+    private static function toExponential(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $numValue = self::extractNumberValue($this_);
+
+            if (is_nan($numValue)) {
+                return new JsString('NaN');
+            }
+            if (is_infinite($numValue)) {
+                return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
+            }
+
+            $fractionDigits = isset($args[0]) && !($args[0] instanceof JsUndefined)
+                ? (int) TypeConversion::toNumber($args[0])
+                : null;
+
+            if ($fractionDigits !== null && ($fractionDigits < 0 || $fractionDigits > 100)) {
+                throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
+            }
+
+            if ($numValue === 0.0) {
+                if ($fractionDigits !== null) {
+                    $m = '0' . ($fractionDigits > 0 ? '.' . str_repeat('0', $fractionDigits) : '');
+                } else {
+                    $m = '0';
+                }
+                return new JsString($m . 'e+0');
+            }
+
+            $negative = $numValue < 0;
+            $numValue = abs($numValue);
+
+            if ($fractionDigits !== null) {
+                $result = sprintf('%.' . $fractionDigits . 'e', $numValue);
+            } else {
+                $result = sprintf('%.20e', $numValue);
+                $parts = explode('e', $result);
+                $mantissa = rtrim(rtrim($parts[0], '0'), '.');
+                $result = $mantissa . 'e' . $parts[1];
+            }
+
+            $result = preg_replace_callback('/e([+-])0*(\d+)/', function (array $m): string {
+                return 'e' . $m[1] . $m[2];
+            }, $result) ?? $result;
+
+            return new JsString(($negative ? '-' : '') . $result);
         };
     }
 

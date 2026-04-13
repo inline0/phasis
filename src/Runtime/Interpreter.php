@@ -537,6 +537,36 @@ class Interpreter
                 }
             }
 
+            // Number method calls: look up on Number.prototype
+            if ($rawObj instanceof JsNumber && !$isSymbolCallKey) {
+                $numCtor = $env->has('Number') ? $env->get('Number') : null;
+                if ($numCtor instanceof JsFunction) {
+                    $numProto = $numCtor->get('prototype');
+                    if ($numProto instanceof JsObject) {
+                        $method = $numProto->get($key);
+                        if ($method instanceof JsFunction) {
+                            $args = $this->evaluateArguments($node->arguments, $env);
+                            return $this->callFunction($method, $rawObj, $args);
+                        }
+                    }
+                }
+            }
+
+            // Boolean method calls: look up on Boolean wrapper
+            if ($rawObj instanceof JsBoolean && !$isSymbolCallKey) {
+                $boolCtor = $env->has('Boolean') ? $env->get('Boolean') : null;
+                if ($boolCtor instanceof JsFunction) {
+                    $boolProto = $boolCtor->get('prototype');
+                    if ($boolProto instanceof JsObject) {
+                        $method = $boolProto->get($key);
+                        if ($method instanceof JsFunction) {
+                            $args = $this->evaluateArguments($node->arguments, $env);
+                            return $this->callFunction($method, $rawObj, $args);
+                        }
+                    }
+                }
+            }
+
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
             $thisValue = $obj;
@@ -1079,7 +1109,10 @@ class Interpreter
 
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue
     {
-        $obj = new JsObject();
+        $objProto = $env->has('__ObjectPrototype__')
+            ? $env->get('__ObjectPrototype__')
+            : null;
+        $obj = new JsObject($objProto instanceof JsObject ? $objProto : null);
 
         foreach ($node->properties as $prop) {
             if ($prop instanceof SpreadElement) {

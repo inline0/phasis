@@ -47,17 +47,29 @@ class ObjectConstructor
         $constructor->set('freeze', JsFunction::fromCallable('freeze', self::freeze()));
         $constructor->set('is', JsFunction::fromCallable('is', self::is()));
         $constructor->set('getOwnPropertyNames', JsFunction::fromCallable('getOwnPropertyNames', self::getOwnPropertyNamesFn()));
-        $constructor->set('defineProperties', JsFunction::fromCallable('defineProperties', self::definePropertiesFn()));
-        $constructor->set('getOwnPropertyDescriptor', JsFunction::fromCallable('getOwnPropertyDescriptor', self::getOwnPropertyDescriptorFn()));
+        $constructor->set('defineProperties', JsFunction::fromCallable(
+            'defineProperties',
+            self::definePropertiesFn(),
+        ));
+        $constructor->set('getOwnPropertyDescriptor', JsFunction::fromCallable(
+            'getOwnPropertyDescriptor',
+            self::getOwnPropertyDescriptorFn(),
+        ));
         $constructor->set('setPrototypeOf', JsFunction::fromCallable('setPrototypeOf', self::setPrototypeOf()));
         $constructor->set('isFrozen', JsFunction::fromCallable('isFrozen', self::isFrozen()));
         $constructor->set('isSealed', JsFunction::fromCallable('isSealed', self::isSealed()));
         $constructor->set('isExtensible', JsFunction::fromCallable('isExtensible', self::isExtensible()));
         $constructor->set('seal', JsFunction::fromCallable('seal', self::seal()));
-        $constructor->set('preventExtensions', JsFunction::fromCallable('preventExtensions', self::preventExtensions()));
+        $constructor->set('preventExtensions', JsFunction::fromCallable(
+            'preventExtensions',
+            self::preventExtensions(),
+        ));
         $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto)));
 
         $env->defineVar('Object', $constructor);
+
+        // Store the prototype for auto-boxing and object literal creation.
+        $env->defineVar('__ObjectPrototype__', $proto);
     }
 
     private static function createPrototype(): JsObject
@@ -365,7 +377,9 @@ class ObjectConstructor
                 $value = $desc->has('value') ? $desc->get('value') : null;
                 $writable = $desc->has('writable') ? TypeConversion::toBoolean($desc->get('writable')) : null;
                 $enumerable = $desc->has('enumerable') ? TypeConversion::toBoolean($desc->get('enumerable')) : null;
-                $configurable = $desc->has('configurable') ? TypeConversion::toBoolean($desc->get('configurable')) : null;
+                $configurable = $desc->has('configurable')
+                    ? TypeConversion::toBoolean($desc->get('configurable'))
+                    : null;
 
                 $getter = null;
                 $setter = null;

@@ -9,6 +9,7 @@ use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
@@ -41,6 +42,14 @@ class StringPrototype
         $proto->set('padStart', JsFunction::fromCallable('padStart', self::padStart()));
         $proto->set('padEnd', JsFunction::fromCallable('padEnd', self::padEnd()));
         $proto->set('concat', JsFunction::fromCallable('concat', self::concat()));
+        $proto->set('at', JsFunction::fromCallable('at', self::at()));
+        $proto->set('replaceAll', JsFunction::fromCallable('replaceAll', self::replaceAll()));
+        $proto->set('search', JsFunction::fromCallable('search', self::search()));
+        $proto->set('match', JsFunction::fromCallable('match', self::matchFn()));
+        $proto->set('matchAll', JsFunction::fromCallable('matchAll', self::matchAll()));
+        $proto->set('codePointAt', JsFunction::fromCallable('codePointAt', self::codePointAt()));
+        $proto->set('normalize', JsFunction::fromCallable('normalize', self::normalize()));
+        $proto->set('localeCompare', JsFunction::fromCallable('localeCompare', self::localeCompare()));
         $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn()));
         $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::toStringFn()));
 
@@ -49,6 +58,10 @@ class StringPrototype
         if ($existing instanceof JsFunction) {
             $existing->set('prototype', $proto);
             $proto->set('constructor', $existing);
+
+            // Static methods on String constructor.
+            $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode()));
+            $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint()));
         }
 
         // Store the prototype so the interpreter can access it for auto-boxing.
@@ -417,6 +430,239 @@ class StringPrototype
     {
         return function (JsValue $this_): JsValue {
             return new JsString(self::extractString($this_));
+        };
+    }
+
+    private static function at(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $len = mb_strlen($str, 'UTF-8');
+            if ($index < 0) {
+                $index = $len + $index;
+            }
+            if ($index < 0 || $index >= $len) {
+                return JsUndefined::instance();
+            }
+            return new JsString(mb_substr($str, $index, 1, 'UTF-8'));
+        };
+    }
+
+    private static function replaceAll(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+
+            $replacer = $args[1] ?? JsUndefined::instance();
+
+            if ($search === '') {
+                if ($replacer instanceof JsFunction) {
+                    $result = '';
+                    $len = mb_strlen($str, 'UTF-8');
+                    for ($i = 0; $i <= $len; $i++) {
+                        $repVal = $replacer->call(JsUndefined::instance(), [
+                            new JsString(''),
+                            new JsNumber((float) $i),
+                            new JsString($str),
+                        ]);
+                        $result .= TypeConversion::toString($repVal);
+                        if ($i < $len) {
+                            $result .= mb_substr($str, $i, 1, 'UTF-8');
+                        }
+                    }
+                    return new JsString($result);
+                }
+                $replacement = TypeConversion::toString($replacer);
+                $len = mb_strlen($str, 'UTF-8');
+                $result = $replacement;
+                for ($i = 0; $i < $len; $i++) {
+                    $result .= mb_substr($str, $i, 1, 'UTF-8') . $replacement;
+                }
+                return new JsString($result);
+            }
+
+            if ($replacer instanceof JsFunction) {
+                $result = '';
+                $offset = 0;
+                while (($pos = mb_strpos($str, $search, $offset, 'UTF-8')) !== false) {
+                    $result .= mb_substr($str, $offset, $pos - $offset, 'UTF-8');
+                    $repVal = $replacer->call(JsUndefined::instance(), [
+                        new JsString($search),
+                        new JsNumber((float) $pos),
+                        new JsString($str),
+                    ]);
+                    $result .= TypeConversion::toString($repVal);
+                    $offset = $pos + mb_strlen($search, 'UTF-8');
+                }
+                $result .= mb_substr($str, $offset, null, 'UTF-8');
+                return new JsString($result);
+            }
+
+            $replacement = TypeConversion::toString($replacer);
+            return new JsString(str_replace($search, $replacement, $str));
+        };
+    }
+
+    private static function search(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $pos = mb_strpos($str, $search, 0, 'UTF-8');
+            return new JsNumber($pos === false ? -1.0 : (float) $pos);
+        };
+    }
+
+    private static function matchFn(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $pattern = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+
+            $pos = mb_strpos($str, $pattern, 0, 'UTF-8');
+            if ($pos === false) {
+                return JsNull::instance();
+            }
+            $result = JsArray::fromArray([new JsString($pattern)]);
+            $result->set('index', new JsNumber((float) $pos));
+            $result->set('input', new JsString($str));
+            return $result;
+        };
+    }
+
+    private static function matchAll(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+
+            $matches = [];
+            $offset = 0;
+            if ($search === '') {
+                $len = mb_strlen($str, 'UTF-8');
+                for ($i = 0; $i <= $len; $i++) {
+                    $match = JsArray::fromArray([new JsString('')]);
+                    $match->set('index', new JsNumber((float) $i));
+                    $match->set('input', new JsString($str));
+                    $matches[] = $match;
+                }
+            } else {
+                while (($pos = mb_strpos($str, $search, $offset, 'UTF-8')) !== false) {
+                    $match = JsArray::fromArray([new JsString($search)]);
+                    $match->set('index', new JsNumber((float) $pos));
+                    $match->set('input', new JsString($str));
+                    $matches[] = $match;
+                    $offset = $pos + mb_strlen($search, 'UTF-8');
+                }
+            }
+
+            $idx = 0;
+            $iterator = new JsObject();
+            $nextFn = function () use (&$idx, $matches): JsValue {
+                $result = new JsObject();
+                if ($idx < count($matches)) {
+                    $result->set('value', $matches[$idx]);
+                    $result->set('done', new JsBoolean(false));
+                    $idx++;
+                } else {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                }
+                return $result;
+            };
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
+                '[Symbol.iterator]',
+                function () use ($iterator): JsValue {
+                    return $iterator;
+                },
+            ));
+            return $iterator;
+        };
+    }
+
+    private static function codePointAt(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $len = mb_strlen($str, 'UTF-8');
+            if ($index < 0 || $index >= $len) {
+                return JsUndefined::instance();
+            }
+            $char = mb_substr($str, $index, 1, 'UTF-8');
+            return new JsNumber((float) mb_ord($char, 'UTF-8'));
+        };
+    }
+
+    private static function normalize(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $form = isset($args[0]) && !($args[0] instanceof JsUndefined)
+                ? TypeConversion::toString($args[0]) : 'NFC';
+            if (function_exists('normalizer_normalize')) {
+                /** @var int $formConst */
+                $formConst = match (strtoupper($form)) {
+                    'NFC' => 4, // Normalizer::FORM_C
+                    'NFD' => 2, // Normalizer::FORM_D
+                    'NFKC' => 5, // Normalizer::FORM_KC
+                    'NFKD' => 3, // Normalizer::FORM_KD
+                    default => throw new \PhpJs\Exceptions\RangeError(
+                        'The normalization form should be one of NFC, NFD, NFKC, NFKD',
+                    ),
+                };
+                /** @var string|false $normalized */
+                $normalized = normalizer_normalize($str, $formConst);
+                return new JsString($normalized !== false ? $normalized : $str);
+            }
+            return new JsString($str);
+        };
+    }
+
+    private static function localeCompare(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $that = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $cmp = strcmp($str, $that);
+            if ($cmp < 0) {
+                return new JsNumber(-1.0);
+            }
+            if ($cmp > 0) {
+                return new JsNumber(1.0);
+            }
+            return new JsNumber(0.0);
+        };
+    }
+
+    private static function fromCharCode(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = '';
+            foreach ($args as $arg) {
+                $code = \PhpJs\Spec\TypeConversion::toUint16($arg);
+                $str .= mb_chr($code, 'UTF-8');
+            }
+            return new JsString($str);
+        };
+    }
+
+    private static function fromCodePoint(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = '';
+            foreach ($args as $arg) {
+                $code = (int) TypeConversion::toNumber($arg);
+                if ($code < 0 || $code > 0x10FFFF || floor((float) $code) !== (float) $code) {
+                    throw new \PhpJs\Exceptions\RangeError("Invalid code point {$code}");
+                }
+                $str .= mb_chr($code, 'UTF-8');
+            }
+            return new JsString($str);
         };
     }
 }

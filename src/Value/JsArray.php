@@ -390,7 +390,9 @@ class JsArray extends JsObject
                 } else {
                     $start = min($start, $len);
                 }
-                $deleteCount = isset($args[1]) ? max(0, (int) \PhpJs\Spec\TypeConversion::toNumber($args[1])) : $len - $start;
+                $deleteCount = isset($args[1])
+                    ? max(0, (int) \PhpJs\Spec\TypeConversion::toNumber($args[1]))
+                    : $len - $start;
                 $deleteCount = min($deleteCount, $len - $start);
                 $insertItems = array_slice($args, 2);
 
@@ -595,7 +597,9 @@ class JsArray extends JsObject
             $start--;
         }
         for ($i = $start; $i >= 0; $i--) {
-            $acc = $fn->call(JsUndefined::instance(), [$acc, parent::get((string) $i), new JsNumber((float) $i), $this]);
+            $val = parent::get((string) $i);
+            $idx = new JsNumber((float) $i);
+            $acc = $fn->call(JsUndefined::instance(), [$acc, $val, $idx, $this]);
         }
         return $acc;
     }
@@ -656,6 +660,7 @@ class JsArray extends JsObject
                     'key' => $key,
                     'value' => $value,
                     'key+value' => JsArray::fromArray([$key, $value]),
+                    default => $value,
                 });
             } else {
                 $result->set('value', JsUndefined::instance());
@@ -666,9 +671,13 @@ class JsArray extends JsObject
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
         // Make the iterator itself iterable.
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $iterator->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', function () use ($iterator): JsValue {
-            return $iterator;
-        }));
+        $iterFn = JsFunction::fromCallable(
+            '[Symbol.iterator]',
+            function () use ($iterator): JsValue {
+                return $iterator;
+            },
+        );
+        $iterator->setBySymbol($iterSym, $iterFn);
         return $iterator;
     }
 
