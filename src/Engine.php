@@ -38,6 +38,12 @@ class Engine
     {
         GlobalObject::install($this->globalEnv);
         \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\NumberConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\ArrayConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\StringPrototype::install($this->globalEnv);
+        \PhpJs\BuiltIn\MathObject::install($this->globalEnv);
+        \PhpJs\BuiltIn\JsonObject::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
     }
 
@@ -134,6 +140,9 @@ class Engine
         if ($value instanceof \PhpJs\Value\JsString) {
             return $value->value;
         }
+        if ($value instanceof \PhpJs\Value\JsFunction) {
+            return null; // Functions don't convert to PHP values
+        }
         if ($value instanceof \PhpJs\Value\JsArray) {
             $result = [];
             $len = $value->getLength();
@@ -145,7 +154,11 @@ class Engine
         if ($value instanceof JsObject) {
             $result = [];
             foreach ($value->getOwnPropertyNames() as $key) {
-                $result[$key] = $this->toPhp($value->get($key));
+                $val = $value->get($key);
+                if ($val instanceof \PhpJs\Value\JsFunction) {
+                    continue; // Skip function properties
+                }
+                $result[$key] = $this->toPhp($val);
             }
             return $result;
         }

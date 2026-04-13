@@ -1,0 +1,142 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use PhpJs\Tests\Oracle\Test262Runner;
+
+$suiteDir = __DIR__ . '/../test262';
+
+if (!is_dir($suiteDir . '/test')) {
+    fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
+    exit(1);
+}
+
+$runner = new Test262Runner($suiteDir);
+
+// Features we don't support yet
+$runner->setSkipFeatures([
+    // Async/generators
+    'generators', 'async-functions', 'async-iteration', 'top-level-await',
+    // Binary data
+    'Atomics', 'SharedArrayBuffer', 'ArrayBuffer', 'DataView', 'TypedArray',
+    'resizable-arraybuffer', 'arraybuffer-transfer', 'Float16Array',
+    // Proxy/Reflect
+    'Proxy', 'Reflect',
+    // Weak references
+    'WeakRef', 'FinalizationRegistry', 'WeakMap', 'WeakSet', 'symbols-as-weakmap-keys',
+    // Modules
+    'import-assertions', 'import-attributes', 'dynamic-import',
+    'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
+    // Symbols (well-known)
+    'Symbol.species', 'Symbol.toPrimitive', 'Symbol.toStringTag',
+    'Symbol.iterator', 'Symbol.hasInstance', 'Symbol.match', 'Symbol.replace',
+    'Symbol.search', 'Symbol.split', 'Symbol.asyncIterator',
+    // Promise
+    'Promise', 'Promise.allSettled', 'Promise.any', 'Promise.prototype.finally',
+    // RegExp advanced
+    'regexp-lookbehind', 'regexp-named-groups', 'regexp-dotall',
+    'regexp-unicode-property-escapes', 'regexp-match-indices', 'regexp-v-flag',
+    'RegExp.escape',
+    // Class fields/private
+    'class-fields-public', 'class-fields-private',
+    'class-static-fields-public', 'class-static-fields-private',
+    'class-methods-private', 'class-static-methods-private',
+    // Misc advanced
+    'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
+    'decorators', 'explicit-resource-management',
+    'hashbang', 'template-literal-revision',
+    'iterator-helpers', 'set-methods', 'Array.fromAsync',
+    'change-array-by-copy', 'Math.sumPrecise',
+    'well-formed-json-stringify', 'json-parse-with-source',
+    'String.prototype.isWellFormed', 'String.prototype.toWellFormed',
+]);
+
+// Parse CLI args
+$category = null;
+$report = false;
+$jobs = 1;
+$showFailures = false;
+$limit = 0;
+
+$args = array_slice($argv, 1);
+for ($i = 0; $i < count($args); $i++) {
+    switch ($args[$i]) {
+        case '--category':
+            $category = $args[++$i] ?? null;
+            break;
+        case '--report':
+            $report = true;
+            break;
+        case '--jobs':
+            $jobs = (int) ($args[++$i] ?? 1);
+            break;
+        case '--failures':
+            $showFailures = true;
+            break;
+        case '--limit':
+            $limit = (int) ($args[++$i] ?? 0);
+            break;
+        default:
+            if (!str_starts_with($args[$i], '--')) {
+                $category = $args[$i];
+            }
+    }
+}
+
+$testDir = $suiteDir . '/test';
+if ($category !== null) {
+    $testDir .= '/' . $category;
+    if (!is_dir($testDir)) {
+        fwrite(STDERR, "Category not found: {$category}\n");
+        exit(1);
+    }
+}
+
+$count = 0;
+$result = new \PhpJs\Tests\Oracle\SuiteResult();
+
+echo "Running test262" . ($category ? " ({$category})" : '') . "...\n";
+
+foreach ($runner->runDirectory($testDir) as $testResult) {
+    $result->add($testResult);
+    $count++;
+
+    if ($testResult->status === \PhpJs\Tests\Oracle\TestStatus::Fail) {
+        if ($showFailures) {
+            $relative = str_replace($suiteDir . '/', '', $testResult->testPath);
+            echo "FAIL: {$relative}\n";
+            if ($testResult->message) {
+                echo "      {$testResult->message}\n";
+            }
+        }
+    }
+
+    // Progress indicator every 100 tests
+    if ($count % 100 === 0) {
+        $rate = $result->passRate();
+        fprintf(STDERR, "\r  %d tests (%d pass, %d fail, %d skip) %.1f%%", $count, $result->pass, $result->fail, $result->skip, $rate);
+    }
+
+    if ($limit > 0 && $count >= $limit) {
+        break;
+    }
+}
+
+fprintf(STDERR, "\r" . str_repeat(' ', 80) . "\r");
+
+if ($report) {
+    echo $result->report() . "\n";
+} else {
+    $attempted = $result->pass + $result->fail;
+    echo sprintf(
+        "\nResults: %d pass, %d fail, %d skip (%.1f%% of %d attempted)\n",
+        $result->pass,
+        $result->fail,
+        $result->skip,
+        $result->passRate(),
+        $attempted,
+    );
+}

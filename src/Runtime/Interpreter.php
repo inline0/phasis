@@ -457,14 +457,25 @@ class Interpreter
         $thisValue = JsUndefined::instance();
 
         if ($node->callee instanceof MemberExpression) {
-            $obj = $this->evaluate($node->callee->object, $env);
+            $rawObj = $this->evaluate($node->callee->object, $env);
             $key = $node->callee->computed
                 ? TypeConversion::toString($this->evaluate($node->callee->property, $env))
                 : ($node->callee->property instanceof Identifier
                     ? $node->callee->property->name : '');
-            if (!$obj instanceof JsObject) {
-                $obj = TypeConversion::toObject($obj);
+
+            // String method calls: look up on __StringPrototype__
+            if ($rawObj instanceof JsString && $env->has('__StringPrototype__')) {
+                $proto = $env->get('__StringPrototype__');
+                if ($proto instanceof JsObject) {
+                    $method = $proto->get($key);
+                    if ($method instanceof JsFunction) {
+                        $args = $this->evaluateArguments($node->arguments, $env);
+                        return $this->callFunction($method, $rawObj, $args);
+                    }
+                }
             }
+
+            $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $obj->get($key);
             $thisValue = $obj;
         } else {
@@ -703,13 +714,45 @@ class Interpreter
             ? TypeConversion::toString($this->evaluate($node->property, $env))
             : ($node->property instanceof Identifier ? $node->property->name : '');
 
+        // String property access (length, indices, prototype methods)
+        if ($obj instanceof JsString) {
+            if ($key === 'length') {
+                return new JsNumber((float) mb_strlen($obj->value, 'UTF-8'));
+            }
+            if (ctype_digit($key)) {
+                $idx = (int) $key;
+                if ($idx >= 0 && $idx < mb_strlen($obj->value, 'UTF-8')) {
+                    return new JsString(mb_substr($obj->value, $idx, 1, 'UTF-8'));
+                }
+                return JsUndefined::instance();
+            }
+            // Check for String.prototype methods via global String.prototype
+            if ($env->has('__StringPrototype__')) {
+                $proto = $env->get('__StringPrototype__');
+                if ($proto instanceof JsObject) {
+                    $method = $proto->get($key);
+                    if ($method instanceof JsFunction) {
+                        // Return a bound method
+                        return JsFunction::fromCallable($key, function (JsValue $this_, array $args) use ($method, $obj): JsValue {
+                            return $method->call($obj, $args);
+                        });
+                    }
+                }
+            }
+            return JsUndefined::instance();
+        }
+
         if ($obj instanceof JsObject) {
             return $obj->get($key);
         }
 
         // Auto-boxing for primitives
-        $boxed = TypeConversion::toObject($obj);
-        return $boxed->get($key);
+        try {
+            $boxed = TypeConversion::toObject($obj);
+            return $boxed->get($key);
+        } catch (\Throwable) {
+            return JsUndefined::instance();
+        }
     }
 
     private function evalArrayExpression(ArrayExpression $node, Environment $env): JsValue
