@@ -66,7 +66,9 @@ use PhpJs\Spec\AbstractOperations;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
 use PhpJs\Value\JsBoolean;
+use PhpJs\Value\GeneratorThrowSignal;
 use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsGenerator;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
@@ -86,6 +88,11 @@ class Interpreter
     ) {
         $this->callStack = $callStack ?? new CallStack();
         $this->maxLoopIterations = $maxLoopIterations;
+
+        // Register interpreter callback so JsFunction::call() works for non-native functions
+        JsFunction::setInterpreterCallback(function (JsFunction $fn, JsValue $thisValue, array $args): JsValue {
+            return $this->callFunction($fn, $thisValue, $args);
+        });
     }
 
     public function execute(Program $program): JsValue
@@ -177,7 +184,7 @@ class Interpreter
             $node instanceof TemplateLiteral => $this->evalTemplateLiteral($node, $env),
             $node instanceof TaggedTemplate => $this->evalTaggedTemplate($node, $env),
             $node instanceof SpreadElement => $this->evaluate($node->argument, $env),
-            $node instanceof YieldExpression,
+            $node instanceof YieldExpression => $this->evalYieldExpression($node, $env),
             $node instanceof AwaitExpression => JsUndefined::instance(),
             default => throw new InternalError('Unknown expression type: ' . $node->type()),
         };
@@ -546,7 +553,25 @@ class Interpreter
             return $nativeFn($thisValue, $args, $this);
         }
 
+        // Generator function: return a JsGenerator instead of executing.
+        if ($fn->isGenerator()) {
+            return $this->createGenerator($fn, $thisValue, $args);
+        }
+
         // Interpreted function
+        return $this->executeFunction($fn, $thisValue, $args);
+    }
+
+    /**
+     * Execute an interpreted (non-generator) function body.
+     *
+     * @param list<JsValue> $args
+     */
+    private function executeFunction(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): JsValue {
         $this->callStack->push($fn->getName(), 0);
 
         try {
@@ -583,6 +608,83 @@ class Interpreter
             }
 
             // Arrow with expression body
+            return $this->evaluate($body, $fnEnv);
+        } finally {
+            $this->callStack->pop();
+        }
+    }
+
+    /**
+     * Create a JsGenerator for a generator function call.
+     *
+     * Instead of executing the body immediately, we wrap it in a Fiber
+     * that the JsGenerator controls. The Fiber runs the function body
+     * and suspends each time a yield expression is encountered.
+     *
+     * @param list<JsValue> $args
+     */
+    private function createGenerator(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): JsGenerator {
+        $interpreter = $this;
+
+        $executor = function (
+            JsFunction $fn,
+            JsValue $thisValue,
+            array $args,
+        ) use ($interpreter): JsValue {
+            return $interpreter->executeGeneratorBody($fn, $thisValue, $args);
+        };
+
+        return new JsGenerator($fn, $thisValue, $args, $executor);
+    }
+
+    /**
+     * Execute a generator function body inside a Fiber.
+     *
+     * Called from inside the Fiber created by JsGenerator. This sets up the
+     * environment and runs the body. When a yield expression is hit, the
+     * interpreter calls Fiber::suspend(), which pauses execution until the
+     * generator's next() method resumes the Fiber.
+     *
+     * @param list<JsValue> $args
+     */
+    public function executeGeneratorBody(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): JsValue {
+        $this->callStack->push($fn->getName(), 0);
+
+        try {
+            $fnEnv = $fn->getClosure()->createChild();
+
+            // Bind this
+            $fnEnv->defineVar('this', $thisValue);
+
+            // Bind parameters
+            $this->bindParameters($fn->getParams(), $args, $fnEnv);
+
+            // Bind arguments object
+            $argsObj = JsArray::fromArray($args);
+            $fnEnv->defineVar('arguments', $argsObj);
+
+            // Execute body
+            $body = $fn->getBody();
+            if ($body instanceof BlockStatement) {
+                $this->hoistDeclarations($body->body, $fnEnv);
+                $completion = $this->executeBody($body->body, $fnEnv);
+                if ($completion->type === CompletionType::Return) {
+                    return $completion->value;
+                }
+                if ($completion->type === CompletionType::Throw) {
+                    $this->throwJsValue($completion->value);
+                }
+                return JsUndefined::instance();
+            }
+
             return $this->evaluate($body, $fnEnv);
         } finally {
             $this->callStack->pop();
@@ -851,6 +953,7 @@ class Interpreter
             $node->params,
             $node->body,
             $fnEnv,
+            isGenerator: $node->generator,
         );
         // Named function expressions can reference themselves
         if ($node->name !== null) {
@@ -861,6 +964,145 @@ class Interpreter
         $proto->set('constructor', $fn);
         $fn->set('prototype', $proto);
         return $fn;
+    }
+
+    /**
+     * Evaluate a yield expression inside a generator function.
+     *
+     * This works by calling Fiber::suspend() with the yielded value.
+     * The Fiber is managed by JsGenerator, which resumes us when next()
+     * is called. The value passed to next() is returned by Fiber::suspend()
+     * and becomes the result of the yield expression.
+     *
+     * For yield* (delegate), we iterate the sub-generator/iterable and
+     * yield each value from it.
+     */
+    private function evalYieldExpression(YieldExpression $node, Environment $env): JsValue
+    {
+        $fiber = \Fiber::getCurrent();
+        if ($fiber === null) {
+            throw new InternalError('yield expression used outside of a generator');
+        }
+
+        if ($node->delegate) {
+            return $this->evalYieldDelegate($node, $env);
+        }
+
+        // Evaluate the argument (or undefined if absent).
+        $value = $node->argument !== null
+            ? $this->evaluate($node->argument, $env)
+            : JsUndefined::instance();
+
+        // Suspend the Fiber, yielding the value to JsGenerator::next().
+        // The return value of suspend() is the value passed to the
+        // subsequent next(value) call.
+        $received = \Fiber::suspend($value);
+
+        // If a GeneratorThrowSignal was thrown into the Fiber (via
+        // generator.throw()), it will be thrown at this point by PHP,
+        // not returned. So if we get here, we received a normal value.
+        if ($received instanceof JsValue) {
+            return $received;
+        }
+
+        return JsUndefined::instance();
+    }
+
+    /**
+     * Handle yield* (delegate yield).
+     *
+     * Iterates the sub-iterable and yields each value. The final result
+     * of the yield* expression is the return value of the sub-iterator
+     * (i.e., the value when done is true).
+     */
+    private function evalYieldDelegate(
+        YieldExpression $node,
+        Environment $env,
+    ): JsValue {
+        $iterable = $node->argument !== null
+            ? $this->evaluate($node->argument, $env)
+            : JsUndefined::instance();
+
+        // If the iterable is a JsGenerator, delegate to its iterator protocol.
+        if ($iterable instanceof JsGenerator) {
+            return $this->delegateToGenerator($iterable);
+        }
+
+        // If the iterable is a JsArray, yield each element.
+        if ($iterable instanceof JsArray) {
+            $len = $iterable->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $val = $iterable->get((string) $i);
+                \Fiber::suspend($val);
+            }
+            return JsUndefined::instance();
+        }
+
+        // If the iterable is a JsString, yield each character.
+        if ($iterable instanceof JsString) {
+            $str = $iterable->value;
+            $len = mb_strlen($str, 'UTF-8');
+            for ($i = 0; $i < $len; $i++) {
+                \Fiber::suspend(new JsString(mb_substr($str, $i, 1, 'UTF-8')));
+            }
+            return JsUndefined::instance();
+        }
+
+        // If it has a next() method, treat as an iterator.
+        if ($iterable instanceof JsObject) {
+            $nextFn = $iterable->get('next');
+            if ($nextFn instanceof JsFunction) {
+                return $this->delegateToIterator($iterable, $nextFn);
+            }
+        }
+
+        return JsUndefined::instance();
+    }
+
+    /**
+     * Delegate to a JsGenerator sub-iterator.
+     *
+     * Calls next() on the sub-generator, yielding each value until done.
+     * Values passed to next() on the outer generator are forwarded to the
+     * inner generator.
+     */
+    private function delegateToGenerator(JsGenerator $inner): JsValue
+    {
+        $result = $inner->next();
+        while (true) {
+            $done = $result->get('done');
+            if ($done instanceof JsBoolean && $done->value) {
+                return $result->get('value');
+            }
+
+            // Yield the inner value to the outer caller.
+            $received = \Fiber::suspend($result->get('value'));
+            $nextArg = $received instanceof JsValue ? $received : JsUndefined::instance();
+
+            $result = $inner->next($nextArg);
+        }
+    }
+
+    /**
+     * Delegate to a generic iterator object (one with a next() method).
+     */
+    private function delegateToIterator(JsObject $iterator, JsFunction $nextFn): JsValue
+    {
+        while (true) {
+            $result = $this->callFunction($nextFn, $iterator, []);
+            if (!$result instanceof JsObject) {
+                return JsUndefined::instance();
+            }
+
+            $done = $result->get('done');
+            if ($done instanceof JsBoolean && $done->value) {
+                return $result->get('value');
+            }
+
+            $received = \Fiber::suspend($result->get('value'));
+            // For generic iterators we don't forward the received value
+            // (the spec does for generator delegates, handled above).
+        }
     }
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
@@ -1374,7 +1616,21 @@ class Interpreter
 
     private function execTryStatement(TryStatement $node, Environment $env): Completion
     {
-        $completion = $this->execBlockStatement($node->block, $env);
+        try {
+            $completion = $this->execBlockStatement($node->block, $env);
+        } catch (GeneratorThrowSignal $e) {
+            // A generator.throw() signal propagated into a try block.
+            // Convert it to a Throw completion so the catch handler can run.
+            $completion = Completion::throw($e->jsValue);
+        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            // A PHP exception carrying a JS value (e.g., from generator.throw()).
+            // Extract the original JS value for the catch handler.
+            $completion = Completion::throw($e->jsValue);
+        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            // A PHP exception representing a JS runtime error. Convert to
+            // a Throw completion so the JS catch handler can process it.
+            $completion = Completion::throw($this->phpExceptionToJsValue($e));
+        }
 
         if ($completion->type === CompletionType::Throw && $node->handler !== null) {
             $catchEnv = $env->createChild();
@@ -1423,6 +1679,7 @@ class Interpreter
                     $stmt->params,
                     $stmt->body,
                     $env,
+                    isGenerator: $stmt->generator,
                 );
                 $proto = new JsObject();
                 $proto->set('constructor', $fn);
@@ -1596,6 +1853,23 @@ class Interpreter
             $this->throwJsValue($completion->value);
         }
         return $completion->value;
+    }
+
+    /**
+     * Convert a PHP exception (representing a JS error) to a JS value
+     * suitable for use in a Completion::throw() record.
+     */
+    private function phpExceptionToJsValue(\PhpJs\Exceptions\RuntimeError $e): JsValue
+    {
+        $errorObj = new JsObject();
+        $errorObj->set('message', new JsString($e->getMessage()));
+        $errorObj->set('name', new JsString(match (true) {
+            $e instanceof TypeError => 'TypeError',
+            $e instanceof ReferenceError => 'ReferenceError',
+            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
+            default => 'Error',
+        }));
+        return $errorObj;
     }
 
     /** @return never */

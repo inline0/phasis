@@ -44,6 +44,9 @@ class Engine
         \PhpJs\BuiltIn\StringPrototype::install($this->globalEnv);
         \PhpJs\BuiltIn\MathObject::install($this->globalEnv);
         \PhpJs\BuiltIn\JsonObject::install($this->globalEnv);
+        \PhpJs\BuiltIn\SymbolConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
     }
 

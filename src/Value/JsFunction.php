@@ -8,6 +8,14 @@ use PhpJs\Runtime\Environment;
 
 class JsFunction extends JsObject
 {
+    /** @var null|\Closure(JsFunction, JsValue, list<JsValue>): JsValue */
+    private static ?\Closure $interpreterCallback = null;
+
+    public static function setInterpreterCallback(callable $callback): void
+    {
+        self::$interpreterCallback = $callback;
+    }
+
     /** @var list<mixed> AST param nodes or empty for native. */
     private array $params;
     private mixed $body;
@@ -131,7 +139,10 @@ class JsFunction extends JsObject
             return JsUndefined::instance();
         }
 
-        // Non-native: the interpreter must handle this.
+        // Non-native: delegate to the interpreter via static callback.
+        if (self::$interpreterCallback !== null) {
+            return (self::$interpreterCallback)($this, $thisValue, $args);
+        }
         return JsUndefined::instance();
     }
 

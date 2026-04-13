@@ -29,6 +29,51 @@ class GlobalObject
         $env->defineVar('String', JsFunction::fromCallable('String', self::stringConstructor()));
         $env->defineVar('Number', JsFunction::fromCallable('Number', self::numberConstructor()));
         $env->defineVar('Boolean', JsFunction::fromCallable('Boolean', self::booleanConstructor()));
+
+        // eval
+        $env->defineVar('eval', JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
+            $code = $args[0] ?? JsUndefined::instance();
+            if (!$code instanceof JsString) {
+                return $code;
+            }
+            $parser = new \PhpJs\Parser\Parser($code->value);
+            $program = $parser->parse();
+            $interp = new Interpreter($env);
+            return $interp->execute($program);
+        }));
+
+        // encodeURIComponent / decodeURIComponent
+        $env->defineVar('encodeURIComponent', JsFunction::fromCallable('encodeURIComponent', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            return new JsString(rawurlencode($str));
+        }));
+        $env->defineVar('decodeURIComponent', JsFunction::fromCallable('decodeURIComponent', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            return new JsString(rawurldecode($str));
+        }));
+        $env->defineVar('encodeURI', JsFunction::fromCallable('encodeURI', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            return new JsString(str_replace(
+                ['%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24', '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D'],
+                [':', '/', '?', '#', '[', ']', '@', '!', '$', '&', "'", '(', ')', '*', '+', ',', ';', '='],
+                rawurlencode($str),
+            ));
+        }));
+
+        // Function constructor
+        $env->defineVar('Function', JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
+            $body = '';
+            $params = '';
+            if (count($args) > 0) {
+                $body = TypeConversion::toString(array_pop($args));
+                $params = implode(',', array_map(fn(JsValue $a) => TypeConversion::toString($a), $args));
+            }
+            $source = "function anonymous({$params}) { {$body} }";
+            $parser = new \PhpJs\Parser\Parser($source);
+            $program = $parser->parse();
+            $interp = new Interpreter(new \PhpJs\Runtime\Environment());
+            return $interp->execute($program);
+        }));
     }
 
     private static function parseInt(): \Closure
@@ -140,20 +185,31 @@ class GlobalObject
     private static function numberConstructor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            if (empty($args)) {
-                return new JsNumber(0.0);
+            $num = empty($args) ? 0.0 : TypeConversion::toNumber($args[0]);
+            // When called as constructor (new Number(x)), set up wrapper
+            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+                $this_->set('[[PrimitiveValue]]', new JsNumber($num));
+                $val = new JsNumber($num);
+                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
+                $this_->set('toString', JsFunction::fromCallable('toString', fn() => new JsString($val->toJsString())));
+                return $this_;
             }
-            return new JsNumber(TypeConversion::toNumber($args[0]));
+            return new JsNumber($num);
         };
     }
 
     private static function booleanConstructor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            if (empty($args)) {
-                return new JsBoolean(false);
+            $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
+            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+                $this_->set('[[PrimitiveValue]]', new JsBoolean($bool));
+                $val = new JsBoolean($bool);
+                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
+                $this_->set('toString', JsFunction::fromCallable('toString', fn() => new JsString($bool ? 'true' : 'false')));
+                return $this_;
             }
-            return new JsBoolean(TypeConversion::toBoolean($args[0]));
+            return new JsBoolean($bool);
         };
     }
 }

@@ -18,8 +18,8 @@ $runner = new Test262Runner($suiteDir);
 
 // Features we don't support yet
 $runner->setSkipFeatures([
-    // Async/generators
-    'generators', 'async-functions', 'async-iteration', 'top-level-await',
+    // Async (generators are now supported)
+    'async-functions', 'async-iteration', 'top-level-await',
     // Binary data
     'Atomics', 'SharedArrayBuffer', 'ArrayBuffer', 'DataView', 'TypedArray',
     'resizable-arraybuffer', 'arraybuffer-transfer', 'Float16Array',
