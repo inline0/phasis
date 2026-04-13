@@ -942,7 +942,90 @@ class Parser
             return $this->parseYieldExpression();
         }
 
-        return $this->parsePrimaryExpression();
+        return $this->parsePostfixExpression();
+    }
+
+    /**
+     * Parse postfix operations: member access, computed access, and call expressions.
+     *
+     * This sits between unary and primary expressions so that
+     * `!obj.method()` is parsed as `!(obj.method())`, not `(!obj).method()`.
+     */
+    private function parsePostfixExpression(): Node
+    {
+        $expr = $this->parsePrimaryExpression();
+
+        while (true) {
+            if ($this->check(TokenType::Dot) && !$this->current()->lineTerminatorBefore) {
+                $this->advance();
+                $property = $this->parseIdentifierOrKeyword();
+                $expr = new MemberExpression($expr->location, $expr, $property, false, false);
+                continue;
+            }
+            if ($this->check(TokenType::LeftBracket)) {
+                $this->advance();
+                $property = $this->parseExpression();
+                $this->expect(TokenType::RightBracket);
+                $expr = new MemberExpression($expr->location, $expr, $property, true, false);
+                continue;
+            }
+            if ($this->check(TokenType::LeftParen)) {
+                $this->advance();
+                $args = $this->parseArguments();
+                $expr = new CallExpression($expr->location, $expr, $args, false);
+                continue;
+            }
+            if ($this->check(TokenType::OptionalChaining)) {
+                $this->advance();
+                if ($this->check(TokenType::LeftParen)) {
+                    $this->advance();
+                    $args = $this->parseArguments();
+                    $expr = new CallExpression($expr->location, $expr, $args, true);
+                } elseif ($this->check(TokenType::LeftBracket)) {
+                    $this->advance();
+                    $property = $this->parseExpression();
+                    $this->expect(TokenType::RightBracket);
+                    $expr = new MemberExpression(
+                        $expr->location,
+                        $expr,
+                        $property,
+                        true,
+                        true,
+                    );
+                } else {
+                    $property = $this->parseIdentifierOrKeyword();
+                    $expr = new MemberExpression(
+                        $expr->location,
+                        $expr,
+                        $property,
+                        false,
+                        true,
+                    );
+                }
+                continue;
+            }
+            // Tagged template literal in postfix position.
+            if (
+                $this->check(TokenType::NoSubstitutionTemplate)
+                || $this->check(TokenType::TemplateHead)
+            ) {
+                $quasi = $this->parseTemplateLiteral();
+                $expr = new TaggedTemplate($expr->location, $expr, $quasi);
+                continue;
+            }
+            break;
+        }
+
+        // Postfix ++ and --
+        if (
+            ($this->check(TokenType::PlusPlus) || $this->check(TokenType::MinusMinus))
+            && !$this->current()->lineTerminatorBefore
+        ) {
+            $op = $this->advance();
+            $expr = new UpdateExpression($expr->location, $op->value, $expr, false);
+        }
+
+        return $expr;
     }
 
     private function parseYieldExpression(): YieldExpression
