@@ -71,6 +71,7 @@ class Parser
     /** @var Token[] */
     private array $tokens;
     private int $pos = 0;
+    private bool $noIn = false;
     public function __construct(string $source)
     {
         $lexer = new Lexer($source);
@@ -532,8 +533,10 @@ class Parser
             return new ForStatement($location, null, $test, $update, $body);
         }
 
-        // for (expr in/of ...)
+        // for (expr in/of ...) — use NoIn so `in` is treated as for-in separator
+        $this->noIn = true;
         $init = $this->parseExpression();
+        $this->noIn = false;
 
         if ($this->check(TokenType::In)) {
             $this->advance();
@@ -820,8 +823,8 @@ class Parser
                 break;
             }
 
-            // Skip 'in' in for-loop init
-            if ($token->type === TokenType::In) {
+            // Skip 'in' in for-loop init (NoIn production)
+            if ($token->type === TokenType::In && $this->noIn) {
                 break;
             }
 
