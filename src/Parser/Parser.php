@@ -1300,8 +1300,28 @@ class Parser
         $method = false;
         $kind = 'init';
 
+        // Generator method: * method() {}
+        $isGenerator = false;
+        if ($this->eat(TokenType::Star)) {
+            $isGenerator = true;
+        }
+
+        // Async method: async method() {}
+        $isAsync = false;
+        if (!$isGenerator && $this->checkContextual('async') && !$this->peekIs(TokenType::Colon) && !$this->peekIs(TokenType::Comma) && !$this->peekIs(TokenType::RightBrace)) {
+            $next = $this->peek();
+            if (!$next->lineTerminatorBefore && $next->type !== TokenType::LeftParen) {
+                $this->advance();
+                $isAsync = true;
+                if ($this->eat(TokenType::Star)) {
+                    $isGenerator = true;
+                }
+            }
+        }
+
         // get/set methods
-        $isGetOrSet = ($this->checkContextual('get') || $this->checkContextual('set'))
+        $isGetOrSet = !$isGenerator && !$isAsync
+            && ($this->checkContextual('get') || $this->checkContextual('set'))
             && !$this->peekIs(TokenType::Colon)
             && !$this->peekIs(TokenType::LeftParen)
             && !$this->peekIs(TokenType::Comma)
@@ -1319,12 +1339,21 @@ class Parser
             [$key, $computed] = $this->parsePropertyKey($computed);
         }
 
-        // Method shorthand: { foo() {} }
+        // Method shorthand: { foo() {} } or { *foo() {} } or { async foo() {} }
         if ($kind !== 'get' && $kind !== 'set' && $this->check(TokenType::LeftParen)) {
             $method = true;
             $params = $this->parseFormalParameters();
             $body = $this->parseBlockStatement();
-            $value = new FunctionExpression($body->location, null, $params, $body, false, false);
+            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
+            return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
+        }
+
+        // Generator/async requires method syntax
+        if ($isGenerator || $isAsync) {
+            $method = true;
+            $params = $this->parseFormalParameters();
+            $body = $this->parseBlockStatement();
+            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
