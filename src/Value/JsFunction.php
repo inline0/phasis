@@ -70,13 +70,26 @@ class JsFunction extends JsObject
 
     /**
      * Create a host function from a PHP callable.
+     * Native built-in functions are non-constructable by default per spec.
      */
     public static function fromCallable(string $name, callable $fn, int $length = 0): self
     {
         // Create a dummy environment for native functions
         $instance = new self($name, array_fill(0, $length, null), null, new Environment());
         $instance->nativeCallable = $fn(...);
+        // Native built-ins are not constructable by default (spec §10.3).
+        $instance->constructable = false;
         return $instance;
+    }
+
+    /**
+     * Mark this function as constructable (can be invoked with `new`).
+     * Use for built-in constructor functions (Array, Object, etc.).
+     */
+    public function setConstructable(): self
+    {
+        $this->constructable = true;
+        return $this;
     }
 
     /**
@@ -90,11 +103,11 @@ class JsFunction extends JsObject
 
     public function isConstructable(): bool
     {
-        // Arrow functions and native non-constructables are not constructable.
-        if ($this->isArrow || !$this->constructable) {
+        // Arrow functions are not constructable.
+        if ($this->isArrow) {
             return false;
         }
-        return true;
+        return $this->constructable;
     }
 
     public function getNativeCallable(): ?\Closure

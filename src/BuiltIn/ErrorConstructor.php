@@ -21,6 +21,7 @@ class ErrorConstructor
 
         foreach ($errorTypes as $name) {
             $constructor = JsFunction::fromCallable($name, self::makeConstructor($name), 1);
+            $constructor->setConstructable();
             $proto = new JsObject();
             $proto->defineOwnProperty('name', PropertyDescriptor::data(new JsString($name), true, false, true));
             $proto->defineOwnProperty('message', PropertyDescriptor::data(new JsString(''), true, false, true));

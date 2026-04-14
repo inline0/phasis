@@ -33,6 +33,7 @@ class ArrayConstructor
             }
             return JsArray::fromArray($args);
         });
+        $constructor->setConstructable();
 
         // Static methods (non-enumerable per spec).
         $constructor->set('isArray', JsFunction::fromCallable('isArray', self::isArray(), 1));

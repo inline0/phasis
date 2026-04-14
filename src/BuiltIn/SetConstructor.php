@@ -44,6 +44,7 @@ class SetConstructor
 
             return $set;
         });
+        $constructor->setConstructable();
 
         $constructor->set('prototype', $proto);
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));

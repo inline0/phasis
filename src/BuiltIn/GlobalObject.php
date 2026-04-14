@@ -26,9 +26,15 @@ class GlobalObject
         $env->defineVar('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloat(), 1));
         $env->defineVar('isNaN', JsFunction::fromCallable('isNaN', self::isNaN(), 1));
         $env->defineVar('isFinite', JsFunction::fromCallable('isFinite', self::isFinite(), 1));
-        $env->defineVar('String', JsFunction::fromCallable('String', self::stringConstructor(), 1));
-        $env->defineVar('Number', JsFunction::fromCallable('Number', self::numberConstructor(), 1));
-        $env->defineVar('Boolean', JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1));
+        $stringFn = JsFunction::fromCallable('String', self::stringConstructor(), 1);
+        $stringFn->setConstructable();
+        $env->defineVar('String', $stringFn);
+        $numberFn = JsFunction::fromCallable('Number', self::numberConstructor(), 1);
+        $numberFn->setConstructable();
+        $env->defineVar('Number', $numberFn);
+        $booleanFn = JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1);
+        $booleanFn->setConstructable();
+        $env->defineVar('Boolean', $booleanFn);
 
         // eval
         $env->defineVar('eval', JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
@@ -151,6 +157,7 @@ class GlobalObject
             );
         }, 1));
 
+        $fnConstructor->setConstructable();
         $fnConstructor->set('prototype', $fnProto);
         $env->defineVar('Function', $fnConstructor);
     }

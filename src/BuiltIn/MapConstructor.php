@@ -48,6 +48,7 @@ class MapConstructor
 
             return $map;
         });
+        $constructor->setConstructable();
 
         $constructor->set('prototype', $proto);
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));

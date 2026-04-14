@@ -1473,7 +1473,8 @@ class Interpreter
     private function execVariableDeclaration(VariableDeclaration $node, Environment $env): Completion
     {
         foreach ($node->declarations as $declarator) {
-            $init = $declarator->init !== null
+            $hasInit = $declarator->init !== null;
+            $init = $hasInit
                 ? $this->evaluate($declarator->init, $env)
                 : JsUndefined::instance();
 
@@ -1486,9 +1487,49 @@ class Interpreter
                 $init->setName($declarator->id->name);
             }
 
-            $this->declareBinding($node->kind, $declarator->id, $init, $env);
+            // For var declarations, use set() to walk up the scope chain and update the
+            // hoisted binding. Without this, a var inside a for-loop or block scope would
+            // shadow the hoisted binding in the enclosing function/global scope.
+            // For var without initializer, skip if already defined (re-declaration is a no-op).
+            if ($node->kind === 'var') {
+                if ($hasInit) {
+                    $this->assignVarBinding($declarator->id, $init, $env);
+                } elseif ($declarator->id instanceof Identifier && !$env->has($declarator->id->name)) {
+                    $env->defineVar($declarator->id->name, JsUndefined::instance());
+                }
+                // else: var without init and binding exists — no-op (hoisting already declared it)
+            } else {
+                $this->declareBinding($node->kind, $declarator->id, $init, $env);
+            }
         }
         return Completion::normal(JsUndefined::instance());
+    }
+
+    /**
+     * Assign a var binding value by walking the scope chain (for var with initializer).
+     * This ensures that a var inside a for-loop or block scope updates the hoisted binding
+     * in the enclosing function/global scope rather than creating a shadowing binding.
+     */
+    private function assignVarBinding(Node $pattern, JsValue $value, Environment $env): void
+    {
+        if ($pattern instanceof Identifier) {
+            $env->set($pattern->name, $value, false);
+            return;
+        }
+        if ($pattern instanceof ArrayPattern) {
+            $this->bindArrayPattern($pattern, $value, $env);
+            return;
+        }
+        if ($pattern instanceof ObjectPattern) {
+            $this->bindObjectPattern($pattern, $value, $env);
+            return;
+        }
+        if ($pattern instanceof AssignmentPattern) {
+            if ($value instanceof JsUndefined) {
+                $value = $this->evaluate($pattern->right, $env);
+            }
+            $this->assignVarBinding($pattern->left, $value, $env);
+        }
     }
 
     private function declareBinding(string $kind, Node $pattern, JsValue $value, Environment $env): void
@@ -1573,17 +1614,17 @@ class Interpreter
                     function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
                         return $interp->callFunction($superClass, $thisVal, $args);
                     },
-                );
+                )->setConstructable();
             } else {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
                     fn() => JsUndefined::instance(),
-                );
+                )->setConstructable();
             }
         }
 
         if (!$constructor instanceof JsFunction) {
-            $constructor = JsFunction::fromCallable($name ?? '', fn() => JsUndefined::instance());
+            $constructor = JsFunction::fromCallable($name ?? '', fn() => JsUndefined::instance())->setConstructable();
         }
 
         // Set up prototype chain
@@ -1766,6 +1807,34 @@ class Interpreter
                 throw new TypeError('Iterator result next is not a function');
             }
 
+            // Helper: call iterator.return() if it exists (iterator close protocol).
+            $closeIterator = function (?Completion $abruptCompletion) use ($iterator): ?Completion {
+                $returnMethod = $iterator->get('return');
+                if (!$returnMethod instanceof JsFunction) {
+                    return null;
+                }
+                try {
+                    $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                    if ($abruptCompletion !== null) {
+                        // Preserve the original abrupt completion.
+                        return null;
+                    }
+                    if (!$innerResult instanceof JsObject) {
+                        throw new TypeError('Iterator return result is not an object');
+                    }
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    if ($abruptCompletion === null) {
+                        // Only propagate return-method exception if we didn't have a prior one.
+                        return Completion::throw_($e->jsValue);
+                    }
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    if ($abruptCompletion === null) {
+                        return Completion::throw_(new \PhpJs\Value\JsString($e->getMessage()));
+                    }
+                }
+                return null;
+            };
+
             while (true) {
                 if (++$iterations > $this->maxLoopIterations) {
                     throw new InternalError('Maximum loop iterations exceeded');
@@ -1787,13 +1856,15 @@ class Interpreter
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
                 if ($completion->type === CompletionType::Break && $completion->target === null) {
+                    $closeIterator(null);
                     break;
                 }
                 if ($completion->type === CompletionType::Continue && $completion->target === null) {
                     continue;
                 }
                 if ($completion->isAbrupt()) {
-                    return $completion;
+                    $closeCompletion = $closeIterator($completion);
+                    return $closeCompletion ?? $completion;
                 }
             }
 
@@ -1887,11 +1958,88 @@ class Interpreter
     private function assignForBinding(Node $left, JsValue $value, Environment $env): void
     {
         if ($left instanceof VariableDeclaration) {
-            $this->declareBinding($left->kind, $left->declarations[0]->id, $value, $env);
+            // let/const: declare in the iteration block scope.
+            // var: already hoisted to function scope; use set() to update it there.
+            if ($left->kind === 'var') {
+                $id = $left->declarations[0]->id;
+                if ($id instanceof Identifier) {
+                    // Walk the scope chain to find and update the hoisted var binding.
+                    $env->set($id->name, $value, false);
+                } else {
+                    // Destructuring var: bind in the hoisted scope using set semantics.
+                    $this->assignPatternToEnv($id, $value, $env);
+                }
+            } else {
+                $this->declareBinding($left->kind, $left->declarations[0]->id, $value, $env);
+            }
         } elseif ($left instanceof Identifier) {
-            $env->defineVar($left->name, $value);
-        } elseif ($left instanceof ArrayPattern || $left instanceof ObjectPattern) {
-            $this->bindPattern($left, $value, $env);
+            // Plain assignment (no declaration keyword): update existing binding or create global.
+            $env->set($left->name, $value, false);
+        } elseif ($this->isDestructuringTarget($left)) {
+            // Plain destructuring assignment (no declaration keyword): update existing bindings.
+            $this->destructureAssign($left, $value, $env);
+        }
+    }
+
+    /**
+     * Assign a destructured value to existing bindings by walking the scope chain.
+     * Used for for-of/for-in without a declaration keyword.
+     */
+    private function assignPatternToEnv(Node $pattern, JsValue $value, Environment $env): void
+    {
+        if ($pattern instanceof Identifier) {
+            $env->set($pattern->name, $value, false);
+            return;
+        }
+
+        if ($pattern instanceof ArrayPattern) {
+            for ($i = 0; $i < count($pattern->elements); $i++) {
+                $element = $pattern->elements[$i];
+                if ($element === null) {
+                    continue;
+                }
+                if ($element instanceof RestElement) {
+                    $rest = [];
+                    if ($value instanceof JsObject) {
+                        $len = ($value instanceof JsArray) ? $value->getLength() : 0;
+                        for ($j = $i; $j < $len; $j++) {
+                            $rest[] = $value->get((string) $j);
+                        }
+                    }
+                    $this->assignPatternToEnv($element->argument, JsArray::fromArray($rest), $env);
+                    break;
+                }
+                $elemValue = ($value instanceof JsObject) ? $value->get((string) $i) : JsUndefined::instance();
+                $this->assignPatternToEnv($element, $elemValue, $env);
+            }
+            return;
+        }
+
+        if ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof RestElement) {
+                    $this->assignPatternToEnv($prop->argument, new JsObject(), $env);
+                    continue;
+                }
+                if ($prop instanceof AssignmentProperty) {
+                    $key = $prop->computed
+                        ? TypeConversion::toString($this->evaluate($prop->key, $env))
+                        : ($prop->key instanceof Identifier
+                            ? $prop->key->name
+                            : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                    $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
+                    $this->assignPatternToEnv($prop->value, $propValue, $env);
+                }
+            }
+            return;
+        }
+
+        if ($pattern instanceof AssignmentPattern) {
+            if ($value instanceof JsUndefined) {
+                $value = $this->evaluate($pattern->right, $env);
+            }
+            $this->assignPatternToEnv($pattern->left, $value, $env);
+            return;
         }
     }
 
@@ -2117,6 +2265,40 @@ class Interpreter
                 foreach ($stmt->declarations as $decl) {
                     $this->hoistVarNames($decl->id, $env);
                 }
+            } elseif ($stmt instanceof ForOfStatement || $stmt instanceof ForInStatement) {
+                // Hoist var declarations from for-of/for-in headers.
+                if ($stmt->left instanceof VariableDeclaration && $stmt->left->kind === 'var') {
+                    foreach ($stmt->left->declarations as $decl) {
+                        $this->hoistVarNames($decl->id, $env);
+                    }
+                }
+                // Recurse into for-of/for-in body for nested var hoisting.
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof ForStatement) {
+                // Hoist var declarations from for-statement init.
+                if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
+                    foreach ($stmt->init->declarations as $decl) {
+                        $this->hoistVarNames($decl->id, $env);
+                    }
+                }
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\WhileStatement || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement) {
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->consequent->body, $env);
+                }
+                if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->alternate->body, $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                $this->hoistDeclarations($stmt->body, $env);
             }
 
             // Annex B: in sloppy mode, hoist function declaration names from

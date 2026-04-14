@@ -78,12 +78,16 @@ class NumberConstructor
             configurable: false,
         ));
 
-        // Static methods.
-        $existing->set('isFinite', JsFunction::fromCallable('isFinite', self::isFiniteFn(), 1));
-        $existing->set('isInteger', JsFunction::fromCallable('isInteger', self::isInteger(), 1));
-        $existing->set('isNaN', JsFunction::fromCallable('isNaN', self::isNaNFn(), 1));
-        $existing->set('parseInt', JsFunction::fromCallable('parseInt', self::parseIntFn($env), 2));
-        $existing->set('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloatFn($env), 1));
+        // Static methods (non-enumerable per spec).
+        $dm = static fn (string $n, \Closure $fn, int $len) => $existing->defineOwnProperty(
+            $n,
+            PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
+        );
+        $dm('isFinite', self::isFiniteFn(), 1);
+        $dm('isInteger', self::isInteger(), 1);
+        $dm('isNaN', self::isNaNFn(), 1);
+        $dm('parseInt', self::parseIntFn($env), 2);
+        $dm('parseFloat', self::parseFloatFn($env), 1);
 
         // Prototype.
         $existing->set('prototype', $proto);

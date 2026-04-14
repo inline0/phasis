@@ -34,6 +34,7 @@ class ObjectConstructor
             // If called with a value, convert to object.
             return TypeConversion::toObject($args[0]);
         });
+        $constructor->setConstructable();
 
         $constructor->set('prototype', $proto);
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
