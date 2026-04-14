@@ -33,12 +33,20 @@ final class TypeConversion
      *
      * @param string $hint One of "default", "number", "string".
      */
+    private static int $toPrimitiveDepth = 0;
+
     public static function toPrimitive(JsValue $value, string $hint = 'default'): JsValue
     {
         // Primitives pass through.
         if (!$value instanceof JsObject) {
             return $value;
         }
+
+        // Guard against infinite recursion
+        if (self::$toPrimitiveDepth > 10) {
+            throw new TypeError('Cannot convert object to primitive value');
+        }
+        self::$toPrimitiveDepth++;
 
         // For Date objects the default hint is "string"; for everything else it is "number".
         // Date detection will be added later. For now, default maps to number.
@@ -50,17 +58,21 @@ final class TypeConversion
             ? ['toString', 'valueOf']
             : ['valueOf', 'toString'];
 
-        foreach ($methodNames as $methodName) {
-            $method = $value->get($methodName);
-            if ($method instanceof JsFunction) {
-                $result = $method->call($value, []);
-                if (!$result instanceof JsObject) {
-                    return $result;
+        try {
+            foreach ($methodNames as $methodName) {
+                $method = $value->get($methodName);
+                if ($method instanceof JsFunction) {
+                    $result = $method->call($value, []);
+                    if (!$result instanceof JsObject) {
+                        return $result;
+                    }
                 }
             }
-        }
 
-        throw new TypeError('Cannot convert object to primitive value');
+            throw new TypeError('Cannot convert object to primitive value');
+        } finally {
+            self::$toPrimitiveDepth--;
+        }
     }
 
     /**

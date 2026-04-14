@@ -606,6 +606,12 @@ class Lexer
                 continue;
             }
 
+            // Unicode whitespace: U+00A0 (NBSP), U+FEFF (BOM), U+2000-U+200A, U+202F, U+205F, U+3000
+            if ($this->isUnicodeWhitespace()) {
+                $this->skipUtf8Char();
+                continue;
+            }
+
             // Line terminators
             if ($ch === "\n") {
                 $this->lineTerminatorBefore = true;
@@ -620,6 +626,15 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->pos++;
                 }
+                $this->line++;
+                $this->column = 0;
+                continue;
+            }
+
+            // Unicode line terminators: U+2028 (LS), U+2029 (PS)
+            if ($this->isUnicodeLineTerminator()) {
+                $this->lineTerminatorBefore = true;
+                $this->pos += 3; // 3-byte UTF-8 sequence
                 $this->line++;
                 $this->column = 0;
                 continue;
@@ -733,5 +748,79 @@ class Lexer
     public function getPosition(): int
     {
         return $this->pos;
+    }
+
+    private function isUnicodeWhitespace(): bool
+    {
+        if ($this->pos + 1 >= $this->length) {
+            return false;
+        }
+        $b0 = ord($this->source[$this->pos]);
+        // 2-byte: U+00A0 = C2 A0
+        if ($b0 === 0xC2 && $this->pos + 1 < $this->length && ord($this->source[$this->pos + 1]) === 0xA0) {
+            return true;
+        }
+        // 3-byte sequences
+        if ($b0 === 0xE2 && $this->pos + 2 < $this->length) {
+            $b1 = ord($this->source[$this->pos + 1]);
+            $b2 = ord($this->source[$this->pos + 2]);
+            // U+2000-U+200A (E2 80 80 - E2 80 8A)
+            if ($b1 === 0x80 && $b2 >= 0x80 && $b2 <= 0x8A) {
+                return true;
+            }
+            // U+202F (E2 80 AF)
+            if ($b1 === 0x80 && $b2 === 0xAF) {
+                return true;
+            }
+            // U+205F (E2 81 9F)
+            if ($b1 === 0x81 && $b2 === 0x9F) {
+                return true;
+            }
+        }
+        // U+3000 (E3 80 80)
+        if ($b0 === 0xE3 && $this->pos + 2 < $this->length) {
+            if (ord($this->source[$this->pos + 1]) === 0x80 && ord($this->source[$this->pos + 2]) === 0x80) {
+                return true;
+            }
+        }
+        // U+FEFF (EF BB BF) - BOM
+        if ($b0 === 0xEF && $this->pos + 2 < $this->length) {
+            if (ord($this->source[$this->pos + 1]) === 0xBB && ord($this->source[$this->pos + 2]) === 0xBF) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function isUnicodeLineTerminator(): bool
+    {
+        if ($this->pos + 2 >= $this->length) {
+            return false;
+        }
+        $b0 = ord($this->source[$this->pos]);
+        if ($b0 !== 0xE2) {
+            return false;
+        }
+        $b1 = ord($this->source[$this->pos + 1]);
+        $b2 = ord($this->source[$this->pos + 2]);
+        // U+2028 = E2 80 A8, U+2029 = E2 80 A9
+        return $b1 === 0x80 && ($b2 === 0xA8 || $b2 === 0xA9);
+    }
+
+    private function skipUtf8Char(): void
+    {
+        $b0 = ord($this->source[$this->pos]);
+        if ($b0 < 0x80) {
+            $this->advance();
+        } elseif ($b0 < 0xE0) {
+            $this->pos += 2;
+            $this->column++;
+        } elseif ($b0 < 0xF0) {
+            $this->pos += 3;
+            $this->column++;
+        } else {
+            $this->pos += 4;
+            $this->column++;
+        }
     }
 }

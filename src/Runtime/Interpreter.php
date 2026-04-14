@@ -2294,18 +2294,9 @@ class Interpreter
     /** @return never */
     private function throwJsValue(JsValue $value): void
     {
-        if ($value instanceof JsObject && $value->has('message')) {
-            $msg = TypeConversion::toString($value->get('message'));
-            $name = $value->has('name') ? TypeConversion::toString($value->get('name')) : 'Error';
-            throw match ($name) {
-                'TypeError' => new TypeError($msg),
-                'ReferenceError' => new ReferenceError($msg),
-                'RangeError' => new \PhpJs\Exceptions\RangeError($msg),
-                'SyntaxError' => new \PhpJs\Exceptions\SyntaxError($msg),
-                default => new \PhpJs\Exceptions\RuntimeError($msg),
-            };
-        }
-        throw new \PhpJs\Exceptions\RuntimeError(TypeConversion::toString($value));
+        // Always use JsThrowable to preserve the original JS value.
+        // execTryStatement catches JsThrowable and extracts jsValue for the catch block.
+        throw new \PhpJs\Exceptions\JsThrowable($value, TypeConversion::toString($value));
     }
 
     public function getCallStack(): CallStack

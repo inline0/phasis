@@ -51,6 +51,40 @@ class MathObject
         $math->set('sign', JsFunction::fromCallable('sign', self::signFn()));
         $math->set('fround', JsFunction::fromCallable('fround', self::froundFn()));
 
+        $math->set('exp', JsFunction::fromCallable('exp', self::singleArgFn('exp')));
+        $math->set('expm1', JsFunction::fromCallable('expm1', self::singleArgFn('expm1')));
+        $math->set('asin', JsFunction::fromCallable('asin', self::singleArgFn('asin')));
+        $math->set('acos', JsFunction::fromCallable('acos', self::singleArgFn('acos')));
+        $math->set('atan', JsFunction::fromCallable('atan', self::singleArgFn('atan')));
+        $math->set('sinh', JsFunction::fromCallable('sinh', self::singleArgFn('sinh')));
+        $math->set('cosh', JsFunction::fromCallable('cosh', self::singleArgFn('cosh')));
+        $math->set('tanh', JsFunction::fromCallable('tanh', self::singleArgFn('tanh')));
+        $math->set('asinh', JsFunction::fromCallable('asinh', self::singleArgFn('asinh')));
+        $math->set('acosh', JsFunction::fromCallable('acosh', self::singleArgFn('acosh')));
+        $math->set('atanh', JsFunction::fromCallable('atanh', self::singleArgFn('atanh')));
+        $math->set('log1p', JsFunction::fromCallable('log1p', self::singleArgFn('log1p')));
+        $math->set('atan2', JsFunction::fromCallable('atan2', function (JsValue $this_, array $args): JsValue {
+            $y = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
+            $x = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
+            return new JsNumber(atan2($y, $x));
+        }));
+        $math->set('clz32', JsFunction::fromCallable('clz32', function (JsValue $this_, array $args): JsValue {
+            $x = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
+            if ($x === 0) {
+                return new JsNumber(32.0);
+            }
+            return new JsNumber((float) (31 - (int) floor(log($x, 2))));
+        }));
+        $math->set('imul', JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
+            $a = isset($args[0]) ? TypeConversion::toInt32($args[0]) : 0;
+            $b = isset($args[1]) ? TypeConversion::toInt32($args[1]) : 0;
+            $result = (int) (($a * $b) % 4294967296);
+            if ($result >= 2147483648) {
+                $result -= 4294967296;
+            }
+            return new JsNumber((float) $result);
+        }));
+
         // Multi-argument or special functions.
         $math->set('pow', JsFunction::fromCallable('pow', self::powFn()));
         $math->set('max', JsFunction::fromCallable('max', self::maxFn()));

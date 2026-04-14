@@ -32,6 +32,16 @@ class Engine
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
 
         $this->installBuiltins();
+
+        // Global 'this' should be the global object
+        $objProto = $this->globalEnv->has('__ObjectPrototype__')
+            ? $this->globalEnv->get('__ObjectPrototype__')
+            : null;
+        $globalObj = new \PhpJs\Value\JsObject(
+            $objProto instanceof \PhpJs\Value\JsObject ? $objProto : null,
+        );
+        $this->globalEnv->defineVar('this', $globalObj);
+        $this->globalEnv->defineVar('globalThis', $globalObj);
     }
 
     private function installBuiltins(): void

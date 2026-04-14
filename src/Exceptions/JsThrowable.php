@@ -18,7 +18,8 @@ class JsThrowable extends RuntimeError
 {
     public function __construct(
         public readonly JsValue $jsValue,
+        string $message = '',
     ) {
-        parent::__construct($jsValue->toJsString());
+        parent::__construct($message !== '' ? $message : $jsValue->toJsString());
     }
 }
