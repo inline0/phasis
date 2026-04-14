@@ -83,17 +83,17 @@ class ArrayConstructor
             foreach ($args as $arg) {
                 $this_->push($arg);
             }
-            return new JsNumber((float) $this_->getLength());
+            return new JsNumber((float) self::getLen($this_));
         }));
 
         $proto->set('pop', JsFunction::fromCallable('pop', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            if ($this_->getLength() === 0) {
+            if (self::getLen($this_) === 0) {
                 return JsUndefined::instance();
             }
-            $newLen = $this_->getLength() - 1;
+            $newLen = self::getLen($this_) - 1;
             $val = $this_->get((string) $newLen);
             $this_->delete((string) $newLen);
             $this_->setLength($newLen);
@@ -104,7 +104,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             if ($len === 0) {
                 return JsUndefined::instance();
             }
@@ -121,7 +121,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $count = count($args);
             for ($i = $len - 1; $i >= 0; $i--) {
                 $this_->set((string) ($i + $count), $this_->get((string) $i));
@@ -139,7 +139,7 @@ class ArrayConstructor
             }
             $search = $args[0] ?? JsUndefined::instance();
             $from = isset($args[1]) ? (int) $args[1]->toNumber() : 0;
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = $from; $i < $len; $i++) {
                 if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
                     return new JsNumber((float) $i);
@@ -155,7 +155,7 @@ class ArrayConstructor
                     return JsUndefined::instance();
                 }
                 $search = $args[0] ?? JsUndefined::instance();
-                $len = $this_->getLength();
+                $len = self::getLen($this_);
                 $from = isset($args[1]) ? (int) $args[1]->toNumber() : $len - 1;
                 if ($from < 0) {
                     $from = $len + $from;
@@ -174,7 +174,7 @@ class ArrayConstructor
                 return JsUndefined::instance();
             }
             $search = $args[0] ?? JsUndefined::instance();
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
                     return new JsBoolean(true);
@@ -190,7 +190,7 @@ class ArrayConstructor
             $sep = isset($args[0]) && !$args[0] instanceof JsUndefined
                 ? TypeConversion::toString($args[0]) : ',';
             $parts = [];
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $v = $this_->get((string) $i);
                 $parts[] = ($v instanceof JsUndefined || $v instanceof JsNull)
@@ -203,7 +203,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $start = isset($args[0]) ? (int) $args[0]->toNumber() : 0;
             $end = isset($args[1]) ? (int) $args[1]->toNumber() : $len;
             if ($start < 0) {
@@ -242,7 +242,7 @@ class ArrayConstructor
             }
             $items = $this_->toList();
             $items = array_reverse($items);
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $this_->set((string) $i, $items[$i]);
             }
@@ -273,7 +273,7 @@ class ArrayConstructor
                 throw new TypeError('filter callback is not a function');
             }
             $result = [];
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $val = $this_->get((string) $i);
                 $keep = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
@@ -292,7 +292,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('reduce callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $initial = $args[1] ?? null;
             $acc = $initial;
             $start = 0;
@@ -322,7 +322,7 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduceRight callback is not a function');
                 }
-                $len = $this_->getLength();
+                $len = self::getLen($this_);
                 $initial = $args[1] ?? null;
                 $acc = $initial;
                 $start = $len - 1;
@@ -350,7 +350,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('forEach callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
             }
@@ -365,7 +365,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('find callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $val = $this_->get((string) $i);
                 $result = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
@@ -384,7 +384,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('findIndex callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $val = $this_->get((string) $i);
                 $result = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
@@ -403,7 +403,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('some callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $result = $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
                 if (TypeConversion::toBoolean($result)) {
@@ -421,7 +421,7 @@ class ArrayConstructor
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('every callback is not a function');
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $result = $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
                 if (!TypeConversion::toBoolean($result)) {
@@ -450,7 +450,7 @@ class ArrayConstructor
                 throw new TypeError('flatMap callback is not a function');
             }
             $result = [];
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $val = $this_->get((string) $i);
                 $mapped = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
@@ -469,7 +469,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $value = $args[0] ?? JsUndefined::instance();
             $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
             $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
@@ -493,7 +493,7 @@ class ArrayConstructor
                 if (!$this_ instanceof JsObject) {
                     return JsUndefined::instance();
                 }
-                $len = $this_->getLength();
+                $len = self::getLen($this_);
                 $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
                 $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
                 $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
@@ -534,7 +534,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
             if ($start < 0) {
                 $start = max($len + $start, 0);
@@ -585,7 +585,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
             if ($index < 0) {
                 $index = $len + $index;
@@ -634,7 +634,7 @@ class ArrayConstructor
                 $sb = TypeConversion::toString($b);
                 return strcmp($sa, $sb);
             });
-            $len = $this_->getLength();
+            $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
                 $this_->set((string) $i, $items[$i]);
             }
