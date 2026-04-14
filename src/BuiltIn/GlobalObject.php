@@ -78,18 +78,25 @@ class GlobalObject
 
         // Function.prototype with call/apply/bind
         $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
-        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
+        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args) use ($env): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
+            // In sloppy mode, null/undefined this becomes global object
+            if ($thisArg instanceof \PhpJs\Value\JsNull || $thisArg instanceof JsUndefined) {
+                $thisArg = $env->has('this') ? $env->get('this') : new \PhpJs\Value\JsObject();
+            }
             return $this_->call($thisArg, array_slice($args, 1));
         }, 1));
-        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
+        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args) use ($env): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
+            if ($thisArg instanceof \PhpJs\Value\JsNull || $thisArg instanceof JsUndefined) {
+                $thisArg = $env->has('this') ? $env->get('this') : new \PhpJs\Value\JsObject();
+            }
             $argsArr = $args[1] ?? JsUndefined::instance();
             $callArgs = [];
             if ($argsArr instanceof \PhpJs\Value\JsArray) {
