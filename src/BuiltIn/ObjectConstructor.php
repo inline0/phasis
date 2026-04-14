@@ -66,6 +66,16 @@ class ObjectConstructor
         ));
         $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto)));
 
+        // Modern APIs
+        $constructor->set('hasOwn', JsFunction::fromCallable('hasOwn', function (JsValue $this_, array $args): JsValue {
+            $obj = $args[0] ?? JsUndefined::instance();
+            if (!$obj instanceof JsObject) {
+                throw new TypeError('Object.hasOwn called on non-object');
+            }
+            $prop = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
+            return new JsBoolean($obj->hasOwnProperty($prop));
+        }));
+
         $env->defineVar('Object', $constructor);
 
         // Store the prototype for auto-boxing and object literal creation.
