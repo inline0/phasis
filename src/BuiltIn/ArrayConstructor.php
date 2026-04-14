@@ -74,6 +74,17 @@ class ArrayConstructor
         return TypeConversion::toObject($this_);
     }
 
+    /** @return list<JsValue> */
+    private static function objToList(JsObject $obj): array
+    {
+        $result = [];
+        $len = self::getLen($obj);
+        for ($i = 0; $i < $len; $i++) {
+            $result[] = $obj->get((string) $i);
+        }
+        return $result;
+    }
+
     private static function installPrototypeMethods(JsArray $proto): void
     {
         $proto->set('push', JsFunction::fromCallable('push', function (JsValue $this_, array $args): JsValue {
@@ -224,7 +235,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $result = $this_->toList();
+            $result = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
             foreach ($args as $arg) {
                 if ($arg instanceof JsArray) {
                     for ($i = 0; $i < $arg->getLength(); $i++) {
@@ -241,7 +252,7 @@ class ArrayConstructor
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $items = $this_->toList();
+            $items = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
             $items = array_reverse($items);
             $len = self::getLen($this_);
             for ($i = 0; $i < $len; $i++) {
@@ -605,7 +616,7 @@ class ArrayConstructor
                 return JsUndefined::instance();
             }
             $compareFn = ($args[0] ?? null) instanceof JsFunction ? $args[0] : null;
-            $items = $this_->toList();
+            $items = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
             usort($items, function (JsValue $a, JsValue $b) use ($compareFn): int {
                 // undefined values sort to the end.
                 $aIsUndef = $a instanceof JsUndefined;
