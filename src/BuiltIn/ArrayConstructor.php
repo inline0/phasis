@@ -182,7 +182,7 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(false);
-        }));
+        }, 1));
 
         $proto->set('join', JsFunction::fromCallable('join', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -198,7 +198,7 @@ class ArrayConstructor
                     ? '' : TypeConversion::toString($v);
             }
             return new JsString(implode($sep, $parts));
-        }));
+        }, 1));
 
         $proto->set('slice', JsFunction::fromCallable('slice', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -218,7 +218,7 @@ class ArrayConstructor
                 $result[] = $this_->get((string) $i);
             }
             return JsArray::fromArray($result);
-        }));
+        }, 2));
 
         $proto->set('concat', JsFunction::fromCallable('concat', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -235,7 +235,7 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }));
+        }, 1));
 
         $proto->set('reverse', JsFunction::fromCallable('reverse', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -248,7 +248,7 @@ class ArrayConstructor
                 $this_->set((string) $i, $items[$i]);
             }
             return $this_;
-        }));
+        }, 0));
 
         $proto->set('map', JsFunction::fromCallable('map', function (JsValue $this_, array $args): JsValue {
             $obj = self::toObj($this_);
@@ -263,7 +263,7 @@ class ArrayConstructor
                 $result[] = $callback->call($obj, [$val, new JsNumber((float) $i), $obj]);
             }
             return JsArray::fromArray($result);
-        }));
+        }, 1));
 
         $proto->set('filter', JsFunction::fromCallable('filter', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -283,7 +283,7 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }));
+        }, 1));
 
         $proto->set('reduce', JsFunction::fromCallable('reduce', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -311,7 +311,7 @@ class ArrayConstructor
                 );
             }
             return $acc;
-        }));
+        }, 1));
 
         $proto->set('reduceRight', JsFunction::fromCallable(
             'reduceRight',
@@ -341,6 +341,7 @@ class ArrayConstructor
                 }
                 return $acc;
             },
+            1,
         ));
 
         $proto->set('forEach', JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
@@ -356,7 +357,7 @@ class ArrayConstructor
                 $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
             }
             return JsUndefined::instance();
-        }));
+        }, 1));
 
         $proto->set('find', JsFunction::fromCallable('find', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -375,7 +376,7 @@ class ArrayConstructor
                 }
             }
             return JsUndefined::instance();
-        }));
+        }, 1));
 
         $proto->set('findIndex', JsFunction::fromCallable('findIndex', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -394,7 +395,7 @@ class ArrayConstructor
                 }
             }
             return new JsNumber(-1.0);
-        }));
+        }, 1));
 
         $proto->set('some', JsFunction::fromCallable('some', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -412,7 +413,7 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(false);
-        }));
+        }, 1));
 
         $proto->set('every', JsFunction::fromCallable('every', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -430,7 +431,7 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(true);
-        }));
+        }, 1));
 
         $proto->set('flat', JsFunction::fromCallable('flat', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -440,7 +441,7 @@ class ArrayConstructor
             $depth = $depthVal instanceof JsUndefined ? 1 : (int) TypeConversion::toNumber($depthVal);
             $result = self::flattenArray($this_, $depth);
             return JsArray::fromArray($result);
-        }));
+        }, 0));
 
         $proto->set('flatMap', JsFunction::fromCallable('flatMap', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -464,7 +465,7 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }));
+        }, 1));
 
         $proto->set('fill', JsFunction::fromCallable('fill', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -486,7 +487,7 @@ class ArrayConstructor
                 $this_->set((string) $i, $value);
             }
             return $this_;
-        }));
+        }, 1));
 
         $proto->set('copyWithin', JsFunction::fromCallable(
             'copyWithin',
@@ -529,6 +530,7 @@ class ArrayConstructor
                 }
                 return $this_;
             },
+            2,
         ));
 
         $proto->set('splice', JsFunction::fromCallable('splice', function (JsValue $this_, array $args): JsValue {
@@ -580,7 +582,7 @@ class ArrayConstructor
 
             $this_->setLength($len + $diff);
             return JsArray::fromArray($removed);
-        }));
+        }, 2));
 
         $proto->set('at', JsFunction::fromCallable('at', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -595,7 +597,7 @@ class ArrayConstructor
                 return JsUndefined::instance();
             }
             return $this_->get((string) $index);
-        }));
+        }, 1));
 
         $proto->set('sort', JsFunction::fromCallable('sort', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -640,35 +642,35 @@ class ArrayConstructor
                 $this_->set((string) $i, $items[$i]);
             }
             return $this_;
-        }));
+        }, 1));
 
         $proto->set('toString', JsFunction::fromCallable('toString', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return new JsString($this_->toJsString());
-        }));
+        }, 0));
 
         $proto->set('keys', JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key');
-        }));
+        }, 0));
 
         $proto->set('values', JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'value');
-        }));
+        }, 0));
 
         $proto->set('entries', JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key+value');
-        }));
+        }, 0));
     }
 
     /**

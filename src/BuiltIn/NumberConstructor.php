@@ -79,11 +79,11 @@ class NumberConstructor
         ));
 
         // Static methods.
-        $existing->set('isFinite', JsFunction::fromCallable('isFinite', self::isFiniteFn()));
-        $existing->set('isInteger', JsFunction::fromCallable('isInteger', self::isInteger()));
-        $existing->set('isNaN', JsFunction::fromCallable('isNaN', self::isNaNFn()));
-        $existing->set('parseInt', JsFunction::fromCallable('parseInt', self::parseIntFn($env)));
-        $existing->set('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloatFn($env)));
+        $existing->set('isFinite', JsFunction::fromCallable('isFinite', self::isFiniteFn(), 1));
+        $existing->set('isInteger', JsFunction::fromCallable('isInteger', self::isInteger(), 1));
+        $existing->set('isNaN', JsFunction::fromCallable('isNaN', self::isNaNFn(), 1));
+        $existing->set('parseInt', JsFunction::fromCallable('parseInt', self::parseIntFn($env), 2));
+        $existing->set('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloatFn($env), 1));
 
         // Prototype.
         $existing->set('prototype', $proto);
@@ -94,11 +94,11 @@ class NumberConstructor
     {
         $proto = new JsObject();
 
-        $proto->set('toFixed', JsFunction::fromCallable('toFixed', self::toFixed()));
-        $proto->set('toPrecision', JsFunction::fromCallable('toPrecision', self::toPrecision()));
-        $proto->set('toExponential', JsFunction::fromCallable('toExponential', self::toExponential()));
-        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn()));
-        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::valueOf()));
+        $proto->set('toFixed', JsFunction::fromCallable('toFixed', self::toFixed(), 1));
+        $proto->set('toPrecision', JsFunction::fromCallable('toPrecision', self::toPrecision(), 1));
+        $proto->set('toExponential', JsFunction::fromCallable('toExponential', self::toExponential(), 1));
+        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn(), 1));
+        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::valueOf(), 0));
 
         return $proto;
     }

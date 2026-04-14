@@ -37,34 +37,37 @@ class ObjectConstructor
         $proto->set('constructor', $constructor);
 
         // Static methods.
-        $constructor->set('keys', JsFunction::fromCallable('keys', self::keys()));
-        $constructor->set('values', JsFunction::fromCallable('values', self::values()));
-        $constructor->set('entries', JsFunction::fromCallable('entries', self::entries()));
-        $constructor->set('assign', JsFunction::fromCallable('assign', self::assign()));
-        $constructor->set('create', JsFunction::fromCallable('create', self::create($proto)));
-        $constructor->set('defineProperty', JsFunction::fromCallable('defineProperty', self::definePropertyFn()));
-        $constructor->set('getPrototypeOf', JsFunction::fromCallable('getPrototypeOf', self::getPrototypeOf()));
-        $constructor->set('freeze', JsFunction::fromCallable('freeze', self::freeze()));
-        $constructor->set('is', JsFunction::fromCallable('is', self::is()));
-        $constructor->set('getOwnPropertyNames', JsFunction::fromCallable('getOwnPropertyNames', self::getOwnPropertyNamesFn()));
+        $constructor->set('keys', JsFunction::fromCallable('keys', self::keys(), 1));
+        $constructor->set('values', JsFunction::fromCallable('values', self::values(), 1));
+        $constructor->set('entries', JsFunction::fromCallable('entries', self::entries(), 1));
+        $constructor->set('assign', JsFunction::fromCallable('assign', self::assign(), 2));
+        $constructor->set('create', JsFunction::fromCallable('create', self::create($proto), 2));
+        $constructor->set('defineProperty', JsFunction::fromCallable('defineProperty', self::definePropertyFn(), 3));
+        $constructor->set('getPrototypeOf', JsFunction::fromCallable('getPrototypeOf', self::getPrototypeOf(), 1));
+        $constructor->set('freeze', JsFunction::fromCallable('freeze', self::freeze(), 1));
+        $constructor->set('is', JsFunction::fromCallable('is', self::is(), 2));
+        $constructor->set('getOwnPropertyNames', JsFunction::fromCallable('getOwnPropertyNames', self::getOwnPropertyNamesFn(), 1));
         $constructor->set('defineProperties', JsFunction::fromCallable(
             'defineProperties',
             self::definePropertiesFn(),
+            2,
         ));
         $constructor->set('getOwnPropertyDescriptor', JsFunction::fromCallable(
             'getOwnPropertyDescriptor',
             self::getOwnPropertyDescriptorFn(),
+            2,
         ));
-        $constructor->set('setPrototypeOf', JsFunction::fromCallable('setPrototypeOf', self::setPrototypeOf()));
-        $constructor->set('isFrozen', JsFunction::fromCallable('isFrozen', self::isFrozen()));
-        $constructor->set('isSealed', JsFunction::fromCallable('isSealed', self::isSealed()));
-        $constructor->set('isExtensible', JsFunction::fromCallable('isExtensible', self::isExtensible()));
-        $constructor->set('seal', JsFunction::fromCallable('seal', self::seal()));
+        $constructor->set('setPrototypeOf', JsFunction::fromCallable('setPrototypeOf', self::setPrototypeOf(), 2));
+        $constructor->set('isFrozen', JsFunction::fromCallable('isFrozen', self::isFrozen(), 1));
+        $constructor->set('isSealed', JsFunction::fromCallable('isSealed', self::isSealed(), 1));
+        $constructor->set('isExtensible', JsFunction::fromCallable('isExtensible', self::isExtensible(), 1));
+        $constructor->set('seal', JsFunction::fromCallable('seal', self::seal(), 1));
         $constructor->set('preventExtensions', JsFunction::fromCallable(
             'preventExtensions',
             self::preventExtensions(),
+            1,
         ));
-        $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto)));
+        $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto), 1));
 
         // Modern APIs
         $constructor->set('hasOwn', JsFunction::fromCallable('hasOwn', function (JsValue $this_, array $args): JsValue {
@@ -74,7 +77,7 @@ class ObjectConstructor
             }
             $prop = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
             return new JsBoolean($obj->hasOwnProperty($prop));
-        }));
+        }, 2));
 
         $env->defineVar('Object', $constructor);
 
@@ -98,6 +101,7 @@ class ObjectConstructor
                 $prop = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
                 return new JsBoolean($this_->hasOwnProperty($prop));
             },
+            1,
         ));
 
         $proto->set('toString', JsFunction::fromCallable(
@@ -111,6 +115,7 @@ class ObjectConstructor
                 }
                 return new JsString('[object Object]');
             },
+            0,
         ));
 
         $proto->set('valueOf', JsFunction::fromCallable(
@@ -118,6 +123,7 @@ class ObjectConstructor
             function (JsValue $this_): JsValue {
                 return $this_;
             },
+            0,
         ));
 
         $proto->set('propertyIsEnumerable', JsFunction::fromCallable(
@@ -133,6 +139,7 @@ class ObjectConstructor
                 }
                 return new JsBoolean($desc->enumerable === true);
             },
+            1,
         ));
 
         $proto->set('isPrototypeOf', JsFunction::fromCallable(
@@ -154,6 +161,7 @@ class ObjectConstructor
                 }
                 return new JsBoolean(false);
             },
+            1,
         ));
 
         return $proto;

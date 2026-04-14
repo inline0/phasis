@@ -22,36 +22,36 @@ class StringPrototype
     {
         $proto = new JsObject();
 
-        $proto->set('charAt', JsFunction::fromCallable('charAt', self::charAt()));
-        $proto->set('charCodeAt', JsFunction::fromCallable('charCodeAt', self::charCodeAt()));
-        $proto->set('indexOf', JsFunction::fromCallable('indexOf', self::indexOf()));
-        $proto->set('lastIndexOf', JsFunction::fromCallable('lastIndexOf', self::lastIndexOf()));
-        $proto->set('includes', JsFunction::fromCallable('includes', self::includes()));
-        $proto->set('startsWith', JsFunction::fromCallable('startsWith', self::startsWith()));
-        $proto->set('endsWith', JsFunction::fromCallable('endsWith', self::endsWith()));
-        $proto->set('slice', JsFunction::fromCallable('slice', self::slice()));
-        $proto->set('substring', JsFunction::fromCallable('substring', self::substring()));
-        $proto->set('toLowerCase', JsFunction::fromCallable('toLowerCase', self::toLowerCase()));
-        $proto->set('toUpperCase', JsFunction::fromCallable('toUpperCase', self::toUpperCase()));
-        $proto->set('trim', JsFunction::fromCallable('trim', self::trim()));
-        $proto->set('trimStart', JsFunction::fromCallable('trimStart', self::trimStart()));
-        $proto->set('trimEnd', JsFunction::fromCallable('trimEnd', self::trimEnd()));
-        $proto->set('split', JsFunction::fromCallable('split', self::split()));
-        $proto->set('replace', JsFunction::fromCallable('replace', self::replace()));
-        $proto->set('repeat', JsFunction::fromCallable('repeat', self::repeat()));
-        $proto->set('padStart', JsFunction::fromCallable('padStart', self::padStart()));
-        $proto->set('padEnd', JsFunction::fromCallable('padEnd', self::padEnd()));
-        $proto->set('concat', JsFunction::fromCallable('concat', self::concat()));
-        $proto->set('at', JsFunction::fromCallable('at', self::at()));
-        $proto->set('replaceAll', JsFunction::fromCallable('replaceAll', self::replaceAll()));
-        $proto->set('search', JsFunction::fromCallable('search', self::search()));
-        $proto->set('match', JsFunction::fromCallable('match', self::matchFn()));
-        $proto->set('matchAll', JsFunction::fromCallable('matchAll', self::matchAll()));
-        $proto->set('codePointAt', JsFunction::fromCallable('codePointAt', self::codePointAt()));
-        $proto->set('normalize', JsFunction::fromCallable('normalize', self::normalize()));
-        $proto->set('localeCompare', JsFunction::fromCallable('localeCompare', self::localeCompare()));
-        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn()));
-        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::toStringFn()));
+        $proto->set('charAt', JsFunction::fromCallable('charAt', self::charAt(), 1));
+        $proto->set('charCodeAt', JsFunction::fromCallable('charCodeAt', self::charCodeAt(), 1));
+        $proto->set('indexOf', JsFunction::fromCallable('indexOf', self::indexOf(), 1));
+        $proto->set('lastIndexOf', JsFunction::fromCallable('lastIndexOf', self::lastIndexOf(), 1));
+        $proto->set('includes', JsFunction::fromCallable('includes', self::includes(), 1));
+        $proto->set('startsWith', JsFunction::fromCallable('startsWith', self::startsWith(), 1));
+        $proto->set('endsWith', JsFunction::fromCallable('endsWith', self::endsWith(), 1));
+        $proto->set('slice', JsFunction::fromCallable('slice', self::slice(), 2));
+        $proto->set('substring', JsFunction::fromCallable('substring', self::substring(), 2));
+        $proto->set('toLowerCase', JsFunction::fromCallable('toLowerCase', self::toLowerCase(), 0));
+        $proto->set('toUpperCase', JsFunction::fromCallable('toUpperCase', self::toUpperCase(), 0));
+        $proto->set('trim', JsFunction::fromCallable('trim', self::trim(), 0));
+        $proto->set('trimStart', JsFunction::fromCallable('trimStart', self::trimStart(), 0));
+        $proto->set('trimEnd', JsFunction::fromCallable('trimEnd', self::trimEnd(), 0));
+        $proto->set('split', JsFunction::fromCallable('split', self::split(), 2));
+        $proto->set('replace', JsFunction::fromCallable('replace', self::replace(), 2));
+        $proto->set('repeat', JsFunction::fromCallable('repeat', self::repeat(), 1));
+        $proto->set('padStart', JsFunction::fromCallable('padStart', self::padStart(), 1));
+        $proto->set('padEnd', JsFunction::fromCallable('padEnd', self::padEnd(), 1));
+        $proto->set('concat', JsFunction::fromCallable('concat', self::concat(), 1));
+        $proto->set('at', JsFunction::fromCallable('at', self::at(), 1));
+        $proto->set('replaceAll', JsFunction::fromCallable('replaceAll', self::replaceAll(), 2));
+        $proto->set('search', JsFunction::fromCallable('search', self::search(), 1));
+        $proto->set('match', JsFunction::fromCallable('match', self::matchFn(), 1));
+        $proto->set('matchAll', JsFunction::fromCallable('matchAll', self::matchAll(), 1));
+        $proto->set('codePointAt', JsFunction::fromCallable('codePointAt', self::codePointAt(), 1));
+        $proto->set('normalize', JsFunction::fromCallable('normalize', self::normalize(), 0));
+        $proto->set('localeCompare', JsFunction::fromCallable('localeCompare', self::localeCompare(), 1));
+        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn(), 0));
+        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::toStringFn(), 0));
 
         // Augment the existing String constructor with the prototype.
         $existing = $env->get('String');
@@ -60,8 +60,8 @@ class StringPrototype
             $proto->set('constructor', $existing);
 
             // Static methods on String constructor.
-            $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode()));
-            $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint()));
+            $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1));
+            $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1));
         }
 
         // Store the prototype so the interpreter can access it for auto-boxing.

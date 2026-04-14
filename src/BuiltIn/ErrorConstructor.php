@@ -19,7 +19,7 @@ class ErrorConstructor
         $errorTypes = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError'];
 
         foreach ($errorTypes as $name) {
-            $constructor = JsFunction::fromCallable($name, self::makeConstructor($name));
+            $constructor = JsFunction::fromCallable($name, self::makeConstructor($name), 1);
             $proto = new JsObject();
             $proto->set('name', new JsString($name));
             $proto->set('message', new JsString(''));
@@ -34,6 +34,7 @@ class ErrorConstructor
                     }
                     return new JsString($name);
                 },
+                0,
             ));
             $constructor->set('prototype', $proto);
             $env->defineVar($name, $constructor);

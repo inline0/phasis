@@ -22,13 +22,13 @@ class GlobalObject
         $env->defineVar('NaN', new JsNumber(NAN));
         $env->defineVar('Infinity', new JsNumber(INF));
 
-        $env->defineVar('parseInt', JsFunction::fromCallable('parseInt', self::parseInt()));
-        $env->defineVar('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloat()));
-        $env->defineVar('isNaN', JsFunction::fromCallable('isNaN', self::isNaN()));
-        $env->defineVar('isFinite', JsFunction::fromCallable('isFinite', self::isFinite()));
-        $env->defineVar('String', JsFunction::fromCallable('String', self::stringConstructor()));
-        $env->defineVar('Number', JsFunction::fromCallable('Number', self::numberConstructor()));
-        $env->defineVar('Boolean', JsFunction::fromCallable('Boolean', self::booleanConstructor()));
+        $env->defineVar('parseInt', JsFunction::fromCallable('parseInt', self::parseInt(), 2));
+        $env->defineVar('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloat(), 1));
+        $env->defineVar('isNaN', JsFunction::fromCallable('isNaN', self::isNaN(), 1));
+        $env->defineVar('isFinite', JsFunction::fromCallable('isFinite', self::isFinite(), 1));
+        $env->defineVar('String', JsFunction::fromCallable('String', self::stringConstructor(), 1));
+        $env->defineVar('Number', JsFunction::fromCallable('Number', self::numberConstructor(), 1));
+        $env->defineVar('Boolean', JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1));
 
         // eval
         $env->defineVar('eval', JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
@@ -40,17 +40,17 @@ class GlobalObject
             $program = $parser->parse();
             $interp = new Interpreter($env);
             return $interp->execute($program);
-        }));
+        }, 1));
 
         // encodeURIComponent / decodeURIComponent
         $env->defineVar('encodeURIComponent', JsFunction::fromCallable('encodeURIComponent', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
             return new JsString(rawurlencode($str));
-        }));
+        }, 1));
         $env->defineVar('decodeURIComponent', JsFunction::fromCallable('decodeURIComponent', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
             return new JsString(rawurldecode($str));
-        }));
+        }, 1));
         $env->defineVar('encodeURI', JsFunction::fromCallable('encodeURI', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
             return new JsString(str_replace(
@@ -58,7 +58,7 @@ class GlobalObject
                 [':', '/', '?', '#', '[', ']', '@', '!', '$', '&', "'", '(', ')', '*', '+', ',', ';', '='],
                 rawurlencode($str),
             ));
-        }));
+        }, 1));
 
         // Function constructor
         $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
@@ -74,7 +74,7 @@ class GlobalObject
             $env = new \PhpJs\Runtime\Environment();
             $interp = new Interpreter($env);
             return $interp->execute($program);
-        });
+        }, 1);
 
         // Function.prototype with call/apply/bind
         $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
@@ -84,7 +84,7 @@ class GlobalObject
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
             return $this_->call($thisArg, array_slice($args, 1));
-        }));
+        }, 1));
         $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
@@ -98,7 +98,7 @@ class GlobalObject
                 }
             }
             return $this_->call($thisArg, $callArgs);
-        }));
+        }, 2));
         $fnProto->set('bind', JsFunction::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
@@ -112,7 +112,7 @@ class GlobalObject
                     return $target->call($boundThis, array_merge($boundArgs, $callArgs));
                 },
             );
-        }));
+        }, 1));
 
         $fnConstructor->set('prototype', $fnProto);
         $env->defineVar('Function', $fnConstructor);

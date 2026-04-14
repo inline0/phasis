@@ -22,8 +22,8 @@ class JsonObject
     {
         $json = new JsObject();
 
-        $json->set('parse', JsFunction::fromCallable('parse', self::parse()));
-        $json->set('stringify', JsFunction::fromCallable('stringify', self::stringify()));
+        $json->set('parse', JsFunction::fromCallable('parse', self::parse(), 2));
+        $json->set('stringify', JsFunction::fromCallable('stringify', self::stringify(), 3));
 
         $env->defineVar('JSON', $json);
     }

@@ -35,46 +35,46 @@ class MathObject
         ));
 
         // Single-argument math functions.
-        $math->set('abs', JsFunction::fromCallable('abs', self::singleArgFn('abs')));
-        $math->set('ceil', JsFunction::fromCallable('ceil', self::singleArgFn('ceil')));
-        $math->set('floor', JsFunction::fromCallable('floor', self::singleArgFn('floor')));
-        $math->set('round', JsFunction::fromCallable('round', self::roundFn()));
-        $math->set('trunc', JsFunction::fromCallable('trunc', self::truncFn()));
-        $math->set('sqrt', JsFunction::fromCallable('sqrt', self::singleArgFn('sqrt')));
-        $math->set('cbrt', JsFunction::fromCallable('cbrt', self::cbrtFn()));
-        $math->set('log', JsFunction::fromCallable('log', self::singleArgFn('log')));
-        $math->set('log2', JsFunction::fromCallable('log2', self::log2Fn()));
-        $math->set('log10', JsFunction::fromCallable('log10', self::singleArgFn('log10')));
-        $math->set('sin', JsFunction::fromCallable('sin', self::singleArgFn('sin')));
-        $math->set('cos', JsFunction::fromCallable('cos', self::singleArgFn('cos')));
-        $math->set('tan', JsFunction::fromCallable('tan', self::singleArgFn('tan')));
-        $math->set('sign', JsFunction::fromCallable('sign', self::signFn()));
-        $math->set('fround', JsFunction::fromCallable('fround', self::froundFn()));
+        $math->set('abs', JsFunction::fromCallable('abs', self::singleArgFn('abs'), 1));
+        $math->set('ceil', JsFunction::fromCallable('ceil', self::singleArgFn('ceil'), 1));
+        $math->set('floor', JsFunction::fromCallable('floor', self::singleArgFn('floor'), 1));
+        $math->set('round', JsFunction::fromCallable('round', self::roundFn(), 1));
+        $math->set('trunc', JsFunction::fromCallable('trunc', self::truncFn(), 1));
+        $math->set('sqrt', JsFunction::fromCallable('sqrt', self::singleArgFn('sqrt'), 1));
+        $math->set('cbrt', JsFunction::fromCallable('cbrt', self::cbrtFn(), 1));
+        $math->set('log', JsFunction::fromCallable('log', self::singleArgFn('log'), 1));
+        $math->set('log2', JsFunction::fromCallable('log2', self::log2Fn(), 1));
+        $math->set('log10', JsFunction::fromCallable('log10', self::singleArgFn('log10'), 1));
+        $math->set('sin', JsFunction::fromCallable('sin', self::singleArgFn('sin'), 1));
+        $math->set('cos', JsFunction::fromCallable('cos', self::singleArgFn('cos'), 1));
+        $math->set('tan', JsFunction::fromCallable('tan', self::singleArgFn('tan'), 1));
+        $math->set('sign', JsFunction::fromCallable('sign', self::signFn(), 1));
+        $math->set('fround', JsFunction::fromCallable('fround', self::froundFn(), 1));
 
-        $math->set('exp', JsFunction::fromCallable('exp', self::singleArgFn('exp')));
-        $math->set('expm1', JsFunction::fromCallable('expm1', self::singleArgFn('expm1')));
-        $math->set('asin', JsFunction::fromCallable('asin', self::singleArgFn('asin')));
-        $math->set('acos', JsFunction::fromCallable('acos', self::singleArgFn('acos')));
-        $math->set('atan', JsFunction::fromCallable('atan', self::singleArgFn('atan')));
-        $math->set('sinh', JsFunction::fromCallable('sinh', self::singleArgFn('sinh')));
-        $math->set('cosh', JsFunction::fromCallable('cosh', self::singleArgFn('cosh')));
-        $math->set('tanh', JsFunction::fromCallable('tanh', self::singleArgFn('tanh')));
-        $math->set('asinh', JsFunction::fromCallable('asinh', self::singleArgFn('asinh')));
-        $math->set('acosh', JsFunction::fromCallable('acosh', self::singleArgFn('acosh')));
-        $math->set('atanh', JsFunction::fromCallable('atanh', self::singleArgFn('atanh')));
-        $math->set('log1p', JsFunction::fromCallable('log1p', self::singleArgFn('log1p')));
+        $math->set('exp', JsFunction::fromCallable('exp', self::singleArgFn('exp'), 1));
+        $math->set('expm1', JsFunction::fromCallable('expm1', self::singleArgFn('expm1'), 1));
+        $math->set('asin', JsFunction::fromCallable('asin', self::singleArgFn('asin'), 1));
+        $math->set('acos', JsFunction::fromCallable('acos', self::singleArgFn('acos'), 1));
+        $math->set('atan', JsFunction::fromCallable('atan', self::singleArgFn('atan'), 1));
+        $math->set('sinh', JsFunction::fromCallable('sinh', self::singleArgFn('sinh'), 1));
+        $math->set('cosh', JsFunction::fromCallable('cosh', self::singleArgFn('cosh'), 1));
+        $math->set('tanh', JsFunction::fromCallable('tanh', self::singleArgFn('tanh'), 1));
+        $math->set('asinh', JsFunction::fromCallable('asinh', self::singleArgFn('asinh'), 1));
+        $math->set('acosh', JsFunction::fromCallable('acosh', self::singleArgFn('acosh'), 1));
+        $math->set('atanh', JsFunction::fromCallable('atanh', self::singleArgFn('atanh'), 1));
+        $math->set('log1p', JsFunction::fromCallable('log1p', self::singleArgFn('log1p'), 1));
         $math->set('atan2', JsFunction::fromCallable('atan2', function (JsValue $this_, array $args): JsValue {
             $y = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $x = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
             return new JsNumber(atan2($y, $x));
-        }));
+        }, 2));
         $math->set('clz32', JsFunction::fromCallable('clz32', function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
             if ($x === 0) {
                 return new JsNumber(32.0);
             }
             return new JsNumber((float) (31 - (int) floor(log($x, 2))));
-        }));
+        }, 1));
         $math->set('imul', JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
             $a = isset($args[0]) ? TypeConversion::toInt32($args[0]) : 0;
             $b = isset($args[1]) ? TypeConversion::toInt32($args[1]) : 0;
@@ -83,14 +83,14 @@ class MathObject
                 $result -= 4294967296;
             }
             return new JsNumber((float) $result);
-        }));
+        }, 2));
 
         // Multi-argument or special functions.
-        $math->set('pow', JsFunction::fromCallable('pow', self::powFn()));
-        $math->set('max', JsFunction::fromCallable('max', self::maxFn()));
-        $math->set('min', JsFunction::fromCallable('min', self::minFn()));
-        $math->set('random', JsFunction::fromCallable('random', self::randomFn()));
-        $math->set('hypot', JsFunction::fromCallable('hypot', self::hypotFn()));
+        $math->set('pow', JsFunction::fromCallable('pow', self::powFn(), 2));
+        $math->set('max', JsFunction::fromCallable('max', self::maxFn(), 2));
+        $math->set('min', JsFunction::fromCallable('min', self::minFn(), 2));
+        $math->set('random', JsFunction::fromCallable('random', self::randomFn(), 0));
+        $math->set('hypot', JsFunction::fromCallable('hypot', self::hypotFn(), 2));
 
         $env->defineVar('Math', $math);
     }
