@@ -953,6 +953,15 @@ class Interpreter
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
+                // Function name inference: if the default is an anonymous function
+                // and the binding target is a simple identifier, name the function.
+                if (
+                    $value instanceof JsFunction
+                    && $pattern->left instanceof Identifier
+                    && $value->getName() === '(anonymous)'
+                ) {
+                    $value->setName($pattern->left->name);
+                }
             }
             $this->bindPattern($pattern->left, $value, $env);
             return;
@@ -1517,16 +1526,51 @@ class Interpreter
             return;
         }
         if ($pattern instanceof ArrayPattern) {
-            $this->bindArrayPattern($pattern, $value, $env);
+            for ($i = 0; $i < count($pattern->elements); $i++) {
+                $element = $pattern->elements[$i];
+                if ($element === null) {
+                    continue;
+                }
+                if ($element instanceof RestElement) {
+                    $rest = [];
+                    if ($value instanceof JsObject) {
+                        $len = ($value instanceof JsArray) ? $value->getLength() : 0;
+                        for ($j = $i; $j < $len; $j++) {
+                            $rest[] = $value->get((string) $j);
+                        }
+                    }
+                    $this->assignVarBinding($element->argument, JsArray::fromArray($rest), $env);
+                    break;
+                }
+                $elemValue = ($value instanceof JsObject) ? $value->get((string) $i) : JsUndefined::instance();
+                $this->assignVarBinding($element, $elemValue, $env);
+            }
             return;
         }
         if ($pattern instanceof ObjectPattern) {
-            $this->bindObjectPattern($pattern, $value, $env);
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof RestElement) {
+                    continue;
+                }
+                if ($prop instanceof AssignmentProperty) {
+                    $key = $prop->computed
+                        ? TypeConversion::toString($this->evaluate($prop->key, $env))
+                        : ($prop->key instanceof Identifier
+                            ? $prop->key->name
+                            : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                    $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
+                    $this->assignVarBinding($prop->value, $propValue, $env);
+                }
+            }
             return;
         }
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
+                // Function name inference.
+                if ($value instanceof JsFunction && $pattern->left instanceof Identifier && $value->getName() === '(anonymous)') {
+                    $value->setName($pattern->left->name);
+                }
             }
             $this->assignVarBinding($pattern->left, $value, $env);
         }
@@ -2047,6 +2091,14 @@ class Interpreter
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
+                // Function name inference for anonymous function defaults.
+                if (
+                    $value instanceof JsFunction
+                    && $pattern->left instanceof Identifier
+                    && $value->getName() === '(anonymous)'
+                ) {
+                    $value->setName($pattern->left->name);
+                }
             }
             $this->assignPatternToEnv($pattern->left, $value, $env);
             return;
@@ -2463,6 +2515,10 @@ class Interpreter
                             $elem instanceof AssignmentPattern ? $elem->right : $elem->right,
                             $env,
                         );
+                        // Function name inference.
+                        if ($elemValue instanceof JsFunction && $elemTarget instanceof Identifier && $elemValue->getName() === '(anonymous)') {
+                            $elemValue->setName($elemTarget->name);
+                        }
                     }
                     $ref = $this->resolveReference($elemTarget, $env);
                     $ref->setValue($elemValue);
@@ -2505,6 +2561,10 @@ class Interpreter
                                 : $valueNode->right,
                             $env,
                         );
+                        // Function name inference.
+                        if ($propValue instanceof JsFunction && $realTarget instanceof Identifier && $propValue->getName() === '(anonymous)') {
+                            $propValue->setName($realTarget->name);
+                        }
                     }
                     $ref = $this->resolveReference($realTarget, $env);
                     $ref->setValue($propValue);
