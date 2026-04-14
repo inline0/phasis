@@ -2336,6 +2336,11 @@ class Interpreter
      * Create a RegExp-like object from a pattern and flags string.
      * Uses PHP's PCRE2 engine under the hood.
      */
+    public function createRegExpFromConstructor(string $pattern, string $flags): JsObject
+    {
+        return $this->createRegExpObject($pattern, $flags);
+    }
+
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
         $regexpProto = null;

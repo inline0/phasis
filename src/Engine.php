@@ -74,15 +74,12 @@ class Engine
             $dateConstructor->set('now', \PhpJs\Value\JsFunction::fromCallable('now', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
         }
 
-        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $pattern = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toString($args[0]) : '';
-                $flags = isset($args[1]) ? \PhpJs\Spec\TypeConversion::toString($args[1]) : '';
-                $this_->set('source', new \PhpJs\Value\JsString($pattern));
-                $this_->set('flags', new \PhpJs\Value\JsString($flags));
-                return $this_;
-            }
-            return \PhpJs\Value\JsUndefined::instance();
+        $interp = $this->interpreter;
+        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp): \PhpJs\Value\JsValue {
+            $pattern = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toString($args[0]) : '';
+            $flags = isset($args[1]) ? \PhpJs\Spec\TypeConversion::toString($args[1]) : '';
+            // Always create a proper RegExp object via the interpreter
+            return $interp->createRegExpFromConstructor($pattern, $flags);
         });
     }
 
