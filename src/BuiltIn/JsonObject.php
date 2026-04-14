@@ -32,9 +32,16 @@ class JsonObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $text = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+
+            // Handle -0 specially (PHP json_decode loses the sign)
+            $trimmed = trim($text);
+            if ($trimmed === '-0') {
+                return new JsNumber(-0.0);
+            }
+
             $decoded = json_decode($text, true);
 
-            if ($decoded === null && $text !== 'null') {
+            if ($decoded === null && $trimmed !== 'null') {
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON');
                 }
