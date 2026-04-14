@@ -18,6 +18,7 @@ use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
+use PhpJs\Object\PropertyDescriptor;
 
 class ArrayConstructor
 {
@@ -40,7 +41,7 @@ class ArrayConstructor
 
         // Array.prototype with all standard methods.
         $proto = new JsArray();
-        $proto->set('constructor', $constructor);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
         self::installPrototypeMethods($proto);
 
         $constructor->set('prototype', $proto);
@@ -87,7 +88,7 @@ class ArrayConstructor
 
     private static function installPrototypeMethods(JsArray $proto): void
     {
-        $proto->set('push', JsFunction::fromCallable('push', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('push', PropertyDescriptor::data(JsFunction::fromCallable('push', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -95,9 +96,9 @@ class ArrayConstructor
                 if ($this_ instanceof JsArray) { $this_->push($arg); } else { $idx = self::getLen($this_); $this_->set((string) $idx, $arg); $this_->set("length", new JsNumber((float) ($idx + 1))); }
             }
             return new JsNumber((float) self::getLen($this_));
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('pop', JsFunction::fromCallable('pop', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('pop', PropertyDescriptor::data(JsFunction::fromCallable('pop', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -109,9 +110,9 @@ class ArrayConstructor
             $this_->delete((string) $newLen);
             if ($this_ instanceof JsArray) { $this_->setLength($newLen); } else { $this_->set("length", new JsNumber((float) ($newLen))); }
             return $val;
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('shift', JsFunction::fromCallable('shift', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('shift', PropertyDescriptor::data(JsFunction::fromCallable('shift', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -126,9 +127,9 @@ class ArrayConstructor
             $this_->delete((string) ($len - 1));
             if ($this_ instanceof JsArray) { $this_->setLength($len - 1); } else { $this_->set("length", new JsNumber((float) ($len - 1))); }
             return $first;
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('unshift', JsFunction::fromCallable('unshift', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('unshift', PropertyDescriptor::data(JsFunction::fromCallable('unshift', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -142,9 +143,9 @@ class ArrayConstructor
             }
             if ($this_ instanceof JsArray) { $this_->setLength($len + $count); } else { $this_->set("length", new JsNumber((float) ($len + $count))); }
             return new JsNumber((float) ($len + $count));
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('indexOf', JsFunction::fromCallable('indexOf', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data(JsFunction::fromCallable('indexOf', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -157,9 +158,9 @@ class ArrayConstructor
                 }
             }
             return new JsNumber(-1.0);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('lastIndexOf', JsFunction::fromCallable(
+        $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'lastIndexOf',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -179,9 +180,9 @@ class ArrayConstructor
                 return new JsNumber(-1.0);
             },
             1,
-        ));
+        ), true, false, true));
 
-        $proto->set('includes', JsFunction::fromCallable('includes', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('includes', PropertyDescriptor::data(JsFunction::fromCallable('includes', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -193,9 +194,9 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(false);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('join', JsFunction::fromCallable('join', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('join', PropertyDescriptor::data(JsFunction::fromCallable('join', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return new JsString('');
             }
@@ -209,9 +210,9 @@ class ArrayConstructor
                     ? '' : TypeConversion::toString($v);
             }
             return new JsString(implode($sep, $parts));
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('slice', JsFunction::fromCallable('slice', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('slice', PropertyDescriptor::data(JsFunction::fromCallable('slice', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -229,9 +230,9 @@ class ArrayConstructor
                 $result[] = $this_->get((string) $i);
             }
             return JsArray::fromArray($result);
-        }, 2));
+        }, 2), true, false, true));
 
-        $proto->set('concat', JsFunction::fromCallable('concat', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('concat', PropertyDescriptor::data(JsFunction::fromCallable('concat', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -246,9 +247,9 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('reverse', JsFunction::fromCallable('reverse', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('reverse', PropertyDescriptor::data(JsFunction::fromCallable('reverse', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -259,9 +260,9 @@ class ArrayConstructor
                 $this_->set((string) $i, $items[$i]);
             }
             return $this_;
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('map', JsFunction::fromCallable('map', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('map', PropertyDescriptor::data(JsFunction::fromCallable('map', function (JsValue $this_, array $args): JsValue {
             $obj = self::toObj($this_);
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -274,9 +275,9 @@ class ArrayConstructor
                 $result[] = $callback->call($obj, [$val, new JsNumber((float) $i), $obj]);
             }
             return JsArray::fromArray($result);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('filter', JsFunction::fromCallable('filter', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('filter', PropertyDescriptor::data(JsFunction::fromCallable('filter', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -294,9 +295,9 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('reduce', JsFunction::fromCallable('reduce', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('reduce', PropertyDescriptor::data(JsFunction::fromCallable('reduce', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -322,9 +323,9 @@ class ArrayConstructor
                 );
             }
             return $acc;
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('reduceRight', JsFunction::fromCallable(
+        $proto->defineOwnProperty('reduceRight', PropertyDescriptor::data(JsFunction::fromCallable(
             'reduceRight',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -353,9 +354,9 @@ class ArrayConstructor
                 return $acc;
             },
             1,
-        ));
+        ), true, false, true));
 
-        $proto->set('forEach', JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('forEach', PropertyDescriptor::data(JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -368,9 +369,9 @@ class ArrayConstructor
                 $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
             }
             return JsUndefined::instance();
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('find', JsFunction::fromCallable('find', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('find', PropertyDescriptor::data(JsFunction::fromCallable('find', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -387,9 +388,9 @@ class ArrayConstructor
                 }
             }
             return JsUndefined::instance();
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('findIndex', JsFunction::fromCallable('findIndex', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('findIndex', PropertyDescriptor::data(JsFunction::fromCallable('findIndex', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -406,9 +407,9 @@ class ArrayConstructor
                 }
             }
             return new JsNumber(-1.0);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('some', JsFunction::fromCallable('some', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('some', PropertyDescriptor::data(JsFunction::fromCallable('some', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -424,9 +425,9 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(false);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('every', JsFunction::fromCallable('every', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('every', PropertyDescriptor::data(JsFunction::fromCallable('every', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -442,9 +443,9 @@ class ArrayConstructor
                 }
             }
             return new JsBoolean(true);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('flat', JsFunction::fromCallable('flat', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('flat', PropertyDescriptor::data(JsFunction::fromCallable('flat', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -452,9 +453,9 @@ class ArrayConstructor
             $depth = $depthVal instanceof JsUndefined ? 1 : (int) TypeConversion::toNumber($depthVal);
             $result = self::flattenArray($this_, $depth);
             return JsArray::fromArray($result);
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('flatMap', JsFunction::fromCallable('flatMap', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('flatMap', PropertyDescriptor::data(JsFunction::fromCallable('flatMap', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -476,9 +477,9 @@ class ArrayConstructor
                 }
             }
             return JsArray::fromArray($result);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('fill', JsFunction::fromCallable('fill', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('fill', PropertyDescriptor::data(JsFunction::fromCallable('fill', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -498,9 +499,9 @@ class ArrayConstructor
                 $this_->set((string) $i, $value);
             }
             return $this_;
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('copyWithin', JsFunction::fromCallable(
+        $proto->defineOwnProperty('copyWithin', PropertyDescriptor::data(JsFunction::fromCallable(
             'copyWithin',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -542,9 +543,9 @@ class ArrayConstructor
                 return $this_;
             },
             2,
-        ));
+        ), true, false, true));
 
-        $proto->set('splice', JsFunction::fromCallable('splice', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('splice', PropertyDescriptor::data(JsFunction::fromCallable('splice', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -594,9 +595,9 @@ class ArrayConstructor
             $newLen = $len + $diff;
             if ($this_ instanceof JsArray) { $this_->setLength($newLen); } else { $this_->set("length", new JsNumber((float) ($newLen))); }
             return JsArray::fromArray($removed);
-        }, 2));
+        }, 2), true, false, true));
 
-        $proto->set('at', JsFunction::fromCallable('at', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('at', PropertyDescriptor::data(JsFunction::fromCallable('at', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -609,9 +610,9 @@ class ArrayConstructor
                 return JsUndefined::instance();
             }
             return $this_->get((string) $index);
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('sort', JsFunction::fromCallable('sort', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('sort', PropertyDescriptor::data(JsFunction::fromCallable('sort', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
@@ -654,35 +655,35 @@ class ArrayConstructor
                 $this_->set((string) $i, $items[$i]);
             }
             return $this_;
-        }, 1));
+        }, 1), true, false, true));
 
-        $proto->set('toString', JsFunction::fromCallable('toString', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return new JsString($this_->toJsString());
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('keys', JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('keys', PropertyDescriptor::data(JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key');
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('values', JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('values', PropertyDescriptor::data(JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'value');
-        }, 0));
+        }, 0), true, false, true));
 
-        $proto->set('entries', JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
+        $proto->defineOwnProperty('entries', PropertyDescriptor::data(JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
                 return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key+value');
-        }, 0));
+        }, 0), true, false, true));
     }
 
     /**

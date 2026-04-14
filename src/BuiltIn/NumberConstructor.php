@@ -87,18 +87,18 @@ class NumberConstructor
 
         // Prototype.
         $existing->set('prototype', $proto);
-        $proto->set('constructor', $existing);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
     }
 
     private static function createPrototype(): JsObject
     {
         $proto = new JsObject();
 
-        $proto->set('toFixed', JsFunction::fromCallable('toFixed', self::toFixed(), 1));
-        $proto->set('toPrecision', JsFunction::fromCallable('toPrecision', self::toPrecision(), 1));
-        $proto->set('toExponential', JsFunction::fromCallable('toExponential', self::toExponential(), 1));
-        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn(), 1));
-        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::valueOf(), 0));
+        $proto->defineOwnProperty('toFixed', PropertyDescriptor::data(JsFunction::fromCallable('toFixed', self::toFixed(), 1), true, false, true));
+        $proto->defineOwnProperty('toPrecision', PropertyDescriptor::data(JsFunction::fromCallable('toPrecision', self::toPrecision(), 1), true, false, true));
+        $proto->defineOwnProperty('toExponential', PropertyDescriptor::data(JsFunction::fromCallable('toExponential', self::toExponential(), 1), true, false, true));
+        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', self::toStringFn(), 1), true, false, true));
+        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable('valueOf', self::valueOf(), 0), true, false, true));
 
         return $proto;
     }

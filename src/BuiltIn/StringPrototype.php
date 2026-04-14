@@ -15,6 +15,7 @@ use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
+use PhpJs\Object\PropertyDescriptor;
 
 class StringPrototype
 {
@@ -22,42 +23,42 @@ class StringPrototype
     {
         $proto = new JsObject();
 
-        $proto->set('charAt', JsFunction::fromCallable('charAt', self::charAt(), 1));
-        $proto->set('charCodeAt', JsFunction::fromCallable('charCodeAt', self::charCodeAt(), 1));
-        $proto->set('indexOf', JsFunction::fromCallable('indexOf', self::indexOf(), 1));
-        $proto->set('lastIndexOf', JsFunction::fromCallable('lastIndexOf', self::lastIndexOf(), 1));
-        $proto->set('includes', JsFunction::fromCallable('includes', self::includes(), 1));
-        $proto->set('startsWith', JsFunction::fromCallable('startsWith', self::startsWith(), 1));
-        $proto->set('endsWith', JsFunction::fromCallable('endsWith', self::endsWith(), 1));
-        $proto->set('slice', JsFunction::fromCallable('slice', self::slice(), 2));
-        $proto->set('substring', JsFunction::fromCallable('substring', self::substring(), 2));
-        $proto->set('toLowerCase', JsFunction::fromCallable('toLowerCase', self::toLowerCase(), 0));
-        $proto->set('toUpperCase', JsFunction::fromCallable('toUpperCase', self::toUpperCase(), 0));
-        $proto->set('trim', JsFunction::fromCallable('trim', self::trim(), 0));
-        $proto->set('trimStart', JsFunction::fromCallable('trimStart', self::trimStart(), 0));
-        $proto->set('trimEnd', JsFunction::fromCallable('trimEnd', self::trimEnd(), 0));
-        $proto->set('split', JsFunction::fromCallable('split', self::split(), 2));
-        $proto->set('replace', JsFunction::fromCallable('replace', self::replace(), 2));
-        $proto->set('repeat', JsFunction::fromCallable('repeat', self::repeat(), 1));
-        $proto->set('padStart', JsFunction::fromCallable('padStart', self::padStart(), 1));
-        $proto->set('padEnd', JsFunction::fromCallable('padEnd', self::padEnd(), 1));
-        $proto->set('concat', JsFunction::fromCallable('concat', self::concat(), 1));
-        $proto->set('at', JsFunction::fromCallable('at', self::at(), 1));
-        $proto->set('replaceAll', JsFunction::fromCallable('replaceAll', self::replaceAll(), 2));
-        $proto->set('search', JsFunction::fromCallable('search', self::search(), 1));
-        $proto->set('match', JsFunction::fromCallable('match', self::matchFn(), 1));
-        $proto->set('matchAll', JsFunction::fromCallable('matchAll', self::matchAll(), 1));
-        $proto->set('codePointAt', JsFunction::fromCallable('codePointAt', self::codePointAt(), 1));
-        $proto->set('normalize', JsFunction::fromCallable('normalize', self::normalize(), 0));
-        $proto->set('localeCompare', JsFunction::fromCallable('localeCompare', self::localeCompare(), 1));
-        $proto->set('toString', JsFunction::fromCallable('toString', self::toStringFn(), 0));
-        $proto->set('valueOf', JsFunction::fromCallable('valueOf', self::toStringFn(), 0));
+        $proto->defineOwnProperty('charAt', PropertyDescriptor::data(JsFunction::fromCallable('charAt', self::charAt(), 1), true, false, true));
+        $proto->defineOwnProperty('charCodeAt', PropertyDescriptor::data(JsFunction::fromCallable('charCodeAt', self::charCodeAt(), 1), true, false, true));
+        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data(JsFunction::fromCallable('indexOf', self::indexOf(), 1), true, false, true));
+        $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data(JsFunction::fromCallable('lastIndexOf', self::lastIndexOf(), 1), true, false, true));
+        $proto->defineOwnProperty('includes', PropertyDescriptor::data(JsFunction::fromCallable('includes', self::includes(), 1), true, false, true));
+        $proto->defineOwnProperty('startsWith', PropertyDescriptor::data(JsFunction::fromCallable('startsWith', self::startsWith(), 1), true, false, true));
+        $proto->defineOwnProperty('endsWith', PropertyDescriptor::data(JsFunction::fromCallable('endsWith', self::endsWith(), 1), true, false, true));
+        $proto->defineOwnProperty('slice', PropertyDescriptor::data(JsFunction::fromCallable('slice', self::slice(), 2), true, false, true));
+        $proto->defineOwnProperty('substring', PropertyDescriptor::data(JsFunction::fromCallable('substring', self::substring(), 2), true, false, true));
+        $proto->defineOwnProperty('toLowerCase', PropertyDescriptor::data(JsFunction::fromCallable('toLowerCase', self::toLowerCase(), 0), true, false, true));
+        $proto->defineOwnProperty('toUpperCase', PropertyDescriptor::data(JsFunction::fromCallable('toUpperCase', self::toUpperCase(), 0), true, false, true));
+        $proto->defineOwnProperty('trim', PropertyDescriptor::data(JsFunction::fromCallable('trim', self::trim(), 0), true, false, true));
+        $proto->defineOwnProperty('trimStart', PropertyDescriptor::data(JsFunction::fromCallable('trimStart', self::trimStart(), 0), true, false, true));
+        $proto->defineOwnProperty('trimEnd', PropertyDescriptor::data(JsFunction::fromCallable('trimEnd', self::trimEnd(), 0), true, false, true));
+        $proto->defineOwnProperty('split', PropertyDescriptor::data(JsFunction::fromCallable('split', self::split(), 2), true, false, true));
+        $proto->defineOwnProperty('replace', PropertyDescriptor::data(JsFunction::fromCallable('replace', self::replace(), 2), true, false, true));
+        $proto->defineOwnProperty('repeat', PropertyDescriptor::data(JsFunction::fromCallable('repeat', self::repeat(), 1), true, false, true));
+        $proto->defineOwnProperty('padStart', PropertyDescriptor::data(JsFunction::fromCallable('padStart', self::padStart(), 1), true, false, true));
+        $proto->defineOwnProperty('padEnd', PropertyDescriptor::data(JsFunction::fromCallable('padEnd', self::padEnd(), 1), true, false, true));
+        $proto->defineOwnProperty('concat', PropertyDescriptor::data(JsFunction::fromCallable('concat', self::concat(), 1), true, false, true));
+        $proto->defineOwnProperty('at', PropertyDescriptor::data(JsFunction::fromCallable('at', self::at(), 1), true, false, true));
+        $proto->defineOwnProperty('replaceAll', PropertyDescriptor::data(JsFunction::fromCallable('replaceAll', self::replaceAll(), 2), true, false, true));
+        $proto->defineOwnProperty('search', PropertyDescriptor::data(JsFunction::fromCallable('search', self::search(), 1), true, false, true));
+        $proto->defineOwnProperty('match', PropertyDescriptor::data(JsFunction::fromCallable('match', self::matchFn(), 1), true, false, true));
+        $proto->defineOwnProperty('matchAll', PropertyDescriptor::data(JsFunction::fromCallable('matchAll', self::matchAll(), 1), true, false, true));
+        $proto->defineOwnProperty('codePointAt', PropertyDescriptor::data(JsFunction::fromCallable('codePointAt', self::codePointAt(), 1), true, false, true));
+        $proto->defineOwnProperty('normalize', PropertyDescriptor::data(JsFunction::fromCallable('normalize', self::normalize(), 0), true, false, true));
+        $proto->defineOwnProperty('localeCompare', PropertyDescriptor::data(JsFunction::fromCallable('localeCompare', self::localeCompare(), 1), true, false, true));
+        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', self::toStringFn(), 0), true, false, true));
+        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable('valueOf', self::toStringFn(), 0), true, false, true));
 
         // Augment the existing String constructor with the prototype.
         $existing = $env->get('String');
         if ($existing instanceof JsFunction) {
             $existing->set('prototype', $proto);
-            $proto->set('constructor', $existing);
+            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
             // Static methods on String constructor.
             $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1));

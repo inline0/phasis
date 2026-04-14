@@ -11,6 +11,7 @@ use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
+use PhpJs\Object\PropertyDescriptor;
 
 class ErrorConstructor
 {
@@ -21,10 +22,10 @@ class ErrorConstructor
         foreach ($errorTypes as $name) {
             $constructor = JsFunction::fromCallable($name, self::makeConstructor($name), 1);
             $proto = new JsObject();
-            $proto->set('name', new JsString($name));
-            $proto->set('message', new JsString(''));
-            $proto->set('constructor', $constructor);
-            $proto->set('toString', JsFunction::fromCallable(
+            $proto->defineOwnProperty('name', PropertyDescriptor::data(new JsString($name), true, false, true));
+            $proto->defineOwnProperty('message', PropertyDescriptor::data(new JsString(''), true, false, true));
+            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
+            $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
                 'toString',
                 function (JsValue $this_) use ($name): JsValue {
                     if ($this_ instanceof JsObject) {
@@ -35,7 +36,7 @@ class ErrorConstructor
                     return new JsString($name);
                 },
                 0,
-            ));
+            ), true, false, true));
             $constructor->set('prototype', $proto);
             $env->defineVar($name, $constructor);
         }
