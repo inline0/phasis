@@ -60,6 +60,36 @@ class GlobalObject
             ));
         }, 1));
 
+        // escape/unescape (AnnexB)
+        $env->defineVar('escape', JsFunction::fromCallable('escape', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $result = '';
+            for ($i = 0; $i < strlen($str); $i++) {
+                $c = $str[$i];
+                $code = ord($c);
+                if (($code >= 65 && $code <= 90) || ($code >= 97 && $code <= 122) || ($code >= 48 && $code <= 57)
+                    || $c === '@' || $c === '*' || $c === '_' || $c === '+' || $c === '-' || $c === '.' || $c === '/') {
+                    $result .= $c;
+                } elseif ($code < 256) {
+                    $result .= '%' . strtoupper(str_pad(dechex($code), 2, '0', STR_PAD_LEFT));
+                } else {
+                    $result .= '%u' . strtoupper(str_pad(dechex($code), 4, '0', STR_PAD_LEFT));
+                }
+            }
+            return new JsString($result);
+        }, 1));
+        $env->defineVar('unescape', JsFunction::fromCallable('unescape', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $result = preg_replace_callback('/%u([0-9A-Fa-f]{4})|%([0-9A-Fa-f]{2})/', function ($m) {
+                if (!empty($m[1])) {
+                    $chr = mb_chr((int) hexdec($m[1]), 'UTF-8');
+                    return $chr !== false ? $chr : $m[0];
+                }
+                return chr((int) hexdec($m[2]));
+            }, $str);
+            return new JsString($result ?? $str);
+        }, 1));
+
         // Function constructor
         $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
             $body = '';

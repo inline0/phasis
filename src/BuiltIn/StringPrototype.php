@@ -56,6 +56,24 @@ class StringPrototype
         $d('normalize', self::normalize(), 0);
         $d('localeCompare', self::localeCompare(), 1);
 
+        // AnnexB methods
+        $d('substr', function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $len = mb_strlen($str, 'UTF-8');
+            $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $length = isset($args[1]) && !$args[1] instanceof JsUndefined
+                ? (int) TypeConversion::toNumber($args[1]) : $len;
+            if ($start < 0) {
+                $start = max($len + $start, 0);
+            }
+            if ($length < 0) {
+                $length = 0;
+            }
+            return new JsString(mb_substr($str, $start, $length, 'UTF-8'));
+        }, 2);
+        $d('trimLeft', self::trimStart(), 0);
+        $d('trimRight', self::trimEnd(), 0);
+
         // match uses a different static method name to avoid PHP keyword conflict.
         $proto->defineOwnProperty(
             'match',
