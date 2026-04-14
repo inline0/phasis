@@ -239,16 +239,53 @@ class ObjectConstructor
     {
         return function (JsValue $this_, array $args) use ($defaultProto): JsValue {
             $proto = $args[0] ?? JsUndefined::instance();
+            $obj = null;
             if ($proto instanceof JsNull) {
-                return new JsObject(null);
+                $obj = new JsObject(null);
+            } elseif ($proto instanceof JsObject) {
+                $obj = new JsObject($proto);
+            } elseif ($proto instanceof JsUndefined) {
+                $obj = new JsObject($defaultProto);
+            } else {
+                throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
             }
-            if ($proto instanceof JsObject) {
-                return new JsObject($proto);
+
+            // Second argument: property descriptors
+            if (isset($args[1]) && $args[1] instanceof JsObject) {
+                $props = $args[1];
+                foreach ($props->getOwnEnumerableKeys() as $key) {
+                    $desc = $props->get($key);
+                    if ($desc instanceof JsObject) {
+                        $value = $desc->has('value') ? $desc->get('value') : null;
+                        $writable = $desc->has('writable')
+                            ? TypeConversion::toBoolean($desc->get('writable')) : true;
+                        $enumerable = $desc->has('enumerable')
+                            ? TypeConversion::toBoolean($desc->get('enumerable')) : false;
+                        $configurable = $desc->has('configurable')
+                            ? TypeConversion::toBoolean($desc->get('configurable')) : false;
+                        $get = $desc->has('get') ? $desc->get('get') : null;
+                        $set = $desc->has('set') ? $desc->get('set') : null;
+
+                        if ($get instanceof JsFunction || $set instanceof JsFunction) {
+                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor(
+                                $get instanceof JsFunction ? $get : null,
+                                $set instanceof JsFunction ? $set : null,
+                                $enumerable,
+                                $configurable,
+                            ));
+                        } elseif ($value !== null) {
+                            $obj->defineOwnProperty($key, new PropertyDescriptor(
+                                value: $value,
+                                writable: $writable,
+                                enumerable: $enumerable,
+                                configurable: $configurable,
+                            ));
+                        }
+                    }
+                }
             }
-            if ($proto instanceof JsUndefined) {
-                return new JsObject($defaultProto);
-            }
-            throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
+
+            return $obj;
         };
     }
 
