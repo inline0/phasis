@@ -38,9 +38,10 @@ class PropertyMap
     }
 
     /** @return list<string> Keys in insertion order. */
+    /** @return list<string> */
     public function keys(): array
     {
-        return array_keys($this->properties);
+        return array_map('strval', array_keys($this->properties));
     }
 
     /** @return list<string> Only enumerable keys, in insertion order. */
@@ -49,7 +50,7 @@ class PropertyMap
         $result = [];
         foreach ($this->properties as $key => $desc) {
             if ($desc->enumerable === true) {
-                $result[] = $key;
+                $result[] = (string) $key;
             }
         }
 
