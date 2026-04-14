@@ -1651,16 +1651,26 @@ class Interpreter
                     );
                 }
             } else {
-                $proto->set($key, $fn);
+                $proto->defineOwnProperty($key, PropertyDescriptor::data(
+                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    true,
+                    false,
+                    true,
+                ));
             }
         }
 
-        $constructor->set('prototype', $proto);
-        $proto->set('constructor', $constructor);
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
-        // Static methods
+        // Static methods (non-enumerable)
         foreach ($staticMethods as [$key, $fn, $kind]) {
-            $constructor->set($key, $fn);
+            $constructor->defineOwnProperty($key, PropertyDescriptor::data(
+                $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                true,
+                false,
+                true,
+            ));
         }
 
         // Inheritance
