@@ -34,7 +34,7 @@ class ObjectConstructor
         });
 
         $constructor->set('prototype', $proto);
-        $proto->set('constructor', $constructor);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         // Static methods.
         $constructor->set('keys', JsFunction::fromCallable('keys', self::keys(), 1));
@@ -92,7 +92,7 @@ class ObjectConstructor
     {
         $proto = new JsObject();
 
-        $proto->set('hasOwnProperty', JsFunction::fromCallable(
+        $proto->defineOwnProperty('hasOwnProperty', PropertyDescriptor::data(JsFunction::fromCallable(
             'hasOwnProperty',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -102,9 +102,9 @@ class ObjectConstructor
                 return new JsBoolean($this_->hasOwnProperty($prop));
             },
             1,
-        ));
+        ), true, false, true));
 
-        $proto->set('toString', JsFunction::fromCallable(
+        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toString',
             function (JsValue $this_): JsValue {
                 if ($this_ instanceof JsUndefined) {
@@ -116,17 +116,17 @@ class ObjectConstructor
                 return new JsString('[object Object]');
             },
             0,
-        ));
+        ), true, false, true));
 
-        $proto->set('valueOf', JsFunction::fromCallable(
+        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'valueOf',
             function (JsValue $this_): JsValue {
                 return $this_;
             },
             0,
-        ));
+        ), true, false, true));
 
-        $proto->set('propertyIsEnumerable', JsFunction::fromCallable(
+        $proto->defineOwnProperty('propertyIsEnumerable', PropertyDescriptor::data(JsFunction::fromCallable(
             'propertyIsEnumerable',
             function (JsValue $this_, array $args): JsValue {
                 if (!$this_ instanceof JsObject) {
@@ -140,9 +140,9 @@ class ObjectConstructor
                 return new JsBoolean($desc->enumerable === true);
             },
             1,
-        ));
+        ), true, false, true));
 
-        $proto->set('isPrototypeOf', JsFunction::fromCallable(
+        $proto->defineOwnProperty('isPrototypeOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'isPrototypeOf',
             function (JsValue $this_, array $args): JsValue {
                 $v = $args[0] ?? JsUndefined::instance();
@@ -162,7 +162,7 @@ class ObjectConstructor
                 return new JsBoolean(false);
             },
             1,
-        ));
+        ), true, false, true));
 
         return $proto;
     }

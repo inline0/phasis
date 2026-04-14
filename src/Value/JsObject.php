@@ -179,13 +179,16 @@ class JsObject implements JsValue
     }
 
     /** @return list<string> */
-    /** @return list<string> Own enumerable keys only. */
+    /** @return list<string> Own enumerable keys. */
     public function getOwnEnumerableKeys(): array
     {
         return $this->properties->enumerableKeys();
     }
 
-    /** @return list<string> All enumerable keys including inherited (for for-in). */
+    /**
+     * @return list<string> All enumerable keys including inherited.
+     * Used by for-in. Walks prototype chain.
+     */
     public function getEnumerableKeys(): array
     {
         $seen = [];
