@@ -609,10 +609,20 @@ class Lexer
                 continue;
             }
 
-            // Unicode whitespace: U+00A0 (NBSP), U+FEFF (BOM), U+2000-U+200A, U+202F, U+205F, U+3000
-            if ($this->isUnicodeWhitespace()) {
-                $this->skipUtf8Char();
-                continue;
+            // Multi-byte UTF-8: check Unicode whitespace and line terminators
+            if (ord($ch) >= 128) {
+                if ($this->isUnicodeLineTerminator()) {
+                    $this->lineTerminatorBefore = true;
+                    $this->pos += 3;
+                    $this->line++;
+                    $this->column = 0;
+                    continue;
+                }
+                if ($this->isUnicodeWhitespace()) {
+                    $this->skipUtf8Char();
+                    continue;
+                }
+                break;
             }
 
             // Line terminators
@@ -634,14 +644,7 @@ class Lexer
                 continue;
             }
 
-            // Unicode line terminators: U+2028 (LS), U+2029 (PS)
-            if ($this->isUnicodeLineTerminator()) {
-                $this->lineTerminatorBefore = true;
-                $this->pos += 3; // 3-byte UTF-8 sequence
-                $this->line++;
-                $this->column = 0;
-                continue;
-            }
+            // Unicode line terminators handled above in multi-byte section
 
             // Single-line comment
             $isLineComment = $ch === '/'
