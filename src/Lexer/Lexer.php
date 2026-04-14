@@ -845,24 +845,29 @@ class Lexer
             return true;
         }
         $prev = $this->tokens[count($this->tokens) - 1];
-        // After these token types, / is division (value-producing)
-        return !in_array($prev->type, [
-            TokenType::Identifier,
-            TokenType::Number,
-            TokenType::String,
-            TokenType::NoSubstitutionTemplate,
-            TokenType::TemplateTail,
-            TokenType::RegExp,
-            TokenType::RightParen,
-            TokenType::RightBracket,
-            TokenType::PlusPlus,
-            TokenType::MinusMinus,
-            TokenType::True,
-            TokenType::False,
-            TokenType::Null,
-            TokenType::This,
-            TokenType::RightBrace,
-        ], true);
+        // After value-producing tokens, / is division. After everything else, it's regex.
+        // Value-producing tokens:
+        if ($prev->type === TokenType::Identifier
+            || $prev->type === TokenType::Number
+            || $prev->type === TokenType::String
+            || $prev->type === TokenType::RegExp
+            || $prev->type === TokenType::NoSubstitutionTemplate
+            || $prev->type === TokenType::TemplateTail
+            || $prev->type === TokenType::RightParen
+            || $prev->type === TokenType::RightBracket
+            || $prev->type === TokenType::RightBrace
+            || $prev->type === TokenType::PlusPlus
+            || $prev->type === TokenType::MinusMinus
+            || $prev->type === TokenType::True
+            || $prev->type === TokenType::False
+            || $prev->type === TokenType::Null
+            || $prev->type === TokenType::This
+            || $prev->type === TokenType::Super
+        ) {
+            return false;
+        }
+        // After keywords that expect expressions, / is regex
+        return true;
     }
 
     /**

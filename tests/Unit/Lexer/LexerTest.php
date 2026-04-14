@@ -127,30 +127,32 @@ class LexerTest extends TestCase
 
     public function testOperators(): void
     {
-        $tokens = $this->tokenize('+ - * / % ** === !== && || ??');
-        $this->assertSame(TokenType::Plus, $tokens[0][0]);
-        $this->assertSame(TokenType::Minus, $tokens[1][0]);
-        $this->assertSame(TokenType::Star, $tokens[2][0]);
-        $this->assertSame(TokenType::Slash, $tokens[3][0]);
-        $this->assertSame(TokenType::Percent, $tokens[4][0]);
-        $this->assertSame(TokenType::Exponent, $tokens[5][0]);
-        $this->assertSame(TokenType::StrictEqual, $tokens[6][0]);
-        $this->assertSame(TokenType::StrictNotEqual, $tokens[7][0]);
-        $this->assertSame(TokenType::LogicalAnd, $tokens[8][0]);
-        $this->assertSame(TokenType::LogicalOr, $tokens[9][0]);
-        $this->assertSame(TokenType::NullishCoalescing, $tokens[10][0]);
+        // Use expression context so / is division (after identifier)
+        $tokens = $this->tokenize('a + b - c * d / e % f ** g === h !== i && j || k ?? l');
+        $this->assertSame(TokenType::Plus, $tokens[1][0]);
+        $this->assertSame(TokenType::Minus, $tokens[3][0]);
+        $this->assertSame(TokenType::Star, $tokens[5][0]);
+        $this->assertSame(TokenType::Slash, $tokens[7][0]);
+        $this->assertSame(TokenType::Percent, $tokens[9][0]);
+        $this->assertSame(TokenType::Exponent, $tokens[11][0]);
+        $this->assertSame(TokenType::StrictEqual, $tokens[13][0]);
+        $this->assertSame(TokenType::StrictNotEqual, $tokens[15][0]);
+        $this->assertSame(TokenType::LogicalAnd, $tokens[17][0]);
+        $this->assertSame(TokenType::LogicalOr, $tokens[19][0]);
+        $this->assertSame(TokenType::NullishCoalescing, $tokens[21][0]);
     }
 
     public function testAssignmentOperators(): void
     {
-        $tokens = $this->tokenize('= += -= *= /= **= ??=');
-        $this->assertSame(TokenType::Equal, $tokens[0][0]);
-        $this->assertSame(TokenType::PlusEqual, $tokens[1][0]);
-        $this->assertSame(TokenType::MinusEqual, $tokens[2][0]);
-        $this->assertSame(TokenType::StarEqual, $tokens[3][0]);
-        $this->assertSame(TokenType::SlashEqual, $tokens[4][0]);
-        $this->assertSame(TokenType::ExponentEqual, $tokens[5][0]);
-        $this->assertSame(TokenType::NullishCoalescingEqual, $tokens[6][0]);
+        // Use expression context so /= is SlashEqual (after identifier)
+        $tokens = $this->tokenize('a = b += c -= d *= e /= f **= g ??= h');
+        $this->assertSame(TokenType::Equal, $tokens[1][0]);
+        $this->assertSame(TokenType::PlusEqual, $tokens[3][0]);
+        $this->assertSame(TokenType::MinusEqual, $tokens[5][0]);
+        $this->assertSame(TokenType::StarEqual, $tokens[7][0]);
+        $this->assertSame(TokenType::SlashEqual, $tokens[9][0]);
+        $this->assertSame(TokenType::ExponentEqual, $tokens[11][0]);
+        $this->assertSame(TokenType::NullishCoalescingEqual, $tokens[13][0]);
     }
 
     public function testPunctuators(): void
