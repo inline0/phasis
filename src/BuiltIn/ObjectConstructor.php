@@ -117,6 +117,40 @@ class ObjectConstructor
                 if ($this_ instanceof JsNull) {
                     return new JsString('[object Null]');
                 }
+                if ($this_ instanceof JsBoolean) {
+                    return new JsString('[object Boolean]');
+                }
+                if ($this_ instanceof JsNumber) {
+                    return new JsString('[object Number]');
+                }
+                if ($this_ instanceof JsString) {
+                    return new JsString('[object String]');
+                }
+                if ($this_ instanceof JsSymbol) {
+                    return new JsString('[object Symbol]');
+                }
+                if ($this_ instanceof JsFunction) {
+                    return new JsString('[object Function]');
+                }
+                if ($this_ instanceof JsArray) {
+                    return new JsString('[object Array]');
+                }
+                // Check for Symbol.toStringTag
+                $tag = null;
+                if ($this_ instanceof JsObject) {
+                    $tagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+                    $tagVal = $this_->getBySymbol($tagSym);
+                    if ($tagVal instanceof JsString) {
+                        $tag = $tagVal->value;
+                    }
+                }
+                if ($tag !== null) {
+                    return new JsString("[object {$tag}]");
+                }
+                // Check for RegExp-like (has source property)
+                if ($this_ instanceof JsObject && $this_->has('source') && $this_->has('flags')) {
+                    return new JsString('[object RegExp]');
+                }
                 return new JsString('[object Object]');
             },
             0,
