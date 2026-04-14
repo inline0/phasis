@@ -187,7 +187,10 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $base = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $exp = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
-            return new JsNumber(pow($base, $exp));
+            if ($base === 0.0 && $exp < 0) {
+                return new JsNumber(INF);
+            }
+            return new JsNumber(@pow($base, $exp));
         };
     }
 
