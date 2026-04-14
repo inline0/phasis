@@ -307,10 +307,33 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $separator = $args[0] ?? JsUndefined::instance();
-            $limit = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : PHP_INT_MAX;
+            $limit = isset($args[1]) && !($args[1] instanceof JsUndefined)
+                ? (int) TypeConversion::toNumber($args[1]) : PHP_INT_MAX;
 
             if ($separator instanceof JsUndefined) {
                 return JsArray::fromArray([new JsString($str)]);
+            }
+
+            // RegExp separator
+            if ($separator instanceof JsObject && $separator->has('source')) {
+                $pattern = TypeConversion::toString($separator->get('source'));
+                $flags = $separator->has('flags') ? TypeConversion::toString($separator->get('flags')) : '';
+                $pcreFlags = '';
+                if (str_contains($flags, 'i')) {
+                    $pcreFlags .= 'i';
+                }
+                if (str_contains($flags, 'm')) {
+                    $pcreFlags .= 'm';
+                }
+                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+                $parts = @preg_split($pcre, $str, $limit < PHP_INT_MAX ? (int) $limit + 1 : -1);
+                if ($parts === false) {
+                    $parts = [$str];
+                }
+                if ($limit < count($parts)) {
+                    $parts = array_slice($parts, 0, $limit);
+                }
+                return JsArray::fromArray(array_map(fn($p) => new JsString($p), $parts));
             }
 
             $sep = TypeConversion::toString($separator);
@@ -339,15 +362,60 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $replacement = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
+            $searchArg = $args[0] ?? JsUndefined::instance();
+            $replArg = $args[1] ?? JsUndefined::instance();
 
-            // Replace first occurrence only.
+            // Check if search is a RegExp-like object (has source and flags)
+            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                $pattern = TypeConversion::toString($searchArg->get('source'));
+                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
+                $pcreFlags = '';
+                if (str_contains($flags, 'i')) {
+                    $pcreFlags .= 'i';
+                }
+                if (str_contains($flags, 'm')) {
+                    $pcreFlags .= 'm';
+                }
+                if (str_contains($flags, 's')) {
+                    $pcreFlags .= 's';
+                }
+                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+                $isGlobal = str_contains($flags, 'g');
+                $limit = $isGlobal ? -1 : 1;
+
+                if ($replArg instanceof JsFunction) {
+                    $result = @preg_replace_callback($pcre, function ($matches) use ($replArg, $str): string {
+                        $jsArgs = array_map(fn($m) => new JsString($m), $matches);
+                        $jsArgs[] = new JsNumber(0.0); // offset (simplified)
+                        $jsArgs[] = new JsString($str);
+                        $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
+                        return TypeConversion::toString($ret);
+                    }, $str, $limit);
+                } else {
+                    $repl = TypeConversion::toString($replArg);
+                    $result = @preg_replace($pcre, $repl, $str, $limit);
+                }
+                return new JsString($result ?? $str);
+            }
+
+            // String search — replace first occurrence only
+            $search = TypeConversion::toString($searchArg);
+            if ($replArg instanceof JsFunction) {
+                $pos = strpos($str, $search);
+                if ($pos === false) {
+                    return new JsString($str);
+                }
+                $jsArgs = [new JsString($search), new JsNumber((float) $pos), new JsString($str)];
+                $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
+                $replacement = TypeConversion::toString($ret);
+            } else {
+                $replacement = TypeConversion::toString($replArg);
+            }
+
             $pos = strpos($str, $search);
             if ($pos === false) {
                 return new JsString($str);
             }
-
             $result = substr($str, 0, $pos) . $replacement . substr($str, $pos + strlen($search));
             return new JsString($result);
         };
