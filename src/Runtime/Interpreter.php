@@ -322,7 +322,11 @@ class Interpreter
 
     private function exponentiate(float $base, float $exp): JsNumber
     {
-        return new JsNumber($base ** $exp);
+        // Handle 0 ** negative (PHP deprecation in 8.4)
+        if ($base === 0.0 && $exp < 0) {
+            return new JsNumber(INF);
+        }
+        return new JsNumber(@($base ** $exp));
     }
 
     private function relational(JsValue $x, JsValue $y, string $op): JsValue

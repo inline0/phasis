@@ -34,9 +34,9 @@ class ArrayConstructor
         });
 
         // Static methods.
-        $constructor->set('isArray', JsFunction::fromCallable('isArray', self::isArray()));
-        $constructor->set('from', JsFunction::fromCallable('from', self::from()));
-        $constructor->set('of', JsFunction::fromCallable('of', self::of()));
+        $constructor->set('isArray', JsFunction::fromCallable('isArray', self::isArray(), 1));
+        $constructor->set('from', JsFunction::fromCallable('from', self::from(), 1));
+        $constructor->set('of', JsFunction::fromCallable('of', self::of(), 0));
 
         // Array.prototype with all standard methods.
         $proto = new JsArray();
@@ -84,7 +84,7 @@ class ArrayConstructor
                 $this_->push($arg);
             }
             return new JsNumber((float) self::getLen($this_));
-        }));
+        }, 1));
 
         $proto->set('pop', JsFunction::fromCallable('pop', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -98,7 +98,7 @@ class ArrayConstructor
             $this_->delete((string) $newLen);
             $this_->setLength($newLen);
             return $val;
-        }));
+        }, 0));
 
         $proto->set('shift', JsFunction::fromCallable('shift', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -115,7 +115,7 @@ class ArrayConstructor
             $this_->delete((string) ($len - 1));
             $this_->setLength($len - 1);
             return $first;
-        }));
+        }, 0));
 
         $proto->set('unshift', JsFunction::fromCallable('unshift', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -131,7 +131,7 @@ class ArrayConstructor
             }
             $this_->setLength($len + $count);
             return new JsNumber((float) ($len + $count));
-        }));
+        }, 1));
 
         $proto->set('indexOf', JsFunction::fromCallable('indexOf', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsObject) {
@@ -146,7 +146,7 @@ class ArrayConstructor
                 }
             }
             return new JsNumber(-1.0);
-        }));
+        }, 1));
 
         $proto->set('lastIndexOf', JsFunction::fromCallable(
             'lastIndexOf',
@@ -167,6 +167,7 @@ class ArrayConstructor
                 }
                 return new JsNumber(-1.0);
             },
+            1,
         ));
 
         $proto->set('includes', JsFunction::fromCallable('includes', function (JsValue $this_, array $args): JsValue {
