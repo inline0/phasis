@@ -61,7 +61,7 @@ class GlobalObject
         }));
 
         // Function constructor
-        $env->defineVar('Function', JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
+        $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
             $body = '';
             $params = '';
             if (count($args) > 0) {
@@ -73,7 +73,48 @@ class GlobalObject
             $program = $parser->parse();
             $interp = new Interpreter(new \PhpJs\Runtime\Environment());
             return $interp->execute($program);
+        });
+
+        // Function.prototype with call/apply/bind
+        $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('call called on non-function');
+            }
+            $thisArg = $args[0] ?? JsUndefined::instance();
+            return $this_->call($thisArg, array_slice($args, 1));
         }));
+        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
+            }
+            $thisArg = $args[0] ?? JsUndefined::instance();
+            $argsArr = $args[1] ?? JsUndefined::instance();
+            $callArgs = [];
+            if ($argsArr instanceof \PhpJs\Value\JsArray) {
+                for ($i = 0; $i < $argsArr->getLength(); $i++) {
+                    $callArgs[] = $argsArr->get((string) $i);
+                }
+            }
+            return $this_->call($thisArg, $callArgs);
+        }));
+        $fnProto->set('bind', JsFunction::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
+            }
+            $boundThis = $args[0] ?? JsUndefined::instance();
+            $boundArgs = array_slice($args, 1);
+            $target = $this_;
+            return JsFunction::fromCallable(
+                'bound ' . $target->getName(),
+                function (JsValue $th, array $callArgs) use ($target, $boundThis, $boundArgs): JsValue {
+                    return $target->call($boundThis, array_merge($boundArgs, $callArgs));
+                },
+            );
+        }));
+
+        $fnConstructor->set('prototype', $fnProto);
+        $env->defineVar('Function', $fnConstructor);
     }
 
     private static function parseInt(): \Closure

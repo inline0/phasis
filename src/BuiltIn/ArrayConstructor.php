@@ -34,6 +34,26 @@ class ArrayConstructor
         $constructor->set('from', JsFunction::fromCallable('from', self::from()));
         $constructor->set('of', JsFunction::fromCallable('of', self::of()));
 
+        // Array.prototype — a JsArray with standard methods accessible via prototype chain
+        $proto = new JsArray();
+        // Install commonly accessed methods on the prototype
+        $proto->set('constructor', $constructor);
+        $proto->set('join', JsFunction::fromCallable('join', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsArray) {
+                return new JsString('');
+            }
+            $sep = isset($args[0]) && !$args[0] instanceof JsUndefined
+                ? TypeConversion::toString($args[0]) : ',';
+            $parts = [];
+            for ($i = 0; $i < $this_->getLength(); $i++) {
+                $v = $this_->get((string) $i);
+                $parts[] = ($v instanceof JsUndefined || $v instanceof \PhpJs\Value\JsNull)
+                    ? '' : TypeConversion::toString($v);
+            }
+            return new JsString(implode($sep, $parts));
+        }));
+        $constructor->set('prototype', $proto);
+
         $env->defineVar('Array', $constructor);
     }
 
