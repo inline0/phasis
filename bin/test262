@@ -26,7 +26,7 @@ $runner->setSkipFeatures([
     // Proxy/Reflect
     'Proxy', 'Reflect',
     // Weak references
-    'WeakRef', 'FinalizationRegistry', 'WeakMap', 'WeakSet', 'symbols-as-weakmap-keys',
+    'WeakRef', 'FinalizationRegistry', 'symbols-as-weakmap-keys',
     // Modules
     'import-assertions', 'import-attributes', 'dynamic-import',
     'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',

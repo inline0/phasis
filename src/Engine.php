@@ -59,6 +59,16 @@ class Engine
         \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
 
+        // WeakMap/WeakSet — use regular Map/Set storage (PHP has no weak refs for objects)
+        $this->installStubConstructor('WeakMap', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            $map = new \PhpJs\Value\JsMap();
+            return $map;
+        });
+        $this->installStubConstructor('WeakSet', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            $set = new \PhpJs\Value\JsSet();
+            return $set;
+        });
+
         // Stub constructors for Date and RegExp (minimal, enough for instanceof)
         $this->installStubConstructor('Date', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
