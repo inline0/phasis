@@ -218,7 +218,7 @@ class GlobalObject
         return function (JsValue $this_, array $args): JsValue {
             $str = empty($args) ? '' : TypeConversion::toString($args[0]);
             // When called as constructor (new String(x)), create wrapper object
-            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $this_->set('[[PrimitiveValue]]', new JsString($str));
                 $val = new JsString($str);
                 $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
@@ -236,7 +236,7 @@ class GlobalObject
         return function (JsValue $this_, array $args): JsValue {
             $num = empty($args) ? 0.0 : TypeConversion::toNumber($args[0]);
             // When called as constructor (new Number(x)), set up wrapper
-            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $this_->set('[[PrimitiveValue]]', new JsNumber($num));
                 $val = new JsNumber($num);
                 $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
@@ -251,7 +251,7 @@ class GlobalObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
-            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $this_->set('[[PrimitiveValue]]', new JsBoolean($bool));
                 $val = new JsBoolean($bool);
                 $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));

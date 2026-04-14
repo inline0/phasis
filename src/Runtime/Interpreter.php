@@ -632,6 +632,8 @@ class Interpreter
         // Create a new object with the constructor's prototype
         $proto = $callee->get('prototype');
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        // Mark as new.target so constructors can detect new vs call
+        $newObj->set('[[NewTarget]]', $callee);
 
         $result = $this->callFunction($callee, $newObj, $args);
 
