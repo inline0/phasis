@@ -362,7 +362,9 @@ class Lexer
             $hex .= $this->source[$this->pos];
             $this->advance();
         }
-        return mb_chr((int) hexdec($hex), 'UTF-8');
+        $code = (int) hexdec($hex);
+        $chr = mb_chr($code, 'UTF-8');
+        return $chr !== false ? $chr : chr($code);
     }
 
     private function readUnicodeEscape(): string
@@ -387,7 +389,8 @@ class Lexer
             if ($code > 0x10FFFF) {
                 throw new SyntaxError('Unicode escape out of range', $start);
             }
-            return mb_chr($code, 'UTF-8');
+            $chr = mb_chr($code, 'UTF-8');
+            return $chr !== false ? $chr : '?';
         }
 
         return $this->readHexEscape(4);
