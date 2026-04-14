@@ -81,7 +81,7 @@ class ArrayConstructor
                 return JsUndefined::instance();
             }
             foreach ($args as $arg) {
-                $this_->push($arg);
+                if ($this_ instanceof JsArray) { $this_->push($arg); } else { $idx = self::getLen($this_); $this_->set((string) $idx, $arg); $this_->set("length", new JsNumber((float) ($idx + 1))); }
             }
             return new JsNumber((float) self::getLen($this_));
         }, 1));
@@ -96,7 +96,7 @@ class ArrayConstructor
             $newLen = self::getLen($this_) - 1;
             $val = $this_->get((string) $newLen);
             $this_->delete((string) $newLen);
-            $this_->setLength($newLen);
+            if ($this_ instanceof JsArray) { $this_->setLength($newLen); } else { $this_->set("length", new JsNumber((float) ($newLen))); }
             return $val;
         }, 0));
 
@@ -113,7 +113,7 @@ class ArrayConstructor
                 $this_->set((string) ($i - 1), $this_->get((string) $i));
             }
             $this_->delete((string) ($len - 1));
-            $this_->setLength($len - 1);
+            if ($this_ instanceof JsArray) { $this_->setLength($len - 1); } else { $this_->set("length", new JsNumber((float) ($len - 1))); }
             return $first;
         }, 0));
 
@@ -129,7 +129,7 @@ class ArrayConstructor
             foreach ($args as $i => $arg) {
                 $this_->set((string) $i, $arg);
             }
-            $this_->setLength($len + $count);
+            if ($this_ instanceof JsArray) { $this_->setLength($len + $count); } else { $this_->set("length", new JsNumber((float) ($len + $count))); }
             return new JsNumber((float) ($len + $count));
         }, 1));
 
@@ -580,7 +580,8 @@ class ArrayConstructor
                 $this_->set((string) ($start + $idx), $item);
             }
 
-            $this_->setLength($len + $diff);
+            $newLen = $len + $diff;
+            if ($this_ instanceof JsArray) { $this_->setLength($newLen); } else { $this_->set("length", new JsNumber((float) ($newLen))); }
             return JsArray::fromArray($removed);
         }, 2));
 
