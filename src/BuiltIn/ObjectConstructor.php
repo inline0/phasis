@@ -174,7 +174,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsArray();
             }
-            $keys = $obj->getEnumerableKeys();
+            $keys = $obj->getOwnEnumerableKeys();
             $jsKeys = array_map(fn(string $k) => new JsString($k), $keys);
             return JsArray::fromArray($jsKeys);
         };
@@ -187,7 +187,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsArray();
             }
-            $keys = $obj->getEnumerableKeys();
+            $keys = $obj->getOwnEnumerableKeys();
             $values = array_map(fn(string $k) => $obj->get($k), $keys);
             return JsArray::fromArray($values);
         };
@@ -200,7 +200,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsArray();
             }
-            $keys = $obj->getEnumerableKeys();
+            $keys = $obj->getOwnEnumerableKeys();
             $entries = [];
             foreach ($keys as $key) {
                 $entries[] = JsArray::fromArray([new JsString($key), $obj->get($key)]);
@@ -225,7 +225,7 @@ class ObjectConstructor
                 if (!$source instanceof JsObject) {
                     continue;
                 }
-                $keys = $source->getEnumerableKeys();
+                $keys = $source->getOwnEnumerableKeys();
                 foreach ($keys as $key) {
                     $target->set($key, $source->get($key));
                 }
@@ -388,7 +388,7 @@ class ObjectConstructor
                 throw new \PhpJs\Exceptions\TypeError('Property descriptors must be an object');
             }
 
-            $keys = $props->getEnumerableKeys();
+            $keys = $props->getOwnEnumerableKeys();
             foreach ($keys as $key) {
                 $desc = $props->get($key);
                 if (!$desc instanceof JsObject) {

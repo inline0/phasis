@@ -157,7 +157,7 @@ class JsonObject
 
         if ($value instanceof JsObject) {
             $parts = [];
-            $keys = $value->getEnumerableKeys();
+            $keys = $value->getOwnEnumerableKeys();
             foreach ($keys as $key) {
                 $val = $value->get($key);
                 $json = self::jsValueToJson($val);
