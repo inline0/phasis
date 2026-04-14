@@ -47,8 +47,38 @@ class JsonObject
                 }
             }
 
-            return self::phpToJsValue($decoded);
+            $result = self::phpToJsValue($decoded);
+
+            // Apply reviver function if provided
+            $reviver = ($args[1] ?? null) instanceof JsFunction ? $args[1] : null;
+            if ($reviver !== null && $result instanceof JsObject) {
+                $result = self::applyReviver($result, $reviver);
+            }
+
+            return $result;
         };
+    }
+
+    private static function applyReviver(JsObject $obj, JsFunction $reviver): JsValue
+    {
+        $keys = $obj instanceof JsArray
+            ? array_map('strval', range(0, $obj->getLength() - 1))
+            : $obj->getOwnEnumerableKeys();
+
+        foreach ($keys as $key) {
+            $val = $obj->get($key);
+            if ($val instanceof JsObject) {
+                $val = self::applyReviver($val, $reviver);
+            }
+            $newVal = $reviver->call($obj, [new JsString($key), $val]);
+            if ($newVal instanceof JsUndefined) {
+                $obj->delete($key);
+            } else {
+                $obj->set($key, $newVal);
+            }
+        }
+
+        return $obj;
     }
 
     private static function stringify(): \Closure
@@ -127,6 +157,14 @@ class JsonObject
 
     private static function jsValueToJson(JsValue $value): ?string
     {
+        // Check for toJSON() method on objects
+        if ($value instanceof JsObject && $value->has('toJSON')) {
+            $toJson = $value->get('toJSON');
+            if ($toJson instanceof JsFunction) {
+                $value = $toJson->call($value, []);
+            }
+        }
+
         if ($value instanceof JsUndefined || $value instanceof JsFunction) {
             return null;
         }
