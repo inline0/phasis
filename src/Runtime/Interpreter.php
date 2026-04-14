@@ -1660,7 +1660,7 @@ class Interpreter
             }
 
             $iterEnv = $env->createChild();
-            $this->assignForBinding($node->left, new JsString($key), $iterEnv);
+            $this->assignForBinding($node->left, new JsString((string) $key), $iterEnv);
             $completion = $this->executeStatement($node->body, $iterEnv);
 
             if ($completion->type === CompletionType::Break && $completion->target === null) {
