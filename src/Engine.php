@@ -58,6 +58,41 @@ class Engine
         \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
+
+        // Stub constructors for Date and RegExp (minimal, enough for instanceof)
+        $this->installStubConstructor('Date', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+                $this_->set('toString', \PhpJs\Value\JsFunction::fromCallable('toString', fn() => new \PhpJs\Value\JsString(date('r'))));
+                $this_->set('valueOf', \PhpJs\Value\JsFunction::fromCallable('valueOf', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
+                $this_->set('getTime', \PhpJs\Value\JsFunction::fromCallable('getTime', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
+                return $this_;
+            }
+            return new \PhpJs\Value\JsString(date('r'));
+        });
+        $dateConstructor = $this->globalEnv->get('Date');
+        if ($dateConstructor instanceof \PhpJs\Value\JsFunction) {
+            $dateConstructor->set('now', \PhpJs\Value\JsFunction::fromCallable('now', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
+        }
+
+        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+                $pattern = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toString($args[0]) : '';
+                $flags = isset($args[1]) ? \PhpJs\Spec\TypeConversion::toString($args[1]) : '';
+                $this_->set('source', new \PhpJs\Value\JsString($pattern));
+                $this_->set('flags', new \PhpJs\Value\JsString($flags));
+                return $this_;
+            }
+            return \PhpJs\Value\JsUndefined::instance();
+        });
+    }
+
+    private function installStubConstructor(string $name, callable $fn): void
+    {
+        $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn);
+        $proto = new \PhpJs\Value\JsObject();
+        $proto->set('constructor', $constructor);
+        $constructor->set('prototype', $proto);
+        $this->globalEnv->defineVar($name, $constructor);
     }
 
     public function eval(string $source): mixed
