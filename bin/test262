@@ -31,8 +31,7 @@ $runner->setSkipFeatures([
     'import-assertions', 'import-attributes', 'dynamic-import',
     'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
     // Symbols (well-known) - unsupported ones
-    'Symbol.species', 'Symbol.match', 'Symbol.replace',
-    'Symbol.search', 'Symbol.split', 'Symbol.asyncIterator',
+    'Symbol.species', 'Symbol.asyncIterator',
     // Promise
     'Promise', 'Promise.allSettled', 'Promise.any', 'Promise.prototype.finally',
     // RegExp advanced
