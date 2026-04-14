@@ -14,6 +14,7 @@ use PhpJs\Value\JsObject;
 use PhpJs\Value\JsSet;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
+use PhpJs\Object\PropertyDescriptor;
 
 /**
  * Set constructor and prototype methods.
@@ -45,7 +46,7 @@ class SetConstructor
         });
 
         $constructor->set('prototype', $proto);
-        $proto->set('constructor', $constructor);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         $env->defineVar('Set', $constructor);
     }

@@ -15,6 +15,7 @@ use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
+use PhpJs\Object\PropertyDescriptor;
 
 /**
  * Map constructor and prototype methods.
@@ -49,7 +50,7 @@ class MapConstructor
         });
 
         $constructor->set('prototype', $proto);
-        $proto->set('constructor', $constructor);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         $env->defineVar('Map', $constructor);
     }
