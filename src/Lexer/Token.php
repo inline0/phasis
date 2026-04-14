@@ -11,6 +11,7 @@ readonly class Token
         public string $value,
         public SourceLocation $location,
         public bool $lineTerminatorBefore = false,
+        public ?string $rawValue = null,
     ) {
     }
 }

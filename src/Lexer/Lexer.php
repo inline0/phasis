@@ -60,6 +60,7 @@ class Lexer
                 $token->value,
                 $token->location,
                 $this->lineTerminatorBefore,
+                $token->rawValue,
             );
             $this->tokens[] = $token;
         }
@@ -405,27 +406,30 @@ class Lexer
     {
         $this->advance(); // skip opening backtick
         $result = '';
+        $raw = '';
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::NoSubstitutionTemplate, $result, $start);
+                return new Token(TokenType::NoSubstitutionTemplate, $result, $start, false, $raw);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance(); // skip $
                 $this->advance(); // skip {
-                return new Token(TokenType::TemplateHead, $result, $start);
+                return new Token(TokenType::TemplateHead, $result, $start, false, $raw);
             }
 
             if ($ch === '\\') {
+                $escapeStart = $this->pos;
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
                 $result .= $this->readEscapeSequence();
+                $raw .= self::normalizeRawSlice(substr($this->source, $escapeStart, $this->pos - $escapeStart));
                 continue;
             }
 
@@ -434,15 +438,28 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->advance();
                 }
+                // Both cooked and raw normalize CR/CRLF to LF.
                 $result .= "\n";
+                $raw .= "\n";
                 continue;
             }
 
             $result .= $ch;
+            $raw .= $ch;
             $this->advance();
         }
 
         throw new SyntaxError('Unterminated template literal', $start);
+    }
+
+    /**
+     * Normalize CR and CRLF line terminators to LF for template raw values.
+     * Per the ES spec, all line terminator sequences in raw values are
+     * normalized to <LF>.
+     */
+    private static function normalizeRawSlice(string $slice): string
+    {
+        return str_replace(["\r\n", "\r"], "\n", $slice);
     }
 
     /** Read template continuation after expression in ${...}. */
@@ -451,27 +468,30 @@ class Lexer
         $start = $this->location();
         $this->lineTerminatorBefore = false;
         $result = '';
+        $raw = '';
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::TemplateTail, $result, $start, $this->lineTerminatorBefore);
+                return new Token(TokenType::TemplateTail, $result, $start, $this->lineTerminatorBefore, $raw);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance();
                 $this->advance();
-                return new Token(TokenType::TemplateMiddle, $result, $start, $this->lineTerminatorBefore);
+                return new Token(TokenType::TemplateMiddle, $result, $start, $this->lineTerminatorBefore, $raw);
             }
 
             if ($ch === '\\') {
+                $escapeStart = $this->pos;
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
                 $result .= $this->readEscapeSequence();
+                $raw .= self::normalizeRawSlice(substr($this->source, $escapeStart, $this->pos - $escapeStart));
                 continue;
             }
 
@@ -482,6 +502,7 @@ class Lexer
                     $this->advance();
                 }
                 $result .= "\n";
+                $raw .= "\n";
                 continue;
             }
 
@@ -490,6 +511,7 @@ class Lexer
             }
 
             $result .= $ch;
+            $raw .= $ch;
             $this->advance();
         }
 

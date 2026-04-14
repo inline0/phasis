@@ -77,8 +77,18 @@ class StringPrototype
             $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
             // Static methods on String constructor.
-            $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1));
-            $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1));
+            $existing->defineOwnProperty(
+                'fromCharCode',
+                PropertyDescriptor::data(JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1), true, false, true),
+            );
+            $existing->defineOwnProperty(
+                'fromCodePoint',
+                PropertyDescriptor::data(JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1), true, false, true),
+            );
+            $existing->defineOwnProperty(
+                'raw',
+                PropertyDescriptor::data(JsFunction::fromCallable('raw', self::raw(), 1), true, false, true),
+            );
         }
 
         // Store the prototype so the interpreter can access it for auto-boxing.
@@ -748,6 +758,48 @@ class StringPrototype
                 $str .= mb_chr($code, 'UTF-8');
             }
             return new JsString($str);
+        };
+    }
+
+    /**
+     * 22.1.2.4 String.raw ( template , ...substitutions ).
+     *
+     * Used to cooperate with tagged template literals. Returns the raw string
+     * value of a template with interpolated substitutions.
+     */
+    private static function raw(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $template = $args[0] ?? JsUndefined::instance();
+            $substitutions = array_slice($args, 1);
+            $numberOfSubstitutions = count($substitutions);
+
+            $cooked = TypeConversion::toObject($template);
+            $rawValue = $cooked->get('raw');
+            $raw = TypeConversion::toObject($rawValue);
+            $literalSegments = TypeConversion::toLength($raw->get('length'));
+
+            if ($literalSegments <= 0) {
+                return new JsString('');
+            }
+
+            $result = '';
+            for ($nextIndex = 0; ; $nextIndex++) {
+                $nextKey = (string) $nextIndex;
+                $nextSeg = TypeConversion::toString($raw->get($nextKey));
+                $result .= $nextSeg;
+
+                if ($nextIndex + 1 === $literalSegments) {
+                    return new JsString($result);
+                }
+
+                if ($nextIndex < $numberOfSubstitutions) {
+                    $next = $substitutions[$nextIndex];
+                } else {
+                    $next = new JsString('');
+                }
+                $result .= TypeConversion::toString($next);
+            }
         };
     }
 }
