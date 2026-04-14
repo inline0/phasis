@@ -49,6 +49,31 @@ class ArrayConstructor
         $env->defineVar('Array', $constructor);
     }
 
+    /**
+     * Get length from array or array-like object.
+     */
+    private static function getLen(JsValue $obj): int
+    {
+        if ($obj instanceof JsArray) {
+            return $obj->getLength();
+        }
+        if ($obj instanceof JsObject) {
+            return (int) TypeConversion::toNumber($obj->get('length'));
+        }
+        return 0;
+    }
+
+    /**
+     * Ensure $this_ is an object (per spec: ToObject).
+     */
+    private static function toObj(JsValue $this_): JsObject
+    {
+        if ($this_ instanceof JsObject) {
+            return $this_;
+        }
+        return TypeConversion::toObject($this_);
+    }
+
     private static function installPrototypeMethods(JsArray $proto): void
     {
         $proto->set('push', JsFunction::fromCallable('push', function (JsValue $this_, array $args): JsValue {
@@ -123,23 +148,26 @@ class ArrayConstructor
             return new JsNumber(-1.0);
         }));
 
-        $proto->set('lastIndexOf', JsFunction::fromCallable('lastIndexOf', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.lastIndexOf called on non-array');
-            }
-            $search = $args[0] ?? JsUndefined::instance();
-            $len = $this_->getLength();
-            $from = isset($args[1]) ? (int) $args[1]->toNumber() : $len - 1;
-            if ($from < 0) {
-                $from = $len + $from;
-            }
-            for ($i = min($from, $len - 1); $i >= 0; $i--) {
-                if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
-                    return new JsNumber((float) $i);
+        $proto->set('lastIndexOf', JsFunction::fromCallable(
+            'lastIndexOf',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArray) {
+                    throw new TypeError('Array.prototype.lastIndexOf called on non-array');
                 }
-            }
-            return new JsNumber(-1.0);
-        }));
+                $search = $args[0] ?? JsUndefined::instance();
+                $len = $this_->getLength();
+                $from = isset($args[1]) ? (int) $args[1]->toNumber() : $len - 1;
+                if ($from < 0) {
+                    $from = $len + $from;
+                }
+                for ($i = min($from, $len - 1); $i >= 0; $i--) {
+                    if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
+                        return new JsNumber((float) $i);
+                    }
+                }
+                return new JsNumber(-1.0);
+            },
+        ));
 
         $proto->set('includes', JsFunction::fromCallable('includes', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsArray) {
@@ -222,18 +250,16 @@ class ArrayConstructor
         }));
 
         $proto->set('map', JsFunction::fromCallable('map', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.map called on non-array');
-            }
+            $obj = self::toObj($this_);
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
                 throw new TypeError('map callback is not a function');
             }
             $result = [];
-            $len = $this_->getLength();
+            $len = self::getLen($obj);
             for ($i = 0; $i < $len; $i++) {
-                $val = $this_->get((string) $i);
-                $result[] = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
+                $val = $obj->get((string) $i);
+                $result[] = $callback->call($obj, [$val, new JsNumber((float) $i), $obj]);
             }
             return JsArray::fromArray($result);
         }));
@@ -278,37 +304,43 @@ class ArrayConstructor
                 $start = 1;
             }
             for ($i = $start; $i < $len; $i++) {
-                $acc = $callback->call(JsUndefined::instance(), [$acc, $this_->get((string) $i), new JsNumber((float) $i), $this_]);
+                $acc = $callback->call(
+                    JsUndefined::instance(),
+                    [$acc, $this_->get((string) $i), new JsNumber((float) $i), $this_],
+                );
             }
             return $acc;
         }));
 
-        $proto->set('reduceRight', JsFunction::fromCallable('reduceRight', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.reduceRight called on non-array');
-            }
-            $callback = $args[0] ?? null;
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('reduceRight callback is not a function');
-            }
-            $len = $this_->getLength();
-            $initial = $args[1] ?? null;
-            $acc = $initial;
-            $start = $len - 1;
-            if ($acc === null) {
-                if ($len === 0) {
-                    throw new TypeError('Reduce of empty array with no initial value');
+        $proto->set('reduceRight', JsFunction::fromCallable(
+            'reduceRight',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArray) {
+                    throw new TypeError('Array.prototype.reduceRight called on non-array');
                 }
-                $acc = $this_->get((string) $start);
-                $start--;
-            }
-            for ($i = $start; $i >= 0; $i--) {
-                $val = $this_->get((string) $i);
-                $idx = new JsNumber((float) $i);
-                $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $this_]);
-            }
-            return $acc;
-        }));
+                $callback = $args[0] ?? null;
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('reduceRight callback is not a function');
+                }
+                $len = $this_->getLength();
+                $initial = $args[1] ?? null;
+                $acc = $initial;
+                $start = $len - 1;
+                if ($acc === null) {
+                    if ($len === 0) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
+                    $acc = $this_->get((string) $start);
+                    $start--;
+                }
+                for ($i = $start; $i >= 0; $i--) {
+                    $val = $this_->get((string) $i);
+                    $idx = new JsNumber((float) $i);
+                    $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $this_]);
+                }
+                return $acc;
+            },
+        ));
 
         $proto->set('forEach', JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsArray) {
@@ -455,39 +487,48 @@ class ArrayConstructor
             return $this_;
         }));
 
-        $proto->set('copyWithin', JsFunction::fromCallable('copyWithin', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.copyWithin called on non-array');
-            }
-            $len = $this_->getLength();
-            $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
-            $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
-            if ($target < 0) {
-                $target = max($len + $target, 0);
-            }
-            if ($start < 0) {
-                $start = max($len + $start, 0);
-            }
-            if ($end < 0) {
-                $end = max($len + $end, 0);
-            }
-            $target = min($target, $len);
-            $start = min($start, $len);
-            $end = min($end, $len);
-            $count = min($end - $start, $len - $target);
-            // Copy in correct direction to handle overlapping ranges.
-            if ($start < $target && $target < $start + $count) {
-                for ($i = $count - 1; $i >= 0; $i--) {
-                    $this_->set((string) ($target + $i), $this_->get((string) ($start + $i)));
+        $proto->set('copyWithin', JsFunction::fromCallable(
+            'copyWithin',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArray) {
+                    throw new TypeError('Array.prototype.copyWithin called on non-array');
                 }
-            } else {
-                for ($i = 0; $i < $count; $i++) {
-                    $this_->set((string) ($target + $i), $this_->get((string) ($start + $i)));
+                $len = $this_->getLength();
+                $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+                $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+                $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
+                if ($target < 0) {
+                    $target = max($len + $target, 0);
                 }
-            }
-            return $this_;
-        }));
+                if ($start < 0) {
+                    $start = max($len + $start, 0);
+                }
+                if ($end < 0) {
+                    $end = max($len + $end, 0);
+                }
+                $target = min($target, $len);
+                $start = min($start, $len);
+                $end = min($end, $len);
+                $count = min($end - $start, $len - $target);
+                // Copy in correct direction to handle overlapping ranges.
+                if ($start < $target && $target < $start + $count) {
+                    for ($i = $count - 1; $i >= 0; $i--) {
+                        $this_->set(
+                            (string) ($target + $i),
+                            $this_->get((string) ($start + $i)),
+                        );
+                    }
+                } else {
+                    for ($i = 0; $i < $count; $i++) {
+                        $this_->set(
+                            (string) ($target + $i),
+                            $this_->get((string) ($start + $i)),
+                        );
+                    }
+                }
+                return $this_;
+            },
+        ));
 
         $proto->set('splice', JsFunction::fromCallable('splice', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsArray) {
