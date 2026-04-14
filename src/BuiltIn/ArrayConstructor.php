@@ -358,7 +358,11 @@ class ArrayConstructor
                 $result = [];
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $this_->get((string) $i);
+                    $key = (string) $i;
+                    if (!$this_->has($key)) {
+                        continue;
+                    }
+                    $val = $this_->get($key);
                     $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($keep)) {
                         $result[] = $val;
