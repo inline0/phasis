@@ -328,11 +328,12 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('map callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $result = [];
                 $len = self::getLen($obj);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $obj->get((string) $i);
-                    $result[] = $callback->call($obj, [$val, new JsNumber((float) $i), $obj]);
+                    $result[] = $callback->call($thisArg, [$val, new JsNumber((float) $i), $obj]);
                 }
                 return JsArray::fromArray($result);
             },
@@ -349,11 +350,12 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('filter callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $result = [];
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
-                    $keep = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
+                    $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($keep)) {
                         $result[] = $val;
                     }
@@ -436,9 +438,10 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('forEach callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
+                    $callback->call($thisArg, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
                 }
                 return JsUndefined::instance();
             },
@@ -455,10 +458,11 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('find callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
-                    $result = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return $val;
                     }
@@ -478,10 +482,11 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('findIndex callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
-                    $result = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return new JsNumber((float) $i);
                     }
@@ -501,9 +506,10 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('some callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return new JsBoolean(true);
                     }
@@ -523,9 +529,10 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('every callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($this_, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
                     if (!TypeConversion::toBoolean($result)) {
                         return new JsBoolean(false);
                     }
