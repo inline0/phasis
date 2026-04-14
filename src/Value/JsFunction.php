@@ -70,10 +70,10 @@ class JsFunction extends JsObject
     /**
      * Create a host function from a PHP callable.
      */
-    public static function fromCallable(string $name, callable $fn): self
+    public static function fromCallable(string $name, callable $fn, int $length = 0): self
     {
         // Create a dummy environment for native functions
-        $instance = new self($name, [], null, new Environment());
+        $instance = new self($name, array_fill(0, $length, null), null, new Environment());
         $instance->nativeCallable = $fn(...);
         return $instance;
     }
