@@ -1159,6 +1159,10 @@ class Interpreter
             }
 
             $value = $this->evaluate($prop->value, $env);
+            // Name inference for property functions
+            if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
+                $value->setName($key);
+            }
             $obj->set($key, $value);
         }
 
@@ -1412,6 +1416,15 @@ class Interpreter
             $init = $declarator->init !== null
                 ? $this->evaluate($declarator->init, $env)
                 : JsUndefined::instance();
+
+            // Name inference: var f = function() {} → f.name = "f"
+            if (
+                $init instanceof JsFunction
+                && $declarator->id instanceof Identifier
+                && $init->getName() === '(anonymous)'
+            ) {
+                $init->setName($declarator->id->name);
+            }
 
             $this->declareBinding($node->kind, $declarator->id, $init, $env);
         }

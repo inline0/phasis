@@ -90,6 +90,11 @@ class JsFunction extends JsObject
         return $this->name;
     }
 
+    public function setName(string $name): void
+    {
+        $this->name = $name;
+    }
+
     public function isArrow(): bool
     {
         return $this->isArrow;
