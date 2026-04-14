@@ -74,6 +74,32 @@ class StringPrototype
         $d('trimLeft', self::trimStart(), 0);
         $d('trimRight', self::trimEnd(), 0);
 
+        // AnnexB HTML methods
+        $htmlTag = function (string $tag, ?string $attr = null) {
+            return function (JsValue $this_, array $args) use ($tag, $attr): JsValue {
+                $str = self::extractString($this_);
+                if ($attr !== null) {
+                    $val = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+                    $val = str_replace('"', '&quot;', $val);
+                    return new JsString("<{$tag} {$attr}=\"{$val}\">{$str}</{$tag}>");
+                }
+                return new JsString("<{$tag}>{$str}</{$tag}>");
+            };
+        };
+        $d('anchor', $htmlTag('a', 'name'), 1);
+        $d('big', $htmlTag('big'), 0);
+        $d('blink', $htmlTag('blink'), 0);
+        $d('bold', $htmlTag('b'), 0);
+        $d('fixed', $htmlTag('tt'), 0);
+        $d('fontcolor', $htmlTag('font', 'color'), 1);
+        $d('fontsize', $htmlTag('font', 'size'), 1);
+        $d('italics', $htmlTag('i'), 0);
+        $d('link', $htmlTag('a', 'href'), 1);
+        $d('small', $htmlTag('small'), 0);
+        $d('strike', $htmlTag('strike'), 0);
+        $d('sub', $htmlTag('sub'), 0);
+        $d('sup', $htmlTag('sup'), 0);
+
         // match uses a different static method name to avoid PHP keyword conflict.
         $proto->defineOwnProperty(
             'match',
