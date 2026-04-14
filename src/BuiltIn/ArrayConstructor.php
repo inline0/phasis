@@ -53,6 +53,7 @@ class ArrayConstructor
             return new JsString(implode($sep, $parts));
         }));
         $constructor->set('prototype', $proto);
+        JsArray::setGlobalPrototype($proto);
 
         $env->defineVar('Array', $constructor);
     }

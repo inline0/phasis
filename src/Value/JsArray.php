@@ -7,13 +7,19 @@ namespace PhpJs\Value;
 class JsArray extends JsObject
 {
     private int $length = 0;
+    private static ?JsObject $globalPrototype = null;
+
+    public static function setGlobalPrototype(JsObject $proto): void
+    {
+        self::$globalPrototype = $proto;
+    }
 
     /**
      * @param list<JsValue> $elements
      */
     public function __construct(array $elements = [], ?JsObject $prototype = null)
     {
-        parent::__construct($prototype);
+        parent::__construct($prototype ?? self::$globalPrototype);
 
         foreach ($elements as $index => $element) {
             $this->set((string) $index, $element);
