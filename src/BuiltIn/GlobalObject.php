@@ -216,10 +216,18 @@ class GlobalObject
     private static function stringConstructor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            if (empty($args)) {
-                return new JsString('');
+            $str = empty($args) ? '' : TypeConversion::toString($args[0]);
+            // When called as constructor (new String(x)), create wrapper object
+            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+                $this_->set('[[PrimitiveValue]]', new JsString($str));
+                $val = new JsString($str);
+                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
+                $this_->set('toString', JsFunction::fromCallable('toString', fn() => $val));
+                // Set length
+                $this_->set('length', new \PhpJs\Value\JsNumber((float) mb_strlen($str, 'UTF-8')));
+                return $this_;
             }
-            return new JsString(TypeConversion::toString($args[0]));
+            return new JsString($str);
         };
     }
 
