@@ -51,6 +51,20 @@ class JsFunction extends JsObject
         $this->isGenerator = $isGenerator;
         $this->isAsync = $isAsync;
         $this->boundThis = $boundThis;
+
+        // Set name and length as own properties (configurable, non-writable, non-enumerable)
+        $this->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsNumber((float) count($params)),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
+        $this->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString($name),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
     }
 
     /**
@@ -93,6 +107,12 @@ class JsFunction extends JsObject
     public function setName(string $name): void
     {
         $this->name = $name;
+        $this->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString($name),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
     }
 
     public function isArrow(): bool
@@ -163,8 +183,6 @@ class JsFunction extends JsObject
             'call' => self::getCallMethod(),
             'apply' => self::getApplyMethod(),
             'bind' => self::getBindMethod(),
-            'name' => new JsString($this->name),
-            'length' => new JsNumber((float) count($this->params)),
             default => JsUndefined::instance(),
         };
     }
