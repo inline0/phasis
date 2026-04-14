@@ -1068,6 +1068,7 @@ class Parser
             TokenType::Class_ => $this->parseClassExpression(),
             TokenType::New => $this->parseNewExpression(),
             TokenType::NoSubstitutionTemplate, TokenType::TemplateHead => $this->parseTemplateLiteral(),
+            TokenType::RegExp => $this->parseRegExpLiteral(),
             TokenType::Ellipsis => $this->parseSpreadElement(),
             TokenType::Async => $this->parseAsyncExpression(),
             TokenType::Super => $this->parseSuperExpression(),
@@ -1101,6 +1102,13 @@ class Parser
         }
 
         return new Literal($token->location, $value, $raw);
+    }
+
+    private function parseRegExpLiteral(): Literal
+    {
+        $token = $this->advance();
+        // Store the full regex string as value; interpreter will create RegExp object
+        return new Literal($token->location, $token->value, $token->value);
     }
 
     private function parseStringLiteral(): Literal

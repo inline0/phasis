@@ -236,6 +236,10 @@ class Interpreter
             return new JsNumber((float) $value);
         }
         if (is_string($value)) {
+            // RegExp literal: /pattern/flags
+            if (str_starts_with($value, '/') && preg_match('#^/(.+)/([gimsuy]*)$#s', $value, $m)) {
+                return $this->createRegExpObject($m[1], $m[2]);
+            }
             return new JsString($value);
         }
         return JsUndefined::instance();
@@ -2326,6 +2330,73 @@ class Interpreter
     public function getGlobalEnv(): Environment
     {
         return $this->globalEnv;
+    }
+
+    /**
+     * Create a RegExp-like object from a pattern and flags string.
+     * Uses PHP's PCRE2 engine under the hood.
+     */
+    private function createRegExpObject(string $pattern, string $flags): JsObject
+    {
+        $regexpProto = null;
+        if ($this->globalEnv->has('RegExp')) {
+            $ctor = $this->globalEnv->get('RegExp');
+            if ($ctor instanceof JsFunction) {
+                $proto = $ctor->get('prototype');
+                if ($proto instanceof JsObject) {
+                    $regexpProto = $proto;
+                }
+            }
+        }
+        $obj = new JsObject($regexpProto);
+        $obj->set('source', new JsString($pattern));
+        $obj->set('flags', new JsString($flags));
+        $obj->set('global', new JsBoolean(str_contains($flags, 'g')));
+        $obj->set('ignoreCase', new JsBoolean(str_contains($flags, 'i')));
+        $obj->set('multiline', new JsBoolean(str_contains($flags, 'm')));
+        $obj->set('lastIndex', new JsNumber(0.0));
+
+        // Build PCRE pattern
+        $pcreFlags = '';
+        if (str_contains($flags, 'i')) {
+            $pcreFlags .= 'i';
+        }
+        if (str_contains($flags, 'm')) {
+            $pcreFlags .= 'm';
+        }
+        if (str_contains($flags, 's')) {
+            $pcreFlags .= 's';
+        }
+        $pcrePattern = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+
+        $obj->set('test', JsFunction::fromCallable('test', function (JsValue $this_, array $args) use ($pcrePattern): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $result = @preg_match($pcrePattern, $str);
+            return new JsBoolean($result === 1);
+        }, 1));
+
+        $obj->set('exec', JsFunction::fromCallable('exec', function (JsValue $this_, array $args) use ($pcrePattern, $obj): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                $result = new JsArray();
+                foreach ($matches as $i => $match) {
+                    if (is_int($i)) {
+                        $result->set((string) $i, new JsString($match[0]));
+                    }
+                }
+                $result->set('length', new JsNumber((float) count(array_filter(array_keys($matches), 'is_int'))));
+                $result->set('index', new JsNumber((float) $matches[0][1]));
+                $result->set('input', new JsString($str));
+                return $result;
+            }
+            return JsNull::instance();
+        }, 1));
+
+        $obj->set('toString', JsFunction::fromCallable('toString', function () use ($pattern, $flags): JsValue {
+            return new JsString("/{$pattern}/{$flags}");
+        }, 0));
+
+        return $obj;
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */

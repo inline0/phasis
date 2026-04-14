@@ -107,6 +107,11 @@ class Lexer
             return $this->readTemplate($start);
         }
 
+        // RegExp literal: / at start of expression context
+        if ($ch === '/' && $this->canStartRegExp()) {
+            return $this->readRegExp($start);
+        }
+
         // Punctuators
         return $this->readPunctuator($start);
     }
@@ -828,5 +833,94 @@ class Lexer
             $this->pos += 4;
             $this->column++;
         }
+    }
+
+    /**
+     * Determine if / should be interpreted as a RegExp literal (vs division).
+     * After value-producing tokens, / is division. Otherwise it's a regex.
+     */
+    private function canStartRegExp(): bool
+    {
+        if (empty($this->tokens)) {
+            return true;
+        }
+        $prev = $this->tokens[count($this->tokens) - 1];
+        // After these token types, / is division (value-producing)
+        return !in_array($prev->type, [
+            TokenType::Identifier,
+            TokenType::Number,
+            TokenType::String,
+            TokenType::NoSubstitutionTemplate,
+            TokenType::TemplateTail,
+            TokenType::RegExp,
+            TokenType::RightParen,
+            TokenType::RightBracket,
+            TokenType::PlusPlus,
+            TokenType::MinusMinus,
+            TokenType::True,
+            TokenType::False,
+            TokenType::Null,
+            TokenType::This,
+            TokenType::RightBrace,
+        ], true);
+    }
+
+    /**
+     * Read a RegExp literal: /pattern/flags
+     */
+    private function readRegExp(SourceLocation $start): Token
+    {
+        $this->advance(); // skip opening /
+        $pattern = '';
+        $inCharClass = false;
+
+        while ($this->pos < $this->length) {
+            $ch = $this->source[$this->pos];
+
+            if ($ch === '\\') {
+                $pattern .= $ch;
+                $this->advance();
+                if ($this->pos < $this->length) {
+                    $pattern .= $this->source[$this->pos];
+                    $this->advance();
+                }
+                continue;
+            }
+
+            if ($ch === '[') {
+                $inCharClass = true;
+                $pattern .= $ch;
+                $this->advance();
+                continue;
+            }
+
+            if ($ch === ']' && $inCharClass) {
+                $inCharClass = false;
+                $pattern .= $ch;
+                $this->advance();
+                continue;
+            }
+
+            if ($ch === '/' && !$inCharClass) {
+                $this->advance(); // skip closing /
+                break;
+            }
+
+            if ($ch === "\n" || $ch === "\r") {
+                throw new SyntaxError('Unterminated regular expression', $start);
+            }
+
+            $pattern .= $ch;
+            $this->advance();
+        }
+
+        // Read flags
+        $flags = '';
+        while ($this->pos < $this->length && ctype_alpha($this->source[$this->pos])) {
+            $flags .= $this->source[$this->pos];
+            $this->advance();
+        }
+
+        return new Token(TokenType::RegExp, "/{$pattern}/{$flags}", $start);
     }
 }
