@@ -94,11 +94,16 @@ class NumberConstructor
     {
         $proto = new JsObject();
 
-        $proto->defineOwnProperty('toFixed', PropertyDescriptor::data(JsFunction::fromCallable('toFixed', self::toFixed(), 1), true, false, true));
-        $proto->defineOwnProperty('toPrecision', PropertyDescriptor::data(JsFunction::fromCallable('toPrecision', self::toPrecision(), 1), true, false, true));
-        $proto->defineOwnProperty('toExponential', PropertyDescriptor::data(JsFunction::fromCallable('toExponential', self::toExponential(), 1), true, false, true));
-        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', self::toStringFn(), 1), true, false, true));
-        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable('valueOf', self::valueOf(), 0), true, false, true));
+        $d = static fn (string $n, \Closure $fn, int $len) => $proto->defineOwnProperty(
+            $n,
+            PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
+        );
+
+        $d('toFixed', self::toFixed(), 1);
+        $d('toPrecision', self::toPrecision(), 1);
+        $d('toExponential', self::toExponential(), 1);
+        $d('toString', self::toStringFn(), 1);
+        $d('valueOf', self::valueOf(), 0);
 
         return $proto;
     }

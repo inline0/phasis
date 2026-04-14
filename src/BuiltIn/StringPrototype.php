@@ -23,36 +23,52 @@ class StringPrototype
     {
         $proto = new JsObject();
 
-        $proto->defineOwnProperty('charAt', PropertyDescriptor::data(JsFunction::fromCallable('charAt', self::charAt(), 1), true, false, true));
-        $proto->defineOwnProperty('charCodeAt', PropertyDescriptor::data(JsFunction::fromCallable('charCodeAt', self::charCodeAt(), 1), true, false, true));
-        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data(JsFunction::fromCallable('indexOf', self::indexOf(), 1), true, false, true));
-        $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data(JsFunction::fromCallable('lastIndexOf', self::lastIndexOf(), 1), true, false, true));
-        $proto->defineOwnProperty('includes', PropertyDescriptor::data(JsFunction::fromCallable('includes', self::includes(), 1), true, false, true));
-        $proto->defineOwnProperty('startsWith', PropertyDescriptor::data(JsFunction::fromCallable('startsWith', self::startsWith(), 1), true, false, true));
-        $proto->defineOwnProperty('endsWith', PropertyDescriptor::data(JsFunction::fromCallable('endsWith', self::endsWith(), 1), true, false, true));
-        $proto->defineOwnProperty('slice', PropertyDescriptor::data(JsFunction::fromCallable('slice', self::slice(), 2), true, false, true));
-        $proto->defineOwnProperty('substring', PropertyDescriptor::data(JsFunction::fromCallable('substring', self::substring(), 2), true, false, true));
-        $proto->defineOwnProperty('toLowerCase', PropertyDescriptor::data(JsFunction::fromCallable('toLowerCase', self::toLowerCase(), 0), true, false, true));
-        $proto->defineOwnProperty('toUpperCase', PropertyDescriptor::data(JsFunction::fromCallable('toUpperCase', self::toUpperCase(), 0), true, false, true));
-        $proto->defineOwnProperty('trim', PropertyDescriptor::data(JsFunction::fromCallable('trim', self::trim(), 0), true, false, true));
-        $proto->defineOwnProperty('trimStart', PropertyDescriptor::data(JsFunction::fromCallable('trimStart', self::trimStart(), 0), true, false, true));
-        $proto->defineOwnProperty('trimEnd', PropertyDescriptor::data(JsFunction::fromCallable('trimEnd', self::trimEnd(), 0), true, false, true));
-        $proto->defineOwnProperty('split', PropertyDescriptor::data(JsFunction::fromCallable('split', self::split(), 2), true, false, true));
-        $proto->defineOwnProperty('replace', PropertyDescriptor::data(JsFunction::fromCallable('replace', self::replace(), 2), true, false, true));
-        $proto->defineOwnProperty('repeat', PropertyDescriptor::data(JsFunction::fromCallable('repeat', self::repeat(), 1), true, false, true));
-        $proto->defineOwnProperty('padStart', PropertyDescriptor::data(JsFunction::fromCallable('padStart', self::padStart(), 1), true, false, true));
-        $proto->defineOwnProperty('padEnd', PropertyDescriptor::data(JsFunction::fromCallable('padEnd', self::padEnd(), 1), true, false, true));
-        $proto->defineOwnProperty('concat', PropertyDescriptor::data(JsFunction::fromCallable('concat', self::concat(), 1), true, false, true));
-        $proto->defineOwnProperty('at', PropertyDescriptor::data(JsFunction::fromCallable('at', self::at(), 1), true, false, true));
-        $proto->defineOwnProperty('replaceAll', PropertyDescriptor::data(JsFunction::fromCallable('replaceAll', self::replaceAll(), 2), true, false, true));
-        $proto->defineOwnProperty('search', PropertyDescriptor::data(JsFunction::fromCallable('search', self::search(), 1), true, false, true));
-        $proto->defineOwnProperty('match', PropertyDescriptor::data(JsFunction::fromCallable('match', self::matchFn(), 1), true, false, true));
-        $proto->defineOwnProperty('matchAll', PropertyDescriptor::data(JsFunction::fromCallable('matchAll', self::matchAll(), 1), true, false, true));
-        $proto->defineOwnProperty('codePointAt', PropertyDescriptor::data(JsFunction::fromCallable('codePointAt', self::codePointAt(), 1), true, false, true));
-        $proto->defineOwnProperty('normalize', PropertyDescriptor::data(JsFunction::fromCallable('normalize', self::normalize(), 0), true, false, true));
-        $proto->defineOwnProperty('localeCompare', PropertyDescriptor::data(JsFunction::fromCallable('localeCompare', self::localeCompare(), 1), true, false, true));
-        $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', self::toStringFn(), 0), true, false, true));
-        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable('valueOf', self::toStringFn(), 0), true, false, true));
+        $d = static fn (string $n, \Closure $fn, int $len) => $proto->defineOwnProperty(
+            $n,
+            PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
+        );
+
+        $d('charAt', self::charAt(), 1);
+        $d('charCodeAt', self::charCodeAt(), 1);
+        $d('indexOf', self::indexOf(), 1);
+        $d('lastIndexOf', self::lastIndexOf(), 1);
+        $d('includes', self::includes(), 1);
+        $d('startsWith', self::startsWith(), 1);
+        $d('endsWith', self::endsWith(), 1);
+        $d('slice', self::slice(), 2);
+        $d('substring', self::substring(), 2);
+        $d('toLowerCase', self::toLowerCase(), 0);
+        $d('toUpperCase', self::toUpperCase(), 0);
+        $d('trim', self::trim(), 0);
+        $d('trimStart', self::trimStart(), 0);
+        $d('trimEnd', self::trimEnd(), 0);
+        $d('split', self::split(), 2);
+        $d('replace', self::replace(), 2);
+        $d('repeat', self::repeat(), 1);
+        $d('padStart', self::padStart(), 1);
+        $d('padEnd', self::padEnd(), 1);
+        $d('concat', self::concat(), 1);
+        $d('at', self::at(), 1);
+        $d('replaceAll', self::replaceAll(), 2);
+        $d('search', self::search(), 1);
+        $d('matchAll', self::matchAll(), 1);
+        $d('codePointAt', self::codePointAt(), 1);
+        $d('normalize', self::normalize(), 0);
+        $d('localeCompare', self::localeCompare(), 1);
+
+        // match uses a different static method name to avoid PHP keyword conflict.
+        $proto->defineOwnProperty(
+            'match',
+            PropertyDescriptor::data(JsFunction::fromCallable('match', self::matchFn(), 1), true, false, true),
+        );
+        $proto->defineOwnProperty(
+            'toString',
+            PropertyDescriptor::data(JsFunction::fromCallable('toString', self::toStringFn(), 0), true, false, true),
+        );
+        $proto->defineOwnProperty(
+            'valueOf',
+            PropertyDescriptor::data(JsFunction::fromCallable('valueOf', self::toStringFn(), 0), true, false, true),
+        );
 
         // Augment the existing String constructor with the prototype.
         $existing = $env->get('String');

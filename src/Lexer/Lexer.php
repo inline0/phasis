@@ -847,7 +847,8 @@ class Lexer
         $prev = $this->tokens[count($this->tokens) - 1];
         // After value-producing tokens, / is division. After everything else, it's regex.
         // Value-producing tokens:
-        if ($prev->type === TokenType::Identifier
+        if (
+            $prev->type === TokenType::Identifier
             || $prev->type === TokenType::Number
             || $prev->type === TokenType::String
             || $prev->type === TokenType::RegExp
