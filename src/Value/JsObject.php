@@ -11,14 +11,20 @@ class JsObject implements JsValue
 {
     protected PropertyMap $properties;
     private ?JsObject $prototype;
+    private static ?JsObject $globalPrototype = null;
 
     /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
     protected array $symbolProperties = [];
 
+    public static function setGlobalPrototype(JsObject $proto): void
+    {
+        self::$globalPrototype = $proto;
+    }
+
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();
-        $this->prototype = $prototype;
+        $this->prototype = $prototype ?? self::$globalPrototype;
     }
 
     public function get(string $name): JsValue
