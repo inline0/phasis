@@ -61,7 +61,7 @@ class Engine
 
         // Stub constructors for Date and RegExp (minimal, enough for instanceof)
         $this->installStubConstructor('Date', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $this_->set('toString', \PhpJs\Value\JsFunction::fromCallable('toString', fn() => new \PhpJs\Value\JsString(date('r'))));
                 $this_->set('valueOf', \PhpJs\Value\JsFunction::fromCallable('valueOf', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
                 $this_->set('getTime', \PhpJs\Value\JsFunction::fromCallable('getTime', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
@@ -75,7 +75,7 @@ class Engine
         }
 
         $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            if ($this_ instanceof \PhpJs\Value\JsObject && !$this_ instanceof \PhpJs\Value\JsFunction) {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $pattern = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toString($args[0]) : '';
                 $flags = isset($args[1]) ? \PhpJs\Spec\TypeConversion::toString($args[1]) : '';
                 $this_->set('source', new \PhpJs\Value\JsString($pattern));

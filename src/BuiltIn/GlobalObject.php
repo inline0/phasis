@@ -68,10 +68,11 @@ class GlobalObject
                 $body = TypeConversion::toString(array_pop($args));
                 $params = implode(',', array_map(fn(JsValue $a) => TypeConversion::toString($a), $args));
             }
-            $source = "function anonymous({$params}) { {$body} }";
+            $source = "(function anonymous({$params}) { {$body} })";
             $parser = new \PhpJs\Parser\Parser($source);
             $program = $parser->parse();
-            $interp = new Interpreter(new \PhpJs\Runtime\Environment());
+            $env = new \PhpJs\Runtime\Environment();
+            $interp = new Interpreter($env);
             return $interp->execute($program);
         });
 
