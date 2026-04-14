@@ -77,8 +77,8 @@ class ArrayConstructor
     private static function installPrototypeMethods(JsArray $proto): void
     {
         $proto->set('push', JsFunction::fromCallable('push', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.push called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             foreach ($args as $arg) {
                 $this_->push($arg);
@@ -87,8 +87,8 @@ class ArrayConstructor
         }));
 
         $proto->set('pop', JsFunction::fromCallable('pop', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.pop called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             if ($this_->getLength() === 0) {
                 return JsUndefined::instance();
@@ -101,8 +101,8 @@ class ArrayConstructor
         }));
 
         $proto->set('shift', JsFunction::fromCallable('shift', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.shift called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             if ($len === 0) {
@@ -118,8 +118,8 @@ class ArrayConstructor
         }));
 
         $proto->set('unshift', JsFunction::fromCallable('unshift', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.unshift called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             $count = count($args);
@@ -134,8 +134,8 @@ class ArrayConstructor
         }));
 
         $proto->set('indexOf', JsFunction::fromCallable('indexOf', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.indexOf called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $search = $args[0] ?? JsUndefined::instance();
             $from = isset($args[1]) ? (int) $args[1]->toNumber() : 0;
@@ -151,8 +151,8 @@ class ArrayConstructor
         $proto->set('lastIndexOf', JsFunction::fromCallable(
             'lastIndexOf',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsArray) {
-                    throw new TypeError('Array.prototype.lastIndexOf called on non-array');
+                if (!$this_ instanceof JsObject) {
+                    return JsUndefined::instance();
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $len = $this_->getLength();
@@ -170,8 +170,8 @@ class ArrayConstructor
         ));
 
         $proto->set('includes', JsFunction::fromCallable('includes', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.includes called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $search = $args[0] ?? JsUndefined::instance();
             $len = $this_->getLength();
@@ -184,7 +184,7 @@ class ArrayConstructor
         }));
 
         $proto->set('join', JsFunction::fromCallable('join', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
+            if (!$this_ instanceof JsObject) {
                 return new JsString('');
             }
             $sep = isset($args[0]) && !$args[0] instanceof JsUndefined
@@ -200,8 +200,8 @@ class ArrayConstructor
         }));
 
         $proto->set('slice', JsFunction::fromCallable('slice', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.slice called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             $start = isset($args[0]) ? (int) $args[0]->toNumber() : 0;
@@ -220,8 +220,8 @@ class ArrayConstructor
         }));
 
         $proto->set('concat', JsFunction::fromCallable('concat', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.concat called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $result = $this_->toList();
             foreach ($args as $arg) {
@@ -237,8 +237,8 @@ class ArrayConstructor
         }));
 
         $proto->set('reverse', JsFunction::fromCallable('reverse', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.reverse called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $items = $this_->toList();
             $items = array_reverse($items);
@@ -265,8 +265,8 @@ class ArrayConstructor
         }));
 
         $proto->set('filter', JsFunction::fromCallable('filter', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.filter called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -285,8 +285,8 @@ class ArrayConstructor
         }));
 
         $proto->set('reduce', JsFunction::fromCallable('reduce', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.reduce called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -315,8 +315,8 @@ class ArrayConstructor
         $proto->set('reduceRight', JsFunction::fromCallable(
             'reduceRight',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsArray) {
-                    throw new TypeError('Array.prototype.reduceRight called on non-array');
+                if (!$this_ instanceof JsObject) {
+                    return JsUndefined::instance();
                 }
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
@@ -343,8 +343,8 @@ class ArrayConstructor
         ));
 
         $proto->set('forEach', JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.forEach called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -358,8 +358,8 @@ class ArrayConstructor
         }));
 
         $proto->set('find', JsFunction::fromCallable('find', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.find called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -377,8 +377,8 @@ class ArrayConstructor
         }));
 
         $proto->set('findIndex', JsFunction::fromCallable('findIndex', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.findIndex called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -396,8 +396,8 @@ class ArrayConstructor
         }));
 
         $proto->set('some', JsFunction::fromCallable('some', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.some called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -414,8 +414,8 @@ class ArrayConstructor
         }));
 
         $proto->set('every', JsFunction::fromCallable('every', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.every called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -432,8 +432,8 @@ class ArrayConstructor
         }));
 
         $proto->set('flat', JsFunction::fromCallable('flat', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.flat called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $depthVal = $args[0] ?? JsUndefined::instance();
             $depth = $depthVal instanceof JsUndefined ? 1 : (int) TypeConversion::toNumber($depthVal);
@@ -442,8 +442,8 @@ class ArrayConstructor
         }));
 
         $proto->set('flatMap', JsFunction::fromCallable('flatMap', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.flatMap called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $callback = $args[0] ?? null;
             if (!$callback instanceof JsFunction) {
@@ -466,8 +466,8 @@ class ArrayConstructor
         }));
 
         $proto->set('fill', JsFunction::fromCallable('fill', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.fill called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             $value = $args[0] ?? JsUndefined::instance();
@@ -490,8 +490,8 @@ class ArrayConstructor
         $proto->set('copyWithin', JsFunction::fromCallable(
             'copyWithin',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsArray) {
-                    throw new TypeError('Array.prototype.copyWithin called on non-array');
+                if (!$this_ instanceof JsObject) {
+                    return JsUndefined::instance();
                 }
                 $len = $this_->getLength();
                 $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
@@ -531,8 +531,8 @@ class ArrayConstructor
         ));
 
         $proto->set('splice', JsFunction::fromCallable('splice', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.splice called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
@@ -582,8 +582,8 @@ class ArrayConstructor
         }));
 
         $proto->set('at', JsFunction::fromCallable('at', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.at called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $len = $this_->getLength();
             $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
@@ -597,8 +597,8 @@ class ArrayConstructor
         }));
 
         $proto->set('sort', JsFunction::fromCallable('sort', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.sort called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             $compareFn = ($args[0] ?? null) instanceof JsFunction ? $args[0] : null;
             $items = $this_->toList();
@@ -642,29 +642,29 @@ class ArrayConstructor
         }));
 
         $proto->set('toString', JsFunction::fromCallable('toString', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.toString called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             return new JsString($this_->toJsString());
         }));
 
         $proto->set('keys', JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.keys called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key');
         }));
 
         $proto->set('values', JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.values called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'value');
         }));
 
         $proto->set('entries', JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArray) {
-                throw new TypeError('Array.prototype.entries called on non-array');
+            if (!$this_ instanceof JsObject) {
+                return JsUndefined::instance();
             }
             return self::createArrayIterator($this_, 'key+value');
         }));
