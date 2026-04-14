@@ -34,10 +34,14 @@ class ArrayConstructor
             return JsArray::fromArray($args);
         });
 
-        // Static methods.
+        // Static methods (non-enumerable per spec).
         $constructor->set('isArray', JsFunction::fromCallable('isArray', self::isArray(), 1));
-        $constructor->set('from', JsFunction::fromCallable('from', self::from(), 1));
-        $constructor->set('of', JsFunction::fromCallable('of', self::of(), 0));
+        $fromFn = JsFunction::fromCallable('from', self::from(), 1);
+        $fromFn->setNonConstructable();
+        $constructor->defineOwnProperty('from', \PhpJs\Object\PropertyDescriptor::data($fromFn, true, false, true));
+        $ofFn = JsFunction::fromCallable('of', self::of(), 0);
+        $ofFn->setNonConstructable();
+        $constructor->defineOwnProperty('of', \PhpJs\Object\PropertyDescriptor::data($ofFn, true, false, true));
 
         // Array.prototype with all standard methods.
         $proto = new JsArray();
@@ -898,53 +902,105 @@ class ArrayConstructor
     {
         return function (JsValue $this_, array $args): JsValue {
             $arrayLike = $args[0] ?? JsUndefined::instance();
-            $mapFn = ($args[1] ?? null) instanceof JsFunction ? $args[1] : null;
 
-            // Handle JsArray.
-            if ($arrayLike instanceof JsArray) {
-                $items = [];
-                $len = $arrayLike->getLength();
-                for ($i = 0; $i < $len; $i++) {
-                    $val = $arrayLike->get((string) $i);
-                    if ($mapFn !== null) {
-                        $val = $mapFn->call(JsUndefined::instance(), [$val, new JsNumber((float) $i)]);
-                    }
-                    $items[] = $val;
-                }
-                return JsArray::fromArray($items);
+            // Null/undefined throw TypeError per spec.
+            if ($arrayLike instanceof JsNull || $arrayLike instanceof JsUndefined) {
+                throw new TypeError('Array.from called on null or undefined');
             }
 
-            // Handle JsString: split into characters.
-            if ($arrayLike instanceof JsString) {
-                $items = [];
-                $str = $arrayLike->value;
-                $len = mb_strlen($str, 'UTF-8');
-                for ($i = 0; $i < $len; $i++) {
-                    $char = mb_substr($str, $i, 1, 'UTF-8');
-                    $val = new JsString($char);
-                    if ($mapFn !== null) {
-                        $val = $mapFn->call(JsUndefined::instance(), [$val, new JsNumber((float) $i)]);
-                    }
-                    $items[] = $val;
+            // Validate mapFn if provided.
+            $mapFnRaw = $args[1] ?? JsUndefined::instance();
+            $mapFn = null;
+            if (!$mapFnRaw instanceof JsUndefined) {
+                if (!$mapFnRaw instanceof JsFunction) {
+                    throw new TypeError('Array.from: when provided, the second argument must be a function');
                 }
-                return JsArray::fromArray($items);
+                $mapFn = $mapFnRaw;
+            }
+            $mapThisArg = $args[2] ?? JsUndefined::instance();
+
+            // Check for Symbol.iterator first (iterables take precedence over array-like).
+            if ($arrayLike instanceof JsObject || $arrayLike instanceof JsString) {
+                $iterSym = SymbolConstructor::iterator();
+                $iteratorMethod = null;
+
+                if ($arrayLike instanceof JsObject) {
+                    $iteratorMethod = $arrayLike->getBySymbol($iterSym);
+                } elseif ($arrayLike instanceof JsString) {
+                    // Strings are iterable; handle below as special case.
+                }
+
+                if ($iteratorMethod instanceof JsFunction || $arrayLike instanceof JsString) {
+                    $items = [];
+                    $index = 0;
+
+                    if ($arrayLike instanceof JsString) {
+                        // Iterate string code points.
+                        $str = $arrayLike->value;
+                        $len = mb_strlen($str, 'UTF-8');
+                        for ($i = 0; $i < $len; $i++) {
+                            $val = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
+                            if ($mapFn !== null) {
+                                $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
+                            }
+                            $items[] = $val;
+                            $index++;
+                        }
+                    } else {
+                        // Use the iterator protocol.
+                        $iterator = $iteratorMethod->call($arrayLike, []);
+                        if (!$iterator instanceof JsObject) {
+                            throw new TypeError('Array.from: iterator is not an object');
+                        }
+                        while (true) {
+                            $nextMethod = $iterator->get('next');
+                            if (!$nextMethod instanceof JsFunction) {
+                                break;
+                            }
+                            $result = $nextMethod->call($iterator, []);
+                            if (!$result instanceof JsObject) {
+                                throw new TypeError('Array.from: iterator result is not an object');
+                            }
+                            $done = TypeConversion::toBoolean($result->get('done'));
+                            if ($done) {
+                                break;
+                            }
+                            $val = $result->get('value');
+                            if ($mapFn !== null) {
+                                $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
+                            }
+                            $items[] = $val;
+                            $index++;
+                        }
+                    }
+
+                    $resultArr = JsArray::fromArray($items);
+                    return $resultArr;
+                }
             }
 
-            // Handle array-like objects with a length property.
+            // Fall back to array-like handling (length property).
             if ($arrayLike instanceof JsObject) {
                 $lenVal = $arrayLike->get('length');
+                if ($lenVal instanceof JsUndefined || $lenVal instanceof JsNull) {
+                    return new JsArray();
+                }
                 $len = (int) TypeConversion::toNumber($lenVal);
+                if ($len < 0) {
+                    return new JsArray();
+                }
                 $items = [];
                 for ($i = 0; $i < $len; $i++) {
                     $val = $arrayLike->get((string) $i);
                     if ($mapFn !== null) {
-                        $val = $mapFn->call(JsUndefined::instance(), [$val, new JsNumber((float) $i)]);
+                        $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
                     }
                     $items[] = $val;
                 }
                 return JsArray::fromArray($items);
             }
 
+            // Primitive values without iterators: return empty array.
             return new JsArray();
         };
     }

@@ -33,7 +33,8 @@ class JsArray extends JsObject
     private function installSymbolIterator(): void
     {
         $array = $this;
-        $factory = function () use ($array): JsValue {
+        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $factory = function () use ($array, $iterSym): JsValue {
             $index = 0;
             $iterator = new JsObject();
             $nextFn = function () use ($array, &$index): JsValue {
@@ -49,10 +50,13 @@ class JsArray extends JsObject
                 return $result;
             };
             $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            // Iterators are also iterables: [Symbol.iterator]() returns this.
+            $iterator->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
+                return $self_;
+            }));
             return $iterator;
         };
         $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
-        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
         $this->setBySymbol($iterSym, $iteratorFn);
     }
 

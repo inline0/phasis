@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\BuiltIn;
 
+use PhpJs\Exceptions\TypeError;
 use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Runtime\Environment;
 use PhpJs\Spec\AbstractOperations;
@@ -15,6 +16,7 @@ use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
+use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -69,15 +71,17 @@ class ObjectConstructor
         ));
         $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto), 1));
 
-        // Modern APIs
-        $constructor->set('hasOwn', JsFunction::fromCallable('hasOwn', function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                throw new TypeError('Object.hasOwn called on non-object');
+        // Modern APIs (non-enumerable per spec)
+        $hasOwnFn = JsFunction::fromCallable('hasOwn', function (JsValue $this_, array $args): JsValue {
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
+            $key = TypeConversion::toPropertyKey($args[1] ?? JsUndefined::instance());
+            if ($key instanceof JsSymbol) {
+                return new JsBoolean($obj->hasBySymbol($key));
             }
-            $prop = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
-            return new JsBoolean($obj->hasOwnProperty($prop));
-        }, 2));
+            return new JsBoolean($obj->hasOwnProperty($key->toJsString()));
+        }, 2);
+        $hasOwnFn->setNonConstructable();
+        $constructor->defineOwnProperty('hasOwn', PropertyDescriptor::data($hasOwnFn, true, false, true));
 
         $env->defineVar('Object', $constructor);
 
@@ -294,14 +298,15 @@ class ObjectConstructor
         return function (JsValue $this_, array $args): JsValue {
             $obj = $args[0] ?? JsUndefined::instance();
             if (!$obj instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('Object.defineProperty called on non-object');
+                throw new TypeError('Object.defineProperty called on non-object');
             }
 
-            $prop = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
+            $keyRaw = $args[1] ?? JsUndefined::instance();
+            $propKey = TypeConversion::toPropertyKey($keyRaw);
             $desc = $args[2] ?? JsUndefined::instance();
 
             if (!$desc instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('Property description must be an object');
+                throw new TypeError('Property description must be an object');
             }
 
             $value = $desc->has('value') ? $desc->get('value') : null;
@@ -315,29 +320,39 @@ class ObjectConstructor
                 $g = $desc->get('get');
                 if ($g instanceof JsFunction) {
                     $getter = $g;
+                } elseif (!$g instanceof JsUndefined) {
+                    throw new TypeError('Getter must be a function');
                 }
             }
             if ($desc->has('set')) {
                 $s = $desc->get('set');
                 if ($s instanceof JsFunction) {
                     $setter = $s;
+                } elseif (!$s instanceof JsUndefined) {
+                    throw new TypeError('Setter must be a function');
                 }
             }
 
             if ($getter !== null || $setter !== null) {
-                $obj->defineOwnProperty($prop, PropertyDescriptor::accessor(
+                $descriptor = PropertyDescriptor::accessor(
                     get: $getter,
                     set: $setter,
                     enumerable: $enumerable ?? false,
                     configurable: $configurable ?? false,
-                ));
+                );
             } else {
-                $obj->defineOwnProperty($prop, new PropertyDescriptor(
+                $descriptor = new PropertyDescriptor(
                     value: $value,
                     writable: $writable ?? false,
                     enumerable: $enumerable ?? false,
                     configurable: $configurable ?? false,
-                ));
+                );
+            }
+
+            if ($propKey instanceof JsSymbol) {
+                $obj->definePropertyBySymbol($propKey, $descriptor);
+            } else {
+                $obj->defineOwnProperty($propKey->toJsString(), $descriptor);
             }
 
             return $obj;
@@ -482,8 +497,15 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return JsUndefined::instance();
             }
-            $prop = isset($args[1]) ? TypeConversion::toString($args[1]) : 'undefined';
-            $desc = $obj->getOwnPropertyDescriptor($prop);
+            $keyRaw = $args[1] ?? JsUndefined::instance();
+            $propKey = TypeConversion::toPropertyKey($keyRaw);
+
+            if ($propKey instanceof JsSymbol) {
+                $desc = $obj->getSymbolPropertyDescriptor($propKey);
+            } else {
+                $desc = $obj->getOwnPropertyDescriptor($propKey->toJsString());
+            }
+
             if ($desc === null) {
                 return JsUndefined::instance();
             }

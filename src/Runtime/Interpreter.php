@@ -415,13 +415,42 @@ class Interpreter
     {
         if ($argument instanceof MemberExpression) {
             $obj = $this->evaluate($argument->object, $env);
+            if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+                throw new TypeError(
+                    'Cannot read properties of ' . ($obj instanceof JsNull ? 'null' : 'undefined') . ' (deleting)',
+                );
+            }
             if ($obj instanceof JsObject) {
-                $key = $argument->computed
-                    ? TypeConversion::toString($this->evaluate($argument->property, $env))
-                    : ($argument->property instanceof Identifier ? $argument->property->name : '');
+                $rawKey = null;
+                if ($argument->computed) {
+                    $rawKey = $this->evaluate($argument->property, $env);
+                    if ($rawKey instanceof JsSymbol) {
+                        // Delete symbol-keyed property.
+                        $id = $rawKey->getId();
+                        // Currently we just return true for symbol deletes (not fully spec-compliant).
+                        return new JsBoolean(true);
+                    }
+                    $key = TypeConversion::toString($rawKey);
+                } else {
+                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
+                }
                 return new JsBoolean($obj->delete($key));
             }
+            // Deleting a property on a non-object primitive: return true.
+            return new JsBoolean(true);
         }
+
+        // Delete on an identifier reference.
+        if ($argument instanceof Identifier) {
+            $name = $argument->name;
+            if (!$env->has($name)) {
+                // Unresolvable reference: return true.
+                return new JsBoolean(true);
+            }
+            return new JsBoolean($env->deleteBinding($name));
+        }
+
+        // All other cases (literal, etc.): return true.
         return new JsBoolean(true);
     }
 
@@ -631,7 +660,7 @@ class Interpreter
     {
         $callee = $this->evaluate($node->callee, $env);
 
-        if (!$callee instanceof JsFunction) {
+        if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
             throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
         }
 
@@ -1139,39 +1168,62 @@ class Interpreter
                 continue;
             }
 
-            $key = $prop->computed
-                ? TypeConversion::toString($this->evaluate($prop->key, $env))
-                : ($prop->key instanceof Identifier
-                    ? $prop->key->name
-                    : ($prop->key instanceof Literal
-                        ? TypeConversion::toString($this->evalLiteral($prop->key))
-                        : ''));
+            // Evaluate computed key; may be a Symbol.
+            $rawKey = null;
+            $isSymbolKey = false;
+            if ($prop->computed) {
+                $rawKey = $this->evaluate($prop->key, $env);
+                $isSymbolKey = $rawKey instanceof JsSymbol;
+            }
+
+            $key = '';
+            if (!$isSymbolKey) {
+                $key = $prop->computed
+                    ? TypeConversion::toString($rawKey)
+                    : ($prop->key instanceof Identifier
+                        ? $prop->key->name
+                        : ($prop->key instanceof Literal
+                            ? TypeConversion::toString($this->evalLiteral($prop->key))
+                            : ''));
+            }
 
             if ($prop->kind === 'get' || $prop->kind === 'set') {
                 $fn = $this->evaluate($prop->value, $env);
                 if ($fn instanceof JsFunction) {
-                    $existing = $obj->getOwnPropertyDescriptor($key);
-                    if ($prop->kind === 'get') {
-                        $obj->defineOwnProperty($key, PropertyDescriptor::accessor(
-                            $fn,
-                            $existing?->set,
-                        ));
+                    if ($isSymbolKey) {
+                        $existing = $obj->getSymbolPropertyDescriptor($rawKey);
+                        if ($prop->kind === 'get') {
+                            $obj->definePropertyBySymbol($rawKey, PropertyDescriptor::accessor($fn, $existing?->set));
+                        } else {
+                            $obj->definePropertyBySymbol($rawKey, PropertyDescriptor::accessor($existing?->get, $fn));
+                        }
                     } else {
-                        $obj->defineOwnProperty($key, PropertyDescriptor::accessor(
-                            $existing?->get,
-                            $fn,
-                        ));
+                        $existing = $obj->getOwnPropertyDescriptor($key);
+                        if ($prop->kind === 'get') {
+                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor($fn, $existing?->set));
+                        } else {
+                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor($existing?->get, $fn));
+                        }
                     }
                 }
                 continue;
             }
 
             $value = $this->evaluate($prop->value, $env);
-            // Name inference for property functions
-            if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
-                $value->setName($key);
+            if ($isSymbolKey) {
+                // Name inference: use Symbol description in brackets.
+                if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
+                    $desc = $rawKey->description;
+                    $value->setName($desc !== null ? "[{$desc}]" : '');
+                }
+                $obj->setBySymbol($rawKey, $value);
+            } else {
+                // Name inference for property functions
+                if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
+                    $value->setName($key);
+                }
+                $obj->set($key, $value);
             }
-            $obj->set($key, $value);
         }
 
         return $obj;

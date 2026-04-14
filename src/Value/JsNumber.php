@@ -82,22 +82,98 @@ class JsNumber implements JsValue
             return '0';
         }
 
-        // Integer values should not have a decimal point.
-        if (floor($this->value) === $this->value && abs($this->value) < 1e21) {
-            return number_format($this->value, 0, '', '');
+        return self::numberToString($this->value);
+    }
+
+    /**
+     * ECMAScript 7.1.12.1 Number::toString - convert a finite non-zero float to JS string.
+     *
+     * Uses PHP's json_encode for shortest decimal representation (Grisu3/Ryu),
+     * then applies the ECMAScript formatting rules based on the exponent.
+     */
+    private static function numberToString(float $value): string
+    {
+        $negative = $value < 0;
+        $abs = abs($value);
+
+        // Integer values in range < 1e21: no decimal point needed.
+        if (floor($abs) === $abs && $abs < 1e21) {
+            return number_format($value, 0, '', '');
         }
 
-        // Use json_encode for shortest representation matching V8.
-        $str = json_encode($this->value);
-        if ($str === false) {
-            return (string) $this->value;
+        // Get shortest decimal representation.
+        $json = json_encode($abs, JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            $json = sprintf('%.17g', $abs);
         }
 
-        // json_encode may produce "1.0E+21" style; JS uses "1e+21".
-        $str = str_replace('E+', 'e+', $str);
-        $str = str_replace('E-', 'e-', $str);
+        // Parse digits and exponent from the JSON output.
+        // PHP json_encode produces forms like: "1.5", "1.5e+20", "1.5e-5", "15000"
+        $json = strtolower($json);
+        if (str_contains($json, 'e')) {
+            [$mantissa, $exp] = explode('e', $json, 2);
+            $phpExp = (int) $exp;
+        } else {
+            $mantissa = $json;
+            $phpExp = 0;
+        }
 
-        return $str;
+        // Extract digits (remove decimal point) and determine k and n.
+        if (str_contains($mantissa, '.')) {
+            $dotPos = strpos($mantissa, '.');
+            $digits = str_replace('.', '', $mantissa);
+            // Number of decimal places in mantissa.
+            $decimalPlaces = strlen($mantissa) - $dotPos - 1;
+            // Adjust exponent: mantissa * 10^phpExp = digits * 10^(phpExp - decimalPlaces).
+            $actualExp = $phpExp - $decimalPlaces;
+        } else {
+            $digits = $mantissa;
+            $actualExp = $phpExp;
+        }
+
+        // Remove leading zeros (shouldn't happen with json_encode, but be safe).
+        $digits = ltrim($digits, '0');
+        if ($digits === '') {
+            $digits = '0';
+        }
+
+        // Strip trailing zeros from the digits (PHP json_encode may add ".0" to exact values).
+        // When we strip trailing zeros, we must increase actualExp by the same count.
+        $trailingZeros = strlen($digits) - strlen(rtrim($digits, '0'));
+        if ($trailingZeros > 0) {
+            $digits = rtrim($digits, '0');
+            $actualExp += $trailingZeros;
+        }
+        if ($digits === '') {
+            $digits = '0';
+        }
+
+        $k = strlen($digits); // number of significant digits
+        // n = actualExp + k (the power such that value = s * 10^(n-k))
+        $n = $actualExp + $k;
+
+        $result = '';
+
+        if ($k <= $n && $n <= 21) {
+            // Integer: digits followed by (n-k) zeros.
+            $result = $digits . str_repeat('0', $n - $k);
+        } elseif (0 < $n && $n <= 21) {
+            // Fixed with decimal point.
+            $result = substr($digits, 0, $n) . '.' . substr($digits, $n);
+        } elseif (-6 < $n && $n <= 0) {
+            // Small number: "0." + (-n) zeros + digits.
+            $result = '0.' . str_repeat('0', -$n) . $digits;
+        } elseif ($k === 1) {
+            // Exponential with single digit.
+            $e = $n - 1;
+            $result = $digits . 'e' . ($e >= 0 ? '+' : '') . $e;
+        } else {
+            // Exponential with multiple digits.
+            $e = $n - 1;
+            $result = $digits[0] . '.' . substr($digits, 1) . 'e' . ($e >= 0 ? '+' : '') . $e;
+        }
+
+        return $negative ? '-' . $result : $result;
     }
 
     public function display(): string

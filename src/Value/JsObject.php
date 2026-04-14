@@ -124,6 +124,12 @@ class JsObject implements JsValue
         $this->symbolProperties[$symbol->getId()] = $desc;
     }
 
+    /** Get own property descriptor by symbol key (does not walk prototype chain). */
+    public function getSymbolPropertyDescriptor(JsSymbol $symbol): ?PropertyDescriptor
+    {
+        return $this->symbolProperties[$symbol->getId()] ?? null;
+    }
+
     public function has(string $name): bool
     {
         if ($this->properties->has($name)) {

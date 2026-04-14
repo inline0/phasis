@@ -48,17 +48,29 @@ final class TypeConversion
         }
         self::$toPrimitiveDepth++;
 
-        // For Date objects the default hint is "string"; for everything else it is "number".
-        // Date detection will be added later. For now, default maps to number.
-        if ($hint === 'default') {
-            $hint = 'number';
-        }
-
-        $methodNames = $hint === 'string'
-            ? ['toString', 'valueOf']
-            : ['valueOf', 'toString'];
-
         try {
+            // Check for [Symbol.toPrimitive] method first (spec step 1.a).
+            $toPrimSym = \PhpJs\BuiltIn\SymbolConstructor::toPrimitive();
+            $exoticToPrim = $value->getBySymbol($toPrimSym);
+            if ($exoticToPrim instanceof JsFunction) {
+                $hintStr = new \PhpJs\Value\JsString($hint);
+                $result = $exoticToPrim->call($value, [$hintStr]);
+                if ($result instanceof JsObject) {
+                    throw new TypeError('Cannot convert object to primitive value');
+                }
+                return $result;
+            }
+
+            // For Date objects the default hint is "string"; for everything else it is "number".
+            // Date detection will be added later. For now, default maps to number.
+            if ($hint === 'default') {
+                $hint = 'number';
+            }
+
+            $methodNames = $hint === 'string'
+                ? ['toString', 'valueOf']
+                : ['valueOf', 'toString'];
+
             foreach ($methodNames as $methodName) {
                 $method = $value->get($methodName);
                 if ($method instanceof JsFunction) {

@@ -26,6 +26,7 @@ class JsFunction extends JsObject
     private bool $isAsync;
     private ?JsValue $boundThis;
     private ?\Closure $nativeCallable = null;
+    private bool $constructable = true;
 
     /**
      * @param list<mixed> $params AST param nodes.
@@ -76,6 +77,24 @@ class JsFunction extends JsObject
         $instance = new self($name, array_fill(0, $length, null), null, new Environment());
         $instance->nativeCallable = $fn(...);
         return $instance;
+    }
+
+    /**
+     * Mark this function as non-constructable (cannot be invoked with `new`).
+     */
+    public function setNonConstructable(): self
+    {
+        $this->constructable = false;
+        return $this;
+    }
+
+    public function isConstructable(): bool
+    {
+        // Arrow functions and native non-constructables are not constructable.
+        if ($this->isArrow || !$this->constructable) {
+            return false;
+        }
+        return true;
     }
 
     public function getNativeCallable(): ?\Closure

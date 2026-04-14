@@ -20,6 +20,9 @@ class Environment
     /** @var array<string, bool> Track which bindings are in the temporal dead zone. */
     private array $tdz = [];
 
+    /** @var array<string, bool> Track which bindings are deletable (implicit globals). */
+    private array $deletable = [];
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
@@ -122,8 +125,9 @@ class Environment
             throw new ReferenceError("{$name} is not defined");
         }
 
-        // Sloppy mode: implicitly create a global variable.
+        // Sloppy mode: implicitly create a global variable (deletable).
         $this->bindings[$name] = $value;
+        $this->deletable[$name] = true;
     }
 
     /** Check whether a binding exists anywhere in the scope chain. */
@@ -138,6 +142,31 @@ class Environment
         }
 
         return false;
+    }
+
+    /**
+     * Delete a binding, if it is deletable (implicit globals only).
+     *
+     * Returns true if the binding was deleted or didn't exist.
+     * Returns false if the binding exists but is not deletable (declared vars/funcs).
+     */
+    public function deleteBinding(string $name): bool
+    {
+        if (array_key_exists($name, $this->bindings)) {
+            if (isset($this->deletable[$name])) {
+                unset($this->bindings[$name], $this->deletable[$name]);
+                return true;
+            }
+            // Declared bindings are not deletable.
+            return false;
+        }
+
+        if ($this->parent !== null) {
+            return $this->parent->deleteBinding($name);
+        }
+
+        // Not found anywhere: returning true per spec (unresolvable reference).
+        return true;
     }
 
     public function getParent(): ?Environment
