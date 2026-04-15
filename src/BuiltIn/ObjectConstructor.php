@@ -26,13 +26,40 @@ class ObjectConstructor
     {
         $proto = self::createPrototype();
 
-        $constructor = JsFunction::fromCallable('Object', function (JsValue $this_, array $args) use ($proto): JsValue {
+        $constructor = JsFunction::fromCallable('Object', function (JsValue $this_, array $args) use ($proto, $env): JsValue {
             if (empty($args) || $args[0] instanceof JsUndefined || $args[0] instanceof JsNull) {
+                // When called via new with no arg / null / undefined, create new object
+                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                    return $this_;
+                }
                 $obj = new JsObject($proto);
                 return $obj;
             }
-            // If called with a value, convert to object.
-            return TypeConversion::toObject($args[0]);
+            $val = $args[0];
+            // If already an object, return it directly
+            if ($val instanceof JsObject) {
+                return $val;
+            }
+            // For primitives, create wrapper with correct prototype
+            $wrapper = TypeConversion::toObject($val);
+            // Try to set the correct prototype from the global constructor
+            $ctorName = match (true) {
+                $val instanceof JsString => 'String',
+                $val instanceof JsNumber => 'Number',
+                $val instanceof JsBoolean => 'Boolean',
+                $val instanceof JsSymbol => 'Symbol',
+                default => null,
+            };
+            if ($ctorName !== null && $env->has($ctorName)) {
+                $ctor = $env->get($ctorName);
+                if ($ctor instanceof JsFunction) {
+                    $ctorProto = $ctor->get('prototype');
+                    if ($ctorProto instanceof JsObject) {
+                        $wrapper->setPrototype($ctorProto);
+                    }
+                }
+            }
+            return $wrapper;
         });
         $constructor->setConstructable();
 
