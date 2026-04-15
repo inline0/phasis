@@ -1,0 +1,586 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs\Value;
+
+use PhpJs\BuiltIn\SymbolConstructor;
+use PhpJs\Spec\TypeConversion;
+
+/**
+ * JavaScript TypedArray object.
+ *
+ * Provides a typed view over an ArrayBuffer. Supports all standard typed
+ * array variants: Int8Array, Uint8Array, Uint8ClampedArray, Int16Array,
+ * Uint16Array, Int32Array, Uint32Array, Float32Array, Float64Array,
+ * BigInt64Array, BigUint64Array.
+ *
+ * Uses PHP's pack/unpack for byte-level type conversions.
+ */
+class JsTypedArray extends JsObject
+{
+    private JsArrayBuffer $buffer;
+    private int $byteOffset;
+    private int $length;
+    private string $typeName;
+    private int $bytesPerElement;
+
+    /**
+     * Pack format character for the element type.
+     * Used with pack() and unpack() for byte conversion.
+     */
+    private string $packFormat;
+
+    /** Whether this is a BigInt typed array. */
+    private bool $isBigInt;
+
+    /** Whether values should be clamped (Uint8ClampedArray). */
+    private bool $clamped;
+
+    /**
+     * Type configuration table: name => [bytesPerElement, packFormat, isBigInt, isClamped].
+     *
+     * @var array<string, array{int, string, bool, bool}>
+     */
+    public const TYPES = [
+        'Int8Array' => [1, 'c', false, false],
+        'Uint8Array' => [1, 'C', false, false],
+        'Uint8ClampedArray' => [1, 'C', false, true],
+        'Int16Array' => [2, 's', false, false],
+        'Uint16Array' => [2, 'v', false, false],
+        'Int32Array' => [4, 'l', false, false],
+        'Uint32Array' => [4, 'V', false, false],
+        'Float32Array' => [4, 'g', false, false],
+        'Float64Array' => [8, 'e', false, false],
+        'BigInt64Array' => [8, 'q', true, false],
+        'BigUint64Array' => [8, 'Q', true, false],
+    ];
+
+    public function __construct(
+        string $typeName,
+        JsArrayBuffer $buffer,
+        int $byteOffset,
+        int $length,
+        ?JsObject $prototype = null,
+    ) {
+        parent::__construct($prototype);
+
+        if (!isset(self::TYPES[$typeName])) {
+            throw new \PhpJs\Exceptions\TypeError("Invalid typed array type: {$typeName}");
+        }
+
+        [$this->bytesPerElement, $this->packFormat, $this->isBigInt, $this->clamped] = self::TYPES[$typeName];
+        $this->typeName = $typeName;
+        $this->buffer = $buffer;
+        $this->byteOffset = $byteOffset;
+        $this->length = $length;
+
+        $this->installSymbolIterator();
+    }
+
+    /**
+     * Create a typed array from a length (allocates a new buffer).
+     */
+    public static function fromLength(
+        string $typeName,
+        int $length,
+        ?JsObject $prototype = null,
+    ): self {
+        $bpe = self::TYPES[$typeName][0];
+        $buffer = new JsArrayBuffer($length * $bpe);
+        return new self($typeName, $buffer, 0, $length, $prototype);
+    }
+
+    /**
+     * Create a typed array from an existing array-like source.
+     *
+     * @param list<JsValue> $elements
+     */
+    public static function fromArray(
+        string $typeName,
+        array $elements,
+        ?JsObject $prototype = null,
+    ): self {
+        $ta = self::fromLength($typeName, count($elements), $prototype);
+        foreach ($elements as $i => $el) {
+            $ta->setIndex($i, $el);
+        }
+        return $ta;
+    }
+
+    public function getTypeName(): string
+    {
+        return $this->typeName;
+    }
+
+    public function getBuffer(): JsArrayBuffer
+    {
+        return $this->buffer;
+    }
+
+    public function getByteOffset(): int
+    {
+        return $this->byteOffset;
+    }
+
+    public function getLength(): int
+    {
+        return $this->length;
+    }
+
+    public function getBytesPerElement(): int
+    {
+        return $this->bytesPerElement;
+    }
+
+    public function isBigIntArray(): bool
+    {
+        return $this->isBigInt;
+    }
+
+    /** Get element at typed index. */
+    public function getIndex(int $index): JsValue
+    {
+        if ($index < 0 || $index >= $this->length) {
+            return JsUndefined::instance();
+        }
+
+        $offset = $this->byteOffset + $index * $this->bytesPerElement;
+        $bytes = substr($this->buffer->getData(), $offset, $this->bytesPerElement);
+
+        if (strlen($bytes) < $this->bytesPerElement) {
+            return new JsNumber(0.0);
+        }
+
+        $unpacked = unpack($this->packFormat . 'val', $bytes);
+        if ($unpacked === false) {
+            return new JsNumber(0.0);
+        }
+
+        $val = $unpacked['val'];
+
+        if ($this->isBigInt) {
+            return new JsBigInt((string) $val);
+        }
+
+        // Int16Array uses machine-native signed short 's', which may need
+        // byte-order fixup on big-endian systems. For simplicity, we rely
+        // on the fact that nearly all contemporary systems are little-endian.
+        // Float types are already IEEE 754 via 'g' (LE float) and 'e' (LE double).
+        return new JsNumber((float) $val);
+    }
+
+    /** Set element at typed index. */
+    public function setIndex(int $index, JsValue $value): void
+    {
+        if ($index < 0 || $index >= $this->length) {
+            return;
+        }
+
+        $num = $this->coerceValue($value);
+        $packed = pack($this->packFormat, $num);
+
+        $offset = $this->byteOffset + $index * $this->bytesPerElement;
+        $data = $this->buffer->getData();
+
+        // Write packed bytes into the buffer.
+        for ($i = 0; $i < $this->bytesPerElement; $i++) {
+            $data[$offset + $i] = $packed[$i];
+        }
+
+        $this->buffer->setData($data);
+    }
+
+    /**
+     * Coerce a JS value to the numeric type appropriate for this typed array.
+     *
+     * For clamped arrays, clamps to [0, 255].
+     * For integer arrays, truncates to the appropriate range via pack/unpack.
+     * For BigInt arrays, converts to int.
+     */
+    private function coerceValue(JsValue $value): int|float
+    {
+        if ($this->isBigInt) {
+            if ($value instanceof JsBigInt) {
+                return (int) $value->value;
+            }
+            return (int) $value->toNumber();
+        }
+
+        $num = $value->toNumber();
+
+        if ($this->clamped) {
+            if (is_nan($num)) {
+                return 0;
+            }
+            return (int) max(0, min(255, round($num)));
+        }
+
+        if (is_nan($num) || is_infinite($num)) {
+            return 0;
+        }
+
+        // For float arrays, return the float directly.
+        if ($this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
+            return $num;
+        }
+
+        // For integer arrays, truncate to integer.
+        return (int) $num;
+    }
+
+    public function get(string $name): JsValue
+    {
+        if ($name === 'length') {
+            return new JsNumber((float) $this->length);
+        }
+        if ($name === 'byteLength') {
+            return new JsNumber((float) ($this->length * $this->bytesPerElement));
+        }
+        if ($name === 'byteOffset') {
+            return new JsNumber((float) $this->byteOffset);
+        }
+        if ($name === 'buffer') {
+            return $this->buffer;
+        }
+        if ($name === 'BYTES_PER_ELEMENT') {
+            return new JsNumber((float) $this->bytesPerElement);
+        }
+
+        // Numeric index access.
+        if (ctype_digit($name)) {
+            return $this->getIndex((int) $name);
+        }
+
+        return parent::get($name);
+    }
+
+    public function set(string $name, JsValue $value, bool $strict = false): void
+    {
+        // Numeric index access.
+        if (ctype_digit($name)) {
+            $index = (int) $name;
+            $this->setIndex($index, $value);
+            return;
+        }
+
+        parent::set($name, $value, $strict);
+    }
+
+    public function has(string $name): bool
+    {
+        if (
+            $name === 'length' || $name === 'byteLength' || $name === 'byteOffset'
+            || $name === 'buffer' || $name === 'BYTES_PER_ELEMENT'
+        ) {
+            return true;
+        }
+
+        if (ctype_digit($name) && (int) $name < $this->length) {
+            return true;
+        }
+
+        return parent::has($name);
+    }
+
+    /** @return list<string> */
+    public function ownKeys(): array
+    {
+        $keys = [];
+        for ($i = 0; $i < $this->length; $i++) {
+            $keys[] = (string) $i;
+        }
+        return array_merge($keys, parent::ownKeys());
+    }
+
+    /** @return list<string> */
+    public function getOwnEnumerableKeys(): array
+    {
+        $keys = [];
+        for ($i = 0; $i < $this->length; $i++) {
+            $keys[] = (string) $i;
+        }
+        return $keys;
+    }
+
+    /**
+     * TypedArray.prototype.set(source, offset).
+     *
+     * Copies values from source into this typed array at the given offset.
+     *
+     * @param list<JsValue> $elements
+     */
+    public function setFromArray(array $elements, int $offset = 0): void
+    {
+        foreach ($elements as $i => $el) {
+            $this->setIndex($offset + $i, $el);
+        }
+    }
+
+    /**
+     * TypedArray.prototype.subarray(begin, end).
+     *
+     * Returns a new typed array that shares the same buffer, with adjusted
+     * byte offset and length.
+     */
+    public function subarray(int $begin, ?int $end = null): self
+    {
+        if ($begin < 0) {
+            $begin = max(0, $this->length + $begin);
+        }
+        $begin = min($begin, $this->length);
+
+        if ($end === null) {
+            $end = $this->length;
+        } elseif ($end < 0) {
+            $end = max(0, $this->length + $end);
+        }
+        $end = min($end, $this->length);
+
+        $newLen = max(0, $end - $begin);
+        $newByteOffset = $this->byteOffset + $begin * $this->bytesPerElement;
+
+        return new self(
+            $this->typeName,
+            $this->buffer,
+            $newByteOffset,
+            $newLen,
+            $this->getPrototype(),
+        );
+    }
+
+    /**
+     * TypedArray.prototype.slice(begin, end).
+     *
+     * Returns a new typed array with a new buffer containing a copy of the
+     * elements from begin to end.
+     */
+    public function sliceTyped(int $begin, ?int $end = null): self
+    {
+        if ($begin < 0) {
+            $begin = max(0, $this->length + $begin);
+        }
+        $begin = min($begin, $this->length);
+
+        if ($end === null) {
+            $end = $this->length;
+        } elseif ($end < 0) {
+            $end = max(0, $this->length + $end);
+        }
+        $end = min($end, $this->length);
+
+        $newLen = max(0, $end - $begin);
+        $result = self::fromLength($this->typeName, $newLen, $this->getPrototype());
+
+        for ($i = 0; $i < $newLen; $i++) {
+            $result->setIndex($i, $this->getIndex($begin + $i));
+        }
+
+        return $result;
+    }
+
+    /**
+     * TypedArray.prototype.copyWithin(target, start, end).
+     */
+    public function copyWithinTyped(int $target, int $start, ?int $end = null): self
+    {
+        if ($target < 0) {
+            $target = max(0, $this->length + $target);
+        }
+        if ($start < 0) {
+            $start = max(0, $this->length + $start);
+        }
+        if ($end === null) {
+            $end = $this->length;
+        } elseif ($end < 0) {
+            $end = max(0, $this->length + $end);
+        }
+
+        $count = min($end - $start, $this->length - $target);
+
+        // Copy into a temp buffer to handle overlapping regions.
+        $temp = [];
+        for ($i = 0; $i < $count; $i++) {
+            $temp[] = $this->getIndex($start + $i);
+        }
+        for ($i = 0; $i < $count; $i++) {
+            $this->setIndex($target + $i, $temp[$i]);
+        }
+
+        return $this;
+    }
+
+    /**
+     * TypedArray.prototype.fill(value, start, end).
+     */
+    public function fillTyped(JsValue $value, int $start = 0, ?int $end = null): self
+    {
+        if ($start < 0) {
+            $start = max(0, $this->length + $start);
+        }
+        if ($end === null) {
+            $end = $this->length;
+        } elseif ($end < 0) {
+            $end = max(0, $this->length + $end);
+        }
+        $end = min($end, $this->length);
+
+        for ($i = $start; $i < $end; $i++) {
+            $this->setIndex($i, $value);
+        }
+
+        return $this;
+    }
+
+    /**
+     * TypedArray.prototype.reverse().
+     */
+    public function reverseTyped(): self
+    {
+        $mid = (int) ($this->length / 2);
+        for ($i = 0; $i < $mid; $i++) {
+            $j = $this->length - 1 - $i;
+            $a = $this->getIndex($i);
+            $b = $this->getIndex($j);
+            $this->setIndex($i, $b);
+            $this->setIndex($j, $a);
+        }
+        return $this;
+    }
+
+    /**
+     * TypedArray.prototype.indexOf(searchElement, fromIndex).
+     */
+    public function indexOfTyped(JsValue $search, int $fromIndex = 0): int
+    {
+        if ($fromIndex < 0) {
+            $fromIndex = max(0, $this->length + $fromIndex);
+        }
+        for ($i = $fromIndex; $i < $this->length; $i++) {
+            $el = $this->getIndex($i);
+            if ($this->strictEquals($el, $search)) {
+                return $i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * TypedArray.prototype.includes(searchElement, fromIndex).
+     */
+    public function includesTyped(JsValue $search, int $fromIndex = 0): bool
+    {
+        if ($fromIndex < 0) {
+            $fromIndex = max(0, $this->length + $fromIndex);
+        }
+        for ($i = $fromIndex; $i < $this->length; $i++) {
+            $el = $this->getIndex($i);
+            if ($this->sameValueZero($el, $search)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * TypedArray.prototype.join(separator).
+     */
+    public function joinTyped(string $separator = ','): string
+    {
+        $parts = [];
+        for ($i = 0; $i < $this->length; $i++) {
+            $el = $this->getIndex($i);
+            $parts[] = $el->toJsString();
+        }
+        return implode($separator, $parts);
+    }
+
+    /** Convert all elements to a list of JsValues. */
+    public function toList(): array
+    {
+        $result = [];
+        for ($i = 0; $i < $this->length; $i++) {
+            $result[] = $this->getIndex($i);
+        }
+        return $result;
+    }
+
+    /** Install Symbol.iterator for for-of support. */
+    private function installSymbolIterator(): void
+    {
+        $ta = $this;
+        $iterSym = SymbolConstructor::iterator();
+        $factory = function () use ($ta, $iterSym): JsValue {
+            $index = 0;
+            $iterator = new JsObject();
+            $nextFn = function () use ($ta, &$index): JsValue {
+                $result = new JsObject();
+                if ($index < $ta->getLength()) {
+                    $result->set('value', $ta->getIndex($index));
+                    $result->set('done', new JsBoolean(false));
+                    $index++;
+                } else {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                }
+                return $result;
+            };
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+            $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
+                '[Symbol.iterator]',
+                function (JsValue $self_): JsValue {
+                    return $self_;
+                },
+            ));
+            return $iterator;
+        };
+        $this->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', $factory));
+    }
+
+    /** Strict equality comparison for indexOf. */
+    private function strictEquals(JsValue $a, JsValue $b): bool
+    {
+        if ($a instanceof JsNumber && $b instanceof JsNumber) {
+            if (is_nan($a->value) || is_nan($b->value)) {
+                return false;
+            }
+            return $a->value === $b->value;
+        }
+        if ($a instanceof JsBigInt && $b instanceof JsBigInt) {
+            return $a->getValue() === $b->getValue();
+        }
+        return false;
+    }
+
+    /** SameValueZero for includes (NaN === NaN). */
+    private function sameValueZero(JsValue $a, JsValue $b): bool
+    {
+        if ($a instanceof JsNumber && $b instanceof JsNumber) {
+            if (is_nan($a->value) && is_nan($b->value)) {
+                return true;
+            }
+            return $a->value === $b->value;
+        }
+        if ($a instanceof JsBigInt && $b instanceof JsBigInt) {
+            return $a->getValue() === $b->getValue();
+        }
+        return false;
+    }
+
+    public function toJsString(): string
+    {
+        return $this->joinTyped(',');
+    }
+
+    public function display(): string
+    {
+        $parts = [];
+        $max = min($this->length, 10);
+        for ($i = 0; $i < $max; $i++) {
+            $el = $this->getIndex($i);
+            $parts[] = $el->display();
+        }
+        $suffix = $this->length > 10 ? ', ...' : '';
+        return $this->typeName . '(' . $this->length . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
+    }
+}

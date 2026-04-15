@@ -234,7 +234,7 @@ class Interpreter
             $node instanceof TaggedTemplate => $this->evalTaggedTemplate($node, $env),
             $node instanceof SpreadElement => $this->evaluate($node->argument, $env),
             $node instanceof YieldExpression => $this->evalYieldExpression($node, $env),
-            $node instanceof AwaitExpression => JsUndefined::instance(),
+            $node instanceof AwaitExpression => $this->evalAwaitExpression($node, $env),
             default => throw new InternalError('Unknown expression type: ' . $node->type()),
         };
     }
@@ -1034,6 +1034,15 @@ class Interpreter
             $callee = $this->evaluate($node->callee, $env);
         }
 
+        // Proxy apply trap: if the callee is a Proxy wrapping a function, invoke its apply().
+        if ($callee instanceof \PhpJs\Value\JsProxy) {
+            $args = $this->evaluateArguments($node->arguments, $env);
+            if (!$isMethodCall && !$this->strictMode) {
+                $thisValue = $this->getGlobalObject();
+            }
+            return $callee->apply($thisValue, $args);
+        }
+
         if (!$callee instanceof JsFunction) {
             $desc = TypeConversion::toString($callee);
             throw new TypeError("{$desc} is not a function");
@@ -1315,6 +1324,12 @@ class Interpreter
     {
         $callee = $this->evaluate($node->callee, $env);
 
+        // Proxy construct trap: if the callee is a Proxy, invoke its construct().
+        if ($callee instanceof \PhpJs\Value\JsProxy) {
+            $args = $this->evaluateArguments($node->arguments, $env);
+            return $callee->construct($args, $callee);
+        }
+
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
             throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
         }
@@ -1400,6 +1415,11 @@ class Interpreter
         // Generator function: return a JsGenerator instead of executing.
         if ($fn->isGenerator()) {
             return $this->createGenerator($fn, $thisValue, $args);
+        }
+
+        // Async function: execute the body and wrap the result in a Promise.
+        if ($fn->isAsync()) {
+            return $this->executeAsyncFunction($fn, $thisValue, $args);
         }
 
         // Interpreted function
@@ -1512,6 +1532,35 @@ class Interpreter
         } finally {
             $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
+        }
+    }
+
+    /**
+     * Execute an async function and wrap the result in a Promise.
+     *
+     * In our synchronous model, the async function body runs to completion
+     * immediately. If it returns normally, we create a fulfilled promise.
+     * If it throws, we create a rejected promise. Await expressions inside
+     * the body extract values from promises synchronously.
+     *
+     * @param list<JsValue> $args
+     */
+    private function executeAsyncFunction(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): \PhpJs\Value\JsPromise {
+        try {
+            $result = $this->executeFunction($fn, $thisValue, $args);
+            // If the result is already a promise, return it directly.
+            if ($result instanceof \PhpJs\Value\JsPromise) {
+                return $result;
+            }
+            return \PhpJs\Value\JsPromise::resolved($result);
+        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            return \PhpJs\Value\JsPromise::rejected($e->jsValue);
+        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            return \PhpJs\Value\JsPromise::rejected($this->phpExceptionToJsValue($e));
         }
     }
 
@@ -2005,7 +2054,8 @@ class Interpreter
             $node->params,
             $node->body,
             $env,
-            true,
+            isArrow: true,
+            isAsync: $node->async,
         );
         return $fn;
     }
@@ -2019,6 +2069,7 @@ class Interpreter
             $node->body,
             $fnEnv,
             isGenerator: $node->generator,
+            isAsync: $node->async,
         );
         // Named function expressions can reference themselves
         if ($node->name !== null) {
@@ -2168,6 +2219,57 @@ class Interpreter
             // For generic iterators we don't forward the received value
             // (the spec does for generator delegates, handled above).
         }
+    }
+
+    /**
+     * Evaluate an await expression inside an async function.
+     *
+     * If the awaited value is a JsPromise, extract its resolved value
+     * (or re-throw if rejected). If it is a thenable, resolve it.
+     * Otherwise, return the value as-is (like Promise.resolve(value)).
+     */
+    private function evalAwaitExpression(AwaitExpression $node, Environment $env): JsValue
+    {
+        $value = $this->evaluate($node->argument, $env);
+
+        // If awaiting a JsPromise, extract its state.
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                $this->throwJsValue($value->getResolvedValue());
+            }
+            return $value->getResolvedValue();
+        }
+
+        // If awaiting a thenable (object with .then method), resolve it.
+        if ($value instanceof JsObject) {
+            $thenMethod = $value->get('then');
+            if ($thenMethod instanceof JsFunction) {
+                $resolved = JsUndefined::instance();
+                $rejected = null;
+                $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                    $resolved = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                }, 1);
+                $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                    $rejected = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                }, 1);
+                try {
+                    $thenMethod->call($value, [$resolveFn, $rejectFn]);
+                } catch (\Throwable $e) {
+                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                        $this->throwJsValue($e->jsValue);
+                    }
+                    throw $e;
+                }
+                if ($rejected !== null) {
+                    $this->throwJsValue($rejected);
+                }
+                return $resolved;
+            }
+        }
+
+        return $value;
     }
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
@@ -3274,6 +3376,7 @@ class Interpreter
                     $stmt->body,
                     $env,
                     isGenerator: $stmt->generator,
+                    isAsync: $stmt->async,
                 );
                 $proto = new JsObject();
                 $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));

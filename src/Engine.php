@@ -79,6 +79,10 @@ class Engine
         \PhpJs\BuiltIn\SymbolConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\PromiseConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\ProxyConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\ReflectObject::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
 
         // WeakMap/WeakSet — use regular Map/Set storage (PHP has no weak refs for objects)
