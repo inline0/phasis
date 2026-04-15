@@ -162,20 +162,31 @@ class ArrayConstructor
         $proto->defineOwnProperty('shift', PropertyDescriptor::data(JsFunction::fromCallable(
             'shift',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
                 if ($len === 0) {
+                    if ($o instanceof JsArray) {
+                        $o->setLength(0);
+                    } else {
+                        $o->set('length', new JsNumber(0.0));
+                    }
                     return JsUndefined::instance();
                 }
-                $first = $this_->get('0');
+                $first = $o->get('0');
                 for ($i = 1; $i < $len; $i++) {
-                    $this_->set((string) ($i - 1), $this_->get((string) $i));
+                    $from = (string) $i;
+                    $to = (string) ($i - 1);
+                    if ($o->has($from)) {
+                        $o->set($to, $o->get($from));
+                    } else {
+                        $o->delete($to);
+                    }
                 }
-                $this_->delete((string) ($len - 1));
-                if ($this_ instanceof JsArray) {
-                    $this_->setLength($len - 1);
+                $o->delete((string) ($len - 1));
+                if ($o instanceof JsArray) {
+                    $o->setLength($len - 1);
                 } else {
-                    $this_->set("length", new JsNumber((float) ($len - 1)));
+                    $o->set('length', new JsNumber((float) ($len - 1)));
                 }
                 return $first;
             },
@@ -185,19 +196,25 @@ class ArrayConstructor
         $proto->defineOwnProperty('unshift', PropertyDescriptor::data(JsFunction::fromCallable(
             'unshift',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
                 $count = count($args);
                 for ($i = $len - 1; $i >= 0; $i--) {
-                    $this_->set((string) ($i + $count), $this_->get((string) $i));
+                    $from = (string) $i;
+                    $to = (string) ($i + $count);
+                    if ($o->has($from)) {
+                        $o->set($to, $o->get($from));
+                    } else {
+                        $o->delete($to);
+                    }
                 }
                 foreach ($args as $i => $arg) {
-                    $this_->set((string) $i, $arg);
+                    $o->set((string) $i, $arg);
                 }
-                if ($this_ instanceof JsArray) {
-                    $this_->setLength($len + $count);
+                if ($o instanceof JsArray) {
+                    $o->setLength($len + $count);
                 } else {
-                    $this_->set("length", new JsNumber((float) ($len + $count)));
+                    $o->set('length', new JsNumber((float) ($len + $count)));
                 }
                 return new JsNumber((float) ($len + $count));
             },
@@ -370,14 +387,29 @@ class ArrayConstructor
         $proto->defineOwnProperty('reverse', PropertyDescriptor::data(JsFunction::fromCallable(
             'reverse',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                $items = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
-                $items = array_reverse($items);
-                $len = self::getLen($this_);
-                for ($i = 0; $i < $len; $i++) {
-                    $this_->set((string) $i, $items[$i]);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
+                $middle = (int) floor($len / 2);
+                for ($lower = 0; $lower < $middle; $lower++) {
+                    $upper = $len - $lower - 1;
+                    $lowerKey = (string) $lower;
+                    $upperKey = (string) $upper;
+                    $lowerExists = $o->has($lowerKey);
+                    $upperExists = $o->has($upperKey);
+                    if ($lowerExists && $upperExists) {
+                        $lowerVal = $o->get($lowerKey);
+                        $upperVal = $o->get($upperKey);
+                        $o->set($lowerKey, $upperVal);
+                        $o->set($upperKey, $lowerVal);
+                    } elseif ($upperExists) {
+                        $o->set($lowerKey, $o->get($upperKey));
+                        $o->delete($upperKey);
+                    } elseif ($lowerExists) {
+                        $o->set($upperKey, $o->get($lowerKey));
+                        $o->delete($lowerKey);
+                    }
                 }
-                return $this_;
+                return $o;
             },
             0
         ), true, false, true));
@@ -720,17 +752,23 @@ class ArrayConstructor
                 // Copy in correct direction to handle overlapping ranges.
                 if ($start < $target && $target < $start + $count) {
                     for ($i = $count - 1; $i >= 0; $i--) {
-                        $this_->set(
-                            (string) ($target + $i),
-                            $this_->get((string) ($start + $i)),
-                        );
+                        $from = (string) ($start + $i);
+                        $to = (string) ($target + $i);
+                        if ($this_->has($from)) {
+                            $this_->set($to, $this_->get($from));
+                        } else {
+                            $this_->delete($to);
+                        }
                     }
                 } else {
                     for ($i = 0; $i < $count; $i++) {
-                        $this_->set(
-                            (string) ($target + $i),
-                            $this_->get((string) ($start + $i)),
-                        );
+                        $from = (string) ($start + $i);
+                        $to = (string) ($target + $i);
+                        if ($this_->has($from)) {
+                            $this_->set($to, $this_->get($from));
+                        } else {
+                            $this_->delete($to);
+                        }
                     }
                 }
                 return $this_;
@@ -1000,9 +1038,22 @@ class ArrayConstructor
         };
     }
 
+    /**
+     * Construct an object using a constructor function, mimicking `new C(args)`.
+     */
+    private static function constructWith(JsFunction $ctor, array $args): JsObject
+    {
+        $proto = $ctor->get('prototype');
+        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $newObj->defineOwnProperty('[[NewTarget]]', PropertyDescriptor::data($ctor, false, false, false));
+        $result = $ctor->call($newObj, $args);
+        return $result instanceof JsObject ? $result : $newObj;
+    }
+
     private static function from(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
+            $c = $this_; // The constructor (this) for Array.from.call(C, items)
             $arrayLike = $args[0] ?? JsUndefined::instance();
 
             // Null/undefined throw TypeError per spec.
@@ -1021,6 +1072,9 @@ class ArrayConstructor
             }
             $mapThisArg = $args[2] ?? JsUndefined::instance();
 
+            // Determine if C is a constructor.
+            $isConstructor = ($c instanceof JsFunction && $c->isConstructable());
+
             // Check for Symbol.iterator first (iterables take precedence over array-like).
             if ($arrayLike instanceof JsObject || $arrayLike instanceof JsString) {
                 $iterSym = SymbolConstructor::iterator();
@@ -1028,12 +1082,16 @@ class ArrayConstructor
 
                 if ($arrayLike instanceof JsObject) {
                     $iteratorMethod = $arrayLike->getBySymbol($iterSym);
-                } elseif ($arrayLike instanceof JsString) {
-                    // Strings are iterable; handle below as special case.
                 }
 
                 if ($iteratorMethod instanceof JsFunction || $arrayLike instanceof JsString) {
-                    $items = [];
+                    // Create the result object.
+                    if ($isConstructor) {
+                        /** @var JsFunction $c */
+                        $a = self::constructWith($c, []);
+                    } else {
+                        $a = new JsArray();
+                    }
                     $index = 0;
 
                     if ($arrayLike instanceof JsString) {
@@ -1045,11 +1103,12 @@ class ArrayConstructor
                             if ($mapFn !== null) {
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
-                            $items[] = $val;
+                            $a->set((string) $index, $val);
                             $index++;
                         }
                     } else {
                         // Use the iterator protocol.
+                        /** @var JsFunction $iteratorMethod */
                         $iterator = $iteratorMethod->call($arrayLike, []);
                         if (!$iterator instanceof JsObject) {
                             throw new TypeError('Array.from: iterator is not an object');
@@ -1071,39 +1130,49 @@ class ArrayConstructor
                             if ($mapFn !== null) {
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
-                            $items[] = $val;
+                            $a->set((string) $index, $val);
                             $index++;
                         }
                     }
 
-                    $resultArr = JsArray::fromArray($items);
-                    return $resultArr;
+                    $a->set('length', new JsNumber((float) $index));
+                    if ($a instanceof JsArray) {
+                        $a->setLength($index);
+                    }
+                    return $a;
                 }
             }
 
             // Fall back to array-like handling (length property).
-            if ($arrayLike instanceof JsObject) {
-                $lenVal = $arrayLike->get('length');
-                if ($lenVal instanceof JsUndefined || $lenVal instanceof JsNull) {
-                    return new JsArray();
-                }
-                $len = (int) TypeConversion::toNumber($lenVal);
-                if ($len < 0) {
-                    return new JsArray();
-                }
-                $items = [];
-                for ($i = 0; $i < $len; $i++) {
-                    $val = $arrayLike->get((string) $i);
-                    if ($mapFn !== null) {
-                        $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
-                    }
-                    $items[] = $val;
-                }
-                return JsArray::fromArray($items);
+            $lenVal = ($arrayLike instanceof JsObject)
+                ? $arrayLike->get('length')
+                : JsUndefined::instance();
+            $lenNum = TypeConversion::toNumber($lenVal);
+            $len = is_nan($lenNum) || $lenNum < 0 ? 0 : (int) $lenNum;
+
+            // Create result: use constructor if available.
+            if ($isConstructor) {
+                /** @var JsFunction $c */
+                $a = self::constructWith($c, [new JsNumber((float) $len)]);
+            } else {
+                $a = new JsArray();
             }
 
-            // Primitive values without iterators: return empty array.
-            return new JsArray();
+            for ($i = 0; $i < $len; $i++) {
+                $val = ($arrayLike instanceof JsObject)
+                    ? $arrayLike->get((string) $i)
+                    : JsUndefined::instance();
+                if ($mapFn !== null) {
+                    $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
+                }
+                $a->set((string) $i, $val);
+            }
+
+            $a->set('length', new JsNumber((float) $len));
+            if ($a instanceof JsArray) {
+                $a->setLength($len);
+            }
+            return $a;
         };
     }
 
