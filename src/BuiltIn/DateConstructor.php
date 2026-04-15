@@ -853,10 +853,24 @@ class DateConstructor
 
         $tv = self::getTimeValue($this_);
 
+        // Per spec: the first argument is always required (ToNumber(undefined) = NaN).
         // Coerce all present arguments to numbers BEFORE the NaN check.
+        // If the first arg is missing, treat as ToNumber(undefined) = NaN.
         $coerced = [];
-        foreach ($args as $arg) {
-            $coerced[] = TypeConversion::toNumber($arg);
+        if (empty($args)) {
+            $coerced[] = NAN;
+        } else {
+            foreach ($args as $arg) {
+                $coerced[] = TypeConversion::toNumber($arg);
+            }
+        }
+
+        // If any coerced argument is NaN, the result is NaN
+        foreach ($coerced as $c) {
+            if (is_nan($c)) {
+                $this_->set('[[DateValue]]', new JsNumber(NAN));
+                return new JsNumber(NAN);
+            }
         }
 
         // Per spec, "return NaN" without setting [[DateValue]] so that any
