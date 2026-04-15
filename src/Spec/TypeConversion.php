@@ -257,6 +257,7 @@ final class TypeConversion
      * number -> NumberToString (NaN, Infinity, -0 -> "0", etc.),
      * string -> identity,
      * symbol -> TypeError,
+     * bigint -> BigInt numeric string representation,
      * object -> ToPrimitive("string") then ToString.
      */
     public static function toString(JsValue $value): string
@@ -283,6 +284,10 @@ final class TypeConversion
 
         if ($value instanceof JsSymbol) {
             throw new TypeError('Cannot convert a Symbol value to a string');
+        }
+
+        if ($value instanceof JsBigInt) {
+            return $value->toJsString();
         }
 
         // Object: ToPrimitive with "string" hint, then recurse.
@@ -326,6 +331,11 @@ final class TypeConversion
         // Create a wrapper object with the primitive stored internally.
         $wrapper = new JsObject();
         $wrapper->set('[[PrimitiveValue]]', $value);
+
+        // BigInt wrappers need valueOf to return the primitive for ToPrimitive to work.
+        if ($value instanceof JsBigInt) {
+            $wrapper->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $value, 0));
+        }
 
         return $wrapper;
     }

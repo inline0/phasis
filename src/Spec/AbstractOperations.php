@@ -128,6 +128,11 @@ final class AbstractOperations
             return $x === $y;
         }
 
+        // BigInt: same numeric value.
+        if ($x instanceof JsBigInt && $y instanceof JsBigInt) {
+            return $x->value === $y->value;
+        }
+
         // Object: same reference.
         if ($x instanceof JsObject && $y instanceof JsObject) {
             return $x === $y;
@@ -377,6 +382,11 @@ final class AbstractOperations
 
         // symbol.
         if ($x instanceof JsSymbol && $y instanceof JsSymbol) {
+            return true;
+        }
+
+        // bigint.
+        if ($x instanceof JsBigInt && $y instanceof JsBigInt) {
             return true;
         }
 
