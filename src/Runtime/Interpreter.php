@@ -251,8 +251,11 @@ class Interpreter
             return new JsNumber((float) $value);
         }
         if (is_string($value)) {
-            // RegExp literal: /pattern/flags
-            if (str_starts_with($value, '/') && preg_match('#^/(.+)/([gimsuy]*)$#s', $value, $m)) {
+            // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
+            if (
+                str_starts_with($node->raw, '__REGEXP__')
+                && preg_match('#^/(.+)/([gimsuy]*)$#s', $value, $m)
+            ) {
                 return $this->createRegExpObject($m[1], $m[2]);
             }
             return new JsString($value);

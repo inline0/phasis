@@ -1114,8 +1114,8 @@ class Parser
     private function parseRegExpLiteral(): Literal
     {
         $token = $this->advance();
-        // Store the full regex string as value; interpreter will create RegExp object
-        return new Literal($token->location, $token->value, $token->value);
+        // Use '__REGEXP__' prefix in raw to distinguish from string literals
+        return new Literal($token->location, $token->value, '__REGEXP__' . $token->value);
     }
 
     private function parseStringLiteral(): Literal
