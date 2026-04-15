@@ -645,6 +645,13 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsBoolean(true);
             }
+
+            // Per spec, an extensible object is never frozen.
+            if ($obj->isExtensible()) {
+                return new JsBoolean(false);
+            }
+
+            // Check string-keyed properties.
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);
@@ -658,6 +665,17 @@ class ObjectConstructor
                     return new JsBoolean(false);
                 }
             }
+
+            // Check symbol-keyed properties.
+            foreach ($obj->getOwnSymbolProperties() as $desc) {
+                if ($desc->configurable === true) {
+                    return new JsBoolean(false);
+                }
+                if ($desc->isDataDescriptor() && $desc->writable === true) {
+                    return new JsBoolean(false);
+                }
+            }
+
             return new JsBoolean(true);
         };
     }
@@ -669,6 +687,13 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsBoolean(true);
             }
+
+            // Per spec, an extensible object is never sealed.
+            if ($obj->isExtensible()) {
+                return new JsBoolean(false);
+            }
+
+            // Check string-keyed properties.
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);
@@ -679,6 +704,14 @@ class ObjectConstructor
                     return new JsBoolean(false);
                 }
             }
+
+            // Check symbol-keyed properties.
+            foreach ($obj->getOwnSymbolProperties() as $desc) {
+                if ($desc->configurable === true) {
+                    return new JsBoolean(false);
+                }
+            }
+
             return new JsBoolean(true);
         };
     }
