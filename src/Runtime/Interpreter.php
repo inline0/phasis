@@ -2170,20 +2170,29 @@ class Interpreter
 
     private function evalArrayExpression(ArrayExpression $node, Environment $env): JsValue
     {
-        $elements = [];
+        $arr = new JsArray();
+        $index = 0;
         foreach ($node->elements as $elem) {
             if ($elem === null) {
-                $elements[] = JsUndefined::instance();
+                // Hole (elision): skip this index, leaving it as a true hole.
+                $index++;
                 continue;
             }
             if ($elem instanceof SpreadElement) {
                 $iterable = $this->evaluate($elem->argument, $env);
-                $this->spreadInto($iterable, $elements);
+                $spreadItems = [];
+                $this->spreadInto($iterable, $spreadItems);
+                foreach ($spreadItems as $item) {
+                    $arr->set((string) $index, $item);
+                    $index++;
+                }
                 continue;
             }
-            $elements[] = $this->evaluate($elem, $env);
+            $arr->set((string) $index, $this->evaluate($elem, $env));
+            $index++;
         }
-        return JsArray::fromArray($elements);
+        $arr->setLength($index);
+        return $arr;
     }
 
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue

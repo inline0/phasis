@@ -98,6 +98,25 @@ class ArrayConstructor
     }
 
     /**
+     * Get length as float to preserve large values above PHP_INT_MAX (for overflow checks).
+     */
+    private static function getLenFloat(JsValue $obj): float
+    {
+        if ($obj instanceof JsArray) {
+            return (float) $obj->getLength();
+        }
+        if ($obj instanceof JsObject) {
+            $lenVal = $obj->get('length');
+            $n = TypeConversion::toNumber($lenVal);
+            if (is_nan($n) || $n < 0) {
+                return 0.0;
+            }
+            return min($n, 9007199254740991.0); // 2^53 - 1
+        }
+        return 0.0;
+    }
+
+    /**
      * Ensure $this_ is an object (per spec: ToObject).
      */
     private static function toObj(JsValue $this_): JsObject
@@ -234,11 +253,14 @@ class ArrayConstructor
                 if (is_nan($nNum)) {
                     $nNum = 0.0;
                 }
-                $n = (int) $nNum;
-                if ($n >= $len) {
+                if ($nNum === INF || $nNum >= $len) {
                     return new JsNumber(-1.0);
                 }
-                $k = $n >= 0 ? $n : max($len + $n, 0);
+                if ($nNum >= 0) {
+                    $k = (int) min($nNum, (float) ($len - 1));
+                } else {
+                    $k = $nNum === -INF ? 0 : max($len + (int) $nNum, 0);
+                }
                 for ($i = $k; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
@@ -264,8 +286,11 @@ class ArrayConstructor
                     $nNum = 0.0;
                 }
                 if ($nNum >= 0) {
-                    $k = (int) min($nNum, (float) ($len - 1));
+                    $k = $nNum === INF ? $len - 1 : (int) min($nNum, (float) ($len - 1));
                 } else {
+                    if ($nNum === -INF) {
+                        return new JsNumber(-1.0);
+                    }
                     $k = $len + (int) $nNum;
                 }
                 for ($i = $k; $i >= 0; $i--) {
@@ -292,8 +317,15 @@ class ArrayConstructor
                 if (is_nan($nNum)) {
                     $nNum = 0.0;
                 }
-                $n = (int) $nNum;
-                $k = $n >= 0 ? $n : max($len + $n, 0);
+                // Handle Infinity: PHP (int)INF = 0, but spec says k = n when n >= 0.
+                if ($nNum === INF) {
+                    return new JsBoolean(false);
+                }
+                if ($nNum >= 0) {
+                    $k = (int) min($nNum, (float) $len);
+                } else {
+                    $k = $nNum === -INF ? 0 : max($len + (int) $nNum, 0);
+                }
                 for ($i = $k; $i < $len; $i++) {
                     if (AbstractOperations::sameValueZero($o->get((string) $i), $search)) {
                         return new JsBoolean(true);
@@ -365,8 +397,12 @@ class ArrayConstructor
                     }
                     if ($spreadable) {
                         /** @var JsObject $e */
-                        $len = self::getLen($e);
-                        for ($k = 0; $k < $len; $k++) {
+                        $len = self::getLenFloat($e);
+                        if ($n + $len > 9007199254740991) { // 2^53 - 1
+                            throw new TypeError('Array.prototype.concat: length exceeded');
+                        }
+                        $intLen = (int) min($len, PHP_INT_MAX);
+                        for ($k = 0; $k < $intLen; $k++) {
                             $key = (string) $k;
                             if ($e->has($key)) {
                                 $result->set((string) $n, $e->get($key));
