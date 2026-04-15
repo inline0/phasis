@@ -437,12 +437,13 @@ class ArrayConstructor
             'forEach',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
+                // Per spec: LengthOfArrayLike first (step 2), then IsCallable (step 3)
+                $len = self::getLen($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('forEach callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $len = self::getLen($o);
                 for ($i = 0; $i < $len; $i++) {
                     if ($o->has((string) $i)) {
                         $callback->call($thisArg, [$o->get((string) $i), new JsNumber((float) $i), $o]);
