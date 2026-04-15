@@ -105,7 +105,11 @@ class Engine
         $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn);
         $constructor->setConstructable();
         $proto = new \PhpJs\Value\JsObject();
-        $proto->set('constructor', $constructor);
+        // Per spec, constructor is writable, non-enumerable, configurable.
+        $proto->defineOwnProperty(
+            'constructor',
+            \PhpJs\Object\PropertyDescriptor::data($constructor, true, false, true),
+        );
         $constructor->set('prototype', $proto);
         $this->globalEnv->defineVar($name, $constructor);
     }

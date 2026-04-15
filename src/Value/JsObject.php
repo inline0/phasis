@@ -29,17 +29,29 @@ class JsObject implements JsValue
 
     public function get(string $name): JsValue
     {
+        return $this->getWithReceiver($name, $this);
+    }
+
+    /**
+     * Internal property lookup that preserves the original receiver.
+     *
+     * When a getter accessor is found on a prototype, it must be called
+     * with the original receiver (the object property access started on),
+     * not the prototype where the descriptor lives.
+     */
+    protected function getWithReceiver(string $name, JsObject $receiver): JsValue
+    {
         $desc = $this->properties->get($name);
         if ($desc !== null) {
             if ($desc->get !== null) {
-                return $desc->get->call($this, []);
+                return $desc->get->call($receiver, []);
             }
 
             return $desc->value ?? JsUndefined::instance();
         }
 
         if ($this->prototype !== null) {
-            return $this->prototype->get($name);
+            return $this->prototype->getWithReceiver($name, $receiver);
         }
 
         return JsUndefined::instance();
@@ -68,17 +80,25 @@ class JsObject implements JsValue
     /** Get a property value by symbol key. */
     public function getBySymbol(JsSymbol $symbol): JsValue
     {
+        return $this->getBySymbolWithReceiver($symbol, $this);
+    }
+
+    /**
+     * Internal symbol property lookup that preserves the original receiver.
+     */
+    protected function getBySymbolWithReceiver(JsSymbol $symbol, JsObject $receiver): JsValue
+    {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
             $desc = $this->symbolProperties[$id];
             if ($desc->get !== null) {
-                return $desc->get->call($this, []);
+                return $desc->get->call($receiver, []);
             }
             return $desc->value ?? JsUndefined::instance();
         }
 
         if ($this->prototype !== null) {
-            return $this->prototype->getBySymbol($symbol);
+            return $this->prototype->getBySymbolWithReceiver($symbol, $receiver);
         }
 
         return JsUndefined::instance();

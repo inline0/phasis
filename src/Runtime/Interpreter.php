@@ -2824,7 +2824,7 @@ class Interpreter
         $isSticky = str_contains($flags, 'y');
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
-        $obj->defineOwnProperty('exec', PropertyDescriptor::data(JsFunction::fromCallable('exec', function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
+        $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
             $strLen = mb_strlen($str, 'UTF-8');
 
@@ -2896,10 +2896,14 @@ class Interpreter
                 $obj->set('lastIndex', new JsNumber(0.0));
             }
             return JsNull::instance();
-        }, 1), true, false, true));
+        };
+        $obj->defineOwnProperty(
+            'exec',
+            PropertyDescriptor::data(JsFunction::fromCallable('exec', $execFn, 1), true, false, true),
+        );
 
         // test(): uses lastIndex for global/sticky regexes per spec 22.2.5.3.
-        $obj->defineOwnProperty('test', PropertyDescriptor::data(JsFunction::fromCallable('test', function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
+        $testFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
             $strLen = mb_strlen($str, 'UTF-8');
 
@@ -2938,13 +2942,21 @@ class Interpreter
                 $obj->set('lastIndex', new JsNumber(0.0));
             }
             return new JsBoolean(false);
-        }, 1), true, false, true));
+        };
+        $obj->defineOwnProperty(
+            'test',
+            PropertyDescriptor::data(JsFunction::fromCallable('test', $testFn, 1), true, false, true),
+        );
 
         // toString(): returns /pattern/flags per spec 22.2.5.14.
         $displayPattern = $pattern === '' ? '(?:)' : $pattern;
-        $obj->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', function () use ($displayPattern, $flags): JsValue {
+        $toStringFn = function () use ($displayPattern, $flags): JsValue {
             return new JsString("/{$displayPattern}/{$flags}");
-        }, 0), true, false, true));
+        };
+        $obj->defineOwnProperty(
+            'toString',
+            PropertyDescriptor::data(JsFunction::fromCallable('toString', $toStringFn, 0), true, false, true),
+        );
 
         return $obj;
     }

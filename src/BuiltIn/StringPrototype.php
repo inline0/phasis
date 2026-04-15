@@ -673,8 +673,77 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $pattern = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $searchArg = $args[0] ?? JsUndefined::instance();
 
+            // RegExp argument: use exec() for non-global, preg_match_all for global.
+            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                $pattern = TypeConversion::toString($searchArg->get('source'));
+                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
+                $pcreFlags = '';
+                if (str_contains($flags, 'i')) {
+                    $pcreFlags .= 'i';
+                }
+                if (str_contains($flags, 'm')) {
+                    $pcreFlags .= 'm';
+                }
+                if (str_contains($flags, 's')) {
+                    $pcreFlags .= 's';
+                }
+                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+                $isGlobal = str_contains($flags, 'g');
+
+                if ($isGlobal) {
+                    // Global match: return array of all match strings, no capture groups.
+                    // Reset lastIndex to 0 per spec.
+                    $searchArg->set('lastIndex', new JsNumber(0.0));
+                    $count = @preg_match_all($pcre, $str, $matches);
+                    if ($count === 0 || $count === false) {
+                        return JsNull::instance();
+                    }
+                    $elements = [];
+                    foreach ($matches[0] as $m) {
+                        $elements[] = new JsString($m);
+                    }
+                    return JsArray::fromArray($elements);
+                }
+
+                // Non-global: return first match with capture groups, index, and input.
+                if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                    $numericCount = 0;
+                    $elements = [];
+                    foreach ($matches as $key => $match) {
+                        if (is_int($key)) {
+                            $elements[] = $match[1] === -1
+                                ? JsUndefined::instance()
+                                : new JsString($match[0]);
+                            $numericCount++;
+                        }
+                    }
+                    $result = JsArray::fromArray($elements);
+                    $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
+                    $result->set('index', new JsNumber((float) $charPos));
+                    $result->set('input', new JsString($str));
+
+                    // Named capture groups.
+                    $groups = new JsObject(null);
+                    $hasGroups = false;
+                    foreach ($matches as $key => $match) {
+                        if (is_string($key)) {
+                            $hasGroups = true;
+                            $groups->set($key, $match[1] === -1
+                                ? JsUndefined::instance()
+                                : new JsString($match[0]));
+                        }
+                    }
+                    $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+
+                    return $result;
+                }
+                return JsNull::instance();
+            }
+
+            // String argument: treat as literal string search (not as regex).
+            $pattern = TypeConversion::toString($searchArg);
             $pos = mb_strpos($str, $pattern, 0, 'UTF-8');
             if ($pos === false) {
                 return JsNull::instance();
@@ -690,34 +759,97 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $searchArg = $args[0] ?? JsUndefined::instance();
 
-            $matches = [];
-            $offset = 0;
-            if ($search === '') {
-                $len = mb_strlen($str, 'UTF-8');
-                for ($i = 0; $i <= $len; $i++) {
-                    $match = JsArray::fromArray([new JsString('')]);
-                    $match->set('index', new JsNumber((float) $i));
+            $allMatches = [];
+
+            // RegExp argument.
+            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
+                // matchAll requires the global flag per spec.
+                if (!str_contains($flags, 'g')) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'String.prototype.matchAll called with a non-global RegExp argument',
+                    );
+                }
+                $pattern = TypeConversion::toString($searchArg->get('source'));
+                $pcreFlags = '';
+                if (str_contains($flags, 'i')) {
+                    $pcreFlags .= 'i';
+                }
+                if (str_contains($flags, 'm')) {
+                    $pcreFlags .= 'm';
+                }
+                if (str_contains($flags, 's')) {
+                    $pcreFlags .= 's';
+                }
+                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+
+                $byteOffset = 0;
+                while (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE, $byteOffset)) {
+                    $numericElements = [];
+                    foreach ($m as $key => $val) {
+                        if (is_int($key)) {
+                            $numericElements[] = $val[1] === -1
+                                ? JsUndefined::instance()
+                                : new JsString($val[0]);
+                        }
+                    }
+                    $match = JsArray::fromArray($numericElements);
+                    $charPos = mb_strlen(substr($str, 0, $m[0][1]), 'UTF-8');
+                    $match->set('index', new JsNumber((float) $charPos));
                     $match->set('input', new JsString($str));
-                    $matches[] = $match;
+
+                    $groups = new JsObject(null);
+                    $hasGroups = false;
+                    foreach ($m as $key => $val) {
+                        if (is_string($key)) {
+                            $hasGroups = true;
+                            $groups->set($key, $val[1] === -1
+                                ? JsUndefined::instance()
+                                : new JsString($val[0]));
+                        }
+                    }
+                    $match->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+
+                    $allMatches[] = $match;
+
+                    // Advance past the match. For zero-length matches, advance by one byte.
+                    $matchLen = strlen($m[0][0]);
+                    $byteOffset = $m[0][1] + ($matchLen > 0 ? $matchLen : 1);
+                    if ($byteOffset > strlen($str)) {
+                        break;
+                    }
                 }
             } else {
-                while (($pos = mb_strpos($str, $search, $offset, 'UTF-8')) !== false) {
-                    $match = JsArray::fromArray([new JsString($search)]);
-                    $match->set('index', new JsNumber((float) $pos));
-                    $match->set('input', new JsString($str));
-                    $matches[] = $match;
-                    $offset = $pos + mb_strlen($search, 'UTF-8');
+                // String argument: treat as a literal string.
+                $search = TypeConversion::toString($searchArg);
+                $offset = 0;
+                if ($search === '') {
+                    $len = mb_strlen($str, 'UTF-8');
+                    for ($i = 0; $i <= $len; $i++) {
+                        $match = JsArray::fromArray([new JsString('')]);
+                        $match->set('index', new JsNumber((float) $i));
+                        $match->set('input', new JsString($str));
+                        $allMatches[] = $match;
+                    }
+                } else {
+                    while (($pos = mb_strpos($str, $search, $offset, 'UTF-8')) !== false) {
+                        $match = JsArray::fromArray([new JsString($search)]);
+                        $match->set('index', new JsNumber((float) $pos));
+                        $match->set('input', new JsString($str));
+                        $allMatches[] = $match;
+                        $offset = $pos + mb_strlen($search, 'UTF-8');
+                    }
                 }
             }
 
             $idx = 0;
             $iterator = new JsObject();
-            $nextFn = function () use (&$idx, $matches): JsValue {
+            $nextFn = function () use (&$idx, $allMatches): JsValue {
                 $result = new JsObject();
-                if ($idx < count($matches)) {
-                    $result->set('value', $matches[$idx]);
+                if ($idx < count($allMatches)) {
+                    $result->set('value', $allMatches[$idx]);
                     $result->set('done', new JsBoolean(false));
                     $idx++;
                 } else {
