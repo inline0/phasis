@@ -56,23 +56,56 @@ class StringPrototype
         $d('normalize', self::normalize(), 0);
         $d('localeCompare', self::localeCompare(), 1);
 
-        // AnnexB methods
+        // AnnexB methods: B.2.3.1 String.prototype.substr(start, length)
         $d('substr', function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $len = mb_strlen($str, 'UTF-8');
-            $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $length = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[1]) : $len;
-            if ($start < 0) {
-                $start = max($len + $start, 0);
+            $size = mb_strlen($str, 'UTF-8');
+
+            // Step 4: intStart = ToIntegerOrInfinity(start)
+            $intStart = isset($args[0])
+                ? TypeConversion::toIntegerOrInfinity($args[0])
+                : 0.0;
+
+            // Steps 5-7: normalize intStart
+            if ($intStart === -INF) {
+                $intStart = 0;
+            } elseif ($intStart < 0) {
+                $intStart = (int) max($size + $intStart, 0);
+            } else {
+                $intStart = (int) min($intStart, $size);
             }
-            if ($length < 0) {
-                $length = 0;
+
+            // Step 8: intLength
+            $lengthArg = $args[1] ?? JsUndefined::value();
+            $intLength = $lengthArg instanceof JsUndefined
+                ? $size
+                : (int) TypeConversion::toIntegerOrInfinity($lengthArg);
+
+            // Step 9: clamp intLength to [0, size]
+            $intLength = (int) min(max($intLength, 0), $size);
+
+            // Step 10: intEnd
+            $intEnd = (int) min($intStart + $intLength, $size);
+
+            if ($intEnd <= $intStart) {
+                return new JsString('');
             }
-            return new JsString(mb_substr($str, $start, $length, 'UTF-8'));
+
+            return new JsString(mb_substr($str, $intStart, $intEnd - $intStart, 'UTF-8'));
         }, 2);
-        $d('trimLeft', self::trimStart(), 0);
-        $d('trimRight', self::trimEnd(), 0);
+
+        // trimLeft/trimRight must be the SAME function object as trimStart/trimEnd
+        // per B.2.3.12 and B.2.3.15, including .name = "trimStart"/"trimEnd".
+        $trimStartFn = $proto->get('trimStart');
+        $trimEndFn = $proto->get('trimEnd');
+        $proto->defineOwnProperty(
+            'trimLeft',
+            PropertyDescriptor::data($trimStartFn, true, false, true),
+        );
+        $proto->defineOwnProperty(
+            'trimRight',
+            PropertyDescriptor::data($trimEndFn, true, false, true),
+        );
 
         // AnnexB HTML methods
         $htmlTag = function (string $tag, ?string $attr = null) {
@@ -129,8 +162,19 @@ class StringPrototype
         $env->defineVar('__StringPrototype__', $proto);
     }
 
+    /**
+     * RequireObjectCoercible(this) then coerce to string.
+     *
+     * Per spec, all String.prototype methods must reject null and undefined
+     * with a TypeError before any coercion occurs.
+     */
     private static function extractString(JsValue $this_): string
     {
+        if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'String.prototype method called on null or undefined',
+            );
+        }
         if ($this_ instanceof JsString) {
             return $this_->value;
         }

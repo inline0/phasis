@@ -434,7 +434,7 @@ class Interpreter
                 } else {
                     $key = $argument->property instanceof Identifier ? $argument->property->name : '';
                 }
-                return new JsBoolean($obj->delete($key));
+                return new JsBoolean($obj->delete($key, $this->strictMode));
             }
             // Deleting a property on a non-object primitive: return true.
             return new JsBoolean(true);
@@ -443,6 +443,18 @@ class Interpreter
         // Delete on an identifier reference.
         if ($argument instanceof Identifier) {
             $name = $argument->name;
+            if ($this->strictMode) {
+                // In strict mode, `delete identifier` is a SyntaxError, but since
+                // we get here at runtime we throw it as a SyntaxError-like error.
+                // The spec says deleting an unresolvable reference in strict mode
+                // is a SyntaxError, but deleting a declared binding in strict mode
+                // is also a SyntaxError. Some tests expect TypeError for certain
+                // global object properties; those go through the MemberExpression
+                // branch above. Here we handle the raw identifier case.
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Delete of an unqualified identifier in strict mode.'
+                );
+            }
             if (!$env->has($name)) {
                 // Unresolvable reference: return true.
                 return new JsBoolean(true);
@@ -450,7 +462,10 @@ class Interpreter
             return new JsBoolean($env->deleteBinding($name));
         }
 
-        // All other cases (literal, etc.): return true.
+        // For any other expression (call expression, literal, etc.): evaluate the
+        // expression for side effects, then return true. Per spec, delete on a
+        // non-Reference value returns true.
+        $this->evaluate($argument, $env);
         return new JsBoolean(true);
     }
 

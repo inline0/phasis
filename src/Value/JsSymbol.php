@@ -20,6 +20,16 @@ class JsSymbol implements JsValue
         return $this->id;
     }
 
+    public function getDescription(): ?string
+    {
+        return $this->description;
+    }
+
+    public function toString(): string
+    {
+        return 'Symbol(' . ($this->description ?? '') . ')';
+    }
+
     public function typeof(): string
     {
         return 'symbol';

@@ -73,6 +73,47 @@ class SymbolConstructor
         $symbolFn->set('toPrimitive', self::toPrimitive());
         $symbolFn->set('toStringTag', self::toStringTag());
 
+        // Symbol.prototype
+        $proto = new \PhpJs\Value\JsObject();
+        $proto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($symbolFn, true, false, true));
+        $proto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+                if ($this_ instanceof JsSymbol) {
+                    return new JsString($this_->toString());
+                }
+                throw new TypeError('Symbol.prototype.toString requires a Symbol');
+            }, 0),
+            true,
+            false,
+            true,
+        ));
+        $proto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
+                if ($this_ instanceof JsSymbol) {
+                    return $this_;
+                }
+                throw new TypeError('Symbol.prototype.valueOf requires a Symbol');
+            }, 0),
+            true,
+            false,
+            true,
+        ));
+        $proto->defineOwnProperty('description', \PhpJs\Object\PropertyDescriptor::accessor(
+            JsFunction::fromCallable('get description', function (JsValue $this_): JsValue {
+                if ($this_ instanceof JsSymbol) {
+                    $desc = $this_->getDescription();
+                    return $desc !== null ? new JsString($desc) : JsUndefined::instance();
+                }
+                throw new TypeError('Symbol.prototype.description requires a Symbol');
+            }, 0),
+            null,
+            false,
+            true,
+        ));
+        // Set Symbol.toStringTag on the prototype
+        $proto->setBySymbol(self::toStringTag(), new JsString('Symbol'));
+        $symbolFn->set('prototype', $proto);
+
         $env->defineVar('Symbol', $symbolFn);
     }
 

@@ -53,7 +53,7 @@ class Reference
                 $this->base->setBySymbol($this->symbolKey, $value);
                 return;
             }
-            $this->base->set($this->name, $value);
+            $this->base->set($this->name, $value, $this->strict);
             return;
         }
 

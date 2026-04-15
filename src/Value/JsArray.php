@@ -142,14 +142,14 @@ class JsArray extends JsObject
         return parent::get($name);
     }
 
-    public function set(string $name, JsValue $value): void
+    public function set(string $name, JsValue $value, bool $strict = false): void
     {
         if ($name === 'length') {
             $this->length = (int) $value->toNumber();
             return;
         }
 
-        parent::set($name, $value);
+        parent::set($name, $value, $strict);
 
         if (ctype_digit($name)) {
             $index = (int) $name;
@@ -157,5 +157,20 @@ class JsArray extends JsObject
                 $this->length = $index + 1;
             }
         }
+    }
+
+    /** Array.length is non-configurable: delete must return false (or throw in strict mode). */
+    public function delete(string $name, bool $strict = false): bool
+    {
+        if ($name === 'length') {
+            if ($strict) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot delete property 'length' of [object Array]"
+                );
+            }
+            return false;
+        }
+
+        return parent::delete($name, $strict);
     }
 }

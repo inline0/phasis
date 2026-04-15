@@ -57,7 +57,7 @@ class JsObject implements JsValue
         return JsUndefined::instance();
     }
 
-    public function set(string $name, JsValue $value): void
+    public function set(string $name, JsValue $value, bool $strict = false): void
     {
         $desc = $this->properties->get($name);
         if ($desc !== null) {
@@ -67,11 +67,48 @@ class JsObject implements JsValue
             }
 
             if ($desc->writable === false) {
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot assign to read only property '{$name}' of object '#<Object>'"
+                    );
+                }
                 return;
             }
 
             $desc->value = $value;
             return;
+        }
+
+        // Check prototype chain for non-writable data property or accessor without setter.
+        $proto = $this->prototype;
+        while ($proto !== null) {
+            $protoDesc = $proto->properties->get($name);
+            if ($protoDesc !== null) {
+                if ($protoDesc->set !== null) {
+                    // Inherited setter: invoke it with this object as receiver.
+                    $protoDesc->set->call($this, [$value]);
+                    return;
+                }
+                if ($protoDesc->get !== null && $protoDesc->set === null) {
+                    // Inherited accessor with getter only (no setter).
+                    if ($strict) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot set property {$name} of #<Object> which has only a getter"
+                        );
+                    }
+                    return;
+                }
+                if ($protoDesc->writable === false) {
+                    if ($strict) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot assign to read only property '{$name}' of object '#<Object>'"
+                        );
+                    }
+                    return;
+                }
+                break;
+            }
+            $proto = $proto->prototype;
         }
 
         $this->properties->set($name, PropertyDescriptor::data($value));
@@ -163,7 +200,7 @@ class JsObject implements JsValue
         return false;
     }
 
-    public function delete(string $name): bool
+    public function delete(string $name, bool $strict = false): bool
     {
         $desc = $this->properties->get($name);
         if ($desc === null) {
@@ -171,6 +208,11 @@ class JsObject implements JsValue
         }
 
         if ($desc->configurable === false) {
+            if ($strict) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot delete property '{$name}' of #<Object>"
+                );
+            }
             return false;
         }
 

@@ -605,6 +605,12 @@ class Lexer
 
     private function skipWhitespaceAndComments(): void
     {
+        // Track whether a line terminator was seen during this whitespace/comment
+        // pass, or we are at the very start of the source. This is needed for
+        // AnnexB HTML-like close comments: --> is only a comment when it appears
+        // at the start of a line (or on the first line of the source).
+        $lineTerminatorInPass = empty($this->tokens);
+
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
@@ -618,6 +624,7 @@ class Lexer
             if (ord($ch) >= 128) {
                 if ($this->isUnicodeLineTerminator()) {
                     $this->lineTerminatorBefore = true;
+                    $lineTerminatorInPass = true;
                     $this->pos += 3;
                     $this->line++;
                     $this->column = 0;
@@ -633,6 +640,7 @@ class Lexer
             // Line terminators
             if ($ch === "\n") {
                 $this->lineTerminatorBefore = true;
+                $lineTerminatorInPass = true;
                 $this->pos++;
                 $this->line++;
                 $this->column = 0;
@@ -640,6 +648,7 @@ class Lexer
             }
             if ($ch === "\r") {
                 $this->lineTerminatorBefore = true;
+                $lineTerminatorInPass = true;
                 $this->pos++;
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->pos++;
@@ -651,21 +660,42 @@ class Lexer
 
             // Unicode line terminators handled above in multi-byte section
 
-            // Single-line comment
+            // Single-line comment: //
             $isLineComment = $ch === '/'
                 && $this->pos + 1 < $this->length
                 && $this->source[$this->pos + 1] === '/';
             if ($isLineComment) {
                 $this->pos += 2;
                 $this->column += 2;
-                while (
-                    $this->pos < $this->length
-                    && $this->source[$this->pos] !== "\n"
-                    && $this->source[$this->pos] !== "\r"
-                ) {
-                    $this->pos++;
-                    $this->column++;
-                }
+                $this->skipToEndOfLine();
+                continue;
+            }
+
+            // AnnexB: SingleLineHTMLOpenComment (<!-- treated as single-line comment)
+            if (
+                $ch === '<'
+                && $this->pos + 3 < $this->length
+                && $this->source[$this->pos + 1] === '!'
+                && $this->source[$this->pos + 2] === '-'
+                && $this->source[$this->pos + 3] === '-'
+            ) {
+                $this->pos += 4;
+                $this->column += 4;
+                $this->skipToEndOfLine();
+                continue;
+            }
+
+            // AnnexB: SingleLineHTMLCloseComment (--> at start of line)
+            if (
+                $ch === '-'
+                && $lineTerminatorInPass
+                && $this->pos + 2 < $this->length
+                && $this->source[$this->pos + 1] === '-'
+                && $this->source[$this->pos + 2] === '>'
+            ) {
+                $this->pos += 3;
+                $this->column += 3;
+                $this->skipToEndOfLine();
                 continue;
             }
 
@@ -687,11 +717,13 @@ class Lexer
                     }
                     if ($this->source[$this->pos] === "\n") {
                         $this->lineTerminatorBefore = true;
+                        $lineTerminatorInPass = true;
                         $this->pos++;
                         $this->line++;
                         $this->column = 0;
                     } elseif ($this->source[$this->pos] === "\r") {
                         $this->lineTerminatorBefore = true;
+                        $lineTerminatorInPass = true;
                         $this->pos++;
                         if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                             $this->pos++;
@@ -708,6 +740,23 @@ class Lexer
 
             // Not whitespace or comment
             break;
+        }
+    }
+
+    /** Skip to the end of the current line (used by single-line comment handlers). */
+    private function skipToEndOfLine(): void
+    {
+        while ($this->pos < $this->length) {
+            $ch = $this->source[$this->pos];
+            if ($ch === "\n" || $ch === "\r") {
+                break;
+            }
+            // Also stop at Unicode line separators (U+2028, U+2029).
+            if (ord($ch) >= 128 && $this->isUnicodeLineTerminator()) {
+                break;
+            }
+            $this->pos++;
+            $this->column++;
         }
     }
 
