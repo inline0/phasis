@@ -35,6 +35,8 @@ class SymbolConstructor
     private static ?JsSymbol $replace = null;
     private static ?JsSymbol $species = null;
     private static ?JsSymbol $isConcatSpreadable = null;
+    private static ?JsSymbol $unscopables = null;
+    private static ?JsSymbol $matchAll = null;
 
     public static function iterator(): JsSymbol
     {
@@ -86,6 +88,16 @@ class SymbolConstructor
         return self::$isConcatSpreadable ??= new JsSymbol('Symbol.isConcatSpreadable');
     }
 
+    public static function unscopables(): JsSymbol
+    {
+        return self::$unscopables ??= new JsSymbol('Symbol.unscopables');
+    }
+
+    public static function matchAll(): JsSymbol
+    {
+        return self::$matchAll ??= new JsSymbol('Symbol.matchAll');
+    }
+
     public static function install(Environment $env): void
     {
         // Symbol(description) is callable but NOT a constructor.
@@ -98,10 +110,21 @@ class SymbolConstructor
         });
 
         // Symbol.for(key): returns shared symbol from global registry.
-        $symbolFn->set('for', JsFunction::fromCallable('for', self::symbolFor()));
+        // {writable: true, enumerable: false, configurable: true} per spec
+        $symbolFn->defineOwnProperty('for', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('for', self::symbolFor(), 1),
+            true,
+            false,
+            true,
+        ));
 
         // Symbol.keyFor(sym): returns registry key for a registered symbol.
-        $symbolFn->set('keyFor', JsFunction::fromCallable('keyFor', self::symbolKeyFor()));
+        $symbolFn->defineOwnProperty('keyFor', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('keyFor', self::symbolKeyFor(), 1),
+            true,
+            false,
+            true,
+        ));
 
         // Well-known symbols as static properties.
         // Well-known symbols are non-writable, non-enumerable, non-configurable per spec
@@ -118,6 +141,8 @@ class SymbolConstructor
         $wks('match', self::match());
         $wks('replace', self::replace());
         $wks('species', self::species());
+        $wks('unscopables', self::unscopables());
+        $wks('matchAll', self::matchAll());
         $wks('isConcatSpreadable', self::isConcatSpreadable());
 
         // Symbol.prototype
