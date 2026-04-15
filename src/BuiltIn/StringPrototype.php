@@ -960,11 +960,11 @@ class StringPrototype
                 $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
 
                 $byteOffset = 0;
-                while (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE, $byteOffset)) {
+                while (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                     $numericElements = [];
                     foreach ($m as $key => $val) {
                         if (is_int($key)) {
-                            $numericElements[] = $val[1] === -1
+                            $numericElements[] = ($val[1] === -1 || $val[0] === null)
                                 ? JsUndefined::instance()
                                 : new JsString($val[0]);
                         }
@@ -979,7 +979,7 @@ class StringPrototype
                     foreach ($m as $key => $val) {
                         if (is_string($key)) {
                             $hasGroups = true;
-                            $groups->set($key, $val[1] === -1
+                            $groups->set($key, ($val[1] === -1 || $val[0] === null)
                                 ? JsUndefined::instance()
                                 : new JsString($val[0]));
                         }
