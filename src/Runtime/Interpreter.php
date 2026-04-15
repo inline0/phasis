@@ -1213,6 +1213,11 @@ class Interpreter
 
     private function validateStrictModeNode(Node $node): void
     {
+        // 'with' statement is forbidden in strict mode.
+        if ($node instanceof WithStatement) {
+            throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+        }
+
         if ($node instanceof TryStatement) {
             if ($node->handler !== null && $node->handler->param !== null) {
                 $this->checkStrictCatchParam($node->handler->param);
@@ -4025,6 +4030,11 @@ class Interpreter
             $pcreFlags .= 's';
         }
         $pcrePattern = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+
+        // Validate the pattern compiles. Throw SyntaxError if invalid.
+        if (@preg_match($pcrePattern, '') === false) {
+            throw new \PhpJs\Exceptions\SyntaxError('Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg());
+        }
 
         $isGlobal = str_contains($flags, 'g');
         $isSticky = str_contains($flags, 'y');

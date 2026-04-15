@@ -193,11 +193,15 @@ class GlobalObject
             $body = '';
             $params = '';
             if (count($args) > 0) {
-                // Per spec, ToString is called on each argument in order.
-                // If ToString throws, that exception must propagate before
-                // the next argument is converted.
-                $body = TypeConversion::toString(array_pop($args));
-                $params = implode(',', array_map(fn(JsValue $a) => TypeConversion::toString($a), $args));
+                // Per spec 20.2.1.1 step 5-9, ToString is called on each
+                // argument left-to-right: first all parameter args, then body.
+                // If any ToString throws, propagate before reaching the next.
+                $stringArgs = [];
+                foreach ($args as $arg) {
+                    $stringArgs[] = TypeConversion::toString($arg);
+                }
+                $body = array_pop($stringArgs);
+                $params = implode(',', $stringArgs);
             }
             // Per spec steps 17-18, params are parsed first as FormalParameters
             // (no preceding line terminator, so --> in params is a SyntaxError).
@@ -205,6 +209,12 @@ class GlobalObject
             $source = "(function anonymous({$params}\n) {\n{$body}\n})";
             $parser = new \PhpJs\Parser\Parser($source);
             $program = $parser->parse();
+
+            // Per spec 20.2.1.1 step 20c-d, detect strict mode in the
+            // body and validate strict-mode early errors (with statement,
+            // duplicate params, etc.).
+            self::validateDynamicFunction($program, $params);
+
             // Use the global environment so the created function can see
             // global variables (per spec: "scope chain consisting of the
             // global object").
@@ -251,8 +261,19 @@ class GlobalObject
             $thisArg = $args[0] ?? JsUndefined::instance();
             $argsArr = $args[1] ?? JsUndefined::instance();
             $callArgs = [];
-            if ($argsArr instanceof \PhpJs\Value\JsArray) {
-                for ($i = 0; $i < $argsArr->getLength(); $i++) {
+            // Per spec 20.2.3.1 step 3-4: if argArray is null/undefined,
+            // call with empty args. Otherwise CreateListFromArrayLike.
+            if (!$argsArr instanceof JsUndefined && !$argsArr instanceof \PhpJs\Value\JsNull) {
+                // CreateListFromArrayLike: argArray must be an object.
+                if (!$argsArr instanceof \PhpJs\Value\JsObject) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'CreateListFromArrayLike called on non-object',
+                    );
+                }
+                // Get length and iterate index properties.
+                $lenVal = $argsArr->get('length');
+                $len = (int) TypeConversion::toNumber($lenVal);
+                for ($i = 0; $i < $len; $i++) {
                     $callArgs[] = $argsArr->get((string) $i);
                 }
             }
@@ -281,6 +302,44 @@ class GlobalObject
             }
             return new JsString($this_->toJsString());
         }, 0));
+
+        // Function.prototype[Symbol.hasInstance] per spec 19.2.3.6.
+        // OrdinaryHasInstance: check if the left operand's prototype chain
+        // includes the function's .prototype property.
+        $hasInstanceFn = JsFunction::fromCallable('[Symbol.hasInstance]', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                return new JsBoolean(false);
+            }
+            $value = $args[0] ?? JsUndefined::instance();
+            if (!$value instanceof \PhpJs\Value\JsObject) {
+                return new JsBoolean(false);
+            }
+            $proto = $this_->get('prototype');
+            if (!$proto instanceof \PhpJs\Value\JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Function has non-object prototype in instanceof check',
+                );
+            }
+            // Walk the prototype chain of value.
+            $current = $value->getPrototype();
+            while ($current !== null) {
+                if ($current === $proto) {
+                    return new JsBoolean(true);
+                }
+                $current = $current->getPrototype();
+            }
+            return new JsBoolean(false);
+        }, 1);
+        $hasInstanceFn->setName('[Symbol.hasInstance]');
+        $fnProto->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::hasInstance(),
+            new \PhpJs\Object\PropertyDescriptor(
+                value: $hasInstanceFn,
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            ),
+        );
 
         // Function.prototype.constructor = Function (per spec 19.2.3.2).
         $fnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
@@ -403,12 +462,27 @@ class GlobalObject
             $str = empty($args) ? '' : TypeConversion::toString($args[0]);
             // When called as constructor (new String(x)), create wrapper object
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $this_->set('[[PrimitiveValue]]', new JsString($str));
                 $val = new JsString($str);
-                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
-                $this_->set('toString', JsFunction::fromCallable('toString', fn() => $val));
-                // Set length
-                $this_->set('length', new \PhpJs\Value\JsNumber((float) mb_strlen($str, 'UTF-8')));
+                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
+                $this_->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+                    JsFunction::fromCallable('valueOf', fn() => $val),
+                    true, false, true,
+                ));
+                $this_->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+                    JsFunction::fromCallable('toString', fn() => $val),
+                    true, false, true,
+                ));
+                // Set indexed character properties and length per spec.
+                $len = mb_strlen($str, 'UTF-8');
+                for ($i = 0; $i < $len; $i++) {
+                    $ch = mb_substr($str, $i, 1, 'UTF-8');
+                    $this_->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                        new JsString($ch), false, true, false,
+                    ));
+                }
+                $this_->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                    new \PhpJs\Value\JsNumber((float) $len), false, false, false,
+                ));
                 return $this_;
             }
             return new JsString($str);
@@ -421,10 +495,16 @@ class GlobalObject
             $num = empty($args) ? 0.0 : TypeConversion::toNumber($args[0]);
             // When called as constructor (new Number(x)), set up wrapper
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $this_->set('[[PrimitiveValue]]', new JsNumber($num));
                 $val = new JsNumber($num);
-                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
-                $this_->set('toString', JsFunction::fromCallable('toString', fn() => new JsString($val->toJsString())));
+                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
+                $this_->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+                    JsFunction::fromCallable('valueOf', fn() => $val),
+                    true, false, true,
+                ));
+                $this_->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+                    JsFunction::fromCallable('toString', fn() => new JsString($val->toJsString())),
+                    true, false, true,
+                ));
                 return $this_;
             }
             return new JsNumber($num);
@@ -467,5 +547,112 @@ class GlobalObject
             }
         }
         return $units;
+    }
+
+    /**
+     * Validate a dynamically created function (via Function constructor).
+     *
+     * Per spec 20.2.1.1 step 20, if the body contains "use strict":
+     * - The body must not contain a WithStatement.
+     * - Parameters must not have duplicate names.
+     *
+     * @throws \PhpJs\Exceptions\SyntaxError
+     */
+    private static function validateDynamicFunction(\PhpJs\Ast\Program $program, string $params): void
+    {
+        // The parsed program should contain a single ExpressionStatement
+        // wrapping a FunctionExpression. Extract its body.
+        $fnBody = null;
+        foreach ($program->body as $stmt) {
+            if ($stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement
+                && $stmt->expression instanceof \PhpJs\Ast\Expression\FunctionExpression
+            ) {
+                $fnBody = $stmt->expression->body;
+                break;
+            }
+        }
+        if ($fnBody === null) {
+            return;
+        }
+
+        // Check for "use strict" directive in the function body.
+        $isStrict = false;
+        if ($fnBody instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            foreach ($fnBody->body as $bodyStmt) {
+                if (!$bodyStmt instanceof \PhpJs\Ast\Statement\ExpressionStatement) {
+                    break;
+                }
+                $expr = $bodyStmt->expression;
+                if ($expr instanceof \PhpJs\Ast\Expression\Literal
+                    && is_string($expr->value)
+                    && $expr->value === 'use strict'
+                ) {
+                    $isStrict = true;
+                    break;
+                }
+                if (!$expr instanceof \PhpJs\Ast\Expression\Literal || !is_string($expr->value)) {
+                    break;
+                }
+            }
+        }
+
+        if (!$isStrict) {
+            return;
+        }
+
+        // Validate: no 'with' statements in the body.
+        if ($fnBody instanceof \PhpJs\Ast\Statement\BlockStatement) {
+            self::checkNoWithStatements($fnBody->body);
+        }
+
+        // Validate: no duplicate parameter names in strict mode.
+        if ($params !== '') {
+            $names = array_map('trim', explode(',', $params));
+            $seen = [];
+            foreach ($names as $name) {
+                if ($name === '') {
+                    continue;
+                }
+                if (in_array($name, $seen, true)) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Duplicate parameter name not allowed in this context",
+                    );
+                }
+                $seen[] = $name;
+            }
+        }
+    }
+
+    /**
+     * Recursively check that no WithStatement exists in the given statements.
+     *
+     * @param \PhpJs\Ast\Node[] $statements
+     * @throws \PhpJs\Exceptions\SyntaxError
+     */
+    private static function checkNoWithStatements(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof \PhpJs\Ast\Statement\WithStatement) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Strict mode code may not include a with statement',
+                );
+            }
+            if ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                self::checkNoWithStatements($stmt->body);
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    self::checkNoWithStatements($stmt->consequent->body);
+                } elseif ($stmt->consequent instanceof \PhpJs\Ast\Statement\WithStatement) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                }
+                if ($stmt->alternate !== null) {
+                    if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                        self::checkNoWithStatements($stmt->alternate->body);
+                    } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\WithStatement) {
+                        throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                    }
+                }
+            }
+        }
     }
 }
