@@ -90,29 +90,63 @@ class Test262Runner
         ?array $negative,
         bool $isRaw,
     ): TestResult {
-        // Run in subprocess to prevent segfaults from crashing the runner
-        $script = $this->buildTestScript($testPath, $source, $meta, $mode, $includes, $negative, $isRaw);
-        $tmpFile = tempnam(sys_get_temp_dir(), 'test262_');
-        file_put_contents($tmpFile, $script);
-        $output = '';
-        $exitCode = 0;
-        exec('php ' . escapeshellarg($tmpFile) . ' 2>&1', $outputLines, $exitCode);
-        $output = implode("\n", $outputLines);
-        @unlink($tmpFile);
+        // Run in-process for speed (~100x faster than subprocess per test)
+        $engine = new Engine();
 
-        if ($exitCode === 0) {
-            $result = trim($output);
-            if ($result === 'PASS') {
+        try {
+            if (!$isRaw) {
+                $this->loadHarness($engine, 'sta.js');
+                $this->loadHarness($engine, 'assert.js');
+                foreach ($includes as $include) {
+                    $this->loadHarness($engine, $include);
+                }
+            }
+
+            $testSource = preg_replace('/\/\*---.*?---\*\//s', '', $source);
+            if ($mode === 'strict') {
+                $testSource = '"use strict";' . "\n" . $testSource;
+            }
+
+            $engine->eval($testSource);
+
+            if ($negative !== null) {
+                return new TestResult(
+                    $testPath,
+                    TestStatus::Fail,
+                    "Expected {$negative['type']} but test passed normally",
+                );
+            }
+
+            return new TestResult($testPath, TestStatus::Pass);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            if ($negative !== null) {
+                $phase = $negative['phase'] ?? 'runtime';
+                $type = $negative['type'] ?? 'Error';
+                if (($phase === 'parse' || $phase === 'early') && $type === 'SyntaxError') {
+                    return new TestResult($testPath, TestStatus::Pass);
+                }
+            }
+            return new TestResult($testPath, TestStatus::Fail, 'SyntaxError: ' . $e->getMessage());
+        } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            if ($negative !== null) {
+                $type = $negative['type'] ?? 'Error';
+                $match = match ($type) {
+                    'TypeError' => $e instanceof \PhpJs\Exceptions\TypeError,
+                    'RangeError' => $e instanceof \PhpJs\Exceptions\RangeError,
+                    'ReferenceError' => $e instanceof \PhpJs\Exceptions\ReferenceError,
+                    default => true,
+                };
+                if ($match) {
+                    return new TestResult($testPath, TestStatus::Pass);
+                }
+            }
+            return new TestResult($testPath, TestStatus::Fail, $e::class . ': ' . $e->getMessage());
+        } catch (\Throwable $e) {
+            if ($negative !== null) {
                 return new TestResult($testPath, TestStatus::Pass);
             }
-            return new TestResult($testPath, TestStatus::Fail, $result);
+            return new TestResult($testPath, TestStatus::Fail, $e::class . ': ' . $e->getMessage());
         }
-
-        // Exit code 139 = segfault, other non-zero = error
-        if ($exitCode === 139) {
-            return new TestResult($testPath, TestStatus::Fail, 'Segfault (stack overflow)');
-        }
-        return new TestResult($testPath, TestStatus::Fail, trim($output));
     }
 
     private function buildTestScript(
