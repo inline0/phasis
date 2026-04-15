@@ -475,40 +475,44 @@ class StringPrototype
 
                 $size = strlen($str);
                 if ($size === 0) {
-                    // Empty string: if the regex matches empty string, return []; else return [""].
-                    if (@preg_match($pcre, '', $m) && strlen($m[0]) === 0) {
-                        // Pattern matched at position 0 with zero length.
-                        if (@preg_match($pcre, $str, $m, 0, 0) === 1) {
-                            return JsArray::fromArray([]);
-                        }
+                    // Empty string: if regex matches empty string, return []; else [""].
+                    if (@preg_match($pcre, '', $m) === 1) {
+                        return JsArray::fromArray([]);
                     }
                     return JsArray::fromArray([new JsString($str)]);
                 }
 
+                // Implement 22.2.5.13 RegExp.prototype[@@split] manually.
+                // p = end of last match (byte offset), q = current search pos.
                 $result = [];
-                $p = 0; // Last split point (byte offset).
-                $q = 0; // Current search position (byte offset).
+                $p = 0;
+                $q = 0;
 
                 while ($q < $size) {
-                    if (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE, $q) !== 1) {
+                    // Try to find a match starting from offset q.
+                    if (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $q) !== 1) {
                         break;
                     }
 
-                    $matchStart = $m[0][1]; // Byte offset of match start.
-                    $matchLen = strlen($m[0][0]);
-                    $e = $matchStart + $matchLen; // End of match (byte offset).
+                    $matchStart = $m[0][1];
+                    $matchLen = strlen((string) $m[0][0]);
+                    $e = $matchStart + $matchLen;
 
-                    // If the match is at the same position as last split
-                    // point AND has zero length, advance by one character.
+                    // Per spec: if the match starts at or beyond size, treat as no match.
+                    if ($matchStart >= $size) {
+                        break;
+                    }
+
+                    // Per spec step 12.c.iii.2: if e === p, advance q by one
+                    // character and retry (prevents infinite loop on zero-length
+                    // matches at the same split point).
                     if ($e === $p) {
-                        $q = $matchStart + strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
-                        if ($q <= $matchStart) {
-                            $q = $matchStart + 1;
-                        }
+                        $charLen = strlen(mb_substr($str, mb_strlen(substr($str, 0, $q), 'UTF-8'), 1, 'UTF-8'));
+                        $q += max($charLen, 1);
                         continue;
                     }
 
-                    // Push substring from last split point to match start.
+                    // Push the substring between last split and match start.
                     $result[] = new JsString(substr($str, $p, $matchStart - $p));
                     if (count($result) >= $lim) {
                         return JsArray::fromArray($result);
@@ -516,7 +520,7 @@ class StringPrototype
 
                     // Push capture groups (indices 1..n).
                     for ($i = 1, $cnt = count($m); $i < $cnt; $i++) {
-                        if (!is_array($m[$i]) || $m[$i][1] === -1) {
+                        if (!is_array($m[$i]) || $m[$i][0] === null || $m[$i][1] === -1) {
                             $result[] = JsUndefined::instance();
                         } else {
                             $result[] = new JsString($m[$i][0]);
@@ -527,18 +531,17 @@ class StringPrototype
                     }
 
                     $p = $e;
-                    // For zero-length matches, advance q past match start.
+
+                    // For zero-length matches, advance q by one character.
                     if ($matchLen === 0) {
-                        $q = $matchStart + strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
-                        if ($q <= $matchStart) {
-                            $q = $matchStart + 1;
-                        }
+                        $charLen = strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
+                        $q = $matchStart + max($charLen, 1);
                     } else {
                         $q = $e;
                     }
                 }
 
-                // Push the trailing substring.
+                // Push the trailing substring (from last split point to end).
                 $result[] = new JsString(substr($str, $p));
                 return JsArray::fromArray($result);
             }
