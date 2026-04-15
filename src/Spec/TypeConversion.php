@@ -454,6 +454,14 @@ final class TypeConversion
             ));
         }
 
+        // Symbol wrappers get Symbol.prototype
+        if ($value instanceof JsSymbol) {
+            $symProto = JsSymbol::getSymbolPrototype();
+            if ($symProto !== null) {
+                $wrapper->setPrototype($symProto);
+            }
+        }
+
         return $wrapper;
     }
 

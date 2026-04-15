@@ -11,6 +11,19 @@ class JsSymbol implements JsValue
     private static array $instances = [];
     private readonly int $id;
 
+    /** Symbol.prototype: set during SymbolConstructor::install. */
+    private static ?JsObject $symbolPrototype = null;
+
+    public static function setSymbolPrototype(JsObject $proto): void
+    {
+        self::$symbolPrototype = $proto;
+    }
+
+    public static function getSymbolPrototype(): ?JsObject
+    {
+        return self::$symbolPrototype;
+    }
+
     public function __construct(
         public readonly ?string $description = null,
     ) {

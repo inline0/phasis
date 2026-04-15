@@ -123,35 +123,42 @@ class SymbolConstructor
         // Symbol.prototype
         $proto = new \PhpJs\Value\JsObject();
         $proto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($symbolFn, true, false, true));
-        $proto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
-                if ($this_ instanceof JsSymbol) {
-                    return new JsString($this_->toString());
+        // Helper to extract JsSymbol from this (either raw symbol or wrapper object)
+        $extractSymbol = function (JsValue $this_, string $method): JsSymbol {
+            if ($this_ instanceof JsSymbol) {
+                return $this_;
+            }
+            if ($this_ instanceof \PhpJs\Value\JsObject) {
+                $prim = $this_->get('[[PrimitiveValue]]');
+                if ($prim instanceof JsSymbol) {
+                    return $prim;
                 }
-                throw new TypeError('Symbol.prototype.toString requires a Symbol');
+            }
+            throw new TypeError("Symbol.prototype.{$method} requires that 'this' be a Symbol");
+        };
+
+        $proto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('toString', function (JsValue $this_) use ($extractSymbol): JsValue {
+                $sym = $extractSymbol($this_, 'toString');
+                return new JsString($sym->toString());
             }, 0),
             true,
             false,
             true,
         ));
         $proto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
-                if ($this_ instanceof JsSymbol) {
-                    return $this_;
-                }
-                throw new TypeError('Symbol.prototype.valueOf requires a Symbol');
+            JsFunction::fromCallable('valueOf', function (JsValue $this_) use ($extractSymbol): JsValue {
+                return $extractSymbol($this_, 'valueOf');
             }, 0),
             true,
             false,
             true,
         ));
         $proto->defineOwnProperty('description', \PhpJs\Object\PropertyDescriptor::accessor(
-            JsFunction::fromCallable('get description', function (JsValue $this_): JsValue {
-                if ($this_ instanceof JsSymbol) {
-                    $desc = $this_->getDescription();
-                    return $desc !== null ? new JsString($desc) : JsUndefined::instance();
-                }
-                throw new TypeError('Symbol.prototype.description requires a Symbol');
+            JsFunction::fromCallable('get description', function (JsValue $this_) use ($extractSymbol): JsValue {
+                $sym = $extractSymbol($this_, 'description');
+                $desc = $sym->getDescription();
+                return $desc !== null ? new JsString($desc) : JsUndefined::instance();
             }, 0),
             null,
             false,
@@ -163,6 +170,7 @@ class SymbolConstructor
             \PhpJs\Object\PropertyDescriptor::data(new JsString('Symbol'), false, false, true),
         );
         $symbolFn->set('prototype', $proto);
+        JsSymbol::setSymbolPrototype($proto);
 
         $env->defineVar('Symbol', $symbolFn);
         // Store prototype for auto-boxing symbol property access
