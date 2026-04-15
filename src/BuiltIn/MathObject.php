@@ -35,47 +35,47 @@ class MathObject
         ));
 
         // Single-argument math functions.
-        $math->set('abs', JsFunction::fromCallable('abs', self::singleArgFn('abs'), 1));
-        $math->set('ceil', JsFunction::fromCallable('ceil', self::singleArgFn('ceil'), 1));
-        $math->set('floor', JsFunction::fromCallable('floor', self::singleArgFn('floor'), 1));
-        $math->set('round', JsFunction::fromCallable('round', self::roundFn(), 1));
-        $math->set('trunc', JsFunction::fromCallable('trunc', self::truncFn(), 1));
-        $math->set('sqrt', JsFunction::fromCallable('sqrt', self::singleArgFn('sqrt'), 1));
-        $math->set('cbrt', JsFunction::fromCallable('cbrt', self::cbrtFn(), 1));
-        $math->set('log', JsFunction::fromCallable('log', self::singleArgFn('log'), 1));
-        $math->set('log2', JsFunction::fromCallable('log2', self::log2Fn(), 1));
-        $math->set('log10', JsFunction::fromCallable('log10', self::singleArgFn('log10'), 1));
-        $math->set('sin', JsFunction::fromCallable('sin', self::singleArgFn('sin'), 1));
-        $math->set('cos', JsFunction::fromCallable('cos', self::singleArgFn('cos'), 1));
-        $math->set('tan', JsFunction::fromCallable('tan', self::singleArgFn('tan'), 1));
-        $math->set('sign', JsFunction::fromCallable('sign', self::signFn(), 1));
-        $math->set('fround', JsFunction::fromCallable('fround', self::froundFn(), 1));
+        $math->defineOwnProperty('abs', PropertyDescriptor::data(JsFunction::fromCallable('abs', self::singleArgFn('abs'), 1), true, false, true));
+        $math->defineOwnProperty('ceil', PropertyDescriptor::data(JsFunction::fromCallable('ceil', self::singleArgFn('ceil'), 1), true, false, true));
+        $math->defineOwnProperty('floor', PropertyDescriptor::data(JsFunction::fromCallable('floor', self::singleArgFn('floor'), 1), true, false, true));
+        $math->defineOwnProperty('round', PropertyDescriptor::data(JsFunction::fromCallable('round', self::roundFn(), 1), true, false, true));
+        $math->defineOwnProperty('trunc', PropertyDescriptor::data(JsFunction::fromCallable('trunc', self::truncFn(), 1), true, false, true));
+        $math->defineOwnProperty('sqrt', PropertyDescriptor::data(JsFunction::fromCallable('sqrt', self::singleArgFn('sqrt'), 1), true, false, true));
+        $math->defineOwnProperty('cbrt', PropertyDescriptor::data(JsFunction::fromCallable('cbrt', self::cbrtFn(), 1), true, false, true));
+        $math->defineOwnProperty('log', PropertyDescriptor::data(JsFunction::fromCallable('log', self::singleArgFn('log'), 1), true, false, true));
+        $math->defineOwnProperty('log2', PropertyDescriptor::data(JsFunction::fromCallable('log2', self::log2Fn(), 1), true, false, true));
+        $math->defineOwnProperty('log10', PropertyDescriptor::data(JsFunction::fromCallable('log10', self::singleArgFn('log10'), 1), true, false, true));
+        $math->defineOwnProperty('sin', PropertyDescriptor::data(JsFunction::fromCallable('sin', self::singleArgFn('sin'), 1), true, false, true));
+        $math->defineOwnProperty('cos', PropertyDescriptor::data(JsFunction::fromCallable('cos', self::singleArgFn('cos'), 1), true, false, true));
+        $math->defineOwnProperty('tan', PropertyDescriptor::data(JsFunction::fromCallable('tan', self::singleArgFn('tan'), 1), true, false, true));
+        $math->defineOwnProperty('sign', PropertyDescriptor::data(JsFunction::fromCallable('sign', self::signFn(), 1), true, false, true));
+        $math->defineOwnProperty('fround', PropertyDescriptor::data(JsFunction::fromCallable('fround', self::froundFn(), 1), true, false, true));
 
-        $math->set('exp', JsFunction::fromCallable('exp', self::singleArgFn('exp'), 1));
-        $math->set('expm1', JsFunction::fromCallable('expm1', self::singleArgFn('expm1'), 1));
-        $math->set('asin', JsFunction::fromCallable('asin', self::singleArgFn('asin'), 1));
-        $math->set('acos', JsFunction::fromCallable('acos', self::singleArgFn('acos'), 1));
-        $math->set('atan', JsFunction::fromCallable('atan', self::singleArgFn('atan'), 1));
-        $math->set('sinh', JsFunction::fromCallable('sinh', self::singleArgFn('sinh'), 1));
-        $math->set('cosh', JsFunction::fromCallable('cosh', self::singleArgFn('cosh'), 1));
-        $math->set('tanh', JsFunction::fromCallable('tanh', self::singleArgFn('tanh'), 1));
-        $math->set('asinh', JsFunction::fromCallable('asinh', self::singleArgFn('asinh'), 1));
-        $math->set('acosh', JsFunction::fromCallable('acosh', self::singleArgFn('acosh'), 1));
-        $math->set('atanh', JsFunction::fromCallable('atanh', self::singleArgFn('atanh'), 1));
-        $math->set('log1p', JsFunction::fromCallable('log1p', self::singleArgFn('log1p'), 1));
-        $math->set('atan2', JsFunction::fromCallable('atan2', function (JsValue $this_, array $args): JsValue {
+        $math->defineOwnProperty('exp', PropertyDescriptor::data(JsFunction::fromCallable('exp', self::singleArgFn('exp'), 1), true, false, true));
+        $math->defineOwnProperty('expm1', PropertyDescriptor::data(JsFunction::fromCallable('expm1', self::singleArgFn('expm1'), 1), true, false, true));
+        $math->defineOwnProperty('asin', PropertyDescriptor::data(JsFunction::fromCallable('asin', self::singleArgFn('asin'), 1), true, false, true));
+        $math->defineOwnProperty('acos', PropertyDescriptor::data(JsFunction::fromCallable('acos', self::singleArgFn('acos'), 1), true, false, true));
+        $math->defineOwnProperty('atan', PropertyDescriptor::data(JsFunction::fromCallable('atan', self::singleArgFn('atan'), 1), true, false, true));
+        $math->defineOwnProperty('sinh', PropertyDescriptor::data(JsFunction::fromCallable('sinh', self::singleArgFn('sinh'), 1), true, false, true));
+        $math->defineOwnProperty('cosh', PropertyDescriptor::data(JsFunction::fromCallable('cosh', self::singleArgFn('cosh'), 1), true, false, true));
+        $math->defineOwnProperty('tanh', PropertyDescriptor::data(JsFunction::fromCallable('tanh', self::singleArgFn('tanh'), 1), true, false, true));
+        $math->defineOwnProperty('asinh', PropertyDescriptor::data(JsFunction::fromCallable('asinh', self::singleArgFn('asinh'), 1), true, false, true));
+        $math->defineOwnProperty('acosh', PropertyDescriptor::data(JsFunction::fromCallable('acosh', self::singleArgFn('acosh'), 1), true, false, true));
+        $math->defineOwnProperty('atanh', PropertyDescriptor::data(JsFunction::fromCallable('atanh', self::singleArgFn('atanh'), 1), true, false, true));
+        $math->defineOwnProperty('log1p', PropertyDescriptor::data(JsFunction::fromCallable('log1p', self::singleArgFn('log1p'), 1), true, false, true));
+        $math->defineOwnProperty('atan2', PropertyDescriptor::data(JsFunction::fromCallable('atan2', function (JsValue $this_, array $args): JsValue {
             $y = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $x = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
             return new JsNumber(atan2($y, $x));
-        }, 2));
-        $math->set('clz32', JsFunction::fromCallable('clz32', function (JsValue $this_, array $args): JsValue {
+        }, 2), true, false, true));
+        $math->defineOwnProperty('clz32', PropertyDescriptor::data(JsFunction::fromCallable('clz32', function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
             if ($x === 0) {
                 return new JsNumber(32.0);
             }
             return new JsNumber((float) (31 - (int) floor(log($x, 2))));
-        }, 1));
-        $math->set('imul', JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
+        }, 1), true, false, true));
+        $math->defineOwnProperty('imul', PropertyDescriptor::data(JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
             $a = isset($args[0]) ? TypeConversion::toInt32($args[0]) : 0;
             $b = isset($args[1]) ? TypeConversion::toInt32($args[1]) : 0;
             $result = (int) (($a * $b) % 4294967296);
@@ -83,14 +83,14 @@ class MathObject
                 $result -= 4294967296;
             }
             return new JsNumber((float) $result);
-        }, 2));
+        }, 2), true, false, true));
 
         // Multi-argument or special functions.
-        $math->set('pow', JsFunction::fromCallable('pow', self::powFn(), 2));
-        $math->set('max', JsFunction::fromCallable('max', self::maxFn(), 2));
-        $math->set('min', JsFunction::fromCallable('min', self::minFn(), 2));
-        $math->set('random', JsFunction::fromCallable('random', self::randomFn(), 0));
-        $math->set('hypot', JsFunction::fromCallable('hypot', self::hypotFn(), 2));
+        $math->defineOwnProperty('pow', PropertyDescriptor::data(JsFunction::fromCallable('pow', self::powFn(), 2), true, false, true));
+        $math->defineOwnProperty('max', PropertyDescriptor::data(JsFunction::fromCallable('max', self::maxFn(), 2), true, false, true));
+        $math->defineOwnProperty('min', PropertyDescriptor::data(JsFunction::fromCallable('min', self::minFn(), 2), true, false, true));
+        $math->defineOwnProperty('random', PropertyDescriptor::data(JsFunction::fromCallable('random', self::randomFn(), 0), true, false, true));
+        $math->defineOwnProperty('hypot', PropertyDescriptor::data(JsFunction::fromCallable('hypot', self::hypotFn(), 2), true, false, true));
 
         $env->defineVar('Math', $math);
     }
