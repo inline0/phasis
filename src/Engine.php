@@ -96,8 +96,8 @@ class Engine
     private function installBuiltins(): void
     {
         GlobalObject::install($this->globalEnv);
-        \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\NumberConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ArrayConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\StringPrototype::install($this->globalEnv);

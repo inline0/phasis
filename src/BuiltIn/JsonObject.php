@@ -98,11 +98,22 @@ class JsonObject
             $replacerArg = $args[1] ?? JsUndefined::instance();
             $space = $args[2] ?? JsUndefined::instance();
 
-            // Unwrap Number/String wrapper objects for the space parameter.
+            // Unwrap Number/String wrapper objects for the space parameter per spec.
             if ($space instanceof JsObject) {
                 $prim = $space->get('[[PrimitiveValue]]');
-                if ($prim instanceof JsNumber || $prim instanceof JsString) {
+                if ($prim instanceof JsNumber) {
                     $space = $prim;
+                } elseif ($prim instanceof JsString) {
+                    $space = $prim;
+                } else {
+                    // Try valueOf() for other objects
+                    $valueOf = $space->get('valueOf');
+                    if ($valueOf instanceof JsFunction) {
+                        $val = $valueOf->call($space, []);
+                        if ($val instanceof JsNumber || $val instanceof JsString) {
+                            $space = $val;
+                        }
+                    }
                 }
             }
 
@@ -149,9 +160,10 @@ class JsonObject
             /** @var \SplObjectStorage<JsObject, true> $stack */
             $stack = new \SplObjectStorage();
 
-            // Wrap the value in a holder object and call the serialization algorithm.
+            // Wrap the value in a holder object via [[DefineOwnProperty]] (not [[Set]])
+            // to avoid triggering Proxy traps per spec.
             $holder = new JsObject();
-            $holder->set('', $value);
+            $holder->defineOwnProperty('', \PhpJs\Object\PropertyDescriptor::data($value, true, true, true));
             $result = self::serializeProperty(
                 '',
                 $holder,
@@ -260,8 +272,18 @@ class JsonObject
             return $value->toJsString();
         }
 
+        // BigInt throws TypeError per spec.
+        if ($value instanceof \PhpJs\Value\JsBigInt) {
+            throw new \PhpJs\Exceptions\TypeError('Do not know how to serialize a BigInt');
+        }
+
         // Step 10: arrays and objects (but not functions).
         if ($value instanceof JsObject && !$value instanceof JsFunction) {
+            // Revoked Proxy check.
+            if ($value instanceof \PhpJs\Value\JsProxy && $value->isRevoked()) {
+                throw new \PhpJs\Exceptions\TypeError('Cannot perform \'get\' on a proxy that has been revoked');
+            }
+
             // Circular reference check.
             if ($stack->contains($value)) {
                 throw new \PhpJs\Exceptions\TypeError('Converting circular structure to JSON');
