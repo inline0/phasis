@@ -490,18 +490,9 @@ class Interpreter
         }
 
         return match ($op) {
-            '<<' => new JsNumber(
-                (float) (TypeConversion::toInt32($lnum) << (TypeConversion::toUint32($rnum) & 0x1F)),
-            ),
-            '>>' => new JsNumber(
-                (float) (TypeConversion::toInt32($lnum) >> (TypeConversion::toUint32($rnum) & 0x1F)),
-            ),
-            '>>>' => new JsNumber(
-                (float) ($this->unsignedRightShift(
-                    TypeConversion::toInt32($lnum),
-                    TypeConversion::toUint32($rnum) & 0x1F,
-                )),
-            ),
+            '<<' => new JsNumber(TypeConversion::leftShift($lnum, $rnum)),
+            '>>' => new JsNumber(TypeConversion::signedRightShift($lnum, $rnum)),
+            '>>>' => new JsNumber(TypeConversion::unsignedRightShift($lnum, $rnum)),
         };
     }
 
@@ -614,9 +605,12 @@ class Interpreter
     {
         $result = AbstractOperations::abstractRelational($x, $y, $op === '<' || $op === '>=');
         if ($result === null) {
-            return new JsBoolean($op === '<=' || $op === '>=');
+            // Per spec, undefined (NaN or incomparable) always produces false for all relational operators.
+            return new JsBoolean(false);
         }
         if ($op === '<=' || $op === '>=') {
+            // a >= b is !(a < b), a <= b is !(b < a). If abstractRelational returned true,
+            // the negated operator returns false, and vice versa.
             return new JsBoolean(!$result);
         }
         return new JsBoolean($result);
@@ -896,16 +890,9 @@ class Interpreter
             '/=' => $this->divide(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
             '%=' => $this->modulo(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
             '**=' => $this->exponentiate($leftVal, $right),
-            '<<=' => new JsNumber(
-                (float) (TypeConversion::toInt32($leftVal) << (TypeConversion::toUint32($right) & 0x1F)),
-            ),
-            '>>=' => new JsNumber(
-                (float) (TypeConversion::toInt32($leftVal) >> (TypeConversion::toUint32($right) & 0x1F)),
-            ),
-            '>>>=' => new JsNumber((float) $this->unsignedRightShift(
-                TypeConversion::toInt32($leftVal),
-                TypeConversion::toUint32($right) & 0x1F,
-            )),
+            '<<=' => new JsNumber(TypeConversion::leftShift($leftVal, $right)),
+            '>>=' => new JsNumber(TypeConversion::signedRightShift($leftVal, $right)),
+            '>>>=' => new JsNumber(TypeConversion::unsignedRightShift($leftVal, $right)),
             '&=' => new JsNumber(
                 (float) (TypeConversion::toInt32($leftVal) & TypeConversion::toInt32($right)),
             ),

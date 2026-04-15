@@ -183,6 +183,15 @@ class StringPrototype
             if ($prim instanceof JsString) {
                 return $prim->value;
             }
+            // Object wrapping a non-string primitive (e.g. new Object(42),
+            // new Object(true)): convert the inner primitive to string so
+            // that String.prototype methods called on the wrapper produce
+            // the same result as in V8.
+            if ($prim instanceof JsValue
+                && !($prim instanceof JsUndefined)
+                && !($prim instanceof JsObject)) {
+                return TypeConversion::toString($prim);
+            }
         }
         return TypeConversion::toString($this_);
     }
@@ -191,7 +200,13 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            // ToInteger(pos): call ToNumber first (may throw TypeError for
+            // objects without valueOf/toString, e.g. Object.create(null)).
+            $posNum = isset($args[0]) ? TypeConversion::toNumber($args[0]) : 0.0;
+            $index = (int) $posNum;
+            if (is_nan($posNum)) {
+                $index = 0;
+            }
             $len = mb_strlen($str, 'UTF-8');
             if ($index < 0 || $index >= $len) {
                 return new JsString('');
@@ -412,14 +427,24 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $separator = $args[0] ?? JsUndefined::instance();
-            $limit = isset($args[1]) && !($args[1] instanceof JsUndefined)
-                ? (int) TypeConversion::toNumber($args[1]) : PHP_INT_MAX;
+            $limitArg = $args[1] ?? JsUndefined::instance();
+
+            // Per spec: if limit is undefined, lim = 2^32 - 1; else lim = ToUint32(limit).
+            $lim = $limitArg instanceof JsUndefined
+                ? 0xFFFFFFFF
+                : TypeConversion::toUint32($limitArg);
+
+            // If lim is 0, return an empty array immediately.
+            if ($lim === 0) {
+                return JsArray::fromArray([]);
+            }
 
             if ($separator instanceof JsUndefined) {
                 return JsArray::fromArray([new JsString($str)]);
             }
 
-            // RegExp separator
+            // RegExp separator: use PREG_SPLIT_DELIM_CAPTURE to include
+            // capture group results in the output, matching ES spec 22.1.3.21.
             if ($separator instanceof JsObject && $separator->has('source')) {
                 $pattern = TypeConversion::toString($separator->get('source'));
                 $flags = $separator->has('flags') ? TypeConversion::toString($separator->get('flags')) : '';
@@ -431,14 +456,22 @@ class StringPrototype
                     $pcreFlags .= 'm';
                 }
                 $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
-                $parts = @preg_split($pcre, $str, $limit < PHP_INT_MAX ? (int) $limit + 1 : -1);
-                if ($parts === false) {
-                    $parts = [$str];
+
+                // Use PREG_SPLIT_DELIM_CAPTURE so that parenthesized capture
+                // groups appear between the split fragments.
+                $raw = @preg_split($pcre, $str, -1, PREG_SPLIT_DELIM_CAPTURE);
+                if ($raw === false) {
+                    $raw = [$str];
                 }
-                if ($limit < count($parts)) {
-                    $parts = array_slice($parts, 0, $limit);
+
+                $parts = [];
+                foreach ($raw as $p) {
+                    $parts[] = new JsString($p);
+                    if (count($parts) >= $lim) {
+                        break;
+                    }
                 }
-                return JsArray::fromArray(array_map(fn($p) => new JsString($p), $parts));
+                return JsArray::fromArray($parts);
             }
 
             $sep = TypeConversion::toString($separator);
@@ -447,15 +480,15 @@ class StringPrototype
                 // Split into individual characters.
                 $chars = [];
                 $len = mb_strlen($str, 'UTF-8');
-                for ($i = 0; $i < $len && $i < $limit; $i++) {
+                for ($i = 0; $i < $len && $i < $lim; $i++) {
                     $chars[] = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
                 }
                 return JsArray::fromArray($chars);
             }
 
             $parts = explode($sep, $str);
-            if ($limit < count($parts)) {
-                $parts = array_slice($parts, 0, $limit);
+            if ($lim < count($parts)) {
+                $parts = array_slice($parts, 0, $lim);
             }
 
             $jsParts = array_map(fn(string $p) => new JsString($p), $parts);
@@ -530,11 +563,15 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $count = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $n = isset($args[0])
+                ? TypeConversion::toIntegerOrInfinity($args[0])
+                : 0.0;
 
-            if ($count < 0) {
+            if ($n < 0 || $n === INF) {
                 throw new \PhpJs\Exceptions\RangeError('Invalid count value');
             }
+
+            $count = (int) $n;
 
             return new JsString(str_repeat($str, $count));
         };
@@ -786,16 +823,34 @@ class StringPrototype
                 return JsNull::instance();
             }
 
-            // String argument: treat as literal string search (not as regex).
-            $pattern = TypeConversion::toString($searchArg);
-            $pos = mb_strpos($str, $pattern, 0, 'UTF-8');
-            if ($pos === false) {
-                return JsNull::instance();
+            // Per spec (22.1.3.11 step 6), non-RegExp arguments are coerced
+            // to a RegExp via RegExpCreate(regexp, undefined). The raw value
+            // (not ToString) is passed to the RegExp constructor, so
+            // match(undefined) produces /(?:)/ (matches empty string).
+            if ($searchArg instanceof JsUndefined) {
+                $pcre = '/(?:)/u';
+            } else {
+                $pattern = TypeConversion::toString($searchArg);
+                $escaped = preg_quote($pattern, '/');
+                $pcre = '/' . $escaped . '/u';
             }
-            $result = JsArray::fromArray([new JsString($pattern)]);
-            $result->set('index', new JsNumber((float) $pos));
-            $result->set('input', new JsString($str));
-            return $result;
+            if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                $elements = [];
+                foreach ($matches as $key => $match) {
+                    if (is_int($key)) {
+                        $elements[] = $match[1] === -1
+                            ? JsUndefined::instance()
+                            : new JsString($match[0]);
+                    }
+                }
+                $result = JsArray::fromArray($elements);
+                $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
+                $result->set('index', new JsNumber((float) $charPos));
+                $result->set('input', new JsString($str));
+                $result->set('groups', JsUndefined::instance());
+                return $result;
+            }
+            return JsNull::instance();
         };
     }
 
@@ -918,13 +973,34 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $len = mb_strlen($str, 'UTF-8');
-            if ($index < 0 || $index >= $len) {
+            $pos = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+
+            // Convert UTF-8 string to UTF-16 code units to match JS semantics.
+            $u16 = mb_convert_encoding($str, 'UTF-16LE', 'UTF-8');
+            $size = (int) (strlen($u16) / 2);
+
+            if ($pos < 0 || $pos >= $size) {
                 return JsUndefined::instance();
             }
-            $char = mb_substr($str, $index, 1, 'UTF-8');
-            return new JsNumber((float) mb_ord($char, 'UTF-8'));
+
+            $position = (int) $pos;
+            $first = ord($u16[$position * 2]) | (ord($u16[$position * 2 + 1]) << 8);
+
+            // If first is not a leading surrogate, or position+1 == size, return first.
+            if ($first < 0xD800 || $first > 0xDBFF || $position + 1 === $size) {
+                return new JsNumber((float) $first);
+            }
+
+            $second = ord($u16[($position + 1) * 2]) | (ord($u16[($position + 1) * 2 + 1]) << 8);
+
+            // If second is not a trailing surrogate, return first.
+            if ($second < 0xDC00 || $second > 0xDFFF) {
+                return new JsNumber((float) $first);
+            }
+
+            // UTF-16 decode: (lead - 0xD800) * 1024 + (trail - 0xDC00) + 0x10000.
+            $cp = ($first - 0xD800) * 0x400 + ($second - 0xDC00) + 0x10000;
+            return new JsNumber((float) $cp);
         };
     }
 

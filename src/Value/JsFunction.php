@@ -11,6 +11,14 @@ class JsFunction extends JsObject
     /** @var null|\Closure(JsFunction, JsValue, list<JsValue>): JsValue */
     private static ?\Closure $interpreterCallback = null;
 
+    /** Function.prototype: the [[Prototype]] for all function instances. */
+    private static ?JsObject $functionPrototype = null;
+
+    public static function setFunctionPrototype(JsObject $proto): void
+    {
+        self::$functionPrototype = $proto;
+    }
+
     public static function setInterpreterCallback(callable $callback): void
     {
         self::$interpreterCallback = $callback;
@@ -43,7 +51,7 @@ class JsFunction extends JsObject
         ?JsValue $boundThis = null,
         ?JsObject $prototype = null,
     ) {
-        parent::__construct($prototype);
+        parent::__construct($prototype ?? self::$functionPrototype);
         $this->name = $name;
         $this->params = $params;
         $this->body = $body;
@@ -72,12 +80,16 @@ class JsFunction extends JsObject
             enumerable: false,
             configurable: true,
         ));
+        // Per spec, the exposed .name is "" for anonymous functions.
+        // Internally we keep '(anonymous)' as a sentinel for name inference.
+        $exposedName = $name === '(anonymous)' ? '' : $name;
         $this->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsString($name),
+            value: new JsString($exposedName),
             writable: false,
             enumerable: false,
             configurable: true,
         ));
+
     }
 
     /**

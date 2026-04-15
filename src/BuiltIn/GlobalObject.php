@@ -190,6 +190,27 @@ class GlobalObject
 
         // Function.prototype with call/apply/bind
         $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+
+        // Set Function.prototype as [[Prototype]] for all future JsFunction instances.
+        // This must happen before any further JsFunction creation so that
+        // Object.getPrototypeOf(anyFn) === Function.prototype holds.
+        JsFunction::setFunctionPrototype($fnProto);
+
+        // Per ES spec 10.2.4 AddRestrictedFunctionProperties, Function.prototype
+        // has "caller" and "arguments" as thrower accessor pairs. Accessing them
+        // on any function that inherits from Function.prototype throws TypeError.
+        $thrower = JsFunction::fromCallable('', function (): never {
+            throw new \PhpJs\Exceptions\TypeError("'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them");
+        });
+        $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
+            enumerable: false,
+            configurable: true,
+            get: $thrower,
+            set: $thrower,
+        );
+        $fnProto->defineOwnProperty('caller', $throwerDesc);
+        $fnProto->defineOwnProperty('arguments', $throwerDesc);
+
         $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args) use ($env): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('call called on non-function');

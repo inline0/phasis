@@ -250,6 +250,86 @@ final class TypeConversion
     }
 
     /**
+     * 6.1.6.1.9 Number::leftShift(x, y).
+     *
+     * ToInt32(x) << (ToUint32(y) & 0x1F), result truncated to Int32.
+     * PHP uses 64-bit integers, so the raw shift result must be re-truncated
+     * to the signed 32-bit range. Returns a float suitable for JsNumber.
+     */
+    public static function leftShift(JsValue $x, JsValue $y): float
+    {
+        $lval = self::toInt32($x);
+        $rval = self::toUint32($y) & 0x1F;
+        $result = $lval << $rval;
+
+        return (float) self::truncateToInt32($result);
+    }
+
+    /**
+     * 6.1.6.1.10 Number::signedRightShift(x, y).
+     *
+     * ToInt32(x) >> (ToUint32(y) & 0x1F). PHP's >> is arithmetic (sign-preserving)
+     * on 64-bit, which matches the spec because the input is already a valid
+     * signed 32-bit integer and a right shift cannot exceed that range.
+     */
+    public static function signedRightShift(JsValue $x, JsValue $y): float
+    {
+        $lval = self::toInt32($x);
+        $rval = self::toUint32($y) & 0x1F;
+
+        return (float) ($lval >> $rval);
+    }
+
+    /**
+     * 6.1.6.1.11 Number::unsignedRightShift(x, y).
+     *
+     * ToUint32(x) >>> (ToUint32(y) & 0x1F). The left operand is converted to
+     * an unsigned 32-bit integer first (ToUint32), then shifted right, producing
+     * a non-negative 32-bit result.
+     *
+     * Note: The spec says the left operand uses ToUint32 (not ToInt32) for >>>,
+     * unlike << and >> which use ToInt32. On 64-bit PHP, ToUint32 already
+     * produces a non-negative value in the range [0, 2^32 - 1], so a normal
+     * PHP >> gives the correct unsigned shift.
+     */
+    public static function unsignedRightShift(JsValue $x, JsValue $y): float
+    {
+        $lval = self::toUint32($x);
+        $rval = self::toUint32($y) & 0x1F;
+
+        if ($rval === 0) {
+            return (float) $lval;
+        }
+
+        return (float) ($lval >> $rval);
+    }
+
+    /**
+     * Truncate a PHP 64-bit integer to the signed 32-bit range [-2^31, 2^31 - 1].
+     *
+     * After a left shift on PHP's 64-bit integers, the result may exceed the
+     * 32-bit range. This applies the modulo-2^32 then signed-adjustment
+     * algorithm from the ToInt32 spec to a raw integer (not a JsValue).
+     */
+    public static function truncateToInt32(int $value): int
+    {
+        // Fast path: already in 32-bit signed range.
+        if ($value >= -2147483648 && $value <= 2147483647) {
+            return $value;
+        }
+
+        // Modulo 2^32 via bitmask. On 64-bit PHP this gives the low 32 bits.
+        $uint32 = $value & 0xFFFFFFFF;
+
+        // Convert to signed: if bit 31 is set, subtract 2^32.
+        if ($uint32 >= 0x80000000) {
+            return $uint32 - 0x100000000;
+        }
+
+        return $uint32;
+    }
+
+    /**
      * 7.1.17 ToString(argument).
      *
      * undefined -> "undefined", null -> "null",

@@ -280,7 +280,11 @@ class ObjectConstructor
             $proto = $args[0] ?? JsUndefined::instance();
             $obj = null;
             if ($proto instanceof JsNull) {
-                $obj = new JsObject(null);
+                // Cannot pass null directly to JsObject constructor because
+                // PHP's ?? operator falls through to the static globalPrototype.
+                // Instead, create and then explicitly set null prototype.
+                $obj = new JsObject();
+                $obj->setPrototype(null);
             } elseif ($proto instanceof JsObject) {
                 $obj = new JsObject($proto);
             } elseif ($proto instanceof JsUndefined) {

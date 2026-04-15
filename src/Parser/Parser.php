@@ -1518,7 +1518,12 @@ class Parser
         if ($this->check(TokenType::LeftBracket)) {
             $computed = true;
             $this->advance();
+            // Per spec: ComputedPropertyName uses AssignmentExpression[+In],
+            // so `in` is always allowed inside [...] even when noIn is set.
+            $savedNoIn = $this->noIn;
+            $this->noIn = false;
             $key = $this->parseAssignmentExpression();
+            $this->noIn = $savedNoIn;
             $this->expect(TokenType::RightBracket);
             return [$key, true];
         }
