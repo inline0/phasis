@@ -62,6 +62,33 @@ class Engine
             false,
         ));
 
+        // Sync all environment bindings onto the global object so that
+        // Object.getOwnPropertyDescriptor(this, "parseInt") etc. work.
+        // Per ES spec, built-in function properties are writable, non-enumerable, configurable.
+        $skipKeys = ['this', 'globalThis', 'Infinity', 'NaN', 'undefined',
+            '__ObjectPrototype__', '__FunctionPrototype__', '__ArrayPrototype__',
+            '__StringPrototype__', '__NumberPrototype__', '__ErrorPrototype__',
+            '__TypeErrorPrototype__', '__RangeErrorPrototype__',
+            '__ReferenceErrorPrototype__', '__SyntaxErrorPrototype__',
+            '__URIErrorPrototype__', '__EvalErrorPrototype__',
+            '__RegExpPrototype__', '__DatePrototype__',
+            '__SymbolPrototype__', '__MapPrototype__', '__SetPrototype__',
+        ];
+        foreach ($this->globalEnv->allBindings() as $name => $value) {
+            if (in_array($name, $skipKeys, true)) {
+                continue;
+            }
+            if (str_starts_with($name, '__') && str_ends_with($name, '__')) {
+                continue;
+            }
+            if (!$globalObj->hasOwnProperty($name)) {
+                $globalObj->defineOwnProperty(
+                    $name,
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                );
+            }
+        }
+
         $this->globalEnv->defineVar('this', $globalObj);
         $this->globalEnv->defineVar('globalThis', $globalObj);
     }

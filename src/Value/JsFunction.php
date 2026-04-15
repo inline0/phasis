@@ -41,6 +41,13 @@ class JsFunction extends JsObject
     private bool $constructable = true;
 
     /**
+     * When true, this function uses the prototype set via JsObject::setPrototype()
+     * instead of the global Function.prototype. Used for intrinsic constructors
+     * like %TypedArray% subtypes whose [[Prototype]] is %TypedArray% per spec.
+     */
+    private bool $hasCustomPrototype = false;
+
+    /**
      * @param list<mixed> $params AST param nodes.
      * @param mixed $body AST node (BlockStatement or expression).
      */
@@ -129,6 +136,18 @@ class JsFunction extends JsObject
         return $this;
     }
 
+    /**
+     * Set a custom [[Prototype]] for this function, overriding the default
+     * Function.prototype. Per spec, intrinsic constructors like typed array
+     * subtypes have [[Prototype]] set to their parent intrinsic.
+     */
+    public function setCustomPrototype(JsObject $proto): self
+    {
+        $this->setPrototype($proto);
+        $this->hasCustomPrototype = true;
+        return $this;
+    }
+
     public function isConstructable(): bool
     {
         // Arrow functions are not constructable.
@@ -150,7 +169,7 @@ class JsFunction extends JsObject
      */
     public function getPrototype(): ?JsObject
     {
-        if (self::$functionPrototype !== null && $this !== self::$functionPrototype) {
+        if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
             return self::$functionPrototype;
         }
         // For Function.prototype itself, lazily wire to Object.prototype.

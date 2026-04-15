@@ -63,6 +63,7 @@ class JsProxy extends JsObject
     /**
      * Try to get a trap function from the handler.
      * Returns null if the handler does not have the named trap.
+     * Throws TypeError if the trap value exists but is not callable (per GetMethod spec).
      */
     private function getTrap(string $trapName): ?JsFunction
     {
@@ -74,7 +75,8 @@ class JsProxy extends JsObject
         if ($trap instanceof JsUndefined || $trap instanceof \PhpJs\Value\JsNull) {
             return null;
         }
-        return null;
+        // Per spec 7.3.9 GetMethod step 5: if IsCallable(func) is false, throw TypeError.
+        throw new TypeError("'{$trapName}' on proxy: trap is not a function: " . $trap->typeof());
     }
 
     // -- [[Get]] --
@@ -92,18 +94,95 @@ class JsProxy extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
+        $success = $this->internalSet($name, $value, $this);
+        if (!$success && $strict) {
+            throw new TypeError("'set' on proxy: trap returned falsish for property '{$name}'");
+        }
+    }
+
+    /**
+     * ES spec: [[Set]] ( P, V, Receiver ) for Proxy objects.
+     *
+     * Checks the handler for a "set" trap. When found, calls it with
+     * (target, P, V, Receiver) and validates invariants. When missing,
+     * forwards to target.[[Set]](P, V, Receiver).
+     */
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    {
         $trap = $this->getTrap('set');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name), $value, $this]);
-            if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
-                if ($strict) {
-                    throw new TypeError("'set' on proxy: trap returned falsish for property '{$name}'");
-                }
-                return;
+            $result = $trap->call($this->handler, [$this->target, new JsString($name), $value, $receiver]);
+            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            if (!$booleanTrapResult) {
+                return false;
             }
+            // Validate invariants per spec step 14.
+            $this->validateSetInvariants($name, $value);
+            return true;
+        }
+        // No trap: forward to target.[[Set]](P, V, Receiver).
+        return $this->target->internalSet($name, $value, $receiver);
+    }
+
+    /**
+     * Validate set trap invariants per ES spec 10.5.9 step 14.
+     *
+     * After the trap returns true, if the target property is non-configurable:
+     * - Data property with writable=false: value must be SameValue as V.
+     * - Accessor property with set=undefined: must throw TypeError.
+     */
+    private function validateSetInvariants(string $name, JsValue $value): void
+    {
+        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        if ($targetDesc === null) {
             return;
         }
-        $this->target->set($name, $value, $strict);
+        if ($targetDesc->configurable === false) {
+            if ($targetDesc->isDataDescriptor() && $targetDesc->writable === false) {
+                $targetValue = $targetDesc->value ?? JsUndefined::instance();
+                if (!$this->sameValue($value, $targetValue)) {
+                    throw new TypeError(
+                        "'set' on proxy: trap returned truish for property '{$name}' which exists in the proxy target as a non-configurable and non-writable data property with a different value"
+                    );
+                }
+            }
+            if ($targetDesc->isAccessorDescriptor() && $targetDesc->set === null) {
+                throw new TypeError(
+                    "'set' on proxy: trap returned truish for property '{$name}' which exists in the proxy target as a non-configurable and non-writable accessor property without a setter"
+                );
+            }
+        }
+    }
+
+    /** SameValue comparison per ES spec. */
+    private function sameValue(JsValue $a, JsValue $b): bool
+    {
+        if ($a instanceof JsNumber && $b instanceof JsNumber) {
+            $x = $a->toNumber();
+            $y = $b->toNumber();
+            if (is_nan($x) && is_nan($y)) {
+                return true;
+            }
+            // Distinguish +0 and -0.
+            if ($x === 0.0 && $y === 0.0) {
+                return (1 / $x > 0) === (1 / $y > 0);
+            }
+            return $x === $y;
+        }
+        if ($a instanceof JsString && $b instanceof JsString) {
+            return $a->toJsString() === $b->toJsString();
+        }
+        if ($a instanceof JsBoolean && $b instanceof JsBoolean) {
+            return $a->toBoolean() === $b->toBoolean();
+        }
+        if ($a instanceof JsUndefined && $b instanceof JsUndefined) {
+            return true;
+        }
+        if ($a instanceof \PhpJs\Value\JsNull && $b instanceof \PhpJs\Value\JsNull) {
+            return true;
+        }
+        // Object identity.
+        return $a === $b;
     }
 
     // -- [[Has]] --
@@ -456,20 +535,23 @@ class JsProxy extends JsObject
             : null;
         $getter = null;
         $setter = null;
+        $hasGetOrSet = false;
         if ($obj->has('get')) {
+            $hasGetOrSet = true;
             $g = $obj->get('get');
             if ($g instanceof JsFunction) {
                 $getter = $g;
             }
         }
         if ($obj->has('set')) {
+            $hasGetOrSet = true;
             $s = $obj->get('set');
             if ($s instanceof JsFunction) {
                 $setter = $s;
             }
         }
 
-        if ($getter !== null || $setter !== null) {
+        if ($hasGetOrSet) {
             return PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,

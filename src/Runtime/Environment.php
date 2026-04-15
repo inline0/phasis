@@ -181,6 +181,12 @@ class Environment
         return $this->parent;
     }
 
+    /** @return array<string, JsValue> All bindings in this scope (not parents). */
+    public function allBindings(): array
+    {
+        return $this->bindings;
+    }
+
     /** Create a child environment with this environment as its parent. */
     public function createChild(): self
     {

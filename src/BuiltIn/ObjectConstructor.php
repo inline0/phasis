@@ -39,38 +39,29 @@ class ObjectConstructor
         $constructor->set('prototype', $proto);
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
-        // Static methods.
-        $constructor->set('keys', JsFunction::fromCallable('keys', self::keys(), 1));
-        $constructor->set('values', JsFunction::fromCallable('values', self::values(), 1));
-        $constructor->set('entries', JsFunction::fromCallable('entries', self::entries(), 1));
-        $constructor->set('assign', JsFunction::fromCallable('assign', self::assign(), 2));
-        $constructor->set('create', JsFunction::fromCallable('create', self::create($proto), 2));
-        $constructor->set('defineProperty', JsFunction::fromCallable('defineProperty', self::definePropertyFn(), 3));
-        $constructor->set('getPrototypeOf', JsFunction::fromCallable('getPrototypeOf', self::getPrototypeOf(), 1));
-        $constructor->set('freeze', JsFunction::fromCallable('freeze', self::freeze(), 1));
-        $constructor->set('is', JsFunction::fromCallable('is', self::is(), 2));
-        $constructor->set('getOwnPropertyNames', JsFunction::fromCallable('getOwnPropertyNames', self::getOwnPropertyNamesFn(), 1));
-        $constructor->set('defineProperties', JsFunction::fromCallable(
-            'defineProperties',
-            self::definePropertiesFn(),
-            2,
-        ));
-        $constructor->set('getOwnPropertyDescriptor', JsFunction::fromCallable(
-            'getOwnPropertyDescriptor',
-            self::getOwnPropertyDescriptorFn(),
-            2,
-        ));
-        $constructor->set('setPrototypeOf', JsFunction::fromCallable('setPrototypeOf', self::setPrototypeOf(), 2));
-        $constructor->set('isFrozen', JsFunction::fromCallable('isFrozen', self::isFrozen(), 1));
-        $constructor->set('isSealed', JsFunction::fromCallable('isSealed', self::isSealed(), 1));
-        $constructor->set('isExtensible', JsFunction::fromCallable('isExtensible', self::isExtensible(), 1));
-        $constructor->set('seal', JsFunction::fromCallable('seal', self::seal(), 1));
-        $constructor->set('preventExtensions', JsFunction::fromCallable(
-            'preventExtensions',
-            self::preventExtensions(),
-            1,
-        ));
-        $constructor->set('fromEntries', JsFunction::fromCallable('fromEntries', self::fromEntries($proto), 1));
+        // Static methods. Per spec, built-in methods are writable, non-enumerable, configurable.
+        $builtinMethod = static fn(string $n, callable $fn, int $len): PropertyDescriptor =>
+            PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true);
+
+        $constructor->defineOwnProperty('keys', $builtinMethod('keys', self::keys(), 1));
+        $constructor->defineOwnProperty('values', $builtinMethod('values', self::values(), 1));
+        $constructor->defineOwnProperty('entries', $builtinMethod('entries', self::entries(), 1));
+        $constructor->defineOwnProperty('assign', $builtinMethod('assign', self::assign(), 2));
+        $constructor->defineOwnProperty('create', $builtinMethod('create', self::create($proto), 2));
+        $constructor->defineOwnProperty('defineProperty', $builtinMethod('defineProperty', self::definePropertyFn(), 3));
+        $constructor->defineOwnProperty('getPrototypeOf', $builtinMethod('getPrototypeOf', self::getPrototypeOf(), 1));
+        $constructor->defineOwnProperty('freeze', $builtinMethod('freeze', self::freeze(), 1));
+        $constructor->defineOwnProperty('is', $builtinMethod('is', self::is(), 2));
+        $constructor->defineOwnProperty('getOwnPropertyNames', $builtinMethod('getOwnPropertyNames', self::getOwnPropertyNamesFn(), 1));
+        $constructor->defineOwnProperty('defineProperties', $builtinMethod('defineProperties', self::definePropertiesFn(), 2));
+        $constructor->defineOwnProperty('getOwnPropertyDescriptor', $builtinMethod('getOwnPropertyDescriptor', self::getOwnPropertyDescriptorFn(), 2));
+        $constructor->defineOwnProperty('setPrototypeOf', $builtinMethod('setPrototypeOf', self::setPrototypeOf(), 2));
+        $constructor->defineOwnProperty('isFrozen', $builtinMethod('isFrozen', self::isFrozen(), 1));
+        $constructor->defineOwnProperty('isSealed', $builtinMethod('isSealed', self::isSealed(), 1));
+        $constructor->defineOwnProperty('isExtensible', $builtinMethod('isExtensible', self::isExtensible(), 1));
+        $constructor->defineOwnProperty('seal', $builtinMethod('seal', self::seal(), 1));
+        $constructor->defineOwnProperty('preventExtensions', $builtinMethod('preventExtensions', self::preventExtensions(), 1));
+        $constructor->defineOwnProperty('fromEntries', $builtinMethod('fromEntries', self::fromEntries($proto), 1));
 
         // Modern APIs (non-enumerable per spec)
         $hasOwnFn = JsFunction::fromCallable('hasOwn', function (JsValue $this_, array $args): JsValue {
@@ -355,7 +346,9 @@ class ObjectConstructor
 
             $getter = null;
             $setter = null;
+            $hasGetOrSet = false;
             if ($desc->has('get')) {
+                $hasGetOrSet = true;
                 $g = $desc->get('get');
                 if ($g instanceof JsFunction) {
                     $getter = $g;
@@ -364,6 +357,7 @@ class ObjectConstructor
                 }
             }
             if ($desc->has('set')) {
+                $hasGetOrSet = true;
                 $s = $desc->get('set');
                 if ($s instanceof JsFunction) {
                     $setter = $s;
@@ -372,7 +366,7 @@ class ObjectConstructor
                 }
             }
 
-            if ($getter !== null || $setter !== null) {
+            if ($hasGetOrSet) {
                 $descriptor = PropertyDescriptor::accessor(
                     get: $getter,
                     set: $setter,

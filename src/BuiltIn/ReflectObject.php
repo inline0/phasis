@@ -53,12 +53,16 @@ class ReflectObject
                 $target = self::requireObject($args, 'Reflect.set');
                 $key = $args[1] ?? JsUndefined::instance();
                 $value = $args[2] ?? JsUndefined::instance();
+                $receiver = $args[3] ?? $target;
+                if (!$receiver instanceof JsObject) {
+                    $receiver = $target;
+                }
                 if ($key instanceof JsSymbol) {
                     $target->setBySymbol($key, $value);
-                } else {
-                    $target->set(TypeConversion::toString($key), $value);
+                    return new JsBoolean(true);
                 }
-                return new JsBoolean(true);
+                $success = $target->internalSet(TypeConversion::toString($key), $value, $receiver);
+                return new JsBoolean($success);
             }, 3),
             true,
             false,
@@ -85,7 +89,11 @@ class ReflectObject
             JsFunction::fromCallable('deleteProperty', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.deleteProperty');
                 $key = $args[1] ?? JsUndefined::instance();
-                return new JsBoolean($target->delete(TypeConversion::toString($key)));
+                $propKey = TypeConversion::toPropertyKey($key);
+                if ($propKey instanceof JsSymbol) {
+                    return new JsBoolean($target->deleteBySymbol($propKey));
+                }
+                return new JsBoolean($target->delete($propKey->toJsString()));
             }, 2),
             true,
             false,
@@ -96,9 +104,11 @@ class ReflectObject
         $reflect->defineOwnProperty('ownKeys', PropertyDescriptor::data(
             JsFunction::fromCallable('ownKeys', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.ownKeys');
-                $names = $target->getOwnPropertyNames();
-                $jsNames = array_map(fn(string $n) => new JsString($n), $names);
-                return JsArray::fromArray($jsNames);
+                // Use ordinaryOwnPropertyKeys which returns keys in the
+                // correct order: integer indices (ascending), then string
+                // keys (insertion order), then symbol keys (insertion order).
+                $keys = $target->ordinaryOwnPropertyKeys();
+                return JsArray::fromArray($keys);
             }, 1),
             true,
             false,
@@ -122,13 +132,34 @@ class ReflectObject
             JsFunction::fromCallable('setPrototypeOf', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.setPrototypeOf');
                 $proto = $args[1] ?? JsUndefined::instance();
-                if ($proto instanceof JsNull) {
-                    $target->setPrototype(null);
-                } elseif ($proto instanceof JsObject) {
-                    $target->setPrototype($proto);
-                } else {
+                if (!$proto instanceof JsNull && !$proto instanceof JsObject) {
                     throw new TypeError('Object prototype may only be an Object or null');
                 }
+                $newProto = $proto instanceof JsNull ? null : $proto;
+
+                // Implement [[SetPrototypeOf]] (9.1.2) spec algorithm.
+                $current = $target->getPrototype();
+
+                // Step 4: If SameValue(V, current), return true.
+                if ($newProto === $current) {
+                    return new JsBoolean(true);
+                }
+
+                // Step 5: If extensible is false, return false.
+                if (!$target->isExtensible()) {
+                    return new JsBoolean(false);
+                }
+
+                // Step 8: Cycle detection. Walk proto's chain looking for target.
+                $p = $newProto;
+                while ($p !== null) {
+                    if ($p === $target) {
+                        return new JsBoolean(false);
+                    }
+                    $p = $p->getPrototype();
+                }
+
+                $target->setPrototype($newProto);
                 return new JsBoolean(true);
             }, 2),
             true,
@@ -221,7 +252,7 @@ class ReflectObject
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 $argsList = $args[2] ?? JsUndefined::instance();
-                $callArgs = self::toArgumentsList($argsList);
+                $callArgs = self::toArgumentsList($argsList, 'Reflect.apply');
                 return $target->call($thisArg, $callArgs);
             }, 3),
             true,
@@ -233,13 +264,23 @@ class ReflectObject
         $reflect->defineOwnProperty('construct', PropertyDescriptor::data(
             JsFunction::fromCallable('construct', function (JsValue $this_, array $args): JsValue {
                 $target = $args[0] ?? JsUndefined::instance();
-                if (!$target instanceof JsFunction) {
+                // Step 1: If IsConstructor(target) is false, throw a TypeError.
+                if (!$target instanceof JsFunction || !$target->isConstructable()) {
                     throw new TypeError('Reflect.construct: target must be a constructor');
                 }
-                $argsList = $args[1] ?? JsUndefined::instance();
-                $callArgs = self::toArgumentsList($argsList);
 
-                $proto = $target->get('prototype');
+                $argsList = $args[1] ?? JsUndefined::instance();
+                // Step 4: CreateListFromArrayLike(argumentsList).
+                $callArgs = self::toArgumentsList($argsList, 'Reflect.construct');
+
+                // Step 2/3: newTarget defaults to target; must be a constructor.
+                $newTarget = $args[2] ?? $target;
+                if (!$newTarget instanceof JsFunction || !$newTarget->isConstructable()) {
+                    throw new TypeError('Reflect.construct: newTarget must be a constructor');
+                }
+
+                // Use newTarget's prototype (not target's) per spec.
+                $proto = $newTarget->get('prototype');
                 $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
                 $result = $target->call($newObj, $callArgs);
                 return $result instanceof JsObject ? $result : $newObj;
@@ -270,12 +311,20 @@ class ReflectObject
     }
 
     /**
-     * Convert a JsValue argumentsList to a PHP array of JsValues.
+     * CreateListFromArrayLike: convert a JsValue argumentsList to a PHP array.
+     *
+     * Per spec (7.3.17), throws TypeError if obj is not an Object.
      *
      * @return list<JsValue>
      */
-    private static function toArgumentsList(JsValue $argsList): array
+    private static function toArgumentsList(JsValue $argsList, string $caller = ''): array
     {
+        // CreateListFromArrayLike step 3: If Type(obj) is not Object, throw TypeError.
+        if (!$argsList instanceof JsObject) {
+            throw new TypeError(
+                $caller !== '' ? "{$caller}: argumentsList must be an object" : 'CreateListFromArrayLike called on non-object',
+            );
+        }
         if ($argsList instanceof JsArray) {
             $result = [];
             $len = $argsList->getLength();
@@ -284,16 +333,13 @@ class ReflectObject
             }
             return $result;
         }
-        if ($argsList instanceof JsObject) {
-            $result = [];
-            $lenVal = $argsList->get('length');
-            $len = (int) TypeConversion::toNumber($lenVal);
-            for ($i = 0; $i < $len; $i++) {
-                $result[] = $argsList->get((string) $i);
-            }
-            return $result;
+        $result = [];
+        $lenVal = $argsList->get('length');
+        $len = (int) TypeConversion::toNumber($lenVal);
+        for ($i = 0; $i < $len; $i++) {
+            $result[] = $argsList->get((string) $i);
         }
-        return [];
+        return $result;
     }
 
     /** Convert a JsObject descriptor to a PropertyDescriptor. */
@@ -312,20 +358,23 @@ class ReflectObject
 
         $getter = null;
         $setter = null;
+        $hasGetOrSet = false;
         if ($obj->has('get')) {
+            $hasGetOrSet = true;
             $g = $obj->get('get');
             if ($g instanceof JsFunction) {
                 $getter = $g;
             }
         }
         if ($obj->has('set')) {
+            $hasGetOrSet = true;
             $s = $obj->get('set');
             if ($s instanceof JsFunction) {
                 $setter = $s;
             }
         }
 
-        if ($getter !== null || $setter !== null) {
+        if ($hasGetOrSet) {
             return PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,

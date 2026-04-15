@@ -315,18 +315,68 @@ class TypedArrayConstructor
     }
 
     /**
-     * Install all 11 typed array constructors.
+     * Install all 11 typed array constructors and the shared %TypedArray% intrinsic.
+     *
+     * Per spec, the prototype chain is:
+     *   new Int8Array(3) -> Int8Array.prototype -> %TypedArray%.prototype -> Object.prototype
+     *   Int8Array -> %TypedArray% -> Function.prototype
      */
     private static function installTypedArrays(Environment $env): void
     {
+        // Create %TypedArray%.prototype: the shared prototype for all typed array prototypes.
+        $typedArrayProto = new JsObject();
+
+        // Create %TypedArray% intrinsic constructor.
+        // Per spec, calling %TypedArray% directly throws a TypeError.
+        $typedArrayIntrinsic = JsFunction::fromCallable(
+            'TypedArray',
+            function (JsValue $this_, array $args): JsValue {
+                throw new TypeError('Abstract class TypedArray not directly constructable');
+            },
+            0,
+        );
+        $typedArrayIntrinsic->setConstructable();
+
+        // %TypedArray%.prototype links.
+        $typedArrayIntrinsic->set('prototype', $typedArrayProto);
+        $typedArrayProto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($typedArrayIntrinsic, true, false, true),
+        );
+
+        // Install shared prototype methods on %TypedArray%.prototype.
+        self::installTypedArrayPrototypeMethods($typedArrayProto, 'TypedArray');
+
+        // Install shared accessor properties on %TypedArray%.prototype.
+        self::installTypedArrayAccessors($typedArrayProto, 'TypedArray');
+
+        // Install Symbol.iterator pointing to values method on %TypedArray%.prototype.
+        $iterSym = SymbolConstructor::iterator();
+        $valuesFn = $typedArrayProto->get('values');
+        if ($valuesFn instanceof JsFunction) {
+            $typedArrayProto->definePropertyBySymbol(
+                $iterSym,
+                PropertyDescriptor::data($valuesFn, true, false, true),
+            );
+        }
+
+        // Install static methods on %TypedArray%: from(), of().
+        self::installAbstractTypedArrayStaticMethods($typedArrayIntrinsic);
+
+        // Install each concrete typed array constructor.
         foreach (JsTypedArray::TYPES as $typeName => $_) {
-            self::installSingleTypedArray($env, $typeName);
+            self::installSingleTypedArray($env, $typeName, $typedArrayIntrinsic, $typedArrayProto);
         }
     }
 
-    private static function installSingleTypedArray(Environment $env, string $typeName): void
-    {
-        $proto = new JsObject();
+    private static function installSingleTypedArray(
+        Environment $env,
+        string $typeName,
+        JsFunction $typedArrayIntrinsic,
+        JsObject $typedArrayProto,
+    ): void {
+        // Each subtype prototype inherits from %TypedArray%.prototype.
+        $proto = new JsObject($typedArrayProto);
         $bpe = JsTypedArray::TYPES[$typeName][0];
 
         $constructor = JsFunction::fromCallable(
@@ -338,43 +388,30 @@ class TypedArrayConstructor
         );
         $constructor->setConstructable();
 
+        // Each subtype constructor's [[Prototype]] is %TypedArray%.
+        $constructor->setCustomPrototype($typedArrayIntrinsic);
+
         // Static property: BYTES_PER_ELEMENT.
         $constructor->defineOwnProperty(
             'BYTES_PER_ELEMENT',
             PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
         );
 
-        // Static methods.
+        // Static methods: from(), of() on each subtype constructor.
         self::installTypedArrayStaticMethods($constructor, $typeName, $bpe, $proto);
 
-        // Prototype methods.
-        self::installTypedArrayPrototypeMethods($proto, $typeName);
-
-        // Prototype property: BYTES_PER_ELEMENT.
+        // Prototype property: BYTES_PER_ELEMENT (own, not inherited from %TypedArray%.prototype).
         $proto->defineOwnProperty(
             'BYTES_PER_ELEMENT',
             PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
         );
 
-        // Accessor properties on prototype: buffer, byteLength, byteOffset, length.
-        self::installTypedArrayAccessors($proto, $typeName);
-
-        // Symbol.toStringTag.
+        // Symbol.toStringTag on each subtype prototype.
         $toStringTagSym = SymbolConstructor::toStringTag();
         $proto->definePropertyBySymbol(
             $toStringTagSym,
             PropertyDescriptor::data(new JsString($typeName), false, false, true),
         );
-
-        // Symbol.iterator points to values method.
-        $iterSym = SymbolConstructor::iterator();
-        $valuesFn = $proto->get('values');
-        if ($valuesFn instanceof JsFunction) {
-            $proto->definePropertyBySymbol(
-                $iterSym,
-                PropertyDescriptor::data($valuesFn, true, false, true),
-            );
-        }
 
         $proto->defineOwnProperty(
             'constructor',
@@ -383,6 +420,79 @@ class TypedArrayConstructor
         $constructor->set('prototype', $proto);
 
         $env->defineVar($typeName, $constructor);
+    }
+
+    /**
+     * Install static methods on the abstract %TypedArray% intrinsic.
+     * These are inherited by each subtype constructor via [[Prototype]] chain.
+     */
+    private static function installAbstractTypedArrayStaticMethods(JsFunction $intrinsic): void
+    {
+        // %TypedArray%.from(source, mapFn, thisArg).
+        $fromFn = JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+            // When called as SubType.from(...), $this_ is the subtype constructor.
+            // We need to determine which typed array type to create.
+            if (!$this_ instanceof JsFunction) {
+                throw new TypeError('TypedArray.from requires a constructor');
+            }
+            // Use $this_ as constructor to create the result.
+            return $this_->call($this_, [self::collectFromSource($args)]);
+        }, 1);
+        $intrinsic->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
+
+        // %TypedArray%.of(...items).
+        $ofFn = JsFunction::fromCallable('of', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                throw new TypeError('TypedArray.of requires a constructor');
+            }
+            $arr = JsArray::fromArray($args);
+            return $this_->call($this_, [$arr]);
+        }, 0);
+        $intrinsic->defineOwnProperty('of', PropertyDescriptor::data($ofFn, true, false, true));
+    }
+
+    /**
+     * Collect elements from source for TypedArray.from.
+     * Returns a JsArray for passing to the constructor.
+     */
+    private static function collectFromSource(array $args): JsArray
+    {
+        $source = $args[0] ?? JsUndefined::instance();
+        $mapFn = $args[1] ?? JsUndefined::instance();
+        $thisArg = $args[2] ?? JsUndefined::instance();
+        $hasMapFn = $mapFn instanceof JsFunction;
+
+        $elements = [];
+        if ($source instanceof JsTypedArray) {
+            for ($i = 0; $i < $source->getLength(); $i++) {
+                $elements[] = $source->getIndex($i);
+            }
+        } elseif ($source instanceof JsArray) {
+            for ($i = 0; $i < $source->getLength(); $i++) {
+                $elements[] = $source->get((string) $i);
+            }
+        } elseif ($source instanceof JsObject) {
+            $iterSym = SymbolConstructor::iterator();
+            $iterMethod = $source->getBySymbol($iterSym);
+            if ($iterMethod instanceof JsFunction) {
+                $elements = self::consumeIterator($iterMethod, $source);
+            } else {
+                $len = (int) TypeConversion::toNumber($source->get('length'));
+                for ($i = 0; $i < $len; $i++) {
+                    $elements[] = $source->get((string) $i);
+                }
+            }
+        }
+
+        if ($hasMapFn) {
+            $mapped = [];
+            foreach ($elements as $i => $el) {
+                $mapped[] = $mapFn->call($thisArg, [$el, new JsNumber((float) $i)]);
+            }
+            $elements = $mapped;
+        }
+
+        return JsArray::fromArray($elements);
     }
 
     /**
@@ -733,7 +843,8 @@ class TypedArrayConstructor
                 throw new TypeError('callback is not a function');
             }
             $thisArg = $args[1] ?? JsUndefined::instance();
-            $result = JsTypedArray::fromLength($typeName, $this_->getLength(), $this_->getPrototype());
+            $tn = $this_->getTypeName();
+            $result = JsTypedArray::fromLength($tn, $this_->getLength(), $this_->getPrototype());
             for ($i = 0; $i < $this_->getLength(); $i++) {
                 $mapped = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
                 $result->setIndex($i, $mapped);
@@ -760,7 +871,7 @@ class TypedArrayConstructor
                     $kept[] = $el;
                 }
             }
-            return JsTypedArray::fromArray($typeName, $kept, $this_->getPrototype());
+            return JsTypedArray::fromArray($this_->getTypeName(), $kept, $this_->getPrototype());
         }, 1);
         $proto->defineOwnProperty('filter', PropertyDescriptor::data($filterFn, true, false, true));
 

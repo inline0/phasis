@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpJs\Value;
 
+use PhpJs\Object\PropertyDescriptor;
+
 class JsArray extends JsObject
 {
     private int $length = 0;
@@ -22,24 +24,31 @@ class JsArray extends JsObject
         parent::__construct($prototype ?? self::$globalPrototype);
 
         foreach ($elements as $index => $element) {
-            $this->set((string) $index, $element);
+            $this->defineOwnProperty((string) $index, PropertyDescriptor::data($element));
         }
 
         $this->length = count($elements);
-        $this->installSymbolIterator();
     }
 
-    /** Install Symbol.iterator so arrays support the iterator protocol. */
-    private function installSymbolIterator(): void
+    /**
+     * Install Symbol.iterator on an Array prototype object.
+     *
+     * Called by ArrayConstructor::install after the prototype is set up.
+     * Symbol.iterator lives on Array.prototype, not on each instance.
+     */
+    public static function installSymbolIteratorOnPrototype(JsObject $proto): void
     {
-        $array = $this;
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $factory = function () use ($array, $iterSym): JsValue {
+        $factory = function (JsValue $this_) use ($iterSym): JsValue {
+            $array = $this_;
             $index = 0;
             $iterator = new JsObject();
             $nextFn = function () use ($array, &$index): JsValue {
                 $result = new JsObject();
-                if ($index < $array->getLength()) {
+                $len = ($array instanceof JsArray)
+                    ? $array->getLength()
+                    : (int) \PhpJs\Spec\TypeConversion::toNumber($array->get('length'));
+                if ($index < $len) {
                     $result->set('value', $array->get((string) $index));
                     $result->set('done', new JsBoolean(false));
                     $index++;
@@ -50,14 +59,13 @@ class JsArray extends JsObject
                 return $result;
             };
             $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            // Iterators are also iterables: [Symbol.iterator]() returns this.
             $iterator->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
                 return $self_;
             }));
             return $iterator;
         };
         $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
-        $this->setBySymbol($iterSym, $iteratorFn);
+        $proto->setBySymbol($iterSym, $iteratorFn);
     }
 
     public function getLength(): int
@@ -157,6 +165,98 @@ class JsArray extends JsObject
                 $this->length = $index + 1;
             }
         }
+    }
+
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    {
+        // When the receiver is this array itself, handle length and index tracking.
+        if ($receiver === $this) {
+            if ($name === 'length') {
+                $this->length = (int) $value->toNumber();
+                return true;
+            }
+            $result = parent::internalSet($name, $value, $receiver);
+            if ($result && ctype_digit($name)) {
+                $index = (int) $name;
+                if ($index >= $this->length) {
+                    $this->length = $index + 1;
+                }
+            }
+            return $result;
+        }
+        // When receiver differs (e.g. inherited set through prototype), use standard behavior.
+        return parent::internalSet($name, $value, $receiver);
+    }
+
+    public function defineOwnProperty(string $name, PropertyDescriptor $desc): void
+    {
+        if ($name === 'length' && $desc->value !== null) {
+            $newLen = (int) $desc->value->toNumber();
+            // Delete elements above new length (per ArraySetLength).
+            for ($i = $newLen; $i < $this->length; $i++) {
+                $this->delete((string) $i);
+            }
+            $this->length = $newLen;
+            return;
+        }
+        parent::defineOwnProperty($name, $desc);
+        if (ctype_digit($name)) {
+            $index = (int) $name;
+            if ($index >= $this->length) {
+                $this->length = $index + 1;
+            }
+        }
+    }
+
+    public function hasOwnProperty(string $name): bool
+    {
+        if ($name === 'length') {
+            return true;
+        }
+        return parent::hasOwnProperty($name);
+    }
+
+    public function getOwnPropertyDescriptor(string $name): ?\PhpJs\Object\PropertyDescriptor
+    {
+        if ($name === 'length') {
+            return new \PhpJs\Object\PropertyDescriptor(
+                value: new JsNumber((float) $this->length),
+                writable: true,
+                enumerable: false,
+                configurable: false,
+            );
+        }
+        return parent::getOwnPropertyDescriptor($name);
+    }
+
+    /** @return list<string> */
+    public function getOwnPropertyNames(): array
+    {
+        $keys = parent::getOwnPropertyNames();
+        if (!in_array('length', $keys, true)) {
+            $keys[] = 'length';
+        }
+        return $keys;
+    }
+
+    /**
+     * @return list<JsValue>
+     */
+    public function ordinaryOwnPropertyKeys(): array
+    {
+        $result = parent::ordinaryOwnPropertyKeys();
+        // Insert 'length' after all integer indices but before non-index string keys.
+        // Array.length is a non-enumerable, non-configurable own property.
+        $insertPos = 0;
+        foreach ($result as $i => $key) {
+            if ($key instanceof JsString && self::isArrayIndex($key->toJsString())) {
+                $insertPos = $i + 1;
+            } else {
+                break;
+            }
+        }
+        array_splice($result, $insertPos, 0, [new JsString('length')]);
+        return $result;
     }
 
     /** Array.length is non-configurable: delete must return false (or throw in strict mode). */

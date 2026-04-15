@@ -17,6 +17,9 @@ class JsObject implements JsValue
     /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
     protected array $symbolProperties = [];
 
+    /** @var array<int, JsSymbol> Tracks JsSymbol instances by id, in insertion order. */
+    protected array $symbolOrder = [];
+
     public static function setGlobalPrototype(JsObject $proto): void
     {
         self::$globalPrototype = $proto;
@@ -70,79 +73,104 @@ class JsObject implements JsValue
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        $desc = $this->properties->get($name);
-        if ($desc !== null) {
-            if ($desc->set !== null) {
-                $desc->set->call($this, [$value]);
-                return;
-            }
-
-            // Accessor descriptor without a setter: reject the assignment.
-            if ($desc->get !== null) {
-                if ($strict) {
+        $success = $this->internalSet($name, $value, $this);
+        if (!$success && $strict) {
+            // Determine error message based on why it failed.
+            $desc = $this->properties->get($name);
+            if ($desc !== null) {
+                if ($desc->get !== null && $desc->set === null) {
                     throw new \PhpJs\Exceptions\TypeError(
                         "Cannot set property {$name} of #<Object> which has only a getter"
                     );
                 }
-                return;
-            }
-
-            if ($desc->writable === false) {
-                if ($strict) {
+                if ($desc->writable === false) {
                     throw new \PhpJs\Exceptions\TypeError(
                         "Cannot assign to read only property '{$name}' of object '#<Object>'"
                     );
                 }
-                return;
             }
-
-            $desc->value = $value;
-            return;
-        }
-
-        // Check prototype chain for non-writable data property or accessor without setter.
-        $proto = $this->prototype;
-        while ($proto !== null) {
-            $protoDesc = $proto->properties->get($name);
-            if ($protoDesc !== null) {
-                if ($protoDesc->set !== null) {
-                    // Inherited setter: invoke it with this object as receiver.
-                    $protoDesc->set->call($this, [$value]);
-                    return;
-                }
-                if ($protoDesc->get !== null && $protoDesc->set === null) {
-                    // Inherited accessor with getter only (no setter).
-                    if ($strict) {
-                        throw new \PhpJs\Exceptions\TypeError(
-                            "Cannot set property {$name} of #<Object> which has only a getter"
-                        );
-                    }
-                    return;
-                }
-                if ($protoDesc->writable === false) {
-                    if ($strict) {
-                        throw new \PhpJs\Exceptions\TypeError(
-                            "Cannot assign to read only property '{$name}' of object '#<Object>'"
-                        );
-                    }
-                    return;
-                }
-                break;
-            }
-            $proto = $proto->prototype;
-        }
-
-        // If the object is not extensible, reject adding new properties.
-        if (!$this->extensible) {
-            if ($strict) {
+            if (!$this->extensible) {
                 throw new \PhpJs\Exceptions\TypeError(
                     "Cannot add property {$name}, object is not extensible"
                 );
             }
-            return;
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot assign to read only property '{$name}' of object '#<Object>'"
+            );
+        }
+    }
+
+    /**
+     * ES spec: OrdinarySet ( O, P, V, Receiver ).
+     *
+     * Performs [[Set]] with a receiver parameter, returning a boolean
+     * indicating success or failure. The receiver is the original object
+     * that the property assignment was initiated on.
+     */
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    {
+        $ownDesc = $this->getOwnPropertyDescriptor($name);
+        return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
+    }
+
+    /**
+     * ES spec: OrdinarySetWithOwnDescriptor ( O, P, V, Receiver, ownDesc ).
+     *
+     * Implements the core set logic per spec. Returns true on success, false on failure.
+     */
+    protected function ordinarySetWithOwnDescriptor(
+        string $name,
+        JsValue $value,
+        JsObject $receiver,
+        ?PropertyDescriptor $ownDesc,
+    ): bool {
+        if ($ownDesc === null) {
+            // Walk to the parent in the prototype chain.
+            $parent = $this->prototype;
+            if ($parent !== null) {
+                return $parent->internalSet($name, $value, $receiver);
+            }
+            // No own descriptor, no parent: treat as writable data descriptor.
+            $ownDesc = PropertyDescriptor::data(JsUndefined::instance());
         }
 
-        $this->properties->set($name, PropertyDescriptor::data($value));
+        if ($ownDesc->isDataDescriptor()) {
+            if ($ownDesc->writable === false) {
+                return false;
+            }
+            // Check the receiver for its own property.
+            $existingDesc = $receiver->getOwnPropertyDescriptor($name);
+            if ($existingDesc !== null) {
+                if ($existingDesc->isAccessorDescriptor()) {
+                    return false;
+                }
+                if ($existingDesc->writable === false) {
+                    return false;
+                }
+                // Update value on the receiver's existing descriptor.
+                $valueDesc = new PropertyDescriptor(value: $value);
+                $receiver->defineOwnProperty($name, new PropertyDescriptor(
+                    value: $value,
+                    writable: $existingDesc->writable,
+                    enumerable: $existingDesc->enumerable,
+                    configurable: $existingDesc->configurable,
+                ));
+                return true;
+            }
+            // Receiver does not have property P. Create it if extensible.
+            if (!$receiver->isExtensible()) {
+                return false;
+            }
+            $receiver->defineOwnProperty($name, PropertyDescriptor::data($value));
+            return true;
+        }
+
+        // Accessor descriptor.
+        if ($ownDesc->set !== null) {
+            $ownDesc->set->call($receiver, [$value]);
+            return true;
+        }
+        return false;
     }
 
     /** Get a property value by symbol key. */
@@ -190,6 +218,7 @@ class JsObject implements JsValue
         }
 
         $this->symbolProperties[$id] = PropertyDescriptor::data($value);
+        $this->symbolOrder[$id] = $symbol;
     }
 
     /** Check if the object has a symbol-keyed property. */
@@ -209,7 +238,11 @@ class JsObject implements JsValue
     /** Define a property descriptor by symbol key. */
     public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): void
     {
-        $this->symbolProperties[$symbol->getId()] = $desc;
+        $id = $symbol->getId();
+        if (!isset($this->symbolOrder[$id])) {
+            $this->symbolOrder[$id] = $symbol;
+        }
+        $this->symbolProperties[$id] = $desc;
     }
 
     /** Get own property descriptor by symbol key (does not walk prototype chain). */
@@ -275,6 +308,94 @@ class JsObject implements JsValue
     public function getOwnPropertyNames(): array
     {
         return $this->properties->keys();
+    }
+
+    /** Delete a symbol-keyed own property. Returns true if deleted or absent. */
+    public function deleteBySymbol(JsSymbol $symbol): bool
+    {
+        $id = $symbol->getId();
+        if (!isset($this->symbolProperties[$id])) {
+            return true;
+        }
+        $desc = $this->symbolProperties[$id];
+        if ($desc->configurable === false) {
+            return false;
+        }
+        unset($this->symbolProperties[$id]);
+        unset($this->symbolOrder[$id]);
+        return true;
+    }
+
+    /**
+     * Return own symbol-keyed properties as an array of [JsSymbol, PropertyDescriptor] pairs.
+     *
+     * @return array<int, PropertyDescriptor>
+     */
+    public function getOwnSymbolProperties(): array
+    {
+        return $this->symbolProperties;
+    }
+
+    /**
+     * [[OwnPropertyKeys]] per spec 9.1.12 (OrdinaryOwnPropertyKeys).
+     *
+     * Returns keys in the correct order:
+     * 1. Integer indices in ascending numeric order
+     * 2. String keys in insertion (creation) order
+     * 3. Symbol keys in insertion (creation) order
+     *
+     * @return list<JsValue> Array of JsString and JsSymbol values.
+     */
+    public function ordinaryOwnPropertyKeys(): array
+    {
+        $stringKeys = $this->properties->keys();
+
+        $integerIndices = [];
+        $nonIndexStrings = [];
+        foreach ($stringKeys as $key) {
+            if (self::isArrayIndex($key)) {
+                $integerIndices[] = $key;
+            } else {
+                $nonIndexStrings[] = new JsString($key);
+            }
+        }
+
+        // Sort integer indices numerically (ascending).
+        usort($integerIndices, fn(string $a, string $b) => (int) $a <=> (int) $b);
+        $sortedIndices = array_map(fn(string $k) => new JsString($k), $integerIndices);
+
+        // Symbol keys in insertion order (symbolOrder preserves insertion order).
+        $symbolKeys = [];
+        foreach ($this->symbolOrder as $id => $sym) {
+            if (isset($this->symbolProperties[$id])) {
+                $symbolKeys[] = $sym;
+            }
+        }
+
+        return array_merge($sortedIndices, $nonIndexStrings, $symbolKeys);
+    }
+
+    /**
+     * Check if a string property key is an array index (integer in 0..2^32-2 range).
+     */
+    protected static function isArrayIndex(string $key): bool
+    {
+        if ($key === '' || $key[0] === '-') {
+            return false;
+        }
+        if (!ctype_digit($key)) {
+            return false;
+        }
+        // Avoid leading zeros (except "0" itself).
+        if (strlen($key) > 1 && $key[0] === '0') {
+            return false;
+        }
+        // Array index: 0 <= index <= 2^32 - 2 (4294967294).
+        if (strlen($key) > 10) {
+            return false;
+        }
+        $val = (int) $key;
+        return $val >= 0 && $val <= 4294967294 && (string) $val === $key;
     }
 
     /** @return list<string> */
