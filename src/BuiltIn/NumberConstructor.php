@@ -209,7 +209,8 @@ class NumberConstructor
     {
         return function (JsValue $this_, array $args): JsValue {
             $numValue = self::extractNumberValue($this_);
-            $radix = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 10;
+            $radixArg = $args[0] ?? JsUndefined::instance();
+            $radix = ($radixArg instanceof JsUndefined) ? 10 : (int) TypeConversion::toNumber($radixArg);
 
             if ($radix < 2 || $radix > 36) {
                 throw new \PhpJs\Exceptions\RangeError('toString() radix must be between 2 and 36');
@@ -292,17 +293,21 @@ class NumberConstructor
             $parts = explode('e', $result);
             $exp = (int) $parts[1];
 
-            if ($exp >= 0 && $exp < $precision) {
-                $formatted = number_format($numValue, max(0, $precision - $exp - 1), '.', '');
-                return new JsString($formatted);
-            }
-            if ($exp < 0 && $exp >= -4) {
-                $formatted = number_format($numValue, $precision - 1 - $exp, '.', '');
-                return new JsString($formatted);
+            // Per spec step 10c: use exponential only if e < -6 or e >= p
+            if ($exp >= -6 && $exp < $precision) {
+                // Use fixed notation
+                $decimalPlaces = max(0, $precision - $exp - 1);
+                $formatted = number_format(abs($numValue), $decimalPlaces, '.', '');
+                $prefix = $numValue < 0 ? '-' : '';
+                return new JsString($prefix . $formatted);
             }
 
-            $formatted = number_format((float) $parts[0], $precision - 1, '.', '');
-            $formatted = rtrim(rtrim($formatted, '0'), '.');
+            // In exponential form, keep all precision digits (don't strip trailing zeros)
+            if ($precision === 1) {
+                $formatted = number_format((float) $parts[0], 0, '.', '');
+            } else {
+                $formatted = number_format((float) $parts[0], $precision - 1, '.', '');
+            }
             $expSign = $exp >= 0 ? '+' : '-';
             return new JsString($formatted . 'e' . $expSign . abs($exp));
         };
