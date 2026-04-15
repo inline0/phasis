@@ -100,14 +100,20 @@ class SymbolConstructor
 
     public static function install(Environment $env): void
     {
-        // Symbol(description) is callable but NOT a constructor.
+        // Symbol is callable and has [[Construct]] (isConstructor returns true),
+        // but invoking it via new throws TypeError per spec 20.4.1.1.
         $symbolFn = JsFunction::fromCallable('Symbol', function (JsValue $this_, array $args): JsValue {
+            // When called via new, $this_ is the newly created object with [[NewTarget]].
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                throw new TypeError('Symbol is not a constructor');
+            }
             $description = null;
             if (!empty($args) && !$args[0] instanceof JsUndefined) {
                 $description = TypeConversion::toString($args[0]);
             }
             return new JsSymbol($description);
         });
+        $symbolFn->setConstructable();
 
         // Symbol.for(key): returns shared symbol from global registry.
         // {writable: true, enumerable: false, configurable: true} per spec

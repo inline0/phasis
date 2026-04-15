@@ -457,15 +457,15 @@ class ObjectConstructor
                 $descriptor = PropertyDescriptor::accessor(
                     get: $getter,
                     set: $setter,
-                    enumerable: $enumerable ?? false,
-                    configurable: $configurable ?? false,
+                    enumerable: $enumerable,
+                    configurable: $configurable,
                 );
             } else {
                 $descriptor = new PropertyDescriptor(
                     value: $value,
-                    writable: $writable ?? false,
-                    enumerable: $enumerable ?? false,
-                    configurable: $configurable ?? false,
+                    writable: $writable,
+                    enumerable: $enumerable,
+                    configurable: $configurable,
                 );
             }
 
