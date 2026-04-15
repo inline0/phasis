@@ -1,37 +1,5 @@
-{
-  "body": [
-    {
-      "expression": {
-        "raw": "hello",
-        "type": "Literal",
-        "value": "hello"
-      },
-      "type": "ExpressionStatement"
-    },
-    {
-      "expression": {
-        "raw": "world",
-        "type": "Literal",
-        "value": "world"
-      },
-      "type": "ExpressionStatement"
-    },
-    {
-      "expression": {
-        "raw": "escape\nnewline",
-        "type": "Literal",
-        "value": "escape\nnewline"
-      },
-      "type": "ExpressionStatement"
-    },
-    {
-      "expression": {
-        "raw": "unicodeA",
-        "type": "Literal",
-        "value": "unicodeA"
-      },
-      "type": "ExpressionStatement"
-    }
-  ],
-  "type": "Program"
-}
+PHP Warning:  require(/home/user/php-js/bin/../vendor/autoload.php): Failed to open stream: No such file or directory in /home/user/php-js/bin/php-js on line 6
+PHP Fatal error:  Uncaught Error: Failed opening required '/home/user/php-js/bin/../vendor/autoload.php' (include_path='.:/usr/share/php') in /home/user/php-js/bin/php-js:6
+Stack trace:
+#0 {main}
+  thrown in /home/user/php-js/bin/php-js on line 6
