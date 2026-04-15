@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PhpJs\Spec;
 
 use PhpJs\Exceptions\TypeError;
+use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
