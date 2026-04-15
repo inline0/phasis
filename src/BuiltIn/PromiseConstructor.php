@@ -33,9 +33,14 @@ class PromiseConstructor
         $proto = self::createPrototype();
         JsPromise::setPromisePrototype($proto);
 
+        $constructorRef = null;
         $constructor = JsFunction::fromCallable(
             'Promise',
-            function (JsValue $this_, array $args) use ($proto): JsValue {
+            function (JsValue $this_, array $args) use ($proto, &$constructorRef): JsValue {
+                // Promise must be called with new (§25.6.3.1 step 1)
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Promise constructor cannot be invoked without \'new\'');
+                }
                 $executor = $args[0] ?? JsUndefined::instance();
                 if (!$executor instanceof JsFunction) {
                     throw new TypeError('Promise resolver is not a function');
@@ -70,21 +75,44 @@ class PromiseConstructor
             1,
         );
         $constructor->setConstructable();
+        $constructorRef = $constructor;
 
-        // Promise.resolve(value)
-        $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args): JsValue {
+        // Promise.resolve(value) — per spec §25.6.4.5
+        // 1. Let C be the this value
+        // 2. If Type(C) is not Object, throw TypeError
+        // 3. If IsPromise(x) and x.constructor === C, return x
+        // 4. Let capability = NewPromiseCapability(C)
+        // 5. Call capability.[[Resolve]](x)
+        $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use ($constructor): JsValue {
+            // this_ is the constructor value (Promise or subclass)
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Promise.resolve called on non-object');
+            }
             $value = $args[0] ?? JsUndefined::instance();
-            // If already a promise, return it directly.
+            // If already a promise whose constructor matches, return directly
             if ($value instanceof JsPromise) {
-                return $value;
+                $ctor = $value->get('constructor');
+                if ($ctor === $this_) {
+                    return $value;
+                }
+            }
+            // If this_ is a custom constructor (not our Promise), use NewPromiseCapability
+            if ($this_ instanceof JsFunction && $this_ !== $constructor) {
+                return self::newPromiseCapabilityResolve($this_, $value);
             }
             return JsPromise::resolved($value);
         }, 1);
         $constructor->defineOwnProperty('resolve', PropertyDescriptor::data($resolveFn, true, false, true));
 
-        // Promise.reject(reason)
-        $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args): JsValue {
+        // Promise.reject(reason) — per spec §25.6.4.4
+        $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use ($constructor): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Promise.reject called on non-object');
+            }
             $reason = $args[0] ?? JsUndefined::instance();
+            if ($this_ instanceof JsFunction && $this_ !== $constructor) {
+                return self::newPromiseCapabilityReject($this_, $reason);
+            }
             return JsPromise::rejected($reason);
         }, 1);
         $constructor->defineOwnProperty('reject', PropertyDescriptor::data($rejectFn, true, false, true));
@@ -272,5 +300,80 @@ class PromiseConstructor
             return $value;
         }
         return JsPromise::resolved($value);
+    }
+
+    /**
+     * NewPromiseCapability(C) then resolve. Used when C is a custom constructor.
+     */
+    /**
+     * NewPromiseCapability(C) — §25.6.1.5
+     * Creates a new promise via the C constructor and extracts resolve/reject.
+     *
+     * @return array{0: JsValue, 1: ?JsFunction, 2: ?JsFunction} [promise, resolve, reject]
+     */
+    private static function newPromiseCapability(JsFunction $ctor): array
+    {
+        $resolve = null;
+        $reject = null;
+        $alreadyCalled = false;
+        $executor = JsFunction::fromCallable('executor', function (JsValue $this_, array $args) use (&$resolve, &$reject, &$alreadyCalled): JsValue {
+            $r = $args[0] ?? JsUndefined::instance();
+            $j = $args[1] ?? JsUndefined::instance();
+            // Per spec §25.6.1.5.1 GetCapabilitiesExecutor:
+            // Only throw if resolve/reject are already set to non-undefined
+            if ($resolve !== null && !$resolve instanceof JsUndefined) {
+                throw new TypeError('resolve function already set');
+            }
+            if ($reject !== null && !$reject instanceof JsUndefined) {
+                throw new TypeError('reject function already set');
+            }
+            $resolve = $r;
+            $reject = $j;
+            return JsUndefined::instance();
+        }, 2);
+
+        $promise = self::constructWith($ctor, [$executor]);
+
+        $resolveFn = ($resolve instanceof JsFunction) ? $resolve : null;
+        $rejectFn = ($reject instanceof JsFunction) ? $reject : null;
+
+        if ($resolveFn === null || $rejectFn === null) {
+            throw new TypeError('Promise capability functions are not callable');
+        }
+
+        return [$promise, $resolveFn, $rejectFn];
+    }
+
+    private static function newPromiseCapabilityResolve(JsFunction $ctor, JsValue $value): JsValue
+    {
+        [$promise, $resolve] = self::newPromiseCapability($ctor);
+        $resolve->call(JsUndefined::instance(), [$value]);
+        return $promise;
+    }
+
+    /**
+     * NewPromiseCapability(C) then reject. Used when C is a custom constructor.
+     */
+    private static function newPromiseCapabilityReject(JsFunction $ctor, JsValue $reason): JsValue
+    {
+        [$promise, , $reject] = self::newPromiseCapability($ctor);
+        $reject->call(JsUndefined::instance(), [$reason]);
+        return $promise;
+    }
+
+    /**
+     * Construct an object using a JsFunction constructor (simulates `new C(args)`).
+     *
+     * @param list<JsValue> $args
+     */
+    private static function constructWith(JsFunction $ctor, array $args): JsValue
+    {
+        if ($ctor->isConstructable()) {
+            $obj = new JsObject();
+            $obj->set('__newTarget__', new JsBoolean(true));
+            $result = $ctor->call($obj, $args);
+            return $result instanceof JsObject ? $result : $obj;
+        }
+        throw new TypeError('not a constructor');
     }
 }

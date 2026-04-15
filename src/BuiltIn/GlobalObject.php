@@ -102,6 +102,19 @@ class GlobalObject
                 rawurlencode($str),
             ));
         }, 1));
+        $env->defineVar('decodeURI', JsFunction::fromCallable('decodeURI', function (JsValue $this_, array $args): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            // decodeURI does not decode reserved URI characters.
+            $reserved = ['%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24', '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D'];
+            // Temporarily protect reserved sequences so rawurldecode does not touch them.
+            $placeholders = [];
+            foreach ($reserved as $i => $seq) {
+                $placeholders[$seq] = "\x00RESERVED{$i}\x00";
+            }
+            $protected = str_ireplace(array_keys($placeholders), array_values($placeholders), $str);
+            $decoded = rawurldecode($protected);
+            return new JsString(str_replace(array_values($placeholders), array_keys($placeholders), $decoded));
+        }, 1));
 
         // escape/unescape (AnnexB)
         // ES spec B.2.1.1: escape operates on UTF-16 code units.
@@ -211,25 +224,20 @@ class GlobalObject
         $fnProto->defineOwnProperty('caller', $throwerDesc);
         $fnProto->defineOwnProperty('arguments', $throwerDesc);
 
-        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args) use ($env): JsValue {
+        // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
+        // Sloppy-mode this-wrapping happens inside the function body, not here.
+        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
-            // In sloppy mode, null/undefined this becomes global object
-            if ($thisArg instanceof \PhpJs\Value\JsNull || $thisArg instanceof JsUndefined) {
-                $thisArg = $env->has('this') ? $env->get('this') : new \PhpJs\Value\JsObject();
-            }
             return $this_->call($thisArg, array_slice($args, 1));
         }, 1));
-        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args) use ($env): JsValue {
+        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
-            if ($thisArg instanceof \PhpJs\Value\JsNull || $thisArg instanceof JsUndefined) {
-                $thisArg = $env->has('this') ? $env->get('this') : new \PhpJs\Value\JsObject();
-            }
             $argsArr = $args[1] ?? JsUndefined::instance();
             $callArgs = [];
             if ($argsArr instanceof \PhpJs\Value\JsArray) {
