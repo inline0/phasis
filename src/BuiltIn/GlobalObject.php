@@ -104,15 +104,18 @@ class GlobalObject
         }, 1));
 
         // escape/unescape (AnnexB)
+        // ES spec B.2.1.1: escape operates on UTF-16 code units.
         $env->defineVar('escape', JsFunction::fromCallable('escape', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            // Convert UTF-8 string to array of UTF-16 code units.
+            $codeUnits = self::utf8ToUtf16CodeUnits($str);
             $result = '';
-            for ($i = 0; $i < strlen($str); $i++) {
-                $c = $str[$i];
-                $code = ord($c);
+            foreach ($codeUnits as $code) {
                 if (($code >= 65 && $code <= 90) || ($code >= 97 && $code <= 122) || ($code >= 48 && $code <= 57)
-                    || $c === '@' || $c === '*' || $c === '_' || $c === '+' || $c === '-' || $c === '.' || $c === '/') {
-                    $result .= $c;
+                    || $code === 64 || $code === 42 || $code === 95 || $code === 43
+                    || $code === 45 || $code === 46 || $code === 47) {
+                    // A-Z, a-z, 0-9, @, *, _, +, -, ., /
+                    $result .= chr($code);
                 } elseif ($code < 256) {
                     $result .= '%' . strtoupper(str_pad(dechex($code), 2, '0', STR_PAD_LEFT));
                 } else {
@@ -121,16 +124,49 @@ class GlobalObject
             }
             return new JsString($result);
         }, 1));
+        // ES spec B.2.1.2: unescape converts %uXXXX and %XX back to characters.
         $env->defineVar('unescape', JsFunction::fromCallable('unescape', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $result = preg_replace_callback('/%u([0-9A-Fa-f]{4})|%([0-9A-Fa-f]{2})/', function ($m) {
-                if (!empty($m[1])) {
-                    $chr = mb_chr((int) hexdec($m[1]), 'UTF-8');
-                    return $chr !== false ? $chr : $m[0];
+            $length = strlen($str);
+            $result = '';
+            $k = 0;
+            while ($k < $length) {
+                $c = $str[$k];
+                if ($c === '%') {
+                    // Check for %uXXXX (6 chars total)
+                    if ($k + 5 < $length
+                        && $str[$k + 1] === 'u'
+                        && ctype_xdigit($str[$k + 2])
+                        && ctype_xdigit($str[$k + 3])
+                        && ctype_xdigit($str[$k + 4])
+                        && ctype_xdigit($str[$k + 5])
+                    ) {
+                        $code = (int) hexdec(substr($str, $k + 2, 4));
+                        $chr = mb_chr($code, 'UTF-8');
+                        $result .= $chr !== false ? $chr : $c;
+                        if ($chr !== false) {
+                            $k += 6;
+                            continue;
+                        }
+                    }
+                    // Check for %XX (3 chars total)
+                    if ($k + 2 < $length
+                        && ctype_xdigit($str[$k + 1])
+                        && ctype_xdigit($str[$k + 2])
+                    ) {
+                        $code = (int) hexdec(substr($str, $k + 1, 2));
+                        $chr = mb_chr($code, 'UTF-8');
+                        $result .= $chr !== false ? $chr : $c;
+                        if ($chr !== false) {
+                            $k += 3;
+                            continue;
+                        }
+                    }
                 }
-                return chr((int) hexdec($m[2]));
-            }, $str);
-            return new JsString($result ?? $str);
+                $result .= $c;
+                $k++;
+            }
+            return new JsString($result);
         }, 1));
 
         // Function constructor
@@ -345,5 +381,30 @@ class GlobalObject
             }
             return new JsBoolean($bool);
         };
+    }
+
+    /**
+     * Convert a PHP UTF-8 string into an array of UTF-16 code unit values.
+     * Codepoints above U+FFFF are split into surrogate pairs per UTF-16.
+     *
+     * @return int[]
+     */
+    private static function utf8ToUtf16CodeUnits(string $str): array
+    {
+        $units = [];
+        $len = mb_strlen($str, 'UTF-8');
+        for ($i = 0; $i < $len; $i++) {
+            $char = mb_substr($str, $i, 1, 'UTF-8');
+            $cp = mb_ord($char, 'UTF-8');
+            if ($cp > 0xFFFF) {
+                // Encode as surrogate pair.
+                $cp -= 0x10000;
+                $units[] = 0xD800 + ($cp >> 10);
+                $units[] = 0xDC00 + ($cp & 0x3FF);
+            } else {
+                $units[] = $cp;
+            }
+        }
+        return $units;
     }
 }

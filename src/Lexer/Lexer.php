@@ -769,6 +769,14 @@ class Lexer
                         }
                         $this->line++;
                         $this->column = 0;
+                    } elseif (ord($this->source[$this->pos]) >= 128 && $this->isUnicodeLineTerminator()) {
+                        // U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR
+                        // are line terminators per the spec (sec-line-terminators).
+                        $this->lineTerminatorBefore = true;
+                        $lineTerminatorInPass = true;
+                        $this->pos += 3;
+                        $this->line++;
+                        $this->column = 0;
                     } else {
                         $this->pos++;
                         $this->column++;

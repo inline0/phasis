@@ -100,8 +100,13 @@ class NumberConstructor
         $dm('parseInt', self::parseIntFn($env), 2);
         $dm('parseFloat', self::parseFloatFn($env), 1);
 
-        // Prototype.
-        $existing->set('prototype', $proto);
+        // Prototype (non-enumerable, non-writable, non-configurable per spec).
+        $existing->defineOwnProperty('prototype', PropertyDescriptor::data(
+            $proto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
     }
 

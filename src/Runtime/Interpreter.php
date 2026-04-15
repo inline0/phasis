@@ -142,7 +142,10 @@ class Interpreter
             if ($completion->isAbrupt()) {
                 return $this->handleAbrupt($completion);
             }
-            $result = $completion->value;
+            // Empty completions (empty statement, debugger) don't override the result
+            if (!$completion->empty) {
+                $result = $completion->value;
+            }
         }
         return $result;
     }
@@ -192,7 +195,7 @@ class Interpreter
             $node instanceof ContinueStatement => Completion::continue($node->label),
             $node instanceof LabeledStatement => $this->execLabeledStatement($node, $env),
             $node instanceof WithStatement => $this->execWithStatement($node, $env),
-            $node instanceof EmptyStatement,
+            $node instanceof EmptyStatement => new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true),
             $node instanceof DebuggerStatement => Completion::normal(JsUndefined::instance()),
             default => throw new InternalError('Unknown statement type: ' . $node->type()),
         };
