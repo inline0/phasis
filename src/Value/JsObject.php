@@ -273,14 +273,99 @@ class JsObject implements JsValue
         return false;
     }
 
-    /** Define a property descriptor by symbol key. */
-    public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): void
+    /** Define a property descriptor by symbol key, merging with existing descriptor. */
+    public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): bool
     {
         $id = $symbol->getId();
         if (!isset($this->symbolOrder[$id])) {
             $this->symbolOrder[$id] = $symbol;
         }
-        $this->symbolProperties[$id] = $desc;
+
+        $current = $this->symbolProperties[$id] ?? null;
+        if ($current === null) {
+            if (!$this->extensible) {
+                return false;
+            }
+            // New property: defaults for absent fields.
+            if ($desc->isAccessorDescriptor()) {
+                $this->symbolProperties[$id] = PropertyDescriptor::accessor(
+                    get: $desc->get,
+                    set: $desc->set,
+                    enumerable: $desc->enumerable ?? false,
+                    configurable: $desc->configurable ?? false,
+                );
+            } else {
+                $this->symbolProperties[$id] = new PropertyDescriptor(
+                    value: $desc->value ?? JsUndefined::instance(),
+                    writable: $desc->writable ?? false,
+                    enumerable: $desc->enumerable ?? false,
+                    configurable: $desc->configurable ?? false,
+                );
+            }
+            return true;
+        }
+
+        // Merge with existing descriptor (same logic as defineOwnProperty).
+        if ($current->configurable === false) {
+            if ($desc->configurable === true) {
+                return false;
+            }
+            if ($desc->enumerable !== null && $desc->enumerable !== $current->enumerable) {
+                return false;
+            }
+        }
+
+        if ($current->isDataDescriptor()) {
+            if ($current->configurable === false) {
+                if ($current->writable === false) {
+                    if ($desc->writable === true) {
+                        return false;
+                    }
+                    if ($desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue(
+                        $desc->value,
+                        $current->value ?? JsUndefined::instance(),
+                    )) {
+                        return false;
+                    }
+                }
+            }
+            $this->symbolProperties[$id] = new PropertyDescriptor(
+                value: $desc->value ?? $current->value,
+                writable: $desc->writable ?? $current->writable,
+                enumerable: $desc->enumerable ?? $current->enumerable,
+                configurable: $desc->configurable ?? $current->configurable,
+            );
+            return true;
+        }
+
+        if ($current->isAccessorDescriptor()) {
+            if ($current->configurable === false) {
+                if ($desc->set !== null && $desc->set !== $current->set) {
+                    return false;
+                }
+                if ($desc->get !== null && $desc->get !== $current->get) {
+                    return false;
+                }
+            }
+            $this->symbolProperties[$id] = PropertyDescriptor::accessor(
+                get: $desc->get ?? $current->get,
+                set: $desc->set ?? $current->set,
+                enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                configurable: $desc->configurable ?? $current->configurable ?? true,
+            );
+            return true;
+        }
+
+        // Generic merge.
+        $this->symbolProperties[$id] = new PropertyDescriptor(
+            value: $desc->value ?? $current->value,
+            writable: $desc->writable ?? $current->writable,
+            enumerable: $desc->enumerable ?? $current->enumerable,
+            configurable: $desc->configurable ?? $current->configurable,
+            get: $desc->get ?? $current->get,
+            set: $desc->set ?? $current->set,
+        );
+        return true;
     }
 
     /** Get own property descriptor by symbol key (does not walk prototype chain). */

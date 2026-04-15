@@ -213,7 +213,9 @@ class JsTypedArray extends JsObject
             if (is_nan($num)) {
                 return 0;
             }
-            return (int) max(0, min(255, round($num)));
+            // Spec uses "round half to even" (banker's rounding) for Uint8Clamped.
+            $rounded = round($num, 0, PHP_ROUND_HALF_EVEN);
+            return (int) max(0, min(255, $rounded));
         }
 
         // For float arrays, preserve NaN and Infinity.

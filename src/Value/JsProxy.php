@@ -465,6 +465,20 @@ class JsProxy extends JsObject
         return $this->getOwnEnumerableKeys();
     }
 
+    /**
+     * [[OwnPropertyKeys]] returning JsValue objects (strings and symbols).
+     * Overrides JsObject::ordinaryOwnPropertyKeys to go through the ownKeys trap.
+     */
+    public function ordinaryOwnPropertyKeys(): array
+    {
+        $trap = $this->getTrap('ownKeys');
+        if ($trap !== null) {
+            $result = $trap->call($this->handler, [$this->target]);
+            return $this->trapResultToPropertyKeys($result);
+        }
+        return $this->target->ordinaryOwnPropertyKeys();
+    }
+
     // -- [[GetPrototypeOf]] --
 
     public function getPrototype(): ?JsObject
@@ -529,6 +543,41 @@ class JsProxy extends JsObject
     public function defineProperty(string $name, PropertyDescriptor $desc): void
     {
         $this->defineOwnProperty($name, $desc);
+    }
+
+    /** Symbol-keyed getOwnPropertyDescriptor that goes through the trap. */
+    public function getSymbolPropertyDescriptor(JsSymbol $symbol): ?PropertyDescriptor
+    {
+        $trap = $this->getTrap('getOwnPropertyDescriptor');
+        if ($trap !== null) {
+            $result = $trap->call($this->handler, [$this->target, $symbol]);
+            if ($result instanceof JsUndefined) {
+                return null;
+            }
+            if (!$result instanceof JsObject) {
+                throw new TypeError(
+                    "'getOwnPropertyDescriptor' on proxy: trap returned"
+                    . " neither Object nor undefined for symbol property"
+                );
+            }
+            return self::objectToDescriptor($result);
+        }
+        return $this->target->getSymbolPropertyDescriptor($symbol);
+    }
+
+    /** Symbol-keyed defineProperty that goes through the defineProperty trap. */
+    public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): bool
+    {
+        $trap = $this->getTrap('defineProperty');
+        if ($trap !== null) {
+            $descObj = self::descriptorToObject($desc);
+            $result = $trap->call($this->handler, [$this->target, $symbol, $descObj]);
+            if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
+                throw new TypeError("'defineProperty' on proxy: trap returned falsish for symbol property");
+            }
+            return true;
+        }
+        return $this->target->definePropertyBySymbol($symbol, $desc);
     }
 
     // -- [[GetOwnProperty]] --
@@ -834,6 +883,31 @@ class JsProxy extends JsObject
             foreach ($result->getOwnPropertyNames() as $k) {
                 $elem = $result->get($k);
                 $keys[] = \PhpJs\Spec\TypeConversion::toString($elem);
+            }
+        }
+        return $keys;
+    }
+
+    /**
+     * Convert a trap result to an array of JsValue property keys (strings and symbols).
+     *
+     * @return list<JsValue>
+     */
+    private function trapResultToPropertyKeys(JsValue $result): array
+    {
+        if (!$result instanceof JsObject) {
+            throw new TypeError('\'ownKeys\' on proxy: trap returned non-object');
+        }
+        $keys = [];
+        if ($result instanceof JsArray) {
+            $len = $result->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $elem = $result->get((string) $i);
+                if ($elem instanceof JsSymbol) {
+                    $keys[] = $elem;
+                } else {
+                    $keys[] = new JsString(\PhpJs\Spec\TypeConversion::toString($elem));
+                }
             }
         }
         return $keys;

@@ -99,7 +99,7 @@ class Reference
 
         if ($this->base instanceof JsObject) {
             if ($this->symbolKey !== null) {
-                $this->base->setBySymbol($this->symbolKey, $value);
+                $this->base->setBySymbol($this->symbolKey, $value, $this->strict);
                 return;
             }
             $this->base->set($this->resolvedName(), $value, $this->strict);

@@ -10,11 +10,22 @@ use PhpJs\Spec\AbstractOperations;
  * JavaScript Set object.
  *
  * Stores unique values using SameValueZero for comparison.
+ * Uses a slot-based internal list where deleted entries are marked as a
+ * sentinel rather than removed, so that live iteration during forEach
+ * and iterators correctly sees additions and skips deletions per spec.
  */
 class JsSet extends JsObject
 {
-    /** @var list<JsValue> */
+    /**
+     * Internal [[SetData]] list. Each slot is either a JsValue for a live
+     * entry or null for a deleted (empty) slot.
+     *
+     * @var list<JsValue|null>
+     */
     private array $values = [];
+
+    /** Number of live (non-null) entries. */
+    private int $liveCount = 0;
 
     public function __construct(?JsObject $prototype = null)
     {
@@ -30,6 +41,7 @@ class JsSet extends JsObject
 
         if (!$this->setHas($value)) {
             $this->values[] = $value;
+            $this->liveCount++;
         }
     }
 
@@ -44,31 +56,69 @@ class JsSet extends JsObject
         if ($index === -1) {
             return false;
         }
-        array_splice($this->values, $index, 1);
+        // Mark the slot as empty rather than splicing, so iteration indices stay valid.
+        $this->values[$index] = null;
+        $this->liveCount--;
         return true;
     }
 
     public function setClear(): void
     {
-        $this->values = [];
+        $count = count($this->values);
+        for ($i = 0; $i < $count; $i++) {
+            $this->values[$i] = null;
+        }
+        $this->liveCount = 0;
     }
 
     public function setSize(): int
     {
+        return $this->liveCount;
+    }
+
+    /**
+     * Live iteration per spec: iterate by index, re-check length each step,
+     * skip empty (deleted) slots, and see entries appended during iteration.
+     */
+    public function setForEach(JsFunction $callback, JsValue $thisArg): void
+    {
+        $index = 0;
+        while ($index < count($this->values)) {
+            $value = $this->values[$index];
+            $index++;
+            if ($value === null) {
+                continue;
+            }
+            $callback->call($thisArg, [$value, $value, $this]);
+        }
+    }
+
+    /**
+     * Return the total number of slots (including empty) for iterator use.
+     */
+    public function slotCount(): int
+    {
         return count($this->values);
     }
 
-    public function setForEach(JsFunction $callback, JsValue $thisArg): void
+    /**
+     * Get the value at a given slot index, or null if the slot is empty.
+     */
+    public function getSlot(int $index): ?JsValue
     {
-        foreach ($this->values as $value) {
-            $callback->call($thisArg, [$value, $value, $this]);
-        }
+        return $this->values[$index] ?? null;
     }
 
     /** @return list<JsValue> */
     public function setValues(): array
     {
-        return $this->values;
+        $result = [];
+        foreach ($this->values as $value) {
+            if ($value !== null) {
+                $result[] = $value;
+            }
+        }
+        return $result;
     }
 
     public function toJsString(): string
@@ -80,18 +130,21 @@ class JsSet extends JsObject
     {
         $parts = [];
         foreach ($this->values as $value) {
-            $parts[] = $value->display();
+            if ($value !== null) {
+                $parts[] = $value->display();
+            }
         }
-        return 'Set(' . $this->setSize() . ') { ' . implode(', ', $parts) . ' }';
+        return 'Set(' . $this->liveCount . ') { ' . implode(', ', $parts) . ' }';
     }
 
     /**
-     * Find the index of a value using SameValueZero comparison.
+     * Find the slot index of a value using SameValueZero comparison.
+     * Returns -1 if not found (or only found in empty slots).
      */
     private function findIndex(JsValue $value): int
     {
         foreach ($this->values as $i => $stored) {
-            if (AbstractOperations::sameValueZero($stored, $value)) {
+            if ($stored !== null && AbstractOperations::sameValueZero($stored, $value)) {
                 return $i;
             }
         }

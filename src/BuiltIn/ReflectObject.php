@@ -310,12 +310,17 @@ class ReflectObject
         $reflect->defineOwnProperty('apply', PropertyDescriptor::data(
             JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
                 $target = $args[0] ?? JsUndefined::instance();
-                if (!$target instanceof JsFunction) {
+                $isCallable = $target instanceof JsFunction
+                    || ($target instanceof \PhpJs\Value\JsProxy && $target->isCallable());
+                if (!$isCallable) {
                     throw new TypeError('Reflect.apply: target must be a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 $argsList = $args[2] ?? JsUndefined::instance();
                 $callArgs = self::toArgumentsList($argsList, 'Reflect.apply');
+                if ($target instanceof \PhpJs\Value\JsProxy) {
+                    return $target->apply($thisArg, $callArgs);
+                }
                 return $target->call($thisArg, $callArgs);
             }, 3),
             true,

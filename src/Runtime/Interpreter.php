@@ -686,6 +686,10 @@ class Interpreter
                 . TypeConversion::toString($left) . '" in ' . TypeConversion::toString($right)
             );
         }
+        // Per spec, the key can be a Symbol (property key).
+        if ($left instanceof JsSymbol) {
+            return new JsBoolean($right->hasBySymbol($left));
+        }
         $key = TypeConversion::toString($left);
         return new JsBoolean($right->has($key));
     }
@@ -4153,7 +4157,8 @@ class Interpreter
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
         // Validate flags per spec 22.2.3.1: only valid flag characters, no duplicates.
-        $validFlags = 'dgimsuy';
+        // 'v' is the unicodeSets flag (ES2024), mutually exclusive with 'u'.
+        $validFlags = 'dgimsuvy';
         $seenFlags = [];
         for ($fi = 0; $fi < strlen($flags); $fi++) {
             $ch = $flags[$fi];
@@ -4165,8 +4170,12 @@ class Interpreter
             }
             $seenFlags[$ch] = true;
         }
+        // 'u' and 'v' are mutually exclusive per spec.
+        if (str_contains($flags, 'u') && str_contains($flags, 'v')) {
+            throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+        }
 
-        $isUnicode = str_contains($flags, 'u');
+        $isUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
 
         // Unicode mode validation per spec B.1.4: octal escapes and certain
         // identity escapes are not allowed in /u patterns.
@@ -4195,7 +4204,8 @@ class Interpreter
         $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
         $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));
         $obj->defineOwnProperty('dotAll', $noenum(new JsBoolean(str_contains($flags, 's'))));
-        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean($isUnicode)));
+        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean(str_contains($flags, 'u'))));
+        $obj->defineOwnProperty('unicodeSets', $noenum(new JsBoolean(str_contains($flags, 'v'))));
         $obj->defineOwnProperty('sticky', $noenum(new JsBoolean(str_contains($flags, 'y'))));
         $obj->defineOwnProperty('hasIndices', $noenum(new JsBoolean(str_contains($flags, 'd'))));
         // lastIndex is writable but not enumerable, not configurable per spec.

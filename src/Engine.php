@@ -173,9 +173,35 @@ class Engine
         \PhpJs\BuiltIn\DateConstructor::install($this->globalEnv);
 
         $interp = $this->interpreter;
-        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp): \PhpJs\Value\JsValue {
+        $globalEnv = $this->globalEnv;
+        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp, $globalEnv): \PhpJs\Value\JsValue {
             $arg0 = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
             $arg1 = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+
+            $calledAsNew = $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]');
+
+            // Per spec 22.2.3.1: IsRegExp check using Symbol.match.
+            $patternIsRegExp = false;
+            if ($arg0 instanceof \PhpJs\Value\JsObject) {
+                $matchSymbol = \PhpJs\BuiltIn\SymbolConstructor::match();
+                $matchProp = $arg0->getBySymbol($matchSymbol);
+                if ($matchProp instanceof \PhpJs\Value\JsUndefined) {
+                    $patternIsRegExp = $arg0->has('source') && $arg0->has('flags');
+                } else {
+                    $patternIsRegExp = \PhpJs\Spec\TypeConversion::toBoolean($matchProp);
+                }
+            }
+
+            // Spec step 4: When called as function (not new), if pattern is regexp-like
+            // with flags undefined and pattern.constructor === RegExp, return pattern as-is.
+            if (!$calledAsNew && $patternIsRegExp && $arg1 instanceof \PhpJs\Value\JsUndefined) {
+                if ($arg0 instanceof \PhpJs\Value\JsObject) {
+                    $patternCtor = $arg0->get('constructor');
+                    if ($globalEnv->has('RegExp') && $patternCtor === $globalEnv->get('RegExp')) {
+                        return $arg0;
+                    }
+                }
+            }
 
             // If the first argument is already a RegExp object and no flags argument given,
             // return a copy with the same pattern and flags (per spec 22.2.3.1).
@@ -211,7 +237,13 @@ class Engine
             'constructor',
             \PhpJs\Object\PropertyDescriptor::data($constructor, true, false, true),
         );
-        $constructor->set('prototype', $proto);
+        // Per spec, built-in constructor .prototype is non-writable, non-enumerable, non-configurable.
+        $constructor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+            $proto,
+            false,
+            false,
+            false,
+        ));
         $this->globalEnv->defineVar($name, $constructor);
         // Store prototype for internal use (e.g. Interpreter::createRegExpObject).
         $this->globalEnv->defineVar("__{$name}Prototype__", $proto);

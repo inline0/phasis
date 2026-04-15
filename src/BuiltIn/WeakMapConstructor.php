@@ -1,0 +1,174 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs\BuiltIn;
+
+use PhpJs\Exceptions\TypeError;
+use PhpJs\Runtime\Environment;
+use PhpJs\Spec\TypeConversion;
+use PhpJs\Value\JsArray;
+use PhpJs\Value\JsBoolean;
+use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNull;
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
+use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsValue;
+use PhpJs\Value\JsWeakMap;
+use PhpJs\Object\PropertyDescriptor;
+
+/**
+ * WeakMap constructor and prototype methods.
+ *
+ * new WeakMap() creates an empty weak map.
+ * new WeakMap(iterable) creates a weak map from [key, value] pairs.
+ */
+class WeakMapConstructor
+{
+    public static function install(Environment $env): void
+    {
+        $proto = self::createPrototype();
+
+        $constructor = JsFunction::fromCallable(
+            'WeakMap',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Constructor WeakMap requires \'new\'');
+                }
+                $map = new JsWeakMap($proto);
+                self::populateFromArgs($map, $args);
+                return $map;
+            },
+        );
+        $constructor->setConstructable();
+
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
+        $proto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($constructor, true, false, true),
+        );
+
+        $env->defineVar('WeakMap', $constructor);
+    }
+
+    /**
+     * Populate a WeakMap from constructor arguments (iterable of [key, value] pairs).
+     *
+     * @param list<JsValue> $args
+     */
+    private static function populateFromArgs(JsWeakMap $map, array $args): void
+    {
+        if (empty($args)) {
+            return;
+        }
+
+        $iterable = $args[0];
+        if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+            return;
+        }
+
+        if ($iterable instanceof JsArray) {
+            $length = $iterable->getLength();
+            for ($i = 0; $i < $length; $i++) {
+                $entry = $iterable->get((string) $i);
+                if (!$entry instanceof JsObject) {
+                    throw new TypeError('Iterator value is not an entry object');
+                }
+                $key = $entry->get('0');
+                $value = $entry->get('1');
+                $map->weakMapSet($key, $value);
+            }
+            return;
+        }
+
+        if (!$iterable instanceof JsObject) {
+            throw new TypeError('object is not iterable');
+        }
+
+        $iterSym = SymbolConstructor::iterator();
+        $iteratorMethod = $iterable->getBySymbol($iterSym);
+        if (!$iteratorMethod instanceof JsFunction) {
+            throw new TypeError('object is not iterable');
+        }
+
+        $iterator = $iteratorMethod->call($iterable, []);
+        if (!$iterator instanceof JsObject) {
+            return;
+        }
+
+        $nextMethod = $iterator->get('next');
+        if (!$nextMethod instanceof JsFunction) {
+            return;
+        }
+
+        while (true) {
+            $result = $nextMethod->call($iterator, []);
+            if (!$result instanceof JsObject) {
+                break;
+            }
+            if (TypeConversion::toBoolean($result->get('done'))) {
+                break;
+            }
+            $entry = $result->get('value');
+            if (!$entry instanceof JsObject) {
+                throw new TypeError('Iterator value is not an entry object');
+            }
+            $key = $entry->get('0');
+            $value = $entry->get('1');
+            $map->weakMapSet($key, $value);
+        }
+    }
+
+    private static function createPrototype(): JsObject
+    {
+        $proto = new JsObject();
+
+        $getFn = JsFunction::fromCallable('get', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.get called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            return $this_->weakMapGet($key);
+        }, 1);
+        $proto->defineOwnProperty('get', PropertyDescriptor::data($getFn, true, false, true));
+
+        $setFn = JsFunction::fromCallable('set', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.set called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            $value = $args[1] ?? JsUndefined::instance();
+            $this_->weakMapSet($key, $value);
+            return $this_;
+        }, 2);
+        $proto->defineOwnProperty('set', PropertyDescriptor::data($setFn, true, false, true));
+
+        $hasFn = JsFunction::fromCallable('has', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.has called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            return new JsBoolean($this_->weakMapHas($key));
+        }, 1);
+        $proto->defineOwnProperty('has', PropertyDescriptor::data($hasFn, true, false, true));
+
+        $deleteFn = JsFunction::fromCallable('delete', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.delete called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            return new JsBoolean($this_->weakMapDelete($key));
+        }, 1);
+        $proto->defineOwnProperty('delete', PropertyDescriptor::data($deleteFn, true, false, true));
+
+        // Symbol.toStringTag = "WeakMap".
+        $toStringTagSym = SymbolConstructor::toStringTag();
+        $proto->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::data(new JsString('WeakMap'), false, false, true),
+        );
+
+        return $proto;
+    }
+}
