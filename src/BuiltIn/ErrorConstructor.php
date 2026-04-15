@@ -30,7 +30,7 @@ class ErrorConstructor
             // Error.prototype.toString per spec §19.5.3.4
             $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
                 'toString',
-                function (JsValue $this_) use ($name): JsValue {
+                function (JsValue $this_): JsValue {
                     if (!$this_ instanceof JsObject) {
                         throw new \PhpJs\Exceptions\TypeError('Error.prototype.toString requires that \'this\' be an Object');
                     }

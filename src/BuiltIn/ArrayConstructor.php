@@ -861,7 +861,7 @@ class ArrayConstructor
     }
 
     /** Create an iterator object for keys, values, or entries. */
-    private static function createArrayIterator(JsArray $array, string $kind): JsObject
+    private static function createArrayIterator(JsObject $array, string $kind): JsObject
     {
         $index = 0;
         $iterator = new JsObject();

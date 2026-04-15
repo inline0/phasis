@@ -1262,15 +1262,15 @@ class Parser
         // This handles trailing commas: (a,) => ... and (a, b,) => ...
         {
             $arrowSaved = $this->pos;
-            try {
-                $this->advance(); // consume (
-                $params = $this->parseArrowParams();
-                if ($this->check(TokenType::Arrow)) {
-                    return $this->parseArrowFunctionFromParams($location, $params, false);
-                }
-            } catch (\Throwable) {
-                // Not arrow params, fall through to expression parsing.
+        try {
+            $this->advance(); // consume (
+            $params = $this->parseArrowParams();
+            if ($this->check(TokenType::Arrow)) {
+                return $this->parseArrowFunctionFromParams($location, $params, false);
             }
+        } catch (\Throwable) {
+            // Not arrow params, fall through to expression parsing.
+        }
             $this->pos = $arrowSaved;
         }
 

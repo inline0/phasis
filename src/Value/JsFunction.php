@@ -108,7 +108,6 @@ class JsFunction extends JsObject
             enumerable: false,
             configurable: true,
         ));
-
     }
 
     /**

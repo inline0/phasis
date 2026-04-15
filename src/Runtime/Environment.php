@@ -56,7 +56,8 @@ class Environment
         // Sync to the linked global object if present.
         // Skip internal bindings that start with __ (prototypes, etc.)
         // and the special 'this'/'globalThis' bindings.
-        if ($this->linkedObject !== null
+        if (
+            $this->linkedObject !== null
             && $name !== 'this' && $name !== 'globalThis'
             && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
         ) {
@@ -161,7 +162,8 @@ class Environment
 
             $this->bindings[$name] = $value;
             // Sync to the linked global object when the binding is in the global env.
-            if ($this->linkedObject !== null
+            if (
+                $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
                 && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
             ) {

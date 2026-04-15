@@ -127,9 +127,11 @@ class GlobalObject
             $codeUnits = self::utf8ToUtf16CodeUnits($str);
             $result = '';
             foreach ($codeUnits as $code) {
-                if (($code >= 65 && $code <= 90) || ($code >= 97 && $code <= 122) || ($code >= 48 && $code <= 57)
+                if (
+                    ($code >= 65 && $code <= 90) || ($code >= 97 && $code <= 122) || ($code >= 48 && $code <= 57)
                     || $code === 64 || $code === 42 || $code === 95 || $code === 43
-                    || $code === 45 || $code === 46 || $code === 47) {
+                    || $code === 45 || $code === 46 || $code === 47
+                ) {
                     // A-Z, a-z, 0-9, @, *, _, +, -, ., /
                     $result .= chr($code);
                 } elseif ($code < 256) {
@@ -150,7 +152,8 @@ class GlobalObject
                 $c = $str[$k];
                 if ($c === '%') {
                     // Check for %uXXXX (6 chars total)
-                    if ($k + 5 < $length
+                    if (
+                        $k + 5 < $length
                         && $str[$k + 1] === 'u'
                         && ctype_xdigit($str[$k + 2])
                         && ctype_xdigit($str[$k + 3])
@@ -166,7 +169,8 @@ class GlobalObject
                         }
                     }
                     // Check for %XX (3 chars total)
-                    if ($k + 2 < $length
+                    if (
+                        $k + 2 < $length
                         && ctype_xdigit($str[$k + 1])
                         && ctype_xdigit($str[$k + 2])
                     ) {
@@ -495,11 +499,17 @@ class GlobalObject
                 for ($i = 0; $i < $len; $i++) {
                     $ch = mb_substr($str, $i, 1, 'UTF-8');
                     $this_->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
-                        new JsString($ch), false, true, false,
+                        new JsString($ch),
+                        false,
+                        true,
+                        false,
                     ));
                 }
                 $this_->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                    new \PhpJs\Value\JsNumber((float) $len), false, false, false,
+                    new \PhpJs\Value\JsNumber((float) $len),
+                    false,
+                    false,
+                    false,
                 ));
                 return $this_;
             }
@@ -575,7 +585,8 @@ class GlobalObject
         // wrapping a FunctionExpression. Extract its body.
         $fnBody = null;
         foreach ($program->body as $stmt) {
-            if ($stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement
+            if (
+                $stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement
                 && $stmt->expression instanceof \PhpJs\Ast\Expression\FunctionExpression
             ) {
                 $fnBody = $stmt->expression->body;
@@ -594,7 +605,8 @@ class GlobalObject
                     break;
                 }
                 $expr = $bodyStmt->expression;
-                if ($expr instanceof \PhpJs\Ast\Expression\Literal
+                if (
+                    $expr instanceof \PhpJs\Ast\Expression\Literal
                     && is_string($expr->value)
                     && $expr->value === 'use strict'
                 ) {

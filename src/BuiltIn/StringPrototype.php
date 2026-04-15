@@ -190,9 +190,11 @@ class StringPrototype
             // new Object(true)): convert the inner primitive to string so
             // that String.prototype methods called on the wrapper produce
             // the same result as in V8.
-            if ($prim instanceof JsValue
+            if (
+                $prim instanceof JsValue
                 && !($prim instanceof JsUndefined)
-                && !($prim instanceof JsObject)) {
+                && !($prim instanceof JsObject)
+            ) {
                 return TypeConversion::toString($prim);
             }
         }
