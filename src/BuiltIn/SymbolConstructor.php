@@ -104,16 +104,21 @@ class SymbolConstructor
         $symbolFn->set('keyFor', JsFunction::fromCallable('keyFor', self::symbolKeyFor()));
 
         // Well-known symbols as static properties.
-        $symbolFn->set('iterator', self::iterator());
-        $symbolFn->set('hasInstance', self::hasInstance());
-        $symbolFn->set('toPrimitive', self::toPrimitive());
-        $symbolFn->set('toStringTag', self::toStringTag());
-        $symbolFn->set('split', self::split());
-        $symbolFn->set('search', self::search());
-        $symbolFn->set('match', self::match());
-        $symbolFn->set('replace', self::replace());
-        $symbolFn->set('species', self::species());
-        $symbolFn->set('isConcatSpreadable', self::isConcatSpreadable());
+        // Well-known symbols are non-writable, non-enumerable, non-configurable per spec
+        $wks = static fn (string $name, JsSymbol $sym) => $symbolFn->defineOwnProperty(
+            $name,
+            \PhpJs\Object\PropertyDescriptor::data($sym, false, false, false),
+        );
+        $wks('iterator', self::iterator());
+        $wks('hasInstance', self::hasInstance());
+        $wks('toPrimitive', self::toPrimitive());
+        $wks('toStringTag', self::toStringTag());
+        $wks('split', self::split());
+        $wks('search', self::search());
+        $wks('match', self::match());
+        $wks('replace', self::replace());
+        $wks('species', self::species());
+        $wks('isConcatSpreadable', self::isConcatSpreadable());
 
         // Symbol.prototype
         $proto = new \PhpJs\Value\JsObject();
