@@ -168,7 +168,10 @@ class Interpreter
                 }
                 return $completion;
             }
-            $result = $completion->value;
+            // Empty completions don't override the accumulated value
+            if (!$completion->empty) {
+                $result = $completion->value;
+            }
         }
         return Completion::normal($result);
     }
@@ -1385,16 +1388,15 @@ class Interpreter
                 }
                 return JsUndefined::instance();
             }
-            // Check for String.prototype methods via global String.prototype
+            // Check for String.prototype properties via global String.prototype.
+            // Return the raw value (no wrapping). Method-call this-binding is
+            // handled by the CallExpression evaluator, not here.
             if ($env->has('__StringPrototype__')) {
                 $proto = $env->get('__StringPrototype__');
                 if ($proto instanceof JsObject) {
-                    $method = $proto->get($key);
-                    if ($method instanceof JsFunction) {
-                        // Return a bound method
-                        return JsFunction::fromCallable($key, function (JsValue $this_, array $args) use ($method, $obj): JsValue {
-                            return $method->call($obj, $args);
-                        });
+                    $val = $proto->get($key);
+                    if (!$val instanceof JsUndefined) {
+                        return $val;
                     }
                 }
             }
