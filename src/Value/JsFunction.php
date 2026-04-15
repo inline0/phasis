@@ -53,9 +53,21 @@ class JsFunction extends JsObject
         $this->isAsync = $isAsync;
         $this->boundThis = $boundThis;
 
-        // Set name and length as own properties (configurable, non-writable, non-enumerable)
+        // Function.length: number of params before first rest/default param
+        $length = 0;
+        foreach ($params as $p) {
+            if ($p === null) {
+                $length++;
+            } elseif ($p instanceof \PhpJs\Ast\Pattern\RestElement) {
+                break;
+            } elseif ($p instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+                break;
+            } else {
+                $length++;
+            }
+        }
         $this->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsNumber((float) count($params)),
+            value: new JsNumber((float) $length),
             writable: false,
             enumerable: false,
             configurable: true,
