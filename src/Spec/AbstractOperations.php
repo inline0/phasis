@@ -247,7 +247,21 @@ final class AbstractOperations
             throw new TypeError('Right-hand side of instanceof is not an object');
         }
 
-        // TODO: check Symbol.hasInstance when symbols are fully implemented.
+        // 13.10.2 step 2: let instOfHandler = GetMethod(C, @@hasInstance).
+        // getBySymbol may invoke a getter that throws; let the exception propagate.
+        $instOfHandler = $right->getBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::hasInstance()
+        );
+
+        // GetMethod returns undefined for both undefined and null property values.
+        // Step 4: if instOfHandler is defined, return ToBoolean(Call(instOfHandler, C, [O])).
+        if (!$instOfHandler instanceof JsUndefined && !$instOfHandler instanceof JsNull) {
+            if (!$instOfHandler instanceof JsFunction) {
+                throw new TypeError('Right-hand side of instanceof is not callable');
+            }
+            $result = $instOfHandler->call($right, [$left]);
+            return TypeConversion::toBoolean($result);
+        }
 
         // OrdinaryHasInstance: right must be callable.
         if (!$right instanceof JsFunction) {

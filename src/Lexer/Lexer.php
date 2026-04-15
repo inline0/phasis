@@ -203,6 +203,11 @@ class Lexer
                     }
                     $this->advance();
                 }
+                // BigInt suffix
+                if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
+                    $result .= 'n';
+                    $this->advance();
+                }
                 return new Token(TokenType::Number, $result, $start);
             }
 
@@ -218,6 +223,11 @@ class Lexer
                     if ($this->source[$this->pos] !== '_') {
                         $result .= $this->source[$this->pos];
                     }
+                    $this->advance();
+                }
+                // BigInt suffix
+                if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
+                    $result .= 'n';
                     $this->advance();
                 }
                 return new Token(TokenType::Number, $result, $start);
@@ -236,6 +246,11 @@ class Lexer
                     if ($this->source[$this->pos] !== '_') {
                         $result .= $this->source[$this->pos];
                     }
+                    $this->advance();
+                }
+                // BigInt suffix
+                if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
+                    $result .= 'n';
                     $this->advance();
                 }
                 return new Token(TokenType::Number, $result, $start);

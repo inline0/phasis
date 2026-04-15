@@ -66,6 +66,7 @@ use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Spec\AbstractOperations;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
+use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\GeneratorThrowSignal;
 use PhpJs\Value\JsFunction;
@@ -251,6 +252,10 @@ class Interpreter
             return new JsNumber((float) $value);
         }
         if (is_string($value)) {
+            // BigInt literal: raw token ends with 'n' and value is the raw string kept by the parser.
+            if (str_ends_with($value, 'n') && str_ends_with($node->raw, 'n') && $node->raw === $value) {
+                return new JsBigInt($value);
+            }
             // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
             if (
                 str_starts_with($node->raw, '__REGEXP__')
@@ -414,9 +419,21 @@ class Interpreter
 
         $value = $this->evaluate($node->argument, $env);
 
+        if ($node->operator === '-') {
+            $numeric = TypeConversion::toNumeric($value);
+            if ($numeric instanceof JsBigInt) {
+                $v = $numeric->value;
+                if ($v === '0' || $v === '-0') {
+                    return new JsBigInt('0');
+                }
+                $negated = str_starts_with($v, '-') ? substr($v, 1) : '-' . $v;
+                return new JsBigInt($negated);
+            }
+            return new JsNumber(-($numeric instanceof JsNumber ? $numeric->value : TypeConversion::toNumber($numeric)));
+        }
+
         return match ($node->operator) {
             '!' => new JsBoolean(!TypeConversion::toBoolean($value)),
-            '-' => new JsNumber(-TypeConversion::toNumber($value)),
             '+' => new JsNumber(TypeConversion::toNumber($value)),
             '~' => new JsNumber((float) (~TypeConversion::toInt32($value))),
             'void' => JsUndefined::instance(),

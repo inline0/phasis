@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PhpJs\Spec;
 
 use PhpJs\Exceptions\TypeError;
+use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
@@ -100,6 +101,22 @@ final class TypeConversion
     }
 
     /**
+     * 7.1.3 ToNumeric(value).
+     *
+     * Let primValue be ToPrimitive(value, number).
+     * If Type(primValue) is BigInt, return primValue.
+     * Return ToNumber(primValue).
+     */
+    public static function toNumeric(JsValue $value): JsValue
+    {
+        $primValue = self::toPrimitive($value, 'number');
+        if ($primValue instanceof JsBigInt) {
+            return $primValue;
+        }
+        return new JsNumber(self::toNumber($primValue));
+    }
+
+    /**
      * 7.1.3 ToNumber(argument).
      *
      * undefined -> NaN, null -> +0, boolean -> 1 or 0,
@@ -130,6 +147,10 @@ final class TypeConversion
 
         if ($value instanceof JsSymbol) {
             throw new TypeError('Cannot convert a Symbol value to a number');
+        }
+
+        if ($value instanceof JsBigInt) {
+            throw new TypeError('Cannot convert a BigInt value to a number');
         }
 
         // Object: ToPrimitive with "number" hint, then recurse.
