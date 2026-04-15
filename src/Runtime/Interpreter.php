@@ -2069,10 +2069,27 @@ class Interpreter
     {
         $test = $this->evaluate($node->test, $env);
         if (TypeConversion::toBoolean($test)) {
-            return $this->executeStatement($node->consequent, $env);
+            $stmtCompletion = $this->executeStatement($node->consequent, $env);
+            // Per spec: Return Completion(UpdateEmpty(stmtCompletion, undefined)).
+            if ($stmtCompletion->empty) {
+                return new Completion(
+                    $stmtCompletion->type,
+                    JsUndefined::instance(),
+                    $stmtCompletion->target,
+                );
+            }
+            return $stmtCompletion;
         }
         if ($node->alternate !== null) {
-            return $this->executeStatement($node->alternate, $env);
+            $stmtCompletion = $this->executeStatement($node->alternate, $env);
+            if ($stmtCompletion->empty) {
+                return new Completion(
+                    $stmtCompletion->type,
+                    JsUndefined::instance(),
+                    $stmtCompletion->target,
+                );
+            }
+            return $stmtCompletion;
         }
         return Completion::normal(JsUndefined::instance());
     }
@@ -2116,7 +2133,7 @@ class Interpreter
             }
             $completion = $this->executeStatement($node->body, $iterEnv);
 
-            if (!$completion->value instanceof JsUndefined) {
+            if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
             }
 
@@ -2169,7 +2186,7 @@ class Interpreter
             $this->assignForBinding($node->left, new JsString((string) $key), $iterEnv);
             $completion = $this->executeStatement($node->body, $iterEnv);
 
-            if (!$completion->value instanceof JsUndefined) {
+            if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
             }
 
@@ -2257,7 +2274,7 @@ class Interpreter
                 $this->assignForBinding($node->left, $value, $iterEnv);
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
-                if (!$completion->value instanceof JsUndefined) {
+                if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                     $v = $completion->value;
                 }
 
@@ -2293,7 +2310,7 @@ class Interpreter
                 $this->assignForBinding($node->left, $iterable->get((string) $i), $iterEnv);
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
-                if (!$completion->value instanceof JsUndefined) {
+                if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                     $v = $completion->value;
                 }
 
@@ -2500,7 +2517,7 @@ class Interpreter
 
             $completion = $this->executeStatement($node->body, $env);
 
-            if (!$completion->value instanceof JsUndefined) {
+            if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
             }
 
@@ -2536,7 +2553,7 @@ class Interpreter
 
             $completion = $this->executeStatement($node->body, $env);
 
-            if (!$completion->value instanceof JsUndefined) {
+            if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
             }
 
@@ -2632,7 +2649,7 @@ class Interpreter
         foreach ($case->consequent as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             // Per spec: if R.[[value]] is not empty, let V = R.[[value]].
-            if (!$completion->value instanceof JsUndefined) {
+            if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
             }
             if ($completion->isAbrupt()) {
