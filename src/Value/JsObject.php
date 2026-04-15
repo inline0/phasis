@@ -519,7 +519,22 @@ class JsObject implements JsValue
             if (!$this->extensible) {
                 return false;
             }
-            $this->properties->set($name, $desc);
+            // Per spec, when creating a new property, absent fields default to false/undefined.
+            if ($desc->isAccessorDescriptor()) {
+                $this->properties->set($name, PropertyDescriptor::accessor(
+                    get: $desc->get,
+                    set: $desc->set,
+                    enumerable: $desc->enumerable ?? false,
+                    configurable: $desc->configurable ?? false,
+                ));
+            } else {
+                $this->properties->set($name, new PropertyDescriptor(
+                    value: $desc->value ?? JsUndefined::instance(),
+                    writable: $desc->writable ?? false,
+                    enumerable: $desc->enumerable ?? false,
+                    configurable: $desc->configurable ?? false,
+                ));
+            }
             return true;
         }
 

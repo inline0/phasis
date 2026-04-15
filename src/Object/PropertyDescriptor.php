@@ -57,8 +57,8 @@ class PropertyDescriptor
     public static function accessor(
         ?JsFunction $get = null,
         ?JsFunction $set = null,
-        bool $enumerable = true,
-        bool $configurable = true,
+        ?bool $enumerable = true,
+        ?bool $configurable = true,
     ): self {
         $desc = new self(
             enumerable: $enumerable,

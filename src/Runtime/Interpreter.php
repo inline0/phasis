@@ -3483,10 +3483,7 @@ class Interpreter
         if (!$obj instanceof JsObject) {
             $obj = TypeConversion::toObject($obj);
         }
-        $withEnv = $env->createChild();
-        foreach ($obj->getOwnPropertyNames() as $key) {
-            $withEnv->defineVar($key, $obj->get($key));
-        }
+        $withEnv = $env->createWithEnvironment($obj);
         return $this->executeStatement($node->body, $withEnv);
     }
 

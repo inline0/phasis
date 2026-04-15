@@ -30,6 +30,13 @@ class Environment
      */
     private ?\PhpJs\Value\JsObject $linkedObject = null;
 
+    /**
+     * When set, this environment is a "with" object environment record.
+     * Variable lookups first check this object (using [[Has]]) before
+     * falling through to the parent scope. This enables Proxy has traps.
+     */
+    private ?\PhpJs\Value\JsObject $withObject = null;
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
@@ -119,6 +126,18 @@ class Environment
     /** Get a binding value, walking the scope chain. Throws on TDZ access or missing binding. */
     public function get(string $name): JsValue
     {
+        // "with" object environment record: delegate to the binding object using [[Has]].
+        if ($this->withObject !== null) {
+            if ($this->withObject->has($name)) {
+                return $this->withObject->get($name);
+            }
+            // Not found on the with-object: fall through to parent scope.
+            if ($this->parent !== null) {
+                return $this->parent->get($name);
+            }
+            throw new ReferenceError("{$name} is not defined");
+        }
+
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->tdz[$name])) {
                 throw new ReferenceError("Cannot access '{$name}' before initialization");
@@ -151,6 +170,22 @@ class Environment
      */
     public function set(string $name, JsValue $value, bool $strict = true): void
     {
+        // "with" object environment record: delegate to the binding object.
+        if ($this->withObject !== null) {
+            if ($this->withObject->has($name)) {
+                $this->withObject->set($name, $value, $strict);
+                return;
+            }
+            if ($this->parent !== null) {
+                $this->parent->set($name, $value, $strict);
+                return;
+            }
+            if ($strict) {
+                throw new ReferenceError("{$name} is not defined");
+            }
+            return;
+        }
+
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->tdz[$name])) {
                 throw new ReferenceError("Cannot access '{$name}' before initialization");
@@ -203,6 +238,17 @@ class Environment
     /** Check whether a binding exists anywhere in the scope chain. */
     public function has(string $name): bool
     {
+        // "with" object environment record: delegate to the binding object using [[Has]].
+        if ($this->withObject !== null) {
+            if ($this->withObject->has($name)) {
+                return true;
+            }
+            if ($this->parent !== null) {
+                return $this->parent->has($name);
+            }
+            return false;
+        }
+
         if (array_key_exists($name, $this->bindings)) {
             return true;
         }
@@ -259,5 +305,18 @@ class Environment
     public function createChild(): self
     {
         return new self($this);
+    }
+
+    /**
+     * Create a child "with" environment that delegates lookups to the given object.
+     * Per ES spec, a with statement creates an Object Environment Record whose
+     * binding object is the with-expression value. Variable lookups use [[Has]]
+     * on this object, which enables Proxy has/get traps.
+     */
+    public function createWithEnvironment(\PhpJs\Value\JsObject $obj): self
+    {
+        $child = new self($this);
+        $child->withObject = $obj;
+        return $child;
     }
 }
