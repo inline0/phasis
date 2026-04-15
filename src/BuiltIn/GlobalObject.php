@@ -34,6 +34,43 @@ class GlobalObject
         $env->defineVar('Number', $numberFn);
         $booleanFn = JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1);
         $booleanFn->setConstructable();
+        $boolProto = new \PhpJs\Value\JsObject();
+        $boolProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($booleanFn, true, false, true));
+        $boolProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
+                if ($this_ instanceof JsBoolean) {
+                    return $this_;
+                }
+                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
+                    $prim = $this_->get('[[PrimitiveValue]]');
+                    if ($prim instanceof JsBoolean) {
+                        return $prim;
+                    }
+                }
+                throw new \PhpJs\Exceptions\TypeError('Boolean.prototype.valueOf requires a Boolean');
+            }, 0),
+            true,
+            false,
+            true,
+        ));
+        $boolProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+                if ($this_ instanceof JsBoolean) {
+                    return new JsString($this_->toBoolean() ? 'true' : 'false');
+                }
+                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[PrimitiveValue]]')) {
+                    $prim = $this_->get('[[PrimitiveValue]]');
+                    if ($prim instanceof JsBoolean) {
+                        return new JsString($prim->toBoolean() ? 'true' : 'false');
+                    }
+                }
+                throw new \PhpJs\Exceptions\TypeError('Boolean.prototype.toString requires a Boolean');
+            }, 0),
+            true,
+            false,
+            true,
+        ));
+        $booleanFn->set('prototype', $boolProto);
         $env->defineVar('Boolean', $booleanFn);
 
         // eval

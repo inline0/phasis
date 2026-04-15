@@ -105,53 +105,6 @@ class JsSet extends JsObject
         return $this->values;
     }
 
-    public function get(string $name): JsValue
-    {
-        return match ($name) {
-            'size' => new JsNumber((float) $this->setSize()),
-            'add' => JsFunction::fromCallable('add', function (JsValue $this_, array $args): JsValue {
-                $value = $args[0] ?? JsUndefined::instance();
-                $this->setAdd($value);
-                return $this;
-            }),
-            'has' => JsFunction::fromCallable('has', function (JsValue $this_, array $args): JsValue {
-                $value = $args[0] ?? JsUndefined::instance();
-                return new JsBoolean($this->setHas($value));
-            }),
-            'delete' => JsFunction::fromCallable('delete', function (JsValue $this_, array $args): JsValue {
-                $value = $args[0] ?? JsUndefined::instance();
-                return new JsBoolean($this->setDelete($value));
-            }),
-            'clear' => JsFunction::fromCallable('clear', function (JsValue $this_, array $args): JsValue {
-                $this->setClear();
-                return JsUndefined::instance();
-            }),
-            'forEach' => JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
-                $callback = $args[0] ?? null;
-                if (!$callback instanceof JsFunction) {
-                    throw new \PhpJs\Exceptions\TypeError('forEach callback is not a function');
-                }
-                $thisArg = $args[1] ?? JsUndefined::instance();
-                $this->setForEach($callback, $thisArg);
-                return JsUndefined::instance();
-            }),
-            'keys' => JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
-                return JsArray::fromArray($this->values);
-            }),
-            'values' => JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
-                return JsArray::fromArray($this->values);
-            }),
-            'entries' => JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
-                $result = [];
-                foreach ($this->values as $value) {
-                    $result[] = JsArray::fromArray([$value, $value]);
-                }
-                return JsArray::fromArray($result);
-            }),
-            default => parent::get($name),
-        };
-    }
-
     public function toJsString(): string
     {
         return '[object Set]';

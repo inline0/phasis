@@ -95,40 +95,75 @@ class JsonObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $value = $args[0] ?? JsUndefined::instance();
-            // The second argument (replacer) and third (space) are simplified.
-            $space = $args[2] ?? null;
-            $indent = 0;
-            if ($space instanceof JsNumber) {
-                $indent = max(0, min(10, (int) $space->value));
-            } elseif ($space instanceof JsString) {
-                // Use the string as indentation (up to 10 chars).
-                $indentStr = mb_substr($space->value, 0, 10, 'UTF-8');
-                // For simplicity, use length as indent level.
-                $indent = mb_strlen($indentStr, 'UTF-8');
+            $replacerArg = $args[1] ?? JsUndefined::instance();
+            $space = $args[2] ?? JsUndefined::instance();
+
+            // Unwrap Number/String wrapper objects for the space parameter.
+            if ($space instanceof JsObject) {
+                $prim = $space->get('[[PrimitiveValue]]');
+                if ($prim instanceof JsNumber || $prim instanceof JsString) {
+                    $space = $prim;
+                }
             }
 
-            $result = self::jsValueToJson($value);
+            // Resolve gap string.
+            $gap = '';
+            if ($space instanceof JsNumber) {
+                $count = max(0, min(10, (int) $space->value));
+                $gap = str_repeat(' ', $count);
+            } elseif ($space instanceof JsString) {
+                $gap = mb_substr($space->value, 0, 10, 'UTF-8');
+            }
+
+            // Build replacer function or property list.
+            $replacerFn = null;
+            /** @var list<string>|null $propertyList */
+            $propertyList = null;
+            if ($replacerArg instanceof JsFunction) {
+                $replacerFn = $replacerArg;
+            } elseif ($replacerArg instanceof JsArray) {
+                $propertyList = [];
+                $seen = [];
+                for ($i = 0; $i < $replacerArg->getLength(); $i++) {
+                    $item = $replacerArg->get((string) $i);
+                    $key = null;
+                    if ($item instanceof JsString) {
+                        $key = $item->value;
+                    } elseif ($item instanceof JsNumber) {
+                        $key = (new JsNumber($item->value))->toJsString();
+                    } elseif ($item instanceof JsObject) {
+                        $prim = $item->get('[[PrimitiveValue]]');
+                        if ($prim instanceof JsString) {
+                            $key = $prim->value;
+                        } elseif ($prim instanceof JsNumber) {
+                            $key = (new JsNumber($prim->value))->toJsString();
+                        }
+                    }
+                    if ($key !== null && !isset($seen[$key])) {
+                        $propertyList[] = $key;
+                        $seen[$key] = true;
+                    }
+                }
+            }
+
+            /** @var \SplObjectStorage<JsObject, true> $stack */
+            $stack = new \SplObjectStorage();
+
+            // Wrap the value in a holder object and call the serialization algorithm.
+            $holder = new JsObject();
+            $holder->set('', $value);
+            $result = self::serializeProperty(
+                '',
+                $holder,
+                $replacerFn,
+                $propertyList,
+                $gap,
+                '',
+                $stack,
+            );
+
             if ($result === null) {
                 return JsUndefined::instance();
-            }
-
-            if ($indent > 0) {
-                // Re-encode with indentation.
-                $phpVal = json_decode($result, true);
-                $pretty = json_encode($phpVal, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                if ($pretty !== false && $indent !== 4) {
-                    // json_encode uses 4-space indent. Adjust if different.
-                    $lines = explode("\n", $pretty);
-                    $adjusted = [];
-                    foreach ($lines as $line) {
-                        $stripped = ltrim($line, ' ');
-                        $spaces = strlen($line) - strlen($stripped);
-                        $level = (int) ($spaces / 4);
-                        $adjusted[] = str_repeat(' ', $level * $indent) . $stripped;
-                    }
-                    return new JsString(implode("\n", $adjusted));
-                }
-                return new JsString($pretty !== false ? $pretty : $result);
             }
 
             return new JsString($result);
@@ -165,28 +200,59 @@ class JsonObject
         return JsNull::instance();
     }
 
-    private static function jsValueToJson(JsValue $value): ?string
-    {
-        // Check for toJSON() method on objects
+    /**
+     * SerializeJSONProperty per ES spec 25.5.2.5.
+     *
+     * @param \SplObjectStorage<JsObject, true> $stack
+     * @param list<string>|null $propertyList
+     */
+    private static function serializeProperty(
+        string $key,
+        JsObject $holder,
+        ?JsFunction $replacerFn,
+        ?array $propertyList,
+        string $gap,
+        string $indent,
+        \SplObjectStorage $stack,
+    ): ?string {
+        $value = $holder->get($key);
+
+        // Step 2: call toJSON on the value if it exists.
         if ($value instanceof JsObject && $value->has('toJSON')) {
             $toJson = $value->get('toJSON');
             if ($toJson instanceof JsFunction) {
-                $value = $toJson->call($value, []);
+                $value = $toJson->call($value, [new JsString($key)]);
             }
         }
 
-        if ($value instanceof JsUndefined || $value instanceof JsFunction) {
-            return null;
+        // Step 3: apply the replacer function.
+        if ($replacerFn !== null) {
+            $value = $replacerFn->call($holder, [new JsString($key), $value]);
         }
 
+        // Step 4: unwrap Number/String/Boolean wrapper objects.
+        if ($value instanceof JsObject && !$value instanceof JsArray && !$value instanceof JsFunction) {
+            $prim = $value->get('[[PrimitiveValue]]');
+            if ($prim instanceof JsNumber) {
+                $value = $prim;
+            } elseif ($prim instanceof JsString) {
+                $value = $prim;
+            } elseif ($prim instanceof JsBoolean) {
+                $value = $prim;
+            }
+        }
+
+        // Steps 5-9: produce the JSON text.
         if ($value instanceof JsNull) {
             return 'null';
         }
-
         if ($value instanceof JsBoolean) {
             return $value->value ? 'true' : 'false';
         }
-
+        if ($value instanceof JsString) {
+            $encoded = json_encode($value->value, JSON_UNESCAPED_UNICODE);
+            return $encoded !== false ? $encoded : '"' . $value->value . '"';
+        }
         if ($value instanceof JsNumber) {
             if (is_nan($value->value) || is_infinite($value->value)) {
                 return 'null';
@@ -194,40 +260,112 @@ class JsonObject
             return $value->toJsString();
         }
 
-        if ($value instanceof JsString) {
-            $encoded = json_encode($value->value, JSON_UNESCAPED_UNICODE);
-            return $encoded !== false ? $encoded : '"' . $value->value . '"';
-        }
-
-        if ($value instanceof JsArray) {
-            $parts = [];
-            $len = $value->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $elem = $value->get((string) $i);
-                $json = self::jsValueToJson($elem);
-                $parts[] = $json ?? 'null';
+        // Step 10: arrays and objects (but not functions).
+        if ($value instanceof JsObject && !$value instanceof JsFunction) {
+            // Circular reference check.
+            if ($stack->contains($value)) {
+                throw new \PhpJs\Exceptions\TypeError('Converting circular structure to JSON');
             }
-            return '[' . implode(',', $parts) . ']';
+
+            if ($value instanceof JsArray) {
+                return self::serializeArray($value, $replacerFn, $propertyList, $gap, $indent, $stack);
+            }
+            return self::serializeObject($value, $replacerFn, $propertyList, $gap, $indent, $stack);
         }
 
-        if ($value instanceof JsObject) {
-            $parts = [];
-            $keys = $value->getOwnEnumerableKeys();
-            foreach ($keys as $key) {
-                $val = $value->get($key);
-                $json = self::jsValueToJson($val);
-                if ($json === null) {
-                    continue; // Skip undefined and function values.
-                }
+        // undefined, functions, and symbols return null (omitted).
+        return null;
+    }
+
+    /**
+     * SerializeJSONObject per ES spec 25.5.2.6.
+     *
+     * @param \SplObjectStorage<JsObject, true> $stack
+     * @param list<string>|null $propertyList
+     */
+    private static function serializeObject(
+        JsObject $value,
+        ?JsFunction $replacerFn,
+        ?array $propertyList,
+        string $gap,
+        string $indent,
+        \SplObjectStorage $stack,
+    ): string {
+        $stack->attach($value);
+        $stepback = $indent;
+        $indent .= $gap;
+
+        $keys = $propertyList ?? $value->getOwnEnumerableKeys();
+
+        $partial = [];
+        foreach ($keys as $key) {
+            $strP = self::serializeProperty($key, $value, $replacerFn, $propertyList, $gap, $indent, $stack);
+            if ($strP !== null) {
                 $encodedKey = json_encode($key, JSON_UNESCAPED_UNICODE);
                 if ($encodedKey === false) {
                     $encodedKey = '"' . $key . '"';
                 }
-                $parts[] = $encodedKey . ':' . $json;
+                $member = $encodedKey . ':';
+                if ($gap !== '') {
+                    $member .= ' ';
+                }
+                $member .= $strP;
+                $partial[] = $member;
             }
-            return '{' . implode(',', $parts) . '}';
         }
 
-        return null;
+        $stack->detach($value);
+
+        if ($partial === []) {
+            return '{}';
+        }
+
+        if ($gap === '') {
+            return '{' . implode(',', $partial) . '}';
+        }
+
+        $separator = ",\n" . $indent;
+        $properties = implode($separator, $partial);
+        return "{\n" . $indent . $properties . "\n" . $stepback . '}';
+    }
+
+    /**
+     * SerializeJSONArray per ES spec 25.5.2.7.
+     *
+     * @param \SplObjectStorage<JsObject, true> $stack
+     * @param list<string>|null $propertyList
+     */
+    private static function serializeArray(
+        JsArray $value,
+        ?JsFunction $replacerFn,
+        ?array $propertyList,
+        string $gap,
+        string $indent,
+        \SplObjectStorage $stack,
+    ): string {
+        $stack->attach($value);
+        $stepback = $indent;
+        $indent .= $gap;
+
+        $len = $value->getLength();
+        $partial = [];
+        for ($i = 0; $i < $len; $i++) {
+            $strP = self::serializeProperty((string) $i, $value, $replacerFn, $propertyList, $gap, $indent, $stack);
+            $partial[] = $strP ?? 'null';
+        }
+
+        $stack->detach($value);
+
+        if ($partial === []) {
+            return '[]';
+        }
+
+        if ($gap === '') {
+            return '[' . implode(',', $partial) . ']';
+        }
+
+        $separator = ",\n" . $indent;
+        $properties = implode($separator, $partial);
+        return "[\n" . $indent . $properties . "\n" . $stepback . ']';
     }
 }

@@ -128,58 +128,6 @@ class JsMap extends JsObject
         return array_map(fn(array $entry) => $entry[1], $this->entries);
     }
 
-    public function get(string $name): JsValue
-    {
-        return match ($name) {
-            'size' => new JsNumber((float) $this->mapSize()),
-            'get' => JsFunction::fromCallable('get', function (JsValue $this_, array $args): JsValue {
-                $key = $args[0] ?? JsUndefined::instance();
-                return $this->mapGet($key);
-            }),
-            'set' => JsFunction::fromCallable('set', function (JsValue $this_, array $args): JsValue {
-                $key = $args[0] ?? JsUndefined::instance();
-                $value = $args[1] ?? JsUndefined::instance();
-                $this->mapSet($key, $value);
-                return $this;
-            }),
-            'has' => JsFunction::fromCallable('has', function (JsValue $this_, array $args): JsValue {
-                $key = $args[0] ?? JsUndefined::instance();
-                return new JsBoolean($this->mapHas($key));
-            }),
-            'delete' => JsFunction::fromCallable('delete', function (JsValue $this_, array $args): JsValue {
-                $key = $args[0] ?? JsUndefined::instance();
-                return new JsBoolean($this->mapDelete($key));
-            }),
-            'clear' => JsFunction::fromCallable('clear', function (JsValue $this_, array $args): JsValue {
-                $this->mapClear();
-                return JsUndefined::instance();
-            }),
-            'forEach' => JsFunction::fromCallable('forEach', function (JsValue $this_, array $args): JsValue {
-                $callback = $args[0] ?? null;
-                if (!$callback instanceof JsFunction) {
-                    throw new \PhpJs\Exceptions\TypeError('forEach callback is not a function');
-                }
-                $thisArg = $args[1] ?? JsUndefined::instance();
-                $this->mapForEach($callback, $thisArg);
-                return JsUndefined::instance();
-            }),
-            'keys' => JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
-                return JsArray::fromArray($this->mapKeys());
-            }),
-            'values' => JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
-                return JsArray::fromArray($this->mapValues());
-            }),
-            'entries' => JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
-                $result = [];
-                foreach ($this->entries as $entry) {
-                    $result[] = JsArray::fromArray([$entry[0], $entry[1]]);
-                }
-                return JsArray::fromArray($result);
-            }),
-            default => parent::get($name),
-        };
-    }
-
     public function toJsString(): string
     {
         return '[object Map]';
