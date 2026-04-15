@@ -157,7 +157,13 @@ class JsArray extends JsObject
     public function toJsString(): string
     {
         $parts = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        // Safety: only iterate actual stored elements, not sparse length
+        $len = min($this->length, count($this->elements) > 0 ? max(array_keys($this->elements)) + 1 : 0);
+        // But if length is small enough, iterate fully (spec-compliant for dense arrays)
+        if ($this->length <= 10000) {
+            $len = $this->length;
+        }
+        for ($i = 0; $i < $len; $i++) {
             $value = $this->get((string) $i);
             if ($value instanceof JsUndefined || $value instanceof JsNull) {
                 $parts[] = '';
