@@ -512,7 +512,7 @@ class JsProxy extends JsObject
 
     // -- [[DefineOwnProperty]] --
 
-    public function defineOwnProperty(string $name, PropertyDescriptor $desc): void
+    public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
         $trap = $this->getTrap('defineProperty');
         if ($trap !== null) {
@@ -521,9 +521,9 @@ class JsProxy extends JsObject
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
                 throw new TypeError("'defineProperty' on proxy: trap returned falsish for property '{$name}'");
             }
-            return;
+            return true;
         }
-        $this->target->defineOwnProperty($name, $desc);
+        return $this->target->defineOwnProperty($name, $desc);
     }
 
     public function defineProperty(string $name, PropertyDescriptor $desc): void
@@ -705,7 +705,7 @@ class JsProxy extends JsObject
         return $this->target->getBySymbol($symbol);
     }
 
-    public function setBySymbol(JsSymbol $symbol, JsValue $value): void
+    public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
     {
         $this->assertNotRevoked('set');
         $trap = $this->getTrap('set');
