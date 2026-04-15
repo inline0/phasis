@@ -9,6 +9,7 @@ use PhpJs\Object\PropertyDescriptor;
 class JsArray extends JsObject
 {
     private int $length = 0;
+    private bool $lengthWritable = true;
     private static ?JsObject $globalPrototype = null;
 
     public static function setGlobalPrototype(JsObject $proto): void
@@ -157,12 +158,8 @@ class JsArray extends JsObject
     public function toJsString(): string
     {
         $parts = [];
-        // Safety: only iterate actual stored elements, not sparse length
-        $len = min($this->length, count($this->elements) > 0 ? max(array_keys($this->elements)) + 1 : 0);
-        // But if length is small enough, iterate fully (spec-compliant for dense arrays)
-        if ($this->length <= 10000) {
-            $len = $this->length;
-        }
+        // Cap at 10000 to prevent OOM on sparse arrays with huge length
+        $len = min($this->length, 10000);
         for ($i = 0; $i < $len; $i++) {
             $value = $this->get((string) $i);
             if ($value instanceof JsUndefined || $value instanceof JsNull) {
@@ -181,6 +178,15 @@ class JsArray extends JsObject
         }
 
         return parent::get($name);
+    }
+
+    protected function getWithReceiver(string $name, JsObject $receiver): JsValue
+    {
+        if ($name === 'length') {
+            return new JsNumber((float) $this->length);
+        }
+
+        return parent::getWithReceiver($name, $receiver);
     }
 
     public function set(string $name, JsValue $value, bool $strict = false): void
@@ -250,6 +256,14 @@ class JsArray extends JsObject
         return $result;
     }
 
+    public function has(string $name): bool
+    {
+        if ($name === 'length') {
+            return true;
+        }
+        return parent::has($name);
+    }
+
     public function hasOwnProperty(string $name): bool
     {
         if ($name === 'length') {
@@ -263,7 +277,7 @@ class JsArray extends JsObject
         if ($name === 'length') {
             return new \PhpJs\Object\PropertyDescriptor(
                 value: new JsNumber((float) $this->length),
-                writable: true,
+                writable: $this->lengthWritable,
                 enumerable: false,
                 configurable: false,
             );
