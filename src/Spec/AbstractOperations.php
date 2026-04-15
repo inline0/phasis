@@ -60,21 +60,45 @@ final class AbstractOperations
             return self::abstractEquals($x, new JsNumber(TypeConversion::toNumber($y)));
         }
 
-        // 5. Object == String/Number/Symbol -> ToPrimitive(Object) == other.
+        // 5. Object == String/Number/BigInt/Symbol -> ToPrimitive(Object) == other.
         if (
             $x instanceof JsObject
-            && ($y instanceof JsString || $y instanceof JsNumber || $y instanceof JsSymbol)
+            && ($y instanceof JsString || $y instanceof JsNumber || $y instanceof JsSymbol
+                || $y instanceof JsBigInt)
         ) {
             return self::abstractEquals(TypeConversion::toPrimitive($x), $y);
         }
         if (
-            ($x instanceof JsString || $x instanceof JsNumber || $x instanceof JsSymbol)
+            ($x instanceof JsString || $x instanceof JsNumber || $x instanceof JsSymbol
+                || $x instanceof JsBigInt)
             && $y instanceof JsObject
         ) {
             return self::abstractEquals($x, TypeConversion::toPrimitive($y));
         }
 
-        // 6. All other combinations -> false.
+        // 6. BigInt == String -> StringToBigInt, then compare.
+        if ($x instanceof JsBigInt && $y instanceof JsString) {
+            $n = self::stringToBigInt($y->value);
+            if ($n === null) {
+                return false;
+            }
+            return self::abstractEquals($x, $n);
+        }
+
+        // 7. String == BigInt -> reverse.
+        if ($x instanceof JsString && $y instanceof JsBigInt) {
+            return self::abstractEquals($y, $x);
+        }
+
+        // 12. BigInt == Number or Number == BigInt -> compare mathematical values.
+        if ($x instanceof JsBigInt && $y instanceof JsNumber) {
+            return self::bigIntEqualsNumber($x, $y);
+        }
+        if ($x instanceof JsNumber && $y instanceof JsBigInt) {
+            return self::bigIntEqualsNumber($y, $x);
+        }
+
+        // All other combinations -> false.
         return false;
     }
 
@@ -164,43 +188,54 @@ final class AbstractOperations
             $px = TypeConversion::toPrimitive($x, 'number');
         }
 
-        // If both are strings, use lexicographic comparison.
+        // 3. If both are strings, use lexicographic comparison.
         if ($px instanceof JsString && $py instanceof JsString) {
             $cmp = strcmp($px->value, $py->value);
             return $cmp < 0;
         }
 
-        // Otherwise, convert both to numbers and compare.
-        $nx = TypeConversion::toNumber($px);
-        $ny = TypeConversion::toNumber($py);
-
-        // NaN compared to anything -> undefined (null here).
-        if (is_nan($nx) || is_nan($ny)) {
-            return null;
+        // 4a. BigInt < String: parse the string as BigInt, compare as BigInts.
+        if ($px instanceof JsBigInt && $py instanceof JsString) {
+            $ny = self::stringToBigInt($py->value);
+            if ($ny === null) {
+                return null;
+            }
+            return self::bigIntLessThan($px, $ny);
         }
 
-        // +0 and -0 are equal.
-        if ($nx === $ny) {
-            return false;
+        // 4b. String < BigInt: parse the string as BigInt, compare as BigInts.
+        if ($px instanceof JsString && $py instanceof JsBigInt) {
+            $nx = self::stringToBigInt($px->value);
+            if ($nx === null) {
+                return null;
+            }
+            return self::bigIntLessThan($nx, $py);
         }
 
-        // +Infinity is greater than everything.
-        if ($nx === INF) {
-            return false;
-        }
-        // -Infinity is less than everything.
-        if ($ny === INF) {
-            return true;
+        // 4c. Otherwise use ToNumeric (not ToNumber) to preserve BigInt type.
+        $nx = TypeConversion::toNumeric($px);
+        $ny = TypeConversion::toNumeric($py);
+
+        // 4d. If same type, use that type's comparison.
+        if ($nx instanceof JsBigInt && $ny instanceof JsBigInt) {
+            return self::bigIntLessThan($nx, $ny);
         }
 
-        if ($ny === -INF) {
-            return false;
-        }
-        if ($nx === -INF) {
-            return true;
+        if ($nx instanceof JsNumber && $ny instanceof JsNumber) {
+            return self::numberLessThan($nx->value, $ny->value);
         }
 
-        return $nx < $ny;
+        // 4e-4i. Cross-type: one is BigInt, the other is Number.
+        if ($nx instanceof JsBigInt && $ny instanceof JsNumber) {
+            return self::bigIntLessThanNumber($nx, $ny);
+        }
+
+        // Number < BigInt.
+        if ($nx instanceof JsNumber && $ny instanceof JsBigInt) {
+            return self::numberLessThanBigInt($nx, $ny);
+        }
+
+        return null;
     }
 
     /**
@@ -416,5 +451,301 @@ final class AbstractOperations
         $bytes = unpack('C8', $packed);
 
         return $bytes !== false && ($bytes[1] & 0x80) !== 0;
+    }
+
+    /**
+     * Number less-than comparison per spec.
+     *
+     * Returns true, false, or null (NaN involved).
+     */
+    private static function numberLessThan(float $x, float $y): ?bool
+    {
+        if (is_nan($x) || is_nan($y)) {
+            return null;
+        }
+
+        if ($x === $y) {
+            return false;
+        }
+
+        if ($x === INF) {
+            return false;
+        }
+        if ($y === INF) {
+            return true;
+        }
+        if ($y === -INF) {
+            return false;
+        }
+        if ($x === -INF) {
+            return true;
+        }
+
+        return $x < $y;
+    }
+
+    /**
+     * BigInt::lessThan(x, y) per spec.
+     *
+     * Both operands are BigInt. Uses bcmath for arbitrary precision comparison.
+     */
+    private static function bigIntLessThan(JsBigInt $x, JsBigInt $y): bool
+    {
+        return bccomp(self::bigIntToDecimal($x->value), self::bigIntToDecimal($y->value)) < 0;
+    }
+
+    /**
+     * BigInt < Number cross-type comparison per spec steps 4e-4h.
+     *
+     * Returns true, false, or null (NaN yields undefined).
+     */
+    private static function bigIntLessThanNumber(JsBigInt $bigint, JsNumber $num): ?bool
+    {
+        // 4e. If the Number is NaN, return undefined.
+        if (is_nan($num->value)) {
+            return null;
+        }
+
+        // 4f/4g. Infinity checks.
+        if ($num->value === INF) {
+            return true;
+        }
+        if ($num->value === -INF) {
+            return false;
+        }
+
+        return self::compareBigIntToFloat(self::bigIntToDecimal($bigint->value), $num->value) < 0;
+    }
+
+    /**
+     * Number < BigInt cross-type comparison per spec steps 4e-4h.
+     *
+     * Returns true, false, or null (NaN yields undefined).
+     */
+    private static function numberLessThanBigInt(JsNumber $num, JsBigInt $bigint): ?bool
+    {
+        if (is_nan($num->value)) {
+            return null;
+        }
+
+        if ($num->value === -INF) {
+            return true;
+        }
+        if ($num->value === INF) {
+            return false;
+        }
+
+        return self::compareBigIntToFloat(self::bigIntToDecimal($bigint->value), $num->value) > 0;
+    }
+
+    /**
+     * BigInt == Number comparison per spec step 12.
+     *
+     * NaN and infinities are never equal to any BigInt.
+     * Otherwise compare mathematical values.
+     */
+    private static function bigIntEqualsNumber(JsBigInt $bigint, JsNumber $num): bool
+    {
+        // 12a. NaN or infinity -> false.
+        if (is_nan($num->value) || is_infinite($num->value)) {
+            return false;
+        }
+
+        // A non-integer float can never equal a BigInt.
+        if ($num->value !== floor($num->value)) {
+            return false;
+        }
+
+        return self::compareBigIntToFloat(self::bigIntToDecimal($bigint->value), $num->value) === 0;
+    }
+
+    /**
+     * Compare a BigInt (as bcmath string) to a float, returning -1, 0, or 1.
+     *
+     * This handles the precision gap between IEEE 754 doubles and arbitrary-precision
+     * integers. For floats that are exact integers within the safe integer range,
+     * a direct bcmath comparison suffices. For larger floats, we convert the float
+     * to its exact integer representation via sprintf and use bcmath.
+     */
+    private static function compareBigIntToFloat(string $bigintStr, float $floatVal): int
+    {
+        // If the float is not an integer value, compare the BigInt to the floor and ceil.
+        if ($floatVal !== floor($floatVal)) {
+            $floored = floor($floatVal);
+            // Convert the floored value to a string for bcmath.
+            $flooredStr = self::floatToExactIntString($floored);
+            $cmpFloor = bccomp($bigintStr, $flooredStr);
+            if ($cmpFloor <= 0) {
+                // bigint <= floor(float) means bigint < float.
+                return -1;
+            }
+            // bigint > floor(float) means bigint >= ceil(float) means bigint > float.
+            return 1;
+        }
+
+        // The float is an exact integer. Convert to its exact decimal string.
+        $floatStr = self::floatToExactIntString($floatVal);
+        return bccomp($bigintStr, $floatStr);
+    }
+
+    /**
+     * Convert an integer-valued float to its exact decimal string representation.
+     *
+     * sprintf('%.0f', $v) works for floats that are exact integers up to about 1e308.
+     * This is needed because (float) casting to (string) uses scientific notation for
+     * large values, which bcmath cannot parse.
+     */
+    private static function floatToExactIntString(float $value): string
+    {
+        if ($value === 0.0) {
+            return '0';
+        }
+
+        $negative = $value < 0;
+        $value = abs($value);
+
+        // For values within PHP int range, direct cast is exact.
+        if ($value <= PHP_INT_MAX) {
+            $str = (string) (int) $value;
+            return $negative ? '-' . $str : $str;
+        }
+
+        // For larger values, use sprintf to get the full decimal representation
+        // without scientific notation.
+        $str = sprintf('%.0f', $value);
+        return $negative ? '-' . $str : $str;
+    }
+
+    /**
+     * 7.1.14 StringToBigInt(string).
+     *
+     * Attempts to parse a string as a BigInt value.
+     * Returns a JsBigInt if the string is a valid integer representation,
+     * or null if it cannot be parsed (equivalent to NaN in the spec).
+     *
+     * Supports decimal integers, hex (0x), octal (0o), and binary (0b) prefixes.
+     * Does not support fractional parts, exponents, or trailing 'n'.
+     */
+    private static function stringToBigInt(string $value): ?JsBigInt
+    {
+        $trimmed = TypeConversion::trimWhitespace($value);
+
+        // Empty string -> 0n.
+        if ($trimmed === '') {
+            return new JsBigInt('0');
+        }
+
+        // "-0" -> 0n (BigInt has no negative zero).
+        if ($trimmed === '-0') {
+            return new JsBigInt('0');
+        }
+
+        // Hex: 0x or 0X prefix.
+        if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $trimmed, $matches) === 1) {
+            $dec = self::hexToBigIntString($matches[1]);
+            return $dec !== null ? new JsBigInt($dec) : null;
+        }
+
+        // Octal: 0o or 0O prefix.
+        if (preg_match('/^0[oO]([0-7]+)$/', $trimmed, $matches) === 1) {
+            $dec = self::baseToBigIntString($matches[1], 8);
+            return $dec !== null ? new JsBigInt($dec) : null;
+        }
+
+        // Binary: 0b or 0B prefix.
+        if (preg_match('/^0[bB]([01]+)$/', $trimmed, $matches) === 1) {
+            $dec = self::baseToBigIntString($matches[1], 2);
+            return $dec !== null ? new JsBigInt($dec) : null;
+        }
+
+        // Decimal integer: optional sign, digits only. No decimal points, no exponents.
+        if (preg_match('/^[+-]?[0-9]+$/', $trimmed) === 1) {
+            // Normalize: strip leading zeros but preserve sign.
+            $sign = '';
+            $digits = $trimmed;
+            if ($digits[0] === '+') {
+                $digits = substr($digits, 1);
+            } elseif ($digits[0] === '-') {
+                $sign = '-';
+                $digits = substr($digits, 1);
+            }
+            $digits = ltrim($digits, '0') ?: '0';
+            $result = $sign . $digits;
+            // "-0" normalizes to "0".
+            if ($result === '-0') {
+                $result = '0';
+            }
+            return new JsBigInt($result);
+        }
+
+        // Anything else (decimals, exponents, "Infinity", non-numeric) -> null (NaN).
+        return null;
+    }
+
+    /**
+     * Normalize a BigInt value string to a decimal string for bcmath.
+     *
+     * JsBigInt may store hex (0x...), octal (0o...), or binary (0b...) notation.
+     * This converts any such notation to a pure decimal string that bcmath can handle.
+     */
+    private static function bigIntToDecimal(string $value): string
+    {
+        // Handle negative prefix.
+        $negative = false;
+        $v = $value;
+        if ($v !== '' && $v[0] === '-') {
+            $negative = true;
+            $v = substr($v, 1);
+        }
+
+        // Hex: 0x or 0X.
+        if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $v, $matches) === 1) {
+            $dec = self::hexToBigIntString($matches[1]);
+            return $negative ? '-' . $dec : ($dec ?? '0');
+        }
+
+        // Octal: 0o or 0O.
+        if (preg_match('/^0[oO]([0-7]+)$/', $v, $matches) === 1) {
+            $dec = self::baseToBigIntString($matches[1], 8);
+            return $negative ? '-' . $dec : ($dec ?? '0');
+        }
+
+        // Binary: 0b or 0B.
+        if (preg_match('/^0[bB]([01]+)$/', $v, $matches) === 1) {
+            $dec = self::baseToBigIntString($matches[1], 2);
+            return $negative ? '-' . $dec : ($dec ?? '0');
+        }
+
+        // Already decimal (or zero). Return as is.
+        return $value;
+    }
+
+    /**
+     * Convert a hex digit string to a decimal string using bcmath.
+     */
+    private static function hexToBigIntString(string $hex): ?string
+    {
+        $result = '0';
+        $len = strlen($hex);
+        for ($i = 0; $i < $len; $i++) {
+            $digit = hexdec($hex[$i]);
+            $result = bcadd(bcmul($result, '16'), (string) $digit);
+        }
+        return $result;
+    }
+
+    /**
+     * Convert a digit string in a given base (2 or 8) to a decimal string using bcmath.
+     */
+    private static function baseToBigIntString(string $digits, int $base): ?string
+    {
+        $result = '0';
+        $baseStr = (string) $base;
+        $len = strlen($digits);
+        for ($i = 0; $i < $len; $i++) {
+            $digit = (int) $digits[$i];
+            $result = bcadd(bcmul($result, $baseStr), (string) $digit);
+        }
+        return $result;
     }
 }

@@ -253,8 +253,10 @@ class Interpreter
         }
         if (is_string($value)) {
             // BigInt literal: marked with __BIGINT__ prefix in raw by the parser.
+            // Normalize to canonical decimal so strict equality and bcmath work
+            // regardless of the source base (0x, 0b, 0o, decimal).
             if (str_starts_with($node->raw, '__BIGINT__')) {
-                return new JsBigInt($value);
+                return new JsBigInt(gmp_strval(gmp_init(rtrim($value, 'n'), 0), 10));
             }
             // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
             if (
@@ -282,15 +284,12 @@ class Interpreter
         $right = $this->evaluate($node->right, $env);
 
         return match ($node->operator) {
-            '+' => AbstractOperations::add($left, $right),
-            '-' => new JsNumber(TypeConversion::toNumber($left) - TypeConversion::toNumber($right)),
-            '*' => new JsNumber(TypeConversion::toNumber($left) * TypeConversion::toNumber($right)),
-            '/' => $this->divide(TypeConversion::toNumber($left), TypeConversion::toNumber($right)),
-            '%' => $this->modulo(TypeConversion::toNumber($left), TypeConversion::toNumber($right)),
-            '**' => $this->exponentiate(
-                TypeConversion::toNumber($left),
-                TypeConversion::toNumber($right),
-            ),
+            '+' => $this->addOperator($left, $right),
+            '-' => $this->numericBinaryOp($left, $right, '-'),
+            '*' => $this->numericBinaryOp($left, $right, '*'),
+            '/' => $this->numericBinaryOp($left, $right, '/'),
+            '%' => $this->numericBinaryOp($left, $right, '%'),
+            '**' => $this->numericBinaryOp($left, $right, '**'),
             '==' => new JsBoolean(AbstractOperations::abstractEquals($left, $right)),
             '!=' => new JsBoolean(!AbstractOperations::abstractEquals($left, $right)),
             '===' => new JsBoolean(AbstractOperations::strictEquals($left, $right)),
@@ -299,25 +298,247 @@ class Interpreter
             '>' => $this->relational($right, $left, '>'),
             '<=' => $this->relational($right, $left, '<='),
             '>=' => $this->relational($left, $right, '>='),
-            '<<' => new JsNumber(
-                (float) (TypeConversion::toInt32($left) << (TypeConversion::toUint32($right) & 0x1F)),
-            ),
-            '>>' => new JsNumber(
-                (float) (TypeConversion::toInt32($left) >> (TypeConversion::toUint32($right) & 0x1F)),
-            ),
-            '>>>' => new JsNumber(
-                (float) ($this->unsignedRightShift(
-                    TypeConversion::toInt32($left),
-                    TypeConversion::toUint32($right) & 0x1F,
-                )),
-            ),
-            '&' => new JsNumber((float) (TypeConversion::toInt32($left) & TypeConversion::toInt32($right))),
-            '|' => new JsNumber((float) (TypeConversion::toInt32($left) | TypeConversion::toInt32($right))),
-            '^' => new JsNumber((float) (TypeConversion::toInt32($left) ^ TypeConversion::toInt32($right))),
+            '<<' => $this->bitwiseShift($left, $right, '<<'),
+            '>>' => $this->bitwiseShift($left, $right, '>>'),
+            '>>>' => $this->bitwiseShift($left, $right, '>>>'),
+            '&' => $this->bitwiseBinaryOp($left, $right, '&'),
+            '|' => $this->bitwiseBinaryOp($left, $right, '|'),
+            '^' => $this->bitwiseBinaryOp($left, $right, '^'),
             'in' => $this->evalInOperator($left, $right),
             'instanceof' => new JsBoolean(AbstractOperations::instanceofOperator($left, $right)),
             default => throw new InternalError("Unknown binary operator: {$node->operator}"),
         };
+    }
+
+    /**
+     * 13.15.3 Addition operator (+).
+     *
+     * ToPrimitive both sides. If either is a string, concatenate.
+     * Otherwise call ToNumeric on both. If types differ, throw TypeError.
+     * BigInt + BigInt uses bcadd. Number + Number uses float addition.
+     */
+    private function addOperator(JsValue $left, JsValue $right): JsValue
+    {
+        $lprim = TypeConversion::toPrimitive($left);
+        $rprim = TypeConversion::toPrimitive($right);
+
+        // String concatenation takes priority.
+        if ($lprim instanceof JsString || $rprim instanceof JsString) {
+            return new JsString(
+                TypeConversion::toString($lprim) . TypeConversion::toString($rprim),
+            );
+        }
+
+        // ToNumeric: if the primitive is already BigInt, keep it; otherwise ToNumber.
+        $lnum = TypeConversion::toNumeric($lprim);
+        $rnum = TypeConversion::toNumeric($rprim);
+
+        if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
+            return new JsBigInt(bcadd($lnum->value, $rnum->value));
+        }
+
+        if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
+            throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
+        }
+
+        // Both are JsNumber.
+        return new JsNumber($lnum->value + $rnum->value);
+    }
+
+    /**
+     * Apply a numeric binary operator (-, *, /, %, **) with BigInt support.
+     *
+     * Calls ToNumeric on both operands. If both are BigInt, performs the
+     * corresponding arbitrary-precision operation. If both are Number,
+     * delegates to the existing float-based helpers. Mixed types throw TypeError.
+     */
+    private function numericBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
+    {
+        $lnum = TypeConversion::toNumeric($left);
+        $rnum = TypeConversion::toNumeric($right);
+
+        if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
+            return $this->bigintArithmetic($lnum, $rnum, $op);
+        }
+
+        if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
+            throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
+        }
+
+        // Both JsNumber: delegate to existing helpers.
+        $l = $lnum->value;
+        $r = $rnum->value;
+
+        return match ($op) {
+            '-' => new JsNumber($l - $r),
+            '*' => new JsNumber($l * $r),
+            '/' => $this->divide($l, $r),
+            '%' => $this->modulo($l, $r),
+            '**' => $this->exponentiate($lnum, $rnum),
+        };
+    }
+
+    /**
+     * BigInt arithmetic for -, *, /, %, **.
+     *
+     * Division truncates toward zero (not floor). Division and remainder
+     * by zero throw RangeError per the spec.
+     */
+    private function bigintArithmetic(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
+    {
+        return match ($op) {
+            '-' => new JsBigInt(bcsub($left->value, $right->value)),
+            '*' => new JsBigInt(bcmul($left->value, $right->value)),
+            '/' => $this->bigintDivide($left, $right),
+            '%' => $this->bigintRemainder($left, $right),
+            '**' => $this->bigintExponentiate($left, $right),
+        };
+    }
+
+    /**
+     * BigInt::divide(x, y). Throws RangeError if y is 0n. Truncates toward zero.
+     */
+    private function bigintDivide(JsBigInt $left, JsBigInt $right): JsBigInt
+    {
+        if ($right->value === '0' || $right->value === '-0') {
+            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+        }
+        // bcdiv with scale 0 truncates toward zero, matching the spec.
+        return new JsBigInt(bcdiv($left->value, $right->value, 0));
+    }
+
+    /**
+     * BigInt::remainder(x, y). Throws RangeError if y is 0n.
+     */
+    private function bigintRemainder(JsBigInt $left, JsBigInt $right): JsBigInt
+    {
+        if ($right->value === '0' || $right->value === '-0') {
+            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+        }
+        return new JsBigInt(bcmod($left->value, $right->value));
+    }
+
+    /**
+     * BigInt::exponentiate(x, y). Throws RangeError if y is negative.
+     */
+    private function bigintExponentiate(JsBigInt $left, JsBigInt $right): JsBigInt
+    {
+        if (bccomp($right->value, '0') < 0) {
+            throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
+        }
+        return new JsBigInt(bcpow($left->value, $right->value, 0));
+    }
+
+    /**
+     * Bitwise AND, OR, XOR for both Number and BigInt operands.
+     *
+     * Per spec: ToNumeric both sides. If both BigInt, perform BigInt bitwise op.
+     * If types differ, throw TypeError.
+     */
+    private function bitwiseBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
+    {
+        $lnum = TypeConversion::toNumeric($left);
+        $rnum = TypeConversion::toNumeric($right);
+
+        if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
+            $lg = gmp_init($lnum->value, 10);
+            $rg = gmp_init($rnum->value, 10);
+
+            $result = match ($op) {
+                '&' => $lg & $rg,
+                '|' => $lg | $rg,
+                '^' => $lg ^ $rg,
+            };
+
+            return new JsBigInt(gmp_strval($result, 10));
+        }
+
+        if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
+            throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
+        }
+
+        $l = TypeConversion::toInt32($lnum);
+        $r = TypeConversion::toInt32($rnum);
+
+        return new JsNumber((float) match ($op) {
+            '&' => $l & $r,
+            '|' => $l | $r,
+            '^' => $l ^ $r,
+        });
+    }
+
+    /**
+     * Shift operators (<<, >>, >>>) for both Number and BigInt operands.
+     *
+     * Per spec: ToNumeric both sides. If both BigInt, perform BigInt shift.
+     * BigInt >>> is always a TypeError. If types differ, throw TypeError.
+     */
+    private function bitwiseShift(JsValue $left, JsValue $right, string $op): JsValue
+    {
+        $lnum = TypeConversion::toNumeric($left);
+        $rnum = TypeConversion::toNumeric($right);
+
+        if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
+            if ($op === '>>>') {
+                throw new TypeError('BigInts have no unsigned right shift, use >> instead');
+            }
+            return $this->bigintShift($lnum, $rnum, $op);
+        }
+
+        if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
+            throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
+        }
+
+        return match ($op) {
+            '<<' => new JsNumber(
+                (float) (TypeConversion::toInt32($lnum) << (TypeConversion::toUint32($rnum) & 0x1F)),
+            ),
+            '>>' => new JsNumber(
+                (float) (TypeConversion::toInt32($lnum) >> (TypeConversion::toUint32($rnum) & 0x1F)),
+            ),
+            '>>>' => new JsNumber(
+                (float) ($this->unsignedRightShift(
+                    TypeConversion::toInt32($lnum),
+                    TypeConversion::toUint32($rnum) & 0x1F,
+                )),
+            ),
+        };
+    }
+
+    /**
+     * BigInt shift operations.
+     *
+     * BigInt::leftShift(x, y):
+     *   If y < 0: floor(x / 2^(-y)) (rounding toward negative infinity).
+     *   Otherwise: x * 2^y.
+     *
+     * BigInt::signedRightShift(x, y) = BigInt::leftShift(x, -y).
+     */
+    private function bigintShift(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
+    {
+        $xg = gmp_init($left->value, 10);
+        $yg = gmp_init($right->value, 10);
+
+        // Right shift is defined as leftShift(x, -y).
+        if ($op === '>>') {
+            $yg = gmp_neg($yg);
+        }
+
+        $ycmp = gmp_cmp($yg, 0);
+
+        if ($ycmp >= 0) {
+            // Left shift: x * 2^y.
+            $shift = gmp_intval($yg);
+            $result = $xg * gmp_pow(gmp_init('2', 10), $shift);
+        } else {
+            // Negative left shift: floor(x / 2^(-y)), rounding toward negative infinity.
+            $shift = gmp_intval(gmp_neg($yg));
+            $divisor = gmp_pow(gmp_init('2', 10), $shift);
+            // GMP_ROUND_MINUSINF gives floor division (toward negative infinity).
+            $result = gmp_div_q($xg, $divisor, \GMP_ROUND_MINUSINF);
+        }
+
+        return new JsBigInt(gmp_strval($result, 10));
     }
 
     private function divide(float $left, float $right): JsNumber
@@ -347,9 +568,36 @@ class Interpreter
         return new JsNumber(fmod($left, $right));
     }
 
-    private function exponentiate(float $base, float $exp): JsNumber
+    /**
+     * ES spec ExponentiationExpression evaluation.
+     *
+     * Calls ToNumeric on both operands. If both are BigInt, performs
+     * arbitrary-precision exponentiation via bcpow. If both are Number,
+     * uses float exponentiation with IEEE 754 special cases. Mixed
+     * types throw TypeError per spec.
+     */
+    private function exponentiate(JsValue $left, JsValue $right): JsValue
     {
-        // ES spec special cases
+        $lnum = TypeConversion::toNumeric($left);
+        $rnum = TypeConversion::toNumeric($right);
+
+        // BigInt ** BigInt.
+        if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
+            if (bccomp($rnum->value, '0') < 0) {
+                throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
+            }
+            return new JsBigInt(bcpow($lnum->value, $rnum->value, 0));
+        }
+
+        // Mixed types: one BigInt and one Number.
+        if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
+            throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
+        }
+
+        // Both Number: float exponentiation with ES spec special cases.
+        $base = $lnum->value;
+        $exp = $rnum->value;
+
         if (abs($base) === 1.0 && is_infinite($exp)) {
             return new JsNumber(NAN);
         }
@@ -380,6 +628,46 @@ class Interpreter
             return $left < 0 ? $left + 4294967296 : $left;
         }
         return ($left >> $shift) & (PHP_INT_MAX >> ($shift - 1));
+    }
+
+    /**
+     * Normalize a JsBigInt value string (which may use 0x, 0o, 0b prefixes)
+     * to a decimal string suitable for bcmath operations.
+     */
+    private function bigIntToDecimal(string $value): string
+    {
+        $negative = false;
+        $v = $value;
+        if ($v !== '' && $v[0] === '-') {
+            $negative = true;
+            $v = substr($v, 1);
+        }
+
+        if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $v, $m) === 1) {
+            $dec = '0';
+            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
+                $dec = bcadd(bcmul($dec, '16'), (string) hexdec($m[1][$i]));
+            }
+            return $negative ? '-' . $dec : $dec;
+        }
+
+        if (preg_match('/^0[oO]([0-7]+)$/', $v, $m) === 1) {
+            $dec = '0';
+            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
+                $dec = bcadd(bcmul($dec, '8'), $m[1][$i]);
+            }
+            return $negative ? '-' . $dec : $dec;
+        }
+
+        if (preg_match('/^0[bB]([01]+)$/', $v, $m) === 1) {
+            $dec = '0';
+            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
+                $dec = bcadd(bcmul($dec, '2'), $m[1][$i]);
+            }
+            return $negative ? '-' . $dec : $dec;
+        }
+
+        return $value;
     }
 
     private function evalInOperator(JsValue $left, JsValue $right): JsValue
@@ -526,7 +814,40 @@ class Interpreter
         }
 
         $ref = $this->resolveReference($node->argument, $env);
-        $oldValue = new JsNumber(TypeConversion::toNumber($ref->getValue()));
+
+        // Per spec 6.2.4.4: if the reference base is null or undefined, throw
+        // TypeError before GetValue so that deferred property key ToString
+        // (which may have side effects) is never triggered.
+        if (
+            !($ref->base instanceof Environment)
+            && ($ref->base instanceof JsNull || $ref->base instanceof JsUndefined)
+        ) {
+            $typeName = $ref->base instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError(
+                "Cannot read properties of {$typeName} (reading '{$ref->name}')"
+            );
+        }
+
+        // Use ToNumeric (not ToNumber) so BigInt values are preserved.
+        $oldNumeric = TypeConversion::toNumeric($ref->getValue());
+
+        if ($oldNumeric instanceof JsBigInt) {
+            // BigInt::add(oldValue, BigInt::unit) per spec.
+            $decVal = $this->bigIntToDecimal($oldNumeric->value);
+            $delta = $node->operator === '++' ? '1' : '-1';
+            $raw = bcadd($decVal, $delta);
+            // bcadd may produce "-0" for -1n + 1n; normalize to "0".
+            if ($raw === '-0') {
+                $raw = '0';
+            }
+            $newValue = new JsBigInt($raw);
+            $ref->setValue($newValue);
+            return $node->prefix ? $newValue : $oldNumeric;
+        }
+
+        $oldValue = new JsNumber(
+            $oldNumeric instanceof JsNumber ? $oldNumeric->value : TypeConversion::toNumber($oldNumeric),
+        );
         $delta = $node->operator === '++' ? 1.0 : -1.0;
         $newValue = new JsNumber($oldValue->value + $delta);
         $ref->setValue($newValue);
@@ -574,10 +895,7 @@ class Interpreter
             '*=' => new JsNumber(TypeConversion::toNumber($leftVal) * TypeConversion::toNumber($right)),
             '/=' => $this->divide(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
             '%=' => $this->modulo(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
-            '**=' => $this->exponentiate(
-                TypeConversion::toNumber($leftVal),
-                TypeConversion::toNumber($right),
-            ),
+            '**=' => $this->exponentiate($leftVal, $right),
             '<<=' => new JsNumber(
                 (float) (TypeConversion::toInt32($leftVal) << (TypeConversion::toUint32($right) & 0x1F)),
             ),
@@ -743,6 +1061,15 @@ class Interpreter
         $evalStrict = $this->strictMode || $this->hasUseStrictDirective($program->body);
         $previousStrictMode = $this->strictMode;
 
+        // In strict mode, additional early errors must be checked after parsing.
+        if ($evalStrict) {
+            try {
+                $this->validateStrictModeRestrictions($program->body);
+            } catch (\PhpJs\Exceptions\SyntaxError $e) {
+                $this->throwJsValue($this->phpExceptionToJsValue($e));
+            }
+        }
+
         if ($evalStrict && !$this->strictMode) {
             $this->strictMode = true;
         }
@@ -839,6 +1166,76 @@ class Interpreter
 
         if ($node instanceof LabeledStatement) {
             $this->validateEvalNoFreeJumps($node->body);
+        }
+    }
+
+    /**
+     * Validate strict-mode early errors in parsed eval code.
+     *
+     * Per spec 13.15.1, catch parameters named 'eval' or 'arguments'
+     * are SyntaxErrors in strict mode.
+     *
+     * @param Node[] $statements
+     */
+    private function validateStrictModeRestrictions(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            $this->validateStrictModeNode($stmt);
+        }
+    }
+
+    private function validateStrictModeNode(Node $node): void
+    {
+        if ($node instanceof TryStatement) {
+            if ($node->handler !== null && $node->handler->param !== null) {
+                $this->checkStrictCatchParam($node->handler->param);
+            }
+            $this->validateStrictModeNode($node->block);
+            if ($node->handler !== null) {
+                $this->validateStrictModeNode($node->handler->body);
+            }
+            if ($node->finalizer !== null) {
+                $this->validateStrictModeNode($node->finalizer);
+            }
+            return;
+        }
+
+        // Recurse into child statements (but not into function bodies,
+        // which are their own strict-mode contexts).
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $child) {
+                $this->validateStrictModeNode($child);
+            }
+        } elseif ($node instanceof IfStatement) {
+            $this->validateStrictModeNode($node->consequent);
+            if ($node->alternate !== null) {
+                $this->validateStrictModeNode($node->alternate);
+            }
+        } elseif ($node instanceof ForStatement || $node instanceof ForInStatement || $node instanceof ForOfStatement) {
+            $this->validateStrictModeNode($node->body);
+        } elseif ($node instanceof WhileStatement || $node instanceof DoWhileStatement) {
+            $this->validateStrictModeNode($node->body);
+        } elseif ($node instanceof LabeledStatement) {
+            $this->validateStrictModeNode($node->body);
+        } elseif ($node instanceof SwitchStatement) {
+            foreach ($node->cases as $case) {
+                if ($case instanceof SwitchCase) {
+                    foreach ($case->consequent as $child) {
+                        $this->validateStrictModeNode($child);
+                    }
+                }
+            }
+        }
+    }
+
+    private function checkStrictCatchParam(Node $param): void
+    {
+        if ($param instanceof Identifier) {
+            if ($param->name === 'eval' || $param->name === 'arguments') {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Binding 'eval' or 'arguments' in strict mode catch is not allowed",
+                );
+            }
         }
     }
 
@@ -2143,6 +2540,27 @@ class Interpreter
             }
         }
 
+        // Collect the let/const binding names for per-iteration copying.
+        $perIterationBindings = [];
+        if ($isLetConst) {
+            /** @var VariableDeclaration $varDecl */
+            $varDecl = $node->init;
+            foreach ($varDecl->declarations as $decl) {
+                $this->collectBindingNames($decl->id, $perIterationBindings);
+            }
+        }
+
+        // Per spec 13.7.4.8 ForBodyEvaluation: CreatePerIterationEnvironment
+        // is called before the first test evaluation. When there are let/const
+        // bindings, test/body/update all run in the per-iteration env.
+        $iterEnv = $loopEnv;
+        if ($perIterationBindings !== []) {
+            $iterEnv = $env->createChild();
+            foreach ($perIterationBindings as $name) {
+                $iterEnv->defineVar($name, $loopEnv->get($name));
+            }
+        }
+
         $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
@@ -2151,22 +2569,16 @@ class Interpreter
             }
 
             if ($node->test !== null) {
-                $test = $this->evaluate($node->test, $loopEnv);
+                $test = $this->evaluate($node->test, $iterEnv);
                 if (!TypeConversion::toBoolean($test)) {
                     break;
                 }
             }
 
-            // For let/const: create per-iteration scope with copied bindings
-            $iterEnv = $loopEnv->createChild();
-            if ($isLetConst) {
-                /** @var VariableDeclaration $varDecl */
-                $varDecl = $node->init;
-                foreach ($varDecl->declarations as $decl) {
-                    $this->copyBindingToChild($decl->id, $loopEnv, $iterEnv);
-                }
-            }
-            $completion = $this->executeStatement($node->body, $iterEnv);
+            // For non-let/const loops, create a child for the body so block
+            // scoped variables inside the body do not leak.
+            $bodyEnv = $perIterationBindings !== [] ? $iterEnv : $iterEnv->createChild();
+            $completion = $this->executeStatement($node->body, $bodyEnv);
 
             if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                 $v = $completion->value;
@@ -2190,8 +2602,19 @@ class Interpreter
                 return $completion;
             }
 
+            // Per spec 13.7.4.8 step e: CreatePerIterationEnvironment runs
+            // BEFORE the increment (step f). This ensures the increment
+            // modifies the next iteration's bindings, not the current one.
+            if ($perIterationBindings !== []) {
+                $nextIterEnv = $env->createChild();
+                foreach ($perIterationBindings as $name) {
+                    $nextIterEnv->defineVar($name, $iterEnv->get($name));
+                }
+                $iterEnv = $nextIterEnv;
+            }
+
             if ($node->update !== null) {
-                $this->evaluate($node->update, $loopEnv);
+                $this->evaluate($node->update, $iterEnv);
             }
         }
 
@@ -2736,12 +3159,20 @@ class Interpreter
         }
 
         if ($completion->type === CompletionType::Throw && $node->handler !== null) {
+            // Per spec 14.15.2 (CatchClauseEvaluation):
+            // 1. Create catchEnv for the catch parameter binding.
             $catchEnv = $env->createChild();
             if ($node->handler->param !== null) {
                 $this->bindPattern($node->handler->param, $completion->value, $catchEnv);
             }
-            $this->hoistDeclarations($node->handler->body->body, $catchEnv);
-            $completion = $this->executeBody($node->handler->body->body, $catchEnv);
+            // 2. Create a child block environment for the catch body.
+            //    let/const declarations in the body live here, separate from
+            //    the parameter binding environment. This matters when closures
+            //    in default values of destructuring patterns must not see
+            //    body-scoped lexical declarations.
+            $bodyEnv = $catchEnv->createChild();
+            $this->hoistDeclarations($node->handler->body->body, $bodyEnv);
+            $completion = $this->executeBody($node->handler->body->body, $bodyEnv);
         }
 
         if ($node->finalizer !== null) {
@@ -2878,9 +3309,22 @@ class Interpreter
                     $this->hoistDeclarations($stmt->finalizer->body, $env);
                 }
             } elseif ($stmt instanceof SwitchStatement) {
-                // Hoist var declarations from switch case bodies.
+                // Hoist var declarations from switch case bodies. Per spec,
+                // function declarations inside switch are block-scoped. Annex B
+                // carves out an exception for non-async, non-generator function
+                // declarations in sloppy mode: those are hoisted to the enclosing
+                // scope. Async functions and generators remain block-scoped.
                 foreach ($stmt->cases as $case) {
-                    $this->hoistDeclarations($case->consequent, $env);
+                    foreach ($case->consequent as $inner) {
+                        if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
+                            $this->hoistDeclarations([$inner], $env);
+                        } elseif ($inner instanceof VariableDeclaration && $inner->kind === 'var') {
+                            $this->hoistDeclarations([$inner], $env);
+                        } elseif (!($inner instanceof FunctionDeclaration)) {
+                            // Recurse for nested var hoisting (e.g., if/for/while inside case).
+                            $this->hoistDeclarations([$inner], $env);
+                        }
+                    }
                 }
             } elseif ($stmt instanceof LabeledStatement) {
                 // Recurse into labeled statement body for var hoisting.
@@ -3037,6 +3481,40 @@ class Interpreter
     {
         if ($pattern instanceof Identifier) {
             $target->defineVar($pattern->name, $source->get($pattern->name));
+        }
+    }
+
+    /**
+     * Collect all binding names from a pattern (Identifier or destructuring).
+     *
+     * @param string[] $names Collected names (by reference).
+     */
+    private function collectBindingNames(Node $pattern, array &$names): void
+    {
+        if ($pattern instanceof Identifier) {
+            $names[] = $pattern->name;
+        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    if ($elem instanceof \PhpJs\Ast\Pattern\RestElement) {
+                        $this->collectBindingNames($elem->argument, $names);
+                    } elseif ($elem instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+                        $this->collectBindingNames($elem->left, $names);
+                    } else {
+                        $this->collectBindingNames($elem, $names);
+                    }
+                }
+            }
+        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                    $this->collectBindingNames($prop->argument, $names);
+                } else {
+                    $this->collectBindingNames($prop->value, $names);
+                }
+            }
+        } elseif ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+            $this->collectBindingNames($pattern->left, $names);
         }
     }
 
@@ -3551,6 +4029,14 @@ class Interpreter
     public function getGlobalObject(): JsObject
     {
         if ($this->globalObject === null) {
+            // Use the same global object that Engine installed as 'this'.
+            if ($this->globalEnv->has('this')) {
+                $obj = $this->globalEnv->get('this');
+                if ($obj instanceof JsObject) {
+                    $this->globalObject = $obj;
+                    return $this->globalObject;
+                }
+            }
             $this->globalObject = new JsObject();
         }
         return $this->globalObject;

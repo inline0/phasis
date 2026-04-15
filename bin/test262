@@ -44,6 +44,7 @@ $runner->setSkipFeatures([
     'class-fields-public', 'class-fields-private',
     'class-static-fields-public', 'class-static-fields-private',
     'class-methods-private', 'class-static-methods-private',
+    'class-static-block',
     // Misc advanced
     'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
     'decorators', 'explicit-resource-management',

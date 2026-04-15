@@ -247,6 +247,61 @@ class DateConstructor
             return NAN;
         }
 
+        // Reject -000000 (negative zero year) per spec: "The representation of the
+        // year 0 as -000000 is invalid."
+        if (preg_match('/^-0{6}/', $str)) {
+            return NAN;
+        }
+
+        // Try extended year ISO format: [+-]YYYYYY-MM-DDTHH:MM:SS.sssZ
+        $extPattern = '/^([+-]\d{6})-(\d{2})-(\d{2})'
+            . '(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?'
+            . '([Z]|[+-]\d{2}:\d{2})?$/i';
+        if (preg_match($extPattern, $str, $m)) {
+            $year = (int) $m[1];
+            $month = (int) $m[2];
+            $day = (int) $m[3];
+            $hour = isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0;
+            $min = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+            $sec = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+            $millis = 0.0;
+            if (isset($m[7]) && $m[7] !== '') {
+                $millis = (float) str_pad($m[7], 3, '0');
+            }
+
+            $hasTime = isset($m[4]) && $m[4] !== '';
+            $tz = isset($m[8]) && $m[8] !== '' ? $m[8] : null;
+
+            // Date-only forms are UTC; date-time without TZ is local.
+            if (!$hasTime && $tz === null) {
+                $tz = 'Z';
+            }
+
+            // Compute using gmmktime for UTC, then adjust for timezone offset.
+            $ts = gmmktime($hour, $min, $sec, $month, $day, $year);
+            if ($ts === false) {
+                return NAN;
+            }
+
+            $offsetSec = 0;
+            if ($tz !== null && strtoupper($tz) !== 'Z') {
+                if (preg_match('/^([+-])(\d{2}):(\d{2})$/', $tz, $tzm)) {
+                    $offsetSec = ((int) $tzm[2] * 3600 + (int) $tzm[3] * 60);
+                    if ($tzm[1] === '+') {
+                        $offsetSec = -$offsetSec;
+                    }
+                }
+            } elseif ($tz === null) {
+                // Local time: subtract local timezone offset.
+                $dt = new \DateTimeImmutable('@' . $ts);
+                $local = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                $offsetSec = -(int) $local->format('Z');
+            }
+
+            $result = (float) $ts * 1000.0 + $millis + (float) $offsetSec * 1000.0;
+            return self::timeClip($result);
+        }
+
         // Try ISO 8601 first: YYYY-MM-DDTHH:MM:SS.sssZ or with offset.
         $isoPattern = '/^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}'
             . '(:\d{2}(\.\d{1,3})?)?)?)?)?([Z]|[+-]\d{2}:\d{2})?$/i';
@@ -371,7 +426,17 @@ class DateConstructor
 
         $dt = new \DateTimeImmutable('@' . $seconds);
         $utc = $dt->setTimezone(new \DateTimeZone('UTC'));
-        return $utc->format('Y-m-d\TH:i:s') . '.' . str_pad((string) $millis, 3, '0', STR_PAD_LEFT) . 'Z';
+
+        $year = (int) $utc->format('Y');
+        // ES spec: years outside 0-9999 use expanded year format with 6 digits.
+        if ($year >= 0 && $year <= 9999) {
+            $yearStr = str_pad((string) $year, 4, '0', STR_PAD_LEFT);
+        } else {
+            $sign = $year >= 0 ? '+' : '-';
+            $yearStr = $sign . str_pad((string) abs($year), 6, '0', STR_PAD_LEFT);
+        }
+
+        return $yearStr . $utc->format('-m-d\TH:i:s') . '.' . str_pad((string) $millis, 3, '0', STR_PAD_LEFT) . 'Z';
     }
 
     /** Format as UTC string: "Tue, 02 Jan 2024 02:04:05 GMT". */
@@ -669,15 +734,35 @@ class DateConstructor
         });
 
         $d('toJSON', function (JsValue $this_): JsValue {
-            if (!$this_ instanceof JsObject) {
+            // ES spec 21.4.4.24 Date.prototype.toJSON ( key )
+            // 1. Let O be ? ToObject(this value).
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new TypeError('Date.prototype.toJSON called on null or undefined');
+            }
+            $o = $this_;
+            if (!$o instanceof JsObject) {
+                // Wrap primitive: use the value itself for ToPrimitive step.
+                $o = $this_;
+            }
+
+            // 2. Let tv be ? ToPrimitive(O, hint Number).
+            $tv = TypeConversion::toPrimitive($o, 'number');
+
+            // 3. If Type(tv) is Number and tv is not finite, return null.
+            if ($tv instanceof JsNumber && !is_finite($tv->value)) {
                 return JsNull::instance();
             }
-            $tv = self::getTimeValue($this_);
-            if (!is_finite($tv)) {
-                return JsNull::instance();
+
+            // 4. Return ? Invoke(O, "toISOString").
+            if (!$o instanceof JsObject) {
+                throw new TypeError('toISOString is not a function');
             }
-            return new JsString(self::toISOString($tv));
-        });
+            $toISO = $o instanceof JsObject ? $o->get('toISOString') : null;
+            if (!$toISO instanceof JsFunction) {
+                throw new TypeError('toISOString is not a function');
+            }
+            return $toISO->call($o, []);
+        }, 1);
 
         $d('toLocaleDateString', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
@@ -743,11 +828,20 @@ class DateConstructor
         }, 1);
         $proto->definePropertyBySymbol($toPrimSym, PropertyDescriptor::data($toPrimFn, true, false, true));
 
+        // Set Symbol.toStringTag so Object.prototype.toString returns "[object Date]".
+        $toStringTagSym = SymbolConstructor::toStringTag();
+        $proto->setBySymbol($toStringTagSym, new JsString('Date'));
+
         return $proto;
     }
 
     /**
      * Generic setter for local-time-based set methods.
+     *
+     * Per the ES spec, the order of operations is:
+     * 1. Get thisTimeValue
+     * 2. Call ToNumber on all present arguments
+     * 3. THEN check if time value is NaN (return NaN if so, except for year)
      *
      * @param list<JsValue> $args
      */
@@ -758,8 +852,16 @@ class DateConstructor
         }
 
         $tv = self::getTimeValue($this_);
+
+        // Coerce all present arguments to numbers BEFORE the NaN check.
+        $coerced = [];
+        foreach ($args as $arg) {
+            $coerced[] = TypeConversion::toNumber($arg);
+        }
+
+        // Per spec, "return NaN" without setting [[DateValue]] so that any
+        // side effects from ToNumber (e.g. calling setTime) are preserved.
         if (is_nan($tv) && $field !== 'year') {
-            $this_->set('[[DateValue]]', new JsNumber(NAN));
             return new JsNumber(NAN);
         }
 
@@ -781,13 +883,11 @@ class DateConstructor
         $sec = (int) $local->format('s');
 
         $idx = 0;
-        $getArg = static function () use ($args, &$idx): ?float {
-            if (!isset($args[$idx])) {
+        $getArg = static function () use ($coerced, &$idx): ?float {
+            if (!isset($coerced[$idx])) {
                 return null;
             }
-            $v = TypeConversion::toNumber($args[$idx]);
-            $idx++;
-            return $v;
+            return $coerced[$idx++];
         };
 
         switch ($field) {
@@ -872,6 +972,11 @@ class DateConstructor
     /**
      * Generic setter for UTC-based set methods.
      *
+     * Per the ES spec, the order of operations is:
+     * 1. Get thisTimeValue
+     * 2. Call ToNumber on all present arguments
+     * 3. THEN check if time value is NaN (return NaN if so, except for year)
+     *
      * @param list<JsValue> $args
      */
     private static function setterUtc(JsValue $this_, array $args, string $field): JsValue
@@ -881,8 +986,18 @@ class DateConstructor
         }
 
         $tv = self::getTimeValue($this_);
+
+        // Coerce all present arguments to numbers BEFORE the NaN check.
+        // This is required by the spec: ToNumber calls happen before the NaN guard.
+        $coerced = [];
+        foreach ($args as $arg) {
+            $coerced[] = TypeConversion::toNumber($arg);
+        }
+
+        // Now check if the original time value was NaN (after coercing args).
+        // Per spec, "return NaN" without setting [[DateValue]] so that any
+        // side effects from ToNumber (e.g. calling setTime) are preserved.
         if (is_nan($tv) && $field !== 'year') {
-            $this_->set('[[DateValue]]', new JsNumber(NAN));
             return new JsNumber(NAN);
         }
 
@@ -903,13 +1018,11 @@ class DateConstructor
         $sec = (int) $utc->format('s');
 
         $idx = 0;
-        $getArg = static function () use ($args, &$idx): ?float {
-            if (!isset($args[$idx])) {
+        $getArg = static function () use ($coerced, &$idx): ?float {
+            if (!isset($coerced[$idx])) {
                 return null;
             }
-            $v = TypeConversion::toNumber($args[$idx]);
-            $idx++;
-            return $v;
+            return $coerced[$idx++];
         };
 
         switch ($field) {
