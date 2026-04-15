@@ -97,8 +97,15 @@ class NumberConstructor
             }
             return new JsBoolean(abs($n) <= 9007199254740991);
         }, 1);
-        $dm('parseInt', self::parseIntFn($env), 2);
-        $dm('parseFloat', self::parseFloatFn($env), 1);
+        // Per spec, Number.parseInt === parseInt and Number.parseFloat === parseFloat
+        $parseIntFn = $env->get('parseInt');
+        if ($parseIntFn instanceof JsFunction) {
+            $existing->defineOwnProperty('parseInt', PropertyDescriptor::data($parseIntFn, true, false, true));
+        }
+        $parseFloatFn = $env->get('parseFloat');
+        if ($parseFloatFn instanceof JsFunction) {
+            $existing->defineOwnProperty('parseFloat', PropertyDescriptor::data($parseFloatFn, true, false, true));
+        }
 
         // Prototype (non-enumerable, non-writable, non-configurable per spec).
         $existing->defineOwnProperty('prototype', PropertyDescriptor::data(
@@ -124,6 +131,11 @@ class NumberConstructor
         $d('toExponential', self::toExponential(), 1);
         $d('toString', self::toStringFn(), 1);
         $d('valueOf', self::valueOf(), 0);
+        // toLocaleString: defaults to toString behavior
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
+            $numValue = self::extractNumberValue($this_);
+            return new JsString((new JsNumber($numValue))->toJsString());
+        }, 0);
 
         return $proto;
     }
@@ -166,29 +178,7 @@ class NumberConstructor
         };
     }
 
-    private static function parseIntFn(Environment $env): \Closure
-    {
-        return function (JsValue $this_, array $args) use ($env): JsValue {
-            // Delegate to the global parseInt.
-            $fn = $env->get('parseInt');
-            if ($fn instanceof JsFunction) {
-                return $fn->call(JsUndefined::instance(), $args);
-            }
-            return new JsNumber(NAN);
-        };
-    }
-
-    private static function parseFloatFn(Environment $env): \Closure
-    {
-        return function (JsValue $this_, array $args) use ($env): JsValue {
-            // Delegate to the global parseFloat.
-            $fn = $env->get('parseFloat');
-            if ($fn instanceof JsFunction) {
-                return $fn->call(JsUndefined::instance(), $args);
-            }
-            return new JsNumber(NAN);
-        };
-    }
+    // parseInt/parseFloat now use the same function object from global scope
 
     private static function toFixed(): \Closure
     {
@@ -269,7 +259,7 @@ class NumberConstructor
                     return $prim;
                 }
             }
-            return new JsNumber(NAN);
+            throw new \PhpJs\Exceptions\TypeError('Number.prototype.valueOf requires that \'this\' be a Number');
         };
     }
 
@@ -284,10 +274,7 @@ class NumberConstructor
 
             $precision = (int) TypeConversion::toNumber($args[0]);
 
-            if ($precision < 1 || $precision > 100) {
-                throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
-            }
-
+            // NaN/Infinity check BEFORE range check per spec
             if (is_nan($numValue)) {
                 return new JsString('NaN');
             }
@@ -295,7 +282,11 @@ class NumberConstructor
                 return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
             }
 
-            $result = sprintf('%.' . ($precision - 1) . 'e', $numValue);
+            if ($precision < 1 || $precision > 100) {
+                throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
+            }
+
+            $result = @sprintf('%.' . min($precision - 1, 53) . 'e', $numValue);
             $parts = explode('e', $result);
             $exp = (int) $parts[1];
 
@@ -375,6 +366,6 @@ class NumberConstructor
                 return $prim->value;
             }
         }
-        return TypeConversion::toNumber($this_);
+        throw new \PhpJs\Exceptions\TypeError('Number.prototype method requires that \'this\' be a Number');
     }
 }
