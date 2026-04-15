@@ -308,7 +308,8 @@ class TypedArrayConstructor
 
                 $value = isset($args[1]) ? TypeConversion::toNumber($args[1]) : 0.0;
                 return $handler($this_, $offset, $littleEndian, $value);
-            }, $length);
+            };
+            $fn = JsFunction::fromCallable($name, $cb, $length);
             $proto->defineOwnProperty($name, PropertyDescriptor::data($fn, true, false, true));
         }
     }
@@ -1089,7 +1090,10 @@ class TypedArrayConstructor
                 $value = match ($kind) {
                     'key' => new JsNumber((float) $index),
                     'value' => $ta->getIndex($index),
-                    'key+value' => JsArray::fromArray([new JsNumber((float) $index), $ta->getIndex($index)]),
+                    default => JsArray::fromArray([
+                        new JsNumber((float) $index),
+                        $ta->getIndex($index),
+                    ]),
                 };
                 $result->set('value', $value);
                 $result->set('done', new JsBoolean(false));

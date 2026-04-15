@@ -43,15 +43,17 @@ class PromiseConstructor
 
                 $promise = new JsPromise($proto);
 
-                $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use ($promise): JsValue {
+                $resolveHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
                     $promise->resolve($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
-                }, 1);
+                };
+                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
 
-                $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use ($promise): JsValue {
+                $rejectHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
                     $promise->reject($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
-                }, 1);
+                };
+                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
 
                 try {
                     $executor->call(JsUndefined::instance(), [$resolveFn, $rejectFn]);
@@ -193,7 +195,7 @@ class PromiseConstructor
             if (!$this_ instanceof JsPromise) {
                 throw new TypeError('Method Promise.prototype.catch called on incompatible receiver');
             }
-            return $this_->catch_($args);
+            return $this_->catchHandler($args);
         }, 1);
         $proto->defineOwnProperty('catch', PropertyDescriptor::data($catchFn, true, false, true));
 
@@ -202,7 +204,7 @@ class PromiseConstructor
             if (!$this_ instanceof JsPromise) {
                 throw new TypeError('Method Promise.prototype.finally called on incompatible receiver');
             }
-            return $this_->finally_($args);
+            return $this_->finallyHandler($args);
         }, 1);
         $proto->defineOwnProperty('finally', PropertyDescriptor::data($finallyFn, true, false, true));
 
@@ -251,7 +253,10 @@ class PromiseConstructor
         }
 
         if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-            throw new TypeError('Cannot read properties of ' . TypeConversion::toString($iterable) . " (reading 'Symbol(Symbol.iterator)')");
+            $str = TypeConversion::toString($iterable);
+            throw new TypeError(
+                "Cannot read properties of {$str} (reading 'Symbol(Symbol.iterator)')",
+            );
         }
 
         return [];

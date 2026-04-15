@@ -73,6 +73,7 @@ class Parser
     private int $pos = 0;
     private bool $noIn = false;
     private bool $inGenerator = false;
+    private bool $inAsync = false;
     public function __construct(string $source)
     {
         $lexer = new Lexer($source);
@@ -312,9 +313,12 @@ class Parser
         $id = $this->parseIdentifier();
         $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
+        $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
+        $this->inAsync = false;
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
+        $this->inAsync = $prevAsync;
 
         return new FunctionDeclaration($location, $id, $params, $body, $generator, false);
     }
@@ -411,9 +415,12 @@ class Parser
 
         $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
+        $prevAsync = $this->inAsync;
         $this->inGenerator = $isGenerator;
+        $this->inAsync = $isAsync;
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
+        $this->inAsync = $prevAsync;
 
         $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
         return new ClassMethod($location, $key, $value, $kind, $isStatic, $computed);
@@ -429,9 +436,12 @@ class Parser
             $id = $this->parseIdentifier();
             $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
+            $prevAsync = $this->inAsync;
             $this->inGenerator = $generator;
+            $this->inAsync = true;
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
+            $this->inAsync = $prevAsync;
             return new FunctionDeclaration($location, $id, $params, $body, $generator, true);
         }
 
@@ -960,8 +970,8 @@ class Parser
             return new UnaryExpression($token->location, $token->value, $argument, true);
         }
 
-        // await
-        if (false) { // await disabled outside async
+        // await (only inside async functions)
+        if ($token->type === TokenType::Await && $this->inAsync) {
             $this->advance();
             $argument = $this->parseUnaryExpression();
             return new AwaitExpression($token->location, $argument);
@@ -1304,12 +1314,17 @@ class Parser
     {
         $this->expect(TokenType::Arrow);
 
+        $prevAsync = $this->inAsync;
+        $this->inAsync = $async;
+
         if ($this->check(TokenType::LeftBrace)) {
             $body = $this->parseBlockStatement();
+            $this->inAsync = $prevAsync;
             return new ArrowFunction($location, $params, $body, false, $async);
         }
 
         $body = $this->parseAssignmentExpression();
+        $this->inAsync = $prevAsync;
         return new ArrowFunction($location, $params, $body, true, $async);
     }
 
@@ -1470,9 +1485,12 @@ class Parser
             $method = true;
             $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
+            $prevAsync = $this->inAsync;
             $this->inGenerator = $isGenerator;
+            $this->inAsync = $isAsync;
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
+            $this->inAsync = $prevAsync;
             $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
@@ -1482,9 +1500,12 @@ class Parser
             $method = true;
             $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
+            $prevAsync = $this->inAsync;
             $this->inGenerator = $isGenerator;
+            $this->inAsync = $isAsync;
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
+            $this->inAsync = $prevAsync;
             $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
@@ -1590,9 +1611,12 @@ class Parser
 
         $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
+        $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
+        $this->inAsync = false;
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
+        $this->inAsync = $prevAsync;
 
         return new FunctionExpression($location, $name, $params, $body, $generator, false);
     }
@@ -1650,9 +1674,12 @@ class Parser
 
         $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
+        $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
+        $this->inAsync = true;
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
+        $this->inAsync = $prevAsync;
 
         return new FunctionExpression($location, $name, $params, $body, $generator, true);
     }

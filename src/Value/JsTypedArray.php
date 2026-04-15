@@ -547,7 +547,7 @@ class JsTypedArray extends JsObject
             return $a->value === $b->value;
         }
         if ($a instanceof JsBigInt && $b instanceof JsBigInt) {
-            return $a->getValue() === $b->getValue();
+            return $a->value === $b->value;
         }
         return false;
     }
@@ -562,7 +562,7 @@ class JsTypedArray extends JsObject
             return $a->value === $b->value;
         }
         if ($a instanceof JsBigInt && $b instanceof JsBigInt) {
-            return $a->getValue() === $b->getValue();
+            return $a->value === $b->value;
         }
         return false;
     }

@@ -85,22 +85,24 @@ class JsPromise extends JsObject
             $then = $value->get('then');
             if ($then instanceof JsFunction) {
                 $resolved = false;
-                $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
                     if ($resolved) {
                         return JsUndefined::instance();
                     }
                     $resolved = true;
                     $this->resolve($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
-                }, 1);
-                $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                };
+                $rejectHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
                     if ($resolved) {
                         return JsUndefined::instance();
                     }
                     $resolved = true;
                     $this->reject($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
-                }, 1);
+                };
+                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
                 try {
                     $then->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {
@@ -211,7 +213,7 @@ class JsPromise extends JsObject
     /**
      * Implements Promise.prototype.catch(onRejected).
      */
-    public function catch_(array $args): self
+    public function catchHandler(array $args): self
     {
         return $this->then([JsUndefined::instance(), $args[0] ?? JsUndefined::instance()]);
     }
@@ -219,7 +221,7 @@ class JsPromise extends JsObject
     /**
      * Implements Promise.prototype.finally(onFinally).
      */
-    public function finally_(array $args): self
+    public function finallyHandler(array $args): self
     {
         $onFinally = $args[0] ?? JsUndefined::instance();
 
@@ -276,19 +278,22 @@ class JsPromise extends JsObject
         }
 
         $promise = $this;
+        $thenCb = function (JsValue $this_, array $args) use ($promise): JsValue {
+            $target = $this_ instanceof self ? $this_ : $promise;
+            return $target->then($args);
+        };
+        $catchCb = function (JsValue $this_, array $args) use ($promise): JsValue {
+            $target = $this_ instanceof self ? $this_ : $promise;
+            return $target->catchHandler($args);
+        };
+        $finallyCb = function (JsValue $this_, array $args) use ($promise): JsValue {
+            $target = $this_ instanceof self ? $this_ : $promise;
+            return $target->finallyHandler($args);
+        };
         return match ($name) {
-            'then' => JsFunction::fromCallable('then', function (JsValue $this_, array $args) use ($promise): JsValue {
-                $target = $this_ instanceof self ? $this_ : $promise;
-                return $target->then($args);
-            }, 2),
-            'catch' => JsFunction::fromCallable('catch', function (JsValue $this_, array $args) use ($promise): JsValue {
-                $target = $this_ instanceof self ? $this_ : $promise;
-                return $target->catch_($args);
-            }, 1),
-            'finally' => JsFunction::fromCallable('finally', function (JsValue $this_, array $args) use ($promise): JsValue {
-                $target = $this_ instanceof self ? $this_ : $promise;
-                return $target->finally_($args);
-            }, 1),
+            'then' => JsFunction::fromCallable('then', $thenCb, 2),
+            'catch' => JsFunction::fromCallable('catch', $catchCb, 1),
+            'finally' => JsFunction::fromCallable('finally', $finallyCb, 1),
             default => JsUndefined::instance(),
         };
     }
