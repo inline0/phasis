@@ -165,10 +165,21 @@ class SymbolConstructor
             true,
         ));
         // Set Symbol.toStringTag on the prototype (non-writable, non-enumerable, configurable)
+        // Symbol.prototype[@@toStringTag] = "Symbol"
         $proto->definePropertyBySymbol(
             self::toStringTag(),
             \PhpJs\Object\PropertyDescriptor::data(new JsString('Symbol'), false, false, true),
         );
+
+        // Symbol.prototype[@@toPrimitive](hint) — returns the symbol value
+        $toPrimFn = JsFunction::fromCallable('[Symbol.toPrimitive]', function (JsValue $this_) use ($extractSymbol): JsValue {
+            return $extractSymbol($this_, '[Symbol.toPrimitive]');
+        }, 1);
+        $proto->definePropertyBySymbol(
+            self::toPrimitive(),
+            \PhpJs\Object\PropertyDescriptor::data($toPrimFn, false, false, true),
+        );
+
         $symbolFn->set('prototype', $proto);
         JsSymbol::setSymbolPrototype($proto);
 
