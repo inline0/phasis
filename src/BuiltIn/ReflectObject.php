@@ -136,6 +136,12 @@ class ReflectObject
         $reflect->defineOwnProperty('ownKeys', PropertyDescriptor::data(
             JsFunction::fromCallable('ownKeys', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.ownKeys');
+                // For Proxy, delegate to the proxy's ownKeys which calls the trap.
+                if ($target instanceof JsProxy) {
+                    $stringKeys = $target->ownKeys();
+                    $keys = array_map(fn(string $k) => new JsString($k), $stringKeys);
+                    return JsArray::fromArray($keys);
+                }
                 // Use ordinaryOwnPropertyKeys which returns keys in the
                 // correct order: integer indices (ascending), then string
                 // keys (insertion order), then symbol keys (insertion order).
@@ -375,7 +381,8 @@ class ReflectObject
             if (!$target->isExtensible()) {
                 return false;
             }
-            $target->defineOwnProperty($name, $desc);
+            // Per spec, unspecified attributes default to false/undefined for new properties.
+            $target->defineOwnProperty($name, self::completeDescriptor($desc));
             return true;
         }
 
@@ -402,7 +409,7 @@ class ReflectObject
             if (!$target->isExtensible()) {
                 return false;
             }
-            $target->definePropertyBySymbol($key, $desc);
+            $target->definePropertyBySymbol($key, self::completeDescriptor($desc));
             return true;
         }
 
@@ -412,6 +419,31 @@ class ReflectObject
 
         $target->definePropertyBySymbol($key, self::mergeDescriptor($current, $desc));
         return true;
+    }
+
+    /**
+     * Complete a new property descriptor by filling in default values.
+     *
+     * Per spec, when creating a new own property, unspecified attributes
+     * default to false (writable, enumerable, configurable) and undefined (value).
+     */
+    private static function completeDescriptor(PropertyDescriptor $desc): PropertyDescriptor
+    {
+        if ($desc->isAccessorDescriptor()) {
+            return PropertyDescriptor::accessor(
+                get: $desc->get,
+                set: $desc->set,
+                enumerable: $desc->enumerable ?? false,
+                configurable: $desc->configurable ?? false,
+            );
+        }
+
+        return new PropertyDescriptor(
+            value: $desc->value ?? JsUndefined::instance(),
+            writable: $desc->writable ?? false,
+            enumerable: $desc->enumerable ?? false,
+            configurable: $desc->configurable ?? false,
+        );
     }
 
     /**
@@ -457,7 +489,8 @@ class ReflectObject
                 if ($desc->writable === true) {
                     return false;
                 }
-                if ($desc->value !== null && !self::sameValue($desc->value, $current->value ?? JsUndefined::instance())) {
+                $curVal = $current->value ?? JsUndefined::instance();
+                if ($desc->value !== null && !self::sameValue($desc->value, $curVal)) {
                     return false;
                 }
             }

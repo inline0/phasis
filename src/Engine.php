@@ -91,6 +91,11 @@ class Engine
 
         $this->globalEnv->defineVar('this', $globalObj);
         $this->globalEnv->defineVar('globalThis', $globalObj);
+
+        // Link the global environment to the global object so that
+        // top-level var declarations and assignments create properties
+        // on globalThis (per ES spec 9.1.1.1 Global Environment Records).
+        $this->globalEnv->linkGlobalObject($globalObj);
     }
 
     private function installBuiltins(): void

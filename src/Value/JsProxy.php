@@ -19,11 +19,28 @@ class JsProxy extends JsObject
     private ?JsObject $target;
     private ?JsObject $handler;
 
+    /** Captured at creation time per spec ProxyCreate step 7. */
+    private bool $targetIsCallable;
+
     public function __construct(JsObject $target, JsObject $handler)
     {
         parent::__construct($target instanceof JsProxy && $target->isRevoked() ? null : $target->getPrototype());
         $this->target = $target;
         $this->handler = $handler;
+        // Per spec ProxyCreate steps 6-7: capture [[Call]] slot existence at creation time.
+        $this->targetIsCallable = $this->determineCallable($target);
+    }
+
+    /** Determine if a target has a [[Call]] internal slot. */
+    private function determineCallable(JsObject $target): bool
+    {
+        if ($target instanceof JsFunction) {
+            return true;
+        }
+        if ($target instanceof JsProxy) {
+            return $target->isCallable();
+        }
+        return false;
     }
 
     /** Check whether this proxy has been revoked. */
@@ -53,16 +70,10 @@ class JsProxy extends JsObject
         return $this->handler;
     }
 
-    /** Whether the proxy's ultimate target is callable. */
+    /** Whether the proxy's target has a [[Call]] slot (captured at creation time). */
     public function isCallable(): bool
     {
-        if ($this->target === null) {
-            return false;
-        }
-        if ($this->target instanceof JsProxy) {
-            return $this->target->isCallable();
-        }
-        return $this->target instanceof JsFunction;
+        return $this->targetIsCallable;
     }
 
     private function assertNotRevoked(string $trap = 'get'): void
@@ -96,6 +107,15 @@ class JsProxy extends JsObject
     public function get(string $name): JsValue
     {
         return $this->internalGet($name, $this);
+    }
+
+    /**
+     * Override getWithReceiver so prototype chain lookups through a proxy
+     * go through the proxy's [[Get]] trap rather than the JsObject property map.
+     */
+    protected function getWithReceiver(string $name, JsObject $receiver): JsValue
+    {
+        return $this->internalGet($name, $receiver);
     }
 
     /**

@@ -286,12 +286,29 @@ class GlobalObject
             $boundThis = $args[0] ?? JsUndefined::instance();
             $boundArgs = array_slice($args, 1);
             $target = $this_;
-            return JsFunction::fromCallable(
+            // Per spec 20.2.3.2, the bound function's length is
+            // max(0, target.length - boundArgs.length).
+            $targetLength = 0;
+            $targetLengthVal = $target->get('length');
+            if ($targetLengthVal instanceof JsNumber) {
+                $targetLength = (int) $targetLengthVal->toNumber();
+            }
+            $boundLength = max(0, $targetLength - count($boundArgs));
+            $boundFn = JsFunction::fromCallable(
                 'bound ' . $target->getName(),
                 function (JsValue $th, array $callArgs) use ($target, $boundThis, $boundArgs): JsValue {
                     return $target->call($boundThis, array_merge($boundArgs, $callArgs));
                 },
+                $boundLength,
             );
+            // Per spec, bound functions don't have their own prototype
+            // property. The [[HasInstance]] check walks to the target.
+            // Copy the target's prototype so instanceof works.
+            $targetProto = $target->get('prototype');
+            if ($targetProto instanceof \PhpJs\Value\JsObject) {
+                $boundFn->set('prototype', $targetProto);
+            }
+            return $boundFn;
         }, 1));
 
         // Function.prototype.toString: per spec, returns source text for

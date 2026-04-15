@@ -1258,6 +1258,22 @@ class Parser
             $this->pos = $savedPos;
         }
 
+        // Try parsing as arrow params first (saves position in case it fails).
+        // This handles trailing commas: (a,) => ... and (a, b,) => ...
+        {
+            $arrowSaved = $this->pos;
+            try {
+                $this->advance(); // consume (
+                $params = $this->parseArrowParams();
+                if ($this->check(TokenType::Arrow)) {
+                    return $this->parseArrowFunctionFromParams($location, $params, false);
+                }
+            } catch (\Throwable) {
+                // Not arrow params, fall through to expression parsing.
+            }
+            $this->pos = $arrowSaved;
+        }
+
         // Normal parenthesized expression (may still be arrow params)
         $this->advance(); // consume (
         $expr = $this->parseExpression();
@@ -1789,13 +1805,13 @@ class Parser
 
         if ($token->type === TokenType::NoSubstitutionTemplate) {
             $this->advance();
-            $quasis[] = new TemplateElement($token->location, $token->value, $token->value, true);
+            $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $token->value, true);
             return new TemplateLiteral($location, $quasis, $expressions);
         }
 
         // TemplateHead — tokens are already split by the lexer
         $this->advance();
-        $quasis[] = new TemplateElement($token->location, $token->value, $token->value, false);
+        $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $token->value, false);
 
         while (true) {
             $expressions[] = $this->parseExpression();
@@ -1805,13 +1821,13 @@ class Parser
 
             if ($cont->type === TokenType::TemplateTail) {
                 $this->advance();
-                $quasis[] = new TemplateElement($cont->location, $cont->value, $cont->value, true);
+                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cont->value, true);
                 break;
             }
 
             if ($cont->type === TokenType::TemplateMiddle) {
                 $this->advance();
-                $quasis[] = new TemplateElement($cont->location, $cont->value, $cont->value, false);
+                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cont->value, false);
                 continue;
             }
 

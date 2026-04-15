@@ -75,8 +75,9 @@ class JsObject implements JsValue
             return $desc->value ?? JsUndefined::instance();
         }
 
-        if ($this->prototype !== null) {
-            return $this->prototype->getWithReceiver($name, $receiver);
+        $proto = $this->getPrototype();
+        if ($proto !== null) {
+            return $proto->getWithReceiver($name, $receiver);
         }
 
         return JsUndefined::instance();
@@ -137,7 +138,7 @@ class JsObject implements JsValue
     ): bool {
         if ($ownDesc === null) {
             // Walk to the parent in the prototype chain.
-            $parent = $this->prototype;
+            $parent = $this->getPrototype();
             if ($parent !== null) {
                 return $parent->internalSet($name, $value, $receiver);
             }
@@ -204,8 +205,9 @@ class JsObject implements JsValue
             return $desc->value ?? JsUndefined::instance();
         }
 
-        if ($this->prototype !== null) {
-            return $this->prototype->getBySymbolWithReceiver($symbol, $receiver);
+        $proto = $this->getPrototype();
+        if ($proto !== null) {
+            return $proto->getBySymbolWithReceiver($symbol, $receiver);
         }
 
         return JsUndefined::instance();
@@ -239,8 +241,9 @@ class JsObject implements JsValue
             return true;
         }
 
-        if ($this->prototype !== null) {
-            return $this->prototype->hasBySymbol($symbol);
+        $proto = $this->getPrototype();
+        if ($proto !== null) {
+            return $proto->hasBySymbol($symbol);
         }
 
         return false;
@@ -268,8 +271,9 @@ class JsObject implements JsValue
             return true;
         }
 
-        if ($this->prototype !== null) {
-            return $this->prototype->has($name);
+        $proto = $this->getPrototype();
+        if ($proto !== null) {
+            return $proto->has($name);
         }
 
         return false;

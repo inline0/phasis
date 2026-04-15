@@ -289,46 +289,11 @@ class JsFunction extends JsObject
         return JsUndefined::instance();
     }
 
-    public function get(string $name): JsValue
-    {
-        // Check own properties first (prototype, etc.)
-        $own = parent::get($name);
-        if (!$own instanceof JsUndefined) {
-            return $own;
-        }
-
-        // Look up on Function.prototype (which holds call/apply/bind
-        // and the thrower accessors for caller/arguments).
-        if (self::$functionPrototype !== null && $this !== self::$functionPrototype) {
-            $fromFnProto = self::$functionPrototype->get($name);
-            if (!$fromFnProto instanceof JsUndefined) {
-                return $fromFnProto;
-            }
-        }
-
-        return match ($name) {
-            'call' => self::getCallMethod(),
-            'apply' => self::getApplyMethod(),
-            'bind' => self::getBindMethod(),
-            default => JsUndefined::instance(),
-        };
-    }
-
-    public function set(string $name, JsValue $value, bool $strict = false): void
-    {
-        // Before the normal set path, check if Function.prototype has an accessor
-        // for this property (e.g., the "caller"/"arguments" thrower pair).
-        // The parent set() traverses the private $prototype field which doesn't
-        // include Function.prototype in the chain, so we must check explicitly.
-        if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasOwnProperty($name)) {
-            $desc = self::$functionPrototype->getOwnPropertyDescriptor($name);
-            if ($desc !== null && $desc->set !== null) {
-                $desc->set->call($this, [$value]);
-                return;
-            }
-        }
-        parent::set($name, $value, $strict);
-    }
+    // Property lookup now works correctly via the prototype chain:
+    // fn -> Function.prototype -> Object.prototype -> null.
+    // The getPrototype() override ensures Function.prototype is in the chain,
+    // so parent::get()/set()/has() handle call/apply/bind/caller/arguments
+    // automatically. No custom overrides needed.
 
     private static function getCallMethod(): self
     {

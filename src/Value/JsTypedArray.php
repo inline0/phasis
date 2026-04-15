@@ -216,13 +216,14 @@ class JsTypedArray extends JsObject
             return (int) max(0, min(255, round($num)));
         }
 
-        if (is_nan($num) || is_infinite($num)) {
-            return 0;
-        }
-
-        // For float arrays, return the float directly.
+        // For float arrays, preserve NaN and Infinity.
         if ($this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
             return $num;
+        }
+
+        // For integer arrays, NaN and Infinity become 0.
+        if (is_nan($num) || is_infinite($num)) {
+            return 0;
         }
 
         // For integer arrays, truncate to integer.
@@ -384,19 +385,23 @@ class JsTypedArray extends JsObject
      */
     public function copyWithinTyped(int $target, int $start, ?int $end = null): self
     {
+        $len = $this->length;
         if ($target < 0) {
-            $target = max(0, $this->length + $target);
+            $target = max(0, $len + $target);
         }
+        $target = min($target, $len);
         if ($start < 0) {
-            $start = max(0, $this->length + $start);
+            $start = max(0, $len + $start);
         }
+        $start = min($start, $len);
         if ($end === null) {
-            $end = $this->length;
+            $end = $len;
         } elseif ($end < 0) {
-            $end = max(0, $this->length + $end);
+            $end = max(0, $len + $end);
         }
+        $end = min($end, $len);
 
-        $count = min($end - $start, $this->length - $target);
+        $count = min($end - $start, $len - $target);
 
         // Copy into a temp buffer to handle overlapping regions.
         $temp = [];

@@ -60,6 +60,7 @@ class Lexer
                 $token->value,
                 $token->location,
                 $this->lineTerminatorBefore,
+                $token->rawValue,
             );
             $this->tokens[] = $token;
         }
@@ -498,28 +499,32 @@ class Lexer
     private function readTemplate(SourceLocation $start): Token
     {
         $this->advance(); // skip opening backtick
-        $result = '';
+        $cooked = '';
+        $raw = '';
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::NoSubstitutionTemplate, $result, $start);
+                return new Token(TokenType::NoSubstitutionTemplate, $cooked, $start, false, $raw);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance(); // skip $
                 $this->advance(); // skip {
-                return new Token(TokenType::TemplateHead, $result, $start);
+                return new Token(TokenType::TemplateHead, $cooked, $start, false, $raw);
             }
 
             if ($ch === '\\') {
+                $rawStart = $this->pos;
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
-                $result .= $this->readEscapeSequence();
+                $cooked .= $this->readEscapeSequence();
+                // Raw value preserves the original escape text from source.
+                $raw .= substr($this->source, $rawStart, $this->pos - $rawStart);
                 continue;
             }
 
@@ -528,11 +533,13 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->advance();
                 }
-                $result .= "\n";
+                $cooked .= "\n";
+                $raw .= "\n";
                 continue;
             }
 
-            $result .= $ch;
+            $cooked .= $ch;
+            $raw .= $ch;
             $this->advance();
         }
 
@@ -544,28 +551,31 @@ class Lexer
     {
         $start = $this->location();
         $this->lineTerminatorBefore = false;
-        $result = '';
+        $cooked = '';
+        $raw = '';
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::TemplateTail, $result, $start, $this->lineTerminatorBefore);
+                return new Token(TokenType::TemplateTail, $cooked, $start, $this->lineTerminatorBefore, $raw);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance();
                 $this->advance();
-                return new Token(TokenType::TemplateMiddle, $result, $start, $this->lineTerminatorBefore);
+                return new Token(TokenType::TemplateMiddle, $cooked, $start, $this->lineTerminatorBefore, $raw);
             }
 
             if ($ch === '\\') {
+                $rawStart = $this->pos;
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
-                $result .= $this->readEscapeSequence();
+                $cooked .= $this->readEscapeSequence();
+                $raw .= substr($this->source, $rawStart, $this->pos - $rawStart);
                 continue;
             }
 
@@ -575,7 +585,8 @@ class Lexer
                 if ($this->pos < $this->length && $this->source[$this->pos] === "\n") {
                     $this->advance();
                 }
-                $result .= "\n";
+                $cooked .= "\n";
+                $raw .= "\n";
                 continue;
             }
 
@@ -583,7 +594,8 @@ class Lexer
                 $this->lineTerminatorBefore = true;
             }
 
-            $result .= $ch;
+            $cooked .= $ch;
+            $raw .= $ch;
             $this->advance();
         }
 
@@ -657,6 +669,16 @@ class Lexer
                 '^=' => TokenType::CaretEqual,
                 default => null,
             };
+            // Per spec: ?. is NOT optional chaining when followed by a decimal digit.
+            // e.g. `a?.3:b` is ternary `a ? .3 : b`, not optional chaining.
+            if (
+                $twoType === TokenType::OptionalChaining
+                && $this->pos + 2 < $this->length
+                && ctype_digit($this->source[$this->pos + 2])
+            ) {
+                $twoType = null;
+            }
+
             if ($twoType !== null) {
                 $this->advance();
                 $this->advance();

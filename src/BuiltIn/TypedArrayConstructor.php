@@ -31,6 +31,26 @@ use PhpJs\Object\PropertyDescriptor;
  */
 class TypedArrayConstructor
 {
+    /**
+     * Convert a JS value to an integer, clamping Infinity and converting NaN to 0.
+     * PHP's (int) cast on INF/NAN yields 0 on most platforms, which silently
+     * corrupts length/offset parameters. This helper makes the conversion explicit.
+     */
+    private static function toInteger(JsValue $value): int
+    {
+        $n = TypeConversion::toNumber($value);
+        if (is_nan($n)) {
+            return 0;
+        }
+        if ($n === INF) {
+            return PHP_INT_MAX;
+        }
+        if ($n === -INF) {
+            return PHP_INT_MIN;
+        }
+        return (int) $n;
+    }
+
     public static function install(Environment $env): void
     {
         self::installArrayBuffer($env);
@@ -337,8 +357,11 @@ class TypedArrayConstructor
         );
         $typedArrayIntrinsic->setConstructable();
 
-        // %TypedArray%.prototype links.
-        $typedArrayIntrinsic->set('prototype', $typedArrayProto);
+        // %TypedArray%.prototype property: { writable: false, enumerable: false, configurable: false }.
+        $typedArrayIntrinsic->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($typedArrayProto, false, false, false),
+        );
         $typedArrayProto->defineOwnProperty(
             'constructor',
             PropertyDescriptor::data($typedArrayIntrinsic, true, false, true),
@@ -347,8 +370,40 @@ class TypedArrayConstructor
         // Install shared prototype methods on %TypedArray%.prototype.
         self::installTypedArrayPrototypeMethods($typedArrayProto, 'TypedArray');
 
+        // Per spec, %TypedArray%.prototype.toString is Array.prototype.toString.
+        $arrayConstructor = $env->get('Array');
+        if ($arrayConstructor instanceof JsFunction) {
+            $arrayProto = $arrayConstructor->get('prototype');
+            if ($arrayProto instanceof JsObject) {
+                $arrayToString = $arrayProto->get('toString');
+                if ($arrayToString instanceof JsFunction) {
+                    $typedArrayProto->defineOwnProperty(
+                        'toString',
+                        PropertyDescriptor::data($arrayToString, true, false, true),
+                    );
+                }
+            }
+        }
+
         // Install shared accessor properties on %TypedArray%.prototype.
         self::installTypedArrayAccessors($typedArrayProto, 'TypedArray');
+
+        // Symbol.toStringTag: getter on %TypedArray%.prototype that returns [[TypedArrayName]].
+        $toStringTagSym = SymbolConstructor::toStringTag();
+        $toStringTagGetter = JsFunction::fromCallable(
+            'get [Symbol.toStringTag]',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    return JsUndefined::instance();
+                }
+                return new JsString($this_->getTypeName());
+            },
+            0,
+        );
+        $typedArrayProto->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::accessor($toStringTagGetter, null, false, true),
+        );
 
         // Install Symbol.iterator pointing to values method on %TypedArray%.prototype.
         $iterSym = SymbolConstructor::iterator();
@@ -404,13 +459,6 @@ class TypedArrayConstructor
         $proto->defineOwnProperty(
             'BYTES_PER_ELEMENT',
             PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
-        );
-
-        // Symbol.toStringTag on each subtype prototype.
-        $toStringTagSym = SymbolConstructor::toStringTag();
-        $proto->definePropertyBySymbol(
-            $toStringTagSym,
-            PropertyDescriptor::data(new JsString($typeName), false, false, true),
         );
 
         $proto->defineOwnProperty(
@@ -699,7 +747,7 @@ class TypedArrayConstructor
             }
 
             $source = $args[0] ?? JsUndefined::instance();
-            $offset = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $offset = isset($args[1]) ? self::toInteger($args[1]) : 0;
 
             if ($source instanceof JsTypedArray) {
                 for ($i = 0; $i < $source->getLength(); $i++) {
@@ -725,9 +773,9 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.subarray called on incompatible receiver");
             }
-            $begin = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
             $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[1])
+                ? self::toInteger($args[1])
                 : null;
             return $this_->subarray($begin, $end);
         }, 2);
@@ -738,9 +786,9 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.slice called on incompatible receiver");
             }
-            $begin = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
             $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[1])
+                ? self::toInteger($args[1])
                 : null;
             return $this_->sliceTyped($begin, $end);
         }, 2);
@@ -751,10 +799,10 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
             }
-            $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
+            $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
             $end = isset($args[2]) && !$args[2] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[2])
+                ? self::toInteger($args[2])
                 : null;
             return $this_->copyWithinTyped($target, $start, $end);
         }, 2);
@@ -766,9 +814,9 @@ class TypedArrayConstructor
                 throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
             }
             $value = $args[0] ?? JsUndefined::instance();
-            $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
             $end = isset($args[2]) && !$args[2] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[2])
+                ? self::toInteger($args[2])
                 : null;
             return $this_->fillTyped($value, $start, $end);
         }, 1);
@@ -981,7 +1029,7 @@ class TypedArrayConstructor
                 throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
             }
             $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
             return new JsNumber((float) $this_->indexOfTyped($search, $fromIndex));
         }, 1);
         $proto->defineOwnProperty('indexOf', PropertyDescriptor::data($indexOfFn, true, false, true));
@@ -992,7 +1040,7 @@ class TypedArrayConstructor
                 throw new TypeError("Method {$typeName}.prototype.lastIndexOf called on incompatible receiver");
             }
             $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : $this_->getLength() - 1;
+            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : $this_->getLength() - 1;
             if ($fromIndex < 0) {
                 $fromIndex = max(0, $this_->getLength() + $fromIndex);
             }
@@ -1014,7 +1062,7 @@ class TypedArrayConstructor
                 throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
             }
             $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
             return new JsBoolean($this_->includesTyped($search, $fromIndex));
         }, 1);
         $proto->defineOwnProperty('includes', PropertyDescriptor::data($includesFn, true, false, true));
@@ -1054,7 +1102,11 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.sort called on incompatible receiver");
             }
-            $comparefn = ($args[0] ?? JsUndefined::instance()) instanceof JsFunction ? $args[0] : null;
+            $arg0 = $args[0] ?? JsUndefined::instance();
+            if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
+                throw new TypeError('The comparison function must be either a function or undefined');
+            }
+            $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
             $elements = $this_->toList();
 
             usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
@@ -1062,9 +1114,14 @@ class TypedArrayConstructor
                     $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
                     return (int) TypeConversion::toNumber($result);
                 }
-                // Default numeric sort for typed arrays.
+                // Default numeric sort for typed arrays per spec.
+                // BigInt comparisons: compare as integers.
+                if ($a instanceof \PhpJs\Value\JsBigInt && $b instanceof \PhpJs\Value\JsBigInt) {
+                    return bccomp($a->value, $b->value);
+                }
                 $an = $a->toNumber();
                 $bn = $b->toNumber();
+                // NaN sorts to end.
                 if (is_nan($an) && is_nan($bn)) {
                     return 0;
                 }
@@ -1073,6 +1130,18 @@ class TypedArrayConstructor
                 }
                 if (is_nan($bn)) {
                     return -1;
+                }
+                // -0 sorts before +0.
+                if ($an === 0.0 && $bn === 0.0) {
+                    $aNeg = (1.0 / $an) === -INF;
+                    $bNeg = (1.0 / $bn) === -INF;
+                    if ($aNeg && !$bNeg) {
+                        return -1;
+                    }
+                    if (!$aNeg && $bNeg) {
+                        return 1;
+                    }
+                    return 0;
                 }
                 return $an <=> $bn;
             });
@@ -1116,7 +1185,7 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.at called on incompatible receiver");
             }
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+            $index = isset($args[0]) ? self::toInteger($args[0]) : 0;
             if ($index < 0) {
                 $index = $this_->getLength() + $index;
             }

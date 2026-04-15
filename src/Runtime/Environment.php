@@ -23,15 +23,48 @@ class Environment
     /** @var array<string, bool> Track which bindings are deletable (implicit globals). */
     private array $deletable = [];
 
+    /**
+     * When set, var declarations and assignments in this environment
+     * also create/update properties on the linked object. Used for
+     * the global environment to keep globalThis in sync with var bindings.
+     */
+    private ?\PhpJs\Value\JsObject $linkedObject = null;
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
+    }
+
+    /**
+     * Link this environment to a global object so that var declarations
+     * and assignments are mirrored as own properties on the object.
+     */
+    public function linkGlobalObject(\PhpJs\Value\JsObject $obj): void
+    {
+        $this->linkedObject = $obj;
+    }
+
+    public function getLinkedObject(): ?\PhpJs\Value\JsObject
+    {
+        return $this->linkedObject;
     }
 
     /** Define a var-declared variable in the current environment. */
     public function defineVar(string $name, JsValue $value): void
     {
         $this->bindings[$name] = $value;
+        // Sync to the linked global object if present.
+        // Skip internal bindings that start with __ (prototypes, etc.)
+        // and the special 'this'/'globalThis' bindings.
+        if ($this->linkedObject !== null
+            && $name !== 'this' && $name !== 'globalThis'
+            && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
+        ) {
+            $this->linkedObject->defineOwnProperty(
+                $name,
+                \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+            );
+        }
     }
 
     /** Define a binding that can be removed with `delete`. Used for built-in globals. */
@@ -97,6 +130,14 @@ class Environment
             return $this->parent->get($name);
         }
 
+        // At the global (root) environment. If a linked global object exists,
+        // check it for properties set directly (e.g. this.color = "red").
+        // This mirrors the ES spec behavior where properties on the global
+        // object are accessible as global variables.
+        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+            return $this->linkedObject->get($name);
+        }
+
         throw new ReferenceError("{$name} is not defined");
     }
 
@@ -119,6 +160,20 @@ class Environment
             }
 
             $this->bindings[$name] = $value;
+            // Sync to the linked global object when the binding is in the global env.
+            if ($this->linkedObject !== null
+                && $name !== 'this' && $name !== 'globalThis'
+                && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
+            ) {
+                if ($this->linkedObject->hasOwnProperty($name)) {
+                    $this->linkedObject->set($name, $value);
+                } else {
+                    $this->linkedObject->defineOwnProperty(
+                        $name,
+                        \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                    );
+                }
+            }
             return;
         }
 
@@ -135,6 +190,12 @@ class Environment
         // Sloppy mode: implicitly create a global variable (deletable).
         $this->bindings[$name] = $value;
         $this->deletable[$name] = true;
+        if ($this->linkedObject !== null) {
+            $this->linkedObject->defineOwnProperty(
+                $name,
+                \PhpJs\Object\PropertyDescriptor::data($value, true, true, true),
+            );
+        }
     }
 
     /** Check whether a binding exists anywhere in the scope chain. */
@@ -146,6 +207,11 @@ class Environment
 
         if ($this->parent !== null) {
             return $this->parent->has($name);
+        }
+
+        // Check the linked global object for directly-set properties.
+        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+            return true;
         }
 
         return false;

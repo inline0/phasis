@@ -433,7 +433,8 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return $obj;
             }
-            // Simplified: mark all own properties as non-writable and non-configurable.
+            // Per spec: freeze prevents extensions and marks all own properties non-writable, non-configurable.
+            $obj->preventExtensions();
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);
@@ -661,6 +662,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return $obj;
             }
+            $obj->preventExtensions();
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);

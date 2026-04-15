@@ -31,14 +31,13 @@ class ProxyConstructor
         $constructor = JsFunction::fromCallable(
             'Proxy',
             function (JsValue $this_, array $args): JsValue {
-                // Proxy must be called with new. The interpreter sets _isNew
-                // on the this_ object when using new; for built-in constructors
-                // via fromCallable, we detect direct call by checking if this_
-                // is not a JsProxy and not a fresh JsObject from the new path.
                 // Per spec 28.2.1.1 step 1: If NewTarget is undefined, throw TypeError.
-                // The interpreter passes the constructor itself as $this_ for
-                // direct calls, so if $this_ is the function itself or undefined, it's direct.
-                if ($this_ instanceof JsFunction || $this_ instanceof JsUndefined) {
+                // The interpreter sets [[NewTarget]] on the this object when
+                // called via `new`. If that marker is absent, it was a direct call.
+                if (
+                    !$this_ instanceof JsObject
+                    || !$this_->hasOwnProperty('[[NewTarget]]')
+                ) {
                     throw new TypeError('Constructor Proxy requires \'new\'');
                 }
 
