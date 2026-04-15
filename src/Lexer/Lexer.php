@@ -335,6 +335,11 @@ class Lexer
         $ch = $this->source[$this->pos];
         $this->advance();
 
+        // AnnexB B.1.4: legacy octal escape sequences (\0-\7 start).
+        if ($ch >= '0' && $ch <= '7') {
+            return $this->readLegacyOctalEscape($ch);
+        }
+
         return match ($ch) {
             'n' => "\n",
             'r' => "\r",
@@ -342,7 +347,6 @@ class Lexer
             'b' => "\x08",
             'f' => "\f",
             'v' => "\v",
-            '0' => "\0",
             'x' => $this->readHexEscape(2),
             'u' => $this->readUnicodeEscape(),
             "\n" => '',
@@ -354,6 +358,41 @@ class Lexer
                 : '',
             default => $ch,
         };
+    }
+
+    /**
+     * AnnexB B.1.4: legacy octal escape sequences.
+     *
+     * Handles \0 alone (null char) and \0-\377 octal escapes (1-3 digits).
+     */
+    private function readLegacyOctalEscape(string $first): string
+    {
+        $value = (int) $first;
+
+        // Read up to 2 more octal digits.
+        if (
+            $this->pos < $this->length
+            && $this->source[$this->pos] >= '0'
+            && $this->source[$this->pos] <= '7'
+        ) {
+            $value = $value * 8 + (int) $this->source[$this->pos];
+            $this->advance();
+
+            // Third octal digit allowed only when first digit is 0-3 (max 377 = 255).
+            if (
+                $first <= '3'
+                && $this->pos < $this->length
+                && $this->source[$this->pos] >= '0'
+                && $this->source[$this->pos] <= '7'
+            ) {
+                $value = $value * 8 + (int) $this->source[$this->pos];
+                $this->advance();
+            }
+        }
+
+        $chr = mb_chr($value, 'UTF-8');
+
+        return $chr !== false ? $chr : chr($value);
     }
 
     private function readHexEscape(int $count): string
