@@ -33,10 +33,9 @@ class PromiseConstructor
         $proto = self::createPrototype();
         JsPromise::setPromisePrototype($proto);
 
-        $constructorRef = null;
         $constructor = JsFunction::fromCallable(
             'Promise',
-            function (JsValue $this_, array $args) use ($proto, &$constructorRef): JsValue {
+            function (JsValue $this_, array $args) use ($proto): JsValue {
                 // Promise must be called with new (§25.6.3.1 step 1)
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Promise constructor cannot be invoked without \'new\'');
@@ -75,7 +74,6 @@ class PromiseConstructor
             1,
         );
         $constructor->setConstructable();
-        $constructorRef = $constructor;
 
         // Promise.resolve(value) — per spec §25.6.4.5
         // 1. Let C be the this value
@@ -315,8 +313,7 @@ class PromiseConstructor
     {
         $resolve = null;
         $reject = null;
-        $alreadyCalled = false;
-        $executor = JsFunction::fromCallable('executor', function (JsValue $this_, array $args) use (&$resolve, &$reject, &$alreadyCalled): JsValue {
+        $executor = JsFunction::fromCallable('executor', function (JsValue $this_, array $args) use (&$resolve, &$reject): JsValue {
             $r = $args[0] ?? JsUndefined::instance();
             $j = $args[1] ?? JsUndefined::instance();
             // Per spec §25.6.1.5.1 GetCapabilitiesExecutor:

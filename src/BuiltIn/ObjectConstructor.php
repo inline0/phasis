@@ -200,8 +200,8 @@ class ObjectConstructor
                         }
                     }
                 }
-                // Check for Date-like
-                if ($this_ instanceof \PhpJs\Value\JsDate) {
+                // Check for Date-like (has [[IsDate]] internal slot)
+                if ($this_ instanceof JsObject && $this_->has('[[IsDate]]')) {
                     return new JsString('[object Date]');
                 }
                 return new JsString('[object Object]');

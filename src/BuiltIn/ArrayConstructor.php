@@ -117,15 +117,7 @@ class ArrayConstructor
     }
 
     /**
-     * Ensure $this_ is an object (per spec: ToObject).
-     */
-    private static function toObj(JsValue $this_): JsObject
-    {
-        if ($this_ instanceof JsObject) {
-            return $this_;
-        }
-        return TypeConversion::toObject($this_);
-    }
+
 
     /** @return list<JsValue> */
     private static function objToList(JsObject $obj): array
@@ -1036,7 +1028,7 @@ class ArrayConstructor
         $iterator = new JsObject();
         $nextFn = function () use ($array, &$index, $kind): JsValue {
             $result = new JsObject();
-            if ($index < $array->getLength()) {
+            if ($index < self::getLen($array)) {
                 $key = new JsNumber((float) $index);
                 $value = $array->get((string) $index);
                 $index++;
