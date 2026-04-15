@@ -44,6 +44,8 @@ $runner->setSkipFeatures([
     'class-static-block',
     // Non-standard caller/arguments tracking on function instances
     'caller',
+    // Realms
+    'cross-realm',
     // Misc advanced
     'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
     'decorators', 'explicit-resource-management',

@@ -305,7 +305,9 @@ class Engine
 
     public function setLimit(string $name, int $value): void
     {
-        // Limits are enforced at construction time; reset to apply
+        if ($name === 'maxLoopIterations') {
+            $this->interpreter->setMaxLoopIterations($value);
+        }
     }
 
     private function toPhp(JsValue $value): mixed

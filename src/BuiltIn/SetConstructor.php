@@ -190,14 +190,7 @@ class SetConstructor
         }, 1);
         $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
 
-        $keysFn = JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsSet) {
-                throw new TypeError('Method Set.prototype.keys called on incompatible receiver');
-            }
-            return self::createValueIterator($this_);
-        }, 0);
-        $proto->defineOwnProperty('keys', PropertyDescriptor::data($keysFn, true, false, true));
-
+        // Per spec, Set.prototype.keys === Set.prototype.values (same function object).
         $valuesFn = JsFunction::fromCallable('values', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.values called on incompatible receiver');
@@ -205,6 +198,7 @@ class SetConstructor
             return self::createValueIterator($this_);
         }, 0);
         $proto->defineOwnProperty('values', PropertyDescriptor::data($valuesFn, true, false, true));
+        $proto->defineOwnProperty('keys', PropertyDescriptor::data($valuesFn, true, false, true));
 
         $entriesFn = JsFunction::fromCallable('entries', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsSet) {

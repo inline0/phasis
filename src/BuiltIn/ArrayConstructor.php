@@ -207,12 +207,24 @@ class ArrayConstructor
         $proto->defineOwnProperty('indexOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'indexOf',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
+                if ($len === 0) {
+                    return new JsNumber(-1.0);
+                }
                 $search = $args[0] ?? JsUndefined::instance();
-                $from = isset($args[1]) ? (int) $args[1]->toNumber() : 0;
-                $len = self::getLen($this_);
-                for ($i = $from; $i < $len; $i++) {
-                    if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
+                $nNum = isset($args[1]) ? TypeConversion::toNumber($args[1]) : 0.0;
+                if (is_nan($nNum)) {
+                    $nNum = 0.0;
+                }
+                $n = (int) $nNum;
+                if ($n >= $len) {
+                    return new JsNumber(-1.0);
+                }
+                $k = $n >= 0 ? $n : max($len + $n, 0);
+                for ($i = $k; $i < $len; $i++) {
+                    $key = (string) $i;
+                    if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
                         return new JsNumber((float) $i);
                     }
                 }
@@ -224,15 +236,24 @@ class ArrayConstructor
         $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'lastIndexOf',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                $search = $args[0] ?? JsUndefined::instance();
-                $len = self::getLen($this_);
-                $from = isset($args[1]) ? (int) $args[1]->toNumber() : $len - 1;
-                if ($from < 0) {
-                    $from = $len + $from;
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
+                if ($len === 0) {
+                    return new JsNumber(-1.0);
                 }
-                for ($i = min($from, $len - 1); $i >= 0; $i--) {
-                    if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
+                $search = $args[0] ?? JsUndefined::instance();
+                $nNum = isset($args[1]) ? TypeConversion::toNumber($args[1]) : (float) ($len - 1);
+                if (is_nan($nNum)) {
+                    $nNum = 0.0;
+                }
+                if ($nNum >= 0) {
+                    $k = (int) min($nNum, (float) ($len - 1));
+                } else {
+                    $k = $len + (int) $nNum;
+                }
+                for ($i = $k; $i >= 0; $i--) {
+                    $key = (string) $i;
+                    if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
                         return new JsNumber((float) $i);
                     }
                 }
@@ -244,11 +265,20 @@ class ArrayConstructor
         $proto->defineOwnProperty('includes', PropertyDescriptor::data(JsFunction::fromCallable(
             'includes',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
+                if ($len === 0) {
+                    return new JsBoolean(false);
+                }
                 $search = $args[0] ?? JsUndefined::instance();
-                $len = self::getLen($this_);
-                for ($i = 0; $i < $len; $i++) {
-                    if (AbstractOperations::strictEquals($this_->get((string) $i), $search)) {
+                $nNum = isset($args[1]) ? TypeConversion::toNumber($args[1]) : 0.0;
+                if (is_nan($nNum)) {
+                    $nNum = 0.0;
+                }
+                $n = (int) $nNum;
+                $k = $n >= 0 ? $n : max($len + $n, 0);
+                for ($i = $k; $i < $len; $i++) {
+                    if (AbstractOperations::sameValueZero($o->get((string) $i), $search)) {
                         return new JsBoolean(true);
                     }
                 }
@@ -300,18 +330,39 @@ class ArrayConstructor
         $proto->defineOwnProperty('concat', PropertyDescriptor::data(JsFunction::fromCallable(
             'concat',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                $result = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
-                foreach ($args as $arg) {
-                    if ($arg instanceof JsArray) {
-                        for ($i = 0; $i < $arg->getLength(); $i++) {
-                            $result[] = $arg->get((string) $i);
+                $o = self::toObject($this_);
+                $result = new JsArray();
+                $n = 0;
+                // Elements to process: this first, then each argument.
+                $items = array_merge([$o], $args);
+                $isConcatSym = SymbolConstructor::isConcatSpreadable();
+                foreach ($items as $e) {
+                    $spreadable = false;
+                    if ($e instanceof JsObject) {
+                        $spreadVal = $e->getBySymbol($isConcatSym);
+                        if (!$spreadVal instanceof JsUndefined) {
+                            $spreadable = TypeConversion::toBoolean($spreadVal);
+                        } else {
+                            $spreadable = ($e instanceof JsArray);
+                        }
+                    }
+                    if ($spreadable) {
+                        /** @var JsObject $e */
+                        $len = self::getLen($e);
+                        for ($k = 0; $k < $len; $k++) {
+                            $key = (string) $k;
+                            if ($e->has($key)) {
+                                $result->set((string) $n, $e->get($key));
+                            }
+                            $n++;
                         }
                     } else {
-                        $result[] = $arg;
+                        $result->set((string) $n, $e);
+                        $n++;
                     }
                 }
-                return JsArray::fromArray($result);
+                $result->setLength($n);
+                return $result;
             },
             1
         ), true, false, true));
@@ -334,19 +385,24 @@ class ArrayConstructor
         $proto->defineOwnProperty('map', PropertyDescriptor::data(JsFunction::fromCallable(
             'map',
             function (JsValue $this_, array $args): JsValue {
-                $obj = self::toObj($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('map callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $result = [];
-                $len = self::getLen($obj);
+                $result = new JsArray();
+                $result->setLength($len);
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $obj->get((string) $i);
-                    $result[] = $callback->call($thisArg, [$val, new JsNumber((float) $i), $obj]);
+                    $key = (string) $i;
+                    if ($o->has($key)) {
+                        $val = $o->get($key);
+                        $mapped = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                        $result->defineOwnProperty($key, PropertyDescriptor::data($mapped, true, true, true));
+                    }
                 }
-                return JsArray::fromArray($result);
+                return $result;
             },
             1
         ), true, false, true));
@@ -381,12 +437,12 @@ class ArrayConstructor
         $proto->defineOwnProperty('reduce', PropertyDescriptor::data(JsFunction::fromCallable(
             'reduce',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduce callback is not a function');
                 }
-                $len = self::getLen($this_);
+                $len = self::getLen($o);
                 $initial = $args[1] ?? null;
                 $acc = $initial;
                 $start = 0;
@@ -394,14 +450,27 @@ class ArrayConstructor
                     if ($len === 0) {
                         throw new TypeError('Reduce of empty array with no initial value');
                     }
-                    $acc = $this_->get('0');
-                    $start = 1;
+                    // Find first present element for initial value.
+                    $found = false;
+                    for ($k = 0; $k < $len; $k++) {
+                        if ($o->has((string) $k)) {
+                            $acc = $o->get((string) $k);
+                            $start = $k + 1;
+                            $found = true;
+                            break;
+                        }
+                    }
+                    if (!$found) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
                 }
                 for ($i = $start; $i < $len; $i++) {
-                    $acc = $callback->call(
-                        JsUndefined::instance(),
-                        [$acc, $this_->get((string) $i), new JsNumber((float) $i), $this_],
-                    );
+                    if ($o->has((string) $i)) {
+                        $acc = $callback->call(
+                            JsUndefined::instance(),
+                            [$acc, $o->get((string) $i), new JsNumber((float) $i), $o],
+                        );
+                    }
                 }
                 return $acc;
             },
@@ -411,12 +480,12 @@ class ArrayConstructor
         $proto->defineOwnProperty('reduceRight', PropertyDescriptor::data(JsFunction::fromCallable(
             'reduceRight',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduceRight callback is not a function');
                 }
-                $len = self::getLen($this_);
+                $len = self::getLen($o);
                 $initial = $args[1] ?? null;
                 $acc = $initial;
                 $start = $len - 1;
@@ -424,13 +493,26 @@ class ArrayConstructor
                     if ($len === 0) {
                         throw new TypeError('Reduce of empty array with no initial value');
                     }
-                    $acc = $this_->get((string) $start);
-                    $start--;
+                    // Find last present element for initial value.
+                    $found = false;
+                    for ($k = $start; $k >= 0; $k--) {
+                        if ($o->has((string) $k)) {
+                            $acc = $o->get((string) $k);
+                            $start = $k - 1;
+                            $found = true;
+                            break;
+                        }
+                    }
+                    if (!$found) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
                 }
                 for ($i = $start; $i >= 0; $i--) {
-                    $val = $this_->get((string) $i);
-                    $idx = new JsNumber((float) $i);
-                    $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $this_]);
+                    if ($o->has((string) $i)) {
+                        $val = $o->get((string) $i);
+                        $idx = new JsNumber((float) $i);
+                        $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $o]);
+                    }
                 }
                 return $acc;
             },
@@ -505,17 +587,20 @@ class ArrayConstructor
         $proto->defineOwnProperty('some', PropertyDescriptor::data(JsFunction::fromCallable(
             'some',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('some callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($thisArg, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
-                    if (TypeConversion::toBoolean($result)) {
-                        return new JsBoolean(true);
+                    $key = (string) $i;
+                    if ($o->has($key)) {
+                        $result = $callback->call($thisArg, [$o->get($key), new JsNumber((float) $i), $o]);
+                        if (TypeConversion::toBoolean($result)) {
+                            return new JsBoolean(true);
+                        }
                     }
                 }
                 return new JsBoolean(false);
@@ -526,17 +611,20 @@ class ArrayConstructor
         $proto->defineOwnProperty('every', PropertyDescriptor::data(JsFunction::fromCallable(
             'every',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
+                $len = self::getLen($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('every callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($thisArg, [$this_->get((string) $i), new JsNumber((float) $i), $this_]);
-                    if (!TypeConversion::toBoolean($result)) {
-                        return new JsBoolean(false);
+                    $key = (string) $i;
+                    if ($o->has($key)) {
+                        $result = $callback->call($thisArg, [$o->get($key), new JsNumber((float) $i), $o]);
+                        if (!TypeConversion::toBoolean($result)) {
+                            return new JsBoolean(false);
+                        }
                     }
                 }
                 return new JsBoolean(true);
@@ -549,7 +637,9 @@ class ArrayConstructor
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
                 $depthVal = $args[0] ?? JsUndefined::instance();
-                $depth = $depthVal instanceof JsUndefined ? 1 : (int) TypeConversion::toNumber($depthVal);
+                $depthNum = $depthVal instanceof JsUndefined ? 1.0 : TypeConversion::toNumber($depthVal);
+                // Infinity should flatten fully; PHP (int) INF is 0, so cap at a large value.
+                $depth = is_infinite($depthNum) ? PHP_INT_MAX : (int) $depthNum;
                 $result = self::flattenArray($this_, $depth);
                 return JsArray::fromArray($result);
             },

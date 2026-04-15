@@ -321,10 +321,12 @@ class JsObject implements JsValue
                     if ($desc->writable === true) {
                         return false;
                     }
-                    if ($desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue(
-                        $desc->value,
-                        $current->value ?? JsUndefined::instance(),
-                    )) {
+                    if (
+                        $desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue(
+                            $desc->value,
+                            $current->value ?? JsUndefined::instance(),
+                        )
+                    ) {
                         return false;
                     }
                 }

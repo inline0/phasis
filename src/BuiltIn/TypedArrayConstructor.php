@@ -465,7 +465,12 @@ class TypedArrayConstructor
             'constructor',
             PropertyDescriptor::data($constructor, true, false, true),
         );
-        $constructor->set('prototype', $proto);
+        // Use defineOwnProperty instead of set because %TypedArray%.prototype
+        // is non-writable on the intrinsic, which blocks ordinary [[Set]].
+        $constructor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($proto, false, false, false),
+        );
 
         $env->defineVar($typeName, $constructor);
     }
@@ -474,29 +479,67 @@ class TypedArrayConstructor
      * Install static methods on the abstract %TypedArray% intrinsic.
      * These are inherited by each subtype constructor via [[Prototype]] chain.
      */
-    private static function installAbstractTypedArrayStaticMethods(JsFunction $intrinsic): void
-    {
+    private static function installAbstractTypedArrayStaticMethods(
+        JsFunction $intrinsic,
+    ): void {
         // %TypedArray%.from(source, mapFn, thisArg).
-        $fromFn = JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
-            // When called as SubType.from(...), $this_ is the subtype constructor.
-            // We need to determine which typed array type to create.
-            if (!$this_ instanceof JsFunction) {
-                throw new TypeError('TypedArray.from requires a constructor');
-            }
-            // Use $this_ as constructor to create the result.
-            return $this_->call($this_, [self::collectFromSource($args)]);
-        }, 1);
-        $intrinsic->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
+        $fromFn = JsFunction::fromCallable(
+            'from',
+            function (JsValue $this_, array $args): JsValue {
+                // Step 1-2: Validate C is a constructor.
+                if (
+                    !$this_ instanceof JsFunction
+                    || !$this_->isConstructable()
+                ) {
+                    throw new TypeError(
+                        'TypedArray.from requires a constructor'
+                    );
+                }
+
+                // Step 3: Validate mapfn before accessing source.
+                $mapFn = $args[1] ?? JsUndefined::instance();
+                if (
+                    !$mapFn instanceof JsUndefined
+                    && !$mapFn instanceof JsFunction
+                ) {
+                    throw new TypeError(
+                        'TypedArray.from: mapfn is not a function'
+                    );
+                }
+
+                return $this_->call(
+                    $this_,
+                    [self::collectFromSource($args)],
+                );
+            },
+            1,
+        );
+        $intrinsic->defineOwnProperty(
+            'from',
+            PropertyDescriptor::data($fromFn, true, false, true),
+        );
 
         // %TypedArray%.of(...items).
-        $ofFn = JsFunction::fromCallable('of', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                throw new TypeError('TypedArray.of requires a constructor');
-            }
-            $arr = JsArray::fromArray($args);
-            return $this_->call($this_, [$arr]);
-        }, 0);
-        $intrinsic->defineOwnProperty('of', PropertyDescriptor::data($ofFn, true, false, true));
+        $ofFn = JsFunction::fromCallable(
+            'of',
+            function (JsValue $this_, array $args): JsValue {
+                if (
+                    !$this_ instanceof JsFunction
+                    || !$this_->isConstructable()
+                ) {
+                    throw new TypeError(
+                        'TypedArray.of requires a constructor'
+                    );
+                }
+                $arr = JsArray::fromArray($args);
+                return $this_->call($this_, [$arr]);
+            },
+            0,
+        );
+        $intrinsic->defineOwnProperty(
+            'of',
+            PropertyDescriptor::data($ofFn, true, false, true),
+        );
     }
 
     /**
@@ -685,47 +728,71 @@ class TypedArrayConstructor
         JsObject $proto,
     ): void {
         // TypedArray.from(source, mapFn, thisArg).
-        $fromFn = JsFunction::fromCallable('from', function (JsValue $this_, array $args) use ($typeName, $proto): JsValue {
-            $source = $args[0] ?? JsUndefined::instance();
-            $mapFn = $args[1] ?? JsUndefined::instance();
-            $thisArg = $args[2] ?? JsUndefined::instance();
+        $fromFn = JsFunction::fromCallable(
+            'from',
+            function (JsValue $this_, array $args) use ($typeName, $proto): JsValue {
+            // Validate this is a constructor.
+                if (
+                    !$this_ instanceof JsFunction
+                    || !$this_->isConstructable()
+                ) {
+                    throw new TypeError(
+                        'TypedArray.from requires a constructor'
+                    );
+                }
 
-            $hasMapFn = $mapFn instanceof JsFunction;
+                $source = $args[0] ?? JsUndefined::instance();
+                $mapFn = $args[1] ?? JsUndefined::instance();
+                $thisArg = $args[2] ?? JsUndefined::instance();
+
+            // Validate mapfn before accessing source.
+                if (
+                    !$mapFn instanceof JsUndefined
+                    && !$mapFn instanceof JsFunction
+                ) {
+                    throw new TypeError(
+                        'TypedArray.from: mapfn is not a function'
+                    );
+                }
+
+                $hasMapFn = $mapFn instanceof JsFunction;
 
             // Collect source elements.
-            $elements = [];
-            if ($source instanceof JsTypedArray) {
-                for ($i = 0; $i < $source->getLength(); $i++) {
-                    $elements[] = $source->getIndex($i);
-                }
-            } elseif ($source instanceof JsArray) {
-                for ($i = 0; $i < $source->getLength(); $i++) {
-                    $elements[] = $source->get((string) $i);
-                }
-            } elseif ($source instanceof JsObject) {
-                $iterSym = SymbolConstructor::iterator();
-                $iterMethod = $source->getBySymbol($iterSym);
-                if ($iterMethod instanceof JsFunction) {
-                    $elements = self::consumeIterator($iterMethod, $source);
-                } else {
-                    $len = (int) TypeConversion::toNumber($source->get('length'));
-                    for ($i = 0; $i < $len; $i++) {
+                $elements = [];
+                if ($source instanceof JsTypedArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
+                        $elements[] = $source->getIndex($i);
+                    }
+                } elseif ($source instanceof JsArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
                         $elements[] = $source->get((string) $i);
                     }
+                } elseif ($source instanceof JsObject) {
+                    $iterSym = SymbolConstructor::iterator();
+                    $iterMethod = $source->getBySymbol($iterSym);
+                    if ($iterMethod instanceof JsFunction) {
+                        $elements = self::consumeIterator($iterMethod, $source);
+                    } else {
+                        $len = (int) TypeConversion::toNumber($source->get('length'));
+                        for ($i = 0; $i < $len; $i++) {
+                            $elements[] = $source->get((string) $i);
+                        }
+                    }
                 }
-            }
 
             // Apply mapFn if provided.
-            if ($hasMapFn) {
-                $mapped = [];
-                foreach ($elements as $i => $el) {
-                    $mapped[] = $mapFn->call($thisArg, [$el, new JsNumber((float) $i)]);
+                if ($hasMapFn) {
+                    $mapped = [];
+                    foreach ($elements as $i => $el) {
+                        $mapped[] = $mapFn->call($thisArg, [$el, new JsNumber((float) $i)]);
+                    }
+                    $elements = $mapped;
                 }
-                $elements = $mapped;
-            }
 
-            return JsTypedArray::fromArray($typeName, $elements, $proto);
-        }, 1);
+                return JsTypedArray::fromArray($typeName, $elements, $proto);
+            },
+            1
+        );
         $constructor->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
 
         // TypedArray.of(...items).
@@ -928,7 +995,7 @@ class TypedArrayConstructor
         }, 1);
         $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
 
-        // map(callback, thisArg).
+        // map(callback, thisArg): uses SpeciesConstructor per spec.
         $mapFn = JsFunction::fromCallable('map', function (JsValue $this_, array $args) use ($typeName): JsValue {
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.map called on incompatible receiver");
@@ -938,17 +1005,20 @@ class TypedArrayConstructor
                 throw new TypeError('callback is not a function');
             }
             $thisArg = $args[1] ?? JsUndefined::instance();
-            $tn = $this_->getTypeName();
-            $result = JsTypedArray::fromLength($tn, $this_->getLength(), $this_->getPrototype());
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $mapped = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+            $len = $this_->getLength();
+            $result = self::typedArraySpeciesCreate($this_, $len);
+            for ($i = 0; $i < $len; $i++) {
+                $mapped = $callback->call(
+                    $thisArg,
+                    [$this_->getIndex($i), new JsNumber((float) $i), $this_],
+                );
                 $result->setIndex($i, $mapped);
             }
             return $result;
         }, 1);
         $proto->defineOwnProperty('map', PropertyDescriptor::data($mapFn, true, false, true));
 
-        // filter(callback, thisArg).
+        // filter(callback, thisArg): uses SpeciesConstructor per spec.
         $filterFn = JsFunction::fromCallable('filter', function (JsValue $this_, array $args) use ($typeName): JsValue {
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.filter called on incompatible receiver");
@@ -961,12 +1031,19 @@ class TypedArrayConstructor
             $kept = [];
             for ($i = 0; $i < $this_->getLength(); $i++) {
                 $el = $this_->getIndex($i);
-                $result = $callback->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                $result = $callback->call(
+                    $thisArg,
+                    [$el, new JsNumber((float) $i), $this_],
+                );
                 if (TypeConversion::toBoolean($result)) {
                     $kept[] = $el;
                 }
             }
-            return JsTypedArray::fromArray($this_->getTypeName(), $kept, $this_->getPrototype());
+            $filtered = self::typedArraySpeciesCreate($this_, count($kept));
+            foreach ($kept as $i => $el) {
+                $filtered->setIndex($i, $el);
+            }
+            return $filtered;
         }, 1);
         $proto->defineOwnProperty('filter', PropertyDescriptor::data($filterFn, true, false, true));
 
@@ -1108,6 +1185,10 @@ class TypedArrayConstructor
             if (!$this_ instanceof JsTypedArray) {
                 throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
             }
+            // Per spec: if length is 0, return false before ToInteger(fromIndex).
+            if ($this_->getLength() === 0) {
+                return new JsBoolean(false);
+            }
             $search = $args[0] ?? JsUndefined::instance();
             $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
             return new JsBoolean($this_->includesTyped($search, $fromIndex));
@@ -1178,14 +1259,15 @@ class TypedArrayConstructor
                 if (is_nan($bn)) {
                     return -1;
                 }
-                // -0 sorts before +0.
+                // -0 sorts before +0. Use IEEE 754 sign-bit
+                // detection to avoid division by zero on PHP 8+.
                 if ($an === 0.0 && $bn === 0.0) {
-                    $aNeg = (1.0 / $an) === -INF;
-                    $bNeg = (1.0 / $bn) === -INF;
-                    if ($aNeg && !$bNeg) {
+                    $aNegZero = JsNumber::isNegativeZero($an);
+                    $bNegZero = JsNumber::isNegativeZero($bn);
+                    if ($aNegZero && !$bNegZero) {
                         return -1;
                     }
-                    if (!$aNeg && $bNeg) {
+                    if (!$aNegZero && $bNegZero) {
                         return 1;
                     }
                     return 0;

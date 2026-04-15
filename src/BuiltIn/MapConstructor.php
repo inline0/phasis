@@ -382,18 +382,22 @@ class MapConstructor
     private static function createKeyIterator(JsMap $map): JsObject
     {
         $index = 0;
+        $finished = false;
         $iterSym = SymbolConstructor::iterator();
         $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index): JsValue {
+        $nextFn = function () use ($map, &$index, &$finished): JsValue {
             $result = new JsObject();
-            while ($index < $map->slotCount()) {
-                $entry = $map->getSlot($index);
-                $index++;
-                if ($entry !== null) {
-                    $result->set('value', $entry[0]);
-                    $result->set('done', new JsBoolean(false));
-                    return $result;
+            if (!$finished) {
+                while ($index < $map->slotCount()) {
+                    $entry = $map->getSlot($index);
+                    $index++;
+                    if ($entry !== null) {
+                        $result->set('value', $entry[0]);
+                        $result->set('done', new JsBoolean(false));
+                        return $result;
+                    }
                 }
+                $finished = true;
             }
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));
@@ -416,18 +420,22 @@ class MapConstructor
     private static function createValueIterator(JsMap $map): JsObject
     {
         $index = 0;
+        $finished = false;
         $iterSym = SymbolConstructor::iterator();
         $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index): JsValue {
+        $nextFn = function () use ($map, &$index, &$finished): JsValue {
             $result = new JsObject();
-            while ($index < $map->slotCount()) {
-                $entry = $map->getSlot($index);
-                $index++;
-                if ($entry !== null) {
-                    $result->set('value', $entry[1]);
-                    $result->set('done', new JsBoolean(false));
-                    return $result;
+            if (!$finished) {
+                while ($index < $map->slotCount()) {
+                    $entry = $map->getSlot($index);
+                    $index++;
+                    if ($entry !== null) {
+                        $result->set('value', $entry[1]);
+                        $result->set('done', new JsBoolean(false));
+                        return $result;
+                    }
                 }
+                $finished = true;
             }
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));
@@ -450,18 +458,22 @@ class MapConstructor
     private static function createEntryIterator(JsMap $map): JsObject
     {
         $index = 0;
+        $finished = false;
         $iterSym = SymbolConstructor::iterator();
         $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index): JsValue {
+        $nextFn = function () use ($map, &$index, &$finished): JsValue {
             $result = new JsObject();
-            while ($index < $map->slotCount()) {
-                $entry = $map->getSlot($index);
-                $index++;
-                if ($entry !== null) {
-                    $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
-                    $result->set('done', new JsBoolean(false));
-                    return $result;
+            if (!$finished) {
+                while ($index < $map->slotCount()) {
+                    $entry = $map->getSlot($index);
+                    $index++;
+                    if ($entry !== null) {
+                        $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
+                        $result->set('done', new JsBoolean(false));
+                        return $result;
+                    }
                 }
+                $finished = true;
             }
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));

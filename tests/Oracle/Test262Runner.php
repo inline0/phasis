@@ -94,6 +94,9 @@ class Test262Runner
     ): TestResult {
         // Run in-process for speed (~100x faster than subprocess per test)
         $engine = new Engine();
+        // test262 tests may iterate over large Unicode ranges. Raise the loop limit
+        // well above the default 100K so these tests can complete.
+        $engine->setLimit('maxLoopIterations', 2_000_000);
 
         try {
             if (!$isRaw) {
