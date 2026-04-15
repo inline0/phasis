@@ -86,6 +86,17 @@ class NumberConstructor
         $dm('isFinite', self::isFiniteFn(), 1);
         $dm('isInteger', self::isInteger(), 1);
         $dm('isNaN', self::isNaNFn(), 1);
+        $dm('isSafeInteger', function (JsValue $this_, array $args): JsValue {
+            $val = $args[0] ?? JsUndefined::instance();
+            if (!$val instanceof JsNumber) {
+                return new JsBoolean(false);
+            }
+            $n = $val->value;
+            if (!is_finite($n) || floor($n) !== $n) {
+                return new JsBoolean(false);
+            }
+            return new JsBoolean(abs($n) <= 9007199254740991);
+        }, 1);
         $dm('parseInt', self::parseIntFn($env), 2);
         $dm('parseFloat', self::parseFloatFn($env), 1);
 
