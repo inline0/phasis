@@ -1066,7 +1066,7 @@ class Parser
             TokenType::String => $this->parseStringLiteral(),
             TokenType::True, TokenType::False => $this->parseBooleanLiteral(),
             TokenType::Null => $this->parseNullLiteral(),
-            TokenType::Identifier, TokenType::Let => $this->parseIdentifierExpression(),
+            TokenType::Identifier, TokenType::Let, TokenType::Await => $this->parseIdentifierExpression(),
             TokenType::This => $this->parseThisExpression(),
             TokenType::LeftParen => $this->parseParenthesizedOrArrow(),
             TokenType::LeftBracket => $this->parseArrayExpression(),
@@ -1146,6 +1146,7 @@ class Parser
             && $token->type !== TokenType::Static_
             && $token->type !== TokenType::Of
             && $token->type !== TokenType::Yield
+            && $token->type !== TokenType::Await
         ) {
             throw new ParseError('Expected identifier', $token);
         }
