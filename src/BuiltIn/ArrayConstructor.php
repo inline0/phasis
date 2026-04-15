@@ -48,6 +48,8 @@ class ArrayConstructor
         $proto = new JsArray();
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
         self::installPrototypeMethods($proto);
+        // Symbol.iterator on Array.prototype, not on each instance.
+        JsArray::installSymbolIteratorOnPrototype($proto);
 
         $constructor->set('prototype', $proto);
         JsArray::setGlobalPrototype($proto);
@@ -841,11 +843,18 @@ class ArrayConstructor
      *
      * @return list<JsValue>
      */
-    private static function flattenArray(JsArray $array, int $depth): array
+    private static function flattenArray(JsObject $array, int $depth): array
     {
+        $len = $array instanceof JsArray
+            ? $array->getLength()
+            : (int) TypeConversion::toNumber($array->get('length'));
         $result = [];
-        for ($i = 0; $i < $array->getLength(); $i++) {
-            $element = $array->get((string) $i);
+        for ($i = 0; $i < $len; $i++) {
+            $key = (string) $i;
+            if (!$array->hasOwnProperty($key) && !$array->has($key)) {
+                continue;
+            }
+            $element = $array->get($key);
             if ($element instanceof JsArray && $depth > 0) {
                 $flattened = self::flattenArray($element, $depth - 1);
                 foreach ($flattened as $item) {

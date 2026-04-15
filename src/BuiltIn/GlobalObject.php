@@ -35,6 +35,8 @@ class GlobalObject
         $booleanFn = JsFunction::fromCallable('Boolean', self::booleanConstructor(), 1);
         $booleanFn->setConstructable();
         $boolProto = new \PhpJs\Value\JsObject();
+        // Boolean.prototype has [[PrimitiveValue]] = false per spec
+        $boolProto->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data(new JsBoolean(false), false, false, false));
         $boolProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($booleanFn, true, false, true));
         $boolProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
@@ -70,7 +72,8 @@ class GlobalObject
             false,
             true,
         ));
-        $booleanFn->set('prototype', $boolProto);
+        // Boolean.prototype is non-writable, non-configurable per spec
+        $booleanFn->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($boolProto, false, false, false));
         $env->defineVar('Boolean', $booleanFn);
 
         // eval
@@ -182,11 +185,17 @@ class GlobalObject
             return new JsString($result);
         }, 1));
 
-        // Function constructor
-        $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args): JsValue {
+        // Function constructor: per spec, the created function's scope chain
+        // consists of the global environment only (not the calling scope).
+        // We capture $env here so the Function constructor always uses the
+        // engine's global environment for the created function.
+        $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args) use ($env): JsValue {
             $body = '';
             $params = '';
             if (count($args) > 0) {
+                // Per spec, ToString is called on each argument in order.
+                // If ToString throws, that exception must propagate before
+                // the next argument is converted.
                 $body = TypeConversion::toString(array_pop($args));
                 $params = implode(',', array_map(fn(JsValue $a) => TypeConversion::toString($a), $args));
             }
@@ -196,7 +205,9 @@ class GlobalObject
             $source = "(function anonymous({$params}\n) {\n{$body}\n})";
             $parser = new \PhpJs\Parser\Parser($source);
             $program = $parser->parse();
-            $env = new \PhpJs\Runtime\Environment();
+            // Use the global environment so the created function can see
+            // global variables (per spec: "scope chain consisting of the
+            // global object").
             $interp = new Interpreter($env);
             return $interp->execute($program);
         }, 1);
@@ -262,8 +273,31 @@ class GlobalObject
             );
         }, 1));
 
+        // Function.prototype.toString: per spec, returns source text for
+        // user-defined functions and NativeFunction syntax for built-ins.
+        $fnProto->set('toString', JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('Function.prototype.toString requires that \'this\' be a Function');
+            }
+            return new JsString($this_->toJsString());
+        }, 0));
+
+        // Function.prototype.constructor = Function (per spec 19.2.3.2).
+        $fnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $fnConstructor,
+            true,
+            false,
+            true,
+        ));
+
         $fnConstructor->setConstructable();
-        $fnConstructor->set('prototype', $fnProto);
+        // Per spec 19.2.2, Function.prototype is non-writable, non-enumerable, non-configurable.
+        $fnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $fnProto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
         $env->defineVar('Function', $fnConstructor);
     }
 
@@ -402,10 +436,8 @@ class GlobalObject
         return function (JsValue $this_, array $args): JsValue {
             $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $this_->set('[[PrimitiveValue]]', new JsBoolean($bool));
-                $val = new JsBoolean($bool);
-                $this_->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $val));
-                $this_->set('toString', JsFunction::fromCallable('toString', fn() => new JsString($bool ? 'true' : 'false')));
+                // Only set [[PrimitiveValue]], don't shadow prototype methods
+                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data(new JsBoolean($bool), false, false, false));
                 return $this_;
             }
             return new JsBoolean($bool);

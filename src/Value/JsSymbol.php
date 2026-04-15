@@ -7,12 +7,21 @@ namespace PhpJs\Value;
 class JsSymbol implements JsValue
 {
     private static int $nextId = 0;
+    /** @var array<int, JsSymbol> Map from ID to symbol instance for reverse lookup. */
+    private static array $instances = [];
     private readonly int $id;
 
     public function __construct(
         public readonly ?string $description = null,
     ) {
         $this->id = self::$nextId++;
+        self::$instances[$this->id] = $this;
+    }
+
+    /** Look up a symbol by its internal ID. Returns null if the ID is unknown. */
+    public static function fromId(int $id): ?self
+    {
+        return self::$instances[$id] ?? null;
     }
 
     public function getId(): int

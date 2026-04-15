@@ -47,6 +47,17 @@ class JsObject implements JsValue
     }
 
     /**
+     * ES spec: [[Get]](P, Receiver).
+     *
+     * Public entry point for Reflect.get and similar APIs that need to
+     * specify a custom receiver for getter invocation.
+     */
+    public function internalGet(string $name, JsObject $receiver): JsValue
+    {
+        return $this->getWithReceiver($name, $receiver);
+    }
+
+    /**
      * Internal property lookup that preserves the original receiver.
      *
      * When a getter accessor is found on a prototype, it must be called

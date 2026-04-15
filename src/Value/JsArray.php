@@ -40,7 +40,7 @@ class JsArray extends JsObject
     {
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
         $factory = function (JsValue $this_) use ($iterSym): JsValue {
-            $array = $this_;
+            $array = $this_ instanceof JsObject ? $this_ : new JsObject();
             $index = 0;
             $iterator = new JsObject();
             $nextFn = function () use ($array, &$index): JsValue {
@@ -59,9 +59,13 @@ class JsArray extends JsObject
                 return $result;
             };
             $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $iterator->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }));
+            $selfIterFn = JsFunction::fromCallable(
+                '[Symbol.iterator]',
+                function (JsValue $self_): JsValue {
+                    return $self_;
+                },
+            );
+            $iterator->setBySymbol($iterSym, $selfIterFn);
             return $iterator;
         };
         $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
@@ -76,6 +80,22 @@ class JsArray extends JsObject
     public function setLength(int $length): void
     {
         $this->length = $length;
+    }
+
+    /**
+     * Validate and set length from a JS value per ES spec 10.4.2.4.
+     *
+     * Throws RangeError if the value is not a valid array length
+     * (negative, > 2^32-1, or non-integer).
+     */
+    private function setLengthFromValue(JsValue $value): void
+    {
+        $num = $value->toNumber();
+        $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
+        if ((float) $uint32 !== $num) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+        }
+        $this->length = $uint32;
     }
 
     public function push(JsValue $value): void
@@ -153,7 +173,7 @@ class JsArray extends JsObject
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
         if ($name === 'length') {
-            $this->length = (int) $value->toNumber();
+            $this->setLengthFromValue($value);
             return;
         }
 
@@ -172,7 +192,7 @@ class JsArray extends JsObject
         // When the receiver is this array itself, handle length and index tracking.
         if ($receiver === $this) {
             if ($name === 'length') {
-                $this->length = (int) $value->toNumber();
+                $this->setLengthFromValue($value);
                 return true;
             }
             $result = parent::internalSet($name, $value, $receiver);

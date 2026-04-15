@@ -413,11 +413,45 @@ final class TypeConversion
 
         // Create a wrapper object with the primitive stored internally.
         $wrapper = new JsObject();
-        $wrapper->set('[[PrimitiveValue]]', $value);
+        $wrapper->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($value, false, false, false));
+
+        // Install valueOf that returns the wrapped primitive, matching the spec behavior
+        // for Boolean, Number, and String wrapper objects.
+        if ($value instanceof JsBoolean || $value instanceof JsNumber || $value instanceof JsString) {
+            $wrapper->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable('valueOf', fn() => $value, 0),
+                true,
+                false,
+                true,
+            ));
+        }
+
+        if ($value instanceof JsString) {
+            // String wrapper objects expose each character as an indexed enumerable property.
+            $str = $value->value;
+            $len = mb_strlen($str, 'UTF-8');
+            for ($i = 0; $i < $len; $i++) {
+                $ch = mb_substr($str, $i, 1, 'UTF-8');
+                $wrapper->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    new JsString($ch),
+                    false,
+                    true,
+                    false,
+                ));
+            }
+            $wrapper->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                new JsNumber((float) $len),
+                false,
+                false,
+                false,
+            ));
+        }
 
         // BigInt wrappers need valueOf to return the primitive for ToPrimitive to work.
         if ($value instanceof JsBigInt) {
-            $wrapper->set('valueOf', JsFunction::fromCallable('valueOf', fn() => $value, 0));
+            $wrapper->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable('valueOf', fn() => $value, 0),
+            ));
         }
 
         return $wrapper;

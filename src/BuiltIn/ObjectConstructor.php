@@ -75,6 +75,18 @@ class ObjectConstructor
         $hasOwnFn->setNonConstructable();
         $constructor->defineOwnProperty('hasOwn', PropertyDescriptor::data($hasOwnFn, true, false, true));
 
+        $constructor->defineOwnProperty('getOwnPropertySymbols', $builtinMethod('getOwnPropertySymbols', function (JsValue $this_, array $args): JsValue {
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
+            $symbols = [];
+            foreach ($obj->getOwnSymbolProperties() as $id => $desc) {
+                $sym = JsSymbol::fromId($id);
+                if ($sym !== null) {
+                    $symbols[] = $sym;
+                }
+            }
+            return JsArray::fromArray($symbols);
+        }, 1));
+
         $env->defineVar('Object', $constructor);
 
         // Store the prototype for auto-boxing and object literal creation.
@@ -194,16 +206,32 @@ class ObjectConstructor
             1,
         ), true, false, true));
 
+        // toLocaleString delegates to toString per ES spec 20.1.3.5.
+        $proto->defineOwnProperty('toLocaleString', PropertyDescriptor::data(JsFunction::fromCallable(
+            'toLocaleString',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    // Auto-box primitive to object for method dispatch.
+                    $obj = TypeConversion::toObject($this_);
+                } else {
+                    $obj = $this_;
+                }
+                $toStringFn = $obj->get('toString');
+                if (!$toStringFn instanceof JsFunction) {
+                    throw new TypeError('toLocaleString: toString is not a function');
+                }
+                return $toStringFn->call($this_, []);
+            },
+            0,
+        ), true, false, true));
+
         return $proto;
     }
 
     private static function keys(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                return new JsArray();
-            }
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $keys = $obj->getOwnEnumerableKeys();
             $jsKeys = array_map(fn(string $k) => new JsString($k), $keys);
             return JsArray::fromArray($jsKeys);
@@ -213,10 +241,7 @@ class ObjectConstructor
     private static function values(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                return new JsArray();
-            }
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $keys = $obj->getOwnEnumerableKeys();
             $values = array_map(fn(string $k) => $obj->get($k), $keys);
             return JsArray::fromArray($values);
@@ -226,10 +251,7 @@ class ObjectConstructor
     private static function entries(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                return new JsArray();
-            }
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $keys = $obj->getOwnEnumerableKeys();
             $entries = [];
             foreach ($keys as $key) {

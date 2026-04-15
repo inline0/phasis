@@ -40,6 +40,9 @@ class JsFunction extends JsObject
     private ?\Closure $nativeCallable = null;
     private bool $constructable = true;
 
+    /** Original source text for Function.prototype.toString(). Null for native functions. */
+    private ?string $sourceText = null;
+
     /**
      * When true, this function uses the prototype set via JsObject::setPrototype()
      * instead of the global Function.prototype. Used for intrinsic constructors
@@ -375,6 +378,19 @@ class JsFunction extends JsObject
         });
     }
 
+    /**
+     * Store the original source text for Function.prototype.toString().
+     */
+    public function setSourceText(string $text): void
+    {
+        $this->sourceText = $text;
+    }
+
+    public function getSourceText(): ?string
+    {
+        return $this->sourceText;
+    }
+
     public function typeof(): string
     {
         return 'function';
@@ -382,7 +398,17 @@ class JsFunction extends JsObject
 
     public function toJsString(): string
     {
-        $name = $this->name !== '' ? $this->name : 'anonymous';
+        // If we have the original source text, return it per spec.
+        if ($this->sourceText !== null) {
+            return $this->sourceText;
+        }
+        // Native/built-in functions use NativeFunction syntax.
+        // The name must be a valid IdentifierName (no spaces, special chars).
+        // If the name is not valid (e.g. "bound foo"), omit it.
+        $name = $this->name;
+        if ($name === '' || $name === '(anonymous)' || preg_match('/[^a-zA-Z0-9_$]/', $name)) {
+            return 'function () { [native code] }';
+        }
         return "function {$name}() { [native code] }";
     }
 

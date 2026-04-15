@@ -1339,8 +1339,9 @@ class Interpreter
         // Create a new object with the constructor's prototype
         $proto = $callee->get('prototype');
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
-        // Mark as new.target so constructors can detect new vs call
-        $newObj->set('[[NewTarget]]', $callee);
+        // Mark as new.target so constructors can detect new vs call.
+        // Use a non-enumerable, non-configurable property so it does not leak into iteration.
+        $newObj->defineOwnProperty('[[NewTarget]]', \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false));
 
         $result = $this->callFunction($callee, $newObj, $args);
 
@@ -1450,16 +1451,36 @@ class Interpreter
                 $this->strictMode = true;
             }
 
-            // In strict mode, if this is an unbound non-arrow function call
-            // with the global object as this, replace with undefined.
-            if (
-                $this->strictMode
-                && !$fn->isArrow()
-                && $fn->getBoundThis() === null
-                && $thisValue instanceof JsObject
-                && $thisValue === $this->getGlobalObject()
-            ) {
-                $thisValue = JsUndefined::instance();
+            // Per spec 9.2.1.2 OrdinaryCallBindThis:
+            // In strict mode, this is passed as-is (no wrapping).
+            // In sloppy mode:
+            //   - null/undefined this -> globalThis
+            //   - primitive this -> ToObject(this)
+            if (!$fn->isArrow()) {
+                if ($this->strictMode) {
+                    // In strict mode, if the global object was passed as default
+                    // this (from evalCallExpression), replace with undefined.
+                    if (
+                        $fn->getBoundThis() === null
+                        && $thisValue instanceof JsObject
+                        && $thisValue === $this->getGlobalObject()
+                    ) {
+                        $thisValue = JsUndefined::instance();
+                    }
+                } else {
+                    // Sloppy mode: wrap null/undefined to global, primitives to Object.
+                    if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
+                        $thisValue = $this->getGlobalObject();
+                    } elseif (
+                        !$thisValue instanceof JsObject
+                        && ($thisValue instanceof JsNumber
+                            || $thisValue instanceof JsString
+                            || $thisValue instanceof JsBoolean
+                            || $thisValue instanceof JsSymbol)
+                    ) {
+                        $thisValue = TypeConversion::toObject($thisValue);
+                    }
+                }
             }
 
             // Bind this

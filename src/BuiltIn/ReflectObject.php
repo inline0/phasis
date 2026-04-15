@@ -17,6 +17,7 @@ use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsProxy;
 use PhpJs\Value\JsValue;
 
 /**
@@ -37,10 +38,16 @@ class ReflectObject
             JsFunction::fromCallable('get', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.get');
                 $key = $args[1] ?? JsUndefined::instance();
+                $receiver = $args[2] ?? $target;
                 if ($key instanceof JsSymbol) {
                     return $target->getBySymbol($key);
                 }
-                return $target->get(TypeConversion::toString($key));
+                $propKey = TypeConversion::toString($key);
+                // Use receiver-aware get when a receiver is provided.
+                if ($receiver instanceof JsObject) {
+                    return $target->internalGet($propKey, $receiver);
+                }
+                return $target->get($propKey);
             }, 2),
             true,
             false,
@@ -54,14 +61,39 @@ class ReflectObject
                 $key = $args[1] ?? JsUndefined::instance();
                 $value = $args[2] ?? JsUndefined::instance();
                 $receiver = $args[3] ?? $target;
+                $propKey = TypeConversion::toPropertyKey($key);
+
+                if ($propKey instanceof JsSymbol) {
+                    return new JsBoolean(
+                        self::ordinarySetSymbol($target, $propKey, $value, $receiver)
+                    );
+                }
+                // Per spec, [[Set]] passes receiver through, even if it is not an object.
+                // OrdinarySetWithOwnDescriptor returns false when Type(Receiver) is not Object.
                 if (!$receiver instanceof JsObject) {
-                    $receiver = $target;
+                    // Walk to find own descriptor, then apply spec step 5b.
+                    $ownDesc = $target->getOwnPropertyDescriptor($propKey->toJsString());
+                    if ($ownDesc === null) {
+                        $parent = $target->getPrototype();
+                        if ($parent !== null) {
+                            // Inherit from parent, but receiver is still non-object.
+                            return new JsBoolean(false);
+                        }
+                        // No own, no parent: would create on receiver, but receiver is not object.
+                        return new JsBoolean(false);
+                    }
+                    if ($ownDesc->isDataDescriptor()) {
+                        // Step 5b: If Type(Receiver) is not Object, return false.
+                        return new JsBoolean(false);
+                    }
+                    // Accessor: call setter if present.
+                    if ($ownDesc->set !== null) {
+                        $ownDesc->set->call($target, [$value]);
+                        return new JsBoolean(true);
+                    }
+                    return new JsBoolean(false);
                 }
-                if ($key instanceof JsSymbol) {
-                    $target->setBySymbol($key, $value);
-                    return new JsBoolean(true);
-                }
-                $success = $target->internalSet(TypeConversion::toString($key), $value, $receiver);
+                $success = $target->internalSet($propKey->toJsString(), $value, $receiver);
                 return new JsBoolean($success);
             }, 3),
             true,
@@ -182,6 +214,11 @@ class ReflectObject
         $reflect->defineOwnProperty('preventExtensions', PropertyDescriptor::data(
             JsFunction::fromCallable('preventExtensions', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.preventExtensions');
+                // For Proxy objects, call internalPreventExtensions which returns bool.
+                // For regular objects, call preventExtensions (always succeeds).
+                if ($target instanceof JsProxy) {
+                    return new JsBoolean($target->internalPreventExtensions());
+                }
                 $target->preventExtensions();
                 return new JsBoolean(true);
             }, 1),
@@ -195,24 +232,44 @@ class ReflectObject
             JsFunction::fromCallable('defineProperty', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.defineProperty');
                 $keyRaw = $args[1] ?? JsUndefined::instance();
+                // Step 2: ToPropertyKey. Let abrupt completions propagate.
+                $propKey = TypeConversion::toPropertyKey($keyRaw);
+
                 $desc = $args[2] ?? JsUndefined::instance();
                 if (!$desc instanceof JsObject) {
                     throw new TypeError('Property description must be an object');
                 }
 
-                $propKey = TypeConversion::toPropertyKey($keyRaw);
                 $descriptor = self::toPropertyDescriptor($desc);
 
-                try {
-                    if ($propKey instanceof JsSymbol) {
-                        $target->definePropertyBySymbol($propKey, $descriptor);
-                    } else {
-                        $target->defineOwnProperty($propKey->toJsString(), $descriptor);
+                // For Proxy targets, the trap may throw (abrupt completion propagates)
+                // or return false (Reflect returns false). Only TypeError from
+                // defineOwnProperty internal rejection should yield false.
+                if ($target instanceof JsProxy) {
+                    // Let proxy throw through on trap errors; catch only
+                    // the TypeError it throws when trap returns falsish.
+                    try {
+                        if ($propKey instanceof JsSymbol) {
+                            $target->definePropertyBySymbol($propKey, $descriptor);
+                        } else {
+                            $target->defineOwnProperty($propKey->toJsString(), $descriptor);
+                        }
+                        return new JsBoolean(true);
+                    } catch (TypeError $e) {
+                        // Proxy trap returned falsish.
+                        return new JsBoolean(false);
                     }
-                    return new JsBoolean(true);
-                } catch (\Throwable) {
-                    return new JsBoolean(false);
                 }
+
+                // Regular object: use spec-compliant OrdinaryDefineOwnProperty with bool return.
+                if ($propKey instanceof JsSymbol) {
+                    return new JsBoolean(
+                        self::ordinaryDefineOwnPropertySymbol($target, $propKey, $descriptor)
+                    );
+                }
+                return new JsBoolean(
+                    self::ordinaryDefineOwnProperty($target, $propKey->toJsString(), $descriptor)
+                );
             }, 3),
             true,
             false,
@@ -300,6 +357,252 @@ class ReflectObject
         $env->defineVar('Reflect', $reflect);
     }
 
+    /**
+     * OrdinaryDefineOwnProperty per spec 9.1.6.1, returning bool.
+     *
+     * Returns true if the property was successfully defined, false if rejected
+     * by validation (non-extensible, non-configurable conflicts, etc.).
+     */
+    private static function ordinaryDefineOwnProperty(
+        JsObject $target,
+        string $name,
+        PropertyDescriptor $desc,
+    ): bool {
+        $current = $target->getOwnPropertyDescriptor($name);
+
+        if ($current === null) {
+            // Property does not exist. Only create if extensible.
+            if (!$target->isExtensible()) {
+                return false;
+            }
+            $target->defineOwnProperty($name, $desc);
+            return true;
+        }
+
+        // Validate changes against current descriptor.
+        if (!self::isCompatiblePropertyDescriptor($target->isExtensible(), $desc, $current)) {
+            return false;
+        }
+
+        $target->defineOwnProperty($name, self::mergeDescriptor($current, $desc));
+        return true;
+    }
+
+    /**
+     * OrdinaryDefineOwnProperty for symbol keys, returning bool.
+     */
+    private static function ordinaryDefineOwnPropertySymbol(
+        JsObject $target,
+        JsSymbol $key,
+        PropertyDescriptor $desc,
+    ): bool {
+        $current = $target->getSymbolPropertyDescriptor($key);
+
+        if ($current === null) {
+            if (!$target->isExtensible()) {
+                return false;
+            }
+            $target->definePropertyBySymbol($key, $desc);
+            return true;
+        }
+
+        if (!self::isCompatiblePropertyDescriptor($target->isExtensible(), $desc, $current)) {
+            return false;
+        }
+
+        $target->definePropertyBySymbol($key, self::mergeDescriptor($current, $desc));
+        return true;
+    }
+
+    /**
+     * ES spec: IsCompatiblePropertyDescriptor / ValidateAndApplyPropertyDescriptor.
+     *
+     * Returns true if Desc can be applied to Current.
+     */
+    private static function isCompatiblePropertyDescriptor(
+        bool $extensible,
+        PropertyDescriptor $desc,
+        PropertyDescriptor $current,
+    ): bool {
+        // Step 2: If current is not configurable...
+        if ($current->configurable === false) {
+            // Cannot make it configurable.
+            if ($desc->configurable === true) {
+                return false;
+            }
+            // Cannot change enumerable if not configurable.
+            if ($desc->enumerable !== null && $desc->enumerable !== ($current->enumerable ?? false)) {
+                return false;
+            }
+        }
+
+        // Step 4: If IsGenericDescriptor(Desc), no further validation needed.
+        if (!$desc->isDataDescriptor() && !$desc->isAccessorDescriptor()) {
+            return true;
+        }
+
+        // Step 5: Switching between data and accessor when not configurable.
+        $currentIsData = $current->isDataDescriptor();
+        $descIsData = $desc->isDataDescriptor();
+        if ($currentIsData !== $descIsData) {
+            if ($current->configurable === false) {
+                return false;
+            }
+            return true;
+        }
+
+        // Step 6: Both data descriptors.
+        if ($currentIsData && $descIsData) {
+            if ($current->configurable === false && $current->writable === false) {
+                if ($desc->writable === true) {
+                    return false;
+                }
+                if ($desc->value !== null && !self::sameValue($desc->value, $current->value ?? JsUndefined::instance())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Step 7: Both accessor descriptors.
+        if ($current->configurable === false) {
+            if ($desc->set !== null && $desc->set !== $current->set) {
+                return false;
+            }
+            if ($desc->get !== null && $desc->get !== $current->get) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Merge new descriptor fields into current descriptor.
+     */
+    private static function mergeDescriptor(
+        PropertyDescriptor $current,
+        PropertyDescriptor $desc,
+    ): PropertyDescriptor {
+        // If switching from accessor to data or vice versa, use the new descriptor type.
+        if ($desc->isAccessorDescriptor() && !$current->isAccessorDescriptor()) {
+            return new PropertyDescriptor(
+                get: $desc->get,
+                set: $desc->set,
+                enumerable: $desc->enumerable ?? $current->enumerable,
+                configurable: $desc->configurable ?? $current->configurable,
+            );
+        }
+        if ($desc->isDataDescriptor() && !$current->isDataDescriptor()) {
+            return new PropertyDescriptor(
+                value: $desc->value ?? JsUndefined::instance(),
+                writable: $desc->writable ?? false,
+                enumerable: $desc->enumerable ?? $current->enumerable,
+                configurable: $desc->configurable ?? $current->configurable,
+            );
+        }
+
+        // Merge field by field, keeping current for unspecified fields.
+        if ($current->isAccessorDescriptor()) {
+            return new PropertyDescriptor(
+                get: $desc->get ?? $current->get,
+                set: $desc->set ?? $current->set,
+                enumerable: $desc->enumerable ?? $current->enumerable,
+                configurable: $desc->configurable ?? $current->configurable,
+            );
+        }
+
+        return new PropertyDescriptor(
+            value: $desc->value ?? $current->value,
+            writable: $desc->writable ?? $current->writable,
+            enumerable: $desc->enumerable ?? $current->enumerable,
+            configurable: $desc->configurable ?? $current->configurable,
+        );
+    }
+
+    /**
+     * SameValue comparison (used for property descriptor validation).
+     */
+    private static function sameValue(JsValue $a, JsValue $b): bool
+    {
+        if ($a === $b) {
+            return true;
+        }
+        if ($a instanceof JsNumber && $b instanceof JsNumber) {
+            if (is_nan($a->value) && is_nan($b->value)) {
+                return true;
+            }
+            return $a->value === $b->value;
+        }
+        if ($a instanceof JsString && $b instanceof JsString) {
+            return $a->value === $b->value;
+        }
+        if ($a instanceof JsBoolean && $b instanceof JsBoolean) {
+            return $a->value === $b->value;
+        }
+        return false;
+    }
+
+    /**
+     * OrdinarySet for symbol-keyed properties with receiver support.
+     *
+     * Mirrors the OrdinarySetWithOwnDescriptor algorithm for symbol keys.
+     */
+    private static function ordinarySetSymbol(
+        JsObject $target,
+        JsSymbol $key,
+        JsValue $value,
+        JsValue $receiver,
+    ): bool {
+        $ownDesc = $target->getSymbolPropertyDescriptor($key);
+
+        if ($ownDesc === null) {
+            // Walk prototype chain.
+            $parent = $target->getPrototype();
+            if ($parent !== null) {
+                return self::ordinarySetSymbol($parent, $key, $value, $receiver);
+            }
+            // No own, no parent: create writable data descriptor on receiver.
+            $ownDesc = PropertyDescriptor::data(JsUndefined::instance());
+        }
+
+        if ($ownDesc->isDataDescriptor()) {
+            if ($ownDesc->writable === false) {
+                return false;
+            }
+            if (!$receiver instanceof JsObject) {
+                return false;
+            }
+            $existingDesc = $receiver->getSymbolPropertyDescriptor($key);
+            if ($existingDesc !== null) {
+                if ($existingDesc->isAccessorDescriptor()) {
+                    return false;
+                }
+                if ($existingDesc->writable === false) {
+                    return false;
+                }
+                $receiver->definePropertyBySymbol($key, new PropertyDescriptor(
+                    value: $value,
+                    writable: $existingDesc->writable,
+                    enumerable: $existingDesc->enumerable,
+                    configurable: $existingDesc->configurable,
+                ));
+                return true;
+            }
+            if (!$receiver->isExtensible()) {
+                return false;
+            }
+            $receiver->definePropertyBySymbol($key, PropertyDescriptor::data($value));
+            return true;
+        }
+
+        // Accessor descriptor.
+        if ($ownDesc->set !== null) {
+            $ownDesc->set->call($receiver instanceof JsObject ? $receiver : $target, [$value]);
+            return true;
+        }
+        return false;
+    }
+
     /** Validate that the first argument is an object. */
     private static function requireObject(array $args, string $method): JsObject
     {
@@ -321,9 +624,10 @@ class ReflectObject
     {
         // CreateListFromArrayLike step 3: If Type(obj) is not Object, throw TypeError.
         if (!$argsList instanceof JsObject) {
-            throw new TypeError(
-                $caller !== '' ? "{$caller}: argumentsList must be an object" : 'CreateListFromArrayLike called on non-object',
-            );
+            $msg = $caller !== ''
+                ? "{$caller}: argumentsList must be an object"
+                : 'CreateListFromArrayLike called on non-object';
+            throw new TypeError($msg);
         }
         if ($argsList instanceof JsArray) {
             $result = [];
