@@ -434,17 +434,30 @@ class StringPrototype
                 ? 0xFFFFFFFF
                 : TypeConversion::toUint32($limitArg);
 
-            // If lim is 0, return an empty array immediately.
+            if ($separator instanceof JsUndefined) {
+                if ($lim === 0) {
+                    return JsArray::fromArray([]);
+                }
+                return JsArray::fromArray([new JsString($str)]);
+            }
+
+            // Per spec step 7: ToString(separator) must be called before
+            // checking if lim is 0. This ensures side effects from the
+            // coercion are observable even when the result is unused.
+            $isRegExp = $separator instanceof JsObject && $separator->has('source');
+            if (!$isRegExp) {
+                // Trigger ToString(separator) which may throw.
+                TypeConversion::toString($separator);
+            }
+
+            // If lim is 0, return an empty array.
             if ($lim === 0) {
                 return JsArray::fromArray([]);
             }
 
-            if ($separator instanceof JsUndefined) {
-                return JsArray::fromArray([new JsString($str)]);
-            }
-
-            // RegExp separator: use PREG_SPLIT_DELIM_CAPTURE to include
-            // capture group results in the output, matching ES spec 22.1.3.21.
+            // RegExp separator: implement the ES spec algorithm
+            // (22.2.5.13 RegExp.prototype[@@split]) manually because
+            // preg_split handles zero-length matches differently.
             if ($separator instanceof JsObject && $separator->has('source')) {
                 $pattern = TypeConversion::toString($separator->get('source'));
                 $flags = $separator->has('flags') ? TypeConversion::toString($separator->get('flags')) : '';
@@ -455,23 +468,79 @@ class StringPrototype
                 if (str_contains($flags, 'm')) {
                     $pcreFlags .= 'm';
                 }
+                if (str_contains($flags, 's')) {
+                    $pcreFlags .= 's';
+                }
                 $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
 
-                // Use PREG_SPLIT_DELIM_CAPTURE so that parenthesized capture
-                // groups appear between the split fragments.
-                $raw = @preg_split($pcre, $str, -1, PREG_SPLIT_DELIM_CAPTURE);
-                if ($raw === false) {
-                    $raw = [$str];
+                $size = strlen($str);
+                if ($size === 0) {
+                    // Empty string: if the regex matches empty string, return []; else return [""].
+                    if (@preg_match($pcre, '', $m) && strlen($m[0]) === 0) {
+                        // Pattern matched at position 0 with zero length.
+                        if (@preg_match($pcre, $str, $m, 0, 0) === 1) {
+                            return JsArray::fromArray([]);
+                        }
+                    }
+                    return JsArray::fromArray([new JsString($str)]);
                 }
 
-                $parts = [];
-                foreach ($raw as $p) {
-                    $parts[] = new JsString($p);
-                    if (count($parts) >= $lim) {
+                $result = [];
+                $p = 0; // Last split point (byte offset).
+                $q = 0; // Current search position (byte offset).
+
+                while ($q < $size) {
+                    if (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE, $q) !== 1) {
                         break;
                     }
+
+                    $matchStart = $m[0][1]; // Byte offset of match start.
+                    $matchLen = strlen($m[0][0]);
+                    $e = $matchStart + $matchLen; // End of match (byte offset).
+
+                    // If the match is at the same position as last split
+                    // point AND has zero length, advance by one character.
+                    if ($e === $p) {
+                        $q = $matchStart + strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
+                        if ($q <= $matchStart) {
+                            $q = $matchStart + 1;
+                        }
+                        continue;
+                    }
+
+                    // Push substring from last split point to match start.
+                    $result[] = new JsString(substr($str, $p, $matchStart - $p));
+                    if (count($result) >= $lim) {
+                        return JsArray::fromArray($result);
+                    }
+
+                    // Push capture groups (indices 1..n).
+                    for ($i = 1, $cnt = count($m); $i < $cnt; $i++) {
+                        if (!is_array($m[$i]) || $m[$i][1] === -1) {
+                            $result[] = JsUndefined::instance();
+                        } else {
+                            $result[] = new JsString($m[$i][0]);
+                        }
+                        if (count($result) >= $lim) {
+                            return JsArray::fromArray($result);
+                        }
+                    }
+
+                    $p = $e;
+                    // For zero-length matches, advance q past match start.
+                    if ($matchLen === 0) {
+                        $q = $matchStart + strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
+                        if ($q <= $matchStart) {
+                            $q = $matchStart + 1;
+                        }
+                    } else {
+                        $q = $e;
+                    }
                 }
-                return JsArray::fromArray($parts);
+
+                // Push the trailing substring.
+                $result[] = new JsString(substr($str, $p));
+                return JsArray::fromArray($result);
             }
 
             $sep = TypeConversion::toString($separator);
@@ -789,12 +858,15 @@ class StringPrototype
                 }
 
                 // Non-global: return first match with capture groups, index, and input.
-                if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                // PREG_UNMATCHED_AS_NULL ensures non-participating groups still
+                // appear in $matches (as null) so the result array has the
+                // correct length matching JS behavior.
+                if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL)) {
                     $numericCount = 0;
                     $elements = [];
                     foreach ($matches as $key => $match) {
                         if (is_int($key)) {
-                            $elements[] = $match[1] === -1
+                            $elements[] = ($match[1] === -1 || $match[0] === null)
                                 ? JsUndefined::instance()
                                 : new JsString($match[0]);
                             $numericCount++;
@@ -811,7 +883,7 @@ class StringPrototype
                     foreach ($matches as $key => $match) {
                         if (is_string($key)) {
                             $hasGroups = true;
-                            $groups->set($key, $match[1] === -1
+                            $groups->set($key, ($match[1] === -1 || $match[0] === null)
                                 ? JsUndefined::instance()
                                 : new JsString($match[0]));
                         }

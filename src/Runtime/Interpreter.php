@@ -884,7 +884,15 @@ class Interpreter
 
         // Logical assignment operators (&&=, ||=, ??=) per spec 13.15.3:
         // GetValue before RHS, and RHS is evaluated conditionally.
+        // Per spec 6.2.5.5 GetValue step 3a: if base is null/undefined,
+        // ToObject throws TypeError before resolving the property key.
         if ($node->operator === '&&=' || $node->operator === '||=' || $node->operator === '??=') {
+            if ($ref->base instanceof JsNull || $ref->base instanceof JsUndefined) {
+                $typeName = $ref->base instanceof JsNull ? 'null' : 'undefined';
+                throw new TypeError(
+                    "Cannot read properties of {$typeName}",
+                );
+            }
             $leftVal = $ref->getValue();
             $shouldAssign = match ($node->operator) {
                 '&&=' => TypeConversion::toBoolean($leftVal),
@@ -904,6 +912,14 @@ class Interpreter
         // 2. Evaluate RHS.
         // 3. Apply operation.
         // 4. PutValue(lref, result).
+        // Per spec 6.2.5.5 GetValue step 3a: if base is null/undefined,
+        // ToObject throws TypeError before resolving the property key.
+        if ($ref->base instanceof JsNull || $ref->base instanceof JsUndefined) {
+            $typeName = $ref->base instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError(
+                "Cannot read properties of {$typeName}",
+            );
+        }
         $leftVal = $ref->getValue();
         $right = $this->evaluate($node->right, $env);
 

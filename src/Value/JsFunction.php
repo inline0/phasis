@@ -14,9 +14,13 @@ class JsFunction extends JsObject
     /** Function.prototype: the [[Prototype]] for all function instances. */
     private static ?JsObject $functionPrototype = null;
 
+    /** Lazily resolved: true once fnProto's [[Prototype]] has been wired to Object.prototype. */
+    private static bool $functionPrototypeChainWired = false;
+
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
+        self::$functionPrototypeChainWired = false;
     }
 
     public static function setInterpreterCallback(callable $callback): void
@@ -134,6 +138,42 @@ class JsFunction extends JsObject
         return $this->constructable;
     }
 
+    /**
+     * Per spec, all function instances have Function.prototype as their [[Prototype]].
+     * This override returns the stored Function.prototype for regular function instances
+     * while letting Function.prototype itself chain to Object.prototype via the parent.
+     *
+     * Function.prototype is created during GlobalObject::install (before Object.prototype
+     * exists), so its own [[Prototype]] starts as null. On the first getPrototype() call
+     * to fnProto after Object.prototype has been installed, we lazily wire the chain:
+     * Function.prototype -> Object.prototype.
+     */
+    public function getPrototype(): ?JsObject
+    {
+        if (self::$functionPrototype !== null && $this !== self::$functionPrototype) {
+            return self::$functionPrototype;
+        }
+        // For Function.prototype itself, lazily wire to Object.prototype.
+        if (self::$functionPrototype !== null && $this === self::$functionPrototype && !self::$functionPrototypeChainWired) {
+            $parentProto = parent::getPrototype();
+            if ($parentProto === null) {
+                // Object.prototype is set via JsObject::setGlobalPrototype after
+                // ObjectConstructor::install. Probe it by creating a scratch object.
+                $probe = new JsObject();
+                $objProto = $probe->getPrototype();
+                if ($objProto !== null) {
+                    $this->setPrototype($objProto);
+                    self::$functionPrototypeChainWired = true;
+                    return $objProto;
+                }
+            } else {
+                self::$functionPrototypeChainWired = true;
+            }
+            return $parentProto;
+        }
+        return parent::getPrototype();
+    }
+
     public function getNativeCallable(): ?\Closure
     {
         return $this->nativeCallable;
@@ -235,12 +275,37 @@ class JsFunction extends JsObject
             return $own;
         }
 
+        // Look up on Function.prototype (which holds call/apply/bind
+        // and the thrower accessors for caller/arguments).
+        if (self::$functionPrototype !== null && $this !== self::$functionPrototype) {
+            $fromFnProto = self::$functionPrototype->get($name);
+            if (!$fromFnProto instanceof JsUndefined) {
+                return $fromFnProto;
+            }
+        }
+
         return match ($name) {
             'call' => self::getCallMethod(),
             'apply' => self::getApplyMethod(),
             'bind' => self::getBindMethod(),
             default => JsUndefined::instance(),
         };
+    }
+
+    public function set(string $name, JsValue $value, bool $strict = false): void
+    {
+        // Before the normal set path, check if Function.prototype has an accessor
+        // for this property (e.g., the "caller"/"arguments" thrower pair).
+        // The parent set() traverses the private $prototype field which doesn't
+        // include Function.prototype in the chain, so we must check explicitly.
+        if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasOwnProperty($name)) {
+            $desc = self::$functionPrototype->getOwnPropertyDescriptor($name);
+            if ($desc !== null && $desc->set !== null) {
+                $desc->set->call($this, [$value]);
+                return;
+            }
+        }
+        parent::set($name, $value, $strict);
     }
 
     private static function getCallMethod(): self

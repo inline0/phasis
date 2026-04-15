@@ -1538,11 +1538,20 @@ class Parser
 
         if ($this->check(TokenType::Number)) {
             $token = $this->advance();
-            $value = (float) $token->value;
-            if ($value == (int) $value) {
-                $value = (int) $token->value;
+            $raw = $token->value;
+            // BigInt literal as property name: strip trailing 'n' and use
+            // the decimal string representation as the key per spec.
+            if (str_ends_with($raw, 'n')) {
+                $digits = substr($raw, 0, -1);
+                // Normalize: strip leading zeros (keep at least one digit).
+                $digits = ltrim($digits, '0') ?: '0';
+                return [new Literal($token->location, $digits, $raw), false];
             }
-            return [new Literal($token->location, $value, $token->value), false];
+            $value = (float) $raw;
+            if ($value == (int) $value) {
+                $value = (int) $raw;
+            }
+            return [new Literal($token->location, $value, $raw), false];
         }
 
         if ($this->check(TokenType::String)) {
