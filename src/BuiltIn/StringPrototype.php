@@ -153,7 +153,7 @@ class StringPrototype
         // Augment the existing String constructor with the prototype.
         $existing = $env->get('String');
         if ($existing instanceof JsFunction) {
-            $existing->set('prototype', $proto);
+            $existing->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
             $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
             // Static methods on String constructor.

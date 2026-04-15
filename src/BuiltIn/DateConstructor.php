@@ -73,7 +73,7 @@ class DateConstructor
             true,
         ));
 
-        $constructor->set('prototype', $proto);
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         $env->defineVar('Date', $constructor);

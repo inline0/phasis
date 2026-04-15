@@ -55,7 +55,7 @@ class ArrayConstructor
         // Symbol.iterator on Array.prototype, not on each instance.
         JsArray::installSymbolIteratorOnPrototype($proto);
 
-        $constructor->set('prototype', $proto);
+        $constructor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false));
         JsArray::setGlobalPrototype($proto);
 
         $env->defineVar('Array', $constructor);
