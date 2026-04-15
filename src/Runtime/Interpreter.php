@@ -977,25 +977,18 @@ class Interpreter
                 TypeConversion::toString($value) . ' is not iterable',
             );
         }
-        for ($i = 0; $i < count($pattern->elements); $i++) {
-            $element = $pattern->elements[$i];
-            if ($element === null) {
-                continue;
-            }
-
+        [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+        $done = false;
+        foreach ($pattern->elements as $element) {
             if ($element instanceof RestElement) {
-                $rest = [];
-                if ($value instanceof JsArray) {
-                    $len = $value->getLength();
-                    for ($j = $i; $j < $len; $j++) {
-                        $rest[] = $value->get((string) $j);
-                    }
-                }
-                $this->bindPattern($element->argument, JsArray::fromArray($rest), $env);
+                $this->bindPattern($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
                 break;
             }
-
-            $elemValue = ($value instanceof JsObject) ? $value->get((string) $i) : JsUndefined::instance();
+            $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+            if ($element === null) {
+                // Elision: advance iterator but discard value.
+                continue;
+            }
             $this->bindPattern($element, $elemValue, $env);
         }
     }
@@ -1537,28 +1530,17 @@ class Interpreter
             return;
         }
         if ($pattern instanceof ArrayPattern) {
-            if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
-                    TypeConversion::toString($value) . ' is not iterable',
-                );
-            }
-            for ($i = 0; $i < count($pattern->elements); $i++) {
-                $element = $pattern->elements[$i];
+            [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+            $done = false;
+            foreach ($pattern->elements as $element) {
+                if ($element instanceof RestElement) {
+                    $this->assignVarBinding($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                    break;
+                }
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
                 if ($element === null) {
                     continue;
                 }
-                if ($element instanceof RestElement) {
-                    $rest = [];
-                    if ($value instanceof JsObject) {
-                        $len = ($value instanceof JsArray) ? $value->getLength() : 0;
-                        for ($j = $i; $j < $len; $j++) {
-                            $rest[] = $value->get((string) $j);
-                        }
-                    }
-                    $this->assignVarBinding($element->argument, JsArray::fromArray($rest), $env);
-                    break;
-                }
-                $elemValue = ($value instanceof JsObject) ? $value->get((string) $i) : JsUndefined::instance();
                 $this->assignVarBinding($element, $elemValue, $env);
             }
             return;
@@ -2079,28 +2061,17 @@ class Interpreter
         }
 
         if ($pattern instanceof ArrayPattern) {
-            if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
-                    TypeConversion::toString($value) . ' is not iterable',
-                );
-            }
-            for ($i = 0; $i < count($pattern->elements); $i++) {
-                $element = $pattern->elements[$i];
+            [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+            $done = false;
+            foreach ($pattern->elements as $element) {
+                if ($element instanceof RestElement) {
+                    $this->assignPatternToEnv($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                    break;
+                }
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
                 if ($element === null) {
                     continue;
                 }
-                if ($element instanceof RestElement) {
-                    $rest = [];
-                    if ($value instanceof JsObject) {
-                        $len = ($value instanceof JsArray) ? $value->getLength() : 0;
-                        for ($j = $i; $j < $len; $j++) {
-                            $rest[] = $value->get((string) $j);
-                        }
-                    }
-                    $this->assignPatternToEnv($element->argument, JsArray::fromArray($rest), $env);
-                    break;
-                }
-                $elemValue = ($value instanceof JsObject) ? $value->get((string) $i) : JsUndefined::instance();
                 $this->assignPatternToEnv($element, $elemValue, $env);
             }
             return;
@@ -2541,27 +2512,12 @@ class Interpreter
     private function destructureAssign(Node $target, JsValue $value, Environment $env): void
     {
         if ($target instanceof ArrayPattern || $target instanceof ArrayExpression) {
-            // Array destructuring requires an iterable (not null/undefined).
-            if ($value instanceof JsNull || $value instanceof JsUndefined) {
-                throw new \PhpJs\Exceptions\TypeError(
-                    TypeConversion::toString($value) . ' is not iterable',
-                );
-            }
+            [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
+            $done = false;
             $elements = $target instanceof ArrayPattern ? $target->elements : $target->elements;
-            for ($i = 0; $i < count($elements); $i++) {
-                $elem = $elements[$i];
-                if ($elem === null) {
-                    continue;
-                }
+            foreach ($elements as $elem) {
                 if ($elem instanceof RestElement || $elem instanceof SpreadElement) {
-                    $rest = [];
-                    if ($value instanceof JsObject) {
-                        $len = $value instanceof JsArray ? $value->getLength() : 0;
-                        for ($j = $i; $j < $len; $j++) {
-                            $rest[] = $value->get((string) $j);
-                        }
-                    }
-                    $restValue = JsArray::fromArray($rest);
+                    $restValue = $this->iteratorRest($iterator, $nextMethod, $done);
                     $restArg = $elem->argument;
                     if ($this->isDestructuringTarget($restArg)) {
                         $this->destructureAssign($restArg, $restValue, $env);
@@ -2571,10 +2527,11 @@ class Interpreter
                     }
                     break;
                 }
-                $elemValue = ($value instanceof JsObject)
-                    ? $value->get((string) $i)
-                    : JsUndefined::instance();
-
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                if ($elem === null) {
+                    // Elision: advance iterator but discard value.
+                    continue;
+                }
                 if ($elem instanceof AssignmentPattern || $elem instanceof AssignmentExpression) {
                     $elemTarget = $elem instanceof AssignmentPattern ? $elem->left : $elem->left;
                     $defaultNode = $elem instanceof AssignmentPattern ? $elem->right : $elem->right;
@@ -2592,7 +2549,6 @@ class Interpreter
                         $ref->setValue($elemValue);
                     }
                 } elseif ($this->isDestructuringTarget($elem)) {
-                    // Nested destructuring target (e.g., [{ x }] = ...).
                     $this->destructureAssign($elem, $elemValue, $env);
                 } else {
                     $ref = $this->resolveReference($elem, $env);
@@ -2674,6 +2630,64 @@ class Interpreter
                 }
             }
         }
+    }
+
+    /**
+     * Get the iterator for a value; throw TypeError if not iterable.
+     * Returns [iterator, nextMethod].
+     *
+     * @return array{JsObject, JsFunction}
+     */
+    private function getIteratorOrThrow(JsValue $value): array
+    {
+        $iterator = $this->getIterator($value);
+        if ($iterator === null) {
+            $typeName = $value instanceof JsNumber ? 'number'
+                : ($value instanceof JsBoolean ? 'boolean'
+                : ($value instanceof JsSymbol ? 'symbol'
+                : TypeConversion::toString($value)));
+            throw new \PhpJs\Exceptions\TypeError($typeName . ' is not iterable');
+        }
+        $nextMethod = $iterator->get('next');
+        if (!$nextMethod instanceof JsFunction) {
+            throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
+        }
+        return [$iterator, $nextMethod];
+    }
+
+    /**
+     * Advance an iterator one step. Returns the value, or undefined when done.
+     * Sets $done to true once the iterator reports done.
+     */
+    private function iteratorNext(JsObject $iterator, JsFunction $nextMethod, bool &$done): JsValue
+    {
+        if ($done) {
+            return JsUndefined::instance();
+        }
+        $result = $this->callFunction($nextMethod, $iterator, []);
+        if (!$result instanceof JsObject) {
+            throw new \PhpJs\Exceptions\TypeError('Iterator result is not an object');
+        }
+        if (TypeConversion::toBoolean($result->get('done'))) {
+            $done = true;
+            return JsUndefined::instance();
+        }
+        return $result->get('value');
+    }
+
+    /**
+     * Collect all remaining iterator values into a JsArray.
+     */
+    private function iteratorRest(JsObject $iterator, JsFunction $nextMethod, bool &$done): JsArray
+    {
+        $rest = [];
+        while (!$done) {
+            $v = $this->iteratorNext($iterator, $nextMethod, $done);
+            if (!$done) {
+                $rest[] = $v;
+            }
+        }
+        return JsArray::fromArray($rest);
     }
 
     /**
