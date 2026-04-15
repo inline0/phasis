@@ -26,13 +26,17 @@ class ArrayConstructor
     {
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
-                $len = (int) $args[0]->value;
+                $n = $args[0]->value;
+                $len = (int) $n;
+                if ((float) $len !== $n || $len < 0) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
                 $arr = new JsArray();
                 $arr->setLength($len);
                 return $arr;
             }
             return JsArray::fromArray($args);
-        });
+        }, 1);
         $constructor->setConstructable();
 
         // Static methods (non-enumerable per spec).
