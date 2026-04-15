@@ -35,7 +35,7 @@ class JsonObject
             true,
         ));
 
-        $env->defineVar('JSON', $json);
+        $env->defineDeletable('JSON', $json);
     }
 
     private static function parse(): \Closure

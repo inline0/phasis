@@ -20,12 +20,9 @@ class ErrorConstructor
         $errorTypes = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError'];
 
         foreach ($errorTypes as $name) {
-            $constructor = JsFunction::fromCallable($name, self::makeConstructor($name), 1);
-            $constructor->setConstructable();
             $proto = new JsObject();
             $proto->defineOwnProperty('name', PropertyDescriptor::data(new JsString($name), true, false, true));
             $proto->defineOwnProperty('message', PropertyDescriptor::data(new JsString(''), true, false, true));
-            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
             $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
                 'toString',
                 function (JsValue $this_) use ($name): JsValue {
@@ -38,27 +35,34 @@ class ErrorConstructor
                 },
                 0,
             ), true, false, true));
+
+            $constructor = JsFunction::fromCallable($name, self::makeConstructor($name, $proto), 1);
+            $constructor->setConstructable();
+            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
             $constructor->set('prototype', $proto);
             $env->defineVar($name, $constructor);
         }
     }
 
-    private static function makeConstructor(string $name): \Closure
+    private static function makeConstructor(string $name, JsObject $proto): \Closure
     {
-        return function (JsValue $this_, array $args) use ($name): JsValue {
+        // Per spec, Error(msg) behaves the same as new Error(msg):
+        // it creates and initializes a new Error object with the correct
+        // prototype, regardless of whether it was called via new or not.
+        return function (JsValue $this_, array $args) use ($name, $proto): JsValue {
             $message = isset($args[0]) && !$args[0] instanceof JsUndefined
                 ? TypeConversion::toString($args[0])
                 : '';
 
-            if ($this_ instanceof JsObject) {
-                $this_->set('name', new JsString($name));
+            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                // Called via new: populate the already-created object.
                 $this_->set('message', new JsString($message));
                 $this_->set('stack', new JsString("{$name}: {$message}"));
                 return $this_;
             }
 
-            $obj = new JsObject();
-            $obj->set('name', new JsString($name));
+            // Called as a function: create a new object with the correct prototype.
+            $obj = new JsObject($proto);
             $obj->set('message', new JsString($message));
             $obj->set('stack', new JsString("{$name}: {$message}"));
             return $obj;

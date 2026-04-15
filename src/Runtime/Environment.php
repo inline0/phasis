@@ -34,6 +34,13 @@ class Environment
         $this->bindings[$name] = $value;
     }
 
+    /** Define a binding that can be removed with `delete`. Used for built-in globals. */
+    public function defineDeletable(string $name, JsValue $value): void
+    {
+        $this->bindings[$name] = $value;
+        $this->deletable[$name] = true;
+    }
+
     /** Define a let-declared variable (block-scoped, initialized). */
     public function defineLet(string $name, JsValue $value): void
     {

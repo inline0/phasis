@@ -13,6 +13,7 @@ class Completion
         public readonly CompletionType $type,
         public readonly JsValue $value,
         public readonly ?string $target = null,
+        public readonly bool $empty = false,
     ) {
     }
 
@@ -33,12 +34,12 @@ class Completion
 
     public static function break(?string $label = null): self
     {
-        return new self(CompletionType::Break, JsUndefined::instance(), $label);
+        return new self(CompletionType::Break, JsUndefined::instance(), $label, empty: true);
     }
 
     public static function continue(?string $label = null): self
     {
-        return new self(CompletionType::Continue, JsUndefined::instance(), $label);
+        return new self(CompletionType::Continue, JsUndefined::instance(), $label, empty: true);
     }
 
     /** Whether this completion is abrupt (anything other than Normal). */

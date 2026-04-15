@@ -454,11 +454,17 @@ class Parser
         $this->expect(TokenType::LeftParen);
         $test = $this->parseExpression();
         $this->expect(TokenType::RightParen);
-        $consequent = $this->parseStatement();
+
+        // AnnexB B.3.3: in sloppy mode, allow function declarations in if bodies.
+        $consequent = $this->current()->type === TokenType::Function_
+            ? $this->parseFunctionDeclaration()
+            : $this->parseStatement();
         $alternate = null;
 
         if ($this->eat(TokenType::Else)) {
-            $alternate = $this->parseStatement();
+            $alternate = $this->current()->type === TokenType::Function_
+                ? $this->parseFunctionDeclaration()
+                : $this->parseStatement();
         }
 
         return new IfStatement($location, $test, $consequent, $alternate);

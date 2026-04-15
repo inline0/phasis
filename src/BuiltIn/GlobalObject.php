@@ -141,7 +141,10 @@ class GlobalObject
                 $body = TypeConversion::toString(array_pop($args));
                 $params = implode(',', array_map(fn(JsValue $a) => TypeConversion::toString($a), $args));
             }
-            $source = "(function anonymous({$params}) { {$body} })";
+            // Per spec steps 17-18, params are parsed first as FormalParameters
+            // (no preceding line terminator, so --> in params is a SyntaxError).
+            // The body gets line feeds per step 41 so AnnexB HTML comments work.
+            $source = "(function anonymous({$params}\n) {\n{$body}\n})";
             $parser = new \PhpJs\Parser\Parser($source);
             $program = $parser->parse();
             $env = new \PhpJs\Runtime\Environment();

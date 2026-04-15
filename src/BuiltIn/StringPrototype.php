@@ -75,14 +75,14 @@ class StringPrototype
                 $intStart = (int) min($intStart, $size);
             }
 
-            // Step 8: intLength
-            $lengthArg = $args[1] ?? JsUndefined::value();
-            $intLength = $lengthArg instanceof JsUndefined
-                ? $size
-                : (int) TypeConversion::toIntegerOrInfinity($lengthArg);
+            // Step 8: intLength (keep as float for Infinity handling)
+            $lengthArg = $args[1] ?? JsUndefined::instance();
+            $rawLength = $lengthArg instanceof JsUndefined
+                ? (float) $size
+                : TypeConversion::toIntegerOrInfinity($lengthArg);
 
-            // Step 9: clamp intLength to [0, size]
-            $intLength = (int) min(max($intLength, 0), $size);
+            // Step 9: clamp intLength to [0, size] (float min/max handles INF)
+            $intLength = (int) min(max($rawLength, 0), $size);
 
             // Step 10: intEnd
             $intEnd = (int) min($intStart + $intLength, $size);

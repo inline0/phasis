@@ -40,6 +40,28 @@ class Engine
         $globalObj = new \PhpJs\Value\JsObject(
             $objProto instanceof \PhpJs\Value\JsObject ? $objProto : null,
         );
+
+        // Install non-writable, non-configurable global value properties on the global object
+        // per ES spec 19.1 (Value Properties of the Global Object).
+        $globalObj->defineOwnProperty('Infinity', \PhpJs\Object\PropertyDescriptor::data(
+            new \PhpJs\Value\JsNumber(INF),
+            false,
+            false,
+            false,
+        ));
+        $globalObj->defineOwnProperty('NaN', \PhpJs\Object\PropertyDescriptor::data(
+            new \PhpJs\Value\JsNumber(NAN),
+            false,
+            false,
+            false,
+        ));
+        $globalObj->defineOwnProperty('undefined', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsUndefined::instance(),
+            false,
+            false,
+            false,
+        ));
+
         $this->globalEnv->defineVar('this', $globalObj);
         $this->globalEnv->defineVar('globalThis', $globalObj);
     }

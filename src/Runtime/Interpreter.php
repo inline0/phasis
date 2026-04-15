@@ -154,6 +154,15 @@ class Interpreter
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
+                // UpdateEmpty: if the abrupt completion has an empty value
+                // (its value slot was never explicitly set), replace it with
+                // the last non-empty statement value V. This implements the
+                // spec's UpdateEmpty(completion, V) for break/continue.
+                // Completions that already had their value filled (e.g. by
+                // a try/finally UpdateEmpty) have empty=false and are kept.
+                if ($completion->empty && !$result instanceof JsUndefined) {
+                    return new Completion($completion->type, $result, $completion->target);
+                }
                 return $completion;
             }
             $result = $completion->value;
@@ -471,6 +480,15 @@ class Interpreter
 
     private function evalUpdateExpression(UpdateExpression $node, Environment $env): JsValue
     {
+        // In strict mode, ++/-- on `eval` or `arguments` is a SyntaxError.
+        if ($this->strictMode && $node->argument instanceof Identifier) {
+            if ($node->argument->name === 'eval' || $node->argument->name === 'arguments') {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Cannot modify '{$node->argument->name}' in strict mode",
+                );
+            }
+        }
+
         $ref = $this->resolveReference($node->argument, $env);
         $oldValue = new JsNumber(TypeConversion::toNumber($ref->getValue()));
         $delta = $node->operator === '++' ? 1.0 : -1.0;
@@ -482,6 +500,15 @@ class Interpreter
 
     private function evalAssignment(AssignmentExpression $node, Environment $env): JsValue
     {
+        // In strict mode, assignment to `eval` or `arguments` is a SyntaxError.
+        if ($this->strictMode && $node->left instanceof Identifier) {
+            if ($node->left->name === 'eval' || $node->left->name === 'arguments') {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Cannot assign to '{$node->left->name}' in strict mode",
+                );
+            }
+        }
+
         if ($node->operator === '=' && $this->isDestructuringTarget($node->left)) {
             $value = $this->evaluate($node->right, $env);
             $this->destructureAssign($node->left, $value, $env);
@@ -655,20 +682,174 @@ class Interpreter
             return $arg;
         }
 
-        $parser = new \PhpJs\Parser\Parser($arg->value);
-        $program = $parser->parse();
+        // Parse and validate. Any SyntaxError from parsing or validation
+        // must be thrown as a JS SyntaxError catchable by JS try/catch.
+        try {
+            $parser = new \PhpJs\Parser\Parser($arg->value);
+            $program = $parser->parse();
 
-        // Hoist var declarations and function declarations into the current scope.
-        $this->hoistDeclarations($program->body, $env);
-
-        // Execute the parsed program body in the current scope.
-        $completion = $this->executeBody($program->body, $env);
-
-        if ($completion->type === CompletionType::Throw) {
-            $this->throwJsValue($completion->value);
+            // Validate: return, break, and continue are not allowed at the top
+            // level of eval code per spec.
+            $this->validateEvalBody($program->body);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
 
-        return $completion->value;
+        // Detect if the eval code itself enables strict mode.
+        $evalStrict = $this->strictMode || $this->hasUseStrictDirective($program->body);
+        $previousStrictMode = $this->strictMode;
+
+        if ($evalStrict && !$this->strictMode) {
+            $this->strictMode = true;
+        }
+
+        try {
+            // In strict mode, eval gets its own variable scope so var and
+            // function declarations do not leak to the caller.
+            $varEnv = $evalStrict ? $env->createChild() : $env;
+
+            // Hoist var declarations and function declarations.
+            $this->hoistDeclarations($program->body, $varEnv);
+
+            // Create a lexical environment for class/let/const TDZ bindings.
+            $lexEnv = $varEnv->createChild();
+            $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
+
+            // Execute the parsed program body in the lexical environment.
+            $completion = $this->executeBody($program->body, $lexEnv);
+
+            if ($completion->type === CompletionType::Throw) {
+                $this->throwJsValue($completion->value);
+            }
+
+            return $completion->value;
+        } finally {
+            $this->strictMode = $previousStrictMode;
+        }
+    }
+
+    /**
+     * Validate that eval code does not contain top-level return, break, or
+     * continue statements, which are SyntaxErrors per the spec.
+     *
+     * @param Node[] $statements
+     */
+    private function validateEvalBody(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof \PhpJs\Ast\Statement\ReturnStatement) {
+                throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+            }
+            if ($stmt instanceof BreakStatement) {
+                throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+            }
+            if ($stmt instanceof ContinueStatement) {
+                throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+            }
+            $this->validateEvalNoFreeJumps($stmt);
+        }
+    }
+
+    /**
+     * Check for break/continue/return that would escape eval code.
+     *
+     * Recurses into blocks and conditionals but stops at loops, switch
+     * statements, and functions (which provide their own targets).
+     */
+    private function validateEvalNoFreeJumps(Node $node): void
+    {
+        if (
+            $node instanceof ForStatement
+            || $node instanceof ForInStatement
+            || $node instanceof ForOfStatement
+            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof DoWhileStatement
+            || $node instanceof \PhpJs\Ast\Statement\SwitchStatement
+            || $node instanceof FunctionDeclaration
+        ) {
+            return;
+        }
+
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $child) {
+                if ($child instanceof \PhpJs\Ast\Statement\ReturnStatement) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+                }
+                if ($child instanceof BreakStatement) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+                }
+                if ($child instanceof ContinueStatement) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+                }
+                $this->validateEvalNoFreeJumps($child);
+            }
+            return;
+        }
+
+        if ($node instanceof IfStatement) {
+            $this->validateEvalNoFreeJumps($node->consequent);
+            if ($node->alternate !== null) {
+                $this->validateEvalNoFreeJumps($node->alternate);
+            }
+        }
+
+        if ($node instanceof LabeledStatement) {
+            $this->validateEvalNoFreeJumps($node->body);
+        }
+    }
+
+    /**
+     * Hoist class and let/const declarations in eval code as TDZ bindings.
+     *
+     * Per spec, class declarations in eval create bindings that throw
+     * ReferenceError when accessed before initialization (TDZ).
+     *
+     * @param Node[] $statements
+     */
+    private function hoistEvalLexicalDeclarations(array $statements, Environment $env): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
+                $env->declareLet($stmt->id->name);
+            }
+            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+                foreach ($stmt->declarations as $decl) {
+                    $this->declarePatternTdz($decl->id, $env, $stmt->kind === 'const');
+                }
+            }
+        }
+    }
+
+    /**
+     * Declare a binding pattern as TDZ bindings.
+     */
+    private function declarePatternTdz(Node $pattern, Environment $env, bool $isConst): void
+    {
+        if ($pattern instanceof Identifier) {
+            if ($isConst) {
+                $env->declareConst($pattern->name);
+            } else {
+                $env->declareLet($pattern->name);
+            }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $this->declarePatternTdz($elem, $env, $isConst);
+                }
+            }
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->declarePatternTdz($prop->value, $env, $isConst);
+                } elseif ($prop instanceof RestElement) {
+                    $this->declarePatternTdz($prop->argument, $env, $isConst);
+                }
+            }
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->declarePatternTdz($pattern->left, $env, $isConst);
+        } elseif ($pattern instanceof RestElement) {
+            $this->declarePatternTdz($pattern->argument, $env, $isConst);
+        }
     }
 
     private function evalNewExpression(NewExpression $node, Environment $env): JsValue
@@ -809,17 +990,49 @@ class Interpreter
                 $fnEnv->defineVar('this', $thisValue);
             }
 
-            // Bind parameters
-            $this->bindParameters($fn->getParams(), $args, $fnEnv);
+            // Create arguments object before binding parameters, so default
+            // parameter expressions can reference `arguments`.
+            $params = $fn->getParams();
+            $hasDefaultParams = $this->hasParameterExpressions($params);
 
-            // Bind arguments object (non-arrow only)
             if (!$fn->isArrow()) {
                 $argsObj = JsArray::fromArray($args);
-                // In sloppy mode, arguments.callee references the current function.
                 if (!$this->strictMode) {
                     $argsObj->set('callee', $fn);
                 }
                 $fnEnv->defineVar('arguments', $argsObj);
+            }
+
+            // Bind parameters
+            $this->bindParameters($params, $args, $fnEnv);
+
+            // When the function has parameter expressions (defaults, destructuring
+            // with defaults), the body gets a separate environment so closures in
+            // the parameter list do not see body-scoped var declarations.
+            if ($hasDefaultParams && $body instanceof BlockStatement) {
+                $bodyEnv = $fnEnv->createChild();
+                // Copy parameter bindings to the body environment as vars.
+                foreach ($params as $p) {
+                    $this->copyParamBindings($p, $fnEnv, $bodyEnv);
+                }
+                // arguments in body env should still be available.
+                if (!$fn->isArrow()) {
+                    $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
+                }
+                // Force-hoist var names into bodyEnv so they shadow parent bindings.
+                // This is necessary because the body environment is separate from
+                // the parameter environment, and var declarations must create
+                // bindings in the body scope, not update parent scope bindings.
+                $this->forceHoistVarNames($body->body, $bodyEnv);
+                $this->hoistDeclarations($body->body, $bodyEnv);
+                $completion = $this->executeBody($body->body, $bodyEnv);
+                if ($completion->type === CompletionType::Return) {
+                    return $completion->value;
+                }
+                if ($completion->type === CompletionType::Throw) {
+                    $this->throwJsValue($completion->value);
+                }
+                return JsUndefined::instance();
             }
 
             // Execute body
@@ -893,12 +1106,12 @@ class Interpreter
             // Bind this
             $fnEnv->defineVar('this', $thisValue);
 
-            // Bind parameters
-            $this->bindParameters($fn->getParams(), $args, $fnEnv);
-
-            // Bind arguments object
+            // Create arguments object before binding parameters.
             $argsObj = JsArray::fromArray($args);
             $fnEnv->defineVar('arguments', $argsObj);
+
+            // Bind parameters
+            $this->bindParameters($fn->getParams(), $args, $fnEnv);
 
             // Execute body
             $body = $fn->getBody();
@@ -945,6 +1158,77 @@ class Interpreter
             }
 
             $this->bindPattern($param, $value, $env);
+        }
+    }
+
+    /**
+     * Check whether any parameter uses a default value or destructuring with
+     * a default, which requires a separate body environment per spec.
+     *
+     * @param Node[] $params
+     */
+    private function hasParameterExpressions(array $params): bool
+    {
+        foreach ($params as $param) {
+            if ($param instanceof AssignmentPattern) {
+                return true;
+            }
+            if ($param instanceof ArrayPattern || $param instanceof ObjectPattern) {
+                if ($this->patternHasDefaults($param)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private function patternHasDefaults(Node $pattern): bool
+    {
+        if ($pattern instanceof AssignmentPattern) {
+            return true;
+        }
+        if ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null && $this->patternHasDefaults($elem)) {
+                    return true;
+                }
+            }
+        }
+        if ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty && $this->patternHasDefaults($prop->value)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Copy parameter name bindings from param environment to body environment.
+     */
+    private function copyParamBindings(Node $param, Environment $source, Environment $target): void
+    {
+        if ($param instanceof Identifier) {
+            $target->defineVar($param->name, $source->get($param->name));
+        } elseif ($param instanceof AssignmentPattern) {
+            $this->copyParamBindings($param->left, $source, $target);
+        } elseif ($param instanceof ArrayPattern) {
+            foreach ($param->elements as $elem) {
+                if ($elem !== null) {
+                    $this->copyParamBindings($elem, $source, $target);
+                }
+            }
+        } elseif ($param instanceof ObjectPattern) {
+            foreach ($param->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->copyParamBindings($prop->value, $source, $target);
+                } elseif ($prop instanceof RestElement) {
+                    $this->copyParamBindings($prop->argument, $source, $target);
+                }
+            }
+        } elseif ($param instanceof RestElement) {
+            $this->copyParamBindings($param->argument, $source, $target);
         }
     }
 
@@ -1282,10 +1566,10 @@ class Interpreter
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
         }
-        // Constructor prototype
+        // Constructor prototype: constructor is writable, configurable but not enumerable.
         $proto = new JsObject();
-        $proto->set('constructor', $fn);
-        $fn->set('prototype', $proto);
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
         return $fn;
     }
 
@@ -1785,7 +2069,7 @@ class Interpreter
         return Completion::normal(JsUndefined::instance());
     }
 
-    private function execForStatement(ForStatement $node, Environment $env): Completion
+    private function execForStatement(ForStatement $node, Environment $env, ?string $label = null): Completion
     {
         $loopEnv = $env->createChild();
         $isLetConst = $node->init instanceof VariableDeclaration
@@ -1799,6 +2083,7 @@ class Interpreter
             }
         }
 
+        $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
             if (++$iterations > $this->maxLoopIterations) {
@@ -1823,10 +2108,23 @@ class Interpreter
             }
             $completion = $this->executeStatement($node->body, $iterEnv);
 
-            if ($completion->type === CompletionType::Break && $completion->target === null) {
-                break;
+            if (!$completion->value instanceof JsUndefined) {
+                $v = $completion->value;
             }
-            if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+            if (
+                $completion->type === CompletionType::Break
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
+                // Per spec: return Completion(UpdateEmpty(result, V)).
+                // Then BreakableStatement converts break to normal.
+                $breakVal = $completion->empty ? $v : $completion->value;
+                return Completion::normal($breakVal);
+            }
+            if (
+                $completion->type === CompletionType::Continue
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
                 // fall through to update
             } elseif ($completion->isAbrupt()) {
                 return $completion;
@@ -1837,10 +2135,10 @@ class Interpreter
             }
         }
 
-        return Completion::normal(JsUndefined::instance());
+        return Completion::normal($v);
     }
 
-    private function execForInStatement(ForInStatement $node, Environment $env): Completion
+    private function execForInStatement(ForInStatement $node, Environment $env, ?string $label = null): Completion
     {
         $obj = $this->evaluate($node->right, $env);
         if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
@@ -1851,6 +2149,7 @@ class Interpreter
         }
 
         $keys = $obj->getEnumerableKeys();
+        $v = JsUndefined::instance();
         $iterations = 0;
 
         foreach ($keys as $key) {
@@ -1862,10 +2161,21 @@ class Interpreter
             $this->assignForBinding($node->left, new JsString((string) $key), $iterEnv);
             $completion = $this->executeStatement($node->body, $iterEnv);
 
-            if ($completion->type === CompletionType::Break && $completion->target === null) {
-                break;
+            if (!$completion->value instanceof JsUndefined) {
+                $v = $completion->value;
             }
-            if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+            if (
+                $completion->type === CompletionType::Break
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
+                $breakVal = $completion->empty ? $v : $completion->value;
+                return Completion::normal($breakVal);
+            }
+            if (
+                $completion->type === CompletionType::Continue
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
                 continue;
             }
             if ($completion->isAbrupt()) {
@@ -1873,13 +2183,14 @@ class Interpreter
             }
         }
 
-        return Completion::normal(JsUndefined::instance());
+        return Completion::normal($v);
     }
 
-    private function execForOfStatement(ForOfStatement $node, Environment $env): Completion
+    private function execForOfStatement(ForOfStatement $node, Environment $env, ?string $label = null): Completion
     {
         $iterable = $this->evaluate($node->right, $env);
         $iterations = 0;
+        $v = JsUndefined::instance();
 
         // Try the iterator protocol first.
         $iterator = $this->getIterator($iterable);
@@ -1938,11 +2249,19 @@ class Interpreter
                 $this->assignForBinding($node->left, $value, $iterEnv);
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
-                if ($completion->type === CompletionType::Break && $completion->target === null) {
-                    $closeIterator(null);
-                    break;
+                if (!$completion->value instanceof JsUndefined) {
+                    $v = $completion->value;
                 }
-                if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+                if ($completion->type === CompletionType::Break && ($completion->target === null || ($label !== null && $completion->target === $label))) {
+                    $closeIterator(null);
+                    $breakVal = $completion->empty ? $v : $completion->value;
+                    return Completion::normal($breakVal);
+                }
+                if (
+                    $completion->type === CompletionType::Continue
+                    && ($completion->target === null || ($label !== null && $completion->target === $label))
+                ) {
                     continue;
                 }
                 if ($completion->isAbrupt()) {
@@ -1951,7 +2270,7 @@ class Interpreter
                 }
             }
 
-            return Completion::normal(JsUndefined::instance());
+            return Completion::normal($v);
         }
 
         // Fallback for JsArray without Symbol.iterator (should not normally happen).
@@ -1966,10 +2285,18 @@ class Interpreter
                 $this->assignForBinding($node->left, $iterable->get((string) $i), $iterEnv);
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
-                if ($completion->type === CompletionType::Break && $completion->target === null) {
-                    break;
+                if (!$completion->value instanceof JsUndefined) {
+                    $v = $completion->value;
                 }
-                if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+                if ($completion->type === CompletionType::Break && ($completion->target === null || ($label !== null && $completion->target === $label))) {
+                    $breakVal = $completion->empty ? $v : $completion->value;
+                    return Completion::normal($breakVal);
+                }
+                if (
+                    $completion->type === CompletionType::Continue
+                    && ($completion->target === null || ($label !== null && $completion->target === $label))
+                ) {
                     continue;
                 }
                 if ($completion->isAbrupt()) {
@@ -1977,7 +2304,7 @@ class Interpreter
                 }
             }
 
-            return Completion::normal(JsUndefined::instance());
+            return Completion::normal($v);
         }
 
         throw new TypeError(TypeConversion::toString($iterable) . ' is not iterable');
@@ -2149,8 +2476,9 @@ class Interpreter
         }
     }
 
-    private function execWhileStatement(WhileStatement $node, Environment $env): Completion
+    private function execWhileStatement(WhileStatement $node, Environment $env, ?string $label = null): Completion
     {
+        $v = JsUndefined::instance();
         $iterations = 0;
         while (true) {
             if (++$iterations > $this->maxLoopIterations) {
@@ -2164,10 +2492,21 @@ class Interpreter
 
             $completion = $this->executeStatement($node->body, $env);
 
-            if ($completion->type === CompletionType::Break && $completion->target === null) {
-                break;
+            if (!$completion->value instanceof JsUndefined) {
+                $v = $completion->value;
             }
-            if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+            if (
+                $completion->type === CompletionType::Break
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
+                $breakVal = $completion->empty ? $v : $completion->value;
+                return Completion::normal($breakVal);
+            }
+            if (
+                $completion->type === CompletionType::Continue
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
                 continue;
             }
             if ($completion->isAbrupt()) {
@@ -2175,11 +2514,12 @@ class Interpreter
             }
         }
 
-        return Completion::normal(JsUndefined::instance());
+        return Completion::normal($v);
     }
 
-    private function execDoWhileStatement(DoWhileStatement $node, Environment $env): Completion
+    private function execDoWhileStatement(DoWhileStatement $node, Environment $env, ?string $label = null): Completion
     {
+        $v = JsUndefined::instance();
         $iterations = 0;
         do {
             if (++$iterations > $this->maxLoopIterations) {
@@ -2188,10 +2528,21 @@ class Interpreter
 
             $completion = $this->executeStatement($node->body, $env);
 
-            if ($completion->type === CompletionType::Break && $completion->target === null) {
-                break;
+            if (!$completion->value instanceof JsUndefined) {
+                $v = $completion->value;
             }
-            if ($completion->type === CompletionType::Continue && $completion->target === null) {
+
+            if (
+                $completion->type === CompletionType::Break
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
+                $breakVal = $completion->empty ? $v : $completion->value;
+                return Completion::normal($breakVal);
+            }
+            if (
+                $completion->type === CompletionType::Continue
+                && ($completion->target === null || ($label !== null && $completion->target === $label))
+            ) {
                 // fall through to test
             } elseif ($completion->isAbrupt()) {
                 return $completion;
@@ -2200,7 +2551,7 @@ class Interpreter
             $test = $this->evaluate($node->test, $env);
         } while (TypeConversion::toBoolean($test));
 
-        return Completion::normal(JsUndefined::instance());
+        return Completion::normal($v);
     }
 
     private function execSwitchStatement(SwitchStatement $node, Environment $env): Completion
@@ -2209,6 +2560,7 @@ class Interpreter
         $switchEnv = $env->createChild();
         $matched = false;
         $defaultCase = null;
+        $v = JsUndefined::instance();
 
         foreach ($node->cases as $case) {
             if ($case->test === null) {
@@ -2224,10 +2576,11 @@ class Interpreter
             }
 
             if ($matched) {
-                $result = $this->executeCaseBody($case, $switchEnv);
-                if ($result !== null) {
+                $result = $this->executeCaseBody($case, $switchEnv, $v);
+                $v = $result->value;
+                if ($result->isAbrupt()) {
                     if ($result->type === CompletionType::Break && $result->target === null) {
-                        return Completion::normal(JsUndefined::instance());
+                        return Completion::normal($v);
                     }
                     return $result;
                 }
@@ -2244,10 +2597,11 @@ class Interpreter
                     $foundDefault = true;
                 }
                 if ($foundDefault) {
-                    $result = $this->executeCaseBody($case, $switchEnv);
-                    if ($result !== null) {
+                    $result = $this->executeCaseBody($case, $switchEnv, $v);
+                    $v = $result->value;
+                    if ($result->isAbrupt()) {
                         if ($result->type === CompletionType::Break && $result->target === null) {
-                            return Completion::normal(JsUndefined::instance());
+                            return Completion::normal($v);
                         }
                         return $result;
                     }
@@ -2255,18 +2609,34 @@ class Interpreter
             }
         }
 
-        return Completion::normal(JsUndefined::instance());
+        return Completion::normal($v);
     }
 
-    private function executeCaseBody(SwitchCase $case, Environment $env): ?Completion
+    /**
+     * Execute case body statements, tracking completion value V per spec.
+     *
+     * Returns a Completion whose value is the updated V (last non-empty
+     * statement value), regardless of whether the completion is normal or
+     * abrupt. This implements the UpdateEmpty semantics from 13.12.9.
+     */
+    private function executeCaseBody(SwitchCase $case, Environment $env, JsValue $v): Completion
     {
         foreach ($case->consequent as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
+            // Per spec: if R.[[value]] is not empty, let V = R.[[value]].
+            if (!$completion->value instanceof JsUndefined) {
+                $v = $completion->value;
+            }
             if ($completion->isAbrupt()) {
+                // UpdateEmpty: if the abrupt completion's value is empty,
+                // fill it with the accumulated V.
+                if ($completion->empty) {
+                    return new Completion($completion->type, $v, $completion->target);
+                }
                 return $completion;
             }
         }
-        return null;
+        return Completion::normal($v);
     }
 
     private function execReturnStatement(ReturnStatement $node, Environment $env): Completion
@@ -2295,6 +2665,10 @@ class Interpreter
             // A PHP exception carrying a JS value (e.g., from generator.throw()).
             // Extract the original JS value for the catch handler.
             $completion = Completion::throw($e->jsValue);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            // A PHP SyntaxError (e.g. from eval parsing). Convert to a JS
+            // SyntaxError so the catch handler can process it.
+            $completion = Completion::throw($this->phpExceptionToJsValue($e));
         } catch (\PhpJs\Exceptions\RuntimeError $e) {
             // A PHP exception representing a JS runtime error. Convert to
             // a Throw completion so the JS catch handler can process it.
@@ -2313,8 +2687,20 @@ class Interpreter
         if ($node->finalizer !== null) {
             $finallyCompletion = $this->execBlockStatement($node->finalizer, $env);
             if ($finallyCompletion->isAbrupt()) {
+                // Per spec: Return Completion(UpdateEmpty(F, undefined)).
+                // If the finally's abrupt completion has an empty value slot,
+                // fill it with undefined and mark non-empty so outer blocks
+                // do not replace it with their own accumulated value.
+                if ($finallyCompletion->empty) {
+                    return new Completion(
+                        $finallyCompletion->type,
+                        JsUndefined::instance(),
+                        $finallyCompletion->target,
+                    );
+                }
                 return $finallyCompletion;
             }
+            // F.type is normal: set F to C (use the try/catch completion).
         }
 
         return $completion;
@@ -2322,12 +2708,29 @@ class Interpreter
 
     private function execLabeledStatement(LabeledStatement $node, Environment $env): Completion
     {
-        $completion = $this->executeStatement($node->body, $env);
+        $body = $node->body;
+        $label = $node->label;
 
-        if (
-            ($completion->type === CompletionType::Break || $completion->type === CompletionType::Continue)
-            && $completion->target === $node->label
-        ) {
+        // Per spec, iteration statements receive the label set so they can
+        // handle labeled break/continue targeting their own label.
+        $completion = match (true) {
+            $body instanceof ForStatement => $this->execForStatement($body, $env, $label),
+            $body instanceof ForInStatement => $this->execForInStatement($body, $env, $label),
+            $body instanceof ForOfStatement => $this->execForOfStatement($body, $env, $label),
+            $body instanceof WhileStatement => $this->execWhileStatement($body, $env, $label),
+            $body instanceof DoWhileStatement => $this->execDoWhileStatement($body, $env, $label),
+            default => $this->executeStatement($body, $env),
+        };
+
+        // Labeled break targeting this label consumes the break.
+        if ($completion->type === CompletionType::Break && $completion->target === $label) {
+            return Completion::normal($completion->value instanceof JsUndefined ? $completion->value : $completion->value);
+        }
+
+        // Labeled continue targeting this label should have been consumed by
+        // the iteration statement above. If it reaches here (non-iteration
+        // body), just consume it.
+        if ($completion->type === CompletionType::Continue && $completion->target === $label) {
             return Completion::normal(JsUndefined::instance());
         }
 
@@ -2364,8 +2767,8 @@ class Interpreter
                     isGenerator: $stmt->generator,
                 );
                 $proto = new JsObject();
-                $proto->set('constructor', $fn);
-                $fn->set('prototype', $proto);
+                $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+                $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
                 $env->defineVar($stmt->id->name, $fn);
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
                 foreach ($stmt->declarations as $decl) {
@@ -2405,6 +2808,23 @@ class Interpreter
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
                 $this->hoistDeclarations($stmt->body, $env);
+            } elseif ($stmt instanceof TryStatement) {
+                // Hoist var declarations from try, catch, and finally blocks.
+                $this->hoistDeclarations($stmt->block->body, $env);
+                if ($stmt->handler !== null) {
+                    $this->hoistDeclarations($stmt->handler->body->body, $env);
+                }
+                if ($stmt->finalizer !== null) {
+                    $this->hoistDeclarations($stmt->finalizer->body, $env);
+                }
+            } elseif ($stmt instanceof SwitchStatement) {
+                // Hoist var declarations from switch case bodies.
+                foreach ($stmt->cases as $case) {
+                    $this->hoistDeclarations($case->consequent, $env);
+                }
+            } elseif ($stmt instanceof LabeledStatement) {
+                // Recurse into labeled statement body for var hoisting.
+                $this->hoistDeclarations([$stmt->body], $env);
             }
 
             // Annex B: in sloppy mode, hoist function declaration names from
@@ -2478,6 +2898,81 @@ class Interpreter
         }
     }
 
+    /**
+     * Force-hoist var names into the target environment, even when a binding
+     * of the same name exists in a parent scope. Used for the separate body
+     * environment in functions with parameter expressions, where body vars
+     * must shadow parameter/parent bindings.
+     *
+     * @param Node[] $statements
+     */
+    private function forceHoistVarNames(array $statements, Environment $env): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    $this->forceDefineVarName($decl->id, $env);
+                }
+            } elseif ($stmt instanceof ForOfStatement || $stmt instanceof ForInStatement) {
+                if ($stmt->left instanceof VariableDeclaration && $stmt->left->kind === 'var') {
+                    foreach ($stmt->left->declarations as $decl) {
+                        $this->forceDefineVarName($decl->id, $env);
+                    }
+                }
+                if ($stmt->body instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof ForStatement) {
+                if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
+                    foreach ($stmt->init->declarations as $decl) {
+                        $this->forceDefineVarName($decl->id, $env);
+                    }
+                }
+                if ($stmt->body instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\WhileStatement || $stmt instanceof DoWhileStatement) {
+                if ($stmt->body instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof IfStatement) {
+                if ($stmt->consequent instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->consequent->body, $env);
+                }
+                if ($stmt->alternate instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->alternate->body, $env);
+                }
+            } elseif ($stmt instanceof BlockStatement) {
+                $this->forceHoistVarNames($stmt->body, $env);
+            }
+        }
+    }
+
+    private function forceDefineVarName(Node $pattern, Environment $env): void
+    {
+        if ($pattern instanceof Identifier) {
+            $env->defineVar($pattern->name, JsUndefined::instance());
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $this->forceDefineVarName($elem, $env);
+                }
+            }
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->forceDefineVarName($prop->value, $env);
+                } elseif ($prop instanceof RestElement) {
+                    $this->forceDefineVarName($prop->argument, $env);
+                }
+            }
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->forceDefineVarName($pattern->left, $env);
+        } elseif ($pattern instanceof RestElement) {
+            $this->forceDefineVarName($pattern->argument, $env);
+        }
+    }
+
     private function copyBindingToChild(Node $pattern, Environment $source, Environment $target): void
     {
         if ($pattern instanceof Identifier) {
@@ -2497,20 +2992,34 @@ class Interpreter
 
         if ($node instanceof MemberExpression) {
             $obj = $this->evaluate($node->object, $env);
-            if (!$obj instanceof JsObject) {
-                $obj = TypeConversion::toObject($obj);
+            // Per spec, the reference records the raw base value. ToObject()
+            // is deferred until PutValue (setValue) so the RHS is evaluated
+            // first in assignment expressions.
+            $base = $obj;
+            if ($obj instanceof JsObject) {
+                $base = $obj;
+            } elseif (!($obj instanceof JsNull) && !($obj instanceof JsUndefined)) {
+                $base = TypeConversion::toObject($obj);
             }
-            $rawRefKey = null;
+            // Evaluate the computed property expression (left-to-right), but
+            // defer ToPropertyKey (toString) until getValue/setValue so the
+            // RHS of assignments runs before the key conversion.
             if ($node->computed) {
                 $rawRefKey = $this->evaluate($node->property, $env);
+                if ($rawRefKey instanceof JsSymbol) {
+                    return new Reference($base, '', $this->strictMode, $rawRefKey);
+                }
+                // For primitive keys (strings, numbers, booleans), convert now
+                // since they have no side-effecting toString. For objects,
+                // defer by storing the rawKey on the Reference.
+                if ($rawRefKey instanceof JsObject) {
+                    return new Reference($base, '', $this->strictMode, rawKey: $rawRefKey);
+                }
+                $key = TypeConversion::toString($rawRefKey);
+                return new Reference($base, $key, $this->strictMode);
             }
-            if ($rawRefKey instanceof JsSymbol) {
-                return new Reference($obj, '', $this->strictMode, $rawRefKey);
-            }
-            $key = $node->computed
-                ? TypeConversion::toString($rawRefKey)
-                : ($node->property instanceof Identifier ? $node->property->name : '');
-            return new Reference($obj, $key, $this->strictMode);
+            $key = $node->property instanceof Identifier ? $node->property->name : '';
+            return new Reference($base, $key, $this->strictMode);
         }
 
         throw new ReferenceError('Invalid assignment target');
@@ -2736,13 +3245,13 @@ class Interpreter
      * Convert a PHP exception (representing a JS error) to a JS value
      * suitable for use in a Completion::throw() record.
      */
-    private function phpExceptionToJsValue(\PhpJs\Exceptions\RuntimeError $e): JsValue
+    private function phpExceptionToJsValue(\RuntimeException $e): JsValue
     {
         $name = match (true) {
+            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
             $e instanceof TypeError => 'TypeError',
             $e instanceof ReferenceError => 'ReferenceError',
             $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
-            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
             default => 'Error',
         };
 

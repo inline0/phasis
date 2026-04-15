@@ -12,6 +12,7 @@ class JsObject implements JsValue
     protected PropertyMap $properties;
     private ?JsObject $prototype;
     private static ?JsObject $globalPrototype = null;
+    private bool $extensible = true;
 
     /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
     protected array $symbolProperties = [];
@@ -25,6 +26,16 @@ class JsObject implements JsValue
     {
         $this->properties = new PropertyMap();
         $this->prototype = $prototype ?? self::$globalPrototype;
+    }
+
+    public function isExtensible(): bool
+    {
+        return $this->extensible;
+    }
+
+    public function preventExtensions(): void
+    {
+        $this->extensible = false;
     }
 
     public function get(string $name): JsValue
@@ -63,6 +74,16 @@ class JsObject implements JsValue
         if ($desc !== null) {
             if ($desc->set !== null) {
                 $desc->set->call($this, [$value]);
+                return;
+            }
+
+            // Accessor descriptor without a setter: reject the assignment.
+            if ($desc->get !== null) {
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot set property {$name} of #<Object> which has only a getter"
+                    );
+                }
                 return;
             }
 
@@ -109,6 +130,16 @@ class JsObject implements JsValue
                 break;
             }
             $proto = $proto->prototype;
+        }
+
+        // If the object is not extensible, reject adding new properties.
+        if (!$this->extensible) {
+            if ($strict) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot add property {$name}, object is not extensible"
+                );
+            }
+            return;
         }
 
         $this->properties->set($name, PropertyDescriptor::data($value));

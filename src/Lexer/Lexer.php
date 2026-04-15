@@ -773,12 +773,14 @@ class Lexer
 
     private function isIdentifierStart(string $ch): bool
     {
-        return ctype_alpha($ch) || $ch === '_' || $ch === '$';
+        // Guard against high bytes: ctype_alpha is locale-dependent and may
+        // return true for bytes >= 0x80 on some platforms (e.g. macOS).
+        return (ord($ch) < 128 && ctype_alpha($ch)) || $ch === '_' || $ch === '$';
     }
 
     private function isIdentifierPart(string $ch): bool
     {
-        return ctype_alnum($ch) || $ch === '_' || $ch === '$';
+        return (ord($ch) < 128 && ctype_alnum($ch)) || $ch === '_' || $ch === '$';
     }
 
     private function isDigitOrSeparator(): bool

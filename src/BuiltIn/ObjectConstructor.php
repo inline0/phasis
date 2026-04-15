@@ -630,9 +630,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return new JsBoolean(false);
             }
-            // For now, all objects are extensible. Full support would require
-            // an internal [[Extensible]] slot on JsObject.
-            return new JsBoolean(true);
+            return new JsBoolean($obj->isExtensible());
         };
     }
 
@@ -676,7 +674,7 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return $obj;
             }
-            // Simplified: in a full implementation, this would set [[Extensible]] to false.
+            $obj->preventExtensions();
             return $obj;
         };
     }
