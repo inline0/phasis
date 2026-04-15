@@ -192,6 +192,14 @@ class JsArray extends JsObject
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
         if ($name === 'length') {
+            if (!$this->lengthWritable) {
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot assign to read only property 'length' of object '[object Array]'"
+                    );
+                }
+                return;
+            }
             $this->setLengthFromValue($value);
             return;
         }
@@ -231,18 +239,32 @@ class JsArray extends JsObject
 
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
-        if ($name === 'length' && $desc->value !== null) {
-            $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
-            $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
-            if ((float) $uint32 !== $num) {
-                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+        if ($name === 'length') {
+            // Handle value change.
+            if ($desc->value !== null) {
+                $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+                $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
+                if ((float) $uint32 !== $num) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
+                if (!$this->lengthWritable && $uint32 !== $this->length) {
+                    return false;
+                }
+                $newLen = $uint32;
+                // Delete elements above new length (per ArraySetLength).
+                for ($i = $newLen; $i < $this->length; $i++) {
+                    $this->delete((string) $i);
+                }
+                $this->length = $newLen;
             }
-            $newLen = $uint32;
-            // Delete elements above new length (per ArraySetLength).
-            for ($i = $newLen; $i < $this->length; $i++) {
-                $this->delete((string) $i);
+            // Handle writable change (e.g. Object.freeze sets writable to false).
+            if ($desc->writable !== null) {
+                // Cannot go from non-writable to writable.
+                if (!$this->lengthWritable && $desc->writable === true) {
+                    return false;
+                }
+                $this->lengthWritable = $desc->writable;
             }
-            $this->length = $newLen;
             return true;
         }
         $result = parent::defineOwnProperty($name, $desc);

@@ -814,11 +814,28 @@ class TypedArrayConstructor
                 throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
             }
             $value = $args[0] ?? JsUndefined::instance();
+
+            // Per spec: coerce value to numeric type ONCE before start/end evaluation.
+            // If ContentType is BigInt, set value to ToBigInt(value).
+            // Otherwise, set value to ToNumber(value).
+            if ($this_->isBigIntArray()) {
+                if ($value instanceof \PhpJs\Value\JsBigInt) {
+                    $coerced = $value;
+                } else {
+                    // ToBigInt: only BigInt and strings that parse as BigInt are valid.
+                    // Numbers, null, undefined, booleans, symbols all throw TypeError.
+                    $coerced = TypeConversion::toBigInt($value);
+                }
+            } else {
+                $numVal = TypeConversion::toNumber($value);
+                $coerced = new JsNumber($numVal);
+            }
+
             $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
             $end = isset($args[2]) && !$args[2] instanceof JsUndefined
                 ? self::toInteger($args[2])
                 : null;
-            return $this_->fillTyped($value, $start, $end);
+            return $this_->fillTyped($coerced, $start, $end);
         }, 1);
         $proto->defineOwnProperty('fill', PropertyDescriptor::data($fillFn, true, false, true));
 
@@ -1179,6 +1196,48 @@ class TypedArrayConstructor
             return self::createTypedArrayIterator($this_, 'value');
         }, 0);
         $proto->defineOwnProperty('values', PropertyDescriptor::data($valuesFn, true, false, true));
+
+        // findLast(predicate, thisArg).
+        $findLastFn = JsFunction::fromCallable('findLast', function (JsValue $this_, array $args) use ($typeName): JsValue {
+            if (!$this_ instanceof JsTypedArray) {
+                throw new TypeError("Method {$typeName}.prototype.findLast called on incompatible receiver");
+            }
+            $predicate = $args[0] ?? JsUndefined::instance();
+            if (!$predicate instanceof JsFunction) {
+                throw new TypeError('predicate is not a function');
+            }
+            $thisArg = $args[1] ?? JsUndefined::instance();
+            for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
+                $el = $this_->getIndex($i);
+                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                if (TypeConversion::toBoolean($result)) {
+                    return $el;
+                }
+            }
+            return JsUndefined::instance();
+        }, 1);
+        $proto->defineOwnProperty('findLast', PropertyDescriptor::data($findLastFn, true, false, true));
+
+        // findLastIndex(predicate, thisArg).
+        $findLastIndexFn = JsFunction::fromCallable('findLastIndex', function (JsValue $this_, array $args) use ($typeName): JsValue {
+            if (!$this_ instanceof JsTypedArray) {
+                throw new TypeError("Method {$typeName}.prototype.findLastIndex called on incompatible receiver");
+            }
+            $predicate = $args[0] ?? JsUndefined::instance();
+            if (!$predicate instanceof JsFunction) {
+                throw new TypeError('predicate is not a function');
+            }
+            $thisArg = $args[1] ?? JsUndefined::instance();
+            for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
+                $el = $this_->getIndex($i);
+                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                if (TypeConversion::toBoolean($result)) {
+                    return new JsNumber((float) $i);
+                }
+            }
+            return new JsNumber(-1.0);
+        }, 1);
+        $proto->defineOwnProperty('findLastIndex', PropertyDescriptor::data($findLastIndexFn, true, false, true));
 
         // at(index).
         $atFn = JsFunction::fromCallable('at', function (JsValue $this_, array $args) use ($typeName): JsValue {

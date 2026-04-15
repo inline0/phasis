@@ -35,6 +35,7 @@ $runner->setSkipFeatures([
     // RegExp advanced
     'regexp-lookbehind', 'regexp-named-groups', 'regexp-dotall',
     'regexp-unicode-property-escapes', 'regexp-match-indices', 'regexp-v-flag',
+    'regexp-modifiers', 'regexp-duplicate-named-groups',
     'RegExp.escape',
     // Class fields/private
     'class-fields-public', 'class-fields-private',

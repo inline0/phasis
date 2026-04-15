@@ -268,6 +268,22 @@ class JsTypedArray extends JsObject
         parent::set($name, $value, $strict);
     }
 
+    /**
+     * Override internalSet for Reflect.set and spec-compliant [[Set]] on integer indices.
+     */
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    {
+        if (ctype_digit($name)) {
+            $index = (int) $name;
+            if ($index >= 0 && $index < $this->length) {
+                $this->setIndex($index, $value);
+                return true;
+            }
+            return false;
+        }
+        return parent::internalSet($name, $value, $receiver);
+    }
+
     public function has(string $name): bool
     {
         if (

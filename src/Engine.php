@@ -198,12 +198,12 @@ class Engine
                 ? ''
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
             return $interp->createRegExpFromConstructor($pattern, $flags);
-        });
+        }, 2);
     }
 
-    private function installStubConstructor(string $name, callable $fn): void
+    private function installStubConstructor(string $name, callable $fn, int $length = 0): void
     {
-        $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn);
+        $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn, $length);
         $constructor->setConstructable();
         $proto = new \PhpJs\Value\JsObject();
         // Per spec, constructor is writable, non-enumerable, configurable.
@@ -213,6 +213,8 @@ class Engine
         );
         $constructor->set('prototype', $proto);
         $this->globalEnv->defineVar($name, $constructor);
+        // Store prototype for internal use (e.g. Interpreter::createRegExpObject).
+        $this->globalEnv->defineVar("__{$name}Prototype__", $proto);
     }
 
     public function eval(string $source): mixed

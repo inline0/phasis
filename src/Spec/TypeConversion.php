@@ -120,6 +120,51 @@ final class TypeConversion
     }
 
     /**
+     * 7.1.13 ToBigInt(argument).
+     *
+     * Converts a value to BigInt per the spec algorithm.
+     * Throws TypeError for undefined, null, Number, Symbol.
+     * Throws SyntaxError for non-parseable strings.
+     */
+    public static function toBigInt(JsValue $value): JsBigInt
+    {
+        $prim = self::toPrimitive($value, 'number');
+
+        if ($prim instanceof JsBigInt) {
+            return $prim;
+        }
+        if ($prim instanceof JsBoolean) {
+            return new JsBigInt($prim->toBoolean() ? '1' : '0');
+        }
+        if ($prim instanceof JsString) {
+            $s = trim($prim->toJsString());
+            if ($s === '') {
+                throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"\" to a BigInt");
+            }
+            // Try to parse as BigInt literal (strip trailing n if present).
+            $str = rtrim($s, 'n');
+            if (preg_match('/^-?(?:0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+|[0-9]+)$/', $str)) {
+                return new JsBigInt($str);
+            }
+            throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"{$s}\" to a BigInt");
+        }
+        if ($prim instanceof JsUndefined) {
+            throw new TypeError('Cannot convert undefined to a BigInt');
+        }
+        if ($prim instanceof JsNull) {
+            throw new TypeError('Cannot convert null to a BigInt');
+        }
+        if ($prim instanceof JsNumber) {
+            throw new TypeError('Cannot convert a Number value to a BigInt');
+        }
+        if ($prim instanceof JsSymbol) {
+            throw new TypeError('Cannot convert a Symbol value to a BigInt');
+        }
+
+        throw new TypeError('Cannot convert value to a BigInt');
+    }
+
+    /**
      * 7.1.3 ToNumber(argument).
      *
      * undefined -> NaN, null -> +0, boolean -> 1 or 0,

@@ -454,8 +454,7 @@ class ObjectConstructor
             }
 
             if ($hasGetOrSet) {
-                // Use PropertyDescriptor directly so null fields stay null (partial descriptor)
-                $descriptor = new PropertyDescriptor(
+                $descriptor = PropertyDescriptor::accessor(
                     get: $getter,
                     set: $setter,
                     enumerable: $enumerable,

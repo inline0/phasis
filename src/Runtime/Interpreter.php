@@ -4089,6 +4089,28 @@ class Interpreter
 
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
+        // Validate flags per spec 22.2.3.1: only valid flag characters, no duplicates.
+        $validFlags = 'dgimsuy';
+        $seenFlags = [];
+        for ($fi = 0; $fi < strlen($flags); $fi++) {
+            $ch = $flags[$fi];
+            if (strpos($validFlags, $ch) === false) {
+                throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+            }
+            if (isset($seenFlags[$ch])) {
+                throw new \PhpJs\Exceptions\SyntaxError("Invalid flags supplied to RegExp constructor '{$flags}'");
+            }
+            $seenFlags[$ch] = true;
+        }
+
+        $isUnicode = str_contains($flags, 'u');
+
+        // Unicode mode validation per spec B.1.4: octal escapes and certain
+        // identity escapes are not allowed in /u patterns.
+        if ($isUnicode) {
+            $this->validateUnicodePattern($pattern);
+        }
+
         $regexpProto = null;
         if ($this->globalEnv->has('RegExp')) {
             $ctor = $this->globalEnv->get('RegExp');
@@ -4110,7 +4132,7 @@ class Interpreter
         $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
         $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));
         $obj->defineOwnProperty('dotAll', $noenum(new JsBoolean(str_contains($flags, 's'))));
-        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean(str_contains($flags, 'u'))));
+        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean($isUnicode)));
         $obj->defineOwnProperty('sticky', $noenum(new JsBoolean(str_contains($flags, 'y'))));
         $obj->defineOwnProperty('hasIndices', $noenum(new JsBoolean(str_contains($flags, 'd'))));
         // lastIndex is writable but not enumerable, not configurable per spec.
@@ -4127,7 +4149,11 @@ class Interpreter
         if (str_contains($flags, 's')) {
             $pcreFlags .= 's';
         }
-        $pcrePattern = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+
+        // Escape unescaped forward slashes for the PCRE delimiter.
+        // Already-escaped slashes (\/) must not be double-escaped.
+        $escapedPattern = $this->escapeForPcreDelimiter($pattern);
+        $pcrePattern = '/' . $escapedPattern . '/' . $pcreFlags . 'u';
 
         // Validate the pattern compiles. Throw SyntaxError if invalid.
         if (@preg_match($pcrePattern, '') === false) {
@@ -4273,6 +4299,190 @@ class Interpreter
         );
 
         return $obj;
+    }
+
+    /**
+     * Escape unescaped forward slashes for use with the PCRE / delimiter.
+     * Slashes already preceded by an odd number of backslashes are left as-is.
+     */
+    private function escapeForPcreDelimiter(string $pattern): string
+    {
+        $result = '';
+        $len = strlen($pattern);
+        for ($i = 0; $i < $len; $i++) {
+            if ($pattern[$i] === '/') {
+                // Count preceding backslashes.
+                $bs = 0;
+                for ($j = $i - 1; $j >= 0 && $pattern[$j] === '\\'; $j--) {
+                    $bs++;
+                }
+                // Even number of backslashes means the slash is unescaped.
+                if ($bs % 2 === 0) {
+                    $result .= '\\/';
+                } else {
+                    $result .= '/';
+                }
+            } else {
+                $result .= $pattern[$i];
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Validate a pattern for Unicode mode restrictions per spec B.1.4.
+     *
+     * In /u mode, the Annex B extensions are not applied:
+     * - Octal escape sequences (\1-\9, \00-\09, etc.) are forbidden
+     *   unless they are valid backreferences.
+     * - Identity escapes are restricted to SyntaxCharacter and /
+     * - \c must be followed by a letter (A-Z, a-z)
+     */
+    private function validateUnicodePattern(string $pattern): void
+    {
+        $len = strlen($pattern);
+        // Count capturing groups to know which \N are valid backreferences.
+        $groupCount = $this->countCapturingGroups($pattern);
+
+        for ($i = 0; $i < $len; $i++) {
+            if ($pattern[$i] !== '\\') {
+                // Skip character class contents for bracket tracking.
+                if ($pattern[$i] === '[') {
+                    $i++;
+                    while ($i < $len && $pattern[$i] !== ']') {
+                        if ($pattern[$i] === '\\' && $i + 1 < $len) {
+                            // Validate escapes inside character classes too.
+                            $next = $pattern[$i + 1];
+                            if ($next >= '0' && $next <= '9') {
+                                $this->validateUnicodeDecimalEscape($pattern, $i + 1, $len, 0, true);
+                            } elseif ($next === 'c') {
+                                $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
+                            }
+                            $i++; // skip the escaped char
+                        }
+                        $i++;
+                    }
+                }
+                continue;
+            }
+            // We have a backslash at position $i.
+            if ($i + 1 >= $len) {
+                // Trailing backslash: PCRE will catch this.
+                break;
+            }
+            $next = $pattern[$i + 1];
+
+            if ($next >= '1' && $next <= '9') {
+                // DecimalEscape: \1-\9 etc. In /u mode, these must be valid
+                // backreferences. Collect the full decimal number.
+                $numStr = '';
+                $j = $i + 1;
+                while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                    $numStr .= $pattern[$j];
+                    $j++;
+                }
+                $num = (int) $numStr;
+                if ($num > $groupCount) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /\\{$numStr}/ is not a valid backreference in unicode mode",
+                    );
+                }
+                $i = $j - 1;
+            } elseif ($next === '0') {
+                // \0 followed by another digit is an octal escape, forbidden in /u mode.
+                if ($i + 2 < $len && $pattern[$i + 2] >= '0' && $pattern[$i + 2] <= '9') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        'Invalid regular expression: octal escape sequences are not allowed in unicode mode',
+                    );
+                }
+                $i++; // skip past \0 (NUL escape is OK)
+            } elseif ($next === 'c') {
+                $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
+                $i += 2; // skip \cX
+            } else {
+                $i++; // skip the backslash and the next character
+            }
+        }
+    }
+
+    /**
+     * Validate a decimal escape sequence starting at $pos in /u mode.
+     * In character classes, any decimal escape (except \0 not followed by a digit) is forbidden.
+     */
+    private function validateUnicodeDecimalEscape(string $pattern, int $pos, int $len, int $groupCount, bool $inClass): void
+    {
+        $next = $pattern[$pos];
+        if ($inClass) {
+            // In character classes in /u mode, \0 is OK only if not followed by another digit.
+            if ($next === '0') {
+                if ($pos + 1 < $len && $pattern[$pos + 1] >= '0' && $pattern[$pos + 1] <= '9') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        'Invalid regular expression: octal escape sequences are not allowed in unicode mode',
+                    );
+                }
+                return; // \0 NUL is fine
+            }
+            // \1-\9 inside character class in /u mode: always invalid.
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid regular expression: decimal escape sequences are not allowed in unicode mode character classes',
+            );
+        }
+    }
+
+    /**
+     * Validate \c escape in /u mode: must be followed by a letter.
+     */
+    private function validateUnicodeControlEscape(string $pattern, int $cPos, int $len): void
+    {
+        // $cPos points to 'c' in the pattern. Next char must be a letter.
+        if ($cPos + 1 >= $len) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid regular expression: \\c at end of pattern in unicode mode',
+            );
+        }
+        $controlChar = $pattern[$cPos + 1];
+        if (!(($controlChar >= 'A' && $controlChar <= 'Z') || ($controlChar >= 'a' && $controlChar <= 'z'))) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid regular expression: \\c must be followed by a letter in unicode mode',
+            );
+        }
+    }
+
+    /**
+     * Count the number of capturing groups in a regex pattern.
+     * This counts '(' that are not followed by '?' (which would indicate
+     * a non-capturing group, lookahead, etc.).
+     */
+    private function countCapturingGroups(string $pattern): int
+    {
+        $count = 0;
+        $len = strlen($pattern);
+        for ($i = 0; $i < $len; $i++) {
+            if ($pattern[$i] === '\\') {
+                $i++; // skip escaped char
+                continue;
+            }
+            if ($pattern[$i] === '[') {
+                // Skip character class.
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                continue;
+            }
+            if ($pattern[$i] === '(' && $i + 1 < $len) {
+                if ($pattern[$i + 1] !== '?') {
+                    $count++;
+                } elseif ($i + 2 < $len && $pattern[$i + 2] === '<' && $i + 3 < $len && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!') {
+                    // Named capturing group (?<name>...)
+                    $count++;
+                }
+            }
+        }
+        return $count;
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */
