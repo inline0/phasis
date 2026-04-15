@@ -434,8 +434,12 @@ class Interpreter
 
         return match ($node->operator) {
             '!' => new JsBoolean(!TypeConversion::toBoolean($value)),
-            '+' => new JsNumber(TypeConversion::toNumber($value)),
-            '~' => new JsNumber((float) (~TypeConversion::toInt32($value))),
+            '+' => $value instanceof JsBigInt
+                ? throw new TypeError('Cannot convert a BigInt value to a number')
+                : new JsNumber(TypeConversion::toNumber($value)),
+            '~' => $value instanceof JsBigInt
+                ? new JsBigInt((string) (~(int) $value->value))
+                : new JsNumber((float) (~TypeConversion::toInt32($value))),
             'void' => JsUndefined::instance(),
             default => throw new InternalError("Unknown unary operator: {$node->operator}"),
         };
