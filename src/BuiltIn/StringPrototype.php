@@ -910,7 +910,7 @@ class StringPrototype
     /**
      * Count capturing groups in a regex pattern (not counting non-capturing groups like (?:...)).
      */
-    private static function countCaptureGroups(string $pattern): int
+    public static function countCaptureGroups(string $pattern): int
     {
         $count = 0;
         $len = strlen($pattern);
@@ -958,7 +958,7 @@ class StringPrototype
         return $count;
     }
 
-    private static function getSubstitution(
+    public static function getSubstitution(
         string $matched,
         string $str,
         int $position,
@@ -1160,9 +1160,33 @@ class StringPrototype
     private static function search(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
+            // Step 1: RequireObjectCoercible
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.search called on null or undefined'
+                );
+            }
+
             $searchArg = $args[0] ?? JsUndefined::instance();
 
+            // Step 2: If regexp is not undefined/null, check for @@search.
+            if (!$searchArg instanceof JsUndefined && !$searchArg instanceof JsNull) {
+                if ($searchArg instanceof JsObject) {
+                    $searchSym = SymbolConstructor::search();
+                    $searcher = $searchArg->getBySymbol($searchSym);
+                    if (!$searcher instanceof JsUndefined && !$searcher instanceof JsNull) {
+                        if ($searcher instanceof JsFunction) {
+                            return $searcher->call($searchArg, [$this_]);
+                        }
+                        throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.search] is not a function');
+                    }
+                }
+            }
+
+            // Step 3: ToString(O)
+            $str = self::extractString($this_);
+
+            // Non-object or no @@search: convert to regexp and call builtin search.
             // RegExp argument: use PCRE to find the position.
             if ($searchArg instanceof JsObject && $searchArg->has('source')) {
                 $pattern = TypeConversion::toString($searchArg->get('source'));
@@ -1186,6 +1210,12 @@ class StringPrototype
                 return new JsNumber(-1.0);
             }
 
+            // Per spec: undefined/null argument → RegExpCreate("", undefined) → /(?:)/.
+            // /(?:)/ matches at position 0 in any string.
+            if ($searchArg instanceof JsUndefined || $searchArg instanceof JsNull) {
+                return new JsNumber(0.0);
+            }
+
             $search = TypeConversion::toString($searchArg);
             $pos = mb_strpos($str, $search, 0, 'UTF-8');
             return new JsNumber($pos === false ? -1.0 : (float) $pos);
@@ -1195,8 +1225,31 @@ class StringPrototype
     private static function matchFn(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
+            // Step 1: RequireObjectCoercible
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.match called on null or undefined'
+                );
+            }
+
             $searchArg = $args[0] ?? JsUndefined::instance();
+
+            // Step 2: If regexp is not undefined/null, check for @@match.
+            if (!$searchArg instanceof JsUndefined && !$searchArg instanceof JsNull) {
+                if ($searchArg instanceof JsObject) {
+                    $matchSym = SymbolConstructor::match();
+                    $matcher = $searchArg->getBySymbol($matchSym);
+                    if (!$matcher instanceof JsUndefined && !$matcher instanceof JsNull) {
+                        if ($matcher instanceof JsFunction) {
+                            return $matcher->call($searchArg, [$this_]);
+                        }
+                        throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.match] is not a function');
+                    }
+                }
+            }
+
+            // Step 3: ToString(O)
+            $str = self::extractString($this_);
 
             // RegExp argument: use exec() for non-global, preg_match_all for global.
             if ($searchArg instanceof JsObject && $searchArg->has('source')) {
@@ -1302,8 +1355,55 @@ class StringPrototype
     private static function matchAll(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
+            // Step 1: RequireObjectCoercible
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.matchAll called on null or undefined'
+                );
+            }
+
             $searchArg = $args[0] ?? JsUndefined::instance();
+
+            // Step 2: If regexp is not undefined/null, handle RegExp and @@matchAll delegation.
+            if (!$searchArg instanceof JsUndefined && !$searchArg instanceof JsNull) {
+                if ($searchArg instanceof JsObject) {
+                    // Step 2a: IsRegExp check.
+                    $matchSym = SymbolConstructor::match();
+                    $matchVal = $searchArg->getBySymbol($matchSym);
+                    $isRegExp = $matchVal instanceof JsUndefined
+                        ? ($searchArg->has('source') && $searchArg->has('flags'))
+                        : TypeConversion::toBoolean($matchVal);
+
+                    if ($isRegExp) {
+                        // Step 2b: Get flags, RequireObjectCoercible(flags), check 'g'.
+                        $flagsVal = $searchArg->get('flags');
+                        if ($flagsVal instanceof JsUndefined || $flagsVal instanceof JsNull) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'String.prototype.matchAll called with a non-global RegExp argument'
+                            );
+                        }
+                        $flagsStr = TypeConversion::toString($flagsVal);
+                        if (!str_contains($flagsStr, 'g')) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'String.prototype.matchAll called with a non-global RegExp argument'
+                            );
+                        }
+                    }
+
+                    // Step 2c: GetMethod(regexp, @@matchAll).
+                    $matchAllSym = SymbolConstructor::matchAll();
+                    $matcher = $searchArg->getBySymbol($matchAllSym);
+                    if (!$matcher instanceof JsUndefined && !$matcher instanceof JsNull) {
+                        if ($matcher instanceof JsFunction) {
+                            return $matcher->call($searchArg, [$this_]);
+                        }
+                        throw new \PhpJs\Exceptions\TypeError('Symbol.matchAll is not a function');
+                    }
+                }
+            }
+
+            // Step 3: ToString(O)
+            $str = self::extractString($this_);
 
             $allMatches = [];
 

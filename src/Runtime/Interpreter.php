@@ -4539,7 +4539,8 @@ class Interpreter
 
             if ($lastIndex < 0 || $lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
-                    $obj->set('lastIndex', new JsNumber(0.0));
+                    // Per spec: Set(R, "lastIndex", 0, Throw=true).
+                    $obj->set('lastIndex', new JsNumber(0.0), true);
                 }
                 return JsNull::instance();
             }
@@ -4551,7 +4552,8 @@ class Interpreter
                 $matchBytePos = $matches[0][1];
                 // For sticky regex, the match must start exactly at lastIndex.
                 if ($isSticky && $matchBytePos !== $byteOffset) {
-                    $obj->set('lastIndex', new JsNumber(0.0));
+                    // Per spec: Set(R, "lastIndex", 0, Throw=true).
+                    $obj->set('lastIndex', new JsNumber(0.0), true);
                     return JsNull::instance();
                 }
                 // Convert byte position back to character position.
@@ -4560,7 +4562,8 @@ class Interpreter
                 $matchCharLen = mb_strlen($matchStr, 'UTF-8');
 
                 if ($isGlobal || $isSticky) {
-                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)));
+                    // Per spec: Set(R, "lastIndex", matchEnd, Throw=true).
+                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
                 }
 
                 // Build result array with numeric capture groups.
@@ -4595,7 +4598,8 @@ class Interpreter
             }
 
             if ($isGlobal || $isSticky) {
-                $obj->set('lastIndex', new JsNumber(0.0));
+                // Per spec: Set(R, "lastIndex", 0, Throw=true).
+                $obj->set('lastIndex', new JsNumber(0.0), true);
             }
             return JsNull::instance();
         };

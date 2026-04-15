@@ -529,6 +529,11 @@ class Engine
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
             return $interp->createRegExpFromConstructor($pattern, $flags);
         }, 2);
+
+        // Install Symbol methods on RegExp.prototype.
+        /** @var \PhpJs\Value\JsObject $regexpProto */
+        $regexpProto = $this->globalEnv->get('__RegExpPrototype__');
+        \PhpJs\BuiltIn\RegExpPrototype::install($regexpProto);
     }
 
     private function installStubConstructor(string $name, callable $fn, int $length = 0): void

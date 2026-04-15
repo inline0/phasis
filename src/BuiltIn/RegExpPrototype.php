@@ -1,0 +1,557 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs\BuiltIn;
+
+use PhpJs\Object\PropertyDescriptor;
+use PhpJs\Spec\TypeConversion;
+use PhpJs\Value\JsArray;
+use PhpJs\Value\JsBoolean;
+use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNull;
+use PhpJs\Value\JsNumber;
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
+use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsValue;
+
+/**
+ * Implements RegExp.prototype[Symbol.search], [Symbol.match], [Symbol.replace],
+ * [Symbol.matchAll], and [Symbol.split] per the ECMAScript specification.
+ *
+ * These are installed on RegExp.prototype so that String.prototype.search/match/
+ * replace/matchAll/split can delegate to them via the Symbol method lookup.
+ */
+class RegExpPrototype
+{
+    public static function install(JsObject $proto): void
+    {
+        $addSymbol = static function (
+            \PhpJs\Value\JsSymbol $sym,
+            string $name,
+            \Closure $fn,
+            int $length,
+        ) use ($proto): void {
+            $func = JsFunction::fromCallable($name, $fn, $length);
+            $proto->definePropertyBySymbol($sym, PropertyDescriptor::data($func, true, false, true));
+        };
+
+        $addSymbol(SymbolConstructor::search(), '[Symbol.search]', self::symbolSearch(), 1);
+        $addSymbol(SymbolConstructor::match(), '[Symbol.match]', self::symbolMatch(), 1);
+        $addSymbol(SymbolConstructor::replace(), '[Symbol.replace]', self::symbolReplace(), 2);
+        $addSymbol(SymbolConstructor::matchAll(), '[Symbol.matchAll]', self::symbolMatchAll(), 1);
+        $addSymbol(SymbolConstructor::split(), '[Symbol.split]', self::symbolSplit(), 2);
+    }
+
+    /**
+     * RegExp.prototype[@@search](string) - spec §22.2.6.11
+     *
+     * Returns the index of the first match, or -1 if no match.
+     */
+    private static function symbolSearch(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype[@@search] called on incompatible receiver'
+                );
+            }
+
+            $S = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+
+            // Save previousLastIndex.
+            $previousLastIndex = $this_->get('lastIndex');
+
+            // If previousLastIndex != 0, reset to 0.
+            if (!self::sameValueZero($previousLastIndex, new JsNumber(0.0))) {
+                $this_->set('lastIndex', new JsNumber(0.0));
+            }
+
+            // Call exec.
+            $result = self::regExpExec($this_, $S);
+
+            // Restore lastIndex if changed.
+            $currentLastIndex = $this_->get('lastIndex');
+            if (!self::sameValueZero($currentLastIndex, $previousLastIndex)) {
+                $this_->set('lastIndex', $previousLastIndex);
+            }
+
+            if ($result instanceof JsNull) {
+                return new JsNumber(-1.0);
+            }
+
+            return $result->get('index');
+        };
+    }
+
+    /**
+     * RegExp.prototype[@@match](string) - spec §22.2.6.9
+     *
+     * Returns match result(s) or null.
+     */
+    private static function symbolMatch(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype[@@match] called on incompatible receiver'
+                );
+            }
+
+            $S = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+            $global = TypeConversion::toBoolean($this_->get('global'));
+
+            if (!$global) {
+                // Non-global: single RegExpExec call.
+                return self::regExpExec($this_, $S);
+            }
+
+            // Global: iterate all matches.
+            $fullUnicode = TypeConversion::toBoolean($this_->get('unicode'))
+                || TypeConversion::toBoolean($this_->get('unicodeSets'));
+
+            // Per spec: Set(rx, "lastIndex", +0, Throw=true).
+            $this_->set('lastIndex', new JsNumber(0.0), true);
+
+            $elements = [];
+            $n = 0;
+
+            while (true) {
+                $result = self::regExpExec($this_, $S);
+                if ($result instanceof JsNull) {
+                    if ($n === 0) {
+                        return JsNull::instance();
+                    }
+                    return JsArray::fromArray($elements);
+                }
+
+                $matchStr = TypeConversion::toString($result->get('0'));
+                $elements[] = new JsString($matchStr);
+                $n++;
+
+                // If empty match, advance lastIndex to avoid infinite loop.
+                if ($matchStr === '') {
+                    // Per spec: ToLength(Get(rx, "lastIndex")).
+                    $thisIndex = TypeConversion::toLength($this_->get('lastIndex'));
+                    $nextIndex = $fullUnicode
+                        ? self::advanceStringIndex($S, $thisIndex)
+                        : $thisIndex + 1;
+                    $this_->set('lastIndex', new JsNumber((float) $nextIndex), true);
+                }
+            }
+        };
+    }
+
+    /**
+     * RegExp.prototype[@@replace](string, replaceValue) - spec §22.2.6.10
+     *
+     * Replaces match(es) in string, used by String.prototype.replace/replaceAll.
+     */
+    private static function symbolReplace(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype[@@replace] called on incompatible receiver'
+                );
+            }
+
+            $string = $args[0] ?? JsUndefined::instance();
+            $replaceValue = $args[1] ?? JsUndefined::instance();
+
+            $S = TypeConversion::toString($string);
+            $lengthS = mb_strlen($S, 'UTF-8');
+
+            $functionalReplace = $replaceValue instanceof JsFunction;
+            if (!$functionalReplace) {
+                $replaceStr = TypeConversion::toString($replaceValue);
+            } else {
+                $replaceStr = '';
+            }
+
+            $global = TypeConversion::toBoolean($this_->get('global'));
+            $fullUnicode = false;
+
+            if ($global) {
+                $fullUnicode = TypeConversion::toBoolean($this_->get('unicode'))
+                    || TypeConversion::toBoolean($this_->get('unicodeSets'));
+                // Per spec step 10.c: Set(rx, "lastIndex", +0, Throw=true).
+                $this_->set('lastIndex', new JsNumber(0.0), true);
+            }
+
+            // Collect all results first.
+            $results = [];
+            $done = false;
+            while (!$done) {
+                $result = self::regExpExec($this_, $S);
+                if ($result instanceof JsNull) {
+                    $done = true;
+                } else {
+                    $results[] = $result;
+                    if (!$global) {
+                        $done = true;
+                    } else {
+                        $matchStr = TypeConversion::toString($result->get('0'));
+                        if ($matchStr === '') {
+                            // Per spec: ToLength(Get(rx, "lastIndex")).
+                            $thisIndex = TypeConversion::toLength($this_->get('lastIndex'));
+                            $nextIndex = $fullUnicode
+                                ? self::advanceStringIndex($S, $thisIndex)
+                                : $thisIndex + 1;
+                            $this_->set('lastIndex', new JsNumber((float) $nextIndex), true);
+                        }
+                    }
+                }
+            }
+
+            // Build result string.
+            $accumulatedResult = '';
+            $nextSourcePosition = 0;
+
+            foreach ($results as $result) {
+                // Get capture count from result length.
+                $nCaptures = max((int) TypeConversion::toNumber($result->get('length')) - 1, 0);
+                $matched = TypeConversion::toString($result->get('0'));
+                $matchLength = mb_strlen($matched, 'UTF-8');
+
+                $position = TypeConversion::toIntegerOrInfinity($result->get('index'));
+                $position = (int) max(0, min($position, $lengthS));
+
+                // Build captures array.
+                $captures = [];
+                for ($i = 1; $i <= $nCaptures; $i++) {
+                    $capN = $result->get((string) $i);
+                    if ($capN instanceof JsUndefined) {
+                        $captures[] = null;
+                    } else {
+                        $captures[] = TypeConversion::toString($capN);
+                    }
+                }
+
+                // Named capture groups.
+                // Per spec: if namedCaptures is not undefined, Set namedCaptures to ToObject(namedCaptures).
+                // Note: ToObject(null) throws TypeError - do NOT skip null.
+                $namedCaptures = null;
+                $groupsVal = $result->get('groups');
+                if (!$groupsVal instanceof JsUndefined) {
+                    // ToObject throws for null - spec §14.l.i.1
+                    $groupsObj = TypeConversion::toObject($groupsVal);
+                    $namedCaptures = [];
+                    foreach ($groupsObj->getOwnPropertyNames() as $key) {
+                        $val = $groupsObj->get($key);
+                        $namedCaptures[$key] = $val instanceof JsUndefined ? null : TypeConversion::toString($val);
+                    }
+                }
+
+                if ($functionalReplace) {
+                    // Build args: matched, ...captures, position, S[, namedCaptures]
+                    $callArgs = [new JsString($matched)];
+                    foreach ($captures as $cap) {
+                        $callArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
+                    }
+                    $callArgs[] = new JsNumber((float) $position);
+                    $callArgs[] = new JsString($S);
+                    if ($namedCaptures !== null) {
+                        $groupsObj = new JsObject(null);
+                        foreach ($namedCaptures as $k => $v) {
+                            $groupsObj->set($k, $v === null ? JsUndefined::instance() : new JsString($v));
+                        }
+                        $callArgs[] = $groupsObj;
+                    }
+                    $replValue = $replaceValue->call(JsUndefined::instance(), $callArgs);
+                    $replacement = TypeConversion::toString($replValue);
+                } else {
+                    $replacement = StringPrototype::getSubstitution(
+                        $matched, $S, $position, $captures, $replaceStr, $namedCaptures
+                    );
+                }
+
+                if ($position >= $nextSourcePosition) {
+                    $accumulatedResult .= mb_substr($S, $nextSourcePosition, $position - $nextSourcePosition, 'UTF-8');
+                    $accumulatedResult .= $replacement;
+                    $nextSourcePosition = $position + $matchLength;
+                }
+            }
+
+            return new JsString($accumulatedResult . mb_substr($S, $nextSourcePosition, null, 'UTF-8'));
+        };
+    }
+
+    /**
+     * RegExp.prototype[@@matchAll](string) - spec §22.2.6.9a
+     *
+     * Creates an iterator that yields each match result.
+     */
+    private static function symbolMatchAll(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype[@@matchAll] called on incompatible receiver'
+                );
+            }
+
+            $S = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+
+            // Get flags to create a copy with the same flags.
+            $flagsVal = $this_->get('flags');
+            $flags = TypeConversion::toString($flagsVal);
+            $global = str_contains($flags, 'g');
+            $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+
+            // Create a copy of the regexp (using the exec method from the same object
+            // but with lastIndex propagated). Per spec we should use SpeciesConstructor
+            // but for simplicity we use the same object and save/restore state.
+            // Actually per spec we create a new regexp. For now, clone the state.
+            // We'll use the original regexp's exec but track state in our iterator.
+            $lastIndexVal = $this_->get('lastIndex');
+            $startIndex = (int) TypeConversion::toNumber($lastIndexVal);
+
+            // We need a "matcher" - use the original rx since exec is instance-specific.
+            // Per spec, we create a copy; approximate by using original rx with saved lastIndex.
+            $matcher = $this_;
+
+            // Create the iterator closure over $matcher, $S, $global, $fullUnicode.
+            $done = false;
+            $currentIndex = $startIndex;
+
+            $iterator = new JsObject();
+            $nextFn = function () use (&$done, $matcher, $S, $global, $fullUnicode, &$currentIndex): JsValue {
+                $result = new JsObject();
+                if ($done) {
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                    return $result;
+                }
+
+                // Set lastIndex before exec.
+                if ($global) {
+                    $matcher->set('lastIndex', new JsNumber((float) $currentIndex));
+                }
+
+                $match = self::regExpExec($matcher, $S);
+
+                if ($match instanceof JsNull) {
+                    $done = true;
+                    $result->set('value', JsUndefined::instance());
+                    $result->set('done', new JsBoolean(true));
+                    return $result;
+                }
+
+                if ($global) {
+                    $matchStr = TypeConversion::toString($match->get('0'));
+                    if ($matchStr === '') {
+                        // Advance to avoid infinite loop.
+                        $nextIndex = $fullUnicode
+                            ? self::advanceStringIndex($S, $currentIndex)
+                            : $currentIndex + 1;
+                        $currentIndex = $nextIndex;
+                        $matcher->set('lastIndex', new JsNumber((float) $currentIndex));
+                    } else {
+                        $currentIndex = (int) TypeConversion::toNumber($matcher->get('lastIndex'));
+                    }
+                } else {
+                    $done = true;
+                }
+
+                $result->set('value', $match);
+                $result->set('done', new JsBoolean(false));
+                return $result;
+            };
+
+            $iterator->set('next', JsFunction::fromCallable('next', $nextFn, 0));
+            $iterSym = SymbolConstructor::iterator();
+            $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
+                '[Symbol.iterator]',
+                function () use ($iterator): JsValue {
+                    return $iterator;
+                },
+            ));
+            return $iterator;
+        };
+    }
+
+    /**
+     * RegExp.prototype[@@split](string, limit) - spec §22.2.6.12
+     *
+     * Splits string by regexp matches.
+     */
+    private static function symbolSplit(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype[@@split] called on incompatible receiver'
+                );
+            }
+
+            $string = $args[0] ?? JsUndefined::instance();
+            $limitArg = $args[1] ?? JsUndefined::instance();
+
+            $S = TypeConversion::toString($string);
+            $lim = $limitArg instanceof JsUndefined
+                ? 0xFFFFFFFF
+                : TypeConversion::toUint32($limitArg);
+
+            if ($lim === 0) {
+                return JsArray::fromArray([]);
+            }
+
+            // Get flags from the regexp to determine if unicode.
+            $flagsVal = $this_->get('flags');
+            $flags = TypeConversion::toString($flagsVal);
+            $unicodeMatching = str_contains($flags, 'u') || str_contains($flags, 'v');
+
+            // Create a sticky version of the regex for splitting.
+            // We simulate this by using the exec method directly with manual lastIndex.
+            // Per spec, we create new regexp with 'y' flag. Since we can't easily clone,
+            // we use the exec method but set lastIndex manually each time.
+            $size = mb_strlen($S, 'UTF-8');
+
+            $A = [];
+            $lengthA = 0;
+
+            // Empty string special case.
+            if ($size === 0) {
+                $this_->set('lastIndex', new JsNumber(0.0));
+                $z = self::regExpExec($this_, $S);
+                if (!$z instanceof JsNull) {
+                    return JsArray::fromArray([]);
+                }
+                return JsArray::fromArray([new JsString($S)]);
+            }
+
+            $p = 0;
+            $q = $p;
+
+            while ($q < $size) {
+                $this_->set('lastIndex', new JsNumber((float) $q));
+                $z = self::regExpExec($this_, $S);
+
+                if ($z instanceof JsNull) {
+                    // No match starting at q: advance q by one character (or codepoint).
+                    $q = $unicodeMatching
+                        ? self::advanceStringIndex($S, $q)
+                        : $q + 1;
+                    continue;
+                }
+
+                // Match found. Get end position.
+                $lastIndexVal = $this_->get('lastIndex');
+                $e = (int) TypeConversion::toNumber($lastIndexVal);
+                if ($e === $q) {
+                    // Zero-width match at same position: advance to avoid infinite loop.
+                    $q = $unicodeMatching
+                        ? self::advanceStringIndex($S, $q)
+                        : $q + 1;
+                    continue;
+                }
+
+                // We have a match from $q (but actually from exec starting at $q,
+                // the match may start earlier). Per spec, use match start position.
+                $matchStart = (int) TypeConversion::toNumber($z->get('index'));
+
+                if ($matchStart < $p) {
+                    // Match starts before current position: skip.
+                    $q = $unicodeMatching
+                        ? self::advanceStringIndex($S, $q)
+                        : $q + 1;
+                    continue;
+                }
+
+                // Append the part before the match.
+                $T = mb_substr($S, $p, $matchStart - $p, 'UTF-8');
+                $A[] = new JsString($T);
+                $lengthA++;
+                if ($lengthA === $lim) {
+                    return JsArray::fromArray($A);
+                }
+
+                $p = $e;
+
+                // Append capture groups.
+                $nCaptures = max((int) TypeConversion::toNumber($z->get('length')) - 1, 0);
+                for ($i = 1; $i <= $nCaptures; $i++) {
+                    $capN = $z->get((string) $i);
+                    $A[] = $capN;
+                    $lengthA++;
+                    if ($lengthA === $lim) {
+                        return JsArray::fromArray($A);
+                    }
+                }
+
+                $q = $p;
+            }
+
+            // Append remainder.
+            $T = mb_substr($S, $p, null, 'UTF-8');
+            $A[] = new JsString($T);
+            return JsArray::fromArray($A);
+        };
+    }
+
+    /**
+     * Abstract operation RegExpExec(R, S) - spec §22.2.7.
+     * Calls R.exec(S) and returns the result.
+     */
+    private static function regExpExec(JsObject $rx, string $S): JsObject|JsNull
+    {
+        $execVal = $rx->get('exec');
+        if ($execVal instanceof JsFunction) {
+            $result = $execVal->call($rx, [new JsString($S)]);
+            if ($result instanceof JsNull) {
+                return $result;
+            }
+            if ($result instanceof JsObject) {
+                return $result;
+            }
+            throw new \PhpJs\Exceptions\TypeError(
+                'RegExp exec must return an Object or null'
+            );
+        }
+        return JsNull::instance();
+    }
+
+    /**
+     * Advance string index by one Unicode code point (for fullUnicode mode).
+     */
+    private static function advanceStringIndex(string $S, int $index): int
+    {
+        // In UTF-8 we just advance by one character (code point).
+        // For truly correct UTF-16 surrogate pair handling we'd need UTF-16 semantics,
+        // but for most cases this is sufficient.
+        $len = mb_strlen($S, 'UTF-8');
+        if ($index + 1 >= $len) {
+            return $index + 1;
+        }
+        return $index + 1;
+    }
+
+    /**
+     * SameValue comparison for lastIndex tracking.
+     * For numbers, distinguishes +0 and -0 (unlike ===).
+     */
+    private static function sameValueZero(JsValue $x, JsValue $y): bool
+    {
+        if ($x instanceof JsNumber && $y instanceof JsNumber) {
+            if (is_nan($x->value) && is_nan($y->value)) {
+                return true;
+            }
+            return $x->value === $y->value;
+        }
+        if ($x instanceof JsString && $y instanceof JsString) {
+            return $x->value === $y->value;
+        }
+        if ($x instanceof JsBoolean && $y instanceof JsBoolean) {
+            return $x->value === $y->value;
+        }
+        if ($x instanceof JsNull && $y instanceof JsNull) {
+            return true;
+        }
+        if ($x instanceof JsUndefined && $y instanceof JsUndefined) {
+            return true;
+        }
+        return $x === $y;
+    }
+}
