@@ -140,6 +140,36 @@ class Engine
             return $set;
         });
 
+        // BigInt constructor (not new-able, converts to BigInt)
+        $bigIntFn = JsFunction::fromCallable('BigInt', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+            if ($val instanceof \PhpJs\Value\JsBigInt) {
+                return $val;
+            }
+            if ($val instanceof \PhpJs\Value\JsNumber) {
+                $n = $val->value;
+                if (!is_finite($n) || floor($n) !== $n) {
+                    throw new \PhpJs\Exceptions\RangeError('The number ' . $n . ' cannot be converted to a BigInt');
+                }
+                return new \PhpJs\Value\JsBigInt((string) (int) $n);
+            }
+            if ($val instanceof \PhpJs\Value\JsString) {
+                $str = trim($val->value);
+                if (preg_match('/^-?\d+$/', $str)) {
+                    return new \PhpJs\Value\JsBigInt($str);
+                }
+                if (preg_match('/^0[xX][0-9a-fA-F]+$/', $str)) {
+                    return new \PhpJs\Value\JsBigInt((string) hexdec(substr($str, 2)));
+                }
+                throw new \PhpJs\Exceptions\SyntaxError('Cannot convert ' . $str . ' to a BigInt');
+            }
+            if ($val instanceof \PhpJs\Value\JsBoolean) {
+                return new \PhpJs\Value\JsBigInt($val->value ? '1' : '0');
+            }
+            throw new \PhpJs\Exceptions\TypeError('Cannot convert ' . $val->typeof() . ' to a BigInt');
+        });
+        $this->globalEnv->defineVar('BigInt', $bigIntFn);
+
         \PhpJs\BuiltIn\DateConstructor::install($this->globalEnv);
 
         $interp = $this->interpreter;

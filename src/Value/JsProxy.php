@@ -731,7 +731,8 @@ class JsProxy extends JsObject
 
     public function typeof(): string
     {
-        $this->assertNotRevoked('typeof');
+        // typeof does NOT throw on revoked proxies per spec.
+        // It returns based on the target's callability at creation time.
         if ($this->isCallable()) {
             return 'function';
         }
