@@ -482,8 +482,48 @@ class Lexer
             $this->advance();
         }
         $code = (int) hexdec($hex);
+
+        // Per spec: \uD800-\uDBFF is a high surrogate. If followed by \uDC00-\uDFFF
+        // (a low surrogate), combine them into the supplementary Unicode code point.
+        if ($count === 4 && $code >= 0xD800 && $code <= 0xDBFF) {
+            $savedPos = $this->pos;
+            if (
+                $this->pos + 5 < $this->length
+                && $this->source[$this->pos] === '\\'
+                && $this->source[$this->pos + 1] === 'u'
+            ) {
+                $lo = '';
+                for ($j = 0; $j < 4; $j++) {
+                    $c = $this->source[$this->pos + 2 + $j] ?? '';
+                    if (!ctype_xdigit($c)) {
+                        $lo = '';
+                        break;
+                    }
+                    $lo .= $c;
+                }
+                if (strlen($lo) === 4) {
+                    $loCode = (int) hexdec($lo);
+                    if ($loCode >= 0xDC00 && $loCode <= 0xDFFF) {
+                        // Valid surrogate pair: advance past \uXXXX
+                        $this->pos += 6;
+                        $codePoint = 0x10000 + ($code - 0xD800) * 0x400 + ($loCode - 0xDC00);
+                        $chr = mb_chr($codePoint, 'UTF-8');
+                        return $chr !== false ? $chr : '?';
+                    }
+                }
+            }
+            // Not a surrogate pair: store as WTF-8 lone surrogate (CESU-8 style).
+            // Encode as 3-byte CESU-8: ED A0+((code>>6)&0xF) 80+(code&0x3F)
+            return "\xED" . chr(0xA0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+        }
+
+        if ($count === 4 && $code >= 0xDC00 && $code <= 0xDFFF) {
+            // Lone low surrogate: encode as CESU-8
+            return "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+        }
+
         $chr = mb_chr($code, 'UTF-8');
-        return $chr !== false ? $chr : chr($code);
+        return $chr !== false ? $chr : chr($code & 0xFF);
     }
 
     private function readUnicodeEscape(): string

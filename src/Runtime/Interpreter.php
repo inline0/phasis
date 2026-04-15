@@ -68,6 +68,7 @@ use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
 use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
+use PhpJs\Value\GeneratorReturnSignal;
 use PhpJs\Value\GeneratorThrowSignal;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsGenerator;
@@ -3029,7 +3030,21 @@ class Interpreter
 
     private function execForOfStatement(ForOfStatement $node, Environment $env, ?string $label = null): Completion
     {
-        $iterable = $this->evaluate($node->right, $env);
+        // Per spec ForIn/OfHeadEvaluation: if lhs is a lexical binding (let/const),
+        // evaluate the iterable expression in a TDZ environment with bound names.
+        // e.g. `for (let x of [x])` → [x] sees x as uninitialized → ReferenceError.
+        $exprEnv = $env;
+        if ($node->left instanceof VariableDeclaration && $node->left->kind !== 'var') {
+            $tdzEnv = $env->createChild();
+            foreach ($node->left->declarations as $decl) {
+                foreach ($this->patternBoundNames($decl->id) as $name) {
+                    $tdzEnv->declareLet($name);
+                }
+            }
+            $exprEnv = $tdzEnv;
+        }
+
+        $iterable = $this->evaluate($node->right, $exprEnv);
         $iterations = 0;
         $v = JsUndefined::instance();
 
@@ -3043,29 +3058,66 @@ class Interpreter
             }
 
             // Helper: call iterator.return() if it exists (iterator close protocol).
+            // Per spec IteratorClose (7.4.7): if original completion is throw, it takes precedence.
             $closeIterator = function (?Completion $abruptCompletion) use ($iterator): ?Completion {
-                $returnMethod = $iterator->get('return');
-                if (!$returnMethod instanceof JsFunction) {
-                    return null;
-                }
+                $isOriginalThrow = $abruptCompletion !== null && $abruptCompletion->type === CompletionType::Throw;
+
+                // Step 3: innerResult = GetMethod(iterator, "return").
+                // If the getter itself throws, that's an abrupt innerResult.
                 try {
-                    $innerResult = $this->callFunction($returnMethod, $iterator, []);
-                    if ($abruptCompletion !== null) {
-                        // Preserve the original abrupt completion.
+                    $returnMethod = $iterator->get('return');
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    // GetMethod threw. Per step 5: if original was throw, suppress; else propagate.
+                    if ($isOriginalThrow) {
                         return null;
                     }
+                    return Completion::throw($e->jsValue);
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    if ($isOriginalThrow) {
+                        return null;
+                    }
+                    return Completion::throw($this->phpExceptionToJsValue($e));
+                }
+
+                // Per spec GetMethod: undefined/null → no return method (step 3b).
+                if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
+                    return null;
+                }
+
+                // Per spec GetMethod: non-callable → TypeError.
+                if (!$returnMethod instanceof JsFunction) {
+                    if ($isOriginalThrow) {
+                        return null;
+                    }
+                    return Completion::throw($this->phpExceptionToJsValue(
+                        new TypeError('Iterator return is not callable')
+                    ));
+                }
+
+                // Step 3c: innerResult = Call(return, iterator).
+                try {
+                    $innerResult = $this->callFunction($returnMethod, $iterator, []);
+                    // Step 5: if original was throw, return it (ignore return() result).
+                    if ($isOriginalThrow) {
+                        return null;
+                    }
+                    // Step 6-7: if return() returned non-object, throw TypeError.
                     if (!$innerResult instanceof JsObject) {
-                        throw new TypeError('Iterator return result is not an object');
+                        return Completion::throw($this->phpExceptionToJsValue(
+                            new TypeError('Iterator return result is not an object')
+                        ));
                     }
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    if ($abruptCompletion === null) {
-                        // Only propagate return-method exception if we didn't have a prior one.
-                        return Completion::throw_($e->jsValue);
+                    // Step 6: return() threw. If original was throw, suppress; else propagate.
+                    if ($isOriginalThrow) {
+                        return null;
                     }
+                    return Completion::throw($e->jsValue);
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    if ($abruptCompletion === null) {
-                        return Completion::throw_(new \PhpJs\Value\JsString($e->getMessage()));
+                    if ($isOriginalThrow) {
+                        return null;
                     }
+                    return Completion::throw($this->phpExceptionToJsValue($e));
                 }
                 return null;
             };
@@ -3087,7 +3139,17 @@ class Interpreter
 
                 $value = $result->get('value');
                 $iterEnv = $env->createChild();
-                $this->assignForBinding($node->left, $value, $iterEnv);
+                // Per spec ForIn/OfBodyEvaluation: if LHS assignment/destructuring is abrupt,
+                // close the iterator before propagating the error.
+                try {
+                    $this->assignForBinding($node->left, $value, $iterEnv);
+                } catch (\PhpJs\Exceptions\JsThrowable $assignErr) {
+                    $closeIterator(Completion::throw($assignErr->jsValue));
+                    throw $assignErr;
+                } catch (\PhpJs\Exceptions\RuntimeError $assignErr) {
+                    $closeIterator(Completion::throw($this->phpExceptionToJsValue($assignErr)));
+                    throw $assignErr;
+                }
                 $completion = $this->executeStatement($node->body, $iterEnv);
 
                 if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
@@ -3095,7 +3157,10 @@ class Interpreter
                 }
 
                 if ($completion->type === CompletionType::Break && ($completion->target === null || ($label !== null && $completion->target === $label))) {
-                    $closeIterator(null);
+                    $closeCompletion = $closeIterator(null);
+                    if ($closeCompletion !== null && $closeCompletion->isAbrupt()) {
+                        return $closeCompletion;
+                    }
                     $breakVal = $completion->empty ? $v : $completion->value;
                     return Completion::normal($breakVal);
                 }
@@ -3229,6 +3294,10 @@ class Interpreter
         } elseif ($this->isDestructuringTarget($left)) {
             // Plain destructuring assignment (no declaration keyword): update existing bindings.
             $this->destructureAssign($left, $value, $env);
+        } else {
+            // Member expression or other reference LHS: e.g. for (x.attr of iterable).
+            $ref = $this->resolveReference($left, $env);
+            $ref->setValue($value);
         }
     }
 
@@ -3496,8 +3565,16 @@ class Interpreter
 
     private function execTryStatement(TryStatement $node, Environment $env): Completion
     {
+        $generatorReturnSignal = null;
         try {
             $completion = $this->execBlockStatement($node->block, $env);
+        } catch (GeneratorReturnSignal $returnSignal) {
+            // generator.return() signal must propagate through finally blocks.
+            // Stash it and let the finally block below run (if any), then re-throw.
+            $generatorReturnSignal = $returnSignal;
+            // Treat as a Return completion so the finally executes; the catch
+            // handler must NOT run for a return signal.
+            $completion = Completion::return($returnSignal->value);
         } catch (GeneratorThrowSignal $e) {
             // A generator.throw() signal propagated into a try block.
             // Convert it to a Throw completion so the catch handler can run.
@@ -3547,9 +3624,18 @@ class Interpreter
                         $finallyCompletion->target,
                     );
                 }
+                // Finally's abrupt completion takes precedence over GeneratorReturnSignal.
+                $generatorReturnSignal = null;
                 return $finallyCompletion;
             }
             // F.type is normal: set F to C (use the try/catch completion).
+        }
+
+        // If a generator.return() signal was stashed and the finally completed
+        // normally, re-throw the signal to continue propagating through the
+        // generator's call stack.
+        if ($generatorReturnSignal !== null) {
+            throw $generatorReturnSignal;
         }
 
         return $completion;
@@ -3759,6 +3845,47 @@ class Interpreter
         } elseif ($pattern instanceof RestElement) {
             $this->hoistVarNames($pattern->argument, $env);
         }
+    }
+
+    /**
+     * Collect all identifier names bound by a binding pattern (Identifier,
+     * ArrayPattern, ObjectPattern, RestElement, AssignmentPattern).
+     * Used to populate TDZ environments for for-of/for-in head evaluation.
+     *
+     * @return list<string>
+     */
+    private function patternBoundNames(Node $pattern): array
+    {
+        if ($pattern instanceof Identifier) {
+            return [$pattern->name];
+        }
+        if ($pattern instanceof ArrayPattern) {
+            $names = [];
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $names = array_merge($names, $this->patternBoundNames($elem));
+                }
+            }
+            return $names;
+        }
+        if ($pattern instanceof ObjectPattern) {
+            $names = [];
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $names = array_merge($names, $this->patternBoundNames($prop->value));
+                } elseif ($prop instanceof RestElement) {
+                    $names = array_merge($names, $this->patternBoundNames($prop->argument));
+                }
+            }
+            return $names;
+        }
+        if ($pattern instanceof AssignmentPattern) {
+            return $this->patternBoundNames($pattern->left);
+        }
+        if ($pattern instanceof RestElement) {
+            return $this->patternBoundNames($pattern->argument);
+        }
+        return [];
     }
 
     /**

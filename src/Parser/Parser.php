@@ -144,6 +144,10 @@ class Parser
         $token = $this->current();
 
         return match ($token->type) {
+            // var is a VariableStatement, which is a Statement per spec.
+            // let/const are LexicalDeclarations (Declarations) and may only
+            // appear as loop/if bodies when wrapped in a BlockStatement.
+            TokenType::Var => $this->parseVariableDeclaration(),
             TokenType::LeftBrace => $this->parseBlockStatement(),
             TokenType::If => $this->parseIfStatement(),
             TokenType::For => $this->parseForStatement(),
