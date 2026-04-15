@@ -519,6 +519,14 @@ class Interpreter
         $right = $this->evaluate($node->right, $env);
 
         if ($node->operator === '=') {
+            // Function name inference per spec 13.15.2 step 1.e.
+            if (
+                $right instanceof JsFunction
+                && $node->left instanceof Identifier
+                && $this->isAnonymousFunctionDefinitionNode($node->right)
+            ) {
+                $right->setName($node->left->name);
+            }
             $ref->setValue($right);
             return $right;
         }
