@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\BuiltIn;
 
+use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Runtime\Environment;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
@@ -22,29 +23,129 @@ class JsonObject
     {
         $json = new JsObject();
 
-        $json->defineOwnProperty('parse', \PhpJs\Object\PropertyDescriptor::data(
+        $json->defineOwnProperty('parse', PropertyDescriptor::data(
             JsFunction::fromCallable('parse', self::parse(), 2),
             true,
             false,
             true,
         ));
-        $json->defineOwnProperty('stringify', \PhpJs\Object\PropertyDescriptor::data(
+        $json->defineOwnProperty('stringify', PropertyDescriptor::data(
             JsFunction::fromCallable('stringify', self::stringify(), 3),
             true,
             false,
             true,
         ));
 
+        // Symbol.toStringTag = "JSON" per spec 25.5.3.
+        $toStringTagSym = SymbolConstructor::toStringTag();
+        $json->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::data(new JsString('JSON'), false, false, true),
+        );
+
         $env->defineDeletable('JSON', $json);
+    }
+
+    private static function jsIsArray(JsValue $value): bool
+    {
+        if ($value instanceof \PhpJs\Value\JsProxy) {
+            if ($value->isRevoked()) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Cannot perform \'IsArray\' on a proxy that has been revoked'
+                );
+            }
+
+            return self::jsIsArray($value->getTarget());
+        }
+
+        return $value instanceof JsArray;
+    }
+
+    private static function arrayLikeLength(JsObject $value): int
+    {
+        $lenVal = $value->get('length');
+
+        if (!$lenVal instanceof JsUndefined) {
+            return (int) TypeConversion::toNumber($lenVal);
+        }
+
+        if ($value instanceof \PhpJs\Value\JsProxy) {
+            return self::arrayLikeLength($value->getTarget());
+        }
+
+        return 0;
+    }
+
+    private static function hasNumberData(JsObject $obj): bool
+    {
+        if (!$obj->has('[[PrimitiveValue]]')) {
+            return false;
+        }
+
+        return $obj->get('[[PrimitiveValue]]') instanceof JsNumber;
+    }
+
+    private static function hasStringData(JsObject $obj): bool
+    {
+        if (!$obj->has('[[PrimitiveValue]]')) {
+            return false;
+        }
+
+        return $obj->get('[[PrimitiveValue]]') instanceof JsString;
+    }
+
+    private static function hasBooleanData(JsObject $obj): bool
+    {
+        if (!$obj->has('[[PrimitiveValue]]')) {
+            return false;
+        }
+
+        return $obj->get('[[PrimitiveValue]]') instanceof JsBoolean;
+    }
+
+    private static function hasBigIntData(JsObject $obj): bool
+    {
+        if (!$obj->has('[[PrimitiveValue]]')) {
+            return false;
+        }
+
+        return $obj->get('[[PrimitiveValue]]') instanceof \PhpJs\Value\JsBigInt;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function enumerableOwnPropertyNames(JsObject $obj): array
+    {
+        if ($obj instanceof \PhpJs\Value\JsProxy) {
+            return $obj->getOwnEnumerableKeys();
+        }
+
+        $allKeys = $obj->ordinaryOwnPropertyKeys();
+        $result = [];
+
+        foreach ($allKeys as $keyVal) {
+            if (!$keyVal instanceof JsString) {
+                continue;
+            }
+
+            $key = $keyVal->value;
+            $desc = $obj->getOwnPropertyDescriptor($key);
+
+            if ($desc !== null && $desc->enumerable === true) {
+                $result[] = $key;
+            }
+        }
+
+        return $result;
     }
 
     private static function parse(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
             $text = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-
-            // Handle -0 specially (PHP json_decode loses the sign)
             $trimmed = trim($text);
+
             if ($trimmed === '-0') {
                 return new JsNumber(-0.0);
             }
@@ -58,37 +159,67 @@ class JsonObject
             }
 
             $result = self::phpToJsValue($decoded);
-
-            // Apply reviver function if provided
             $reviver = ($args[1] ?? null) instanceof JsFunction ? $args[1] : null;
-            if ($reviver !== null && $result instanceof JsObject) {
-                $result = self::applyReviver($result, $reviver);
+
+            if ($reviver !== null) {
+                $root = new JsObject();
+                $root->defineOwnProperty('', PropertyDescriptor::data($result, true, true, true));
+                $result = self::internalizeJSONProperty($root, '', $reviver);
             }
 
             return $result;
         };
     }
 
-    private static function applyReviver(JsObject $obj, JsFunction $reviver): JsValue
-    {
-        $keys = $obj instanceof JsArray
-            ? array_map('strval', range(0, $obj->getLength() - 1))
-            : $obj->getOwnEnumerableKeys();
+    private static function internalizeJSONProperty(
+        JsObject $holder,
+        string $name,
+        JsFunction $reviver,
+    ): JsValue {
+        $val = $holder->get($name);
 
-        foreach ($keys as $key) {
-            $val = $obj->get($key);
-            if ($val instanceof JsObject) {
-                $val = self::applyReviver($val, $reviver);
-            }
-            $newVal = $reviver->call($obj, [new JsString($key), $val]);
-            if ($newVal instanceof JsUndefined) {
-                $obj->delete($key);
+        if ($val instanceof JsObject) {
+            if (self::jsIsArray($val)) {
+                $len = self::arrayLikeLength($val);
+
+                for ($i = 0; $i < $len; $i++) {
+                    $prop = (string) $i;
+                    $newElement = self::internalizeJSONProperty($val, $prop, $reviver);
+
+                    if ($newElement instanceof JsUndefined) {
+                        $val->delete($prop);
+                    } else {
+                        $desc = $val->getOwnPropertyDescriptor($prop);
+                        if ($desc === null || $desc->configurable !== false) {
+                            $val->defineOwnProperty(
+                                $prop,
+                                PropertyDescriptor::data($newElement, true, true, true),
+                            );
+                        }
+                    }
+                }
             } else {
-                $obj->set($key, $newVal);
+                $keys = self::enumerableOwnPropertyNames($val);
+
+                foreach ($keys as $key) {
+                    $newElement = self::internalizeJSONProperty($val, $key, $reviver);
+
+                    if ($newElement instanceof JsUndefined) {
+                        $val->delete($key);
+                    } else {
+                        $desc = $val->getOwnPropertyDescriptor($key);
+                        if ($desc === null || $desc->configurable !== false) {
+                            $val->defineOwnProperty(
+                                $key,
+                                PropertyDescriptor::data($newElement, true, true, true),
+                            );
+                        }
+                    }
+                }
             }
         }
 
-        return $obj;
+        return $reviver->call($holder, [new JsString($name), $val]);
     }
 
     private static function stringify(): \Closure
@@ -98,27 +229,16 @@ class JsonObject
             $replacerArg = $args[1] ?? JsUndefined::instance();
             $space = $args[2] ?? JsUndefined::instance();
 
-            // Unwrap Number/String wrapper objects for the space parameter per spec.
-            if ($space instanceof JsObject) {
-                $prim = $space->get('[[PrimitiveValue]]');
-                if ($prim instanceof JsNumber) {
-                    $space = $prim;
-                } elseif ($prim instanceof JsString) {
-                    $space = $prim;
-                } else {
-                    // Try valueOf() for other objects
-                    $valueOf = $space->get('valueOf');
-                    if ($valueOf instanceof JsFunction) {
-                        $val = $valueOf->call($space, []);
-                        if ($val instanceof JsNumber || $val instanceof JsString) {
-                            $space = $val;
-                        }
-                    }
+            if ($space instanceof JsObject && !$space instanceof JsFunction) {
+                if (self::hasNumberData($space)) {
+                    $space = new JsNumber(TypeConversion::toNumber($space));
+                } elseif (self::hasStringData($space)) {
+                    $space = new JsString(TypeConversion::toString($space));
                 }
             }
 
-            // Resolve gap string.
             $gap = '';
+
             if ($space instanceof JsNumber) {
                 $count = max(0, min(10, (int) $space->value));
                 $gap = str_repeat(' ', $count);
@@ -126,30 +246,31 @@ class JsonObject
                 $gap = mb_substr($space->value, 0, 10, 'UTF-8');
             }
 
-            // Build replacer function or property list.
             $replacerFn = null;
             /** @var list<string>|null $propertyList */
             $propertyList = null;
+
             if ($replacerArg instanceof JsFunction) {
                 $replacerFn = $replacerArg;
-            } elseif ($replacerArg instanceof JsArray) {
+            } elseif ($replacerArg instanceof JsObject && self::jsIsArray($replacerArg)) {
                 $propertyList = [];
                 $seen = [];
-                for ($i = 0; $i < $replacerArg->getLength(); $i++) {
+                $len = self::arrayLikeLength($replacerArg);
+
+                for ($i = 0; $i < $len; $i++) {
                     $item = $replacerArg->get((string) $i);
                     $key = null;
+
                     if ($item instanceof JsString) {
                         $key = $item->value;
                     } elseif ($item instanceof JsNumber) {
-                        $key = (new JsNumber($item->value))->toJsString();
+                        $key = TypeConversion::toString($item);
                     } elseif ($item instanceof JsObject) {
-                        $prim = $item->get('[[PrimitiveValue]]');
-                        if ($prim instanceof JsString) {
-                            $key = $prim->value;
-                        } elseif ($prim instanceof JsNumber) {
-                            $key = (new JsNumber($prim->value))->toJsString();
+                        if (self::hasStringData($item) || self::hasNumberData($item)) {
+                            $key = TypeConversion::toString($item);
                         }
                     }
+
                     if ($key !== null && !isset($seen[$key])) {
                         $propertyList[] = $key;
                         $seen[$key] = true;
@@ -159,20 +280,9 @@ class JsonObject
 
             /** @var \SplObjectStorage<JsObject, true> $stack */
             $stack = new \SplObjectStorage();
-
-            // Wrap the value in a holder object via [[DefineOwnProperty]] (not [[Set]])
-            // to avoid triggering Proxy traps per spec.
             $holder = new JsObject();
-            $holder->defineOwnProperty('', \PhpJs\Object\PropertyDescriptor::data($value, true, true, true));
-            $result = self::serializeProperty(
-                '',
-                $holder,
-                $replacerFn,
-                $propertyList,
-                $gap,
-                '',
-                $stack,
-            );
+            $holder->defineOwnProperty('', PropertyDescriptor::data($value, true, true, true));
+            $result = self::serializeProperty('', $holder, $replacerFn, $propertyList, $gap, '', $stack);
 
             if ($result === null) {
                 return JsUndefined::instance();
@@ -197,12 +307,10 @@ class JsonObject
             return new JsString($value);
         }
         if (is_array($value)) {
-            // Check if it is a sequential (list) array or associative.
             if (array_is_list($value)) {
                 $items = array_map(fn(mixed $v) => self::phpToJsValue($v), $value);
                 return JsArray::fromArray($items);
             }
-            // Associative array becomes JsObject.
             $obj = new JsObject();
             foreach ($value as $key => $val) {
                 $obj->set((string) $key, self::phpToJsValue($val));
@@ -213,8 +321,6 @@ class JsonObject
     }
 
     /**
-     * SerializeJSONProperty per ES spec 25.5.2.5.
-     *
      * @param \SplObjectStorage<JsObject, true> $stack
      * @param list<string>|null $propertyList
      */
@@ -229,7 +335,6 @@ class JsonObject
     ): ?string {
         $value = $holder->get($key);
 
-        // Step 2: call toJSON on the value if it exists.
         if ($value instanceof JsObject && $value->has('toJSON')) {
             $toJson = $value->get('toJSON');
             if ($toJson instanceof JsFunction) {
@@ -237,24 +342,25 @@ class JsonObject
             }
         }
 
-        // Step 3: apply the replacer function.
         if ($replacerFn !== null) {
             $value = $replacerFn->call($holder, [new JsString($key), $value]);
         }
 
-        // Step 4: unwrap Number/String/Boolean wrapper objects.
-        if ($value instanceof JsObject && !$value instanceof JsArray && !$value instanceof JsFunction) {
-            $prim = $value->get('[[PrimitiveValue]]');
-            if ($prim instanceof JsNumber) {
-                $value = $prim;
-            } elseif ($prim instanceof JsString) {
-                $value = $prim;
-            } elseif ($prim instanceof JsBoolean) {
-                $value = $prim;
+        if ($value instanceof JsObject && !self::jsIsArray($value) && !$value instanceof JsFunction) {
+            if (self::hasNumberData($value)) {
+                $value = new JsNumber(TypeConversion::toNumber($value));
+            } elseif (self::hasStringData($value)) {
+                $value = new JsString(TypeConversion::toString($value));
+            } elseif (self::hasBooleanData($value)) {
+                $prim = $value->get('[[PrimitiveValue]]');
+                if ($prim instanceof JsBoolean) {
+                    $value = $prim;
+                }
+            } elseif (self::hasBigIntData($value)) {
+                throw new \PhpJs\Exceptions\TypeError('Do not know how to serialize a BigInt');
             }
         }
 
-        // Steps 5-9: produce the JSON text.
         if ($value instanceof JsNull) {
             return 'null';
         }
@@ -271,37 +377,27 @@ class JsonObject
             }
             return $value->toJsString();
         }
-
-        // BigInt throws TypeError per spec.
         if ($value instanceof \PhpJs\Value\JsBigInt) {
             throw new \PhpJs\Exceptions\TypeError('Do not know how to serialize a BigInt');
         }
 
-        // Step 10: arrays and objects (but not functions).
         if ($value instanceof JsObject && !$value instanceof JsFunction) {
-            // Revoked Proxy check.
             if ($value instanceof \PhpJs\Value\JsProxy && $value->isRevoked()) {
                 throw new \PhpJs\Exceptions\TypeError('Cannot perform \'get\' on a proxy that has been revoked');
             }
-
-            // Circular reference check.
             if ($stack->contains($value)) {
                 throw new \PhpJs\Exceptions\TypeError('Converting circular structure to JSON');
             }
-
-            if ($value instanceof JsArray) {
+            if (self::jsIsArray($value)) {
                 return self::serializeArray($value, $replacerFn, $propertyList, $gap, $indent, $stack);
             }
             return self::serializeObject($value, $replacerFn, $propertyList, $gap, $indent, $stack);
         }
 
-        // undefined, functions, and symbols return null (omitted).
         return null;
     }
 
     /**
-     * SerializeJSONObject per ES spec 25.5.2.6.
-     *
      * @param \SplObjectStorage<JsObject, true> $stack
      * @param list<string>|null $propertyList
      */
@@ -316,10 +412,9 @@ class JsonObject
         $stack->attach($value);
         $stepback = $indent;
         $indent .= $gap;
-
-        $keys = $propertyList ?? $value->getOwnEnumerableKeys();
-
+        $keys = $propertyList ?? self::enumerableOwnPropertyNames($value);
         $partial = [];
+
         foreach ($keys as $key) {
             $strP = self::serializeProperty($key, $value, $replacerFn, $propertyList, $gap, $indent, $stack);
             if ($strP !== null) {
@@ -341,7 +436,6 @@ class JsonObject
         if ($partial === []) {
             return '{}';
         }
-
         if ($gap === '') {
             return '{' . implode(',', $partial) . '}';
         }
@@ -352,13 +446,11 @@ class JsonObject
     }
 
     /**
-     * SerializeJSONArray per ES spec 25.5.2.7.
-     *
      * @param \SplObjectStorage<JsObject, true> $stack
      * @param list<string>|null $propertyList
      */
     private static function serializeArray(
-        JsArray $value,
+        JsObject $value,
         ?JsFunction $replacerFn,
         ?array $propertyList,
         string $gap,
@@ -368,9 +460,9 @@ class JsonObject
         $stack->attach($value);
         $stepback = $indent;
         $indent .= $gap;
-
-        $len = $value->getLength();
+        $len = self::arrayLikeLength($value);
         $partial = [];
+
         for ($i = 0; $i < $len; $i++) {
             $strP = self::serializeProperty((string) $i, $value, $replacerFn, $propertyList, $gap, $indent, $stack);
             $partial[] = $strP ?? 'null';
@@ -381,7 +473,6 @@ class JsonObject
         if ($partial === []) {
             return '[]';
         }
-
         if ($gap === '') {
             return '[' . implode(',', $partial) . ']';
         }

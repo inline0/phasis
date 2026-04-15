@@ -90,12 +90,19 @@ class JsArray extends JsObject
      */
     private function setLengthFromValue(JsValue $value): void
     {
-        $num = $value->toNumber();
+        $num = \PhpJs\Spec\TypeConversion::toNumber($value);
         $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
         if ((float) $uint32 !== $num) {
             throw new \PhpJs\Exceptions\RangeError('Invalid array length');
         }
+        $oldLength = $this->length;
         $this->length = $uint32;
+        // Delete elements above new length (per ArraySetLength).
+        if ($uint32 < $oldLength) {
+            for ($i = $uint32; $i < $oldLength; $i++) {
+                $this->delete((string) $i);
+            }
+        }
     }
 
     public function push(JsValue $value): void
@@ -179,7 +186,8 @@ class JsArray extends JsObject
 
         parent::set($name, $value, $strict);
 
-        if (ctype_digit($name)) {
+        // Only update length for valid array indices (0 to 2^32-2).
+        if (self::isArrayIndex($name)) {
             $index = (int) $name;
             if ($index >= $this->length) {
                 $this->length = $index + 1;
@@ -196,7 +204,8 @@ class JsArray extends JsObject
                 return true;
             }
             $result = parent::internalSet($name, $value, $receiver);
-            if ($result && ctype_digit($name)) {
+            // Only update length for valid array indices (0 to 2^32-2).
+            if ($result && self::isArrayIndex($name)) {
                 $index = (int) $name;
                 if ($index >= $this->length) {
                     $this->length = $index + 1;
@@ -211,7 +220,12 @@ class JsArray extends JsObject
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
         if ($name === 'length' && $desc->value !== null) {
-            $newLen = (int) $desc->value->toNumber();
+            $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+            $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
+            if ((float) $uint32 !== $num) {
+                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+            }
+            $newLen = $uint32;
             // Delete elements above new length (per ArraySetLength).
             for ($i = $newLen; $i < $this->length; $i++) {
                 $this->delete((string) $i);
@@ -220,7 +234,8 @@ class JsArray extends JsObject
             return true;
         }
         $result = parent::defineOwnProperty($name, $desc);
-        if ($result && ctype_digit($name)) {
+        // Only update length for valid array indices (0 to 2^32-2).
+        if ($result && self::isArrayIndex($name)) {
             $index = (int) $name;
             if ($index >= $this->length) {
                 $this->length = $index + 1;
