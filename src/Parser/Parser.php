@@ -1774,18 +1774,12 @@ class Parser
     {
         $location = $this->expect(TokenType::New)->location;
 
-        // new.target
+        // new.target — meta-property, resolves to the [[NewTarget]] env binding.
         if ($this->eat(TokenType::Dot)) {
             $token = $this->current();
             if ($token->type === TokenType::Identifier && $token->value === 'target') {
                 $this->advance();
-                return new MemberExpression(
-                    $location,
-                    new Identifier($location, 'new'),
-                    new Identifier($token->location, 'target'),
-                    false,
-                    false,
-                );
+                return new Identifier($location, '[[NewTarget]]');
             }
             throw new ParseError('Expected "target" after "new."', $token);
         }

@@ -1104,9 +1104,11 @@ class Interpreter
             throw new TypeError("{$desc} is not a function");
         }
 
-        // In sloppy mode, unbound function calls receive the global object as this.
+        // In sloppy mode, unbound user-defined function calls receive the global object as this.
         // In strict mode, this remains undefined.
-        if (!$isMethodCall && !$this->strictMode && $callee->getBoundThis() === null) {
+        // Native (built-in) functions are not subject to this substitution per spec: they receive
+        // this as-is (OrdinaryCallBindThis only applies to ECMAScript functions).
+        if (!$isMethodCall && !$this->strictMode && $callee->getBoundThis() === null && !$callee->isNative()) {
             $thisValue = $this->getGlobalObject();
         }
 
@@ -1546,9 +1548,16 @@ class Interpreter
 
             // Bind this
             if ($fn->isArrow()) {
-                // Arrow functions inherit this from closure
+                // Arrow functions inherit this and [[NewTarget]] from closure.
             } else {
                 $fnEnv->defineVar('this', $thisValue);
+                // new.target: set [[NewTarget]] to the constructor when called via new,
+                // or undefined otherwise. Arrow functions inherit it from the outer scope.
+                if ($thisValue instanceof JsObject && $thisValue->getOwnPropertyDescriptor('[[NewTarget]]') !== null) {
+                    $fnEnv->defineVar('[[NewTarget]]', $fn);
+                } else {
+                    $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
+                }
             }
 
             // Create arguments object before binding parameters, so default
@@ -1660,14 +1669,23 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): JsGenerator {
+        // Per spec, parameter binding (FunctionDeclarationInstantiation) happens
+        // synchronously when the generator function is called, before the generator
+        // object is returned. Only the body execution is deferred to the Fiber.
+        $fnEnv = $fn->getClosure()->createChild();
+        $fnEnv->defineVar('this', $thisValue);
+        $argsObj = JsArray::fromArray($args);
+        $fnEnv->defineVar('arguments', $argsObj);
+        $this->bindParameters($fn->getParams(), $args, $fnEnv);
+
         $interpreter = $this;
 
         $executor = function (
             JsFunction $fn,
             JsValue $thisValue,
             array $args,
-        ) use ($interpreter): JsValue {
-            return $interpreter->executeGeneratorBody($fn, $thisValue, $args);
+        ) use ($interpreter, $fnEnv): JsValue {
+            return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
         };
 
         return new JsGenerator($fn, $thisValue, $args, $executor);
@@ -1687,21 +1705,21 @@ class Interpreter
         JsFunction $fn,
         JsValue $thisValue,
         array $args,
+        ?Environment $prebuiltEnv = null,
     ): JsValue {
         $this->callStack->push($fn->getName(), 0);
 
         try {
-            $fnEnv = $fn->getClosure()->createChild();
-
-            // Bind this
-            $fnEnv->defineVar('this', $thisValue);
-
-            // Create arguments object before binding parameters.
-            $argsObj = JsArray::fromArray($args);
-            $fnEnv->defineVar('arguments', $argsObj);
-
-            // Bind parameters
-            $this->bindParameters($fn->getParams(), $args, $fnEnv);
+            // Use pre-built environment if provided (parameters already bound).
+            if ($prebuiltEnv !== null) {
+                $fnEnv = $prebuiltEnv;
+            } else {
+                $fnEnv = $fn->getClosure()->createChild();
+                $fnEnv->defineVar('this', $thisValue);
+                $argsObj = JsArray::fromArray($args);
+                $fnEnv->defineVar('arguments', $argsObj);
+                $this->bindParameters($fn->getParams(), $args, $fnEnv);
+            }
 
             // Execute body
             $body = $fn->getBody();
@@ -1844,12 +1862,17 @@ class Interpreter
                 $value = $this->evaluate($pattern->right, $env);
                 // Function name inference: only when the default is an anonymous function
                 // definition (not a sequence expression, etc.) and the binding is a simple identifier.
+                // Per spec 13.3.3.7: check HasOwnProperty('name') — only infer if name is absent
+                // or is the default empty string (anonymous), not if overridden (e.g. static name() {}).
                 if (
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
                     && $this->isAnonymousFunctionDefinitionNode($pattern->right)
                 ) {
-                    $value->setName($pattern->left->name);
+                    $nameDesc = $value->getOwnPropertyDescriptor('name');
+                    if ($nameDesc === null || ($nameDesc->value instanceof JsString && $nameDesc->value->value === '')) {
+                        $value->setName($pattern->left->name);
+                    }
                 }
             }
             $this->bindPattern($pattern->left, $value, $env);
@@ -1871,6 +1894,7 @@ class Interpreter
         foreach ($pattern->elements as $element) {
             if ($element instanceof RestElement) {
                 $this->bindPattern($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                $done = true; // rest consumes remaining elements
                 break;
             }
             $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
@@ -1879,6 +1903,13 @@ class Interpreter
                 continue;
             }
             $this->bindPattern($element, $elemValue, $env);
+        }
+        // Per spec 13.3.3.5: if iterator is not exhausted, close it via return().
+        if (!$done && $iterator instanceof JsObject) {
+            $returnMethod = $iterator->get('return');
+            if ($returnMethod instanceof JsFunction) {
+                $this->callFunction($returnMethod, $iterator, []);
+            }
         }
     }
 
@@ -1895,7 +1926,12 @@ class Interpreter
                 $restObj = new JsObject();
                 if ($value instanceof JsObject) {
                     foreach ($value->getOwnPropertyNames() as $key) {
-                        if (!in_array($key, $usedKeys, true)) {
+                        if (in_array($key, $usedKeys, true)) {
+                            continue;
+                        }
+                        // Per spec: object rest only includes own enumerable properties.
+                        $desc = $value->getOwnPropertyDescriptor($key);
+                        if ($desc !== null && ($desc->enumerable ?? true)) {
                             $restObj->set($key, $value->get($key));
                         }
                     }
