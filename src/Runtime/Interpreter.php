@@ -276,7 +276,7 @@ class Interpreter
             // Normalize to canonical decimal so strict equality and bcmath work
             // regardless of the source base (0x, 0b, 0o, decimal).
             if (str_starts_with($node->raw, '__BIGINT__')) {
-                return new JsBigInt(gmp_strval(gmp_init(rtrim($value, 'n'), 0), 10));
+                return new JsBigInt(self::parseBigIntLiteral(rtrim($value, 'n')));
             }
             // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
             if (
@@ -335,7 +335,7 @@ class Interpreter
      *
      * ToPrimitive both sides. If either is a string, concatenate.
      * Otherwise call ToNumeric on both. If types differ, throw TypeError.
-     * BigInt + BigInt uses bcadd. Number + Number uses float addition.
+     * BigInt + BigInt uses pure-PHP string arithmetic. Number + Number uses float addition.
      */
     private function addOperator(JsValue $left, JsValue $right): JsValue
     {
@@ -354,7 +354,7 @@ class Interpreter
         $rnum = TypeConversion::toNumeric($rprim);
 
         if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
-            return new JsBigInt(bcadd($lnum->value, $rnum->value));
+            return new JsBigInt(self::bigStrBcAdd($lnum->value, $rnum->value));
         }
 
         if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
@@ -407,8 +407,8 @@ class Interpreter
     private function bigintArithmetic(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
     {
         return match ($op) {
-            '-' => new JsBigInt(bcsub($left->value, $right->value)),
-            '*' => new JsBigInt(bcmul($left->value, $right->value)),
+            '-' => new JsBigInt(self::bigStrBcSub($left->value, $right->value)),
+            '*' => new JsBigInt(self::bigStrBcMul($left->value, $right->value)),
             '/' => $this->bigintDivide($left, $right),
             '%' => $this->bigintRemainder($left, $right),
             '**' => $this->bigintExponentiate($left, $right),
@@ -423,8 +423,8 @@ class Interpreter
         if ($right->value === '0' || $right->value === '-0') {
             throw new \PhpJs\Exceptions\RangeError('Division by zero');
         }
-        // bcdiv with scale 0 truncates toward zero, matching the spec.
-        return new JsBigInt(bcdiv($left->value, $right->value, 0));
+        // Divide truncating toward zero, matching the spec.
+        return new JsBigInt(self::bigStrBcDiv($left->value, $right->value));
     }
 
     /**
@@ -435,7 +435,7 @@ class Interpreter
         if ($right->value === '0' || $right->value === '-0') {
             throw new \PhpJs\Exceptions\RangeError('Division by zero');
         }
-        return new JsBigInt(bcmod($left->value, $right->value));
+        return new JsBigInt(self::bigStrBcMod($left->value, $right->value));
     }
 
     /**
@@ -443,10 +443,10 @@ class Interpreter
      */
     private function bigintExponentiate(JsBigInt $left, JsBigInt $right): JsBigInt
     {
-        if (bccomp($right->value, '0') < 0) {
+        if (self::bigStrComp($right->value, '0') < 0) {
             throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
         }
-        return new JsBigInt(bcpow($left->value, $right->value, 0));
+        return new JsBigInt(self::bigStrBcPow($left->value, $right->value));
     }
 
     /**
@@ -461,16 +461,7 @@ class Interpreter
         $rnum = TypeConversion::toNumeric($right);
 
         if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
-            $lg = gmp_init($lnum->value, 10);
-            $rg = gmp_init($rnum->value, 10);
-
-            $result = match ($op) {
-                '&' => $lg & $rg,
-                '|' => $lg | $rg,
-                '^' => $lg ^ $rg,
-            };
-
-            return new JsBigInt(gmp_strval($result, 10));
+            return $this->bigintBitwiseOp($lnum, $rnum, $op);
         }
 
         if ($lnum instanceof JsBigInt || $rnum instanceof JsBigInt) {
@@ -527,29 +518,95 @@ class Interpreter
      */
     private function bigintShift(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
     {
-        $xg = gmp_init($left->value, 10);
-        $yg = gmp_init($right->value, 10);
-
         // Right shift is defined as leftShift(x, -y).
-        if ($op === '>>') {
-            $yg = gmp_neg($yg);
+        $rightNeg = $right->value[0] === '-';
+        $shiftNeg = ($op === '>>' && !$rightNeg) || ($op === '<<' && $rightNeg);
+
+        // Absolute shift amount as a string.
+        $absShift = ltrim($right->value, '-');
+        if ($absShift === '' || $absShift === '0') {
+            return $left;
         }
 
-        $ycmp = gmp_cmp($yg, 0);
+        // Clamp very large shift amounts to prevent memory exhaustion.
+        $shiftInt = $this->bigStrFitsInt($absShift) ? (int) $absShift : 10000;
+        $shiftInt = min($shiftInt, 10000);
 
-        if ($ycmp >= 0) {
-            // Left shift: x * 2^y.
-            $shift = gmp_intval($yg);
-            $result = $xg * gmp_pow(gmp_init('2', 10), $shift);
-        } else {
-            // Negative left shift: floor(x / 2^(-y)), rounding toward negative infinity.
-            $shift = gmp_intval(gmp_neg($yg));
-            $divisor = gmp_pow(gmp_init('2', 10), $shift);
-            // GMP_ROUND_MINUSINF gives floor division (toward negative infinity).
-            $result = gmp_div_q($xg, $divisor, \GMP_ROUND_MINUSINF);
+        if (!$shiftNeg) {
+            // Left shift: x * 2^shift.
+            // Multiply $left->value by 2 repeatedly (or pow).
+            $result = $left->value;
+            $multiplier = $this->bigStrPow2($shiftInt);
+            $result = $this->bigStrMulSigned($left->value, $multiplier);
+            return new JsBigInt($result);
         }
 
-        return new JsBigInt(gmp_strval($result, 10));
+        // Right shift: floor(x / 2^shift) (toward negative infinity).
+        if ($this->bigStrFitsInt($left->value)) {
+            // Use native PHP int arithmetic for small values.
+            $l = (int) $left->value;
+            $d = $shiftInt >= 63 ? PHP_INT_MAX : (1 << $shiftInt);
+            // PHP >> is arithmetic right shift (sign-extending), which matches floor division.
+            return new JsBigInt((string) ($shiftInt >= 63 ? ($l < 0 ? -1 : 0) : ($l >> $shiftInt)));
+        }
+        // Large: convert to binary, drop last $shiftInt bits, convert back.
+        $leftNeg = $left->value[0] === '-';
+        $abs = ltrim($left->value, '-');
+        $bin = $this->bigintToTwosCompBin($leftNeg ? '-' . $abs : $abs);
+        if ($shiftInt >= strlen($bin)) {
+            return new JsBigInt($leftNeg ? '-1' : '0');
+        }
+        $shifted = substr($bin, 0, strlen($bin) - $shiftInt);
+        if ($shifted === '') {
+            return new JsBigInt($leftNeg ? '-1' : '0');
+        }
+        return new JsBigInt($this->twosCompBinToDecimal(str_pad($shifted, strlen($bin), $leftNeg ? '1' : '0', STR_PAD_LEFT)));
+    }
+
+    /** Compute 2^n as a decimal string using pure-PHP string doubling. */
+    private function bigStrPow2(int $n): string
+    {
+        $result = '1';
+        for ($i = 0; $i < $n; $i++) {
+            $result = self::bigStrMul($result, '2');
+        }
+        return $result;
+    }
+
+    /** Multiply two decimal integer strings (handles sign). */
+    private function bigStrMulSigned(string $a, string $b): string
+    {
+        $negA = $a[0] === '-';
+        $negB = $b[0] === '-';
+        $absA = ltrim($a, '-');
+        $absB = ltrim($b, '-');
+        $result = $this->bigStrMulUnsigned($absA, $absB);
+        if (($negA xor $negB) && $result !== '0') {
+            return '-' . $result;
+        }
+        return $result;
+    }
+
+    /** Multiply two non-negative decimal integer strings using schoolbook algorithm. */
+    private function bigStrMulUnsigned(string $a, string $b): string
+    {
+        if ($a === '0' || $b === '0') {
+            return '0';
+        }
+        $m = strlen($a);
+        $n = strlen($b);
+        $result = array_fill(0, $m + $n, 0);
+        for ($i = $m - 1; $i >= 0; $i--) {
+            for ($j = $n - 1; $j >= 0; $j--) {
+                $mul = (int) $a[$i] * (int) $b[$j];
+                $p1 = $i + $j;
+                $p2 = $i + $j + 1;
+                $sum = $mul + $result[$p2];
+                $result[$p2] = $sum % 10;
+                $result[$p1] += intdiv($sum, 10);
+            }
+        }
+        return ltrim(implode('', $result), '0') ?: '0';
     }
 
     private function divide(float $left, float $right): JsNumber
@@ -583,7 +640,7 @@ class Interpreter
      * ES spec ExponentiationExpression evaluation.
      *
      * Calls ToNumeric on both operands. If both are BigInt, performs
-     * arbitrary-precision exponentiation via bcpow. If both are Number,
+     * arbitrary-precision exponentiation via pure-PHP string arithmetic. If both are Number,
      * uses float exponentiation with IEEE 754 special cases. Mixed
      * types throw TypeError per spec.
      */
@@ -594,10 +651,10 @@ class Interpreter
 
         // BigInt ** BigInt.
         if ($lnum instanceof JsBigInt && $rnum instanceof JsBigInt) {
-            if (bccomp($rnum->value, '0') < 0) {
+            if (self::bigStrComp($rnum->value, '0') < 0) {
                 throw new \PhpJs\Exceptions\RangeError('Exponent must be positive');
             }
-            return new JsBigInt(bcpow($lnum->value, $rnum->value, 0));
+            return new JsBigInt(self::bigStrBcPow($lnum->value, $rnum->value));
         }
 
         // Mixed types: one BigInt and one Number.
@@ -658,26 +715,17 @@ class Interpreter
         }
 
         if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $v, $m) === 1) {
-            $dec = '0';
-            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
-                $dec = bcadd(bcmul($dec, '16'), (string) hexdec($m[1][$i]));
-            }
+            $dec = self::baseStringToDecimal($m[1], 16);
             return $negative ? '-' . $dec : $dec;
         }
 
         if (preg_match('/^0[oO]([0-7]+)$/', $v, $m) === 1) {
-            $dec = '0';
-            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
-                $dec = bcadd(bcmul($dec, '8'), $m[1][$i]);
-            }
+            $dec = self::baseStringToDecimal($m[1], 8);
             return $negative ? '-' . $dec : $dec;
         }
 
         if (preg_match('/^0[bB]([01]+)$/', $v, $m) === 1) {
-            $dec = '0';
-            for ($i = 0, $len = strlen($m[1]); $i < $len; $i++) {
-                $dec = bcadd(bcmul($dec, '2'), $m[1][$i]);
-            }
+            $dec = self::baseStringToDecimal($m[1], 2);
             return $negative ? '-' . $dec : $dec;
         }
 
@@ -857,8 +905,7 @@ class Interpreter
             // BigInt::add(oldValue, BigInt::unit) per spec.
             $decVal = $this->bigIntToDecimal($oldNumeric->value);
             $delta = $node->operator === '++' ? '1' : '-1';
-            $raw = bcadd($decVal, $delta);
-            // bcadd may produce "-0" for -1n + 1n; normalize to "0".
+            $raw = self::bigStrBcAdd($decVal, $delta);
             if ($raw === '-0') {
                 $raw = '0';
             }
@@ -1062,6 +1109,18 @@ class Interpreter
                             $args = $this->evaluateArguments($node->arguments, $env);
                             return $this->callFunction($method, $rawObj, $args);
                         }
+                    }
+                }
+            }
+
+            // BigInt method calls: look up on BigInt.prototype.
+            if ($rawObj instanceof JsBigInt && !$isSymbolCallKey) {
+                $bigintProto = JsBigInt::getPrototype();
+                if ($bigintProto !== null) {
+                    $method = $bigintProto->get($key);
+                    if ($method instanceof JsFunction) {
+                        $args = $this->evaluateArguments($node->arguments, $env);
+                        return $this->callFunction($method, $rawObj, $args);
                     }
                 }
             }
@@ -2061,6 +2120,18 @@ class Interpreter
                     if (!$val instanceof JsUndefined) {
                         return $val;
                     }
+                }
+            }
+            return JsUndefined::instance();
+        }
+
+        // BigInt primitive property access: look up on BigInt.prototype.
+        if ($obj instanceof JsBigInt) {
+            $bigintProto = JsBigInt::getPrototype();
+            if ($bigintProto !== null && !$isSymbolKey) {
+                $val = $bigintProto->get($key);
+                if (!$val instanceof JsUndefined) {
+                    return $val;
                 }
             }
             return JsUndefined::instance();
@@ -4597,6 +4668,46 @@ class Interpreter
                     $i += 2;
                     continue;
                 }
+                // \u{XXXXXX} ES2015 unicode escape with braces.
+                if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $end = strpos($pattern, '}', $i + 3);
+                    if ($end !== false) {
+                        $hex = substr($pattern, $i + 3, $end - ($i + 3));
+                        if (ctype_xdigit($hex)) {
+                            $result .= '\\x{' . strtoupper($hex) . '}';
+                            $i = $end + 1;
+                            continue;
+                        }
+                    }
+                }
+                // \uXXXX 4-digit Unicode escape: convert to PCRE \x{XXXX}.
+                // Surrogate code points (D800-DFFF) are invalid in UTF-8 and
+                // rejected by PCRE. Replace them with U+FFFE (non-character)
+                // so the regex compiles; the alternatives won't match real text.
+                if ($next === 'u' && $i + 5 < $len + 1) {
+                    $hex = substr($pattern, $i + 2, 4);
+                    if (strlen($hex) === 4 && ctype_xdigit($hex)) {
+                        $codePoint = hexdec($hex);
+                        if ($codePoint >= 0xD800 && $codePoint <= 0xDFFF) {
+                            // Surrogate: replace with non-character U+FFFE to avoid PCRE error.
+                            $result .= '\\x{FFFE}';
+                        } else {
+                            $result .= '\\x{' . strtoupper($hex) . '}';
+                        }
+                        $i += 6;
+                        continue;
+                    }
+                }
+                // \xNN 2-digit hex escape: convert to PCRE \x{NN} for proper
+                // Unicode mode handling (avoids raw-byte interpretation in UTF-8).
+                if ($next === 'x' && $i + 3 < $len + 1) {
+                    $hex = substr($pattern, $i + 2, 2);
+                    if (strlen($hex) === 2 && ctype_xdigit($hex)) {
+                        $result .= '\\x{' . strtoupper($hex) . '}';
+                        $i += 4;
+                        continue;
+                    }
+                }
                 // Other escape: pass through both chars.
                 $result .= $ch . $next;
                 $i += 2;
@@ -4835,5 +4946,507 @@ class Interpreter
             $this->globalObject = new JsObject();
         }
         return $this->globalObject;
+    }
+
+    /**
+     * Parse a BigInt literal string (any base) to canonical decimal string.
+     * Replaces gmp_init($value, 0) + gmp_strval() since GMP may not be installed.
+     */
+    private static function parseBigIntLiteral(string $value): string
+    {
+        $negative = '';
+        if ($value !== '' && $value[0] === '-') {
+            $negative = '-';
+            $value = substr($value, 1);
+        }
+        if (strlen($value) > 2 && $value[0] === '0') {
+            $prefix = $value[1];
+            $digits = substr($value, 2);
+            if ($prefix === 'x' || $prefix === 'X') {
+                $decimal = self::baseStringToDecimal($digits, 16);
+                return $negative . $decimal;
+            }
+            if ($prefix === 'b' || $prefix === 'B') {
+                $decimal = self::baseStringToDecimal($digits, 2);
+                return $negative . $decimal;
+            }
+            if ($prefix === 'o' || $prefix === 'O') {
+                $decimal = self::baseStringToDecimal($digits, 8);
+                return $negative . $decimal;
+            }
+        }
+        // Decimal: strip leading zeros.
+        $trimmed = ltrim($value, '0');
+        return $negative . ($trimmed !== '' ? $trimmed : '0');
+    }
+
+    /**
+     * Convert a string of digits in the given base (2, 8, or 16) to a decimal string.
+     * Uses PHP native integers; for values exceeding PHP_INT_MAX uses string long multiplication.
+     */
+    private static function baseStringToDecimal(string $digits, int $base): string
+    {
+        // For small values, PHP native int is sufficient and fast.
+        // For large values, we use a pure-PHP string big-integer multiply-add.
+        $result = '0'; // Big-integer decimal string.
+        foreach (str_split(strtolower($digits)) as $char) {
+            $d = $char >= 'a' ? (ord($char) - ord('a') + 10) : (int) $char;
+            // result = result * base + d  (pure-PHP string arithmetic)
+            $result = self::bigStrAdd(self::bigStrMul($result, (string) $base), (string) $d);
+        }
+        return $result;
+    }
+
+    /** Pure-PHP string addition of two non-negative decimal integer strings. */
+    private static function bigStrAdd(string $a, string $b): string
+    {
+        $result = '';
+        $carry = 0;
+        $i = strlen($a) - 1;
+        $j = strlen($b) - 1;
+        while ($i >= 0 || $j >= 0 || $carry) {
+            $sum = $carry;
+            if ($i >= 0) {
+                $sum += (int) $a[$i--];
+            }
+            if ($j >= 0) {
+                $sum += (int) $b[$j--];
+            }
+            $carry = intdiv($sum, 10);
+            $result = ($sum % 10) . $result;
+        }
+        return $result !== '' ? $result : '0';
+    }
+
+    /** Pure-PHP string multiplication of a non-negative decimal integer string by a small int. */
+    private static function bigStrMul(string $a, string $b): string
+    {
+        if ($a === '0' || $b === '0') {
+            return '0';
+        }
+        // Schoolbook multiplication for single-digit multiplier (base 2/8/16).
+        $bInt = (int) $b;
+        $result = '';
+        $carry = 0;
+        for ($i = strlen($a) - 1; $i >= 0; $i--) {
+            $prod = (int) $a[$i] * $bInt + $carry;
+            $carry = intdiv($prod, 10);
+            $result = ($prod % 10) . $result;
+        }
+        while ($carry > 0) {
+            $result = ($carry % 10) . $result;
+            $carry = intdiv($carry, 10);
+        }
+        return $result !== '' ? $result : '0';
+    }
+
+    /** Compare two non-negative decimal integer strings. Returns -1, 0, 1. */
+    private static function bigStrCompUnsigned(string $a, string $b): int
+    {
+        $la = strlen($a);
+        $lb = strlen($b);
+        if ($la !== $lb) {
+            return $la < $lb ? -1 : 1;
+        }
+        return strcmp($a, $b) <=> 0;
+    }
+
+    /** Signed comparison of two decimal integer strings. Returns -1, 0, 1. */
+    private static function bigStrComp(string $a, string $b): int
+    {
+        $aNeg = isset($a[0]) && $a[0] === '-';
+        $bNeg = isset($b[0]) && $b[0] === '-';
+        if ($aNeg !== $bNeg) {
+            return $aNeg ? -1 : 1;
+        }
+        $cmp = self::bigStrCompUnsigned(ltrim($a, '-'), ltrim($b, '-'));
+        return $aNeg ? -$cmp : $cmp;
+    }
+
+    /** Signed addition of two decimal integer strings. */
+    private static function bigStrAddSigned(string $a, string $b): string
+    {
+        // Fast path: both fit in native PHP int.
+        if (abs((float) $a) < 9.2e18 && abs((float) $b) < 9.2e18 && strlen($a) <= 18 && strlen($b) <= 18) {
+            $ia = (int) $a;
+            $ib = (int) $b;
+            if ((string) $ia === ltrim($a, '+') && (string) $ib === ltrim($b, '+')) {
+                return (string) ($ia + $ib);
+            }
+        }
+        $aNeg = isset($a[0]) && $a[0] === '-';
+        $bNeg = isset($b[0]) && $b[0] === '-';
+        $absA = ltrim($a, '-');
+        $absB = ltrim($b, '-');
+        if ($aNeg === $bNeg) {
+            $sum = self::bigStrAdd($absA, $absB);
+            return $aNeg ? ('-' . $sum) : $sum;
+        }
+        $cmp = self::bigStrCompUnsigned($absA, $absB);
+        if ($cmp === 0) {
+            return '0';
+        }
+        if ($cmp > 0) {
+            // |a| > |b|, result sign = sign of a
+            $diff = self::bigStrSubUnsigned($absA, $absB);
+            return ($aNeg && $diff !== '0') ? ('-' . $diff) : $diff;
+        }
+        // |a| < |b|, result sign = sign of b
+        $diff = self::bigStrSubUnsigned($absB, $absA);
+        return ($bNeg && $diff !== '0') ? ('-' . $diff) : $diff;
+    }
+
+    /** Subtract b from a where a >= b (both non-negative). */
+    private static function bigStrSubUnsigned(string $a, string $b): string
+    {
+        $result = '';
+        $borrow = 0;
+        $i = strlen($a) - 1;
+        $j = strlen($b) - 1;
+        while ($i >= 0) {
+            $diff = (int) $a[$i--] - ($j >= 0 ? (int) $b[$j--] : 0) - $borrow;
+            if ($diff < 0) {
+                $diff += 10;
+                $borrow = 1;
+            } else {
+                $borrow = 0;
+            }
+            $result = $diff . $result;
+        }
+        return ltrim($result, '0') ?: '0';
+    }
+
+    /**
+     * Full unsigned long division. Returns [quotient, remainder] as decimal strings.
+     * Uses digit-by-digit algorithm: at each step remainder < b, so q is 0-9.
+     */
+    private static function bigStrDivModFull(string $a, string $b): array
+    {
+        if ($b === '0') {
+            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+        }
+        if (self::bigStrCompUnsigned($a, $b) < 0) {
+            return ['0', $a];
+        }
+        if ($b === '1') {
+            return [$a, '0'];
+        }
+
+        // Fast path: b fits in native PHP int.
+        $bInt = (int) $b;
+        if ((string) $bInt === $b && $bInt > 0) {
+            $q = '';
+            $rem = 0;
+            for ($i = 0; $i < strlen($a); $i++) {
+                $cur = $rem * 10 + (int) $a[$i];
+                $q .= (string) intdiv($cur, $bInt);
+                $rem = $cur % $bInt;
+            }
+            return [ltrim($q, '0') ?: '0', (string) $rem];
+        }
+
+        // General long division: digit-by-digit.
+        // Invariant: $rem < $b at all times.
+        $quotient = '';
+        $rem = '0';
+        for ($i = 0; $i < strlen($a); $i++) {
+            // current = rem * 10 + digit
+            $rem = self::bigStrAdd(self::bigStrMul($rem, '10'), (string) (int) $a[$i]);
+            // Find q in 0..9 such that q*b <= rem < (q+1)*b
+            $q = 0;
+            for ($try = 9; $try >= 1; $try--) {
+                $prod = self::bigStrMul($b, (string) $try);
+                if (self::bigStrCompUnsigned($prod, $rem) <= 0) {
+                    $q = $try;
+                    break;
+                }
+            }
+            $quotient .= (string) $q;
+            if ($q > 0) {
+                $rem = self::bigStrSubUnsigned($rem, self::bigStrMul($b, (string) $q));
+            }
+        }
+        return [ltrim($quotient, '0') ?: '0', $rem];
+    }
+
+    /** Signed BigInt add (replaces bcadd). */
+    private static function bigStrBcAdd(string $a, string $b): string
+    {
+        return self::bigStrAddSigned($a, $b);
+    }
+
+    /** Signed BigInt subtract (replaces bcsub). */
+    private static function bigStrBcSub(string $a, string $b): string
+    {
+        // a - b = a + (-b)
+        if ($b !== '0' && $b !== '') {
+            $bNeg = $b[0] === '-';
+            $negB = $bNeg ? substr($b, 1) : ('-' . $b);
+        } else {
+            $negB = '0';
+        }
+        return self::bigStrAddSigned($a, $negB);
+    }
+
+    /** Signed BigInt multiply (replaces bcmul). */
+    private static function bigStrBcMul(string $a, string $b): string
+    {
+        $aNeg = $a !== '0' && isset($a[0]) && $a[0] === '-';
+        $bNeg = $b !== '0' && isset($b[0]) && $b[0] === '-';
+        $absA = ltrim($a, '-');
+        $absB = ltrim($b, '-');
+
+        // Use full schoolbook multiplication for both operands.
+        // bigStrMul only handles small second operand; bigStrMulUnsigned handles full.
+        if (strlen($absB) === 1) {
+            $prod = self::bigStrMul($absA, $absB);
+        } else {
+            // Schoolbook.
+            $m = strlen($absA);
+            $n = strlen($absB);
+            $result = array_fill(0, $m + $n, 0);
+            for ($i = $m - 1; $i >= 0; $i--) {
+                for ($j = $n - 1; $j >= 0; $j--) {
+                    $mul = (int) $absA[$i] * (int) $absB[$j];
+                    $p1 = $i + $j;
+                    $p2 = $i + $j + 1;
+                    $sum = $mul + $result[$p2];
+                    $result[$p2] = $sum % 10;
+                    $result[$p1] += intdiv($sum, 10);
+                }
+            }
+            $prod = ltrim(implode('', $result), '0') ?: '0';
+        }
+        if ($prod === '0') {
+            return '0';
+        }
+        return ($aNeg xor $bNeg) ? ('-' . $prod) : $prod;
+    }
+
+    /**
+     * Signed BigInt divide, truncating toward zero (replaces bcdiv($a, $b, 0)).
+     * Returns quotient as decimal string.
+     */
+    private static function bigStrBcDiv(string $a, string $b): string
+    {
+        if ($b === '0') {
+            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+        }
+        $aNeg = isset($a[0]) && $a[0] === '-';
+        $bNeg = isset($b[0]) && $b[0] === '-';
+        $absA = ltrim($a, '-');
+        $absB = ltrim($b, '-');
+        [$q,] = self::bigStrDivModFull($absA, $absB);
+        if ($q === '0') {
+            return '0';
+        }
+        return ($aNeg xor $bNeg) ? ('-' . $q) : $q;
+    }
+
+    /**
+     * Signed BigInt remainder (replaces bcmod).
+     * Result has same sign as dividend.
+     */
+    private static function bigStrBcMod(string $a, string $b): string
+    {
+        if ($b === '0') {
+            throw new \PhpJs\Exceptions\RangeError('Division by zero');
+        }
+        $aNeg = isset($a[0]) && $a[0] === '-';
+        $absA = ltrim($a, '-');
+        $absB = ltrim($b, '-');
+        [,$r] = self::bigStrDivModFull($absA, $absB);
+        if ($r === '0') {
+            return '0';
+        }
+        return $aNeg ? ('-' . $r) : $r;
+    }
+
+    /**
+     * BigInt exponentiation (replaces bcpow($a, $b, 0)).
+     * $b must be non-negative.
+     */
+    private static function bigStrBcPow(string $base, string $exp): string
+    {
+        if ($exp === '0') {
+            return '1';
+        }
+        if ($exp === '1') {
+            return $base;
+        }
+        if ($base === '0') {
+            return '0';
+        }
+        if ($base === '1') {
+            return '1';
+        }
+        // Fast path: exp fits in native int.
+        $expInt = (int) $exp;
+        if ((string) $expInt === $exp) {
+            // Exponentiation by squaring.
+            $result = '1';
+            $b = $base;
+            $e = $expInt;
+            while ($e > 0) {
+                if ($e % 2 === 1) {
+                    $result = self::bigStrBcMul($result, $b);
+                }
+                $b = self::bigStrBcMul($b, $b);
+                $e = intdiv($e, 2);
+            }
+            return $result;
+        }
+        // Very large exponent: impractical, throw range error.
+        throw new \PhpJs\Exceptions\RangeError('BigInt exponent too large');
+    }
+
+    /**
+     * BigInt bitwise AND/OR/XOR without GMP or bcmath.
+     * Uses native PHP int for values that fit, binary-string two's-complement for large values.
+     */
+    private function bigintBitwiseOp(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
+    {
+        // Fast path: both values fit in a native PHP int.
+        if ($this->bigStrFitsInt($left->value) && $this->bigStrFitsInt($right->value)) {
+            $l = (int) $left->value;
+            $r = (int) $right->value;
+            $result = match ($op) {
+                '&' => $l & $r,
+                '|' => $l | $r,
+                '^' => $l ^ $r,
+            };
+            return new JsBigInt((string) $result);
+        }
+
+        // Large values: two's-complement binary string manipulation.
+        // Width: max bit-length + 1 guard bit for sign extension.
+        $lBin = $this->bigintToTwosCompBin($left->value);
+        $rBin = $this->bigintToTwosCompBin($right->value);
+        $len = max(strlen($lBin), strlen($rBin)) + 1;
+        $lSign = $left->value[0] === '-' ? '1' : '0';
+        $rSign = $right->value[0] === '-' ? '1' : '0';
+        $lBin = str_pad($lBin, $len, $lSign, STR_PAD_LEFT);
+        $rBin = str_pad($rBin, $len, $rSign, STR_PAD_LEFT);
+
+        $resultBin = '';
+        for ($i = 0; $i < $len; $i++) {
+            $lb = (int) $lBin[$i];
+            $rb = (int) $rBin[$i];
+            $resultBin .= (string) match ($op) {
+                '&' => $lb & $rb,
+                '|' => $lb | $rb,
+                '^' => $lb ^ $rb,
+            };
+        }
+        return new JsBigInt($this->twosCompBinToDecimal($resultBin));
+    }
+
+    /** Check whether a BigInt decimal string fits in PHP's native int. */
+    private function bigStrFitsInt(string $value): bool
+    {
+        $abs = ltrim($value, '-');
+        $max = (string) PHP_INT_MAX;
+        if (strlen($abs) < strlen($max)) {
+            return true;
+        }
+        if (strlen($abs) > strlen($max)) {
+            return false;
+        }
+        // Same digit length: compare lexicographically.
+        return $abs <= $max;
+    }
+
+    /** Convert a decimal BigInt string to a two's-complement binary string. Pure PHP. */
+    private function bigintToTwosCompBin(string $value): string
+    {
+        $negative = $value[0] === '-';
+        $abs = $negative ? substr($value, 1) : $value;
+        if ($abs === '' || $abs === '0') {
+            return '0';
+        }
+        // Convert |value| to binary via repeated halving.
+        $bin = '';
+        $v = $abs;
+        while ($v !== '0') {
+            [$q, $r] = $this->bigStrDivMod($v, '2');
+            $bin = $r . $bin;
+            $v = $q;
+        }
+        if (!$negative) {
+            return $bin;
+        }
+        // Negative: two's complement = NOT(|value| - 1).
+        // Subtract 1 from $abs, then invert bits.
+        $abs1 = $this->bigStrSub($abs, '1');
+        if ($abs1 === '0') {
+            // -1 in two's complement is all 1s; single '1' is fine (sign-extended).
+            return '1';
+        }
+        $bin2 = '';
+        $v = $abs1;
+        while ($v !== '0') {
+            [$q, $r] = $this->bigStrDivMod($v, '2');
+            $bin2 = $r . $bin2;
+            $v = $q;
+        }
+        return strtr($bin2, ['0' => '1', '1' => '0']);
+    }
+
+    /** Convert a two's-complement binary string back to a decimal BigInt string. Pure PHP. */
+    private function twosCompBinToDecimal(string $bin): string
+    {
+        if ($bin === '' || $bin[0] === '0') {
+            // Positive or zero.
+            $result = '0';
+            foreach (str_split($bin) as $bit) {
+                $result = self::bigStrAdd(self::bigStrMul($result, '2'), $bit);
+            }
+            return $result;
+        }
+        // Negative (sign bit = 1): invert bits and add 1 to get magnitude.
+        $inverted = strtr($bin, ['0' => '1', '1' => '0']);
+        $mag = '0';
+        foreach (str_split($inverted) as $bit) {
+            $mag = self::bigStrAdd(self::bigStrMul($mag, '2'), $bit);
+        }
+        return '-' . self::bigStrAdd($mag, '1');
+    }
+
+    /**
+     * Divide two non-negative decimal integer strings.
+     * Returns [$quotient, $remainder] as strings.
+     */
+    private function bigStrDivMod(string $a, string $divisor): array
+    {
+        $d = (int) $divisor;
+        $q = '';
+        $rem = 0;
+        for ($i = 0; $i < strlen($a); $i++) {
+            $cur = $rem * 10 + (int) $a[$i];
+            $q .= (string) intdiv($cur, $d);
+            $rem = $cur % $d;
+        }
+        $q = ltrim($q, '0') ?: '0';
+        return [$q, (string) $rem];
+    }
+
+    /** Pure-PHP string subtraction of non-negative decimal integer strings (a >= b). */
+    private function bigStrSub(string $a, string $b): string
+    {
+        $result = '';
+        $borrow = 0;
+        $i = strlen($a) - 1;
+        $j = strlen($b) - 1;
+        while ($i >= 0) {
+            $diff = (int) $a[$i--] - ($j >= 0 ? (int) $b[$j--] : 0) - $borrow;
+            if ($diff < 0) {
+                $diff += 10;
+                $borrow = 1;
+            } else {
+                $borrow = 0;
+            }
+            $result = $diff . $result;
+        }
+        return ltrim($result, '0') ?: '0';
     }
 }

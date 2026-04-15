@@ -137,16 +137,7 @@ final class TypeConversion
             return new JsBigInt($prim->toBoolean() ? '1' : '0');
         }
         if ($prim instanceof JsString) {
-            $s = trim($prim->toJsString());
-            if ($s === '') {
-                throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"\" to a BigInt");
-            }
-            // Try to parse as BigInt literal (strip trailing n if present).
-            $str = rtrim($s, 'n');
-            if (preg_match('/^-?(?:0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+|[0-9]+)$/', $str)) {
-                return new JsBigInt($str);
-            }
-            throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"{$s}\" to a BigInt");
+            return self::stringToBigInt($prim->toJsString());
         }
         if ($prim instanceof JsUndefined) {
             throw new TypeError('Cannot convert undefined to a BigInt');
@@ -162,6 +153,84 @@ final class TypeConversion
         }
 
         throw new TypeError('Cannot convert value to a BigInt');
+    }
+
+    /**
+     * StringToBigInt(argument) per spec 7.1.14.
+     *
+     * Parses a string as a BigInt integer literal.
+     * Empty / whitespace-only strings return 0n per spec.
+     * Returns a JsBigInt with a decimal value string (no 0x/0o/0b prefix).
+     * Throws SyntaxError for invalid input.
+     */
+    public static function stringToBigInt(string $s): JsBigInt
+    {
+        $trimmed = trim($s);
+        if ($trimmed === '') {
+            return new JsBigInt('0');
+        }
+
+        // Non-decimal prefixes (0x, 0o, 0b) cannot have a sign prefix per spec.
+        // Hex: 0x... or 0X...
+        if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $trimmed, $m)) {
+            return new JsBigInt(self::bigBaseToDecimal($m[1], 16));
+        }
+
+        // Octal: 0o... or 0O...
+        if (preg_match('/^0[oO]([0-7]+)$/', $trimmed, $m)) {
+            return new JsBigInt(self::bigBaseToDecimal($m[1], 8));
+        }
+
+        // Binary: 0b... or 0B...
+        if (preg_match('/^0[bB]([01]+)$/', $trimmed, $m)) {
+            return new JsBigInt(self::bigBaseToDecimal($m[1], 2));
+        }
+
+        // Decimal (optionally signed): digits only (no decimal point, no exponent).
+        if (preg_match('/^-?[0-9]+$/', $trimmed)) {
+            $negative = $trimmed[0] === '-';
+            $digits = $negative ? substr($trimmed, 1) : $trimmed;
+            $dec = ltrim($digits, '0') ?: '0';
+            if ($dec === '0') {
+                return new JsBigInt('0');
+            }
+            return new JsBigInt($negative ? '-' . $dec : $dec);
+        }
+
+        throw new \PhpJs\Exceptions\SyntaxError("Cannot convert \"{$trimmed}\" to a BigInt");
+    }
+
+    /**
+     * Convert digit string in given base (2, 8, or 16) to decimal string (pure PHP).
+     */
+    private static function bigBaseToDecimal(string $digits, int $base): string
+    {
+        $result = '0';
+        for ($i = 0; $i < strlen($digits); $i++) {
+            $d = ($base === 16) ? (int) hexdec($digits[$i]) : (int) $digits[$i];
+            $result = self::bigMulAddSmall($result, $base, $d);
+        }
+        return $result;
+    }
+
+    /** Multiply non-negative decimal string by small int, then add another small int. */
+    private static function bigMulAddSmall(string $a, int $mul, int $add): string
+    {
+        if ($a === '0' && $add === 0) {
+            return '0';
+        }
+        $carry = $add;
+        $result = '';
+        for ($i = strlen($a) - 1; $i >= 0; $i--) {
+            $prod = (int) $a[$i] * $mul + $carry;
+            $carry = intdiv($prod, 10);
+            $result = ($prod % 10) . $result;
+        }
+        while ($carry > 0) {
+            $result = ($carry % 10) . $result;
+            $carry = intdiv($carry, 10);
+        }
+        return $result !== '' ? $result : '0';
     }
 
     /**
@@ -492,11 +561,13 @@ final class TypeConversion
             ));
         }
 
-        // BigInt wrappers need valueOf to return the primitive for ToPrimitive to work.
+        // BigInt wrappers: store [[BigIntData]] and link to BigInt.prototype per spec 21.2.4.
         if ($value instanceof JsBigInt) {
-            $wrapper->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-                JsFunction::fromCallable('valueOf', fn() => $value, 0),
-            ));
+            $wrapper->defineOwnProperty('[[BigIntData]]', \PhpJs\Object\PropertyDescriptor::data($value, false, false, false));
+            $bigIntProto = JsBigInt::getPrototype();
+            if ($bigIntProto !== null) {
+                $wrapper->setPrototype($bigIntProto);
+            }
         }
 
         // Symbol wrappers get Symbol.prototype

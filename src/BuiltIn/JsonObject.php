@@ -340,6 +340,15 @@ class JsonObject
             if ($toJson instanceof JsFunction) {
                 $value = $toJson->call($value, [new JsString($key)]);
             }
+        } elseif ($value instanceof \PhpJs\Value\JsBigInt) {
+            // Check BigInt.prototype.toJSON per spec 25.5.2.1 step 2.
+            $bigintProto = \PhpJs\Value\JsBigInt::getPrototype();
+            if ($bigintProto !== null) {
+                $toJson = $bigintProto->get('toJSON');
+                if ($toJson instanceof JsFunction) {
+                    $value = $toJson->call($value, [new JsString($key)]);
+                }
+            }
         }
 
         if ($replacerFn !== null) {

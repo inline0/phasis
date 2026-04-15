@@ -7,12 +7,25 @@ namespace PhpJs\Value;
 /**
  * BigInt primitive value.
  *
- * Stores the numeric value as a string to handle arbitrarily large integers.
- * The string representation never contains the trailing 'n' suffix.
+ * Stores the numeric value as a canonical decimal string (no trailing 'n', no base prefixes).
+ * Base conversion (hex/oct/bin) is done by the interpreter before constructing JsBigInt.
  */
 class JsBigInt implements JsValue
 {
     public readonly string $value;
+
+    /** BigInt.prototype shared across all BigInt primitives. */
+    private static ?JsObject $prototype = null;
+
+    public static function setPrototype(JsObject $proto): void
+    {
+        self::$prototype = $proto;
+    }
+
+    public static function getPrototype(): ?JsObject
+    {
+        return self::$prototype;
+    }
 
     public function __construct(string $value)
     {
@@ -21,10 +34,8 @@ class JsBigInt implements JsValue
     }
 
     /**
-     * Normalize a BigInt value string to a canonical decimal representation.
-     *
-     * Handles hex (0x), octal (0o), and binary (0b) prefixes, plus leading
-     * zeros. Negative zero normalizes to "0".
+     * Normalize a BigInt decimal string: strip leading zeros, normalize -0 to 0.
+     * Base conversion (hex/oct/bin) must be done before calling this.
      */
     private static function normalize(string $value): string
     {
@@ -34,36 +45,6 @@ class JsBigInt implements JsValue
         if ($digits !== '' && $digits[0] === '-') {
             $sign = '-';
             $digits = substr($digits, 1);
-        }
-
-        // Hex prefix.
-        if (str_starts_with($digits, '0x') || str_starts_with($digits, '0X')) {
-            $hex = substr($digits, 2);
-            $result = '0';
-            $len = strlen($hex);
-            for ($i = 0; $i < $len; $i++) {
-                $d = hexdec($hex[$i]);
-                $result = bcadd(bcmul($result, '16'), (string) $d);
-            }
-            $digits = $result;
-        } elseif (str_starts_with($digits, '0o') || str_starts_with($digits, '0O')) {
-            // Octal prefix.
-            $oct = substr($digits, 2);
-            $result = '0';
-            $len = strlen($oct);
-            for ($i = 0; $i < $len; $i++) {
-                $result = bcadd(bcmul($result, '8'), $oct[$i]);
-            }
-            $digits = $result;
-        } elseif (str_starts_with($digits, '0b') || str_starts_with($digits, '0B')) {
-            // Binary prefix.
-            $bin = substr($digits, 2);
-            $result = '0';
-            $len = strlen($bin);
-            for ($i = 0; $i < $len; $i++) {
-                $result = bcadd(bcmul($result, '2'), $bin[$i]);
-            }
-            $digits = $result;
         }
 
         // Strip leading zeros.

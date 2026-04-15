@@ -133,34 +133,345 @@ class Engine
         \PhpJs\BuiltIn\WeakMapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\WeakSetConstructor::install($this->globalEnv);
 
-        // BigInt constructor (not new-able, converts to BigInt)
-        $bigIntFn = JsFunction::fromCallable('BigInt', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-            if ($val instanceof \PhpJs\Value\JsBigInt) {
-                return $val;
+        // BigInt constructor: callable but not intended for `new`.
+        // Per spec 21.2.1, when called with `new`, throws TypeError.
+        // When called as function, converts value to BigInt.
+        $bigIntFn = \PhpJs\Value\JsFunction::fromCallable('BigInt', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                throw new \PhpJs\Exceptions\TypeError('BigInt is not a constructor');
             }
-            if ($val instanceof \PhpJs\Value\JsNumber) {
-                $n = $val->value;
+            $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+
+            // Per spec BigInt(value) step 2: prim = ToPrimitive(value, number).
+            $prim = \PhpJs\Spec\TypeConversion::toPrimitive($val, 'number');
+
+            // Step 3: If Type(prim) is Number, return ? NumberToBigInt(prim).
+            if ($prim instanceof \PhpJs\Value\JsNumber) {
+                $n = $prim->value;
                 if (!is_finite($n) || floor($n) !== $n) {
-                    throw new \PhpJs\Exceptions\RangeError('The number ' . $n . ' cannot be converted to a BigInt');
+                    throw new \PhpJs\Exceptions\RangeError(
+                        'The number ' . $n . ' cannot be converted to a BigInt because it is not an integer'
+                    );
+                }
+                // Use string representation for large integers beyond PHP_INT_MAX.
+                if ($n > PHP_INT_MAX || $n < PHP_INT_MIN) {
+                    return new \PhpJs\Value\JsBigInt(number_format($n, 0, '.', ''));
                 }
                 return new \PhpJs\Value\JsBigInt((string) (int) $n);
             }
-            if ($val instanceof \PhpJs\Value\JsString) {
-                $str = trim($val->value);
-                if (preg_match('/^-?\d+$/', $str)) {
-                    return new \PhpJs\Value\JsBigInt($str);
-                }
-                if (preg_match('/^0[xX][0-9a-fA-F]+$/', $str)) {
-                    return new \PhpJs\Value\JsBigInt((string) hexdec(substr($str, 2)));
-                }
-                throw new \PhpJs\Exceptions\SyntaxError('Cannot convert ' . $str . ' to a BigInt');
-            }
-            if ($val instanceof \PhpJs\Value\JsBoolean) {
-                return new \PhpJs\Value\JsBigInt($val->value ? '1' : '0');
-            }
-            throw new \PhpJs\Exceptions\TypeError('Cannot convert ' . $val->typeof() . ' to a BigInt');
+
+            // Step 4: Otherwise, return ? ToBigInt(prim).
+            return \PhpJs\Spec\TypeConversion::toBigInt($prim);
         });
+        // BigInt has [[Construct]] per spec (just throws TypeError when called as constructor).
+        $bigIntFn->setConstructable();
+
+        // BigInt.length = 1 per spec (writable: false, enumerable: false, configurable: true).
+        $bigIntFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+            value: new \PhpJs\Value\JsNumber(1.0),
+            writable: false, enumerable: false, configurable: true,
+        ));
+
+        // BigInt.prototype: allows attaching methods to all BigInt primitives.
+        // Per spec 21.2.2, BigInt.prototype is an ordinary object (not a BigInt value).
+        $bigIntProto = new \PhpJs\Value\JsObject();
+
+        // BigInt.prototype.toString([radix])
+        $bigIntProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsFunction::fromCallable('toString', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+                $bigint = $this_ instanceof \PhpJs\Value\JsBigInt ? $this_ : null;
+                if ($bigint === null && $this_ instanceof \PhpJs\Value\JsObject) {
+                    // BigInt wrapper object.
+                    $v = $this_->get('[[BigIntData]]');
+                    $bigint = $v instanceof \PhpJs\Value\JsBigInt ? $v : null;
+                }
+                if ($bigint === null) {
+                    throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toString called on non-BigInt');
+                }
+                $radix = 10;
+                if (isset($args[0]) && !($args[0] instanceof \PhpJs\Value\JsUndefined)) {
+                    $radix = (int) $args[0]->toNumber();
+                    if ($radix < 2 || $radix > 36) {
+                        throw new \PhpJs\Exceptions\RangeError('toString() radix must be between 2 and 36');
+                    }
+                }
+                if ($radix === 10) {
+                    return new \PhpJs\Value\JsString($bigint->value);
+                }
+                // For non-decimal radix, convert the decimal string to the target base.
+                $negative = isset($bigint->value[0]) && $bigint->value[0] === '-';
+                $abs = $negative ? substr($bigint->value, 1) : $bigint->value;
+                if ($abs === '0' || $abs === '') {
+                    return new \PhpJs\Value\JsString('0');
+                }
+                $digitChars = '0123456789abcdefghijklmnopqrstuvwxyz';
+                $result = '';
+                $radixStr = (string) $radix;
+                $n = $abs;
+                // Fast path for values that fit in PHP int.
+                if (strlen($n) < 18) {
+                    $nInt = (int) $n;
+                    while ($nInt > 0) {
+                        $result = $digitChars[$nInt % $radix] . $result;
+                        $nInt = intdiv($nInt, $radix);
+                    }
+                } else {
+                    // Use pure-PHP string division for large values.
+                    while ($n !== '0') {
+                        $remInt = 0;
+                        $q = '';
+                        for ($di = 0; $di < strlen($n); $di++) {
+                            $cur = $remInt * 10 + (int) $n[$di];
+                            $q .= (string) intdiv($cur, $radix);
+                            $remInt = $cur % $radix;
+                        }
+                        $result = $digitChars[$remInt] . $result;
+                        $n = ltrim($q, '0') ?: '0';
+                    }
+                }
+                return new \PhpJs\Value\JsString($negative ? '-' . $result : $result);
+            }),
+            true, false, true
+        ));
+
+        // BigInt.prototype.valueOf()
+        $bigIntProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsFunction::fromCallable('valueOf', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+                if ($this_ instanceof \PhpJs\Value\JsBigInt) {
+                    return $this_;
+                }
+                if ($this_ instanceof \PhpJs\Value\JsObject) {
+                    $v = $this_->get('[[BigIntData]]');
+                    if ($v instanceof \PhpJs\Value\JsBigInt) {
+                        return $v;
+                    }
+                }
+                throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.valueOf called on non-BigInt');
+            }),
+            true, false, true
+        ));
+
+        // BigInt.prototype.toLocaleString() - same as toString() per spec.
+        $bigIntProto->defineOwnProperty('toLocaleString', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsFunction::fromCallable('toLocaleString', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+                if ($this_ instanceof \PhpJs\Value\JsBigInt) {
+                    return new \PhpJs\Value\JsString($this_->value);
+                }
+                throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
+            }),
+            true, false, true
+        ));
+
+        // BigInt.prototype[Symbol.toStringTag] = "BigInt"
+        $bigIntProto->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            new \PhpJs\Object\PropertyDescriptor(
+                value: new \PhpJs\Value\JsString('BigInt'),
+                writable: false, enumerable: false, configurable: true,
+            )
+        );
+
+        // BigInt.prototype.constructor = BigInt
+        $bigIntProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $bigIntFn, true, false, true
+        ));
+
+        $bigIntFn->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $bigIntProto,
+            writable: false, enumerable: false, configurable: false,
+        ));
+
+        // Pure-PHP helpers for asIntN/asUintN.
+        // Compute 2^n as a decimal string.
+        $pow2str = static function (int $n): string {
+            if ($n === 0) {
+                return '1';
+            }
+            // Start with 1 and double n times.
+            $result = '1';
+            for ($i = 0; $i < $n; $i++) {
+                // Double the string: multiply each digit by 2 with carry.
+                $carry = 0;
+                $out = '';
+                for ($j = strlen($result) - 1; $j >= 0; $j--) {
+                    $d = (int) $result[$j] * 2 + $carry;
+                    $carry = intdiv($d, 10);
+                    $out = ($d % 10) . $out;
+                }
+                if ($carry) {
+                    $out = $carry . $out;
+                }
+                $result = $out;
+            }
+            return $result;
+        };
+        // Compare two non-negative decimal strings. Returns -1, 0, 1.
+        $bigCmpUns = static function (string $a, string $b): int {
+            $la = strlen($a);
+            $lb = strlen($b);
+            if ($la !== $lb) {
+                return $la < $lb ? -1 : 1;
+            }
+            return strcmp($a, $b) <=> 0;
+        };
+        // Unsigned subtract: a >= b assumed.
+        $bigSubUns = static function (string $a, string $b) use (&$bigSubUns): string {
+            $result = '';
+            $borrow = 0;
+            $i = strlen($a) - 1;
+            $j = strlen($b) - 1;
+            while ($i >= 0) {
+                $diff = (int) $a[$i--] - ($j >= 0 ? (int) $b[$j--] : 0) - $borrow;
+                if ($diff < 0) {
+                    $diff += 10;
+                    $borrow = 1;
+                } else {
+                    $borrow = 0;
+                }
+                $result = $diff . $result;
+            }
+            return ltrim($result, '0') ?: '0';
+        };
+        // Unsigned string division: returns remainder when dividing $a by $d (small int).
+        $bigModSmall = static function (string $a, int $d): int {
+            $rem = 0;
+            for ($i = 0; $i < strlen($a); $i++) {
+                $rem = ($rem * 10 + (int) $a[$i]) % $d;
+            }
+            return $rem;
+        };
+        // Compute bigint mod 2^width (result is non-negative decimal string).
+        // We do this by computing the binary representation of |bigint| mod 2^width,
+        // then adjusting for sign.
+        $bigUintN = static function (string $val, int $width) use ($pow2str, $bigCmpUns, $bigSubUns, $bigModSmall): string {
+            if ($width === 0) {
+                return '0';
+            }
+            $neg = isset($val[0]) && $val[0] === '-';
+            $abs = ltrim($val, '-');
+            if ($abs === '0') {
+                return '0';
+            }
+            // pow2 = 2^width
+            $pow2 = $pow2str($width);
+            // Compute abs mod pow2 using repeated division by 2 (get binary bits), then reconstruct.
+            // Actually easier: compute $abs % $pow2 using digit-by-digit mod.
+            // Use fast path if pow2 fits in PHP int.
+            if ($width <= 62) {
+                $mask = PHP_INT_MAX;
+                if ($width < 63) {
+                    $mask = (1 << $width) - 1;
+                }
+                // Compute abs mod 2^width.
+                $rem = 0;
+                for ($i = 0; $i < strlen($abs); $i++) {
+                    $rem = (($rem * 10) + (int) $abs[$i]) & $mask;
+                }
+                $rem = $rem & $mask;
+                if ($neg && $rem !== 0) {
+                    $rem = (1 << $width) - $rem;
+                }
+                return (string) $rem;
+            }
+            // Large width: use string-based computation.
+            // Compute abs mod pow2 using long division.
+            // abs mod pow2 = abs - pow2 * floor(abs / pow2)
+            // We can compute this as: take last width bits of abs in binary.
+            // 1. Convert abs to binary string by repeated halving.
+            $bin = '';
+            $n = $abs;
+            while ($n !== '0') {
+                // Last bit = n % 2
+                $rem2 = 0;
+                $q = '';
+                for ($i = 0; $i < strlen($n); $i++) {
+                    $cur = $rem2 * 10 + (int) $n[$i];
+                    $q .= (string) intdiv($cur, 2);
+                    $rem2 = $cur % 2;
+                }
+                $bin = $rem2 . $bin;
+                $n = ltrim($q, '0') ?: '0';
+            }
+            // Take last $width bits.
+            if (strlen($bin) <= $width) {
+                $bits = str_pad($bin, $width, '0', STR_PAD_LEFT);
+            } else {
+                $bits = substr($bin, -$width);
+            }
+            // If negative, compute two's complement: flip bits and add 1.
+            if ($neg) {
+                $flipped = '';
+                for ($i = 0; $i < strlen($bits); $i++) {
+                    $flipped .= $bits[$i] === '0' ? '1' : '0';
+                }
+                // Add 1 to flipped.
+                $carry = 1;
+                $result = '';
+                for ($i = strlen($flipped) - 1; $i >= 0; $i--) {
+                    $d = (int) $flipped[$i] + $carry;
+                    $result = ($d % 2) . $result;
+                    $carry = intdiv($d, 2);
+                }
+                // Discard overflow carry (wraps around).
+                $bits = $result;
+            }
+            // Convert bits back to decimal.
+            $dec = '0';
+            for ($i = 0; $i < strlen($bits); $i++) {
+                // dec = dec * 2 + bit
+                $carry2 = (int) $bits[$i];
+                $out2 = '';
+                for ($j = strlen($dec) - 1; $j >= 0; $j--) {
+                    $d = (int) $dec[$j] * 2 + $carry2;
+                    $carry2 = intdiv($d, 10);
+                    $out2 = ($d % 10) . $out2;
+                }
+                while ($carry2 > 0) {
+                    $out2 = ($carry2 % 10) . $out2;
+                    $carry2 = intdiv($carry2, 10);
+                }
+                $dec = $out2 !== '' ? $out2 : '0';
+            }
+            return $dec;
+        };
+
+        // BigInt.asUintN(width, bigint): modulo 2^width, unsigned.
+        $bigIntFn->defineOwnProperty('asUintN', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsFunction::fromCallable('asUintN', function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN): \PhpJs\Value\JsValue {
+                $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
+                // Per spec, ToBigInt(undefined) throws TypeError. Always call ToBigInt.
+                $bigint = \PhpJs\Spec\TypeConversion::toBigInt($args[1] ?? \PhpJs\Value\JsUndefined::instance());
+                $mod = $bigUintN($bigint->value, $width);
+                return new \PhpJs\Value\JsBigInt($mod);
+            }, 2),
+            true, false, true
+        ));
+
+        // BigInt.asIntN(width, bigint): modulo 2^width, signed.
+        $bigIntFn->defineOwnProperty('asIntN', \PhpJs\Object\PropertyDescriptor::data(
+            \PhpJs\Value\JsFunction::fromCallable('asIntN', function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN, $pow2str, $bigCmpUns, $bigSubUns): \PhpJs\Value\JsValue {
+                $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
+                // Per spec, ToBigInt(undefined) throws TypeError. Always call ToBigInt.
+                $bigint = \PhpJs\Spec\TypeConversion::toBigInt($args[1] ?? \PhpJs\Value\JsUndefined::instance());
+                if ($width === 0) {
+                    return new \PhpJs\Value\JsBigInt('0');
+                }
+                $mod = $bigUintN($bigint->value, $width);
+                // If mod >= 2^(width-1), result = mod - 2^width (i.e. negative).
+                $half = $pow2str($width - 1);
+                if ($bigCmpUns($mod, $half) >= 0) {
+                    $pow2 = $pow2str($width);
+                    $diff = $bigSubUns($pow2, $mod);
+                    return new \PhpJs\Value\JsBigInt($diff === '0' ? '0' : '-' . $diff);
+                }
+                return new \PhpJs\Value\JsBigInt($mod);
+            }, 2),
+            true, false, true
+        ));
+
+        // Store the prototype so JsBigInt primitive lookups can find it.
+        \PhpJs\Value\JsBigInt::setPrototype($bigIntProto);
+
         $this->globalEnv->defineVar('BigInt', $bigIntFn);
 
         \PhpJs\BuiltIn\DateConstructor::install($this->globalEnv);

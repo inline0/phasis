@@ -539,7 +539,7 @@ final class AbstractOperations
      */
     private static function bigIntLessThan(JsBigInt $x, JsBigInt $y): bool
     {
-        return bccomp(self::bigIntToDecimal($x->value), self::bigIntToDecimal($y->value)) < 0;
+        return self::bigStrComp(self::bigIntToDecimal($x->value), self::bigIntToDecimal($y->value)) < 0;
     }
 
     /**
@@ -620,9 +620,8 @@ final class AbstractOperations
         // If the float is not an integer value, compare the BigInt to the floor and ceil.
         if ($floatVal !== floor($floatVal)) {
             $floored = floor($floatVal);
-            // Convert the floored value to a string for bcmath.
             $flooredStr = self::floatToExactIntString($floored);
-            $cmpFloor = bccomp($bigintStr, $flooredStr);
+            $cmpFloor = self::bigStrComp($bigintStr, $flooredStr);
             if ($cmpFloor <= 0) {
                 // bigint <= floor(float) means bigint < float.
                 return -1;
@@ -633,7 +632,7 @@ final class AbstractOperations
 
         // The float is an exact integer. Convert to its exact decimal string.
         $floatStr = self::floatToExactIntString($floatVal);
-        return bccomp($bigintStr, $floatStr);
+        return self::bigStrComp($bigintStr, $floatStr);
     }
 
     /**
@@ -769,31 +768,80 @@ final class AbstractOperations
     }
 
     /**
-     * Convert a hex digit string to a decimal string using bcmath.
+     * Convert a hex digit string to a decimal string (pure PHP).
      */
     private static function hexToBigIntString(string $hex): ?string
     {
         $result = '0';
         $len = strlen($hex);
         for ($i = 0; $i < $len; $i++) {
-            $digit = hexdec($hex[$i]);
-            $result = bcadd(bcmul($result, '16'), (string) $digit);
+            $result = self::bigStrMulAddSmall($result, 16, (int) hexdec($hex[$i]));
         }
         return $result;
     }
 
     /**
-     * Convert a digit string in a given base (2 or 8) to a decimal string using bcmath.
+     * Convert a digit string in a given base (2 or 8) to a decimal string (pure PHP).
      */
     private static function baseToBigIntString(string $digits, int $base): ?string
     {
         $result = '0';
-        $baseStr = (string) $base;
         $len = strlen($digits);
         for ($i = 0; $i < $len; $i++) {
-            $digit = (int) $digits[$i];
-            $result = bcadd(bcmul($result, $baseStr), (string) $digit);
+            $result = self::bigStrMulAddSmall($result, $base, (int) $digits[$i]);
         }
         return $result;
+    }
+
+    /** Public wrapper for signed BigInt decimal string comparison (for external callers). */
+    public static function bigStrCompPublic(string $a, string $b): int
+    {
+        return self::bigStrComp($a, $b);
+    }
+
+    /** Compare two non-negative decimal strings. Returns -1, 0, 1. */
+    private static function bigStrCompUnsigned(string $a, string $b): int
+    {
+        $la = strlen($a);
+        $lb = strlen($b);
+        if ($la !== $lb) {
+            return $la < $lb ? -1 : 1;
+        }
+        return strcmp($a, $b) <=> 0;
+    }
+
+    /** Signed decimal string comparison. Returns -1, 0, 1. */
+    private static function bigStrComp(string $a, string $b): int
+    {
+        $aNeg = isset($a[0]) && $a[0] === '-';
+        $bNeg = isset($b[0]) && $b[0] === '-';
+        if ($aNeg !== $bNeg) {
+            return $aNeg ? -1 : 1;
+        }
+        $cmp = self::bigStrCompUnsigned(ltrim($a, '-'), ltrim($b, '-'));
+        return $aNeg ? -$cmp : $cmp;
+    }
+
+    /**
+     * Multiply non-negative decimal string by small integer, then add another small integer.
+     * Replaces the bcadd(bcmul($result, $base), $digit) pattern in base conversion loops.
+     */
+    private static function bigStrMulAddSmall(string $a, int $mul, int $add): string
+    {
+        if ($a === '0' && $add === 0) {
+            return '0';
+        }
+        $carry = $add;
+        $result = '';
+        for ($i = strlen($a) - 1; $i >= 0; $i--) {
+            $prod = (int) $a[$i] * $mul + $carry;
+            $carry = intdiv($prod, 10);
+            $result = ($prod % 10) . $result;
+        }
+        while ($carry > 0) {
+            $result = ($carry % 10) . $result;
+            $carry = intdiv($carry, 10);
+        }
+        return $result !== '' ? $result : '0';
     }
 }

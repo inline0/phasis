@@ -1245,7 +1245,7 @@ class TypedArrayConstructor
                 // Default numeric sort for typed arrays per spec.
                 // BigInt comparisons: compare as integers.
                 if ($a instanceof \PhpJs\Value\JsBigInt && $b instanceof \PhpJs\Value\JsBigInt) {
-                    return bccomp($a->value, $b->value);
+                    return \PhpJs\Spec\AbstractOperations::bigStrCompPublic($a->value, $b->value);
                 }
                 $an = $a->toNumber();
                 $bn = $b->toNumber();
