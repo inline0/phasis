@@ -34,6 +34,10 @@ class SetConstructor
         $constructor = JsFunction::fromCallable(
             'Set',
             function (JsValue $this_, array $args) use ($proto): JsValue {
+                // Set must be called with new
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Constructor Set requires \'new\'');
+                }
                 $set = new JsSet($proto);
                 self::populateFromArgs($set, $args);
                 return $set;
@@ -41,7 +45,7 @@ class SetConstructor
         );
         $constructor->setConstructable();
 
-        $constructor->set('prototype', $proto);
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         $proto->defineOwnProperty(
             'constructor',
             PropertyDescriptor::data($constructor, true, false, true),

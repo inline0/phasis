@@ -34,6 +34,10 @@ class MapConstructor
         $constructor = JsFunction::fromCallable(
             'Map',
             function (JsValue $this_, array $args) use ($proto): JsValue {
+                // Map must be called with new
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Constructor Map requires \'new\'');
+                }
                 $map = new JsMap($proto);
                 self::populateFromArgs($map, $args);
                 return $map;
@@ -41,7 +45,7 @@ class MapConstructor
         );
         $constructor->setConstructable();
 
-        $constructor->set('prototype', $proto);
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         $proto->defineOwnProperty(
             'constructor',
             PropertyDescriptor::data($constructor, true, false, true),
