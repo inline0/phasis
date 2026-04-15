@@ -104,11 +104,12 @@ class ObjectConstructor
 
         $constructor->defineOwnProperty('getOwnPropertySymbols', $builtinMethod('getOwnPropertySymbols', function (JsValue $this_, array $args): JsValue {
             $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
+            // Per spec, GetOwnPropertyKeys(O, Symbol) uses [[OwnPropertyKeys]] and filters for symbols.
+            $allKeys = $obj->ordinaryOwnPropertyKeys();
             $symbols = [];
-            foreach ($obj->getOwnSymbolProperties() as $id => $desc) {
-                $sym = JsSymbol::fromId($id);
-                if ($sym !== null) {
-                    $symbols[] = $sym;
+            foreach ($allKeys as $keyVal) {
+                if ($keyVal instanceof JsSymbol) {
+                    $symbols[] = $keyVal;
                 }
             }
             return JsArray::fromArray($symbols);

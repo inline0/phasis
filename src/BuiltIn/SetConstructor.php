@@ -70,33 +70,35 @@ class SetConstructor
             return;
         }
 
-        if ($iterable instanceof JsArray) {
-            $length = $iterable->getLength();
-            for ($i = 0; $i < $length; $i++) {
-                $set->setAdd($iterable->get((string) $i));
-            }
-            return;
+        // Per spec, get the `add` method before iterating.
+        $adder = $set->get('add');
+        if (!$adder instanceof JsFunction) {
+            throw new TypeError('Set.prototype.add is not a function');
         }
 
-        if (!$iterable instanceof JsObject) {
-            return;
-        }
-
-        // Generic iterable support via Symbol.iterator.
+        // Per spec, get the iterator. Must throw TypeError if Symbol.iterator is not callable.
         $iterSym = SymbolConstructor::iterator();
-        $iteratorMethod = $iterable->getBySymbol($iterSym);
+        if ($iterable instanceof JsObject) {
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+        } else {
+            throw new TypeError('object is not iterable');
+        }
+
+        if ($iteratorMethod instanceof JsUndefined || $iteratorMethod instanceof JsNull) {
+            throw new TypeError('object is not iterable');
+        }
         if (!$iteratorMethod instanceof JsFunction) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         $iterator = $iteratorMethod->call($iterable, []);
         if (!$iterator instanceof JsObject) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         $nextMethod = $iterator->get('next');
         if (!$nextMethod instanceof JsFunction) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         while (true) {
@@ -107,7 +109,26 @@ class SetConstructor
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
             }
-            $set->setAdd($result->get('value'));
+            try {
+                $adder->call($set, [$result->get('value')]);
+            } catch (\Throwable $e) {
+                // Per spec, close the iterator on abrupt completion.
+                self::closeIterator($iterator);
+                throw $e;
+            }
+        }
+    }
+
+    /** Close an iterator by calling its return method if present. */
+    private static function closeIterator(JsObject $iterator): void
+    {
+        $returnMethod = $iterator->get('return');
+        if ($returnMethod instanceof JsFunction) {
+            try {
+                $returnMethod->call($iterator, []);
+            } catch (\Throwable $e) {
+                // Per spec, ignore errors from closing the iterator.
+            }
         }
     }
 
@@ -222,23 +243,32 @@ class SetConstructor
         return $proto;
     }
 
-    /** Create a Set value iterator object. */
+    /**
+     * Create a live Set value iterator object.
+     * Uses slot-based iteration to handle additions/deletions during iteration.
+     */
     private static function createValueIterator(JsSet $set): JsObject
     {
         $index = 0;
+        $finished = false;
         $iterSym = SymbolConstructor::iterator();
         $iterator = new JsObject();
-        $nextFn = function () use ($set, &$index): JsValue {
+        $nextFn = function () use ($set, &$index, &$finished): JsValue {
             $result = new JsObject();
-            $values = $set->setValues();
-            if ($index < count($values)) {
-                $result->set('value', $values[$index]);
-                $result->set('done', new JsBoolean(false));
-                $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+            if (!$finished) {
+                while ($index < $set->slotCount()) {
+                    $value = $set->getSlot($index);
+                    $index++;
+                    if ($value !== null) {
+                        $result->set('value', $value);
+                        $result->set('done', new JsBoolean(false));
+                        return $result;
+                    }
+                }
+                $finished = true;
             }
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
             return $result;
         };
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
@@ -251,24 +281,32 @@ class SetConstructor
         return $iterator;
     }
 
-    /** Create a Set entry iterator object (each entry is [value, value]). */
+    /**
+     * Create a live Set entry iterator object (each entry is [value, value]).
+     * Uses slot-based iteration to handle additions/deletions during iteration.
+     */
     private static function createEntryIterator(JsSet $set): JsObject
     {
         $index = 0;
+        $finished = false;
         $iterSym = SymbolConstructor::iterator();
         $iterator = new JsObject();
-        $nextFn = function () use ($set, &$index): JsValue {
+        $nextFn = function () use ($set, &$index, &$finished): JsValue {
             $result = new JsObject();
-            $values = $set->setValues();
-            if ($index < count($values)) {
-                $value = $values[$index];
-                $result->set('value', JsArray::fromArray([$value, $value]));
-                $result->set('done', new JsBoolean(false));
-                $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+            if (!$finished) {
+                while ($index < $set->slotCount()) {
+                    $value = $set->getSlot($index);
+                    $index++;
+                    if ($value !== null) {
+                        $result->set('value', JsArray::fromArray([$value, $value]));
+                        $result->set('done', new JsBoolean(false));
+                        return $result;
+                    }
+                }
+                $finished = true;
             }
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
             return $result;
         };
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));

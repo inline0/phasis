@@ -275,7 +275,7 @@ class Interpreter
             // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
             if (
                 str_starts_with($node->raw, '__REGEXP__')
-                && preg_match('#^/(.+)/([gimsuy]*)$#s', $value, $m)
+                && preg_match('#^/(.+)/([dgimsuvy]*)$#s', $value, $m)
             ) {
                 return $this->createRegExpObject($m[1], $m[2]);
             }

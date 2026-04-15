@@ -781,18 +781,48 @@ class TypedArrayConstructor
         }, 2);
         $proto->defineOwnProperty('subarray', PropertyDescriptor::data($subarrayFn, true, false, true));
 
-        // slice(begin, end).
-        $sliceFn = JsFunction::fromCallable('slice', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.slice called on incompatible receiver");
-            }
-            $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
-            $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? self::toInteger($args[1])
-                : null;
-            return $this_->sliceTyped($begin, $end);
-        }, 2);
-        $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
+        // slice(begin, end): uses SpeciesConstructor per spec.
+        $sliceFn = JsFunction::fromCallable(
+            'slice',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method {$typeName}.prototype.slice called on incompatible receiver"
+                    );
+                }
+                $len = $this_->getLength();
+                $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
+                $end = isset($args[1]) && !$args[1] instanceof JsUndefined
+                    ? self::toInteger($args[1])
+                    : null;
+
+                // Resolve begin/end per spec.
+                if ($begin < 0) {
+                    $begin = max(0, $len + $begin);
+                }
+                $begin = min($begin, $len);
+                if ($end === null) {
+                    $end = $len;
+                } elseif ($end < 0) {
+                    $end = max(0, $len + $end);
+                }
+                $end = min($end, $len);
+                $count = max(0, $end - $begin);
+
+                // TypedArraySpeciesCreate via SpeciesConstructor.
+                $result = self::typedArraySpeciesCreate($this_, $count);
+
+                for ($i = 0; $i < $count; $i++) {
+                    $result->setIndex($i, $this_->getIndex($begin + $i));
+                }
+                return $result;
+            },
+            2,
+        );
+        $proto->defineOwnProperty(
+            'slice',
+            PropertyDescriptor::data($sliceFn, true, false, true),
+        );
 
         // copyWithin(target, start, end).
         $copyWithinFn = JsFunction::fromCallable('copyWithin', function (JsValue $this_, array $args) use ($typeName): JsValue {
@@ -1353,5 +1383,70 @@ class TypedArrayConstructor
         );
 
         return $iterator;
+    }
+
+    /**
+     * TypedArraySpeciesCreate(exemplar, length).
+     *
+     * Per spec, looks up exemplar.constructor then constructor[Symbol.species]
+     * to determine which constructor to use. Falls back to the default
+     * constructor for the exemplar's type.
+     */
+    private static function typedArraySpeciesCreate(
+        JsTypedArray $exemplar,
+        int $length,
+    ): JsTypedArray {
+        $defaultTypeName = $exemplar->getTypeName();
+        $proto = $exemplar->getPrototype();
+
+        // Step 2: Let C be ? Get(O, "constructor").
+        $ctor = $exemplar->get('constructor');
+
+        // Step 3: If C is undefined, return defaultConstructor result.
+        if ($ctor instanceof JsUndefined) {
+            return JsTypedArray::fromLength($defaultTypeName, $length, $proto);
+        }
+
+        // Step 4: If Type(C) is not Object, throw a TypeError.
+        if (!$ctor instanceof JsObject) {
+            throw new TypeError(
+                $ctor->toJsString() . ' is not an object'
+            );
+        }
+
+        // Step 5: Let S be ? Get(C, @@species).
+        $speciesSym = SymbolConstructor::species();
+        $species = $ctor->getBySymbol($speciesSym);
+
+        // Step 6: If S is undefined or null, return defaultConstructor result.
+        if (
+            $species instanceof JsUndefined
+            || $species instanceof JsNull
+        ) {
+            return JsTypedArray::fromLength(
+                $defaultTypeName,
+                $length,
+                $proto,
+            );
+        }
+
+        // Step 7: If IsConstructor(S), use it.
+        if (
+            $species instanceof JsFunction
+            && $species->isConstructable()
+        ) {
+            $result = $species->call(
+                $species,
+                [new JsNumber((float) $length)],
+            );
+            if ($result instanceof JsTypedArray) {
+                return $result;
+            }
+            throw new TypeError(
+                'Species constructor did not return a TypedArray'
+            );
+        }
+
+        throw new TypeError('Species constructor is not a constructor');
     }
 }

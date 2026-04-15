@@ -435,9 +435,66 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('ownKeys');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target]);
-            return $this->trapResultToStringArray($result);
+            $trapResult = $this->trapResultToStringArray($result);
+            $this->validateOwnKeysInvariants($trapResult);
+            return $trapResult;
         }
         return $this->target->ownKeys();
+    }
+
+    /**
+     * Validate ownKeys trap invariants per ES spec 10.5.11 steps 17-25.
+     *
+     * @param list<string> $trapResult
+     */
+    private function validateOwnKeysInvariants(array $trapResult): void
+    {
+        // Step 17: Check for duplicate entries.
+        if (count($trapResult) !== count(array_unique($trapResult))) {
+            throw new TypeError("'ownKeys' on proxy: trap returned duplicate entries");
+        }
+
+        $extensibleTarget = $this->target->isExtensible();
+        $targetKeys = $this->target->ownKeys();
+
+        // Find non-configurable keys on target.
+        $targetNonconfigurableKeys = [];
+        $targetConfigurableKeys = [];
+        foreach ($targetKeys as $key) {
+            $desc = $this->target->getOwnPropertyDescriptor($key);
+            if ($desc !== null && $desc->configurable === false) {
+                $targetNonconfigurableKeys[] = $key;
+            } else {
+                $targetConfigurableKeys[] = $key;
+            }
+        }
+
+        // Step 21: All non-configurable target keys must appear in trap result.
+        $trapSet = array_flip($trapResult);
+        foreach ($targetNonconfigurableKeys as $key) {
+            if (!isset($trapSet[$key])) {
+                throw new TypeError(
+                    "'ownKeys' on proxy: trap result did not include '{$key}'"
+                );
+            }
+        }
+
+        // Step 23: If target is non-extensible, all target keys must be in trap result
+        // and no extra keys allowed.
+        if (!$extensibleTarget) {
+            foreach ($targetConfigurableKeys as $key) {
+                if (!isset($trapSet[$key])) {
+                    throw new TypeError(
+                        "'ownKeys' on proxy: trap result did not include '{$key}'"
+                    );
+                }
+            }
+            if (count($trapResult) !== count($targetKeys)) {
+                throw new TypeError(
+                    "'ownKeys' on proxy: trap returned extra keys for non-extensible target"
+                );
+            }
+        }
     }
 
     public function getOwnPropertyNames(): array
@@ -474,7 +531,16 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('ownKeys');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target]);
-            return $this->trapResultToPropertyKeys($result);
+            $trapResult = $this->trapResultToPropertyKeys($result);
+            // Validate invariants using string representation for duplicate checking.
+            $stringified = [];
+            foreach ($trapResult as $k) {
+                $stringified[] = ($k instanceof JsSymbol)
+                    ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
+                    : ($k instanceof JsString ? $k->value : (string) $k);
+            }
+            $this->validateOwnKeysInvariants($stringified);
+            return $trapResult;
         }
         return $this->target->ordinaryOwnPropertyKeys();
     }

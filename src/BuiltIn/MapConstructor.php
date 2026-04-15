@@ -51,7 +51,86 @@ class MapConstructor
             PropertyDescriptor::data($constructor, true, false, true),
         );
 
+        // Map.groupBy(items, callbackfn)
+        $groupByFn = JsFunction::fromCallable('groupBy', self::groupBy($proto), 2);
+        $groupByFn->setNonConstructable();
+        $constructor->defineOwnProperty('groupBy', PropertyDescriptor::data($groupByFn, true, false, true));
+
         $env->defineVar('Map', $constructor);
+    }
+
+    /**
+     * Map.groupBy(items, callbackfn) per spec.
+     * Groups elements from an iterable using a callback, returning a Map.
+     */
+    private static function groupBy(JsObject $proto): \Closure
+    {
+        return function (JsValue $this_, array $args) use ($proto): JsValue {
+            $items = $args[0] ?? JsUndefined::instance();
+            $callbackfn = $args[1] ?? JsUndefined::instance();
+
+            if (!$callbackfn instanceof JsFunction) {
+                throw new TypeError(TypeConversion::toString($callbackfn) . ' is not a function');
+            }
+
+            // Get iterator from items. Strings need special handling.
+            if ($items instanceof JsString) {
+                $iterator = self::createStringIterator($items);
+            } else {
+                $iterSym = SymbolConstructor::iterator();
+                if (!$items instanceof JsObject) {
+                    $items = TypeConversion::toObject($items);
+                }
+
+                $iteratorMethod = $items->getBySymbol($iterSym);
+                if (!$iteratorMethod instanceof JsFunction) {
+                    throw new TypeError('object is not iterable');
+                }
+
+                $iterator = $iteratorMethod->call($items, []);
+                if (!$iterator instanceof JsObject) {
+                    throw new TypeError('object is not iterable');
+                }
+            }
+
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('object is not iterable');
+            }
+
+            $map = new JsMap($proto);
+            $k = 0;
+
+            while (true) {
+                $result = $nextMethod->call($iterator, []);
+                if (!$result instanceof JsObject) {
+                    break;
+                }
+                if (TypeConversion::toBoolean($result->get('done'))) {
+                    break;
+                }
+                $value = $result->get('value');
+                $key = $callbackfn->call(JsUndefined::instance(), [$value, new JsNumber((float) $k)]);
+
+                // Normalize -0 to +0.
+                if ($key instanceof JsNumber && $key->value === 0.0) {
+                    $key = new JsNumber(0.0);
+                }
+
+                // Find or create the group array.
+                $existing = $map->mapGet($key);
+                if ($existing instanceof JsUndefined) {
+                    $group = JsArray::fromArray([$value]);
+                    $map->mapSet($key, $group);
+                } else {
+                    /** @var JsArray $existing */
+                    $existing->set((string) $existing->getLength(), $value);
+                }
+                $k++;
+            }
+
+            return $map;
+        };
     }
 
     /**
@@ -70,40 +149,35 @@ class MapConstructor
             return;
         }
 
-        // Per spec, get the `set` method before iterating
+        // Per spec, get the `set` method before iterating.
         $adder = $map->get('set');
         if (!$adder instanceof JsFunction) {
             throw new TypeError('Map.prototype.set is not a function');
         }
 
-        if ($iterable instanceof JsArray) {
-            $length = $iterable->getLength();
-            for ($i = 0; $i < $length; $i++) {
-                $entry = $iterable->get((string) $i);
-                self::addEntryFromPair($map, $entry, $adder);
-            }
-            return;
-        }
-
-        if (!$iterable instanceof JsObject) {
+        // Per spec, get the iterator. Must throw TypeError if Symbol.iterator is not callable.
+        $iterSym = SymbolConstructor::iterator();
+        if ($iterable instanceof JsObject) {
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+        } else {
             throw new TypeError('object is not iterable');
         }
 
-        // Generic iterable support via Symbol.iterator.
-        $iterSym = SymbolConstructor::iterator();
-        $iteratorMethod = $iterable->getBySymbol($iterSym);
+        if ($iteratorMethod instanceof JsUndefined || $iteratorMethod instanceof JsNull) {
+            throw new TypeError('object is not iterable');
+        }
         if (!$iteratorMethod instanceof JsFunction) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         $iterator = $iteratorMethod->call($iterable, []);
         if (!$iterator instanceof JsObject) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         $nextMethod = $iterator->get('next');
         if (!$nextMethod instanceof JsFunction) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         while (true) {
@@ -114,11 +188,17 @@ class MapConstructor
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
             }
-            self::addEntryFromPair($map, $result->get('value'), $adder);
+            $entry = $result->get('value');
+            try {
+                self::addEntryFromPair($map, $entry, $adder);
+            } catch (\Throwable $e) {
+                // Per spec, close the iterator on abrupt completion.
+                self::closeIterator($iterator);
+                throw $e;
+            }
         }
     }
 
-    /** Add a single [key, value] pair entry to the map. */
     /**
      * Per spec, Map constructor must call the `set` method on the map for each entry.
      * This allows subclasses and Proxy-wrapped maps to intercept the calls.
@@ -131,6 +211,47 @@ class MapConstructor
         $key = $entry->get('0');
         $value = $entry->get('1');
         $adder->call($map, [$key, $value]);
+    }
+
+    /** Close an iterator by calling its return method if present. */
+    private static function closeIterator(JsObject $iterator): void
+    {
+        $returnMethod = $iterator->get('return');
+        if ($returnMethod instanceof JsFunction) {
+            try {
+                $returnMethod->call($iterator, []);
+            } catch (\Throwable $e) {
+                // Per spec, ignore errors from closing the iterator.
+            }
+        }
+    }
+
+    /** Create a character iterator for a string value (Unicode codepoint iteration). */
+    private static function createStringIterator(JsString $str): JsObject
+    {
+        $chars = [];
+        $len = mb_strlen($str->value, 'UTF-8');
+        for ($i = 0; $i < $len; $i++) {
+            $chars[] = mb_substr($str->value, $i, 1, 'UTF-8');
+        }
+        $index = 0;
+        $total = count($chars);
+
+        $iterator = new JsObject();
+        $nextFn = function () use (&$index, $total, &$chars): JsValue {
+            $result = new JsObject();
+            if ($index < $total) {
+                $result->set('value', new JsString($chars[$index]));
+                $result->set('done', new JsBoolean(false));
+                $index++;
+            } else {
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+            }
+            return $result;
+        };
+        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+        return $iterator;
     }
 
     private static function createPrototype(): JsObject
@@ -254,7 +375,10 @@ class MapConstructor
         return $proto;
     }
 
-    /** Create a Map key iterator object. */
+    /**
+     * Create a live Map key iterator object.
+     * Uses slot-based iteration to handle additions/deletions during iteration.
+     */
     private static function createKeyIterator(JsMap $map): JsObject
     {
         $index = 0;
@@ -262,15 +386,17 @@ class MapConstructor
         $iterator = new JsObject();
         $nextFn = function () use ($map, &$index): JsValue {
             $result = new JsObject();
-            $keys = $map->mapKeys();
-            if ($index < count($keys)) {
-                $result->set('value', $keys[$index]);
-                $result->set('done', new JsBoolean(false));
+            while ($index < $map->slotCount()) {
+                $entry = $map->getSlot($index);
                 $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+                if ($entry !== null) {
+                    $result->set('value', $entry[0]);
+                    $result->set('done', new JsBoolean(false));
+                    return $result;
+                }
             }
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
             return $result;
         };
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
@@ -283,7 +409,10 @@ class MapConstructor
         return $iterator;
     }
 
-    /** Create a Map value iterator object. */
+    /**
+     * Create a live Map value iterator object.
+     * Uses slot-based iteration to handle additions/deletions during iteration.
+     */
     private static function createValueIterator(JsMap $map): JsObject
     {
         $index = 0;
@@ -291,15 +420,17 @@ class MapConstructor
         $iterator = new JsObject();
         $nextFn = function () use ($map, &$index): JsValue {
             $result = new JsObject();
-            $values = $map->mapValues();
-            if ($index < count($values)) {
-                $result->set('value', $values[$index]);
-                $result->set('done', new JsBoolean(false));
+            while ($index < $map->slotCount()) {
+                $entry = $map->getSlot($index);
                 $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+                if ($entry !== null) {
+                    $result->set('value', $entry[1]);
+                    $result->set('done', new JsBoolean(false));
+                    return $result;
+                }
             }
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
             return $result;
         };
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
@@ -312,7 +443,10 @@ class MapConstructor
         return $iterator;
     }
 
-    /** Create a Map entry iterator object. */
+    /**
+     * Create a live Map entry iterator object.
+     * Uses slot-based iteration to handle additions/deletions during iteration.
+     */
     private static function createEntryIterator(JsMap $map): JsObject
     {
         $index = 0;
@@ -320,16 +454,17 @@ class MapConstructor
         $iterator = new JsObject();
         $nextFn = function () use ($map, &$index): JsValue {
             $result = new JsObject();
-            $entries = $map->mapEntries();
-            if ($index < count($entries)) {
-                $entry = $entries[$index];
-                $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
-                $result->set('done', new JsBoolean(false));
+            while ($index < $map->slotCount()) {
+                $entry = $map->getSlot($index);
                 $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+                if ($entry !== null) {
+                    $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
+                    $result->set('done', new JsBoolean(false));
+                    return $result;
+                }
             }
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
             return $result;
         };
         $iterator->set('next', JsFunction::fromCallable('next', $nextFn));

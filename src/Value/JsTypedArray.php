@@ -286,6 +286,63 @@ class JsTypedArray extends JsObject
         return parent::internalSet($name, $value, $receiver);
     }
 
+    /**
+     * Override getOwnPropertyDescriptor for integer-indexed properties.
+     *
+     * Per spec, TypedArray numeric indices appear as writable, enumerable,
+     * non-configurable data properties.
+     */
+    public function getOwnPropertyDescriptor(
+        string $name,
+    ): ?\PhpJs\Object\PropertyDescriptor {
+        if (ctype_digit($name)) {
+            $index = (int) $name;
+            if ($index >= 0 && $index < $this->length) {
+                return \PhpJs\Object\PropertyDescriptor::data(
+                    $this->getIndex($index),
+                    true,
+                    true,
+                    false,
+                );
+            }
+            return null;
+        }
+        return parent::getOwnPropertyDescriptor($name);
+    }
+
+    /**
+     * Override defineOwnProperty for integer-indexed properties.
+     *
+     * Per spec, defining a numeric index property on a TypedArray sets the
+     * value if the descriptor is compatible, otherwise silently fails.
+     */
+    public function defineOwnProperty(
+        string $name,
+        \PhpJs\Object\PropertyDescriptor $desc,
+    ): bool {
+        if (ctype_digit($name)) {
+            $index = (int) $name;
+            if ($index < 0 || $index >= $this->length) {
+                return false;
+            }
+            if ($desc->isAccessorDescriptor()) {
+                return false;
+            }
+            if (
+                $desc->writable === false
+                || $desc->enumerable === false
+                || $desc->configurable === true
+            ) {
+                return false;
+            }
+            if ($desc->value !== null) {
+                $this->setIndex($index, $desc->value);
+            }
+            return true;
+        }
+        return parent::defineOwnProperty($name, $desc);
+    }
+
     public function has(string $name): bool
     {
         if (

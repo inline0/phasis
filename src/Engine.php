@@ -130,15 +130,8 @@ class Engine
         \PhpJs\BuiltIn\ReflectObject::install($this->globalEnv);
         $this->globalEnv->defineVar('console', $this->console->create());
 
-        // WeakMap/WeakSet — use regular Map/Set storage (PHP has no weak refs for objects)
-        $this->installStubConstructor('WeakMap', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            $map = new \PhpJs\Value\JsMap();
-            return $map;
-        });
-        $this->installStubConstructor('WeakSet', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            $set = new \PhpJs\Value\JsSet();
-            return $set;
-        });
+        \PhpJs\BuiltIn\WeakMapConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\WeakSetConstructor::install($this->globalEnv);
 
         // BigInt constructor (not new-able, converts to BigInt)
         $bigIntFn = JsFunction::fromCallable('BigInt', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
