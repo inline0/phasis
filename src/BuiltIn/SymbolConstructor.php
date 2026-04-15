@@ -157,11 +157,16 @@ class SymbolConstructor
             false,
             true,
         ));
-        // Set Symbol.toStringTag on the prototype
-        $proto->setBySymbol(self::toStringTag(), new JsString('Symbol'));
+        // Set Symbol.toStringTag on the prototype (non-writable, non-enumerable, configurable)
+        $proto->definePropertyBySymbol(
+            self::toStringTag(),
+            \PhpJs\Object\PropertyDescriptor::data(new JsString('Symbol'), false, false, true),
+        );
         $symbolFn->set('prototype', $proto);
 
         $env->defineVar('Symbol', $symbolFn);
+        // Store prototype for auto-boxing symbol property access
+        $env->defineVar('__SymbolPrototype__', $proto);
     }
 
     private static function symbolFor(): \Closure

@@ -1052,6 +1052,28 @@ class Interpreter
                 }
             }
 
+            // Symbol method calls: look up on Symbol.prototype or handle built-in methods
+            if ($rawObj instanceof JsSymbol && !$isSymbolCallKey) {
+                if ($key === 'toString') {
+                    $args = $this->evaluateArguments($node->arguments, $env);
+                    return new JsString($rawObj->toString());
+                }
+                if ($key === 'valueOf') {
+                    $args = $this->evaluateArguments($node->arguments, $env);
+                    return $rawObj;
+                }
+                if ($env->has('__SymbolPrototype__')) {
+                    $symProto = $env->get('__SymbolPrototype__');
+                    if ($symProto instanceof JsObject) {
+                        $method = $symProto->get($key);
+                        if ($method instanceof JsFunction) {
+                            $args = $this->evaluateArguments($node->arguments, $env);
+                            return $this->callFunction($method, $rawObj, $args);
+                        }
+                    }
+                }
+            }
+
             $obj = $rawObj instanceof JsObject ? $rawObj : TypeConversion::toObject($rawObj);
             $callee = $isSymbolCallKey ? $obj->getBySymbol($rawCallKey) : $obj->get($key);
             $thisValue = $obj;
@@ -1965,6 +1987,37 @@ class Interpreter
                 $proto = $env->get('__StringPrototype__');
                 if ($proto instanceof JsObject) {
                     $val = $proto->get($key);
+                    if (!$val instanceof JsUndefined) {
+                        return $val;
+                    }
+                }
+            }
+            return JsUndefined::instance();
+        }
+
+        // Symbol property access (description, toString, valueOf via Symbol.prototype)
+        if ($obj instanceof JsSymbol) {
+            if ($key === 'description') {
+                $desc = $obj->getDescription();
+                return $desc !== null ? new JsString($desc) : JsUndefined::instance();
+            }
+            if ($key === 'toString') {
+                $sym = $obj;
+                return JsFunction::fromCallable('toString', function () use ($sym): JsValue {
+                    return new JsString($sym->toString());
+                }, 0);
+            }
+            if ($key === 'valueOf') {
+                $sym = $obj;
+                return JsFunction::fromCallable('valueOf', function () use ($sym): JsValue {
+                    return $sym;
+                }, 0);
+            }
+            // Check Symbol.prototype from global env
+            if ($env->has('__SymbolPrototype__')) {
+                $proto = $env->get('__SymbolPrototype__');
+                if ($proto instanceof JsObject) {
+                    $val = $isSymbolKey ? $proto->getBySymbol($rawKey) : $proto->get($key);
                     if (!$val instanceof JsUndefined) {
                         return $val;
                     }
