@@ -12,6 +12,8 @@ class Test262Runner
     private string $harnessDir;
     /** @var list<string> Features to skip */
     private array $skipFeatures = [];
+    /** @var array<string, string> Cached harness source (stripped frontmatter) */
+    private array $harnessCache = [];
 
     public function __construct(string $suiteDir)
     {
@@ -308,12 +310,22 @@ PHP;
 
     private function loadHarness(Engine $engine, string $filename): void
     {
-        $path = $this->harnessDir . '/' . $filename;
-        if (!file_exists($path)) {
+        if (!isset($this->harnessCache[$filename])) {
+            $path = $this->harnessDir . '/' . $filename;
+            if (!file_exists($path)) {
+                $this->harnessCache[$filename] = '';
+                return;
+            }
+            $src = file_get_contents($path);
+            $this->harnessCache[$filename] = preg_replace('/\/\*---.*?---\*\//s', '', $src) ?? '';
+        }
+
+        $src = $this->harnessCache[$filename];
+        if ($src === '') {
             return;
         }
         try {
-            $engine->eval(file_get_contents($path));
+            $engine->eval($src);
         } catch (\Throwable) {
             // Silently skip harness files that fail to load
         }

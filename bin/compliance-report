@@ -3,150 +3,85 @@
 
 declare(strict_types=1);
 
-require __DIR__ . '/../vendor/autoload.php';
+ini_set('memory_limit', '1G');
 
-use PhpJs\Tests\Oracle\Test262Runner;
-
-$suiteDir = __DIR__ . '/../test262';
-$runner = new Test262Runner($suiteDir);
-
-// Use the same skip list as bin/test262
-$runner->setSkipFeatures([
-    'async-functions', 'async-iteration', 'top-level-await',
-    'Atomics', 'SharedArrayBuffer', 'ArrayBuffer', 'DataView', 'TypedArray',
-    'resizable-arraybuffer', 'arraybuffer-transfer', 'Float16Array',
-    'Proxy', 'Reflect',
-    'WeakRef', 'FinalizationRegistry', 'symbols-as-weakmap-keys',
-    'import-assertions', 'import-attributes', 'dynamic-import',
-    'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
-    'Symbol.species', 'Symbol.asyncIterator',
-    'Promise', 'Promise.allSettled', 'Promise.any', 'Promise.prototype.finally',
-    'regexp-lookbehind', 'regexp-named-groups', 'regexp-dotall',
-    'regexp-unicode-property-escapes', 'regexp-match-indices', 'regexp-v-flag',
-    'RegExp.escape',
-    'class-fields-public', 'class-fields-private',
-    'class-static-fields-public', 'class-static-fields-private',
-    'class-methods-private', 'class-static-methods-private',
-    'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
-    'decorators', 'explicit-resource-management', 'hashbang',
-    'iterator-helpers', 'set-methods', 'Array.fromAsync',
-    'change-array-by-copy', 'Math.sumPrecise',
-    'well-formed-json-stringify', 'json-parse-with-source',
-    'String.prototype.isWellFormed', 'String.prototype.toWellFormed',
-]);
+$limit = (int) ($argv[1] ?? 50);
+$jobs = (int) ($argv[2] ?? 4);
 
 $categories = [
-    'language/literals',
-    'language/types',
-    'language/expressions',
-    'language/statements',
-    'language/block-scope',
-    'language/function-code',
-    'language/arguments-object',
-    'language/destructuring',
-    'language/computed-property-names',
-    'language/rest-parameters',
-    'language/directive-prologue',
-    'language/eval-code',
-    'language/asi',
-    'language/keywords',
-    'language/white-space',
-    'language/line-terminators',
-    'language/comments',
-    'language/future-reserved-words',
-    'language/reserved-words',
-    'language/identifier-resolution',
-    'built-ins/Array',
-    'built-ins/Boolean',
-    'built-ins/Date',
-    'built-ins/Error',
-    'built-ins/Function',
-    'built-ins/JSON',
-    'built-ins/Map',
-    'built-ins/Math',
-    'built-ins/Number',
-    'built-ins/Object',
-    'built-ins/RegExp',
-    'built-ins/Set',
-    'built-ins/String',
-    'built-ins/Symbol',
-    'built-ins/parseInt',
-    'built-ins/parseFloat',
-    'built-ins/isNaN',
-    'built-ins/isFinite',
-    'annexB/built-ins/String',
-    'annexB/built-ins/escape',
-    'annexB/built-ins/unescape',
+    'language/literals', 'language/types', 'language/expressions', 'language/statements',
+    'language/block-scope', 'language/function-code', 'language/arguments-object',
+    'language/destructuring', 'language/computed-property-names', 'language/rest-parameters',
+    'language/directive-prologue', 'language/eval-code', 'language/asi', 'language/keywords',
+    'language/white-space', 'language/line-terminators', 'language/comments',
+    'language/future-reserved-words', 'language/reserved-words', 'language/identifier-resolution',
+    'built-ins/Array', 'built-ins/Boolean', 'built-ins/Date', 'built-ins/Error',
+    'built-ins/Function', 'built-ins/JSON', 'built-ins/Map', 'built-ins/Math',
+    'built-ins/Number', 'built-ins/Object', 'built-ins/RegExp', 'built-ins/Set',
+    'built-ins/String', 'built-ins/Symbol', 'built-ins/parseInt', 'built-ins/parseFloat',
+    'built-ins/isNaN', 'built-ins/isFinite',
+    'annexB/built-ins/String', 'annexB/built-ins/escape', 'annexB/built-ins/unescape',
 ];
 
-$limit = (int) ($argv[1] ?? 100);
+$phpBin = PHP_BINARY;
+$test262Bin = __DIR__ . '/test262';
+$rootDir = dirname(__DIR__);
 
-$totalPass = 0;
-$totalFail = 0;
-$totalSkip = 0;
+// Run categories in parallel batches
 $results = [];
+$batches = array_chunk($categories, $jobs);
 
-foreach ($categories as $cat) {
-    $dir = $suiteDir . '/test/' . $cat;
-    if (!is_dir($dir)) {
-        continue;
-    }
-
-    $pass = 0;
-    $fail = 0;
-    $skip = 0;
-    $count = 0;
-
-    foreach ($runner->runDirectory($dir) as $result) {
-        $count++;
-        match ($result->status) {
-            \PhpJs\Tests\Oracle\TestStatus::Pass => $pass++,
-            \PhpJs\Tests\Oracle\TestStatus::Fail => $fail++,
-            \PhpJs\Tests\Oracle\TestStatus::Skip => $skip++,
-        };
-        if ($count >= $limit) {
-            break;
+foreach ($batches as $batch) {
+    $procs = [];
+    foreach ($batch as $cat) {
+        $cmd = $phpBin . ' ' . escapeshellarg($test262Bin)
+            . ' --category ' . escapeshellarg($cat)
+            . ' --limit ' . $limit . ' 2>/dev/null';
+        $spec = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']];
+        $proc = proc_open($cmd, $spec, $pipes, $rootDir);
+        if ($proc) {
+            fclose($pipes[0]);
+            $procs[] = ['proc' => $proc, 'pipe' => $pipes[1], 'cat' => $cat];
         }
     }
 
-    $attempted = $pass + $fail;
-    $rate = $attempted > 0 ? round($pass / $attempted * 100, 1) : 0;
-    $results[] = compact('cat', 'pass', 'fail', 'skip', 'attempted', 'rate');
-    $totalPass += $pass;
-    $totalFail += $fail;
-    $totalSkip += $skip;
+    // Wait for all in batch
+    foreach ($procs as $p) {
+        $output = stream_get_contents($p['pipe']);
+        fclose($p['pipe']);
+        proc_close($p['proc']);
+
+        if (preg_match('/(\d+) pass, (\d+) fail, (\d+) skip \(([\d.]+)% of (\d+) attempted\)/', $output, $m)) {
+            $r = [
+                'cat' => $p['cat'], 'pass' => (int) $m[1], 'fail' => (int) $m[2],
+                'skip' => (int) $m[3], 'rate' => (float) $m[4], 'attempted' => (int) $m[5],
+            ];
+            $results[] = $r;
+            fprintf(STDERR, "  %-42s %4d / %4d (%5.1f%%)\n", $r['cat'], $r['pass'], $r['attempted'], $r['rate']);
+        }
+    }
 }
 
-// Output
+$totalPass = array_sum(array_column($results, 'pass'));
+$totalFail = array_sum(array_column($results, 'fail'));
+$totalSkip = array_sum(array_column($results, 'skip'));
 $totalAttempted = $totalPass + $totalFail;
 $totalRate = $totalAttempted > 0 ? round($totalPass / $totalAttempted * 100, 1) : 0;
 
-echo "php-js test262 Compliance Report\n";
+echo "\nphp-js test262 Compliance Report\n";
 echo "================================\n";
-echo "Date: " . date('Y-m-d H:i') . "\n";
-echo "Sample: {$limit} tests per category\n";
-echo "\n";
 echo sprintf("OVERALL: %d / %d (%.1f%%)\n", $totalPass, $totalAttempted, $totalRate);
-echo sprintf("Skipped: %d\n", $totalSkip);
-echo "\n";
+echo sprintf("Skipped: %d | %s | %d tests/cat, %d workers\n\n", $totalSkip, date('Y-m-d H:i'), $limit, $jobs);
 
-// Sort by rate descending
 usort($results, fn($a, $b) => $b['rate'] <=> $a['rate']);
-
-echo "By Category:\n";
 foreach ($results as $r) {
-    if ($r['attempted'] === 0) {
-        continue;
+    if ($r['attempted'] > 0) {
+        echo sprintf("  %-42s %4d / %4d (%5.1f%%)\n", $r['cat'], $r['pass'], $r['attempted'], $r['rate']);
     }
-    echo sprintf("  %-45s %4d / %4d (%5.1f%%)\n", $r['cat'], $r['pass'], $r['attempted'], $r['rate']);
 }
 
-// Save JSON snapshot
-$snapshot = [
-    'date' => date('Y-m-d H:i:s'),
-    'overall' => ['pass' => $totalPass, 'fail' => $totalFail, 'skip' => $totalSkip, 'rate' => $totalRate],
+file_put_contents($rootDir . '/compliance.json', json_encode([
+    'date' => date('c'), 'overall' => compact('totalPass', 'totalFail', 'totalSkip', 'totalRate'),
     'categories' => $results,
-];
-$snapshotFile = __DIR__ . '/../compliance.json';
-file_put_contents($snapshotFile, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n");
-echo "\nSnapshot saved to compliance.json\n";
+], JSON_PRETTY_PRINT) . "\n");
+echo "\nSaved to compliance.json\n";
