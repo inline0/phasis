@@ -335,8 +335,14 @@ class Interpreter
 
     private function exponentiate(float $base, float $exp): JsNumber
     {
-        // Handle 0 ** negative (PHP deprecation in 8.4)
+        // ES spec special cases
+        if (abs($base) === 1.0 && is_infinite($exp)) {
+            return new JsNumber(NAN);
+        }
         if ($base === 0.0 && $exp < 0) {
+            if (JsNumber::isNegativeZero($base) && fmod($exp, 2) === -1.0) {
+                return new JsNumber(-INF);
+            }
             return new JsNumber(INF);
         }
         return new JsNumber(@($base ** $exp));

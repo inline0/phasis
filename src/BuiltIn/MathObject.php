@@ -10,6 +10,7 @@ use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -76,13 +77,20 @@ class MathObject
             return new JsNumber((float) (31 - (int) floor(log($x, 2))));
         }, 1), true, false, true));
         $math->defineOwnProperty('imul', PropertyDescriptor::data(JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
-            $a = isset($args[0]) ? TypeConversion::toInt32($args[0]) : 0;
-            $b = isset($args[1]) ? TypeConversion::toInt32($args[1]) : 0;
-            $result = (int) (($a * $b) % 4294967296);
-            if ($result >= 2147483648) {
-                $result -= 4294967296;
+            $a = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
+            $b = isset($args[1]) ? TypeConversion::toUint32($args[1]) : 0;
+            // Split into 16-bit halves to avoid 64-bit overflow
+            $al = $a & 0xFFFF;
+            $ah = ($a >> 16) & 0xFFFF;
+            $bl = $b & 0xFFFF;
+            $bh = ($b >> 16) & 0xFFFF;
+            $product = ($al * $bl) + ((($ah * $bl + $al * $bh) & 0xFFFF) << 16);
+            // Wrap to signed 32-bit
+            $product = $product & 0xFFFFFFFF;
+            if ($product >= 0x80000000) {
+                $product -= 0x100000000;
             }
-            return new JsNumber((float) $result);
+            return new JsNumber((float) $product);
         }, 2), true, false, true));
 
         // Multi-argument or special functions.
@@ -91,6 +99,10 @@ class MathObject
         $math->defineOwnProperty('min', PropertyDescriptor::data(JsFunction::fromCallable('min', self::minFn(), 2), true, false, true));
         $math->defineOwnProperty('random', PropertyDescriptor::data(JsFunction::fromCallable('random', self::randomFn(), 0), true, false, true));
         $math->defineOwnProperty('hypot', PropertyDescriptor::data(JsFunction::fromCallable('hypot', self::hypotFn(), 2), true, false, true));
+
+        // Symbol.toStringTag = "Math"
+        $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+        $math->setBySymbol($toStringTagSym, new JsString('Math'));
 
         $env->defineVar('Math', $math);
     }
@@ -187,10 +199,28 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $base = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $exp = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
+            // ES spec 6.1.6.1.3: special cases
+            if (is_nan($exp)) {
+                return new JsNumber(NAN);
+            }
+            if ($exp === 0.0) {
+                return new JsNumber(1.0);
+            }
+            if (is_nan($base)) {
+                return new JsNumber(NAN);
+            }
+            // abs(base) === 1 and exp is infinite -> NaN
+            if (abs($base) === 1.0 && is_infinite($exp)) {
+                return new JsNumber(NAN);
+            }
             if ($base === 0.0 && $exp < 0) {
+                // -0 to odd negative integer -> -Infinity, otherwise Infinity
+                if (JsNumber::isNegativeZero($base) && fmod($exp, 2) === -1.0) {
+                    return new JsNumber(-INF);
+                }
                 return new JsNumber(INF);
             }
-            return new JsNumber(@pow($base, $exp));
+            return new JsNumber(@($base ** $exp));
         };
     }
 
