@@ -2163,6 +2163,18 @@ class Interpreter
                 }
                 $obj->setBySymbol($rawKey, $value);
             } else {
+                // __proto__: val in an object literal sets [[Prototype]] (ES2015 §12.2.6).
+                // Only applies to non-computed property definitions (not { ["__proto__"]: val }).
+                if ($key === '__proto__' && !$prop->computed) {
+                    if ($value instanceof JsObject) {
+                        $obj->setPrototype($value);
+                    } elseif ($value instanceof JsNull) {
+                        $obj->setPrototype(null);
+                    } else {
+                        // Non-object/non-null: ignored per spec
+                    }
+                    continue;
+                }
                 // Name inference for property functions
                 if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
                     $value->setName($key);
@@ -4315,12 +4327,16 @@ class Interpreter
      * Handles JS-specific escape sequences that PCRE2 does not support natively:
      * - \uXXXX (4-digit Unicode escape) → \x{XXXX}
      * - \u{XXXX} (Unicode code point escape, u-flag mode) → \x{XXXX}
+     * - Surrogate pairs \uD8XX\uDCXX → \x{CODEPOINT} (PCRE2 rejects bare surrogates)
+     * - \uD8XX[low-surrogate-class] → [\x{CP1}-\x{CP2}...] (surrogate pair char class)
+     * - [high-surrogate-class][low-surrogate-class] → [\x{CP1}-\x{CP2}...] (range conversion)
      */
     private static function jsPatternToPcre(string $pattern): string
     {
         $result = '';
         $len = strlen($pattern);
         $i = 0;
+        $inCharClass = false;
         while ($i < $len) {
             if ($pattern[$i] === '\\' && $i + 1 < $len) {
                 $next = $pattern[$i + 1];
@@ -4331,6 +4347,24 @@ class Interpreter
                         if ($end !== false) {
                             $codePoint = substr($pattern, $i + 3, $end - ($i + 3));
                             if (strlen($codePoint) > 0 && ctype_xdigit($codePoint)) {
+                                $cp = hexdec($codePoint);
+                                if ($cp >= 0xD800 && $cp <= 0xDBFF) {
+                                    // High surrogate in \u{H} form: look for low surrogate pair
+                                    [$lowCp, $j] = self::tryConsumeLowSurrogate($pattern, $end + 1);
+                                    if ($lowCp !== null) {
+                                        $combined = self::surrogatePairToCodePoint($cp, $lowCp);
+                                        $result .= '\\x{' . strtoupper(dechex($combined)) . '}';
+                                        $i = $j;
+                                        continue;
+                                    }
+                                    $i = $end + 1;
+                                    continue;
+                                }
+                                if ($cp >= 0xDC00 && $cp <= 0xDFFF) {
+                                    // Orphaned low surrogate: skip (PCRE2 rejects surrogates)
+                                    $i = $end + 1;
+                                    continue;
+                                }
                                 $result .= '\\x{' . $codePoint . '}';
                                 $i = $end + 1;
                                 continue;
@@ -4340,8 +4374,42 @@ class Interpreter
                     // \uXXXX — 4-digit Unicode escape
                     $hexPart = substr($pattern, $i + 2, 4);
                     if (strlen($hexPart) === 4 && ctype_xdigit($hexPart)) {
+                        $cp = hexdec($hexPart);
+                        $after = $i + 6;
+                        if ($cp >= 0xD800 && $cp <= 0xDBFF) {
+                            // High surrogate: try \uHHHH[low-class] first (not inside char class)
+                            if (!$inCharClass && $after < $len && $pattern[$after] === '[') {
+                                [$items, $classEnd] = self::parseSurrogateOnlyClass(
+                                    $pattern,
+                                    $after,
+                                    0xDC00,
+                                    0xDFFF,
+                                );
+                                if ($items !== null) {
+                                    $result .= self::buildSurrogatePairCharClass($cp, $items);
+                                    $i = $classEnd;
+                                    continue;
+                                }
+                            }
+                            // Try \uHHHH\uLLLL simple pair
+                            [$lowCp, $j] = self::tryConsumeLowSurrogate($pattern, $after);
+                            if ($lowCp !== null) {
+                                $combined = self::surrogatePairToCodePoint($cp, $lowCp);
+                                $result .= '\\x{' . strtoupper(dechex($combined)) . '}';
+                                $i = $j;
+                                continue;
+                            }
+                            // Orphaned high surrogate: skip
+                            $i = $after;
+                            continue;
+                        }
+                        if ($cp >= 0xDC00 && $cp <= 0xDFFF) {
+                            // Orphaned low surrogate: skip
+                            $i = $after;
+                            continue;
+                        }
                         $result .= '\\x{' . $hexPart . '}';
-                        $i += 6;
+                        $i = $after;
                         continue;
                     }
                     // Not a valid \u escape — pass through as-is
@@ -4352,6 +4420,29 @@ class Interpreter
                     $result .= '\\' . $next;
                     $i += 2;
                 }
+            } elseif ($pattern[$i] === '[' && !$inCharClass) {
+                // Check for [high-surrogate-class][low-surrogate-class] → code point ranges
+                [$highItems, $classEnd] = self::parseSurrogateOnlyClass($pattern, $i, 0xD800, 0xDBFF);
+                if ($highItems !== null && $classEnd < $len && $pattern[$classEnd] === '[') {
+                    [$lowItems, $lowClassEnd] = self::parseSurrogateOnlyClass(
+                        $pattern,
+                        $classEnd,
+                        0xDC00,
+                        0xDFFF,
+                    );
+                    if ($lowItems !== null) {
+                        $result .= self::buildHighLowSurrogatePairCharClass($highItems, $lowItems);
+                        $i = $lowClassEnd;
+                        continue;
+                    }
+                }
+                $inCharClass = true;
+                $result .= $pattern[$i];
+                $i++;
+            } elseif ($pattern[$i] === ']' && $inCharClass) {
+                $inCharClass = false;
+                $result .= $pattern[$i];
+                $i++;
             } elseif ($pattern[$i] === '/') {
                 $result .= '\\/';
                 $i++;
@@ -4361,6 +4452,152 @@ class Interpreter
             }
         }
         return $result;
+    }
+
+    /** Convert a UTF-16 surrogate pair to the Unicode code point it encodes. */
+    private static function surrogatePairToCodePoint(int $high, int $low): int
+    {
+        return ($high - 0xD800) * 0x400 + ($low - 0xDC00) + 0x10000;
+    }
+
+    /**
+     * Try to consume a \uLLLL low-surrogate escape at $pos.
+     * Returns [$lowCodePoint, $newPos] on success or [null, $pos] on failure.
+     */
+    private static function tryConsumeLowSurrogate(string $pattern, int $pos): array
+    {
+        $len = strlen($pattern);
+        if (
+            $pos + 6 > $len
+            || $pattern[$pos] !== '\\'
+            || $pattern[$pos + 1] !== 'u'
+        ) {
+            return [null, $pos];
+        }
+        $hex = substr($pattern, $pos + 2, 4);
+        if (strlen($hex) !== 4 || !ctype_xdigit($hex)) {
+            return [null, $pos];
+        }
+        $cp = hexdec($hex);
+        if ($cp < 0xDC00 || $cp > 0xDFFF) {
+            return [null, $pos];
+        }
+        return [$cp, $pos + 6];
+    }
+
+    /**
+     * Parse a [...] character class containing ONLY \uXXXX escapes in [$min, $max].
+     * Returns [items, $endPos] where items is array of ['s', cp] or ['r', cp1, cp2].
+     * Returns [null, $start] on failure (mixed content, parse error, or empty class).
+     */
+    private static function parseSurrogateOnlyClass(
+        string $pattern,
+        int $start,
+        int $min,
+        int $max,
+    ): array {
+        $len = strlen($pattern);
+        if ($start >= $len || $pattern[$start] !== '[') {
+            return [null, $start];
+        }
+        $i = $start + 1;
+        $items = [];
+
+        while ($i < $len && $pattern[$i] !== ']') {
+            // Every element must be a \uXXXX escape in the required surrogate range.
+            if (
+                $i + 5 >= $len
+                || $pattern[$i] !== '\\'
+                || $pattern[$i + 1] !== 'u'
+            ) {
+                return [null, $start];
+            }
+            $hex = substr($pattern, $i + 2, 4);
+            if (strlen($hex) !== 4 || !ctype_xdigit($hex)) {
+                return [null, $start];
+            }
+            $cp = hexdec($hex);
+            if ($cp < $min || $cp > $max) {
+                return [null, $start];
+            }
+            $i += 6;
+
+            // Check for range: -\uXXXX
+            if (
+                $i < $len
+                && $pattern[$i] === '-'
+                && $i + 1 < $len
+                && $pattern[$i + 1] === '\\'
+                && $i + 2 < $len
+                && $pattern[$i + 2] === 'u'
+            ) {
+                $hex2 = substr($pattern, $i + 3, 4);
+                if (strlen($hex2) === 4 && ctype_xdigit($hex2)) {
+                    $cp2 = hexdec($hex2);
+                    if ($cp2 >= $min && $cp2 <= $max) {
+                        $items[] = ['r', $cp, $cp2];
+                        $i += 7;
+                        continue;
+                    }
+                }
+            }
+
+            $items[] = ['s', $cp];
+        }
+
+        if ($i >= $len || $pattern[$i] !== ']' || $items === []) {
+            return [null, $start];
+        }
+        return [$items, $i + 1];
+    }
+
+    /**
+     * Build a PCRE char class from a fixed high surrogate + array of low-surrogate items.
+     * \uD800[\uDC00-\uDC0B\uDC0D] → [\x{10000}-\x{1000B}\x{1000D}]
+     */
+    private static function buildSurrogatePairCharClass(int $high, array $lowItems): string
+    {
+        $parts = [];
+        foreach ($lowItems as $item) {
+            if ($item[0] === 's') {
+                $cp = self::surrogatePairToCodePoint($high, $item[1]);
+                $parts[] = '\\x{' . strtoupper(dechex($cp)) . '}';
+            } else {
+                $cp1 = self::surrogatePairToCodePoint($high, $item[1]);
+                $cp2 = self::surrogatePairToCodePoint($high, $item[2]);
+                $parts[] = '\\x{' . strtoupper(dechex($cp1)) . '}-\\x{' . strtoupper(dechex($cp2)) . '}';
+            }
+        }
+        return '[' . implode('', $parts) . ']';
+    }
+
+    /**
+     * Build a PCRE char class from arrays of high and low surrogate class items.
+     * [\uD840-\uD868][\uDC00-\uDFFF] → [\x{20000}-\x{2A3FF}]
+     *
+     * For a range of high surrogates with the full low surrogate range, the resulting
+     * code points are contiguous. For partial low ranges the result is an overapproximation,
+     * which is acceptable for Unicode identifier matching where false positives are harmless.
+     */
+    private static function buildHighLowSurrogatePairCharClass(array $highItems, array $lowItems): string
+    {
+        $parts = [];
+        foreach ($highItems as $hi) {
+            $h1 = $hi[1];
+            $h2 = $hi[0] === 's' ? $hi[1] : $hi[2];
+            foreach ($lowItems as $li) {
+                $l1 = $li[1];
+                $l2 = $li[0] === 's' ? $li[1] : $li[2];
+                $cp1 = self::surrogatePairToCodePoint($h1, $l1);
+                $cp2 = self::surrogatePairToCodePoint($h2, $l2);
+                if ($cp1 === $cp2) {
+                    $parts[] = '\\x{' . strtoupper(dechex($cp1)) . '}';
+                } else {
+                    $parts[] = '\\x{' . strtoupper(dechex($cp1)) . '}-\\x{' . strtoupper(dechex($cp2)) . '}';
+                }
+            }
+        }
+        return '[' . implode('', $parts) . ']';
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */

@@ -193,13 +193,13 @@ class GlobalObject
         // consists of the global environment only (not the calling scope).
         // We capture $env here so the Function constructor always uses the
         // engine's global environment for the created function.
-        $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args) use ($env): JsValue {
+        // Shared helper: parse and evaluate a dynamic function with the given wrapper keyword(s).
+        $buildDynamicFn = function (array $args, string $prefix) use ($env): JsValue {
             $body = '';
             $params = '';
             if (count($args) > 0) {
                 // Per spec 20.2.1.1 step 5-9, ToString is called on each
                 // argument left-to-right: first all parameter args, then body.
-                // If any ToString throws, propagate before reaching the next.
                 $stringArgs = [];
                 foreach ($args as $arg) {
                     $stringArgs[] = TypeConversion::toString($arg);
@@ -207,24 +207,39 @@ class GlobalObject
                 $body = array_pop($stringArgs);
                 $params = implode(',', $stringArgs);
             }
-            // Per spec steps 17-18, params are parsed first as FormalParameters
-            // (no preceding line terminator, so --> in params is a SyntaxError).
+            // Per spec steps 17-18, params are parsed first as FormalParameters.
             // The body gets line feeds per step 41 so AnnexB HTML comments work.
-            $source = "(function anonymous({$params}\n) {\n{$body}\n})";
+            $source = "({$prefix} anonymous({$params}\n) {\n{$body}\n})";
             $parser = new \PhpJs\Parser\Parser($source);
             $program = $parser->parse();
-
-            // Per spec 20.2.1.1 step 20c-d, detect strict mode in the
-            // body and validate strict-mode early errors (with statement,
-            // duplicate params, etc.).
             self::validateDynamicFunction($program, $params);
-
-            // Use the global environment so the created function can see
-            // global variables (per spec: "scope chain consisting of the
-            // global object").
             $interp = new Interpreter($env);
             return $interp->execute($program);
-        }, 1);
+        };
+
+        $fnConstructor = JsFunction::fromCallable(
+            'Function',
+            function (JsValue $this_, array $args) use ($buildDynamicFn): JsValue {
+                return $buildDynamicFn($args, 'function');
+            },
+            1,
+        );
+
+        $genFnConstructor = JsFunction::fromCallable(
+            'GeneratorFunction',
+            function (JsValue $this_, array $args) use ($buildDynamicFn): JsValue {
+                return $buildDynamicFn($args, 'function*');
+            },
+            1,
+        );
+
+        $asyncFnConstructor = JsFunction::fromCallable(
+            'AsyncFunction',
+            function (JsValue $this_, array $args) use ($buildDynamicFn): JsValue {
+                return $buildDynamicFn($args, 'async function');
+            },
+            1,
+        );
 
         // Function.prototype with call/apply/bind
         $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
@@ -405,6 +420,57 @@ class GlobalObject
             enumerable: false,
             configurable: false,
         ));
+
+        // GeneratorFunction.prototype inherits from Function.prototype (per spec §25.2.2).
+        // GeneratorFunction itself is not exposed as a global but is reachable via
+        // Object.getPrototypeOf(function*(){}).constructor.
+        $genFnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+        $genFnProto->setCustomPrototype($fnProto);
+        $genFnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $genFnConstructor,
+            true,
+            false,
+            true,
+        ));
+        $genFnProto->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString('GeneratorFunction'),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
+        $genFnConstructor->setConstructable();
+        $genFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $genFnProto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
+        JsFunction::setGeneratorFunctionPrototype($genFnProto);
+
+        // AsyncFunction.prototype inherits from Function.prototype (per spec §27.7.3).
+        $asyncFnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+        $asyncFnProto->setCustomPrototype($fnProto);
+        $asyncFnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $asyncFnConstructor,
+            true,
+            false,
+            true,
+        ));
+        $asyncFnProto->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString('AsyncFunction'),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
+        $asyncFnConstructor->setConstructable();
+        $asyncFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $asyncFnProto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
+        JsFunction::setAsyncFunctionPrototype($asyncFnProto);
+
         $env->defineVar('Function', $fnConstructor);
     }
 

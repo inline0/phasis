@@ -341,7 +341,9 @@ PHP;
         $yaml = $matches[1];
         $meta = [];
 
-        // Simple YAML parser for test262 frontmatter
+        // Simple YAML parser for test262 frontmatter.
+        // Normalize CR-only and CR+LF line endings to LF before splitting.
+        $yaml = str_replace(["\r\n", "\r"], "\n", $yaml);
         $lines = explode("\n", $yaml);
         $currentKey = null;
         $inList = false;

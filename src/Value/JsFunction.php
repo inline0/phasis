@@ -14,18 +14,36 @@ class JsFunction extends JsObject
     /** Function.prototype: the [[Prototype]] for all function instances. */
     private static ?JsObject $functionPrototype = null;
 
+    /** GeneratorFunction.prototype: the [[Prototype]] for generator function instances. */
+    private static ?JsObject $generatorFunctionPrototype = null;
+
+    /** AsyncFunction.prototype: the [[Prototype]] for async function instances. */
+    private static ?JsObject $asyncFunctionPrototype = null;
+
     /** Lazily resolved: true once fnProto's [[Prototype]] has been wired to Object.prototype. */
     private static bool $functionPrototypeChainWired = false;
 
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
+        self::$generatorFunctionPrototype = null;
+        self::$asyncFunctionPrototype = null;
         self::$functionPrototypeChainWired = false;
         // Clear the parent prototype so the lazy wiring in getPrototype()
         // always re-probes for the current Engine's Object.prototype.
         // Without this, the prototype inherited from JsObject's constructor
         // would point to a previous Engine's Object.prototype.
         $proto->setPrototype(null);
+    }
+
+    public static function setGeneratorFunctionPrototype(JsObject $proto): void
+    {
+        self::$generatorFunctionPrototype = $proto;
+    }
+
+    public static function setAsyncFunctionPrototype(JsObject $proto): void
+    {
+        self::$asyncFunctionPrototype = $proto;
     }
 
     public static function setInterpreterCallback(callable $callback): void
@@ -177,6 +195,22 @@ class JsFunction extends JsObject
     public function getPrototype(): ?JsObject
     {
         if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
+            // Generator functions use GeneratorFunction.prototype as [[Prototype]] per spec.
+            if (
+                $this->isGenerator && !$this->isAsync
+                && self::$generatorFunctionPrototype !== null
+                && $this !== self::$generatorFunctionPrototype
+            ) {
+                return self::$generatorFunctionPrototype;
+            }
+            // Async functions use AsyncFunction.prototype as [[Prototype]] per spec.
+            if (
+                $this->isAsync && !$this->isGenerator
+                && self::$asyncFunctionPrototype !== null
+                && $this !== self::$asyncFunctionPrototype
+            ) {
+                return self::$asyncFunctionPrototype;
+            }
             return self::$functionPrototype;
         }
         // For Function.prototype itself, lazily wire to Object.prototype.
