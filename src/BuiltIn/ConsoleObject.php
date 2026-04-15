@@ -73,6 +73,13 @@ class ConsoleObject
             $name = $value->getName();
             return "[Function: {$name}]";
         }
+        if ($value instanceof JsObject && DateConstructor::isDateObject($value)) {
+            $toString = $value->get('toString');
+            if ($toString instanceof JsFunction) {
+                $result = $toString->call($value, []);
+                return TypeConversion::toString($result);
+            }
+        }
         if ($value instanceof JsObject) {
             return $this->formatObject($value);
         }

@@ -62,9 +62,8 @@ final class TypeConversion
             }
 
             // For Date objects the default hint is "string"; for everything else it is "number".
-            // Date detection will be added later. For now, default maps to number.
             if ($hint === 'default') {
-                $hint = 'number';
+                $hint = \PhpJs\BuiltIn\DateConstructor::isDateObject($value) ? 'string' : 'number';
             }
 
             $methodNames = $hint === 'string'

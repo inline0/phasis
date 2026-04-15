@@ -69,20 +69,7 @@ class Engine
             return $set;
         });
 
-        // Stub constructors for Date and RegExp (minimal, enough for instanceof)
-        $this->installStubConstructor('Date', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $this_->set('toString', \PhpJs\Value\JsFunction::fromCallable('toString', fn() => new \PhpJs\Value\JsString(date('r'))));
-                $this_->set('valueOf', \PhpJs\Value\JsFunction::fromCallable('valueOf', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
-                $this_->set('getTime', \PhpJs\Value\JsFunction::fromCallable('getTime', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
-                return $this_;
-            }
-            return new \PhpJs\Value\JsString(date('r'));
-        });
-        $dateConstructor = $this->globalEnv->get('Date');
-        if ($dateConstructor instanceof \PhpJs\Value\JsFunction) {
-            $dateConstructor->set('now', \PhpJs\Value\JsFunction::fromCallable('now', fn() => new \PhpJs\Value\JsNumber((float) (int) (microtime(true) * 1000))));
-        }
+        \PhpJs\BuiltIn\DateConstructor::install($this->globalEnv);
 
         $interp = $this->interpreter;
         $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp): \PhpJs\Value\JsValue {
@@ -116,6 +103,7 @@ class Engine
     private function installStubConstructor(string $name, callable $fn): void
     {
         $constructor = \PhpJs\Value\JsFunction::fromCallable($name, $fn);
+        $constructor->setConstructable();
         $proto = new \PhpJs\Value\JsObject();
         $proto->set('constructor', $constructor);
         $constructor->set('prototype', $proto);
