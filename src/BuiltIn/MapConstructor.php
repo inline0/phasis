@@ -70,17 +70,23 @@ class MapConstructor
             return;
         }
 
+        // Per spec, get the `set` method before iterating
+        $adder = $map->get('set');
+        if (!$adder instanceof JsFunction) {
+            throw new TypeError('Map.prototype.set is not a function');
+        }
+
         if ($iterable instanceof JsArray) {
             $length = $iterable->getLength();
             for ($i = 0; $i < $length; $i++) {
                 $entry = $iterable->get((string) $i);
-                self::addEntryFromPair($map, $entry);
+                self::addEntryFromPair($map, $entry, $adder);
             }
             return;
         }
 
         if (!$iterable instanceof JsObject) {
-            return;
+            throw new TypeError('object is not iterable');
         }
 
         // Generic iterable support via Symbol.iterator.
@@ -108,18 +114,23 @@ class MapConstructor
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
             }
-            self::addEntryFromPair($map, $result->get('value'));
+            self::addEntryFromPair($map, $result->get('value'), $adder);
         }
     }
 
     /** Add a single [key, value] pair entry to the map. */
-    private static function addEntryFromPair(JsMap $map, JsValue $entry): void
+    /**
+     * Per spec, Map constructor must call the `set` method on the map for each entry.
+     * This allows subclasses and Proxy-wrapped maps to intercept the calls.
+     */
+    private static function addEntryFromPair(JsMap $map, JsValue $entry, JsFunction $adder): void
     {
-        if ($entry instanceof JsArray && $entry->getLength() >= 2) {
-            $map->mapSet($entry->get('0'), $entry->get('1'));
-        } elseif ($entry instanceof JsObject) {
-            $map->mapSet($entry->get('0'), $entry->get('1'));
+        if (!$entry instanceof JsObject) {
+            throw new TypeError('Iterator value is not an entry object');
         }
+        $key = $entry->get('0');
+        $value = $entry->get('1');
+        $adder->call($map, [$key, $value]);
     }
 
     private static function createPrototype(): JsObject
