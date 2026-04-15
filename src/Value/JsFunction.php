@@ -51,7 +51,7 @@ class JsFunction extends JsObject
         ?JsValue $boundThis = null,
         ?JsObject $prototype = null,
     ) {
-        parent::__construct($prototype ?? self::$functionPrototype);
+        parent::__construct($prototype);
         $this->name = $name;
         $this->params = $params;
         $this->body = $body;

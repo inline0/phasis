@@ -262,7 +262,11 @@ class Parser
         if ($this->check(TokenType::LeftBracket)) {
             $computed = true;
             $this->advance();
+            // Per spec: ComputedPropertyName uses AssignmentExpression[+In].
+            $savedNoIn = $this->noIn;
+            $this->noIn = false;
             $key = $this->parseAssignmentExpression();
+            $this->noIn = $savedNoIn;
             $this->expect(TokenType::RightBracket);
             $this->expect(TokenType::Colon);
             $value = $this->parseBindingPattern();
@@ -391,7 +395,11 @@ class Parser
         if ($this->check(TokenType::LeftBracket)) {
             $computed = true;
             $this->advance();
+            // Per spec: ComputedPropertyName uses AssignmentExpression[+In].
+            $savedNoIn = $this->noIn;
+            $this->noIn = false;
             $key = $this->parseAssignmentExpression();
+            $this->noIn = $savedNoIn;
             $this->expect(TokenType::RightBracket);
         } else {
             $key = $this->parsePropertyName();

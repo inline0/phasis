@@ -867,9 +867,9 @@ class Interpreter
         }
 
         $ref = $this->resolveReference($node->left, $env);
-        $right = $this->evaluate($node->right, $env);
 
         if ($node->operator === '=') {
+            $right = $this->evaluate($node->right, $env);
             // Function name inference per spec 13.15.2 step 1.e.
             if (
                 $right instanceof JsFunction
@@ -882,29 +882,44 @@ class Interpreter
             return $right;
         }
 
+        // Logical assignment operators (&&=, ||=, ??=) per spec 13.15.3:
+        // GetValue before RHS, and RHS is evaluated conditionally.
+        if ($node->operator === '&&=' || $node->operator === '||=' || $node->operator === '??=') {
+            $leftVal = $ref->getValue();
+            $shouldAssign = match ($node->operator) {
+                '&&=' => TypeConversion::toBoolean($leftVal),
+                '||=' => !TypeConversion::toBoolean($leftVal),
+                '??=' => $leftVal instanceof JsNull || $leftVal instanceof JsUndefined,
+            };
+            if (!$shouldAssign) {
+                return $leftVal;
+            }
+            $right = $this->evaluate($node->right, $env);
+            $ref->setValue($right);
+            return $right;
+        }
+
+        // Compound assignment operators per spec 13.15.2:
+        // 1. GetValue(lref) before evaluating RHS.
+        // 2. Evaluate RHS.
+        // 3. Apply operation.
+        // 4. PutValue(lref, result).
         $leftVal = $ref->getValue();
+        $right = $this->evaluate($node->right, $env);
+
         $result = match ($node->operator) {
-            '+=' => AbstractOperations::add($leftVal, $right),
-            '-=' => new JsNumber(TypeConversion::toNumber($leftVal) - TypeConversion::toNumber($right)),
-            '*=' => new JsNumber(TypeConversion::toNumber($leftVal) * TypeConversion::toNumber($right)),
-            '/=' => $this->divide(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
-            '%=' => $this->modulo(TypeConversion::toNumber($leftVal), TypeConversion::toNumber($right)),
+            '+=' => $this->addOperator($leftVal, $right),
+            '-=' => $this->numericBinaryOp($leftVal, $right, '-'),
+            '*=' => $this->numericBinaryOp($leftVal, $right, '*'),
+            '/=' => $this->numericBinaryOp($leftVal, $right, '/'),
+            '%=' => $this->numericBinaryOp($leftVal, $right, '%'),
             '**=' => $this->exponentiate($leftVal, $right),
-            '<<=' => new JsNumber(TypeConversion::leftShift($leftVal, $right)),
-            '>>=' => new JsNumber(TypeConversion::signedRightShift($leftVal, $right)),
-            '>>>=' => new JsNumber(TypeConversion::unsignedRightShift($leftVal, $right)),
-            '&=' => new JsNumber(
-                (float) (TypeConversion::toInt32($leftVal) & TypeConversion::toInt32($right)),
-            ),
-            '|=' => new JsNumber(
-                (float) (TypeConversion::toInt32($leftVal) | TypeConversion::toInt32($right)),
-            ),
-            '^=' => new JsNumber(
-                (float) (TypeConversion::toInt32($leftVal) ^ TypeConversion::toInt32($right)),
-            ),
-            '&&=' => TypeConversion::toBoolean($leftVal) ? $right : $leftVal,
-            '||=' => TypeConversion::toBoolean($leftVal) ? $leftVal : $right,
-            '??=' => ($leftVal instanceof JsNull || $leftVal instanceof JsUndefined) ? $right : $leftVal,
+            '<<=' => $this->bitwiseShift($leftVal, $right, '<<'),
+            '>>=' => $this->bitwiseShift($leftVal, $right, '>>'),
+            '>>>=' => $this->bitwiseShift($leftVal, $right, '>>>'),
+            '&=' => $this->bitwiseBinaryOp($leftVal, $right, '&'),
+            '|=' => $this->bitwiseBinaryOp($leftVal, $right, '|'),
+            '^=' => $this->bitwiseBinaryOp($leftVal, $right, '^'),
             default => throw new InternalError("Unknown assignment operator: {$node->operator}"),
         };
 

@@ -255,6 +255,38 @@ class Lexer
                 }
                 return new Token(TokenType::Number, $result, $start);
             }
+
+            // Legacy octal: 0 followed by octal digits (AnnexB B.1.1).
+            // If any digit 8 or 9 appears, it falls back to decimal.
+            if ($next >= '0' && $next <= '7') {
+                $scanPos = $this->pos + 1;
+                $isLegacyOctal = true;
+                while ($scanPos < $this->length) {
+                    $scanCh = $this->source[$scanPos];
+                    if ($scanCh >= '0' && $scanCh <= '7') {
+                        $scanPos++;
+                    } elseif ($scanCh === '8' || $scanCh === '9') {
+                        $isLegacyOctal = false;
+                        break;
+                    } else {
+                        // Non-digit: stop scan. If we hit '.', 'e', 'E' it's decimal.
+                        if ($scanCh === '.' || $scanCh === 'e' || $scanCh === 'E') {
+                            $isLegacyOctal = false;
+                        }
+                        break;
+                    }
+                }
+                if ($isLegacyOctal) {
+                    // Emit as 0o-prefixed so the parser uses octdec().
+                    $this->advance(); // skip leading 0
+                    $result = '0o';
+                    while ($this->pos < $this->length && $this->source[$this->pos] >= '0' && $this->source[$this->pos] <= '7') {
+                        $result .= $this->source[$this->pos];
+                        $this->advance();
+                    }
+                    return new Token(TokenType::Number, $result, $start);
+                }
+            }
         }
 
         // Decimal (including leading dot)
@@ -347,6 +379,14 @@ class Lexer
 
     private function readEscapeSequence(): string
     {
+        // Line continuation: \<LS> or \<PS> (U+2028, U+2029) produce empty string.
+        if ($this->isUnicodeLineTerminator()) {
+            $this->pos += 3;
+            $this->line++;
+            $this->column = 0;
+            return '';
+        }
+
         $ch = $this->source[$this->pos];
         $this->advance();
 
@@ -1000,6 +1040,10 @@ class Lexer
                 $pattern .= $ch;
                 $this->advance();
                 if ($this->pos < $this->length) {
+                    // Backslash before a line terminator is illegal in regexp.
+                    if ($this->source[$this->pos] === "\n" || $this->source[$this->pos] === "\r" || $this->isUnicodeLineTerminator()) {
+                        throw new SyntaxError('Unterminated regular expression', $start);
+                    }
                     $pattern .= $this->source[$this->pos];
                     $this->advance();
                 }
@@ -1025,7 +1069,7 @@ class Lexer
                 break;
             }
 
-            if ($ch === "\n" || $ch === "\r") {
+            if ($ch === "\n" || $ch === "\r" || $this->isUnicodeLineTerminator()) {
                 throw new SyntaxError('Unterminated regular expression', $start);
             }
 
