@@ -53,7 +53,10 @@ final class TypeConversion
             // Check for [Symbol.toPrimitive] method first (spec step 1.a).
             $toPrimSym = \PhpJs\BuiltIn\SymbolConstructor::toPrimitive();
             $exoticToPrim = $value->getBySymbol($toPrimSym);
-            if ($exoticToPrim instanceof JsFunction) {
+            if (!$exoticToPrim instanceof JsUndefined && !$exoticToPrim instanceof JsNull) {
+                if (!$exoticToPrim instanceof JsFunction) {
+                    throw new TypeError('Symbol.toPrimitive is not a function');
+                }
                 $hintStr = new \PhpJs\Value\JsString($hint);
                 $result = $exoticToPrim->call($value, [$hintStr]);
                 if ($result instanceof JsObject) {
