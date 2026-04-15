@@ -2246,14 +2246,16 @@ class Interpreter
             if ($thenMethod instanceof JsFunction) {
                 $resolved = JsUndefined::instance();
                 $rejected = null;
-                $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
                     $resolved = $args[0] ?? JsUndefined::instance();
                     return JsUndefined::instance();
-                }, 1);
-                $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                };
+                $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
                     $rejected = $args[0] ?? JsUndefined::instance();
                     return JsUndefined::instance();
-                }, 1);
+                };
+                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
                 try {
                     $thenMethod->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {
