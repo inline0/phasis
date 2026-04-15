@@ -22,8 +22,18 @@ class JsonObject
     {
         $json = new JsObject();
 
-        $json->set('parse', JsFunction::fromCallable('parse', self::parse(), 2));
-        $json->set('stringify', JsFunction::fromCallable('stringify', self::stringify(), 3));
+        $json->defineOwnProperty('parse', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('parse', self::parse(), 2),
+            true,
+            false,
+            true,
+        ));
+        $json->defineOwnProperty('stringify', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('stringify', self::stringify(), 3),
+            true,
+            false,
+            true,
+        ));
 
         $env->defineVar('JSON', $json);
     }
