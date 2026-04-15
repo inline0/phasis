@@ -189,6 +189,20 @@ class ObjectConstructor
                 if ($this_ instanceof JsObject && $this_->has('source') && $this_->has('flags')) {
                     return new JsString('[object RegExp]');
                 }
+                // Check for [[ErrorData]] — error objects have 'stack' and inherit from Error.prototype
+                if ($this_ instanceof JsObject && $this_->has('stack')) {
+                    $nameVal = $this_->get('name');
+                    if ($nameVal instanceof JsString) {
+                        $n = $nameVal->value;
+                        if (in_array($n, ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'], true)) {
+                            return new JsString('[object Error]');
+                        }
+                    }
+                }
+                // Check for Date-like
+                if ($this_ instanceof \PhpJs\Value\JsDate) {
+                    return new JsString('[object Date]');
+                }
                 return new JsString('[object Object]');
             },
             0,
