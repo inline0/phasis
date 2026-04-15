@@ -29,6 +29,12 @@ class SymbolConstructor
     private static ?JsSymbol $hasInstance = null;
     private static ?JsSymbol $toPrimitive = null;
     private static ?JsSymbol $toStringTag = null;
+    private static ?JsSymbol $split = null;
+    private static ?JsSymbol $search = null;
+    private static ?JsSymbol $match = null;
+    private static ?JsSymbol $replace = null;
+    private static ?JsSymbol $species = null;
+    private static ?JsSymbol $isConcatSpreadable = null;
 
     public static function iterator(): JsSymbol
     {
@@ -48,6 +54,36 @@ class SymbolConstructor
     public static function toStringTag(): JsSymbol
     {
         return self::$toStringTag ??= new JsSymbol('Symbol.toStringTag');
+    }
+
+    public static function split(): JsSymbol
+    {
+        return self::$split ??= new JsSymbol('Symbol.split');
+    }
+
+    public static function search(): JsSymbol
+    {
+        return self::$search ??= new JsSymbol('Symbol.search');
+    }
+
+    public static function match(): JsSymbol
+    {
+        return self::$match ??= new JsSymbol('Symbol.match');
+    }
+
+    public static function replace(): JsSymbol
+    {
+        return self::$replace ??= new JsSymbol('Symbol.replace');
+    }
+
+    public static function species(): JsSymbol
+    {
+        return self::$species ??= new JsSymbol('Symbol.species');
+    }
+
+    public static function isConcatSpreadable(): JsSymbol
+    {
+        return self::$isConcatSpreadable ??= new JsSymbol('Symbol.isConcatSpreadable');
     }
 
     public static function install(Environment $env): void
@@ -72,6 +108,12 @@ class SymbolConstructor
         $symbolFn->set('hasInstance', self::hasInstance());
         $symbolFn->set('toPrimitive', self::toPrimitive());
         $symbolFn->set('toStringTag', self::toStringTag());
+        $symbolFn->set('split', self::split());
+        $symbolFn->set('search', self::search());
+        $symbolFn->set('match', self::match());
+        $symbolFn->set('replace', self::replace());
+        $symbolFn->set('species', self::species());
+        $symbolFn->set('isConcatSpreadable', self::isConcatSpreadable());
 
         // Symbol.prototype
         $proto = new \PhpJs\Value\JsObject();

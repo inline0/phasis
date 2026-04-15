@@ -430,9 +430,21 @@ class StringPrototype
     private static function split(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
             $separator = $args[0] ?? JsUndefined::instance();
             $limitArg = $args[1] ?? JsUndefined::instance();
+
+            // Per spec §21.1.3.20 step 2-3: check Symbol.split on separator
+            if ($separator instanceof JsObject && !$separator instanceof JsNull) {
+                $splitSym = SymbolConstructor::split();
+                if ($splitSym !== null) {
+                    $splitter = $separator->getBySymbol($splitSym);
+                    if ($splitter instanceof JsFunction) {
+                        return $splitter->call($separator, [$this_, $limitArg]);
+                    }
+                }
+            }
+
+            $str = self::extractString($this_);
 
             // Per spec: if limit is undefined, lim = 2^32 - 1; else lim = ToUint32(limit).
             $lim = $limitArg instanceof JsUndefined
