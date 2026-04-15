@@ -2791,14 +2791,23 @@ class Interpreter
             }
         }
         $obj = new JsObject($regexpProto);
-        $obj->set('source', new JsString($pattern));
-        $obj->set('flags', new JsString($flags));
-        $obj->set('global', new JsBoolean(str_contains($flags, 'g')));
-        $obj->set('ignoreCase', new JsBoolean(str_contains($flags, 'i')));
-        $obj->set('multiline', new JsBoolean(str_contains($flags, 'm')));
-        $obj->set('lastIndex', new JsNumber(0.0));
 
-        // Build PCRE pattern
+        // Per spec, source, flags, global, ignoreCase, multiline are non-enumerable, non-writable,
+        // non-configurable (except source and flags are configurable in some engines).
+        $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, false);
+        $obj->defineOwnProperty('source', $noenum(new JsString($pattern === '' ? '(?:)' : $pattern)));
+        $obj->defineOwnProperty('flags', $noenum(new JsString($flags)));
+        $obj->defineOwnProperty('global', $noenum(new JsBoolean(str_contains($flags, 'g'))));
+        $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
+        $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));
+        $obj->defineOwnProperty('dotAll', $noenum(new JsBoolean(str_contains($flags, 's'))));
+        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean(str_contains($flags, 'u'))));
+        $obj->defineOwnProperty('sticky', $noenum(new JsBoolean(str_contains($flags, 'y'))));
+        $obj->defineOwnProperty('hasIndices', $noenum(new JsBoolean(str_contains($flags, 'd'))));
+        // lastIndex is writable but not enumerable, not configurable per spec.
+        $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(new JsNumber(0.0), true, false, false));
+
+        // Build PCRE pattern.
         $pcreFlags = '';
         if (str_contains($flags, 'i')) {
             $pcreFlags .= 'i';
@@ -2811,32 +2820,131 @@ class Interpreter
         }
         $pcrePattern = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
 
-        $obj->set('test', JsFunction::fromCallable('test', function (JsValue $this_, array $args) use ($pcrePattern): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
-            $result = @preg_match($pcrePattern, $str);
-            return new JsBoolean($result === 1);
-        }, 1));
+        $isGlobal = str_contains($flags, 'g');
+        $isSticky = str_contains($flags, 'y');
 
-        $obj->set('exec', JsFunction::fromCallable('exec', function (JsValue $this_, array $args) use ($pcrePattern, $obj): JsValue {
+        // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
+        $obj->defineOwnProperty('exec', PropertyDescriptor::data(JsFunction::fromCallable('exec', function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE)) {
-                $result = new JsArray();
-                foreach ($matches as $i => $match) {
-                    if (is_int($i)) {
-                        $result->set((string) $i, new JsString($match[0]));
+            $strLen = mb_strlen($str, 'UTF-8');
+
+            if ($isGlobal || $isSticky) {
+                $lastIndexVal = $obj->get('lastIndex');
+                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
+            } else {
+                $lastIndex = 0;
+            }
+
+            if ($lastIndex < 0 || $lastIndex > $strLen) {
+                if ($isGlobal || $isSticky) {
+                    $obj->set('lastIndex', new JsNumber(0.0));
+                }
+                return JsNull::instance();
+            }
+
+            // Use byte offset for PCRE: convert character offset to byte offset.
+            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
+
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset)) {
+                $matchBytePos = $matches[0][1];
+                // For sticky regex, the match must start exactly at lastIndex.
+                if ($isSticky && $matchBytePos !== $byteOffset) {
+                    $obj->set('lastIndex', new JsNumber(0.0));
+                    return JsNull::instance();
+                }
+                // Convert byte position back to character position.
+                $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
+                $matchStr = $matches[0][0];
+                $matchCharLen = mb_strlen($matchStr, 'UTF-8');
+
+                if ($isGlobal || $isSticky) {
+                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)));
+                }
+
+                // Build result array with numeric capture groups.
+                $numericCount = 0;
+                $elements = [];
+                foreach ($matches as $key => $match) {
+                    if (is_int($key)) {
+                        $elements[] = $match[1] === -1
+                            ? JsUndefined::instance()
+                            : new JsString($match[0]);
+                        $numericCount++;
                     }
                 }
-                $result->set('length', new JsNumber((float) count(array_filter(array_keys($matches), 'is_int'))));
-                $result->set('index', new JsNumber((float) $matches[0][1]));
+                $result = JsArray::fromArray($elements);
+                $result->set('index', new JsNumber((float) $matchCharPos));
                 $result->set('input', new JsString($str));
+
+                // Named capture groups.
+                $groups = new JsObject(null);
+                $hasGroups = false;
+                foreach ($matches as $key => $match) {
+                    if (is_string($key)) {
+                        $hasGroups = true;
+                        $groups->set($key, $match[1] === -1
+                            ? JsUndefined::instance()
+                            : new JsString($match[0]));
+                    }
+                }
+                $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+
                 return $result;
             }
-            return JsNull::instance();
-        }, 1));
 
-        $obj->set('toString', JsFunction::fromCallable('toString', function () use ($pattern, $flags): JsValue {
-            return new JsString("/{$pattern}/{$flags}");
-        }, 0));
+            if ($isGlobal || $isSticky) {
+                $obj->set('lastIndex', new JsNumber(0.0));
+            }
+            return JsNull::instance();
+        }, 1), true, false, true));
+
+        // test(): uses lastIndex for global/sticky regexes per spec 22.2.5.3.
+        $obj->defineOwnProperty('test', PropertyDescriptor::data(JsFunction::fromCallable('test', function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $strLen = mb_strlen($str, 'UTF-8');
+
+            if ($isGlobal || $isSticky) {
+                $lastIndexVal = $obj->get('lastIndex');
+                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
+            } else {
+                $lastIndex = 0;
+            }
+
+            if ($lastIndex < 0 || $lastIndex > $strLen) {
+                if ($isGlobal || $isSticky) {
+                    $obj->set('lastIndex', new JsNumber(0.0));
+                }
+                return new JsBoolean(false);
+            }
+
+            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
+
+            $result = @preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset);
+            if ($result === 1) {
+                $matchBytePos = $matches[0][1];
+                if ($isSticky && $matchBytePos !== $byteOffset) {
+                    $obj->set('lastIndex', new JsNumber(0.0));
+                    return new JsBoolean(false);
+                }
+                if ($isGlobal || $isSticky) {
+                    $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
+                    $matchCharLen = mb_strlen($matches[0][0], 'UTF-8');
+                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)));
+                }
+                return new JsBoolean(true);
+            }
+
+            if ($isGlobal || $isSticky) {
+                $obj->set('lastIndex', new JsNumber(0.0));
+            }
+            return new JsBoolean(false);
+        }, 1), true, false, true));
+
+        // toString(): returns /pattern/flags per spec 22.2.5.14.
+        $displayPattern = $pattern === '' ? '(?:)' : $pattern;
+        $obj->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable('toString', function () use ($displayPattern, $flags): JsValue {
+            return new JsString("/{$displayPattern}/{$flags}");
+        }, 0), true, false, true));
 
         return $obj;
     }

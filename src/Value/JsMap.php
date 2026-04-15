@@ -21,37 +21,6 @@ class JsMap extends JsObject
     public function __construct(?JsObject $prototype = null)
     {
         parent::__construct($prototype);
-        $this->installSymbolIterator();
-    }
-
-    private function installSymbolIterator(): void
-    {
-        $map = $this;
-        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $factory = function () use ($map, $iterSym): JsValue {
-            $index = 0;
-            $iterator = new JsObject();
-            $nextFn = function () use ($map, &$index): JsValue {
-                $result = new JsObject();
-                $entries = $map->mapEntries();
-                if ($index < count($entries)) {
-                    $entry = $entries[$index];
-                    $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $iterator->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }));
-            return $iterator;
-        };
-        $this->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', $factory));
     }
 
     public function mapGet(JsValue $key): JsValue

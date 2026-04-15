@@ -638,7 +638,32 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+            $searchArg = $args[0] ?? JsUndefined::instance();
+
+            // RegExp argument: use PCRE to find the position.
+            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                $pattern = TypeConversion::toString($searchArg->get('source'));
+                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
+                $pcreFlags = '';
+                if (str_contains($flags, 'i')) {
+                    $pcreFlags .= 'i';
+                }
+                if (str_contains($flags, 'm')) {
+                    $pcreFlags .= 'm';
+                }
+                if (str_contains($flags, 's')) {
+                    $pcreFlags .= 's';
+                }
+                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+                if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                    // Convert byte offset to character position.
+                    $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
+                    return new JsNumber((float) $charPos);
+                }
+                return new JsNumber(-1.0);
+            }
+
+            $search = TypeConversion::toString($searchArg);
             $pos = mb_strpos($str, $search, 0, 'UTF-8');
             return new JsNumber($pos === false ? -1.0 : (float) $pos);
         };

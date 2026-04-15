@@ -86,9 +86,29 @@ class Engine
 
         $interp = $this->interpreter;
         $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp): \PhpJs\Value\JsValue {
-            $pattern = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toString($args[0]) : '';
-            $flags = isset($args[1]) ? \PhpJs\Spec\TypeConversion::toString($args[1]) : '';
-            // Always create a proper RegExp object via the interpreter
+            $arg0 = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+            $arg1 = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+
+            // If the first argument is already a RegExp object and no flags argument given,
+            // return a copy with the same pattern and flags (per spec 22.2.3.1).
+            if ($arg0 instanceof \PhpJs\Value\JsObject && $arg0->has('source') && $arg0->has('flags')) {
+                $pattern = \PhpJs\Spec\TypeConversion::toString($arg0->get('source'));
+                // Empty source is stored as (?:) on the object, but we need the raw pattern for PCRE.
+                if ($pattern === '(?:)') {
+                    $pattern = '';
+                }
+                $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
+                    ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
+                    : \PhpJs\Spec\TypeConversion::toString($arg1);
+                return $interp->createRegExpFromConstructor($pattern, $flags);
+            }
+
+            $pattern = $arg0 instanceof \PhpJs\Value\JsUndefined
+                ? ''
+                : \PhpJs\Spec\TypeConversion::toString($arg0);
+            $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
+                ? ''
+                : \PhpJs\Spec\TypeConversion::toString($arg1);
             return $interp->createRegExpFromConstructor($pattern, $flags);
         });
     }
