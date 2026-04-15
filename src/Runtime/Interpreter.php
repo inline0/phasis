@@ -1002,6 +1002,11 @@ class Interpreter
 
     private function bindObjectPattern(ObjectPattern $pattern, JsValue $value, Environment $env): void
     {
+        if ($value instanceof JsNull || $value instanceof JsUndefined) {
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot destructure property of " . TypeConversion::toString($value),
+            );
+        }
         $usedKeys = [];
         foreach ($pattern->properties as $prop) {
             if ($prop instanceof RestElement) {
@@ -1559,9 +1564,24 @@ class Interpreter
             return;
         }
         if ($pattern instanceof ObjectPattern) {
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot destructure property of " . TypeConversion::toString($value),
+                );
+            }
+            $usedKeysAvb = [];
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof RestElement) {
-                    continue;
+                    $restObjAvb = new JsObject();
+                    if ($value instanceof JsObject) {
+                        foreach ($value->getOwnPropertyNames() as $rk) {
+                            if (!in_array($rk, $usedKeysAvb, true)) {
+                                $restObjAvb->set($rk, $value->get($rk));
+                            }
+                        }
+                    }
+                    $this->assignVarBinding($prop->argument, $restObjAvb, $env);
+                    break;
                 }
                 if ($prop instanceof AssignmentProperty) {
                     $key = $prop->computed
@@ -1569,6 +1589,7 @@ class Interpreter
                         : ($prop->key instanceof Identifier
                             ? $prop->key->name
                             : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                    $usedKeysAvb[] = $key;
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
                     $this->assignVarBinding($prop->value, $propValue, $env);
                 }
@@ -2086,10 +2107,30 @@ class Interpreter
         }
 
         if ($pattern instanceof ObjectPattern) {
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot destructure property of " . TypeConversion::toString($value),
+                );
+            }
+            $usedKeysApe = [];
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof RestElement) {
-                    $this->assignPatternToEnv($prop->argument, new JsObject(), $env);
-                    continue;
+                    $restObjApe = new JsObject();
+                    if ($value instanceof JsObject) {
+                        foreach ($value->getOwnPropertyNames() as $rk) {
+                            if (!in_array($rk, $usedKeysApe, true)) {
+                                $restObjApe->set($rk, $value->get($rk));
+                            }
+                        }
+                    }
+                    $restArgApe = $prop->argument;
+                    if ($this->isDestructuringTarget($restArgApe)) {
+                        $this->destructureAssign($restArgApe, $restObjApe, $env);
+                    } else {
+                        $ref = $this->resolveReference($restArgApe, $env);
+                        $ref->setValue($restObjApe);
+                    }
+                    break;
                 }
                 if ($prop instanceof AssignmentProperty) {
                     $key = $prop->computed
@@ -2097,6 +2138,7 @@ class Interpreter
                         : ($prop->key instanceof Identifier
                             ? $prop->key->name
                             : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                    $usedKeysApe[] = $key;
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
                     $this->assignPatternToEnv($prop->value, $propValue, $env);
                 }
@@ -2561,18 +2603,43 @@ class Interpreter
         }
 
         if ($target instanceof ObjectPattern || $target instanceof ObjectExpression) {
+            // Object destructuring calls ToObject — throws TypeError on null/undefined.
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot destructure property of " . TypeConversion::toString($value),
+                );
+            }
             $props = $target instanceof ObjectPattern ? $target->properties : $target->properties;
+            $usedKeys = [];
             foreach ($props as $prop) {
                 if ($prop instanceof RestElement || $prop instanceof SpreadElement) {
-                    // Simplified: skip rest in destructuring assignment
-                    continue;
+                    // Collect all own enumerable properties not already consumed.
+                    $restObj = new JsObject();
+                    if ($value instanceof JsObject) {
+                        foreach ($value->getOwnPropertyNames() as $rk) {
+                            if (!in_array($rk, $usedKeys, true)) {
+                                $restObj->set($rk, $value->get($rk));
+                            }
+                        }
+                    }
+                    $restArg = $prop instanceof RestElement ? $prop->argument : $prop->argument;
+                    if ($this->isDestructuringTarget($restArg)) {
+                        $this->destructureAssign($restArg, $restObj, $env);
+                    } else {
+                        $ref = $this->resolveReference($restArg, $env);
+                        $ref->setValue($restObj);
+                    }
+                    break;
                 }
                 $propNode = $prop instanceof AssignmentProperty ? $prop : $prop;
                 $key = ($propNode instanceof AssignmentProperty || $propNode instanceof Property)
-                    ? ($propNode->key instanceof Identifier
-                        ? $propNode->key->name
-                        : TypeConversion::toString($this->evaluate($propNode->key, $env)))
+                    ? ($propNode->computed
+                        ? TypeConversion::toString($this->evaluate($propNode->key, $env))
+                        : ($propNode->key instanceof Identifier
+                            ? $propNode->key->name
+                            : TypeConversion::toString($this->evaluate($propNode->key, $env))))
                     : '';
+                $usedKeys[] = $key;
                 $propValue = ($value instanceof JsObject)
                     ? $value->get($key)
                     : JsUndefined::instance();
