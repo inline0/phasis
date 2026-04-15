@@ -100,9 +100,12 @@ class MathObject
         $math->defineOwnProperty('random', PropertyDescriptor::data(JsFunction::fromCallable('random', self::randomFn(), 0), true, false, true));
         $math->defineOwnProperty('hypot', PropertyDescriptor::data(JsFunction::fromCallable('hypot', self::hypotFn(), 2), true, false, true));
 
-        // Symbol.toStringTag = "Math"
+        // Symbol.toStringTag = "Math" (non-writable, non-enumerable, configurable)
         $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
-        $math->setBySymbol($toStringTagSym, new JsString('Math'));
+        $math->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::data(new JsString('Math'), false, false, true),
+        );
 
         $env->defineVar('Math', $math);
     }
@@ -230,9 +233,13 @@ class MathObject
             if (empty($args)) {
                 return new JsNumber(-INF);
             }
-            $result = -INF;
+            // Per spec: coerce ALL arguments first, then find max
+            $coerced = [];
             foreach ($args as $arg) {
-                $n = TypeConversion::toNumber($arg);
+                $coerced[] = TypeConversion::toNumber($arg);
+            }
+            $result = -INF;
+            foreach ($coerced as $n) {
                 if (is_nan($n)) {
                     return new JsNumber(NAN);
                 }
@@ -254,9 +261,13 @@ class MathObject
             if (empty($args)) {
                 return new JsNumber(INF);
             }
-            $result = INF;
+            // Per spec: coerce ALL arguments first, then find min
+            $coerced = [];
             foreach ($args as $arg) {
-                $n = TypeConversion::toNumber($arg);
+                $coerced[] = TypeConversion::toNumber($arg);
+            }
+            $result = INF;
+            foreach ($coerced as $n) {
                 if (is_nan($n)) {
                     return new JsNumber(NAN);
                 }
