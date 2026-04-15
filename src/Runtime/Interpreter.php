@@ -953,12 +953,12 @@ class Interpreter
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
-                // Function name inference: if the default is an anonymous function
-                // and the binding target is a simple identifier, name the function.
+                // Function name inference: only when the default is an anonymous function
+                // definition (not a sequence expression, etc.) and the binding is a simple identifier.
                 if (
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
-                    && $value->getName() === '(anonymous)'
+                    && $this->isAnonymousFunctionDefinitionNode($pattern->right)
                 ) {
                     $value->setName($pattern->left->name);
                 }
@@ -972,6 +972,11 @@ class Interpreter
 
     private function bindArrayPattern(ArrayPattern $pattern, JsValue $value, Environment $env): void
     {
+        if ($value instanceof JsNull || $value instanceof JsUndefined) {
+            throw new \PhpJs\Exceptions\TypeError(
+                TypeConversion::toString($value) . ' is not iterable',
+            );
+        }
         for ($i = 0; $i < count($pattern->elements); $i++) {
             $element = $pattern->elements[$i];
             if ($element === null) {
@@ -1487,11 +1492,12 @@ class Interpreter
                 ? $this->evaluate($declarator->init, $env)
                 : JsUndefined::instance();
 
-            // Name inference: var f = function() {} → f.name = "f"
+            // Name inference: var f = function() {} → f.name = "f" (only for anonymous function definitions)
             if (
                 $init instanceof JsFunction
                 && $declarator->id instanceof Identifier
-                && $init->getName() === '(anonymous)'
+                && $hasInit
+                && $this->isAnonymousFunctionDefinitionNode($declarator->init)
             ) {
                 $init->setName($declarator->id->name);
             }
@@ -1526,6 +1532,11 @@ class Interpreter
             return;
         }
         if ($pattern instanceof ArrayPattern) {
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    TypeConversion::toString($value) . ' is not iterable',
+                );
+            }
             for ($i = 0; $i < count($pattern->elements); $i++) {
                 $element = $pattern->elements[$i];
                 if ($element === null) {
@@ -1567,8 +1578,8 @@ class Interpreter
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
-                // Function name inference.
-                if ($value instanceof JsFunction && $pattern->left instanceof Identifier && $value->getName() === '(anonymous)') {
+                // Function name inference: check AST node type.
+                if ($value instanceof JsFunction && $pattern->left instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($pattern->right)) {
                     $value->setName($pattern->left->name);
                 }
             }
@@ -2047,6 +2058,11 @@ class Interpreter
         }
 
         if ($pattern instanceof ArrayPattern) {
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    TypeConversion::toString($value) . ' is not iterable',
+                );
+            }
             for ($i = 0; $i < count($pattern->elements); $i++) {
                 $element = $pattern->elements[$i];
                 if ($element === null) {
@@ -2091,11 +2107,11 @@ class Interpreter
         if ($pattern instanceof AssignmentPattern) {
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
-                // Function name inference for anonymous function defaults.
+                // Function name inference: check AST node type, not just runtime value.
                 if (
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
-                    && $value->getName() === '(anonymous)'
+                    && $this->isAnonymousFunctionDefinitionNode($pattern->right)
                 ) {
                     $value->setName($pattern->left->name);
                 }
@@ -2483,6 +2499,12 @@ class Interpreter
     private function destructureAssign(Node $target, JsValue $value, Environment $env): void
     {
         if ($target instanceof ArrayPattern || $target instanceof ArrayExpression) {
+            // Array destructuring requires an iterable (not null/undefined).
+            if ($value instanceof JsNull || $value instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    TypeConversion::toString($value) . ' is not iterable',
+                );
+            }
             $elements = $target instanceof ArrayPattern ? $target->elements : $target->elements;
             for ($i = 0; $i < count($elements); $i++) {
                 $elem = $elements[$i];
@@ -2491,17 +2513,20 @@ class Interpreter
                 }
                 if ($elem instanceof RestElement || $elem instanceof SpreadElement) {
                     $rest = [];
-                    if ($value instanceof JsArray) {
-                        $len = $value->getLength();
+                    if ($value instanceof JsObject) {
+                        $len = $value instanceof JsArray ? $value->getLength() : 0;
                         for ($j = $i; $j < $len; $j++) {
                             $rest[] = $value->get((string) $j);
                         }
                     }
-                    $ref = $this->resolveReference(
-                        $elem instanceof RestElement ? $elem->argument : $elem->argument,
-                        $env,
-                    );
-                    $ref->setValue(JsArray::fromArray($rest));
+                    $restValue = JsArray::fromArray($rest);
+                    $restArg = $elem->argument;
+                    if ($this->isDestructuringTarget($restArg)) {
+                        $this->destructureAssign($restArg, $restValue, $env);
+                    } else {
+                        $ref = $this->resolveReference($restArg, $env);
+                        $ref->setValue($restValue);
+                    }
                     break;
                 }
                 $elemValue = ($value instanceof JsObject)
@@ -2510,18 +2535,23 @@ class Interpreter
 
                 if ($elem instanceof AssignmentPattern || $elem instanceof AssignmentExpression) {
                     $elemTarget = $elem instanceof AssignmentPattern ? $elem->left : $elem->left;
+                    $defaultNode = $elem instanceof AssignmentPattern ? $elem->right : $elem->right;
                     if ($elemValue instanceof JsUndefined) {
-                        $elemValue = $this->evaluate(
-                            $elem instanceof AssignmentPattern ? $elem->right : $elem->right,
-                            $env,
-                        );
-                        // Function name inference.
-                        if ($elemValue instanceof JsFunction && $elemTarget instanceof Identifier && $elemValue->getName() === '(anonymous)') {
+                        $elemValue = $this->evaluate($defaultNode, $env);
+                        // Function name inference: check AST node type.
+                        if ($elemValue instanceof JsFunction && $elemTarget instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($defaultNode)) {
                             $elemValue->setName($elemTarget->name);
                         }
                     }
-                    $ref = $this->resolveReference($elemTarget, $env);
-                    $ref->setValue($elemValue);
+                    if ($this->isDestructuringTarget($elemTarget)) {
+                        $this->destructureAssign($elemTarget, $elemValue, $env);
+                    } else {
+                        $ref = $this->resolveReference($elemTarget, $env);
+                        $ref->setValue($elemValue);
+                    }
+                } elseif ($this->isDestructuringTarget($elem)) {
+                    // Nested destructuring target (e.g., [{ x }] = ...).
+                    $this->destructureAssign($elem, $elemValue, $env);
                 } else {
                     $ref = $this->resolveReference($elem, $env);
                     $ref->setValue($elemValue);
@@ -2554,26 +2584,48 @@ class Interpreter
                     $realTarget = $valueNode instanceof AssignmentPattern
                         ? $valueNode->left
                         : $valueNode->left;
+                    $defaultNode2 = $valueNode instanceof AssignmentPattern ? $valueNode->right : $valueNode->right;
                     if ($propValue instanceof JsUndefined) {
-                        $propValue = $this->evaluate(
-                            $valueNode instanceof AssignmentPattern
-                                ? $valueNode->right
-                                : $valueNode->right,
-                            $env,
-                        );
-                        // Function name inference.
-                        if ($propValue instanceof JsFunction && $realTarget instanceof Identifier && $propValue->getName() === '(anonymous)') {
+                        $propValue = $this->evaluate($defaultNode2, $env);
+                        // Function name inference: check AST node type.
+                        if ($propValue instanceof JsFunction && $realTarget instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($defaultNode2)) {
                             $propValue->setName($realTarget->name);
                         }
                     }
-                    $ref = $this->resolveReference($realTarget, $env);
-                    $ref->setValue($propValue);
+                    if ($this->isDestructuringTarget($realTarget)) {
+                        $this->destructureAssign($realTarget, $propValue, $env);
+                    } else {
+                        $ref = $this->resolveReference($realTarget, $env);
+                        $ref->setValue($propValue);
+                    }
+                } elseif ($this->isDestructuringTarget($valueNode)) {
+                    // Nested destructuring target (e.g., { x: { y } } = ...).
+                    $this->destructureAssign($valueNode, $propValue, $env);
                 } else {
                     $ref = $this->resolveReference($valueNode, $env);
                     $ref->setValue($propValue);
                 }
             }
         }
+    }
+
+    /**
+     * Per ECMAScript spec: IsAnonymousFunctionDefinition.
+     * Returns true only if the node is a function/arrow/class expression WITHOUT a name.
+     * Used to determine whether name inference applies when assigning to a binding.
+     */
+    private function isAnonymousFunctionDefinitionNode(Node $node): bool
+    {
+        if ($node instanceof FunctionExpression && $node->name === null) {
+            return true;
+        }
+        if ($node instanceof ArrowFunction) {
+            return true;
+        }
+        if ($node instanceof ClassExpression && $node->id === null) {
+            return true;
+        }
+        return false;
     }
 
     private function handleAbrupt(Completion $completion): JsValue
