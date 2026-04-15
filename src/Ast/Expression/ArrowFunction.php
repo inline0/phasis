@@ -18,6 +18,7 @@ readonly class ArrowFunction extends Node
         public Node $body,
         public bool $expression,
         public bool $async,
+        public ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

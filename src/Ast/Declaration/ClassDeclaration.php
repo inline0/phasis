@@ -18,6 +18,7 @@ readonly class ClassDeclaration extends Node
         public ?Identifier $id,
         public ?Node $superClass,
         public array $body,
+        public ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

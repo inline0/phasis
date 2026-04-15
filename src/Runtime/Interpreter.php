@@ -767,9 +767,13 @@ class Interpreter
                     $rawKey = $this->evaluate($argument->property, $env);
                     if ($rawKey instanceof JsSymbol) {
                         // Delete symbol-keyed property.
-                        $id = $rawKey->getId();
-                        // Currently we just return true for symbol deletes (not fully spec-compliant).
-                        return new JsBoolean(true);
+                        $deleted = $obj->deleteBySymbol($rawKey);
+                        if (!$deleted && $this->strictMode) {
+                            throw new TypeError(
+                                "Cannot delete property '" . $rawKey->toString() . "' of #<Object>"
+                            );
+                        }
+                        return new JsBoolean($deleted);
                     }
                     $key = TypeConversion::toString($rawKey);
                 } else {
@@ -1052,24 +1056,14 @@ class Interpreter
                 }
             }
 
-            // Symbol method calls: look up on Symbol.prototype or handle built-in methods
-            if ($rawObj instanceof JsSymbol && !$isSymbolCallKey) {
-                if ($key === 'toString') {
-                    $args = $this->evaluateArguments($node->arguments, $env);
-                    return new JsString($rawObj->toString());
-                }
-                if ($key === 'valueOf') {
-                    $args = $this->evaluateArguments($node->arguments, $env);
-                    return $rawObj;
-                }
-                if ($env->has('__SymbolPrototype__')) {
-                    $symProto = $env->get('__SymbolPrototype__');
-                    if ($symProto instanceof JsObject) {
-                        $method = $symProto->get($key);
-                        if ($method instanceof JsFunction) {
-                            $args = $this->evaluateArguments($node->arguments, $env);
-                            return $this->callFunction($method, $rawObj, $args);
-                        }
+            // Symbol method calls: look up on Symbol.prototype, passing primitive as this.
+            if ($rawObj instanceof JsSymbol) {
+                $symProtoForCall = JsSymbol::getSymbolPrototype();
+                if ($symProtoForCall !== null) {
+                    $method = $isSymbolCallKey ? $symProtoForCall->getBySymbol($rawCallKey) : $symProtoForCall->get($key);
+                    if ($method instanceof JsFunction) {
+                        $args = $this->evaluateArguments($node->arguments, $env);
+                        return $this->callFunction($method, $rawObj, $args);
                     }
                 }
             }
@@ -2027,10 +2021,31 @@ class Interpreter
         }
 
         if ($obj instanceof JsObject) {
+            // Symbol wrapper objects created via Object(sym): look up on Symbol.prototype chain
+            // so that description, toString, etc. are accessible with correct this-binding.
+            $ownDesc = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            if ($ownDesc !== null && $ownDesc->value instanceof JsSymbol) {
+                $val = $this->lookupSymbolPrototypeProperty(
+                    $ownDesc->value,
+                    $key,
+                    $isSymbolKey,
+                    $rawKey,
+                );
+                if ($val !== null) {
+                    return $val;
+                }
+            }
             if ($isSymbolKey) {
                 return $obj->getBySymbol($rawKey);
             }
             return $obj->get($key);
+        }
+
+        // Symbol primitive property access: look up on Symbol.prototype directly,
+        // correctly calling accessor getters with the primitive as this.
+        if ($obj instanceof JsSymbol) {
+            $val = $this->lookupSymbolPrototypeProperty($obj, $key, $isSymbolKey, $rawKey);
+            return $val ?? JsUndefined::instance();
         }
 
         // Auto-boxing for primitives (number, boolean)
@@ -2039,6 +2054,40 @@ class Interpreter
             return $boxed->getBySymbol($rawKey);
         }
         return $boxed->get($key);
+    }
+
+    /**
+     * Look up a property on Symbol.prototype chain, correctly invoking accessor getters
+     * with $sym as this. Returns null if not found (not JsUndefined).
+     */
+    private function lookupSymbolPrototypeProperty(
+        JsSymbol $sym,
+        string $key,
+        bool $isSymbolKey,
+        ?JsValue $rawKey,
+    ): ?JsValue {
+        $symProto = JsSymbol::getSymbolPrototype();
+        if ($symProto === null) {
+            return null;
+        }
+        // Walk the prototype chain of Symbol.prototype.
+        $proto = $symProto;
+        while ($proto !== null) {
+            if ($isSymbolKey && $rawKey instanceof JsSymbol) {
+                $desc = $proto->getSymbolPropertyDescriptor($rawKey);
+            } else {
+                $desc = $proto->getOwnPropertyDescriptor($key);
+            }
+            if ($desc !== null) {
+                if ($desc->get !== null) {
+                    // Accessor: call getter with the symbol primitive as this.
+                    return $desc->get->call($sym, []);
+                }
+                return $desc->value ?? JsUndefined::instance();
+            }
+            $proto = $proto->getPrototype();
+        }
+        return null;
     }
 
     /** Create a factory function that returns a string iterator (for Symbol.iterator). */
@@ -2184,6 +2233,9 @@ class Interpreter
             isArrow: true,
             isAsync: $node->async,
         );
+        if ($node->sourceText !== null) {
+            $fn->setSourceText($node->sourceText);
+        }
         return $fn;
     }
 
@@ -2198,6 +2250,9 @@ class Interpreter
             isGenerator: $node->generator,
             isAsync: $node->async,
         );
+        if ($node->sourceText !== null) {
+            $fn->setSourceText($node->sourceText);
+        }
         // Named function expressions can reference themselves
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
@@ -2403,7 +2458,12 @@ class Interpreter
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
     {
-        return $this->buildClass($node->id?->name, $node->superClass, $node->body, $env);
+        $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $env);
+        // Per spec, Function.prototype.toString on a class returns the full class source text.
+        if ($node->sourceText !== null) {
+            $cls->setSourceText($node->sourceText);
+        }
+        return $cls;
     }
 
     private function evalThisExpression(Environment $env): JsValue
@@ -2613,6 +2673,10 @@ class Interpreter
         /** @var list<ClassMethod> $body */
         $body = $node->body;
         $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $env);
+        // Per spec, Function.prototype.toString on a class returns the full class source text.
+        if ($node->sourceText !== null) {
+            $cls->setSourceText($node->sourceText);
+        }
         if ($node->id !== null) {
             $env->defineVar($node->id->name, $cls);
         }
@@ -3504,6 +3568,9 @@ class Interpreter
                     isGenerator: $stmt->generator,
                     isAsync: $stmt->async,
                 );
+                if ($stmt->sourceText !== null) {
+                    $fn->setSourceText($stmt->sourceText);
+                }
                 $proto = new JsObject();
                 $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
                 $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
@@ -3777,15 +3844,11 @@ class Interpreter
 
         if ($node instanceof MemberExpression) {
             $obj = $this->evaluate($node->object, $env);
-            // Per spec, the reference records the raw base value. ToObject()
-            // is deferred until PutValue (setValue) so the RHS is evaluated
-            // first in assignment expressions.
+            // Per spec 6.2.4.5 PutValue, the reference records the raw base value.
+            // ToObject() is deferred until PutValue (setValue). For primitives,
+            // keeping the raw value here lets setValue correctly throw TypeError
+            // in strict mode (PutValue step 4c: if [[Set]] returns false and strict is true).
             $base = $obj;
-            if ($obj instanceof JsObject) {
-                $base = $obj;
-            } elseif (!($obj instanceof JsNull) && !($obj instanceof JsUndefined)) {
-                $base = TypeConversion::toObject($obj);
-            }
             // Evaluate the computed property expression (left-to-right), but
             // defer ToPropertyKey (toString) until getValue/setValue so the
             // RHS of assignments runs before the key conversion.

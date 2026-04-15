@@ -21,6 +21,7 @@ readonly class FunctionDeclaration extends Node
         public bool $generator,
         public bool $async,
         public bool $expression = false,
+        public ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

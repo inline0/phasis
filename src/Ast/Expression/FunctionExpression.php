@@ -19,6 +19,7 @@ readonly class FunctionExpression extends Node
         public Node $body,
         public bool $generator,
         public bool $async,
+        public ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

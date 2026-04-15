@@ -107,7 +107,7 @@ class Reference
         }
 
         if ($this->strict) {
-            throw new ReferenceError("Cannot assign to property '{$this->resolvedName()}' of a non-object");
+            throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}' of a primitive");
         }
     }
 }

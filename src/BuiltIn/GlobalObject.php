@@ -317,11 +317,16 @@ class GlobalObject
 
         // Function.prototype.toString: per spec, returns source text for
         // user-defined functions and NativeFunction syntax for built-ins.
+        // Proxy exotic objects wrapping a callable also return NativeFunction syntax.
         $fnProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                throw new \PhpJs\Exceptions\TypeError('Function.prototype.toString requires that \'this\' be a Function');
+            if ($this_ instanceof JsFunction) {
+                return new JsString($this_->toJsString());
             }
-            return new JsString($this_->toJsString());
+            // Proxy wrapping a callable: return NativeFunction syntax per spec.
+            if ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable()) {
+                return new JsString('function () { [native code] }');
+            }
+            throw new \PhpJs\Exceptions\TypeError('Function.prototype.toString requires that \'this\' be a Function');
         }, 0), true, false, true));
 
         // Function.prototype[Symbol.hasInstance] per spec 19.2.3.6.

@@ -38,6 +38,7 @@
           "type": "Identifier"
         }
       ],
+      "sourceText": "function add(a, b) {\n    return a + b;\n}",
       "type": "FunctionDeclaration"
     },
     {
@@ -75,6 +76,7 @@
           "type": "Identifier"
         }
       ],
+      "sourceText": "function greet(name) {\n    return \"hello \" + name;\n}",
       "type": "FunctionDeclaration"
     }
   ],

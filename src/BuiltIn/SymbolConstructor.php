@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace PhpJs\BuiltIn;
 
 use PhpJs\Exceptions\TypeError;
+use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Runtime\Environment;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
@@ -24,6 +26,15 @@ class SymbolConstructor
     /** @var array<string, JsSymbol> Global symbol registry for Symbol.for / Symbol.keyFor. */
     private static array $registry = [];
 
+    /** Symbol.prototype, stored for access by TypeConversion::toObject. */
+    private static ?JsObject $proto = null;
+
+    /** Return Symbol.prototype (null before install() runs). */
+    public static function getProto(): ?JsObject
+    {
+        return self::$proto;
+    }
+
     /** Well-known symbols, created once and reused. */
     private static ?JsSymbol $iterator = null;
     private static ?JsSymbol $hasInstance = null;
@@ -37,6 +48,7 @@ class SymbolConstructor
     private static ?JsSymbol $isConcatSpreadable = null;
     private static ?JsSymbol $unscopables = null;
     private static ?JsSymbol $matchAll = null;
+    private static ?JsSymbol $asyncIterator = null;
 
     public static function iterator(): JsSymbol
     {
@@ -98,13 +110,39 @@ class SymbolConstructor
         return self::$matchAll ??= new JsSymbol('Symbol.matchAll');
     }
 
+    public static function asyncIterator(): JsSymbol
+    {
+        return self::$asyncIterator ??= new JsSymbol('Symbol.asyncIterator');
+    }
+
+    /**
+     * Extract the underlying JsSymbol from either a primitive or a Symbol wrapper object.
+     * Throws TypeError if $this_ is neither.
+     */
+    public static function extractSymbol(JsValue $this_, string $methodName): JsSymbol
+    {
+        if ($this_ instanceof JsSymbol) {
+            return $this_;
+        }
+
+        // Handle Object(Symbol(...)) wrappers: [[PrimitiveValue]] holds the JsSymbol.
+        if ($this_ instanceof JsObject && $this_->has('[[PrimitiveValue]]')) {
+            $prim = $this_->get('[[PrimitiveValue]]');
+            if ($prim instanceof JsSymbol) {
+                return $prim;
+            }
+        }
+
+        throw new TypeError("Symbol.prototype.{$methodName} called on non-symbol value");
+    }
+
     public static function install(Environment $env): void
     {
         // Symbol is callable and has [[Construct]] (isConstructor returns true),
         // but invoking it via new throws TypeError per spec 20.4.1.1.
         $symbolFn = JsFunction::fromCallable('Symbol', function (JsValue $this_, array $args): JsValue {
             // When called via new, $this_ is the newly created object with [[NewTarget]].
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 throw new TypeError('Symbol is not a constructor');
             }
             $description = null;
@@ -115,9 +153,25 @@ class SymbolConstructor
         });
         $symbolFn->setConstructable();
 
+        // Symbol.length = 0 (per spec)
+        $symbolFn->defineOwnProperty('length', PropertyDescriptor::data(
+            new \PhpJs\Value\JsNumber(0.0),
+            false,
+            false,
+            true,
+        ));
+
+        // Symbol.name = "Symbol"
+        $symbolFn->defineOwnProperty('name', PropertyDescriptor::data(
+            new JsString('Symbol'),
+            false,
+            false,
+            true,
+        ));
+
         // Symbol.for(key): returns shared symbol from global registry.
-        // {writable: true, enumerable: false, configurable: true} per spec
-        $symbolFn->defineOwnProperty('for', \PhpJs\Object\PropertyDescriptor::data(
+        // Per spec: writable, non-enumerable, configurable (standard built-in property)
+        $symbolFn->defineOwnProperty('for', PropertyDescriptor::data(
             JsFunction::fromCallable('for', self::symbolFor(), 1),
             true,
             false,
@@ -125,7 +179,7 @@ class SymbolConstructor
         ));
 
         // Symbol.keyFor(sym): returns registry key for a registered symbol.
-        $symbolFn->defineOwnProperty('keyFor', \PhpJs\Object\PropertyDescriptor::data(
+        $symbolFn->defineOwnProperty('keyFor', PropertyDescriptor::data(
             JsFunction::fromCallable('keyFor', self::symbolKeyFor(), 1),
             true,
             false,
@@ -133,61 +187,60 @@ class SymbolConstructor
         ));
 
         // Well-known symbols as static properties.
-        // Well-known symbols are non-writable, non-enumerable, non-configurable per spec
-        $wks = static fn (string $name, JsSymbol $sym) => $symbolFn->defineOwnProperty(
-            $name,
-            \PhpJs\Object\PropertyDescriptor::data($sym, false, false, false),
-        );
-        $wks('iterator', self::iterator());
-        $wks('hasInstance', self::hasInstance());
-        $wks('toPrimitive', self::toPrimitive());
-        $wks('toStringTag', self::toStringTag());
-        $wks('split', self::split());
-        $wks('search', self::search());
-        $wks('match', self::match());
-        $wks('replace', self::replace());
-        $wks('species', self::species());
-        $wks('unscopables', self::unscopables());
-        $wks('matchAll', self::matchAll());
-        $wks('isConcatSpreadable', self::isConcatSpreadable());
-
-        // Symbol.prototype
-        $proto = new \PhpJs\Value\JsObject();
-        $proto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($symbolFn, true, false, true));
-        // Helper to extract JsSymbol from this (either raw symbol or wrapper object)
-        $extractSymbol = function (JsValue $this_, string $method): JsSymbol {
-            if ($this_ instanceof JsSymbol) {
-                return $this_;
-            }
-            if ($this_ instanceof \PhpJs\Value\JsObject) {
-                $prim = $this_->get('[[PrimitiveValue]]');
-                if ($prim instanceof JsSymbol) {
-                    return $prim;
-                }
-            }
-            throw new TypeError("Symbol.prototype.{$method} requires that 'this' be a Symbol");
+        // Per spec: { [[Writable]]: false, [[Enumerable]]: false, [[Configurable]]: false }
+        $wks = static function (string $name, JsSymbol $sym) use ($symbolFn): void {
+            $symbolFn->defineOwnProperty(
+                $name,
+                PropertyDescriptor::data($sym, false, false, false),
+            );
         };
 
-        $proto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('toString', function (JsValue $this_) use ($extractSymbol): JsValue {
-                $sym = $extractSymbol($this_, 'toString');
+        $wks('asyncIterator', self::asyncIterator());
+        $wks('hasInstance', self::hasInstance());
+        $wks('isConcatSpreadable', self::isConcatSpreadable());
+        $wks('iterator', self::iterator());
+        $wks('match', self::match());
+        $wks('matchAll', self::matchAll());
+        $wks('replace', self::replace());
+        $wks('search', self::search());
+        $wks('species', self::species());
+        $wks('split', self::split());
+        $wks('toPrimitive', self::toPrimitive());
+        $wks('toStringTag', self::toStringTag());
+        $wks('unscopables', self::unscopables());
+
+        // Symbol.prototype
+        $proto = new JsObject();
+
+        // Per spec Symbol.prototype.[[Prototype]] is Object.prototype.
+        // The interpreter's evalMemberExpression falls back to the prototype chain,
+        // so we don't need to link it here; prototype methods are looked up directly.
+
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($symbolFn, true, false, true));
+
+        $proto->defineOwnProperty('toString', PropertyDescriptor::data(
+            JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+                $sym = self::extractSymbol($this_, 'toString');
                 return new JsString($sym->toString());
             }, 0),
             true,
             false,
             true,
         ));
-        $proto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('valueOf', function (JsValue $this_) use ($extractSymbol): JsValue {
-                return $extractSymbol($this_, 'valueOf');
+
+        $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(
+            JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
+                // Return the JsSymbol primitive regardless of whether $this_ is boxed or not.
+                return self::extractSymbol($this_, 'valueOf');
             }, 0),
             true,
             false,
             true,
         ));
-        $proto->defineOwnProperty('description', \PhpJs\Object\PropertyDescriptor::accessor(
-            JsFunction::fromCallable('get description', function (JsValue $this_) use ($extractSymbol): JsValue {
-                $sym = $extractSymbol($this_, 'description');
+
+        $proto->defineOwnProperty('description', PropertyDescriptor::accessor(
+            JsFunction::fromCallable('get description', function (JsValue $this_): JsValue {
+                $sym = self::extractSymbol($this_, 'description');
                 $desc = $sym->getDescription();
                 return $desc !== null ? new JsString($desc) : JsUndefined::instance();
             }, 0),
@@ -195,23 +248,31 @@ class SymbolConstructor
             false,
             true,
         ));
-        // Set Symbol.toStringTag on the prototype (non-writable, non-enumerable, configurable)
-        // Symbol.prototype[@@toStringTag] = "Symbol"
-        $proto->definePropertyBySymbol(
-            self::toStringTag(),
-            \PhpJs\Object\PropertyDescriptor::data(new JsString('Symbol'), false, false, true),
-        );
 
-        // Symbol.prototype[@@toPrimitive](hint) — returns the symbol value
-        $toPrimFn = JsFunction::fromCallable('[Symbol.toPrimitive]', function (JsValue $this_) use ($extractSymbol): JsValue {
-            return $extractSymbol($this_, '[Symbol.toPrimitive]');
-        }, 1);
+        // Symbol.prototype[Symbol.toPrimitive]: per spec non-enumerable, non-writable, configurable
         $proto->definePropertyBySymbol(
             self::toPrimitive(),
-            \PhpJs\Object\PropertyDescriptor::data($toPrimFn, false, false, true),
+            PropertyDescriptor::data(
+                JsFunction::fromCallable('[Symbol.toPrimitive]', function (JsValue $this_): JsValue {
+                    return self::extractSymbol($this_, '[Symbol.toPrimitive]');
+                }, 1),
+                false,
+                false,
+                true,
+            ),
         );
 
-        $symbolFn->set('prototype', $proto);
+        // Symbol.prototype[Symbol.toStringTag]: "Symbol" — non-writable, non-enumerable, configurable
+        $proto->definePropertyBySymbol(
+            self::toStringTag(),
+            PropertyDescriptor::data(new JsString('Symbol'), false, false, true),
+        );
+
+        // Symbol.prototype is non-writable, non-enumerable, non-configurable on Symbol
+        $symbolFn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
+
+        // Store prototype for TypeConversion::toObject and JsSymbol property lookup.
+        self::$proto = $proto;
         JsSymbol::setSymbolPrototype($proto);
 
         $env->defineVar('Symbol', $symbolFn);
