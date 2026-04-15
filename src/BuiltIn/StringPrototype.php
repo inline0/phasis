@@ -278,17 +278,52 @@ class StringPrototype
         };
     }
 
+    /**
+     * IsRegExp(argument) per spec 7.2.8.
+     * Returns true if argument has @@match set to a truthy value,
+     * or if argument is a RegExp-like object (has 'source' and 'flags').
+     */
+    private static function isRegExp(JsValue $value): bool
+    {
+        if (!$value instanceof JsObject) {
+            return false;
+        }
+        // Check Symbol.match first.
+        $matchSym = SymbolConstructor::match();
+        $matcher = $value->getBySymbol($matchSym);
+        if (!$matcher instanceof JsUndefined) {
+            return TypeConversion::toBoolean($matcher);
+        }
+        // Fall back: if it looks like a RegExp (has 'source' property).
+        return $value->has('source') && $value->has('flags');
+    }
+
     private static function includes(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $searchArg = $args[0] ?? JsUndefined::instance();
 
-            if ($fromIndex < 0) {
-                $fromIndex = 0;
+            // Per spec step 3: throw TypeError if searchString is a RegExp.
+            if (self::isRegExp($searchArg)) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.includes called with a RegExp searchString'
+                );
             }
 
+            $search = TypeConversion::toString($searchArg);
+            $strLen = mb_strlen($str, 'UTF-8');
+
+            // Per spec: pos = ToIntegerOrInfinity(position), start = clamp(pos, 0, len).
+            $posFloat = isset($args[1]) ? TypeConversion::toIntegerOrInfinity($args[1]) : 0.0;
+            if ($posFloat === INF || $posFloat >= $strLen) {
+                return new JsBoolean($search === '');
+            }
+            $fromIndex = max(0, (int) $posFloat);
+
+            if ($search === '') {
+                return new JsBoolean(true);
+            }
             $pos = mb_strpos($str, $search, $fromIndex, 'UTF-8');
             return new JsBoolean($pos !== false);
         };
@@ -298,12 +333,19 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $position = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $searchArg = $args[0] ?? JsUndefined::instance();
 
-            if ($position < 0) {
-                $position = 0;
+            // Per spec: throw TypeError if searchString is a RegExp.
+            if (self::isRegExp($searchArg)) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.startsWith called with a RegExp searchString'
+                );
             }
+
+            $search = TypeConversion::toString($searchArg);
+            $strLen = mb_strlen($str, 'UTF-8');
+            $posFloat = isset($args[1]) ? TypeConversion::toIntegerOrInfinity($args[1]) : 0.0;
+            $position = (int) max(0.0, min($posFloat === INF ? (float) $strLen : $posFloat, (float) $strLen));
 
             $sub = mb_substr($str, $position, mb_strlen($search, 'UTF-8'), 'UTF-8');
             return new JsBoolean($sub === $search);
@@ -314,15 +356,30 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $strLen = mb_strlen($str, 'UTF-8');
-            $endPosition = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : $strLen;
+            $searchArg = $args[0] ?? JsUndefined::instance();
 
-            if ($endPosition > $strLen) {
+            // Per spec: throw TypeError if searchString is a RegExp.
+            if (self::isRegExp($searchArg)) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.endsWith called with a RegExp searchString'
+                );
+            }
+
+            $search = TypeConversion::toString($searchArg);
+            $strLen = mb_strlen($str, 'UTF-8');
+
+            if (isset($args[1]) && !($args[1] instanceof JsUndefined)) {
+                $posFloat = TypeConversion::toIntegerOrInfinity($args[1]);
+                $endPosition = (int) max(0.0, min($posFloat === INF ? (float) $strLen : $posFloat, (float) $strLen));
+            } else {
                 $endPosition = $strLen;
             }
 
             $searchLen = mb_strlen($search, 'UTF-8');
+            // Empty search string always returns true.
+            if ($searchLen === 0) {
+                return new JsBoolean(true);
+            }
             $start = $endPosition - $searchLen;
             if ($start < 0) {
                 return new JsBoolean(false);
@@ -588,12 +645,39 @@ class StringPrototype
     private static function replace(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
+            // Step 1: RequireObjectCoercible
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.replace called on null or undefined'
+                );
+            }
+
             $searchArg = $args[0] ?? JsUndefined::instance();
             $replArg = $args[1] ?? JsUndefined::instance();
 
-            // Check if search is a RegExp-like object (has source and flags)
+            // Step 2: Check Symbol.replace on searchValue BEFORE converting O to string.
+            if (!$searchArg instanceof JsUndefined && !$searchArg instanceof JsNull) {
+                if ($searchArg instanceof JsObject) {
+                    $replaceSym = SymbolConstructor::replace();
+                    $replacer = $searchArg->getBySymbol($replaceSym);
+                    if (!$replacer instanceof JsUndefined && !$replacer instanceof JsNull) {
+                        if ($replacer instanceof JsFunction) {
+                            return $replacer->call($searchArg, [$this_, $replArg]);
+                        }
+                        throw new \PhpJs\Exceptions\TypeError('Symbol.replace is not a function');
+                    }
+                }
+            }
+
+            // Step 3: ToString(O)
+            $str = self::extractString($this_);
+            $functionalReplace = $replArg instanceof JsFunction;
+
+            // RegExp-like search
             if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                // For regexp path, ToString(replaceValue) per spec step 6 (before matching)
+                $replStr = $functionalReplace ? '' : TypeConversion::toString($replArg);
+
                 $pattern = TypeConversion::toString($searchArg->get('source'));
                 $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
                 $pcreFlags = '';
@@ -606,45 +690,113 @@ class StringPrototype
                 if (str_contains($flags, 's')) {
                     $pcreFlags .= 's';
                 }
-                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+                $escapedPattern = preg_replace('#(?<!\\\\)/#', '\\/', $pattern);
+                $pcre = '/' . $escapedPattern . '/' . $pcreFlags . 'u';
                 $isGlobal = str_contains($flags, 'g');
                 $limit = $isGlobal ? -1 : 1;
+                // Count expected capture groups (PHP omits unmatched optional groups)
+                $nExpectedCaptures = self::countCaptureGroups($pattern);
 
-                if ($replArg instanceof JsFunction) {
-                    $result = @preg_replace_callback($pcre, function ($matches) use ($replArg, $str): string {
-                        $jsArgs = array_map(fn($m) => new JsString($m), $matches);
-                        $jsArgs[] = new JsNumber(0.0); // offset (simplified)
-                        $jsArgs[] = new JsString($str);
-                        $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
-                        return TypeConversion::toString($ret);
-                    }, $str, $limit);
+                if ($functionalReplace) {
+                    $result = @preg_replace_callback(
+                        $pcre,
+                        function ($matches) use ($replArg, $str, $nExpectedCaptures): string {
+                            $byteOffset = is_array($matches[0]) ? $matches[0][1] : 0;
+                            $matched = is_array($matches[0]) ? $matches[0][0] : $matches[0];
+                            $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
+                            $jsArgs = [new JsString($matched)];
+                            // Add capture groups (pad with undefined for unmatched optional groups)
+                            $captures = [];
+                            for ($ci = 1; $ci < count($matches); $ci++) {
+                                if (is_string($ci)) {
+                                    continue; // skip named keys
+                                }
+                                $cap = $matches[$ci];
+                                $captures[] = is_array($cap)
+                                    ? ($cap[1] === -1 ? null : $cap[0])
+                                    : ($cap === '' ? null : $cap);
+                            }
+                            // Pad to expected capture count
+                            while (count($captures) < $nExpectedCaptures) {
+                                $captures[] = null;
+                            }
+                            foreach ($captures as $cap) {
+                                $jsArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
+                            }
+                            $jsArgs[] = new JsNumber((float) $charOffset);
+                            $jsArgs[] = new JsString($str);
+                            $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
+                            return TypeConversion::toString($ret);
+                        },
+                        $str,
+                        $limit,
+                        $count,
+                        PREG_OFFSET_CAPTURE,
+                    );
                 } else {
-                    $repl = TypeConversion::toString($replArg);
-                    $result = @preg_replace($pcre, $repl, $str, $limit);
+                    // String replacement: apply GetSubstitution for $-patterns
+                    $result = @preg_replace_callback(
+                        $pcre,
+                        function ($matches) use ($replStr, $str, $nExpectedCaptures): string {
+                            $byteOffset = is_array($matches[0]) ? $matches[0][1] : 0;
+                            $matched = is_array($matches[0]) ? $matches[0][0] : $matches[0];
+                            $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
+                            $captures = [];
+                            $namedCaptures = null;
+                            foreach ($matches as $key => $cap) {
+                                if (is_string($key)) {
+                                    if ($namedCaptures === null) {
+                                        $namedCaptures = [];
+                                    }
+                                    $namedCaptures[$key] = is_array($cap)
+                                        ? ($cap[1] === -1 ? null : $cap[0])
+                                        : ($cap === '' ? null : $cap);
+                                    continue;
+                                }
+                                if ($key === 0) {
+                                    continue;
+                                }
+                                $captures[] = is_array($cap)
+                                    ? ($cap[1] === -1 ? null : $cap[0])
+                                    : ($cap === '' ? null : $cap);
+                            }
+                            // Pad to expected capture count
+                            while (count($captures) < $nExpectedCaptures) {
+                                $captures[] = null;
+                            }
+                            return self::getSubstitution($matched, $str, $charOffset, $captures, $replStr, $namedCaptures);
+                        },
+                        $str,
+                        $limit,
+                        $count,
+                        PREG_OFFSET_CAPTURE,
+                    );
                 }
                 return new JsString($result ?? $str);
             }
 
-            // String search — replace first occurrence only
+            // String search — replace first occurrence only.
+            // Step 4: ToString(searchValue) - must happen before ToString(replaceValue)
             $search = TypeConversion::toString($searchArg);
-            if ($replArg instanceof JsFunction) {
-                $pos = strpos($str, $search);
-                if ($pos === false) {
-                    return new JsString($str);
-                }
+            // Step 6: ToString(replaceValue) if not callable
+            $replStr = $functionalReplace ? '' : TypeConversion::toString($replArg);
+
+            $pos = mb_strpos($str, $search, 0, 'UTF-8');
+            if ($pos === false) {
+                return new JsString($str);
+            }
+
+            if ($functionalReplace) {
                 $jsArgs = [new JsString($search), new JsNumber((float) $pos), new JsString($str)];
                 $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
                 $replacement = TypeConversion::toString($ret);
             } else {
-                $replacement = TypeConversion::toString($replArg);
+                $replacement = self::getSubstitution($search, $str, $pos, [], $replStr);
             }
 
-            $pos = strpos($str, $search);
-            if ($pos === false) {
-                return new JsString($str);
-            }
-            $result = substr($str, 0, $pos) . $replacement . substr($str, $pos + strlen($search));
-            return new JsString($result);
+            $before = mb_substr($str, 0, $pos, 'UTF-8');
+            $after = mb_substr($str, $pos + mb_strlen($search, 'UTF-8'), null, 'UTF-8');
+            return new JsString($before . $replacement . $after);
         };
     }
 
@@ -748,59 +900,260 @@ class StringPrototype
         };
     }
 
+    /**
+     * GetSubstitution(matched, str, position, captures, namedCaptures, replacement) per spec §22.1.3.17.1.
+     * Processes $-sequences in replacement strings.
+     *
+     * @param list<string|null> $captures indexed captures (0-indexed internally, $n is 1-indexed)
+     * @param array<string,string|null>|null $namedCaptures named capture groups or null
+     */
+    /**
+     * Count capturing groups in a regex pattern (not counting non-capturing groups like (?:...)).
+     */
+    private static function countCaptureGroups(string $pattern): int
+    {
+        $count = 0;
+        $len = strlen($pattern);
+        $inCharClass = false;
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $pattern[$i];
+            if ($ch === '\\' && $i + 1 < $len) {
+                $i++; // skip escaped char
+                continue;
+            }
+            if ($ch === '[' && !$inCharClass) {
+                $inCharClass = true;
+                continue;
+            }
+            if ($ch === ']' && $inCharClass) {
+                $inCharClass = false;
+                continue;
+            }
+            if ($inCharClass) {
+                continue;
+            }
+            if ($ch === '(') {
+                // Check if non-capturing: (?:, (?=, (?!, (?<=, (?<!
+                if ($i + 1 < $len && $pattern[$i + 1] === '?') {
+                    if ($i + 2 < $len) {
+                        $next2 = $pattern[$i + 2];
+                        if ($next2 === ':' || $next2 === '=' || $next2 === '!') {
+                            continue; // non-capturing
+                        }
+                        if ($next2 === '<' && $i + 3 < $len
+                            && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')) {
+                            continue; // lookbehind
+                        }
+                        if ($next2 === '<') {
+                            // Named group (?<name>): IS a capturing group
+                            $count++;
+                            continue;
+                        }
+                    }
+                    continue; // other non-capturing forms
+                }
+                $count++;
+            }
+        }
+        return $count;
+    }
+
+    private static function getSubstitution(
+        string $matched,
+        string $str,
+        int $position,
+        array $captures,
+        string $replacement,
+        ?array $namedCaptures = null,
+    ): string {
+        $result = '';
+        $len = strlen($replacement);
+        $captureLen = count($captures);
+        $i = 0;
+        while ($i < $len) {
+            $ch = $replacement[$i];
+            if ($ch !== '$' || $i + 1 >= $len) {
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+            $next = $replacement[$i + 1];
+            switch ($next) {
+                case '$':
+                    $result .= '$';
+                    $i += 2;
+                    break;
+                case '&':
+                    $result .= $matched;
+                    $i += 2;
+                    break;
+                case '`':
+                    $result .= mb_substr($str, 0, $position, 'UTF-8');
+                    $i += 2;
+                    break;
+                case "'":
+                    $result .= mb_substr($str, $position + mb_strlen($matched, 'UTF-8'), null, 'UTF-8');
+                    $i += 2;
+                    break;
+                case '<':
+                    // Named capture: $<Name>
+                    $closePos = strpos($replacement, '>', $i + 2);
+                    if ($closePos !== false && $namedCaptures !== null) {
+                        $name = substr($replacement, $i + 2, $closePos - $i - 2);
+                        if (array_key_exists($name, $namedCaptures)) {
+                            $result .= $namedCaptures[$name] ?? '';
+                        } else {
+                            $result .= '';
+                        }
+                        $i = $closePos + 1;
+                    } elseif ($closePos !== false) {
+                        // No named captures: output as literal
+                        $name = substr($replacement, $i + 2, $closePos - $i - 2);
+                        $result .= '$<' . $name . '>';
+                        $i = $closePos + 1;
+                    } else {
+                        $result .= '$';
+                        $i++;
+                    }
+                    break;
+                default:
+                    // $n or $nn (capture group reference) per spec §22.1.3.17.1 step 5.f
+                    if ($next >= '0' && $next <= '9') {
+                        $digitCount = 1;
+                        $index = (int) $next;
+
+                        // Try two-digit if next char is also a digit
+                        if ($i + 2 < $len && $replacement[$i + 2] >= '0' && $replacement[$i + 2] <= '9') {
+                            $twoIndex = (int) ($next . $replacement[$i + 2]);
+                            if ($twoIndex <= $captureLen) {
+                                // Use two-digit
+                                $digitCount = 2;
+                                $index = $twoIndex;
+                            }
+                            // Else: twoIndex > captureLen → fall back to single digit (digitCount stays 1)
+                        }
+
+                        if ($index >= 1 && $index <= $captureLen) {
+                            $result .= $captures[$index - 1] ?? '';
+                        } else {
+                            // Not a valid capture index: output as literal reference
+                            $result .= '$' . substr($next . ($digitCount === 2 ? ($replacement[$i + 2] ?? '') : ''), 0, $digitCount);
+                        }
+                        $i += 1 + $digitCount;
+                    } else {
+                        $result .= '$';
+                        $i++;
+                    }
+                    break;
+            }
+        }
+        return $result;
+    }
+
     private static function replaceAll(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = self::extractString($this_);
-            $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-
-            $replacer = $args[1] ?? JsUndefined::instance();
-
-            if ($search === '') {
-                if ($replacer instanceof JsFunction) {
-                    $result = '';
-                    $len = mb_strlen($str, 'UTF-8');
-                    for ($i = 0; $i <= $len; $i++) {
-                        $repVal = $replacer->call(JsUndefined::instance(), [
-                            new JsString(''),
-                            new JsNumber((float) $i),
-                            new JsString($str),
-                        ]);
-                        $result .= TypeConversion::toString($repVal);
-                        if ($i < $len) {
-                            $result .= mb_substr($str, $i, 1, 'UTF-8');
-                        }
-                    }
-                    return new JsString($result);
-                }
-                $replacement = TypeConversion::toString($replacer);
-                $len = mb_strlen($str, 'UTF-8');
-                $result = $replacement;
-                for ($i = 0; $i < $len; $i++) {
-                    $result .= mb_substr($str, $i, 1, 'UTF-8') . $replacement;
-                }
-                return new JsString($result);
+            // Step 1: RequireObjectCoercible (throw if null/undefined, but do NOT call ToString yet).
+            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype.replaceAll called on null or undefined'
+                );
             }
 
-            if ($replacer instanceof JsFunction) {
-                $result = '';
-                $offset = 0;
-                while (($pos = mb_strpos($str, $search, $offset, 'UTF-8')) !== false) {
-                    $result .= mb_substr($str, $offset, $pos - $offset, 'UTF-8');
-                    $repVal = $replacer->call(JsUndefined::instance(), [
+            $searchArg = $args[0] ?? JsUndefined::instance();
+            $replaceValue = $args[1] ?? JsUndefined::instance();
+
+            // Step 2: If searchValue is not undefined/null, handle isRegExp and Symbol.replace.
+            // Per spec, this happens BEFORE ToString(O) (step 3).
+            if (!$searchArg instanceof JsUndefined && !$searchArg instanceof JsNull) {
+                if ($searchArg instanceof JsObject) {
+                    // Step 2a: IsRegExp check (uses Symbol.match getter).
+                    $matchSym = SymbolConstructor::match();
+                    $matchVal = $searchArg->getBySymbol($matchSym);
+                    $isRegExp = $matchVal instanceof JsUndefined
+                        ? ($searchArg->has('source') && $searchArg->has('flags'))
+                        : TypeConversion::toBoolean($matchVal);
+
+                    if ($isRegExp) {
+                        // Step 2b: Get flags, RequireObjectCoercible, then check for 'g'.
+                        $flagsVal = $searchArg->get('flags');
+                        if ($flagsVal instanceof JsUndefined || $flagsVal instanceof JsNull) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'String.prototype.replaceAll called with a non-global RegExp argument'
+                            );
+                        }
+                        $flags = TypeConversion::toString($flagsVal);
+                        if (!str_contains($flags, 'g')) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'String.prototype.replaceAll called with a non-global RegExp argument'
+                            );
+                        }
+                    }
+
+                    // Step 2c: GetMethod(searchValue, @@replace).
+                    $replaceSym = SymbolConstructor::replace();
+                    $replacer = $searchArg->getBySymbol($replaceSym);
+                    // Step 2d: If replacer is not undefined/null, call it with (O, replaceValue).
+                    // Pass the original O (this_), NOT a stringified version.
+                    if (!$replacer instanceof JsUndefined && !$replacer instanceof JsNull) {
+                        if ($replacer instanceof JsFunction) {
+                            return $replacer->call($searchArg, [$this_, $replaceValue]);
+                        }
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Symbol.replace is not a function'
+                        );
+                    }
+                }
+            }
+
+            // Step 3: ToString(O) - only called after searchValue has been fully handled.
+            $str = self::extractString($this_);
+
+            $search = TypeConversion::toString($searchArg);
+            $functionalReplace = $replaceValue instanceof JsFunction;
+
+            if (!$functionalReplace) {
+                $replStr = TypeConversion::toString($replaceValue);
+            } else {
+                $replStr = '';
+            }
+
+            $searchLen = mb_strlen($search, 'UTF-8');
+            $result = '';
+            $offset = 0;
+            $advanceBy = max(1, $searchLen);
+
+            while (true) {
+                $pos = $search === ''
+                    ? ($offset <= mb_strlen($str, 'UTF-8') ? $offset : -1)
+                    : mb_strpos($str, $search, $offset, 'UTF-8');
+
+                if ($pos === false || $pos === -1) {
+                    break;
+                }
+
+                $result .= mb_substr($str, $offset, $pos - $offset, 'UTF-8');
+
+                if ($functionalReplace) {
+                    $repVal = $replaceValue->call(JsUndefined::instance(), [
                         new JsString($search),
                         new JsNumber((float) $pos),
                         new JsString($str),
                     ]);
                     $result .= TypeConversion::toString($repVal);
-                    $offset = $pos + mb_strlen($search, 'UTF-8');
+                } else {
+                    $result .= self::getSubstitution($search, $str, $pos, [], $replStr);
                 }
-                $result .= mb_substr($str, $offset, null, 'UTF-8');
-                return new JsString($result);
-            }
 
-            $replacement = TypeConversion::toString($replacer);
-            return new JsString(str_replace($search, $replacement, $str));
+                $offset = $pos + $advanceBy;
+                if ($search === '') {
+                    if ($offset <= mb_strlen($str, 'UTF-8')) {
+                        $result .= mb_substr($str, $offset - 1, 1, 'UTF-8');
+                    }
+                }
+            }
+            $result .= mb_substr($str, $offset, null, 'UTF-8');
+            return new JsString($result);
         };
     }
 

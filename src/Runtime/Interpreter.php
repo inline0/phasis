@@ -2825,20 +2825,29 @@ class Interpreter
         $instanceMethods = [];
 
         foreach ($methods as $method) {
-            $key = $method->computed
-                ? TypeConversion::toString($this->evaluate($method->key, $env))
-                : ($method->key instanceof Identifier
+            $symbolKey = null;
+            if ($method->computed) {
+                $keyVal = $this->evaluate($method->key, $env);
+                if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                    $symbolKey = $keyVal;
+                    $key = '';
+                } else {
+                    $key = TypeConversion::toString($keyVal);
+                }
+            } else {
+                $key = $method->key instanceof Identifier
                     ? $method->key->name
-                    : TypeConversion::toString($this->evaluate($method->key, $env)));
+                    : TypeConversion::toString($this->evaluate($method->key, $env));
+            }
 
             $fn = $this->evaluate($method->value, $env);
 
             if ($method->kind === 'constructor') {
                 $constructor = $fn;
             } elseif ($method->static) {
-                $staticMethods[] = [$key, $fn, $method->kind];
+                $staticMethods[] = [$key, $fn, $method->kind, $symbolKey];
             } else {
-                $instanceMethods[] = [$key, $fn, $method->kind];
+                $instanceMethods[] = [$key, $fn, $method->kind, $symbolKey];
             }
         }
 
@@ -2872,8 +2881,16 @@ class Interpreter
                 : null,
         );
 
-        foreach ($instanceMethods as [$key, $fn, $kind]) {
-            if ($kind === 'get' || $kind === 'set') {
+        foreach ($instanceMethods as [$key, $fn, $kind, $symbolKey]) {
+            if ($symbolKey !== null) {
+                // Symbol-keyed method (e.g. [Symbol.replace], [Symbol.iterator])
+                $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
+                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            } elseif ($kind === 'get' || $kind === 'set') {
                 $existing = $proto->getOwnPropertyDescriptor($key);
                 if ($kind === 'get') {
                     $proto->defineOwnProperty(
@@ -2900,7 +2917,16 @@ class Interpreter
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         // Static methods (non-enumerable)
-        foreach ($staticMethods as [$key, $fn, $kind]) {
+        foreach ($staticMethods as [$key, $fn, $kind, $symbolKey]) {
+            if ($symbolKey !== null) {
+                $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
+                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+                continue;
+            }
             $constructor->defineOwnProperty($key, PropertyDescriptor::data(
                 $fn instanceof JsValue ? $fn : JsUndefined::instance(),
                 true,
@@ -4443,11 +4469,22 @@ class Interpreter
         }
         $obj = new JsObject($regexpProto);
 
-        // Per spec, source, flags, global, ignoreCase, multiline are non-enumerable, non-writable,
-        // non-configurable (except source and flags are configurable in some engines).
-        $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, false);
+        // Per spec §22.2.5.3 get RegExp.prototype.flags, flags are returned in canonical order:
+        // d, g, i, m, s, u, v, y (alphabetical subset of valid flag characters).
+        $canonicalFlagOrder = 'dgimsvy';
+        $sortedFlags = '';
+        for ($fi = 0; $fi < strlen($canonicalFlagOrder); $fi++) {
+            if (str_contains($flags, $canonicalFlagOrder[$fi])) {
+                $sortedFlags .= $canonicalFlagOrder[$fi];
+            }
+        }
+
+        // Per spec §22.2.6, regexp instance own properties are non-writable, non-enumerable.
+        // source and flags are configurable (per modern ES), others are non-configurable.
+        // Making all configurable to allow Object.defineProperty overrides in tests.
+        $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, true);
         $obj->defineOwnProperty('source', $noenum(new JsString($pattern === '' ? '(?:)' : $pattern)));
-        $obj->defineOwnProperty('flags', $noenum(new JsString($flags)));
+        $obj->defineOwnProperty('flags', $noenum(new JsString($sortedFlags)));
         $obj->defineOwnProperty('global', $noenum(new JsBoolean(str_contains($flags, 'g'))));
         $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
         $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));
@@ -4615,8 +4652,8 @@ class Interpreter
 
         // toString(): returns /pattern/flags per spec 22.2.5.14.
         $displayPattern = $pattern === '' ? '(?:)' : $pattern;
-        $toStringFn = function () use ($displayPattern, $flags): JsValue {
-            return new JsString("/{$displayPattern}/{$flags}");
+        $toStringFn = function () use ($displayPattern, $sortedFlags): JsValue {
+            return new JsString("/{$displayPattern}/{$sortedFlags}");
         };
         $obj->defineOwnProperty(
             'toString',
