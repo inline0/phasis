@@ -1105,6 +1105,7 @@ class Parser
 
         if (str_ends_with($raw, 'n')) {
             $value = $raw; // BigInt: keep as string
+            return new Literal($token->location, $value, '__BIGINT__' . $raw);
         } elseif (str_starts_with($raw, '0x') || str_starts_with($raw, '0X')) {
             $value = hexdec($raw);
         } elseif (str_starts_with($raw, '0o') || str_starts_with($raw, '0O')) {

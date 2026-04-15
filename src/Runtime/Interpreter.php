@@ -252,8 +252,8 @@ class Interpreter
             return new JsNumber((float) $value);
         }
         if (is_string($value)) {
-            // BigInt literal: raw token ends with 'n' and value is the raw string kept by the parser.
-            if (str_ends_with($value, 'n') && str_ends_with($node->raw, 'n') && $node->raw === $value) {
+            // BigInt literal: marked with __BIGINT__ prefix in raw by the parser.
+            if (str_starts_with($node->raw, '__BIGINT__')) {
                 return new JsBigInt($value);
             }
             // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
