@@ -157,9 +157,19 @@ class JsArray extends JsObject
     public function toJsString(): string
     {
         $parts = [];
-        // Safety: only iterate actual stored elements, not sparse length
-        $len = min($this->length, count($this->elements) > 0 ? max(array_keys($this->elements)) + 1 : 0);
-        // But if length is small enough, iterate fully (spec-compliant for dense arrays)
+        // Safety: for sparse arrays with large length, only iterate up to the highest stored index.
+        // Find the highest stored array index to avoid iterating millions of empty slots.
+        $maxIndex = -1;
+        foreach ($this->properties->keys() as $key) {
+            if (self::isArrayIndex($key)) {
+                $idx = (int) $key;
+                if ($idx > $maxIndex) {
+                    $maxIndex = $idx;
+                }
+            }
+        }
+        $len = $maxIndex >= 0 ? min($this->length, $maxIndex + 1) : 0;
+        // For dense arrays (small length), always iterate fully per spec.
         if ($this->length <= 10000) {
             $len = $this->length;
         }

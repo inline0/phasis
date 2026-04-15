@@ -74,8 +74,11 @@ class Parser
     private bool $noIn = false;
     private bool $inGenerator = false;
     private bool $inAsync = false;
+    private string $source;
+
     public function __construct(string $source)
     {
+        $this->source = $source;
         $lexer = new Lexer($source);
         $this->tokens = $lexer->tokenize();
     }
@@ -319,8 +322,9 @@ class Parser
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $sourceText = $this->sourceFrom($location->offset);
 
-        return new FunctionDeclaration($location, $id, $params, $body, $generator, false);
+        return new FunctionDeclaration($location, $id, $params, $body, $generator, false, false, $sourceText);
     }
 
     private function parseClassDeclaration(): ClassDeclaration
@@ -335,7 +339,8 @@ class Parser
             $superClass = $this->parseLeftHandSideExpression();
         }
         $body = $this->parseClassBody();
-        return new ClassDeclaration($location, $id, $superClass, $body);
+        $sourceText = $this->sourceFrom($location->offset);
+        return new ClassDeclaration($location, $id, $superClass, $body, $sourceText);
     }
 
     /** @return ClassMethod[] */
@@ -375,6 +380,11 @@ class Parser
                 $isStatic = true;
             }
         }
+
+        // Track start of MethodDefinition (after optional 'static').
+        // Per spec, the [[SourceText]] of a method is the MethodDefinition,
+        // which does NOT include the 'static' keyword.
+        $methodDefinitionOffset = $this->current()->location->offset;
 
         if ($this->check(TokenType::Async)) {
             $next = $this->peek();
@@ -421,8 +431,9 @@ class Parser
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $sourceText = $this->sourceFrom($methodDefinitionOffset);
 
-        $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
+        $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $sourceText);
         return new ClassMethod($location, $key, $value, $kind, $isStatic, $computed);
     }
 
@@ -442,7 +453,8 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            return new FunctionDeclaration($location, $id, $params, $body, $generator, true);
+            $sourceText = $this->sourceFrom($location->offset);
+            return new FunctionDeclaration($location, $id, $params, $body, $generator, true, false, $sourceText);
         }
 
         return $this->parseExpressionStatement();
@@ -1099,7 +1111,8 @@ class Parser
             TokenType::String => $this->parseStringLiteral(),
             TokenType::True, TokenType::False => $this->parseBooleanLiteral(),
             TokenType::Null => $this->parseNullLiteral(),
-            TokenType::Identifier, TokenType::Let, TokenType::Await, TokenType::Static_, TokenType::Yield, TokenType::Of => $this->parseIdentifierExpression(),
+            TokenType::Identifier, TokenType::Let, TokenType::Await,
+            TokenType::Static_, TokenType::Yield, TokenType::Of => $this->parseIdentifierExpression(),
             TokenType::This => $this->parseThisExpression(),
             TokenType::LeftParen => $this->parseParenthesizedOrArrow(),
             TokenType::LeftBracket => $this->parseArrayExpression(),
@@ -1336,12 +1349,14 @@ class Parser
         if ($this->check(TokenType::LeftBrace)) {
             $body = $this->parseBlockStatement();
             $this->inAsync = $prevAsync;
-            return new ArrowFunction($location, $params, $body, false, $async);
+            $sourceText = $this->sourceFrom($location->offset);
+            return new ArrowFunction($location, $params, $body, false, $async, $sourceText);
         }
 
         $body = $this->parseAssignmentExpression();
         $this->inAsync = $prevAsync;
-        return new ArrowFunction($location, $params, $body, true, $async);
+        $sourceText = $this->sourceFrom($location->offset);
+        return new ArrowFunction($location, $params, $body, true, $async, $sourceText);
     }
 
     /**
@@ -1464,8 +1479,13 @@ class Parser
         }
 
         // Async method: async method() {}
+        // Note: 'async' may be tokenized as TokenType::Async (a keyword) or as an Identifier.
         $isAsync = false;
-        if (!$isGenerator && $this->checkContextual('async') && !$this->peekIs(TokenType::Colon) && !$this->peekIs(TokenType::Comma) && !$this->peekIs(TokenType::RightBrace)) {
+        $isAsyncToken = ($this->check(TokenType::Async) || $this->checkContextual('async'))
+            && !$this->peekIs(TokenType::Colon)
+            && !$this->peekIs(TokenType::Comma)
+            && !$this->peekIs(TokenType::RightBrace);
+        if (!$isGenerator && $isAsyncToken) {
             $next = $this->peek();
             if (!$next->lineTerminatorBefore && $next->type !== TokenType::LeftParen) {
                 $this->advance();
@@ -1507,7 +1527,8 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
+            $sourceText = $this->sourceFrom($location->offset);
+            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $sourceText);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1522,7 +1543,8 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync);
+            $sourceText = $this->sourceFrom($location->offset);
+            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $sourceText);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1531,7 +1553,8 @@ class Parser
             $method = true;
             $params = $this->parseFormalParameters();
             $body = $this->parseBlockStatement();
-            $value = new FunctionExpression($body->location, null, $params, $body, false, false);
+            $sourceText = $this->sourceFrom($location->offset);
+            $value = new FunctionExpression($body->location, null, $params, $body, false, false, $sourceText);
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1633,8 +1656,9 @@ class Parser
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $sourceText = $this->sourceFrom($location->offset);
 
-        return new FunctionExpression($location, $name, $params, $body, $generator, false);
+        return new FunctionExpression($location, $name, $params, $body, $generator, false, $sourceText);
     }
 
     private function parseAsyncExpression(): Node
@@ -1663,10 +1687,12 @@ class Parser
 
         // async ident => body
         if ($next->type === TokenType::Identifier && !$next->lineTerminatorBefore) {
+            $asyncLocation = $token->location;
             $this->advance(); // consume 'async'
             $id = $this->parseIdentifier();
             if ($this->check(TokenType::Arrow)) {
-                return $this->parseArrowFunction($id, true);
+                // Use the async keyword's location so source text begins at 'async'.
+                return $this->parseArrowFunctionFromParams($asyncLocation, [$id], true);
             }
             // Not an arrow: "async" as identifier, rewind
             $this->pos -= 1;
@@ -1696,8 +1722,9 @@ class Parser
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $sourceText = $this->sourceFrom($location->offset);
 
-        return new FunctionExpression($location, $name, $params, $body, $generator, true);
+        return new FunctionExpression($location, $name, $params, $body, $generator, true, $sourceText);
     }
 
     private function parseClassExpression(): ClassExpression
@@ -1712,7 +1739,8 @@ class Parser
             $superClass = $this->parseLeftHandSideExpression();
         }
         $body = $this->parseClassBody();
-        return new ClassExpression($location, $id, $superClass, $body);
+        $sourceText = $this->sourceFrom($location->offset);
+        return new ClassExpression($location, $id, $superClass, $body, $sourceText);
     }
 
     private function parseLeftHandSideExpression(): Node
@@ -1888,6 +1916,35 @@ class Parser
     // -------------------------------------------------------------------------
     // Token navigation
     // -------------------------------------------------------------------------
+
+    /**
+     * Return the byte offset just past the last consumed token.
+     *
+     * Used to extract source text for function nodes: after parsing a function
+     * body, $this->pos - 1 is the closing `}` (or last expression token for
+     * arrow functions). The source text spans from the function's start offset
+     * to this end offset.
+     */
+    private function previousTokenEnd(): int
+    {
+        $token = $this->tokens[$this->pos - 1];
+        // rawValue preserves the original source text (e.g. string literals with quotes).
+        // For all other tokens, value is the literal source text.
+        $raw = $token->rawValue ?? $token->value;
+        return $token->location->offset + strlen($raw);
+    }
+
+    /**
+     * Extract source text from a start offset to just after the last consumed token.
+     */
+    private function sourceFrom(int $startOffset): string
+    {
+        $end = $this->previousTokenEnd();
+        if ($end <= $startOffset) {
+            return '';
+        }
+        return substr($this->source, $startOffset, $end - $startOffset);
+    }
 
     /** @phpstan-impure */
     private function current(): Token

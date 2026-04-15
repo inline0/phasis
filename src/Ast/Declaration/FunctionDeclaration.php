@@ -21,8 +21,14 @@ readonly class FunctionDeclaration extends Node
         public bool $generator,
         public bool $async,
         public bool $expression = false,
+        private ?string $sourceText = null,
     ) {
         parent::__construct($location);
+    }
+
+    public function getSourceText(): ?string
+    {
+        return $this->sourceText;
     }
 
     public function type(): string

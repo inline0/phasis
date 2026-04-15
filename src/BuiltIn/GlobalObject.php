@@ -290,21 +290,48 @@ class GlobalObject
             $boundThis = $args[0] ?? JsUndefined::instance();
             $boundArgs = array_slice($args, 1);
             $target = $this_;
-            // Per spec 20.2.3.2, the bound function's length is
-            // max(0, target.length - boundArgs.length).
-            $targetLength = 0;
+
+            // Per spec 20.2.3.2 step 12-14: use target's exposed .name (string key).
+            $targetNameVal = $target->get('name');
+            $targetName = $targetNameVal instanceof JsString ? $targetNameVal->value : '';
+            $boundName = 'bound ' . $targetName;
+
+            // Per spec 20.2.3.2 step 5-8: compute bound function length.
+            // max(0, targetLen - boundArgs.length). If targetLen is Infinity, result is Infinity.
+            $boundLengthFloat = 0.0;
             $targetLengthVal = $target->get('length');
             if ($targetLengthVal instanceof JsNumber) {
-                $targetLength = (int) $targetLengthVal->toNumber();
+                $rawLen = $targetLengthVal->toNumber();
+                if (!is_nan($rawLen)) {
+                    $boundLengthFloat = max(0.0, $rawLen - (float) count($boundArgs));
+                }
             }
-            $boundLength = max(0, $targetLength - count($boundArgs));
+
+            // array_fill cannot handle Infinity — use 0 params and override the length property.
+            $safeParamCount = is_finite($boundLengthFloat) ? (int) $boundLengthFloat : 0;
             $boundFn = JsFunction::fromCallable(
-                'bound ' . $target->getName(),
+                $boundName,
                 function (JsValue $th, array $callArgs) use ($target, $boundThis, $boundArgs): JsValue {
                     return $target->call($boundThis, array_merge($boundArgs, $callArgs));
                 },
-                $boundLength,
+                $safeParamCount,
             );
+
+            // Override length when it differs from safeParamCount (e.g. Infinity case).
+            if (!is_finite($boundLengthFloat) || (float) $safeParamCount !== $boundLengthFloat) {
+                $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+                    value: new JsNumber($boundLengthFloat),
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                ));
+            }
+
+            // Per spec, bound functions are constructable iff the target is constructable.
+            if ($target->isConstructable()) {
+                $boundFn->setConstructable();
+            }
+
             // Per spec, bound functions don't have their own prototype
             // property. The [[HasInstance]] check walks to the target.
             // Copy the target's prototype so instanceof works.

@@ -2184,6 +2184,9 @@ class Interpreter
             isArrow: true,
             isAsync: $node->async,
         );
+        if ($node->getSourceText() !== null) {
+            $fn->setSourceText($node->getSourceText());
+        }
         return $fn;
     }
 
@@ -2198,6 +2201,9 @@ class Interpreter
             isGenerator: $node->generator,
             isAsync: $node->async,
         );
+        if ($node->getSourceText() !== null) {
+            $fn->setSourceText($node->getSourceText());
+        }
         // Named function expressions can reference themselves
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
@@ -2403,7 +2409,11 @@ class Interpreter
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
     {
-        return $this->buildClass($node->id?->name, $node->superClass, $node->body, $env);
+        $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $env);
+        if ($node->getSourceText() !== null) {
+            $cls->setSourceText($node->getSourceText());
+        }
+        return $cls;
     }
 
     private function evalThisExpression(Environment $env): JsValue
@@ -2613,6 +2623,9 @@ class Interpreter
         /** @var list<ClassMethod> $body */
         $body = $node->body;
         $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $env);
+        if ($node->getSourceText() !== null) {
+            $cls->setSourceText($node->getSourceText());
+        }
         if ($node->id !== null) {
             $env->defineVar($node->id->name, $cls);
         }
@@ -2711,12 +2724,27 @@ class Interpreter
 
         // Static methods (non-enumerable)
         foreach ($staticMethods as [$key, $fn, $kind]) {
-            $constructor->defineOwnProperty($key, PropertyDescriptor::data(
-                $fn instanceof JsValue ? $fn : JsUndefined::instance(),
-                true,
-                false,
-                true,
-            ));
+            if ($kind === 'get' || $kind === 'set') {
+                $existing = $constructor->getOwnPropertyDescriptor($key);
+                if ($kind === 'get') {
+                    $constructor->defineOwnProperty(
+                        $key,
+                        PropertyDescriptor::accessor($fn instanceof JsFunction ? $fn : null, $existing?->set),
+                    );
+                } else {
+                    $constructor->defineOwnProperty(
+                        $key,
+                        PropertyDescriptor::accessor($existing?->get, $fn instanceof JsFunction ? $fn : null),
+                    );
+                }
+            } else {
+                $constructor->defineOwnProperty($key, PropertyDescriptor::data(
+                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            }
         }
 
         // Inheritance
@@ -3507,6 +3535,9 @@ class Interpreter
                     isGenerator: $stmt->generator,
                     isAsync: $stmt->async,
                 );
+                if ($stmt->getSourceText() !== null) {
+                    $fn->setSourceText($stmt->getSourceText());
+                }
                 $proto = new JsObject();
                 $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
                 $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
@@ -4130,7 +4161,7 @@ class Interpreter
         if (str_contains($flags, 's')) {
             $pcreFlags .= 's';
         }
-        $pcrePattern = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+        $pcrePattern = '/' . self::jsPatternToPcre($pattern) . '/' . $pcreFlags . 'u';
 
         // Validate the pattern compiles. Throw SyntaxError if invalid.
         if (@preg_match($pcrePattern, '') === false) {
@@ -4276,6 +4307,60 @@ class Interpreter
         );
 
         return $obj;
+    }
+
+    /**
+     * Convert a JavaScript regex pattern to a PCRE2 pattern.
+     *
+     * Handles JS-specific escape sequences that PCRE2 does not support natively:
+     * - \uXXXX (4-digit Unicode escape) → \x{XXXX}
+     * - \u{XXXX} (Unicode code point escape, u-flag mode) → \x{XXXX}
+     */
+    private static function jsPatternToPcre(string $pattern): string
+    {
+        $result = '';
+        $len = strlen($pattern);
+        $i = 0;
+        while ($i < $len) {
+            if ($pattern[$i] === '\\' && $i + 1 < $len) {
+                $next = $pattern[$i + 1];
+                if ($next === 'u') {
+                    // \u{XXXX} — Unicode code point escape (variable length)
+                    if ($i + 2 < $len && $pattern[$i + 2] === '{') {
+                        $end = strpos($pattern, '}', $i + 3);
+                        if ($end !== false) {
+                            $codePoint = substr($pattern, $i + 3, $end - ($i + 3));
+                            if (strlen($codePoint) > 0 && ctype_xdigit($codePoint)) {
+                                $result .= '\\x{' . $codePoint . '}';
+                                $i = $end + 1;
+                                continue;
+                            }
+                        }
+                    }
+                    // \uXXXX — 4-digit Unicode escape
+                    $hexPart = substr($pattern, $i + 2, 4);
+                    if (strlen($hexPart) === 4 && ctype_xdigit($hexPart)) {
+                        $result .= '\\x{' . $hexPart . '}';
+                        $i += 6;
+                        continue;
+                    }
+                    // Not a valid \u escape — pass through as-is
+                    $result .= '\\';
+                    $i++;
+                } else {
+                    // Other escape: copy backslash + next char together
+                    $result .= '\\' . $next;
+                    $i += 2;
+                }
+            } elseif ($pattern[$i] === '/') {
+                $result .= '\\/';
+                $i++;
+            } else {
+                $result .= $pattern[$i];
+                $i++;
+            }
+        }
+        return $result;
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */

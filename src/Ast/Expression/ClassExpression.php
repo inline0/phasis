@@ -17,8 +17,14 @@ readonly class ClassExpression extends Node
         public ?Identifier $id,
         public ?Node $superClass,
         public array $body,
+        private ?string $sourceText = null,
     ) {
         parent::__construct($location);
+    }
+
+    public function getSourceText(): ?string
+    {
+        return $this->sourceText;
     }
 
     public function type(): string
