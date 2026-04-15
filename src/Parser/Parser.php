@@ -588,7 +588,8 @@ class Parser
         $this->expect(TokenType::LeftParen);
         $test = $this->parseExpression();
         $this->expect(TokenType::RightParen);
-        $this->consumeSemicolon();
+        // ASI special case: do-while always allows semicolon insertion after )
+        $this->eat(TokenType::Semicolon);
         return new DoWhileStatement($location, $body, $test);
     }
 
