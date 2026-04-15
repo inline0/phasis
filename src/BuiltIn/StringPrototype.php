@@ -56,6 +56,9 @@ class StringPrototype
         $d('normalize', self::normalize(), 0);
         $d('localeCompare', self::localeCompare(), 1);
 
+        // String.prototype.length is 0 per spec (it is the empty string object).
+        $proto->defineOwnProperty('length', PropertyDescriptor::data(new JsNumber(0), false, false, false));
+
         // AnnexB methods: B.2.3.1 String.prototype.substr(start, length)
         $d('substr', function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);

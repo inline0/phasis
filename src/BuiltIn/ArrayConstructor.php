@@ -804,6 +804,35 @@ class ArrayConstructor
             0
         ), true, false, true));
 
+        // toLocaleString: per spec, calls toLocaleString on each element and joins with ","
+        $proto->defineOwnProperty('toLocaleString', PropertyDescriptor::data(JsFunction::fromCallable(
+            'toLocaleString',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new \PhpJs\Exceptions\TypeError('Cannot convert undefined or null to object');
+                }
+                $len = self::getLen($this_);
+                $parts = [];
+                for ($i = 0; $i < $len; $i++) {
+                    $elem = $this_->get((string) $i);
+                    if ($elem instanceof JsUndefined || $elem instanceof JsNull) {
+                        $parts[] = '';
+                    } elseif ($elem instanceof JsObject) {
+                        $fn = $elem->get('toLocaleString');
+                        if ($fn instanceof JsFunction) {
+                            $parts[] = TypeConversion::toString($fn->call($elem, []));
+                        } else {
+                            $parts[] = TypeConversion::toString($elem);
+                        }
+                    } else {
+                        $parts[] = TypeConversion::toString($elem);
+                    }
+                }
+                return new JsString(implode(',', $parts));
+            },
+            0
+        ), true, false, true));
+
         $proto->defineOwnProperty('keys', PropertyDescriptor::data(JsFunction::fromCallable(
             'keys',
             function (JsValue $this_, array $args): JsValue {

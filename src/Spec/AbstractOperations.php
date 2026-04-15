@@ -188,10 +188,9 @@ final class AbstractOperations
             $px = TypeConversion::toPrimitive($x, 'number');
         }
 
-        // 3. If both are strings, use lexicographic comparison.
+        // 3. If both are strings, use lexicographic comparison by UTF-16 code units.
         if ($px instanceof JsString && $py instanceof JsString) {
-            $cmp = strcmp($px->value, $py->value);
-            return $cmp < 0;
+            return self::utf16LessThan($px->value, $py->value);
         }
 
         // 4a. BigInt < String: parse the string as BigInt, compare as BigInts.
@@ -236,6 +235,55 @@ final class AbstractOperations
         }
 
         return null;
+    }
+
+    /**
+     * Compare two UTF-8 strings using UTF-16 code unit ordering.
+     *
+     * For strings containing only BMP characters (no supplementary planes),
+     * this is equivalent to strcmp. The slow path converts to UTF-16 code units
+     * and compares element-wise, handling surrogate pairs correctly.
+     */
+    private static function utf16LessThan(string $a, string $b): bool
+    {
+        // Fast path: for pure ASCII, byte comparison is correct.
+        if (!preg_match('/[\x80-\xff]/', $a) && !preg_match('/[\x80-\xff]/', $b)) {
+            return strcmp($a, $b) < 0;
+        }
+
+        // Convert both to arrays of UTF-16 code units.
+        $unitsA = self::toUtf16CodeUnits($a);
+        $unitsB = self::toUtf16CodeUnits($b);
+        $lenA = count($unitsA);
+        $lenB = count($unitsB);
+        $minLen = min($lenA, $lenB);
+
+        for ($i = 0; $i < $minLen; $i++) {
+            if ($unitsA[$i] !== $unitsB[$i]) {
+                return $unitsA[$i] < $unitsB[$i];
+            }
+        }
+
+        return $lenA < $lenB;
+    }
+
+    /** @return int[] Array of UTF-16 code unit values. */
+    private static function toUtf16CodeUnits(string $utf8): array
+    {
+        $units = [];
+        $len = mb_strlen($utf8, 'UTF-8');
+        for ($i = 0; $i < $len; $i++) {
+            $cp = mb_ord(mb_substr($utf8, $i, 1, 'UTF-8'), 'UTF-8');
+            if ($cp >= 0x10000) {
+                // Supplementary character: encode as surrogate pair.
+                $cp -= 0x10000;
+                $units[] = 0xD800 | ($cp >> 10);
+                $units[] = 0xDC00 | ($cp & 0x3FF);
+            } else {
+                $units[] = $cp;
+            }
+        }
+        return $units;
     }
 
     /**

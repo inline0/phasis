@@ -102,6 +102,19 @@ class Engine
     {
         GlobalObject::install($this->globalEnv);
         \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
+
+        // Wire Function.prototype -> Object.prototype now that both exist.
+        // This must happen after ObjectConstructor::install sets globalPrototype.
+        if ($this->globalEnv->has('Function') && $this->globalEnv->has('__ObjectPrototype__')) {
+            $fnCtor = $this->globalEnv->get('Function');
+            $objProto = $this->globalEnv->get('__ObjectPrototype__');
+            if ($fnCtor instanceof JsFunction && $objProto instanceof JsObject) {
+                $fnProto = $fnCtor->get('prototype');
+                if ($fnProto instanceof JsObject) {
+                    $fnProto->setPrototype($objProto);
+                }
+            }
+        }
         \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\NumberConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ArrayConstructor::install($this->globalEnv);

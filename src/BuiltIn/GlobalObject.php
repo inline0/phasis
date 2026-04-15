@@ -247,14 +247,14 @@ class GlobalObject
 
         // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
         // Sloppy-mode this-wrapping happens inside the function body, not here.
-        $fnProto->set('call', JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
+        $fnProto->defineOwnProperty('call', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
             return $this_->call($thisArg, array_slice($args, 1));
-        }, 1));
-        $fnProto->set('apply', JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
+        }, 1), true, false, true));
+        $fnProto->defineOwnProperty('apply', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
             }
@@ -278,8 +278,8 @@ class GlobalObject
                 }
             }
             return $this_->call($thisArg, $callArgs);
-        }, 2));
-        $fnProto->set('bind', JsFunction::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
+        }, 2), true, false, true));
+        $fnProto->defineOwnProperty('bind', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
             }
@@ -309,16 +309,16 @@ class GlobalObject
                 $boundFn->set('prototype', $targetProto);
             }
             return $boundFn;
-        }, 1));
+        }, 1), true, false, true));
 
         // Function.prototype.toString: per spec, returns source text for
         // user-defined functions and NativeFunction syntax for built-ins.
-        $fnProto->set('toString', JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+        $fnProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('Function.prototype.toString requires that \'this\' be a Function');
             }
             return new JsString($this_->toJsString());
-        }, 0));
+        }, 0), true, false, true));
 
         // Function.prototype[Symbol.hasInstance] per spec 19.2.3.6.
         // OrdinaryHasInstance: check if the left operand's prototype chain
@@ -476,19 +476,20 @@ class GlobalObject
     private static function stringConstructor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $str = empty($args) ? '' : TypeConversion::toString($args[0]);
+            // Per spec 22.1.1.1 step 2, if the argument is a Symbol,
+            // return the symbol's description string (SymbolDescriptiveString).
+            // This is special-cased before the abstract ToString operation,
+            // which would throw TypeError for symbols.
+            if (!empty($args) && $args[0] instanceof \PhpJs\Value\JsSymbol) {
+                $str = $args[0]->display();
+            } else {
+                $str = empty($args) ? '' : TypeConversion::toString($args[0]);
+            }
             // When called as constructor (new String(x)), create wrapper object
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = new JsString($str);
                 $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
-                $this_->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-                    JsFunction::fromCallable('valueOf', fn() => $val),
-                    true, false, true,
-                ));
-                $this_->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
-                    JsFunction::fromCallable('toString', fn() => $val),
-                    true, false, true,
-                ));
+                // valueOf/toString come from String.prototype, not own properties.
                 // Set indexed character properties and length per spec.
                 $len = mb_strlen($str, 'UTF-8');
                 for ($i = 0; $i < $len; $i++) {
@@ -510,18 +511,11 @@ class GlobalObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $num = empty($args) ? 0.0 : TypeConversion::toNumber($args[0]);
-            // When called as constructor (new Number(x)), set up wrapper
+            // When called as constructor (new Number(x)), set up wrapper.
+            // valueOf/toString come from Number.prototype, not own properties.
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = new JsNumber($num);
                 $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
-                $this_->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-                    JsFunction::fromCallable('valueOf', fn() => $val),
-                    true, false, true,
-                ));
-                $this_->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
-                    JsFunction::fromCallable('toString', fn() => new JsString($val->toJsString())),
-                    true, false, true,
-                ));
                 return $this_;
             }
             return new JsNumber($num);

@@ -21,6 +21,11 @@ class JsFunction extends JsObject
     {
         self::$functionPrototype = $proto;
         self::$functionPrototypeChainWired = false;
+        // Clear the parent prototype so the lazy wiring in getPrototype()
+        // always re-probes for the current Engine's Object.prototype.
+        // Without this, the prototype inherited from JsObject's constructor
+        // would point to a previous Engine's Object.prototype.
+        $proto->setPrototype(null);
     }
 
     public static function setInterpreterCallback(callable $callback): void
@@ -176,22 +181,23 @@ class JsFunction extends JsObject
             return self::$functionPrototype;
         }
         // For Function.prototype itself, lazily wire to Object.prototype.
-        if (self::$functionPrototype !== null && $this === self::$functionPrototype && !self::$functionPrototypeChainWired) {
-            $parentProto = parent::getPrototype();
-            if ($parentProto === null) {
-                // Object.prototype is set via JsObject::setGlobalPrototype after
-                // ObjectConstructor::install. Probe it by creating a scratch object.
-                $probe = new JsObject();
-                $objProto = $probe->getPrototype();
-                if ($objProto !== null) {
-                    $this->setPrototype($objProto);
-                    self::$functionPrototypeChainWired = true;
-                    return $objProto;
-                }
-            } else {
-                self::$functionPrototypeChainWired = true;
+        // This must re-probe on every Engine creation because the static
+        // $functionPrototype is shared across Engine instances.
+        if (self::$functionPrototype !== null && $this === self::$functionPrototype) {
+            $currentProto = parent::getPrototype();
+            if ($currentProto !== null) {
+                return $currentProto;
             }
-            return $parentProto;
+            // Object.prototype is set via JsObject::setGlobalPrototype after
+            // ObjectConstructor::install. Probe it by creating a scratch object.
+            // The probe uses a marker to avoid recursion and stale references.
+            $probe = new JsObject();
+            $objProto = $probe->getPrototype();
+            if ($objProto !== null) {
+                $this->setPrototype($objProto);
+                return $objProto;
+            }
+            return null;
         }
         return parent::getPrototype();
     }

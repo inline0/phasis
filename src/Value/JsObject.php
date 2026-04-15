@@ -214,7 +214,7 @@ class JsObject implements JsValue
     }
 
     /** Set a property value by symbol key. */
-    public function setBySymbol(JsSymbol $symbol, JsValue $value): void
+    public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
     {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
@@ -223,10 +223,34 @@ class JsObject implements JsValue
                 $desc->set->call($this, [$value]);
                 return;
             }
+            if ($desc->isAccessorDescriptor()) {
+                // Accessor without setter: fail silently (or throw in strict mode).
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot set property Symbol() which has only a getter"
+                    );
+                }
+                return;
+            }
             if ($desc->writable === false) {
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot assign to read only property 'Symbol()' of object '#<Object>'"
+                    );
+                }
                 return;
             }
             $desc->value = $value;
+            return;
+        }
+
+        // Adding a new symbol property: check extensibility.
+        if (!$this->extensible) {
+            if ($strict) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Cannot add property Symbol(), object is not extensible"
+                );
+            }
             return;
         }
 
@@ -319,10 +343,30 @@ class JsObject implements JsValue
         return $this->properties->keys();
     }
 
-    /** @return list<string> */
+    /**
+     * All own string-keyed property names in spec order (OrdinaryOwnPropertyKeys):
+     * 1. Integer indices in ascending numeric order
+     * 2. Other string keys in insertion order
+     *
+     * @return list<string>
+     */
     public function getOwnPropertyNames(): array
     {
-        return $this->properties->keys();
+        $allKeys = $this->properties->keys();
+
+        $integerIndices = [];
+        $nonIndexStrings = [];
+        foreach ($allKeys as $key) {
+            if (self::isArrayIndex($key)) {
+                $integerIndices[] = $key;
+            } else {
+                $nonIndexStrings[] = $key;
+            }
+        }
+
+        usort($integerIndices, fn(string $a, string $b) => (int) $a <=> (int) $b);
+
+        return array_merge($integerIndices, $nonIndexStrings);
     }
 
     /** Delete a symbol-keyed own property. Returns true if deleted or absent. */
@@ -413,11 +457,30 @@ class JsObject implements JsValue
         return $val >= 0 && $val <= 4294967294 && (string) $val === $key;
     }
 
-    /** @return list<string> */
-    /** @return list<string> Own enumerable keys. */
+    /**
+     * Own enumerable string keys in spec order (OrdinaryOwnPropertyKeys):
+     * 1. Integer indices in ascending numeric order
+     * 2. Other string keys in insertion order
+     *
+     * @return list<string>
+     */
     public function getOwnEnumerableKeys(): array
     {
-        return $this->properties->enumerableKeys();
+        $enumKeys = $this->properties->enumerableKeys();
+
+        $integerIndices = [];
+        $nonIndexStrings = [];
+        foreach ($enumKeys as $key) {
+            if (self::isArrayIndex($key)) {
+                $integerIndices[] = $key;
+            } else {
+                $nonIndexStrings[] = $key;
+            }
+        }
+
+        usort($integerIndices, fn(string $a, string $b) => (int) $a <=> (int) $b);
+
+        return array_merge($integerIndices, $nonIndexStrings);
     }
 
     /**
@@ -442,11 +505,120 @@ class JsObject implements JsValue
     }
 
     /**
-     * Alias for defineProperty, matching the spec name OrdinaryDefineOwnProperty.
+     * OrdinaryDefineOwnProperty per ES spec 10.1.6.
+     *
+     * Merges the incoming descriptor with any existing descriptor,
+     * respecting configurability and writability constraints. Fields
+     * that are absent from $desc keep their current values.
      */
-    public function defineOwnProperty(string $name, PropertyDescriptor $desc): void
+    public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
-        $this->properties->set($name, $desc);
+        $current = $this->properties->get($name);
+
+        if ($current === null) {
+            if (!$this->extensible) {
+                return false;
+            }
+            $this->properties->set($name, $desc);
+            return true;
+        }
+
+        // If the current property is not configurable, enforce restrictions.
+        if ($current->configurable === false) {
+            // Cannot make it configurable.
+            if ($desc->configurable === true) {
+                return false;
+            }
+            // Cannot change enumerable if not configurable.
+            if ($desc->enumerable !== null && $desc->enumerable !== $current->enumerable) {
+                return false;
+            }
+        }
+
+        if ($current->isDataDescriptor() && ($desc->get !== null || $desc->set !== null || $desc->isAccessorDescriptor())) {
+            // Converting data to accessor.
+            if ($current->configurable === false) {
+                return false;
+            }
+            $merged = PropertyDescriptor::accessor(
+                get: $desc->get,
+                set: $desc->set,
+                enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                configurable: $desc->configurable ?? $current->configurable ?? true,
+            );
+            $this->properties->set($name, $merged);
+            return true;
+        }
+
+        if ($current->isAccessorDescriptor() && $desc->isDataDescriptor() && !$desc->isAccessorDescriptor()) {
+            // Converting accessor to data.
+            if ($current->configurable === false) {
+                return false;
+            }
+            $merged = new PropertyDescriptor(
+                value: $desc->value,
+                writable: $desc->writable ?? false,
+                enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                configurable: $desc->configurable ?? $current->configurable ?? true,
+            );
+            $this->properties->set($name, $merged);
+            return true;
+        }
+
+        // Both are data descriptors: merge fields.
+        if ($current->isDataDescriptor()) {
+            if ($current->configurable === false) {
+                if ($current->writable === false) {
+                    if ($desc->writable === true) {
+                        return false;
+                    }
+                    // If writable is false and configurable is false, reject value change.
+                    if ($desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue($desc->value, $current->value ?? JsUndefined::instance())) {
+                        return false;
+                    }
+                }
+            }
+            $merged = new PropertyDescriptor(
+                value: $desc->value ?? $current->value,
+                writable: $desc->writable ?? $current->writable,
+                enumerable: $desc->enumerable ?? $current->enumerable,
+                configurable: $desc->configurable ?? $current->configurable,
+            );
+            $this->properties->set($name, $merged);
+            return true;
+        }
+
+        // Both are accessor descriptors: merge fields.
+        if ($current->isAccessorDescriptor()) {
+            if ($current->configurable === false) {
+                if ($desc->set !== null && $desc->set !== $current->set) {
+                    return false;
+                }
+                if ($desc->get !== null && $desc->get !== $current->get) {
+                    return false;
+                }
+            }
+            $merged = PropertyDescriptor::accessor(
+                get: $desc->get ?? $current->get,
+                set: $desc->set ?? $current->set,
+                enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                configurable: $desc->configurable ?? $current->configurable ?? true,
+            );
+            $this->properties->set($name, $merged);
+            return true;
+        }
+
+        // Generic descriptor (no value/writable/get/set): merge.
+        $merged = new PropertyDescriptor(
+            value: $desc->value ?? $current->value,
+            writable: $desc->writable ?? $current->writable,
+            enumerable: $desc->enumerable ?? $current->enumerable,
+            configurable: $desc->configurable ?? $current->configurable,
+            get: $desc->get ?? $current->get,
+            set: $desc->set ?? $current->set,
+        );
+        $this->properties->set($name, $merged);
+        return true;
     }
 
     public function getPrototype(): ?JsObject

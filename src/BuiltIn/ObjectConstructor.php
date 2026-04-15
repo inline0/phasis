@@ -106,7 +106,14 @@ class ObjectConstructor
                 if (!$this_ instanceof JsObject) {
                     return new JsBoolean(false);
                 }
-                $prop = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                $key = $args[0] ?? new JsUndefined();
+                // Per spec, hasOwnProperty accepts symbol keys.
+                if ($key instanceof \PhpJs\Value\JsSymbol) {
+                    return new JsBoolean(
+                        $this_->getSymbolPropertyDescriptor($key) !== null,
+                    );
+                }
+                $prop = TypeConversion::toString($key);
                 return new JsBoolean($this_->hasOwnProperty($prop));
             },
             1,
@@ -174,8 +181,14 @@ class ObjectConstructor
                 if (!$this_ instanceof JsObject) {
                     return new JsBoolean(false);
                 }
-                $prop = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-                $desc = $this_->getOwnPropertyDescriptor($prop);
+                $key = $args[0] ?? JsUndefined::instance();
+                // Per spec, propertyIsEnumerable accepts symbol keys.
+                if ($key instanceof \PhpJs\Value\JsSymbol) {
+                    $desc = $this_->getSymbolPropertyDescriptor($key);
+                } else {
+                    $prop = TypeConversion::toString($key);
+                    $desc = $this_->getOwnPropertyDescriptor($prop);
+                }
                 if ($desc === null) {
                     return new JsBoolean(false);
                 }
@@ -243,7 +256,13 @@ class ObjectConstructor
         return function (JsValue $this_, array $args): JsValue {
             $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $keys = $obj->getOwnEnumerableKeys();
-            $values = array_map(fn(string $k) => $obj->get($k), $keys);
+            $values = [];
+            foreach ($keys as $key) {
+                $desc = $obj->getOwnPropertyDescriptor($key);
+                if ($desc !== null && $desc->enumerable === true) {
+                    $values[] = $obj->get($key);
+                }
+            }
             return JsArray::fromArray($values);
         };
     }
@@ -255,7 +274,12 @@ class ObjectConstructor
             $keys = $obj->getOwnEnumerableKeys();
             $entries = [];
             foreach ($keys as $key) {
-                $entries[] = JsArray::fromArray([new JsString($key), $obj->get($key)]);
+                // Per spec, re-check that the property still exists and is enumerable
+                // (getters on earlier properties may have deleted/modified it).
+                $desc = $obj->getOwnPropertyDescriptor($key);
+                if ($desc !== null && $desc->enumerable === true) {
+                    $entries[] = JsArray::fromArray([new JsString($key), $obj->get($key)]);
+                }
             }
             return JsArray::fromArray($entries);
         };
@@ -435,6 +459,8 @@ class ObjectConstructor
             }
             // Per spec: freeze prevents extensions and marks all own properties non-writable, non-configurable.
             $obj->preventExtensions();
+
+            // Freeze string-keyed properties.
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);
@@ -443,20 +469,39 @@ class ObjectConstructor
                 }
                 if ($desc->isDataDescriptor()) {
                     $obj->defineOwnProperty($key, new PropertyDescriptor(
+                        writable: false,
+                        configurable: false,
+                    ));
+                } else {
+                    $obj->defineOwnProperty($key, new PropertyDescriptor(
+                        configurable: false,
+                    ));
+                }
+            }
+
+            // Freeze symbol-keyed properties.
+            foreach ($obj->getOwnSymbolProperties() as $id => $desc) {
+                $sym = JsSymbol::fromId($id);
+                if ($sym === null) {
+                    continue;
+                }
+                if ($desc->isDataDescriptor()) {
+                    $obj->definePropertyBySymbol($sym, new PropertyDescriptor(
                         value: $desc->value,
                         writable: false,
                         enumerable: $desc->enumerable,
                         configurable: false,
                     ));
                 } else {
-                    $obj->defineOwnProperty($key, new PropertyDescriptor(
-                        enumerable: $desc->enumerable,
-                        configurable: false,
+                    $obj->definePropertyBySymbol($sym, PropertyDescriptor::accessor(
                         get: $desc->get,
                         set: $desc->set,
+                        enumerable: $desc->enumerable ?? true,
+                        configurable: false,
                     ));
                 }
             }
+
             return $obj;
         };
     }
@@ -473,10 +518,7 @@ class ObjectConstructor
     private static function getOwnPropertyNamesFn(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                return new JsArray();
-            }
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $names = $obj->getOwnPropertyNames();
             $jsNames = array_map(fn(string $n) => new JsString($n), $names);
             return JsArray::fromArray($jsNames);
@@ -549,10 +591,7 @@ class ObjectConstructor
     private static function getOwnPropertyDescriptorFn(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $obj = $args[0] ?? JsUndefined::instance();
-            if (!$obj instanceof JsObject) {
-                return JsUndefined::instance();
-            }
+            $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             $keyRaw = $args[1] ?? JsUndefined::instance();
             $propKey = TypeConversion::toPropertyKey($keyRaw);
 
@@ -663,28 +702,42 @@ class ObjectConstructor
                 return $obj;
             }
             $obj->preventExtensions();
+
+            // Seal string-keyed properties.
             $keys = $obj->getOwnPropertyNames();
             foreach ($keys as $key) {
                 $desc = $obj->getOwnPropertyDescriptor($key);
                 if ($desc === null) {
                     continue;
                 }
+                $obj->defineOwnProperty($key, new PropertyDescriptor(
+                    configurable: false,
+                ));
+            }
+
+            // Seal symbol-keyed properties.
+            foreach ($obj->getOwnSymbolProperties() as $id => $desc) {
+                $sym = JsSymbol::fromId($id);
+                if ($sym === null) {
+                    continue;
+                }
                 if ($desc->isDataDescriptor()) {
-                    $obj->defineOwnProperty($key, new PropertyDescriptor(
+                    $obj->definePropertyBySymbol($sym, new PropertyDescriptor(
                         value: $desc->value,
                         writable: $desc->writable,
                         enumerable: $desc->enumerable,
                         configurable: false,
                     ));
                 } else {
-                    $obj->defineOwnProperty($key, new PropertyDescriptor(
-                        enumerable: $desc->enumerable,
-                        configurable: false,
+                    $obj->definePropertyBySymbol($sym, PropertyDescriptor::accessor(
                         get: $desc->get,
                         set: $desc->set,
+                        enumerable: $desc->enumerable ?? true,
+                        configurable: false,
                     ));
                 }
             }
+
             return $obj;
         };
     }

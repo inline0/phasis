@@ -1099,7 +1099,7 @@ class Parser
             TokenType::String => $this->parseStringLiteral(),
             TokenType::True, TokenType::False => $this->parseBooleanLiteral(),
             TokenType::Null => $this->parseNullLiteral(),
-            TokenType::Identifier, TokenType::Let, TokenType::Await, TokenType::Static_, TokenType::Yield => $this->parseIdentifierExpression(),
+            TokenType::Identifier, TokenType::Let, TokenType::Await, TokenType::Static_, TokenType::Yield, TokenType::Of => $this->parseIdentifierExpression(),
             TokenType::This => $this->parseThisExpression(),
             TokenType::LeftParen => $this->parseParenthesizedOrArrow(),
             TokenType::LeftBracket => $this->parseArrayExpression(),

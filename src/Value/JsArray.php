@@ -208,7 +208,7 @@ class JsArray extends JsObject
         return parent::internalSet($name, $value, $receiver);
     }
 
-    public function defineOwnProperty(string $name, PropertyDescriptor $desc): void
+    public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
         if ($name === 'length' && $desc->value !== null) {
             $newLen = (int) $desc->value->toNumber();
@@ -217,15 +217,16 @@ class JsArray extends JsObject
                 $this->delete((string) $i);
             }
             $this->length = $newLen;
-            return;
+            return true;
         }
-        parent::defineOwnProperty($name, $desc);
-        if (ctype_digit($name)) {
+        $result = parent::defineOwnProperty($name, $desc);
+        if ($result && ctype_digit($name)) {
             $index = (int) $name;
             if ($index >= $this->length) {
                 $this->length = $index + 1;
             }
         }
+        return $result;
     }
 
     public function hasOwnProperty(string $name): bool

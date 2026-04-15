@@ -74,6 +74,7 @@ use PhpJs\Value\JsGenerator;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsOptionalUndefined;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
@@ -84,6 +85,7 @@ class Interpreter
     private CallStack $callStack;
     private int $maxLoopIterations;
     private bool $strictMode = false;
+
 
     public function __construct(
         private Environment $globalEnv,
@@ -211,7 +213,7 @@ class Interpreter
 
     public function evaluate(Node $node, Environment $env): JsValue
     {
-        return match (true) {
+        $result = match (true) {
             $node instanceof Literal => $this->evalLiteral($node),
             $node instanceof Identifier => $this->evalIdentifier($node, $env),
             $node instanceof BinaryExpression => $this->evalBinaryExpression($node, $env),
@@ -237,6 +239,18 @@ class Interpreter
             $node instanceof AwaitExpression => $this->evalAwaitExpression($node, $env),
             default => throw new InternalError('Unknown expression type: ' . $node->type()),
         };
+
+        // Unwrap optional chain sentinel for non-chain consumers.
+        // MemberExpression and CallExpression handle JsOptionalUndefined internally.
+        if (
+            $result instanceof JsOptionalUndefined
+            && !($node instanceof MemberExpression)
+            && !($node instanceof CallExpression)
+        ) {
+            return JsUndefined::instance();
+        }
+
+        return $result;
     }
 
     private function evalLiteral(Literal $node): JsValue
@@ -974,6 +988,18 @@ class Interpreter
 
         if ($node->callee instanceof MemberExpression) {
             $rawObj = $this->evaluate($node->callee->object, $env);
+
+            // Optional chain short-circuit: the base of the callee was
+            // null/undefined via ?., so skip the call entirely.
+            if ($rawObj instanceof JsOptionalUndefined) {
+                return $rawObj;
+            }
+
+            // Optional call: obj?.method() where obj evaluates to null/undefined
+            if ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined)) {
+                return JsOptionalUndefined::instance();
+            }
+
             $rawCallKey = null;
             if ($node->callee->computed) {
                 $rawCallKey = $this->evaluate($node->callee->property, $env);
@@ -1032,6 +1058,16 @@ class Interpreter
             $isMethodCall = true;
         } else {
             $callee = $this->evaluate($node->callee, $env);
+        }
+
+        // Optional chain short-circuit: callee resolved to short-circuit sentinel.
+        if ($callee instanceof JsOptionalUndefined) {
+            return $callee;
+        }
+
+        // Optional call: fn?.() where fn is null/undefined.
+        if ($node->optional && ($callee instanceof JsNull || $callee instanceof JsUndefined)) {
+            return JsOptionalUndefined::instance();
         }
 
         // Proxy apply trap: if the callee is a Proxy wrapping a function, invoke its apply().
@@ -1867,15 +1903,35 @@ class Interpreter
     {
         $obj = $this->evaluate($node->object, $env);
 
-        if ($node->optional && ($obj instanceof JsNull || $obj instanceof JsUndefined)) {
-            return JsUndefined::instance();
+        // Propagate optional chain short-circuit through the chain.
+        if ($obj instanceof JsOptionalUndefined) {
+            return $obj;
         }
 
-        // Evaluate the property key. For computed access, the key may be a Symbol.
+        if ($node->optional && ($obj instanceof JsNull || $obj instanceof JsUndefined)) {
+            return JsOptionalUndefined::instance();
+        }
+
+        // Evaluate the property key expression. For computed access, the key
+        // expression is evaluated first, but ToPropertyKey (which calls toString)
+        // is deferred until after ToObject(base), per spec 13.3.3.
         $rawKey = null;
         if ($node->computed) {
             $rawKey = $this->evaluate($node->property, $env);
         }
+
+        // Per spec: ToObject(base) precedes ToPropertyKey(key). Accessing a
+        // property on null or undefined must throw TypeError before converting
+        // the key, so toString() on the key object is never called.
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            $baseDesc = $obj instanceof JsNull ? 'null' : 'undefined';
+            // Use display() for the error message to avoid triggering toString on the key.
+            $keyDesc = $node->computed
+                ? ($rawKey !== null ? $rawKey->display() : '')
+                : ($node->property instanceof Identifier ? $node->property->name : '');
+            throw new TypeError("Cannot read properties of {$baseDesc} (reading '{$keyDesc}')");
+        }
+
         $isSymbolKey = $rawKey instanceof JsSymbol;
         $key = $isSymbolKey ? '' : ($node->computed
             ? TypeConversion::toString($rawKey)
@@ -1922,14 +1978,6 @@ class Interpreter
                 return $obj->getBySymbol($rawKey);
             }
             return $obj->get($key);
-        }
-
-        // null/undefined property access is always a TypeError
-        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
-            throw new TypeError(
-                "Cannot read properties of " . ($obj instanceof JsNull ? 'null' : 'undefined')
-                . " (reading '{$key}')",
-            );
         }
 
         // Auto-boxing for primitives (number, boolean)

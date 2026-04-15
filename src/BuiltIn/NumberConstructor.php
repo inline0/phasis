@@ -120,6 +120,8 @@ class NumberConstructor
     private static function createPrototype(): JsObject
     {
         $proto = new JsObject();
+        // Per spec 21.1.4, Number.prototype.[[NumberData]] is +0.
+        $proto->defineOwnProperty('[[PrimitiveValue]]', PropertyDescriptor::data(new JsNumber(0.0), false, false, false));
 
         $d = static fn (string $n, \Closure $fn, int $len) => $proto->defineOwnProperty(
             $n,

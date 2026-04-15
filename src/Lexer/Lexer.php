@@ -15,6 +15,8 @@ class Lexer
     private int $column = 0;
     private bool $lineTerminatorBefore = false;
     private int $templateDepth = 0;
+    /** @var int[] Brace depth stack: one entry per active template expression. */
+    private array $templateBraceDepth = [];
 
     /** @var Token[] */
     private array $tokens = [];
@@ -41,18 +43,35 @@ class Lexer
                 break;
             }
 
-            // Inside template expression: } means template continuation
-            if ($this->templateDepth > 0 && $this->source[$this->pos] === '}') {
+            // Inside template expression: } at brace depth 0 means template continuation.
+            // Nested braces (from function bodies, object literals, etc.) are tracked.
+            if (
+                $this->templateDepth > 0
+                && $this->source[$this->pos] === '}'
+                && end($this->templateBraceDepth) === 0
+            ) {
                 $this->advance(); // skip }
+                array_pop($this->templateBraceDepth);
                 $token = $this->readTemplateContinuation();
                 if ($token->type === TokenType::TemplateTail) {
                     $this->templateDepth--;
+                } else {
+                    // TemplateMiddle: push new brace depth for the new expression.
+                    $this->templateBraceDepth[] = 0;
                 }
-                // TemplateMiddle: templateDepth stays the same
             } else {
                 $token = $this->readToken();
                 if ($token->type === TokenType::TemplateHead) {
                     $this->templateDepth++;
+                    $this->templateBraceDepth[] = 0;
+                }
+                // Track brace depth inside template expressions.
+                if ($this->templateDepth > 0) {
+                    if ($token->type === TokenType::LeftBrace) {
+                        $this->templateBraceDepth[count($this->templateBraceDepth) - 1]++;
+                    } elseif ($token->type === TokenType::RightBrace && !empty($this->templateBraceDepth)) {
+                        $this->templateBraceDepth[count($this->templateBraceDepth) - 1]--;
+                    }
                 }
             }
             $token = new Token(
@@ -523,8 +542,12 @@ class Lexer
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
                 $cooked .= $this->readEscapeSequence();
-                // Raw value preserves the original escape text from source.
-                $raw .= substr($this->source, $rawStart, $this->pos - $rawStart);
+                // Raw value preserves the original escape text from source,
+                // but CR and CRLF are normalized to LF per spec.
+                $rawChunk = substr($this->source, $rawStart, $this->pos - $rawStart);
+                $rawChunk = str_replace("\r\n", "\n", $rawChunk);
+                $rawChunk = str_replace("\r", "\n", $rawChunk);
+                $raw .= $rawChunk;
                 continue;
             }
 
@@ -575,7 +598,10 @@ class Lexer
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
                 $cooked .= $this->readEscapeSequence();
-                $raw .= substr($this->source, $rawStart, $this->pos - $rawStart);
+                $rawChunk = substr($this->source, $rawStart, $this->pos - $rawStart);
+                $rawChunk = str_replace("\r\n", "\n", $rawChunk);
+                $rawChunk = str_replace("\r", "\n", $rawChunk);
+                $raw .= $rawChunk;
                 continue;
             }
 
@@ -1039,6 +1065,8 @@ class Lexer
             || $prev->type === TokenType::Null
             || $prev->type === TokenType::This
             || $prev->type === TokenType::Super
+            // Contextual keywords that can be used as identifiers in expression context.
+            || $prev->type === TokenType::Of
         ) {
             return false;
         }
