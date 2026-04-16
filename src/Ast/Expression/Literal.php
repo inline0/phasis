@@ -13,6 +13,8 @@ readonly class Literal extends Node
         SourceLocation $location,
         public mixed $value,
         public string $raw,
+        /** True when a string literal contained no escape sequences or line continuations. */
+        public bool $verbatim = true,
     ) {
         parent::__construct($location);
     }

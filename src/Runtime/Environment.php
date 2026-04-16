@@ -75,6 +75,33 @@ class Environment
         }
     }
 
+    /**
+     * Define a user-declared var/function in global scope.
+     *
+     * Per spec (CreateGlobalVarBinding / CreateGlobalFunctionBinding), variables
+     * declared with `var` or `function` at the top level create enumerable,
+     * non-configurable properties on the global object (unlike built-ins which are
+     * non-enumerable and configurable). If the property already exists, only the
+     * value is updated, preserving the existing descriptor.
+     */
+    public function defineGlobalVar(string $name, JsValue $value): void
+    {
+        $this->bindings[$name] = $value;
+        if ($this->linkedObject !== null) {
+            if ($this->linkedObject->hasOwnProperty($name)) {
+                // Property already exists (e.g. duplicate var or function + var):
+                // update value only.
+                $this->linkedObject->set($name, $value);
+            } else {
+                // Per spec: {[[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: false}
+                $this->linkedObject->defineOwnProperty(
+                    $name,
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, false),
+                );
+            }
+        }
+    }
+
     /** Define a binding that can be removed with `delete`. Used for built-in globals. */
     public function defineDeletable(string $name, JsValue $value): void
     {
@@ -197,19 +224,16 @@ class Environment
 
             $this->bindings[$name] = $value;
             // Sync to the linked global object when the binding is in the global env.
+            // Only update the property if it already exists on the global object (meaning
+            // it was created by a var/function declaration via defineVar). Let/const bindings
+            // are NOT properties on the global object and must not be created here.
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
                 && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
+                && $this->linkedObject->hasOwnProperty($name)
             ) {
-                if ($this->linkedObject->hasOwnProperty($name)) {
-                    $this->linkedObject->set($name, $value);
-                } else {
-                    $this->linkedObject->defineOwnProperty(
-                        $name,
-                        \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
-                    );
-                }
+                $this->linkedObject->set($name, $value);
             }
             return;
         }

@@ -368,16 +368,20 @@ class Lexer
         $quote = $this->source[$this->pos];
         $this->advance();
         $result = '';
+        $hasEscape = false;
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === $quote) {
                 $this->advance();
-                return new Token(TokenType::String, $result, $start);
+                // rawValue 'true' means verbatim (no escape sequences); used to recognise
+                // directive prologues: "use strict" is only a directive if it has no escapes.
+                return new Token(TokenType::String, $result, $start, rawValue: $hasEscape ? 'escaped' : 'verbatim');
             }
 
             if ($ch === '\\') {
+                $hasEscape = true;
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated string literal', $start);

@@ -68,6 +68,9 @@ class JsFunction extends JsObject
      */
     private bool $hasCustomPrototype = false;
 
+    /** Whether this function was defined in (or has) strict mode. */
+    private bool $strict = false;
+
     /**
      * @param list<mixed> $params AST param nodes.
      * @param mixed $body AST node (BlockStatement or expression).
@@ -82,8 +85,10 @@ class JsFunction extends JsObject
         bool $isAsync = false,
         ?JsValue $boundThis = null,
         ?JsObject $prototype = null,
+        bool $strict = false,
     ) {
         parent::__construct($prototype);
+        $this->strict = $strict;
         $this->name = $name;
         $this->params = $params;
         $this->body = $body;
@@ -279,6 +284,11 @@ class JsFunction extends JsObject
             enumerable: false,
             configurable: true,
         ));
+    }
+
+    public function isStrict(): bool
+    {
+        return $this->strict;
     }
 
     public function isArrow(): bool

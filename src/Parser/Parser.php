@@ -1179,7 +1179,11 @@ class Parser
     private function parseStringLiteral(): Literal
     {
         $token = $this->advance();
-        return new Literal($token->location, $token->value, $token->value);
+        // rawValue 'verbatim' means no escape sequences were used in the string literal.
+        // This is needed to correctly detect "use strict" directives (escape-containing
+        // strings like 'use\u0020strict' must NOT be treated as directives per spec).
+        $verbatim = ($token->rawValue === 'verbatim');
+        return new Literal($token->location, $token->value, $token->value, verbatim: $verbatim);
     }
 
     private function parseBooleanLiteral(): Literal

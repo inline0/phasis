@@ -121,7 +121,12 @@ class Interpreter
             }
             $expr = $stmt->expression;
             if ($expr instanceof Literal && is_string($expr->value) && $expr->value === 'use strict') {
-                return true;
+                // Per spec, the directive must be the exact token "use strict" or 'use strict'
+                // with no escape sequences or line continuations. The verbatim flag is set by
+                // the lexer when the string contained no backslash escapes.
+                if ($expr->verbatim) {
+                    return true;
+                }
             }
             // Only string literal expression statements can be directives.
             if (!$expr instanceof Literal || !is_string($expr->value)) {
@@ -1230,9 +1235,6 @@ class Interpreter
         // Proxy apply trap: if the callee is a Proxy wrapping a function, invoke its apply().
         if ($callee instanceof \PhpJs\Value\JsProxy) {
             $args = $this->evaluateArguments($node->arguments, $env);
-            if (!$isMethodCall && !$this->strictMode) {
-                $thisValue = $this->getGlobalObject();
-            }
             return $callee->apply($thisValue, $args);
         }
 
@@ -1241,13 +1243,12 @@ class Interpreter
             throw new TypeError("{$desc} is not a function");
         }
 
-        // In sloppy mode, unbound user-defined function calls receive the global object as this.
-        // In strict mode, this remains undefined.
-        // Native (built-in) functions are not subject to this substitution per spec: they receive
-        // this as-is (OrdinaryCallBindThis only applies to ECMAScript functions).
-        if (!$isMethodCall && !$this->strictMode && $callee->getBoundThis() === null && !$callee->isNative()) {
-            $thisValue = $this->getGlobalObject();
-        }
+        // For simple (non-method) calls, thisValue is always undefined here.
+        // executeFunction will convert undefined → globalObject for sloppy-mode functions
+        // (OrdinaryCallBindThis step 5: non-strict, thisValue is null/undefined → global).
+        // Strict functions (and native built-ins) receive undefined as-is.
+        // We do NOT set thisValue = globalObject here so that explicit apply(globalObject)
+        // calls pass the global object through without being cleared by executeFunction.
 
         $args = $this->evaluateArguments($node->arguments, $env);
         return $this->callFunction($callee, $thisValue, $args);
@@ -1663,11 +1664,13 @@ class Interpreter
         try {
             $fnEnv = $fn->getClosure()->createChild();
 
-            // Detect function-level "use strict" directive.
+            // Per spec 10.2.1.2: A function's strict mode is determined by its own
+            // [[Strict]] flag (set at definition time from the enclosing scope) OR by
+            // a "use strict" directive in its body. The CALLER's strict mode is irrelevant.
             $body = $fn->getBody();
-            if ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body)) {
-                $this->strictMode = true;
-            }
+            $fnStrict = $fn->isStrict()
+                || ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body));
+            $this->strictMode = $fnStrict;
 
             // Per spec 9.2.1.2 OrdinaryCallBindThis:
             // In strict mode, this is passed as-is (no wrapping).
@@ -1676,15 +1679,8 @@ class Interpreter
             //   - primitive this -> ToObject(this)
             if (!$fn->isArrow()) {
                 if ($this->strictMode) {
-                    // In strict mode, if the global object was passed as default
-                    // this (from evalCallExpression), replace with undefined.
-                    if (
-                        $fn->getBoundThis() === null
-                        && $thisValue instanceof JsObject
-                        && $thisValue === $this->getGlobalObject()
-                    ) {
-                        $thisValue = JsUndefined::instance();
-                    }
+                    // Strict mode: thisValue is passed as-is (no boxing, no substitution).
+                    // The caller is responsible for passing the correct value.
                 } else {
                     // Sloppy mode: wrap null/undefined to global, primitives to Object.
                     if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
@@ -2499,6 +2495,7 @@ class Interpreter
             $env,
             isArrow: true,
             isAsync: $node->async,
+            strict: $this->strictMode,
         );
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
@@ -2516,6 +2513,7 @@ class Interpreter
             $fnEnv,
             isGenerator: $node->generator,
             isAsync: $node->async,
+            strict: $this->strictMode,
         );
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
@@ -2945,7 +2943,9 @@ class Interpreter
             $cls->setSourceText($node->sourceText);
         }
         if ($node->id !== null) {
-            $env->defineVar($node->id->name, $cls);
+            // Class declarations are lexical bindings (like let), not var bindings.
+            // They must NOT be visible as properties on the global object.
+            $env->defineLet($node->id->name, $cls);
         }
         return Completion::normal(JsUndefined::instance());
     }
@@ -2964,6 +2964,10 @@ class Interpreter
         $constructor = null;
         $staticMethods = [];
         $instanceMethods = [];
+
+        // Class bodies are always strict mode per spec.
+        $previousStrictMode = $this->strictMode;
+        $this->strictMode = true;
 
         foreach ($methods as $method) {
             $symbolKey = null;
@@ -3107,6 +3111,8 @@ class Interpreter
             // it can find the super constructor via getPrototype().
             $constructor->setHomeObject($proto);
         }
+
+        $this->strictMode = $previousStrictMode;
 
         return $constructor;
     }
@@ -3972,6 +3978,7 @@ class Interpreter
                     $env,
                     isGenerator: $stmt->generator,
                     isAsync: $stmt->async,
+                    strict: $this->strictMode,
                 );
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
@@ -3979,7 +3986,13 @@ class Interpreter
                 $proto = new JsObject();
                 $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
                 $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
-                $env->defineVar($stmt->id->name, $fn);
+                // At global scope, function declarations are enumerable, non-configurable properties.
+                // In nested scopes (env has no linked object), use defineVar as usual.
+                if ($env->getLinkedObject() !== null) {
+                    $env->defineGlobalVar($stmt->id->name, $fn);
+                } else {
+                    $env->defineVar($stmt->id->name, $fn);
+                }
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
                 foreach ($stmt->declarations as $decl) {
                     $this->hoistVarNames($decl->id, $env);
@@ -4098,7 +4111,13 @@ class Interpreter
     {
         if ($pattern instanceof Identifier) {
             if (!$env->has($pattern->name)) {
-                $env->defineVar($pattern->name, JsUndefined::instance());
+                // At global scope use the correct user-var descriptor; in nested
+                // scopes use defineVar (no linked object).
+                if ($env->getLinkedObject() !== null) {
+                    $env->defineGlobalVar($pattern->name, JsUndefined::instance());
+                } else {
+                    $env->defineVar($pattern->name, JsUndefined::instance());
+                }
             }
         } elseif ($pattern instanceof ArrayPattern) {
             foreach ($pattern->elements as $elem) {
