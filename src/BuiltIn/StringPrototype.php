@@ -161,10 +161,49 @@ class StringPrototype
             // Static methods on String constructor — non-enumerable per spec.
             $existing->defineOwnProperty('fromCharCode', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1), true, false, true));
             $existing->defineOwnProperty('fromCodePoint', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1), true, false, true));
+            $existing->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable('raw', self::rawFn(), 1),
+                true,
+                false,
+                true,
+            ));
         }
+
+        // Register the prototype so TypeConversion::toObject can link String wrapper objects.
+        \PhpJs\Value\JsString::resetStringPrototype();
+        \PhpJs\Value\JsString::setStringPrototype($proto);
 
         // Store the prototype so the interpreter can access it for auto-boxing.
         $env->defineVar('__StringPrototype__', $proto);
+    }
+
+    private static function rawFn(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            // String.raw`template` receives a template object as first arg, then substitutions.
+            $template = $args[0] ?? JsUndefined::instance();
+            if (!$template instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('String.raw: template argument must be an object');
+            }
+            $rawVal = $template->get('raw');
+            if (!$rawVal instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('String.raw: template.raw must be an object');
+            }
+            $rawLen = ($rawVal instanceof JsArray)
+                ? $rawVal->getLength()
+                : (int) TypeConversion::toNumber($rawVal->get('length'));
+            if ($rawLen === 0) {
+                return new JsString('');
+            }
+            $result = '';
+            for ($i = 0; $i < $rawLen; $i++) {
+                $result .= TypeConversion::toString($rawVal->get((string) $i));
+                if ($i + 1 < count($args)) {
+                    $result .= TypeConversion::toString($args[$i + 1]);
+                }
+            }
+            return new JsString($result);
+        };
     }
 
     /**

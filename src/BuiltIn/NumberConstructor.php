@@ -115,6 +115,10 @@ class NumberConstructor
             configurable: false,
         ));
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
+
+        // Register the prototype so TypeConversion::toObject can link Number wrapper objects.
+        \PhpJs\Value\JsNumber::resetNumberPrototype();
+        \PhpJs\Value\JsNumber::setNumberPrototype($proto);
     }
 
     private static function createPrototype(): JsObject

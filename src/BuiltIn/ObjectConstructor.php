@@ -24,6 +24,9 @@ class ObjectConstructor
 {
     public static function install(Environment $env): void
     {
+        // Reset global prototype so a new engine instance does not inherit
+        // stale prototypes from a previous Engine instance.
+        JsObject::resetGlobalPrototype();
         $proto = self::createPrototype();
 
         $constructor = JsFunction::fromCallable('Object', function (JsValue $this_, array $args) use ($proto, $env): JsValue {
@@ -174,6 +177,10 @@ class ObjectConstructor
                 }
                 if ($this_ instanceof JsArray) {
                     return new JsString('[object Array]');
+                }
+                // Check for arguments objects (created by makeArgumentsObject).
+                if ($this_ instanceof JsObject && $this_->hasOwnProperty('[[IsArguments]]')) {
+                    return new JsString('[object Arguments]');
                 }
                 // Check for Symbol.toStringTag
                 $tag = null;
@@ -433,9 +440,17 @@ class ObjectConstructor
             $descriptor = self::toPropertyDescriptor($desc);
 
             if ($propKey instanceof JsSymbol) {
-                $obj->definePropertyBySymbol($propKey, $descriptor);
+                $success = $obj->definePropertyBySymbol($propKey, $descriptor);
+                if (!$success) {
+                    $keyStr = $propKey->description ?? 'Symbol()';
+                    throw new TypeError("Cannot redefine property: {$keyStr}");
+                }
             } else {
-                $obj->defineOwnProperty($propKey->toJsString(), $descriptor);
+                $keyStr = $propKey->toJsString();
+                $success = $obj->defineOwnProperty($keyStr, $descriptor);
+                if (!$success) {
+                    throw new TypeError("Cannot redefine property: {$keyStr}");
+                }
             }
 
             return $obj;

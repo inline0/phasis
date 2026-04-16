@@ -76,6 +76,10 @@ class GlobalObject
         $booleanFn->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($boolProto, false, false, false));
         $env->defineVar('Boolean', $booleanFn);
 
+        // Register the prototype so TypeConversion::toObject can link Boolean wrapper objects.
+        JsBoolean::resetBooleanPrototype();
+        JsBoolean::setBooleanPrototype($boolProto);
+
         // eval
         $env->defineVar('eval', JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
             $code = $args[0] ?? JsUndefined::instance();

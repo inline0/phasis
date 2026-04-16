@@ -24,6 +24,8 @@ class ArrayConstructor
 {
     public static function install(Environment $env): void
     {
+        // Reset global prototype so a new engine instance does not inherit stale prototype.
+        JsArray::resetGlobalPrototype();
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
                 $n = $args[0]->value;

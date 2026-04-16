@@ -1763,10 +1763,7 @@ class Interpreter
             $hasDefaultParams = $this->hasParameterExpressions($params);
 
             if (!$fn->isArrow()) {
-                $argsObj = JsArray::fromArray($args);
-                if (!$this->strictMode) {
-                    $argsObj->set('callee', $fn);
-                }
+                $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
                 $fnEnv->defineVar('arguments', $argsObj);
             }
 
@@ -1878,7 +1875,7 @@ class Interpreter
         // object is returned. Only the body execution is deferred to the Fiber.
         $fnEnv = $fn->getClosure()->createChild();
         $fnEnv->defineVar('this', $thisValue);
-        $argsObj = JsArray::fromArray($args);
+        $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
         $fnEnv->defineVar('arguments', $argsObj);
         $this->bindParameters($fn->getParams(), $args, $fnEnv);
 
@@ -1923,7 +1920,7 @@ class Interpreter
             } else {
                 $fnEnv = $fn->getClosure()->createChild();
                 $fnEnv->defineVar('this', $thisValue);
-                $argsObj = JsArray::fromArray($args);
+                $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
                 $fnEnv->defineVar('arguments', $argsObj);
                 $this->bindParameters($fn->getParams(), $args, $fnEnv);
             }
@@ -1954,6 +1951,118 @@ class Interpreter
      * @param Node[] $params
      * @param JsValue[] $args
      */
+    /**
+     * Create an arguments exotic object per ES spec 10.4.4.
+     *
+     * Non-strict: includes callee pointing to the function.
+     * Strict or arrow: callee/caller are poison-pill accessors that throw TypeError.
+     * Symbol.iterator is linked to Array.prototype[Symbol.iterator] if available.
+     *
+     * @param list<JsValue> $args
+     */
+    private function makeArgumentsObject(array $args, ?JsFunction $fn, bool $strictMode): JsObject
+    {
+        $argsObj = new JsObject();
+        $argsObj->defineOwnProperty('[[IsArguments]]', PropertyDescriptor::data(
+            new JsBoolean(true),
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
+        $argsObj->defineOwnProperty('length', PropertyDescriptor::data(
+            new JsNumber((float) count($args)),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+        ));
+        foreach ($args as $i => $arg) {
+            $argsObj->defineOwnProperty((string) $i, PropertyDescriptor::data(
+                $arg,
+                writable: true,
+                enumerable: true,
+                configurable: true,
+            ));
+        }
+        if (!$strictMode && $fn !== null) {
+            $argsObj->defineOwnProperty('callee', PropertyDescriptor::data(
+                $fn,
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            ));
+        } else {
+            $poisonPill = JsFunction::fromCallable(
+                'ThrowTypeError',
+                function (): JsValue {
+                    throw new TypeError(
+                        "'caller', 'callee', and 'arguments' properties may not be accessed "
+                        . 'on strict mode functions or the arguments objects for calls to them',
+                    );
+                },
+            );
+            $argsObj->defineOwnProperty('callee', PropertyDescriptor::accessor(
+                get: $poisonPill,
+                set: $poisonPill,
+                enumerable: false,
+                configurable: false,
+            ));
+            $argsObj->defineOwnProperty('caller', PropertyDescriptor::accessor(
+                get: $poisonPill,
+                set: $poisonPill,
+                enumerable: false,
+                configurable: false,
+            ));
+        }
+        // Link Symbol.iterator to Array.prototype[Symbol.iterator] if available.
+        $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+        $arrayIterFn = null;
+        $arrayProto = JsArray::getGlobalPrototype();
+        if ($arrayProto !== null && $arrayProto->hasBySymbol($iterSym)) {
+            $iterVal = $arrayProto->getBySymbol($iterSym);
+            if ($iterVal instanceof JsFunction) {
+                $arrayIterFn = $iterVal;
+            }
+        }
+        if ($arrayIterFn === null) {
+            $arrayIterFn = JsFunction::fromCallable('values', function (JsValue $self_) use ($iterSym): JsValue {
+                $obj = $self_ instanceof JsObject ? $self_ : new JsObject();
+                $index = 0;
+                $len = ($obj instanceof JsArray)
+                    ? $obj->getLength()
+                    : (int) \PhpJs\Spec\TypeConversion::toNumber($obj->get('length'));
+                $iterator = new JsObject();
+                $nextFn = function () use ($obj, &$index, $len): JsValue {
+                    $result = new JsObject();
+                    if ($index < $len) {
+                        $result->set('value', $obj->get((string) $index));
+                        $result->set('done', new JsBoolean(false));
+                        $index++;
+                    } else {
+                        $result->set('value', JsUndefined::instance());
+                        $result->set('done', new JsBoolean(true));
+                    }
+                    return $result;
+                };
+                $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
+                $selfFn = JsFunction::fromCallable(
+                    '[Symbol.iterator]',
+                    function (JsValue $s): JsValue {
+                        return $s;
+                    },
+                );
+                $iterator->setBySymbol($iterSym, $selfFn);
+                return $iterator;
+            });
+        }
+        $argsObj->definePropertyBySymbol($iterSym, PropertyDescriptor::data(
+            $arrayIterFn,
+            writable: true,
+            enumerable: false,
+            configurable: true,
+        ));
+        return $argsObj;
+    }
+
     private function bindParameters(array $params, array $args, Environment $env): void
     {
         // Per spec §10.2.1: when there are parameter default expressions,
@@ -2151,13 +2260,9 @@ class Interpreter
             if ($prop instanceof RestElement) {
                 $restObj = new JsObject();
                 if ($value instanceof JsObject) {
-                    foreach ($value->getOwnPropertyNames() as $key) {
-                        if (in_array($key, $usedKeys, true)) {
-                            continue;
-                        }
-                        // Per spec: object rest only includes own enumerable properties.
-                        $desc = $value->getOwnPropertyDescriptor($key);
-                        if ($desc !== null && ($desc->enumerable ?? true)) {
+                    // Per spec: object rest only includes own enumerable properties.
+                    foreach ($value->getOwnEnumerableKeys() as $key) {
+                        if (!in_array($key, $usedKeys, true)) {
                             $restObj->set($key, $value->get($key));
                         }
                     }
@@ -2464,12 +2569,9 @@ class Interpreter
             if ($prop instanceof SpreadElement) {
                 $source = $this->evaluate($prop->argument, $env);
                 if ($source instanceof JsObject) {
-                    // Copy own enumerable string-keyed properties.
-                    foreach ($source->getOwnPropertyNames() as $key) {
-                        $desc = $source->getOwnPropertyDescriptor($key);
-                        if ($desc !== null && $desc->enumerable !== false) {
-                            $obj->set($key, $source->get($key));
-                        }
+                    // Copy own enumerable string-keyed properties (CopyDataProperties).
+                    foreach ($source->getOwnEnumerableKeys() as $key) {
+                        $obj->set($key, $source->get($key));
                     }
                     // Copy own enumerable symbol-keyed properties (per spec CopyDataProperties).
                     foreach ($source->getOwnSymbolsWithDescriptors() as [$sym, $desc]) {
@@ -2541,6 +2643,15 @@ class Interpreter
                 }
                 $obj->setBySymbol($rawKey, $value);
             } else {
+                // __proto__ assignment in object literal sets the prototype.
+                if (!$prop->computed && $key === '__proto__') {
+                    if ($value instanceof JsObject) {
+                        $obj->setPrototype($value);
+                    } elseif ($value instanceof JsNull) {
+                        $obj->setPrototype(null);
+                    }
+                    continue;
+                }
                 // Name inference for property functions
                 if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
                     $value->setName($key);
@@ -2937,7 +3048,8 @@ class Interpreter
                 if ($prop instanceof RestElement) {
                     $restObjAvb = new JsObject();
                     if ($value instanceof JsObject) {
-                        foreach ($value->getOwnPropertyNames() as $rk) {
+                        // Per spec: object rest only includes own enumerable properties.
+                        foreach ($value->getOwnEnumerableKeys() as $rk) {
                             if (!in_array($rk, $usedKeysAvb, true)) {
                                 $restObjAvb->set($rk, $value->get($rk));
                             }
@@ -3655,7 +3767,8 @@ class Interpreter
                 if ($prop instanceof RestElement) {
                     $restObjApe = new JsObject();
                     if ($value instanceof JsObject) {
-                        foreach ($value->getOwnPropertyNames() as $rk) {
+                        // Per spec: object rest only includes own enumerable properties.
+                        foreach ($value->getOwnEnumerableKeys() as $rk) {
                             if (!in_array($rk, $usedKeysApe, true)) {
                                 $restObjApe->set($rk, $value->get($rk));
                             }
@@ -4476,7 +4589,8 @@ class Interpreter
                     // Collect all own enumerable properties not already consumed.
                     $restObj = new JsObject();
                     if ($value instanceof JsObject) {
-                        foreach ($value->getOwnPropertyNames() as $rk) {
+                        // Per spec: object rest only includes own enumerable properties.
+                        foreach ($value->getOwnEnumerableKeys() as $rk) {
                             if (!in_array($rk, $usedKeys, true)) {
                                 $restObj->set($rk, $value->get($rk));
                             }

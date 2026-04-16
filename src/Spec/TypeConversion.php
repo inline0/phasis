@@ -525,8 +525,17 @@ final class TypeConversion
             return $value;
         }
 
-        // Create a wrapper object with the primitive stored internally.
-        $wrapper = new JsObject();
+        // Create a wrapper object with the primitive stored internally,
+        // linked to the appropriate prototype if available.
+        $wrapperProto = null;
+        if ($value instanceof JsBoolean) {
+            $wrapperProto = JsBoolean::getBooleanPrototype();
+        } elseif ($value instanceof JsNumber) {
+            $wrapperProto = JsNumber::getNumberPrototype();
+        } elseif ($value instanceof JsString) {
+            $wrapperProto = JsString::getStringPrototype();
+        }
+        $wrapper = new JsObject($wrapperProto);
         $wrapper->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($value, false, false, false));
 
         // Install valueOf that returns the wrapped primitive, matching the spec behavior
