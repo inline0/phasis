@@ -187,7 +187,16 @@ class NumberConstructor
         return function (JsValue $this_, array $args): JsValue {
             // Get the number value from `this`.
             $numValue = self::extractNumberValue($this_);
-            $digits = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
+
+            // Step 1: Convert fractionDigits to integer.
+            // Use ToIntegerOrInfinity: Infinity / -Infinity → RangeError before NaN check.
+            $digitsRaw = isset($args[0]) && !($args[0] instanceof JsUndefined)
+                ? TypeConversion::toNumber($args[0])
+                : 0.0;
+            if (is_infinite($digitsRaw)) {
+                throw new \PhpJs\Exceptions\RangeError('toFixed() digits argument must be between 0 and 100');
+            }
+            $digits = is_nan($digitsRaw) ? 0 : (int) $digitsRaw;
 
             if ($digits < 0 || $digits > 100) {
                 throw new \PhpJs\Exceptions\RangeError('toFixed() digits argument must be between 0 and 100');
@@ -325,41 +334,122 @@ class NumberConstructor
                 return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
             }
 
-            $fractionDigits = isset($args[0]) && !($args[0] instanceof JsUndefined)
-                ? (int) TypeConversion::toNumber($args[0])
-                : null;
+            $fractionDigitsArg = $args[0] ?? null;
+            $isUndefined = $fractionDigitsArg === null || $fractionDigitsArg instanceof JsUndefined;
 
-            if ($fractionDigits !== null && ($fractionDigits < 0 || $fractionDigits > 100)) {
-                throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
-            }
-
-            if ($numValue === 0.0) {
-                if ($fractionDigits !== null) {
-                    $m = '0' . ($fractionDigits > 0 ? '.' . str_repeat('0', $fractionDigits) : '');
-                } else {
-                    $m = '0';
+            if (!$isUndefined) {
+                $raw = TypeConversion::toNumber($fractionDigitsArg);
+                if (is_infinite($raw)) {
+                    throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
                 }
-                return new JsString($m . 'e+0');
+                $fractionDigits = is_nan($raw) ? 0 : (int) $raw;
+                if ($fractionDigits < 0 || $fractionDigits > 100) {
+                    throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
+                }
+            } else {
+                $fractionDigits = null;
             }
 
             $negative = $numValue < 0;
             $numValue = abs($numValue);
 
-            if ($fractionDigits !== null) {
-                $result = sprintf('%.' . $fractionDigits . 'e', $numValue);
+            if ($fractionDigits === null) {
+                // No fractionDigits: use shortest round-trip representation.
+                // Get the JS string for the absolute value using Grisu-like algorithm.
+                $str = (new JsNumber($negative ? -$numValue : $numValue))->toJsString();
+                if ($negative) {
+                    $str = ltrim($str, '-');
+                }
+                // Convert the JS string representation to exponential form.
+                $result = self::stringToExponential($str);
             } else {
-                $result = sprintf('%.20e', $numValue);
-                $parts = explode('e', $result);
-                $mantissa = rtrim(rtrim($parts[0], '0'), '.');
-                $result = $mantissa . 'e' . $parts[1];
+                if ($numValue === 0.0) {
+                    $m = '0' . ($fractionDigits > 0 ? '.' . str_repeat('0', $fractionDigits) : '');
+                    return new JsString($m . 'e+0');
+                }
+                $result = sprintf('%.' . $fractionDigits . 'e', $numValue);
+                // Normalize exponent: remove leading zeros, ensure sign.
+                $result = preg_replace_callback('/e([+-])0*(\d+)/', function (array $m): string {
+                    return 'e' . $m[1] . $m[2];
+                }, $result) ?? $result;
             }
-
-            $result = preg_replace_callback('/e([+-])0*(\d+)/', function (array $m): string {
-                return 'e' . $m[1] . $m[2];
-            }, $result) ?? $result;
 
             return new JsString(($negative ? '-' : '') . $result);
         };
+    }
+
+    /**
+     * Convert a JS number string (e.g. "123.456", "1e+20", "0.001") to exponential notation.
+     * Used by toExponential() when fractionDigits is undefined.
+     */
+    private static function stringToExponential(string $str): string
+    {
+        if ($str === '0') {
+            return '0e+0';
+        }
+
+        // Parse the string into significant digits and base-10 exponent.
+        $str = strtolower($str);
+        $e = 0;
+
+        if (str_contains($str, 'e')) {
+            [$mantissa, $expStr] = explode('e', $str, 2);
+            $e = (int) $expStr;
+        } else {
+            $mantissa = $str;
+        }
+
+        // Extract all digit characters and locate where the decimal point is.
+        if (str_contains($mantissa, '.')) {
+            $dotPos = strpos($mantissa, '.');
+            $allDigits = str_replace('.', '', $mantissa);
+            // The exponent contribution from the decimal position:
+            // value = (allDigits as integer) × 10^(e - (len(allDigits) - dotPos))
+            // We want: significantDigits × 10^exp where significantDigits ∈ [1, 10)
+            $e -= (strlen($allDigits) - (int) $dotPos);
+        } else {
+            $allDigits = $mantissa;
+            // value = allDigits × 10^e
+        }
+
+        // Strip leading zeros from digits and adjust exponent.
+        $leadingZeros = strlen($allDigits) - strlen(ltrim($allDigits, '0'));
+        $digits = ltrim($allDigits, '0');
+        if ($digits === '') {
+            $digits = '0';
+        }
+        // Each leading zero removed means we need to subtract 1 from e.
+        // (Because allDigits × 10^e = digits × 10^(e + leadingZeros)... wait, no.)
+        // Actually: allDigits = 00001, e -= len(00001) - 4 = 1, so e was adjusted for len already.
+        // Strip leading zeros: 00001 → 1, adjust e.
+        // If allDigits = "00001" and e represents allDigits × 10^e: "1" × 10^(e + 4)
+        // But we already adjusted e for the decimal, so:
+        // If allDigits = "00001" and value = allDigits_int × 10^(e_adjusted):
+        // allDigits_int = 1, so value = 1 × 10^(e_adjusted)
+        // But we need to handle e += leadingZeros to get the right final exponent.
+        // No wait: if value = "00001" × 10^X, then value = 1 × 10^X (since "00001" as int = 1)
+        // The exponent X is already computed correctly above.
+        // What changes when stripping leading zeros: the _digit representation_ changes,
+        // but the value doesn't. The exponent for exponential notation is position of first digit.
+        // After stripping leading zeros: digits = "1", and e = X - 0 (no change needed).
+        // Because: allDigits_int × 10^X = digits_int × 10^X (same value).
+        // The exponential exponent = X + len(digits) - 1.
+        $e += strlen($digits) - 1;
+
+        // Remove trailing zeros from digits.
+        $digits = rtrim($digits, '0');
+        if ($digits === '') {
+            $digits = '0';
+        }
+
+        // Format: first digit, optional dot + rest, e+exp.
+        if (strlen($digits) === 1) {
+            $mantissaStr = $digits;
+        } else {
+            $mantissaStr = $digits[0] . '.' . substr($digits, 1);
+        }
+
+        return $mantissaStr . 'e' . ($e >= 0 ? '+' : '') . $e;
     }
 
     private static function extractNumberValue(JsValue $this_): float

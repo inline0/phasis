@@ -722,36 +722,32 @@ final class TypeConversion
      * Trim JS whitespace characters from both ends of a string.
      *
      * JS WhiteSpace (11.2) and LineTerminator (11.3) code points:
-     * TAB, VT, FF, SP, NBSP, BOM, and any Unicode "Space_Separator" category,
-     * plus LF, CR, LS (U+2028), PS (U+2029).
+     * TAB (U+0009), VT (U+000B), FF (U+000C), SP (U+0020), NBSP (U+00A0),
+     * ZWNBSP/BOM (U+FEFF), Unicode Zs category (Space_Separator),
+     * plus LF (U+000A), CR (U+000D), LS (U+2028), PS (U+2029).
+     *
+     * Note: U+180E (MONGOLIAN VOWEL SEPARATOR) was removed from Zs category
+     * in Unicode 6.3 and is NOT whitespace per ES2016+.
+     *
+     * Uses the 'u' flag to match Unicode code points, not raw bytes.
      */
     public static function trimWhitespace(string $value): string
     {
-        // Match all JS-defined whitespace and line terminators at start and end.
-        $pattern = '/^[\x09\x0A\x0B\x0C\x0D\x20\xC2\xA0'
-            . '\xE2\x80\x80-\xE2\x80\x8A'  // U+2000..U+200A (en/em spaces etc.)
-            . '\xE2\x80\xA8'                 // U+2028 Line Separator
-            . '\xE2\x80\xA9'                 // U+2029 Paragraph Separator
-            . '\xE2\x80\xAF'                 // U+202F Narrow No-Break Space
-            . '\xE2\x81\x9F'                 // U+205F Medium Mathematical Space
-            . '\xE3\x80\x80'                 // U+3000 Ideographic Space
-            . '\xEF\xBB\xBF'                 // U+FEFF BOM (Zero Width No-Break Space)
-            . ']+/';
+        // All JS whitespace/line-terminator code points listed explicitly.
+        // Zs (Space_Separator) members: U+0020, U+00A0, U+1680, U+2000..U+200A,
+        // U+202F, U+205F, U+3000. (U+180E excluded, not Zs since Unicode 6.3.)
+        $ws = '\x{0009}\x{000A}\x{000B}\x{000C}\x{000D}\x{0020}'
+            . '\x{00A0}'    // NBSP
+            . '\x{1680}'    // OGHAM SPACE MARK
+            . '\x{2000}-\x{200A}'  // EN QUAD..HAIR SPACE
+            . '\x{2028}'    // LINE SEPARATOR (LineTerminator)
+            . '\x{2029}'    // PARAGRAPH SEPARATOR (LineTerminator)
+            . '\x{202F}'    // NARROW NO-BREAK SPACE
+            . '\x{205F}'    // MEDIUM MATHEMATICAL SPACE
+            . '\x{3000}'    // IDEOGRAPHIC SPACE
+            . '\x{FEFF}';   // BOM / ZERO WIDTH NO-BREAK SPACE
 
-        // Trim leading.
-        $value = preg_replace($pattern, '', $value) ?? $value;
-
-        // Trim trailing. Same character set but anchored at end.
-        $tailPattern = '/[\x09\x0A\x0B\x0C\x0D\x20\xC2\xA0'
-            . '\xE2\x80\x80-\xE2\x80\x8A'
-            . '\xE2\x80\xA8'
-            . '\xE2\x80\xA9'
-            . '\xE2\x80\xAF'
-            . '\xE2\x81\x9F'
-            . '\xE3\x80\x80'
-            . '\xEF\xBB\xBF'
-            . ']+$/';
-
-        return preg_replace($tailPattern, '', $value) ?? $value;
+        $value = preg_replace('/^[' . $ws . ']+/u', '', $value) ?? $value;
+        return preg_replace('/[' . $ws . ']+$/u', '', $value) ?? $value;
     }
 }
