@@ -291,14 +291,21 @@ class GlobalObject
             $boundArgs = array_slice($args, 1);
             $target = $this_;
 
-            // Per spec 20.2.3.2, the bound function's length is max(0, target.length - |boundArgs|).
-            // Handle Infinity/NaN correctly: do not cast to int.
+            // Per spec 20.2.3.2, bound function length = max(0, ToIntegerOrInfinity(target.length) - |boundArgs|).
             $boundLengthFloat = 0.0;
             $targetLengthVal = $target->get('length');
             if ($targetLengthVal instanceof JsNumber) {
                 $tl = $targetLengthVal->value;
-                if (!is_nan($tl)) {
-                    $boundLengthFloat = max(0.0, $tl - count($boundArgs));
+                if (is_nan($tl) || $tl === 0.0) {
+                    $boundLengthFloat = 0.0;
+                } elseif ($tl === INF) {
+                    $boundLengthFloat = INF;
+                } elseif ($tl === -INF) {
+                    $boundLengthFloat = 0.0;
+                } else {
+                    // ToIntegerOrInfinity: floor(abs(tl)) * sign(tl), then max(0, ...)
+                    $intTl = ($tl >= 0 ? 1.0 : -1.0) * floor(abs($tl));
+                    $boundLengthFloat = max(0.0, $intTl - count($boundArgs));
                 }
             }
             // Determine target name for the bound function's name.
