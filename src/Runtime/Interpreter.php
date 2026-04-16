@@ -1143,11 +1143,11 @@ class Interpreter
                 : ($node->callee->property instanceof Identifier
                     ? $node->callee->property->name : ''));
 
-            // String method calls: look up on __StringPrototype__
-            if ($rawObj instanceof JsString && !$isSymbolCallKey && $env->has('__StringPrototype__')) {
+            // String method calls: look up on __StringPrototype__ (handles both string and Symbol keys).
+            if ($rawObj instanceof JsString && $env->has('__StringPrototype__')) {
                 $proto = $env->get('__StringPrototype__');
                 if ($proto instanceof JsObject) {
-                    $method = $proto->get($key);
+                    $method = $isSymbolCallKey ? $proto->getBySymbol($rawCallKey) : $proto->get($key);
                     if ($method instanceof JsFunction) {
                         $args = $this->evaluateArguments($node->arguments, $env);
                         return $this->callFunction($method, $rawObj, $args);
@@ -3498,31 +3498,9 @@ class Interpreter
      */
     private function getIterator(JsValue $iterable): ?JsObject
     {
-        // String iteration: produce a character iterator.
+        // String iteration: produce a spec-compliant String Iterator object.
         if ($iterable instanceof JsString) {
-            $chars = [];
-            $len = mb_strlen($iterable->value, 'UTF-8');
-            for ($i = 0; $i < $len; $i++) {
-                $chars[] = mb_substr($iterable->value, $i, 1, 'UTF-8');
-            }
-            $index = 0;
-            $total = count($chars);
-
-            $iterator = new JsObject();
-            $nextFn = function () use (&$index, $total, &$chars): JsValue {
-                $result = new JsObject();
-                if ($index < $total) {
-                    $result->set('value', new JsString($chars[$index]));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            return $iterator;
+            return \PhpJs\BuiltIn\StringPrototype::createStringIteratorObject($iterable->value);
         }
 
         if (!$iterable instanceof JsObject) {

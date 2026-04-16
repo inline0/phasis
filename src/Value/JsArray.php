@@ -36,41 +36,51 @@ class JsArray extends JsObject
      *
      * Called by ArrayConstructor::install after the prototype is set up.
      * Symbol.iterator lives on Array.prototype, not on each instance.
+     * Returns iterators using %ArrayIteratorPrototype% with internal slots per spec.
      */
     public static function installSymbolIteratorOnPrototype(JsObject $proto): void
     {
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $factory = function (JsValue $this_) use ($iterSym): JsValue {
+        $factory = function (JsValue $this_): JsValue {
             $array = $this_ instanceof JsObject ? $this_ : new JsObject();
-            $index = 0;
-            $iterator = new JsObject();
-            $nextFn = function () use ($array, &$index): JsValue {
-                $result = new JsObject();
-                $len = ($array instanceof JsArray)
-                    ? $array->getLength()
-                    : (int) \PhpJs\Spec\TypeConversion::toNumber($array->get('length'));
-                if ($index < $len) {
-                    $result->set('value', $array->get((string) $index));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $selfIterFn = JsFunction::fromCallable(
-                '[Symbol.iterator]',
-                function (JsValue $self_): JsValue {
-                    return $self_;
-                },
-            );
-            $iterator->setBySymbol($iterSym, $selfIterFn);
-            return $iterator;
+            return self::createArrayIteratorObject($array, 'value');
         };
         $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
         $proto->setBySymbol($iterSym, $iteratorFn);
+    }
+
+    /**
+     * Create a spec-compliant Array Iterator object with internal slots.
+     * The iterator's next() method lives on %ArrayIteratorPrototype%.
+     */
+    public static function createArrayIteratorObject(JsObject $array, string $kind): JsObject
+    {
+        $iterator = new JsObject(\PhpJs\BuiltIn\IteratorPrototypes::arrayIteratorPrototype());
+        $iterator->defineOwnProperty('[[ArrayIteratorBrand]]', \PhpJs\Object\PropertyDescriptor::data(
+            new JsBoolean(true),
+            false,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[IteratedObject]]', \PhpJs\Object\PropertyDescriptor::data(
+            $array,
+            true,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[ArrayNextIndex]]', \PhpJs\Object\PropertyDescriptor::data(
+            new JsNumber(0.0),
+            true,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[ArrayIterationKind]]', \PhpJs\Object\PropertyDescriptor::data(
+            new JsString($kind),
+            false,
+            false,
+            false,
+        ));
+        return $iterator;
     }
 
     public function getLength(): int

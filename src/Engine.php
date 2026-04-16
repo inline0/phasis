@@ -100,6 +100,11 @@ class Engine
 
     private function installBuiltins(): void
     {
+        // Reset iterator prototype singletons so each Engine instance gets
+        // fresh prototypes. test262 tests run in isolated realms and may mutate
+        // (e.g. delete configurable properties on) these objects during tests.
+        \PhpJs\BuiltIn\IteratorPrototypes::reset();
+
         GlobalObject::install($this->globalEnv);
         \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
 
@@ -185,7 +190,9 @@ class Engine
         // BigInt.length = 1 per spec (writable: false, enumerable: false, configurable: true).
         $bigIntFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
             value: new \PhpJs\Value\JsNumber(1.0),
-            writable: false, enumerable: false, configurable: true,
+            writable: false,
+            enumerable: false,
+            configurable: true,
         ));
 
         // BigInt.prototype: allows attaching methods to all BigInt primitives.
@@ -247,7 +254,9 @@ class Engine
                 }
                 return new \PhpJs\Value\JsString($negative ? '-' . $result : $result);
             }),
-            true, false, true
+            true,
+            false,
+            true
         ));
 
         // BigInt.prototype.valueOf()
@@ -264,7 +273,9 @@ class Engine
                 }
                 throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.valueOf called on non-BigInt');
             }),
-            true, false, true
+            true,
+            false,
+            true
         ));
 
         // BigInt.prototype.toLocaleString() - same as toString() per spec.
@@ -275,7 +286,9 @@ class Engine
                 }
                 throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
             }),
-            true, false, true
+            true,
+            false,
+            true
         ));
 
         // BigInt.prototype[Symbol.toStringTag] = "BigInt"
@@ -283,18 +296,25 @@ class Engine
             \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
             new \PhpJs\Object\PropertyDescriptor(
                 value: new \PhpJs\Value\JsString('BigInt'),
-                writable: false, enumerable: false, configurable: true,
+                writable: false,
+                enumerable: false,
+                configurable: true,
             )
         );
 
         // BigInt.prototype.constructor = BigInt
         $bigIntProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
-            $bigIntFn, true, false, true
+            $bigIntFn,
+            true,
+            false,
+            true
         ));
 
         $bigIntFn->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
             value: $bigIntProto,
-            writable: false, enumerable: false, configurable: false,
+            writable: false,
+            enumerable: false,
+            configurable: false,
         ));
 
         // Pure-PHP helpers for asIntN/asUintN.
@@ -460,7 +480,9 @@ class Engine
                 $mod = $bigUintN($bigint->value, $width);
                 return new \PhpJs\Value\JsBigInt($mod);
             }, 2),
-            true, false, true
+            true,
+            false,
+            true
         ));
 
         // BigInt.asIntN(width, bigint): modulo 2^width, signed.
@@ -482,7 +504,9 @@ class Engine
                 }
                 return new \PhpJs\Value\JsBigInt($mod);
             }, 2),
-            true, false, true
+            true,
+            false,
+            true
         ));
 
         // Store the prototype so JsBigInt primitive lookups can find it.

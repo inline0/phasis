@@ -16,6 +16,8 @@ use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 use PhpJs\Object\PropertyDescriptor;
+use PhpJs\BuiltIn\SymbolConstructor;
+use PhpJs\BuiltIn\IteratorPrototypes;
 
 class StringPrototype
 {
@@ -161,8 +163,105 @@ class StringPrototype
             $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1));
         }
 
+        // Symbol.iterator on String.prototype: returns a String Iterator object.
+        $iterSym = SymbolConstructor::iterator();
+        $iterFn = JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $this_): JsValue {
+            $str = self::extractString($this_);
+            return self::createStringIteratorObject($str);
+        }, 0);
+        $proto->definePropertyBySymbol(
+            $iterSym,
+            PropertyDescriptor::data($iterFn, true, false, true),
+        );
+
+        // Install next() on %StringIteratorPrototype%.
+        self::installNextOnStringIteratorPrototype();
+
         // Store the prototype so the interpreter can access it for auto-boxing.
         $env->defineVar('__StringPrototype__', $proto);
+    }
+
+    /**
+     * Create a spec-compliant String Iterator object with internal slots.
+     */
+    public static function createStringIteratorObject(string $str): JsObject
+    {
+        $iterator = new JsObject(IteratorPrototypes::stringIteratorPrototype());
+        $iterator->defineOwnProperty('[[StringIteratorBrand]]', PropertyDescriptor::data(
+            new JsBoolean(true),
+            false,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[IteratedString]]', PropertyDescriptor::data(
+            new JsString($str),
+            true,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[StringIteratorNextIndex]]', PropertyDescriptor::data(
+            new JsNumber(0.0),
+            true,
+            false,
+            false,
+        ));
+        return $iterator;
+    }
+
+    /**
+     * Install next() on %StringIteratorPrototype% per the ECMAScript spec.
+     */
+    private static function installNextOnStringIteratorPrototype(): void
+    {
+        $proto = IteratorPrototypes::stringIteratorPrototype();
+        if ($proto->get('next') instanceof JsFunction) {
+            return; // Already installed.
+        }
+
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('%StringIteratorPrototype%.next called on incompatible receiver');
+            }
+            $brandDesc = $this_->getOwnPropertyDescriptor('[[StringIteratorBrand]]');
+            if ($brandDesc === null || !$brandDesc->value instanceof JsBoolean || !$brandDesc->value->value) {
+                throw new \PhpJs\Exceptions\TypeError('%StringIteratorPrototype%.next called on incompatible receiver');
+            }
+
+            $strDesc = $this_->getOwnPropertyDescriptor('[[IteratedString]]');
+            if ($strDesc === null || !$strDesc->value instanceof JsString) {
+                // Exhausted.
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+
+            $str = $strDesc->value->value;
+            $indexDesc = $this_->getOwnPropertyDescriptor('[[StringIteratorNextIndex]]');
+            $index = $indexDesc !== null ? (int) TypeConversion::toNumber($indexDesc->value) : 0;
+            $len = mb_strlen($str, 'UTF-8');
+
+            if ($index >= $len) {
+                // Exhausted: clear iterated string.
+                $strDesc->value = JsUndefined::instance();
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+
+            $char = mb_substr($str, $index, 1, 'UTF-8');
+            if ($indexDesc !== null) {
+                $indexDesc->value = new JsNumber((float) ($index + 1));
+            }
+
+            $result = new JsObject();
+            $result->set('value', new JsString($char));
+            $result->set('done', new JsBoolean(false));
+            return $result;
+        }, 0);
+
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
     }
 
     /**
@@ -940,8 +1039,10 @@ class StringPrototype
                         if ($next2 === ':' || $next2 === '=' || $next2 === '!') {
                             continue; // non-capturing
                         }
-                        if ($next2 === '<' && $i + 3 < $len
-                            && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')) {
+                        if (
+                            $next2 === '<' && $i + 3 < $len
+                            && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')
+                        ) {
                             continue; // lookbehind
                         }
                         if ($next2 === '<') {

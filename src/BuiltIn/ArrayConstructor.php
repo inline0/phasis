@@ -19,6 +19,7 @@ use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 use PhpJs\Object\PropertyDescriptor;
+use PhpJs\BuiltIn\IteratorPrototypes;
 
 class ArrayConstructor
 {
@@ -57,6 +58,8 @@ class ArrayConstructor
         self::installPrototypeMethods($proto);
         // Symbol.iterator on Array.prototype, not on each instance.
         JsArray::installSymbolIteratorOnPrototype($proto);
+        // Install next() on %ArrayIteratorPrototype% per spec.
+        self::installNextOnArrayIteratorPrototype();
 
         $constructor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false));
         JsArray::setGlobalPrototype($proto);
@@ -1027,38 +1030,76 @@ class ArrayConstructor
     /** Create an iterator object for keys, values, or entries. */
     private static function createArrayIterator(JsObject $array, string $kind): JsObject
     {
-        $index = 0;
-        $iterator = new JsObject();
-        $nextFn = function () use ($array, &$index, $kind): JsValue {
-            $result = new JsObject();
-            if ($index < self::getLen($array)) {
-                $key = new JsNumber((float) $index);
-                $value = $array->get((string) $index);
-                $index++;
-                $result->set('done', new JsBoolean(false));
-                $result->set('value', match ($kind) {
-                    'key' => $key,
-                    'value' => $value,
-                    'key+value' => JsArray::fromArray([$key, $value]),
-                    default => $value,
-                });
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
+        return JsArray::createArrayIteratorObject($array, $kind);
+    }
+
+    /**
+     * Install next() on %ArrayIteratorPrototype% per the ECMAScript spec.
+     * Called once during install(). The next() method uses internal slots
+     * ([[IteratedObject]], [[ArrayNextIndex]], [[ArrayIterationKind]]) and
+     * performs brand checking via [[ArrayIteratorBrand]].
+     */
+    private static function installNextOnArrayIteratorPrototype(): void
+    {
+        $proto = IteratorPrototypes::arrayIteratorPrototype();
+        if ($proto->get('next') instanceof JsFunction) {
+            return; // Already installed.
+        }
+
+        $nextFn = JsFunction::fromCallable('next', function (\PhpJs\Value\JsValue $this_): \PhpJs\Value\JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('%ArrayIteratorPrototype%.next called on incompatible receiver');
             }
+            $brandDesc = $this_->getOwnPropertyDescriptor('[[ArrayIteratorBrand]]');
+            if ($brandDesc === null || !$brandDesc->value instanceof \PhpJs\Value\JsBoolean || !$brandDesc->value->value) {
+                throw new \PhpJs\Exceptions\TypeError('%ArrayIteratorPrototype%.next called on incompatible receiver');
+            }
+
+            $objDesc = $this_->getOwnPropertyDescriptor('[[IteratedObject]]');
+            if ($objDesc === null || !$objDesc->value instanceof JsObject) {
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new \PhpJs\Value\JsBoolean(true));
+                return $result;
+            }
+
+            $array = $objDesc->value;
+            $indexDesc = $this_->getOwnPropertyDescriptor('[[ArrayNextIndex]]');
+            $index = $indexDesc !== null ? (int) \PhpJs\Spec\TypeConversion::toNumber($indexDesc->value) : 0;
+
+            $kindDesc = $this_->getOwnPropertyDescriptor('[[ArrayIterationKind]]');
+            $kind = $kindDesc !== null ? \PhpJs\Spec\TypeConversion::toString($kindDesc->value) : 'value';
+
+            $len = self::getLen($array);
+            if ($index >= $len) {
+                // Mark exhausted by clearing the iterated object.
+                if ($objDesc !== null) {
+                    $objDesc->value = JsUndefined::instance();
+                }
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new \PhpJs\Value\JsBoolean(true));
+                return $result;
+            }
+
+            if ($indexDesc !== null) {
+                $indexDesc->value = new JsNumber((float) ($index + 1));
+            }
+
+            $key = new JsNumber((float) $index);
+            $value = $array->get((string) $index);
+
+            $result = new JsObject();
+            $result->set('done', new \PhpJs\Value\JsBoolean(false));
+            $result->set('value', match ($kind) {
+                'key' => $key,
+                'key+value' => JsArray::fromArray([$key, $value]),
+                default => $value,
+            });
             return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        // Make the iterator itself iterable.
-        $iterSym = SymbolConstructor::iterator();
-        $iterFn = JsFunction::fromCallable(
-            '[Symbol.iterator]',
-            function () use ($iterator): JsValue {
-                return $iterator;
-            },
-        );
-        $iterator->setBySymbol($iterSym, $iterFn);
-        return $iterator;
+        }, 0);
+
+        $proto->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data($nextFn, true, false, true));
     }
 
     private static function isArray(): \Closure

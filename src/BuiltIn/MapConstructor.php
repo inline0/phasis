@@ -56,6 +56,9 @@ class MapConstructor
         $groupByFn->setNonConstructable();
         $constructor->defineOwnProperty('groupBy', PropertyDescriptor::data($groupByFn, true, false, true));
 
+        // Install next() on %MapIteratorPrototype% per spec.
+        self::installNextOnMapIteratorPrototype();
+
         $env->defineVar('Map', $constructor);
     }
 
@@ -376,116 +379,126 @@ class MapConstructor
     }
 
     /**
-     * Create a live Map key iterator object.
-     * Uses slot-based iteration to handle additions/deletions during iteration.
+     * Create a spec-compliant Map key iterator object with internal slots.
      */
     private static function createKeyIterator(JsMap $map): JsObject
     {
-        $index = 0;
-        $finished = false;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index, &$finished): JsValue {
-            $result = new JsObject();
-            if (!$finished) {
-                while ($index < $map->slotCount()) {
-                    $entry = $map->getSlot($index);
-                    $index++;
-                    if ($entry !== null) {
-                        $result->set('value', $entry[0]);
-                        $result->set('done', new JsBoolean(false));
-                        return $result;
-                    }
-                }
-                $finished = true;
-            }
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
-            return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
-        );
-        return $iterator;
+        return self::createMapIteratorObject($map, 'key');
     }
 
     /**
-     * Create a live Map value iterator object.
-     * Uses slot-based iteration to handle additions/deletions during iteration.
+     * Create a spec-compliant Map value iterator object with internal slots.
      */
     private static function createValueIterator(JsMap $map): JsObject
     {
-        $index = 0;
-        $finished = false;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index, &$finished): JsValue {
-            $result = new JsObject();
-            if (!$finished) {
-                while ($index < $map->slotCount()) {
-                    $entry = $map->getSlot($index);
-                    $index++;
-                    if ($entry !== null) {
-                        $result->set('value', $entry[1]);
-                        $result->set('done', new JsBoolean(false));
-                        return $result;
-                    }
-                }
-                $finished = true;
-            }
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
-            return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
-        );
+        return self::createMapIteratorObject($map, 'value');
+    }
+
+    /**
+     * Create a spec-compliant Map entry iterator object with internal slots.
+     */
+    private static function createEntryIterator(JsMap $map): JsObject
+    {
+        return self::createMapIteratorObject($map, 'key+value');
+    }
+
+    /**
+     * Create a Map Iterator object with internal slots per the ECMAScript spec.
+     */
+    private static function createMapIteratorObject(JsMap $map, string $kind): JsObject
+    {
+        $iterator = new JsObject(IteratorPrototypes::mapIteratorPrototype());
+        $iterator->defineOwnProperty('[[MapIteratorBrand]]', PropertyDescriptor::data(
+            new JsBoolean(true),
+            false,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[IteratedMap]]', PropertyDescriptor::data(
+            $map,
+            true,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[MapNextIndex]]', PropertyDescriptor::data(
+            new JsNumber(0.0),
+            true,
+            false,
+            false,
+        ));
+        $iterator->defineOwnProperty('[[MapIterationKind]]', PropertyDescriptor::data(
+            new JsString($kind),
+            false,
+            false,
+            false,
+        ));
         return $iterator;
     }
 
     /**
-     * Create a live Map entry iterator object.
-     * Uses slot-based iteration to handle additions/deletions during iteration.
+     * Install next() on %MapIteratorPrototype% per the ECMAScript spec.
+     * Called once during install(). The next() method uses internal slots
+     * ([[IteratedMap]], [[MapNextIndex]], [[MapIterationKind]]) and
+     * performs brand checking via [[MapIteratorBrand]].
      */
-    private static function createEntryIterator(JsMap $map): JsObject
+    private static function installNextOnMapIteratorPrototype(): void
     {
-        $index = 0;
-        $finished = false;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-        $nextFn = function () use ($map, &$index, &$finished): JsValue {
-            $result = new JsObject();
-            if (!$finished) {
-                while ($index < $map->slotCount()) {
-                    $entry = $map->getSlot($index);
-                    $index++;
-                    if ($entry !== null) {
-                        $result->set('value', JsArray::fromArray([$entry[0], $entry[1]]));
-                        $result->set('done', new JsBoolean(false));
-                        return $result;
-                    }
-                }
-                $finished = true;
+        $proto = IteratorPrototypes::mapIteratorPrototype();
+        if ($proto->get('next') instanceof JsFunction) {
+            return; // Already installed.
+        }
+
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('%MapIteratorPrototype%.next called on incompatible receiver');
             }
+            $brandDesc = $this_->getOwnPropertyDescriptor('[[MapIteratorBrand]]');
+            if ($brandDesc === null || !$brandDesc->value instanceof JsBoolean || !$brandDesc->value->value) {
+                throw new TypeError('%MapIteratorPrototype%.next called on incompatible receiver');
+            }
+
+            $mapDesc = $this_->getOwnPropertyDescriptor('[[IteratedMap]]');
+            if ($mapDesc === null || !$mapDesc->value instanceof JsMap) {
+                // Exhausted.
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+
+            $map = $mapDesc->value;
+            $indexDesc = $this_->getOwnPropertyDescriptor('[[MapNextIndex]]');
+            $index = $indexDesc !== null ? (int) TypeConversion::toNumber($indexDesc->value) : 0;
+
+            $kindDesc = $this_->getOwnPropertyDescriptor('[[MapIterationKind]]');
+            $kind = $kindDesc !== null ? TypeConversion::toString($kindDesc->value) : 'key+value';
+
+            while ($index < $map->slotCount()) {
+                $entry = $map->getSlot($index);
+                $index++;
+                if ($indexDesc !== null) {
+                    $indexDesc->value = new JsNumber((float) $index);
+                }
+                if ($entry !== null) {
+                    $result = new JsObject();
+                    $result->set('done', new JsBoolean(false));
+                    $result->set('value', match ($kind) {
+                        'key' => $entry[0],
+                        'value' => $entry[1],
+                        default => JsArray::fromArray([$entry[0], $entry[1]]),
+                    });
+                    return $result;
+                }
+            }
+
+            // Exhausted: clear the iterated map.
+            $mapDesc->value = JsUndefined::instance();
+            $result = new JsObject();
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));
             return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
-        );
-        return $iterator;
+        }, 0);
+
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
     }
 }
