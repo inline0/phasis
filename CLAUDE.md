@@ -12,14 +12,15 @@ Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shell
 ./bin/test-regression --jobs 4           # Parallel
 ./bin/test-regression --category expressions  # By category
 ./bin/test-regression --fast             # Pass/fail only, no reports
-./bin/verify-compliance                  # Full compliance report with pass rate
+./bin/support-report                     # Generate support.json + SUPPORT.md from test data
+./bin/verify-compliance                  # Compatibility alias for support-report
+./bin/compliance-report                  # test262-only sampled compliance.json
 
 # test262 suite
 ./bin/test262                            # Run full test262 suite
 ./bin/test262 --category built-ins/Array # Run subset
 ./bin/test262 --jobs 4                   # Parallel
 ./bin/test262 --report                   # Generate compliance percentage report
-./bin/test262 --diff <before> <after>    # Compare two compliance snapshots
 
 # Oracle management
 ./bin/oracle <name>                      # Capture Node.js output for scenario
@@ -29,7 +30,7 @@ Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shell
 
 # Unit tests (no Node.js needed)
 composer test:unit                       # Isolated component tests
-composer test                            # Full phpunit + oracle matrix
+composer test                            # PHPUnit suites from phpunit.xml
 
 # Code quality
 composer cs                              # Check coding standards
@@ -50,7 +51,7 @@ After every meaningful work pass, run the full matrix from the repo root before 
 ./bin/verify-all
 ```
 
-No partial sign-off. `composer test` is the full test matrix, not just PHPUnit. test262 compliance must never regress. If a change reduces the test262 pass count, the change is broken.
+No partial sign-off. `./bin/verify-all` is the repo gate. `./bin/support-report` refreshes the support snapshot. test262 compliance must never regress. If a change reduces the test262 pass count, the change is broken.
 
 ## What This Is
 
@@ -212,8 +213,10 @@ php-js/
 │   ├── compare                          # Diff oracle vs actual
 │   ├── test-scenario                    # Full pipeline: oracle → actual → compare
 │   ├── test-regression                  # Run all scenarios
-│   ├── verify-compliance                # Full compliance report
-│   ├── verify-all                       # analyse + cs + phpunit + oracle + test262
+│   ├── support-report                   # Generate support.json + SUPPORT.md from test data
+│   ├── verify-compliance                # Compatibility alias for support-report
+│   ├── compliance-report                # Generate sampled test262-only compliance.json
+│   ├── verify-all                       # analyse + cs + phpunit + oracle regression
 │   └── test262                          # Run official test262 suite
 │
 ├── tests/
@@ -485,7 +488,7 @@ Same oracle-driven verification model as pitmaster, greph, and php-browser (sibl
 | Pipeline | oracle → render → compare | oracle → actual → compare | oracle → actual → compare | oracle → actual → compare |
 | Combined | `./bin/test-fixture` | `./bin/test-scenario` | `./bin/test-scenario` | `./bin/test-scenario` |
 | Regression | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` |
-| Compliance | CSS_COVERAGE.md | verify-compliance | verify-compliance | **test262 pass rate** |
+| Compliance | CSS_COVERAGE.md | support-report | support-report | **test262 pass rate** |
 
 Study `pitmaster/tests/Oracle/` and `greph/tests/Oracle/` for the reference implementation of the oracle pattern.
 
@@ -580,42 +583,21 @@ The runner:
 5. Checks the result against `negative` expectations (if any)
 6. Reports PASS, FAIL, or SKIP
 
-### Compliance Tracking
+### Support Tracking
 
-`./bin/test262 --report` generates:
+`./bin/support-report` is the canonical support snapshot generator. It writes:
 
-```
-php-js test262 Compliance Report
-================================
-Engine: php-js 0.1.0
-Node.js oracle: v22.0.0
-Suite: test262 (2024-01-15)
+- `support.json`: machine-readable snapshot for dashboards, diffing, or custom visualisations
+- `SUPPORT.md`: human-readable summary generated from the same test data
 
-Overall: 2,847 / 50,234 (5.7%)
+The snapshot is built from two automated sources:
 
-By Category:
-  language/expressions/          847 / 3,200  (26.5%)
-  language/statements/           623 / 2,800  (22.3%)
-  language/literals/             412 / 1,100  (37.5%)
-  language/types/                298 / 900    (33.1%)
-  language/function-code/        187 / 1,500  (12.5%)
-  language/block-scoping/        145 / 600    (24.2%)
-  language/destructuring/         42 / 800    (5.3%)
-  language/module-code/            0 / 1,200  (0.0%)
-  built-ins/Array/               121 / 3,400  (3.6%)
-  built-ins/String/               89 / 2,100  (4.2%)
-  built-ins/Object/               55 / 2,800  (2.0%)
-  built-ins/Math/                 28 / 400    (7.0%)
-  built-ins/JSON/                  0 / 600    (0.0%)
-  built-ins/Promise/               0 / 1,800  (0.0%)
-  built-ins/RegExp/                0 / 2,500  (0.0%)
-  annexB/                          0 / 1,200  (0.0%)
+1. Scenario regression against checked-in oracle snapshots
+2. A sampled `test262` run across the tracked categories in `config/support.php`
 
-New passes since last report: +127
-Regressions since last report: 0
-```
+The focused `test262` view remains available through `./bin/compliance-report`, which writes `compliance.json`.
 
-Compliance snapshots are saved as JSON. `./bin/test262 --diff before.json after.json` shows exactly which tests were gained or lost.
+`./bin/test262 --report` is still useful for ad hoc inspection of a single directory or category, but the repo-level support documentation should come from `./bin/support-report`.
 
 ### Comparison with test262.fyi
 
@@ -708,7 +690,7 @@ Build bottom-up. Each phase unlocks new scenario categories and test262 sections
 45. Edge cases: -0, NaN boxing, sparse arrays, prototype pollution, with statement
 46. Resource limit enforcement: stack overflow, infinite loops, string bombs
 
-**Oracle gate:** `./bin/verify-compliance` full report green. All custom scenarios pass. test262 compliance steadily climbing with zero regressions.
+**Oracle gate:** `./bin/support-report` refreshed with no regressions. All custom scenarios pass. test262 compliance steadily climbing with zero regressions.
 
 ## Comment Policy
 

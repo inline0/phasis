@@ -7,21 +7,9 @@ ini_set('memory_limit', '1G');
 
 $limit = (int) ($argv[1] ?? 50);
 $jobs = (int) ($argv[2] ?? 4);
+$supportConfig = require __DIR__ . '/../config/support.php';
 
-$categories = [
-    'language/literals', 'language/types', 'language/expressions', 'language/statements',
-    'language/block-scope', 'language/function-code', 'language/arguments-object',
-    'language/destructuring', 'language/computed-property-names', 'language/rest-parameters',
-    'language/directive-prologue', 'language/eval-code', 'language/asi', 'language/keywords',
-    'language/white-space', 'language/line-terminators', 'language/comments',
-    'language/future-reserved-words', 'language/reserved-words', 'language/identifier-resolution',
-    'built-ins/Array', 'built-ins/Boolean', 'built-ins/Date', 'built-ins/Error',
-    'built-ins/Function', 'built-ins/JSON', 'built-ins/Map', 'built-ins/Math',
-    'built-ins/Number', 'built-ins/Object', 'built-ins/RegExp', 'built-ins/Set',
-    'built-ins/String', 'built-ins/Symbol', 'built-ins/parseInt', 'built-ins/parseFloat',
-    'built-ins/isNaN', 'built-ins/isFinite',
-    'annexB/built-ins/String', 'annexB/built-ins/escape', 'annexB/built-ins/unescape',
-];
+$categories = $supportConfig['test262_categories'];
 
 $phpBin = PHP_BINARY;
 $test262Bin = __DIR__ . '/test262';

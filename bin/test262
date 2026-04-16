@@ -10,6 +10,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use PhpJs\Tests\Oracle\Test262Runner;
 
 $suiteDir = __DIR__ . '/../test262';
+$supportConfig = require __DIR__ . '/../config/support.php';
 
 if (!is_dir($suiteDir . '/test')) {
     fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
@@ -18,43 +19,7 @@ if (!is_dir($suiteDir . '/test')) {
 
 $runner = new Test262Runner($suiteDir);
 
-// Features we don't support yet
-$runner->setSkipFeatures([
-    // Async iteration (basic async/await and Promise are now supported)
-    'async-iteration', 'top-level-await',
-    // Binary data (unsupported subset)
-    'Atomics', 'SharedArrayBuffer',
-    'resizable-arraybuffer', 'arraybuffer-transfer', 'Float16Array',
-    // Weak references
-    'WeakRef', 'FinalizationRegistry', 'symbols-as-weakmap-keys',
-    // Modules
-    'import-assertions', 'import-attributes', 'dynamic-import',
-    'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
-    // Symbols (well-known) - unsupported ones
-    'Symbol.species', 'Symbol.asyncIterator',
-    // RegExp advanced
-    'regexp-lookbehind', 'regexp-named-groups', 'regexp-dotall',
-    'regexp-unicode-property-escapes', 'regexp-match-indices', 'regexp-v-flag',
-    'regexp-modifiers', 'regexp-duplicate-named-groups',
-    'RegExp.escape',
-    // Class fields/private
-    'class-fields-public', 'class-fields-private',
-    'class-static-fields-public', 'class-static-fields-private',
-    'class-methods-private', 'class-static-methods-private',
-    'class-static-block',
-    // Non-standard caller/arguments tracking on function instances
-    'caller',
-    // Realms
-    'cross-realm',
-    // Misc advanced
-    'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
-    'decorators', 'explicit-resource-management',
-    'hashbang', 'IsHTMLDDA',
-    'iterator-helpers', 'set-methods', 'Array.fromAsync',
-    'change-array-by-copy', 'Math.sumPrecise',
-    'well-formed-json-stringify', 'json-parse-with-source',
-    'String.prototype.isWellFormed', 'String.prototype.toWellFormed',
-]);
+$runner->setSkipFeatures($supportConfig['test262_skipped_features']);
 
 // Parse CLI args
 $category = null;
