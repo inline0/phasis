@@ -198,8 +198,11 @@ class StringPrototype
             $result = '';
             for ($i = 0; $i < $rawLen; $i++) {
                 $result .= TypeConversion::toString($rawVal->get((string) $i));
-                if ($i + 1 < count($args)) {
-                    $result .= TypeConversion::toString($args[$i + 1]);
+                // Substitutions are appended only for indices 0..rawLen-2 (spec §21.1.2.4 step 12.f).
+                // If fewer substitutions are provided than needed, use empty string (spec step 12.g).
+                if ($i < $rawLen - 1) {
+                    $sub = $args[$i + 1] ?? new JsString('');
+                    $result .= TypeConversion::toString($sub);
                 }
             }
             return new JsString($result);
