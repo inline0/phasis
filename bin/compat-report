@@ -1,0 +1,650 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+ini_set('memory_limit', '1G');
+
+$jobs = 4;
+$match = null;
+
+$args = array_slice($argv, 1);
+for ($i = 0; $i < count($args); $i++) {
+    switch ($args[$i]) {
+        case '--jobs':
+            $jobs = max(1, (int) ($args[++$i] ?? 4));
+            break;
+        case '--match':
+            $match = $args[++$i] ?? null;
+            break;
+        default:
+            if ($args[$i] !== '') {
+                $jobs = max(1, (int) $args[$i]);
+            }
+            break;
+    }
+}
+
+$rootDir = dirname(__DIR__);
+$suiteDir = $rootDir . '/test262/test';
+$supportConfig = require $rootDir . '/config/support.php';
+
+if (!is_dir($suiteDir)) {
+    fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
+    exit(1);
+}
+
+fwrite(STDERR, "Building full compatibility snapshot...\n");
+
+$discovery = discoverCompatGroups($suiteDir, $match);
+if ($discovery['groups'] === []) {
+    fwrite(STDERR, "No compat categories found.\n");
+    exit(1);
+}
+
+$snapshot = [
+    'generatedAt' => date('c'),
+    'git' => detectGitMetadata($rootDir),
+    'environment' => [
+        'phpVersion' => PHP_VERSION,
+        'nodeVersion' => detectCommandVersion('node --version', $rootDir),
+    ],
+    'sourceOfTruth' => [
+        'test262' => './bin/test262',
+        'suitePath' => 'test262/test',
+    ],
+    'mode' => [
+        'jobs' => $jobs,
+        'match' => $match,
+        'fullSuite' => $match === null,
+    ],
+    'runnerCaveats' => [
+        'Feature families listed in config/support.php are skipped before execution.',
+        'Tests flagged as module are skipped by the current runner.',
+        'Tests flagged as async are skipped by the current runner.',
+        'Mixed-mode tests currently run only in sloppy mode unless onlyStrict or noStrict is set.',
+    ],
+    'discovery' => [
+        'groupCount' => count($discovery['groups']),
+        'testFileCount' => $discovery['testFileCount'],
+        'groups' => array_keys($discovery['groups']),
+        'chunkSize' => $discovery['chunkSize'],
+    ],
+];
+
+$snapshot['test262'] = buildCompatSnapshot(
+    $rootDir,
+    $discovery['groups'],
+    $supportConfig['test262_skipped_features'],
+    $jobs,
+    $discovery['chunkSize'],
+);
+
+$jsonPath = $rootDir . '/compat.json';
+$markdownPath = $rootDir . '/COMPAT.md';
+
+file_put_contents(
+    $jsonPath,
+    json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n",
+);
+file_put_contents($markdownPath, renderCompatMarkdown($snapshot));
+
+echo "Compatibility snapshot written:\n";
+echo "  - compat.json\n";
+echo "  - COMPAT.md\n";
+echo sprintf(
+    "Summary: %d/%d pass, %d fail, %d skip across %d groups\n",
+    $snapshot['test262']['totals']['pass'],
+    $snapshot['test262']['totals']['attempted'],
+    $snapshot['test262']['totals']['fail'],
+    $snapshot['test262']['totals']['skip'],
+    count($discovery['groups']),
+);
+
+/**
+ * @return array{groups: array<string, list<string>>, testFileCount: int, chunkSize: int}
+ */
+function discoverCompatGroups(string $suiteDir, ?string $match): array
+{
+    fwrite(STDERR, "  - discovering categories\n");
+
+    $groups = [];
+    $testFileCount = 0;
+    $chunkSize = 500;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($suiteDir, RecursiveDirectoryIterator::SKIP_DOTS),
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->getExtension() !== 'js') {
+            continue;
+        }
+        if (str_contains($file->getFilename(), '_FIXTURE')) {
+            continue;
+        }
+
+        $relativeFile = relativePath($file->getPathname(), $suiteDir . '/');
+        $relativeDir = dirname($relativeFile);
+        $category = compatCategoryForDirectory($relativeDir === '.' ? '' : $relativeDir);
+        if ($category === null) {
+            continue;
+        }
+        if ($match !== null && !str_starts_with($category, $match)) {
+            continue;
+        }
+
+        if (!isset($groups[$category])) {
+            $groups[$category] = [];
+        }
+        $groups[$category][] = $file->getPathname();
+        $testFileCount++;
+    }
+
+    ksort($groups);
+
+    return [
+        'groups' => $groups,
+        'testFileCount' => $testFileCount,
+        'chunkSize' => $chunkSize,
+    ];
+}
+
+function compatCategoryForDirectory(string $relativeDir): ?string
+{
+    if ($relativeDir === '') {
+        return null;
+    }
+
+    $parts = explode('/', $relativeDir);
+    $depth = match ($parts[0]) {
+        'annexB' => min(count($parts), 3),
+        default => min(count($parts), 2),
+    };
+
+    return implode('/', array_slice($parts, 0, $depth));
+}
+
+/**
+ * @param array<string, list<string>> $groupFiles
+ * @param list<string> $skippedFeatures
+ * @return array{
+ *   skippedFeatures: list<string>,
+  *   totals: array{pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float},
+  *   areas: list<array{name: string, status: string, pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float}>,
+ *   groups: list<array{name: string, area: string, status: string, pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float}>,
+ *   lowestCoverageGroups: list<array{name: string, area: string, status: string, pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float}>
+ * }
+ */
+function buildCompatSnapshot(
+    string $rootDir,
+    array $groupFiles,
+    array $skippedFeatures,
+    int $jobs,
+    int $chunkSize,
+): array {
+    fwrite(STDERR, "  - running full test262 groups\n");
+
+    $tempDir = sys_get_temp_dir() . '/php-js-compat-' . bin2hex(random_bytes(6));
+    if (!mkdir($tempDir, 0777, true) && !is_dir($tempDir)) {
+        throw new RuntimeException('Unable to create temporary compat directory');
+    }
+
+    $groupTotals = [];
+    foreach ($groupFiles as $group => $files) {
+        $groupTotals[$group] = emptyCompatGroup($group);
+    }
+
+    $chunks = buildCompatChunks($groupFiles, $chunkSize, $tempDir);
+    $pendingChunks = $chunks;
+    $running = [];
+
+    while ($pendingChunks !== [] || $running !== []) {
+        while (count($running) < $jobs && $pendingChunks !== []) {
+            $chunk = array_shift($pendingChunks);
+            $command = PHP_BINARY . ' ' . escapeshellarg($rootDir . '/bin/test262')
+                . ' --files-from ' . escapeshellarg($chunk['manifest']);
+            $spec = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['file', '/dev/null', 'w'],
+            ];
+            $process = proc_open($command, $spec, $pipes, $rootDir);
+            if (!is_resource($process)) {
+                continue;
+            }
+
+            fclose($pipes[0]);
+            $running[] = [
+                'process' => $process,
+                'stdout' => $pipes[1],
+                'chunk' => $chunk,
+            ];
+        }
+
+        if ($running === []) {
+            break;
+        }
+
+        $finishedIndex = null;
+        while ($finishedIndex === null) {
+            foreach ($running as $index => $entry) {
+                $status = proc_get_status($entry['process']);
+                if ($status['running'] === false) {
+                    $finishedIndex = $index;
+                    break;
+                }
+            }
+
+            if ($finishedIndex === null) {
+                usleep(200000);
+            }
+        }
+
+        $entry = $running[$finishedIndex];
+        $stdout = stream_get_contents($entry['stdout']);
+        fclose($entry['stdout']);
+        proc_close($entry['process']);
+        array_splice($running, $finishedIndex, 1);
+
+        $chunkResult = parseCompatRunResult($stdout);
+        mergeCompatChunkResult($groupTotals[$entry['chunk']['group']], $chunkResult);
+
+        fwrite(
+            STDERR,
+            sprintf(
+                "    %s [%d/%d] %d / %d (%s)\n",
+                str_pad($entry['chunk']['group'], 34),
+                $entry['chunk']['index'],
+                $entry['chunk']['chunkCount'],
+                $chunkResult['pass'],
+                $chunkResult['attempted'],
+                formatRate($chunkResult['attempted'], $chunkResult['passRate']),
+            ),
+        );
+    }
+
+    cleanupCompatChunks($chunks, $tempDir);
+
+    $groups = array_values($groupTotals);
+    foreach ($groups as &$group) {
+        $group['status'] = aggregateStatus($group['pass'], $group['fail'], $group['skip']);
+        $group['passRate'] = rateFromCounts($group['pass'], $group['fail']);
+    }
+    unset($group);
+
+    usort($groups, static fn(array $left, array $right): int => $left['name'] <=> $right['name']);
+
+    $areaMap = [];
+    foreach ($groups as $group) {
+        $area = $group['area'];
+        if (!isset($areaMap[$area])) {
+            $areaMap[$area] = [
+                'name' => $area,
+                'status' => 'empty',
+                'pass' => 0,
+                'fail' => 0,
+                'skip' => 0,
+                'attempted' => 0,
+                'total' => 0,
+                'passRate' => 0.0,
+            ];
+        }
+
+        $areaMap[$area]['pass'] += $group['pass'];
+        $areaMap[$area]['fail'] += $group['fail'];
+        $areaMap[$area]['skip'] += $group['skip'];
+        $areaMap[$area]['attempted'] += $group['attempted'];
+        $areaMap[$area]['total'] += $group['total'];
+    }
+
+    foreach ($areaMap as &$area) {
+        $area['status'] = aggregateStatus($area['pass'], $area['fail'], $area['skip']);
+        $area['passRate'] = rateFromCounts($area['pass'], $area['fail']);
+    }
+    unset($area);
+
+    ksort($areaMap);
+    $areas = array_values($areaMap);
+
+    $lowestCoverageGroups = array_values(array_filter(
+        $groups,
+        static fn(array $group): bool => $group['attempted'] > 0 && $group['fail'] > 0,
+    ));
+    usort(
+        $lowestCoverageGroups,
+        static fn(array $left, array $right): int => [$left['passRate'], $left['name']] <=> [$right['passRate'], $right['name']],
+    );
+    $lowestCoverageGroups = array_slice($lowestCoverageGroups, 0, 20);
+
+    $totalPass = array_sum(array_column($groups, 'pass'));
+    $totalFail = array_sum(array_column($groups, 'fail'));
+    $totalSkip = array_sum(array_column($groups, 'skip'));
+    $totalAttempted = array_sum(array_column($groups, 'attempted'));
+
+    return [
+        'skippedFeatures' => array_values($skippedFeatures),
+        'totals' => [
+            'pass' => $totalPass,
+            'fail' => $totalFail,
+            'skip' => $totalSkip,
+            'attempted' => $totalAttempted,
+            'total' => $totalAttempted + $totalSkip,
+            'passRate' => rateFromCounts($totalPass, $totalFail),
+        ],
+        'areas' => $areas,
+        'groups' => $groups,
+        'lowestCoverageGroups' => $lowestCoverageGroups,
+    ];
+}
+
+/**
+ * @param array<string, list<string>> $groupFiles
+ * @return list<array{group: string, manifest: string, index: int, chunkCount: int}>
+ */
+function buildCompatChunks(array $groupFiles, int $chunkSize, string $tempDir): array
+{
+    $chunks = [];
+
+    foreach ($groupFiles as $group => $files) {
+        $fileChunks = array_chunk($files, $chunkSize);
+        $chunkCount = count($fileChunks);
+
+        foreach ($fileChunks as $index => $chunkFiles) {
+            $manifest = $tempDir . '/chunk-' . md5($group . '-' . $index) . '.txt';
+            file_put_contents($manifest, implode("\n", $chunkFiles) . "\n");
+            $chunks[] = [
+                'group' => $group,
+                'manifest' => $manifest,
+                'index' => $index + 1,
+                'chunkCount' => $chunkCount,
+            ];
+        }
+    }
+
+    return $chunks;
+}
+
+/**
+ * @return array{pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float}
+ */
+function parseCompatRunResult(string $output): array
+{
+    if (preg_match('/Results:\s+(\d+) pass, (\d+) fail, (\d+) skip \(([\d.]+)% of (\d+) attempted\)/', $output, $matches) !== 1) {
+        return [
+            'pass' => 0,
+            'fail' => 0,
+            'skip' => 0,
+            'attempted' => 0,
+            'total' => 0,
+            'passRate' => 0.0,
+        ];
+    }
+
+    $pass = (int) $matches[1];
+    $fail = (int) $matches[2];
+    $skip = (int) $matches[3];
+    $attempted = (int) $matches[5];
+
+    return [
+        'pass' => $pass,
+        'fail' => $fail,
+        'skip' => $skip,
+        'attempted' => $attempted,
+        'total' => $attempted + $skip,
+        'passRate' => round((float) $matches[4], 1),
+    ];
+}
+
+/**
+ * @param array{name: string, area: string, status: string, pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float} $group
+ * @param array{pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float} $chunk
+ */
+function mergeCompatChunkResult(array &$group, array $chunk): void
+{
+    $group['pass'] += $chunk['pass'];
+    $group['fail'] += $chunk['fail'];
+    $group['skip'] += $chunk['skip'];
+    $group['attempted'] += $chunk['attempted'];
+    $group['total'] += $chunk['total'];
+}
+
+/**
+ * @param list<array{group: string, manifest: string, index: int, chunkCount: int}> $chunks
+ */
+function cleanupCompatChunks(array $chunks, string $tempDir): void
+{
+    foreach ($chunks as $chunk) {
+        if (is_file($chunk['manifest'])) {
+            unlink($chunk['manifest']);
+        }
+    }
+    if (is_dir($tempDir)) {
+        rmdir($tempDir);
+    }
+}
+
+/**
+ * @return array{name: string, area: string, status: string, pass: int, fail: int, skip: int, attempted: int, total: int, passRate: float}
+ */
+function emptyCompatGroup(string $category): array
+{
+    return [
+        'name' => $category,
+        'area' => explode('/', $category)[0],
+        'status' => 'empty',
+        'pass' => 0,
+        'fail' => 0,
+        'skip' => 0,
+        'attempted' => 0,
+        'total' => 0,
+        'passRate' => 0.0,
+    ];
+}
+
+/**
+ * @return array{branch: ?string, commit: ?string, isDirty: bool}
+ */
+function detectGitMetadata(string $rootDir): array
+{
+    $branch = trim(runShellCommand('git rev-parse --abbrev-ref HEAD', $rootDir)['output']);
+    $commit = trim(runShellCommand('git rev-parse --short HEAD', $rootDir)['output']);
+    $dirty = trim(runShellCommand('git status --short', $rootDir)['output']) !== '';
+
+    return [
+        'branch' => $branch !== '' ? $branch : null,
+        'commit' => $commit !== '' ? $commit : null,
+        'isDirty' => $dirty,
+    ];
+}
+
+function detectCommandVersion(string $command, string $rootDir): ?string
+{
+    $result = runShellCommand($command, $rootDir);
+    if ($result['exitCode'] !== 0) {
+        return null;
+    }
+
+    $version = trim($result['output']);
+
+    return $version !== '' ? $version : null;
+}
+
+function aggregateStatus(int $pass, int $fail, int $skip): string
+{
+    $attempted = $pass + $fail;
+    if ($attempted === 0) {
+        return $skip > 0 ? 'skipped' : 'empty';
+    }
+    if ($fail === 0) {
+        return 'pass';
+    }
+    if ($pass === 0) {
+        return 'fail';
+    }
+
+    return 'partial';
+}
+
+function rateFromCounts(int $pass, int $fail): float
+{
+    $attempted = $pass + $fail;
+    if ($attempted === 0) {
+        return 0.0;
+    }
+
+    return round(($pass / $attempted) * 100, 1);
+}
+
+function formatRate(int $attempted, float $passRate): string
+{
+    if ($attempted === 0) {
+        return 'n/a';
+    }
+
+    return sprintf('%.1f%%', $passRate);
+}
+
+/**
+ * @return array{exitCode: int, output: string}
+ */
+function runShellCommand(string $command, string $rootDir): array
+{
+    $spec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open($command, $spec, $pipes, $rootDir);
+    if (!is_resource($process)) {
+        return ['exitCode' => 1, 'output' => ''];
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+
+    return [
+        'exitCode' => $exitCode,
+        'output' => $stdout . $stderr,
+    ];
+}
+
+function relativePath(string $path, string $prefix): string
+{
+    $relative = str_starts_with($path, $prefix) ? substr($path, strlen($prefix)) : $path;
+
+    return str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+}
+
+function asciiBar(float $rate, int $width = 20): string
+{
+    $filled = (int) round(($rate / 100) * $width);
+    $filled = max(0, min($width, $filled));
+
+    return str_repeat('#', $filled) . str_repeat('-', $width - $filled);
+}
+
+function renderCompatMarkdown(array $snapshot): string
+{
+    $lines = [];
+    $lines[] = '# Compatibility Snapshot';
+    $lines[] = '';
+    $lines[] = 'Generated from a full `test262` run. Do not edit by hand.';
+    $lines[] = '';
+    $lines[] = '- Refresh: `./bin/compat-report`';
+    $lines[] = '- Source of truth: full `test262` execution through `./bin/test262`';
+    $lines[] = '- Snapshot time: `' . $snapshot['generatedAt'] . '`';
+    if (($snapshot['git']['commit'] ?? null) !== null) {
+        $lines[] = '- Git: `' . $snapshot['git']['branch'] . '` @ `' . $snapshot['git']['commit'] . '`'
+            . (($snapshot['git']['isDirty'] ?? false) ? ' (dirty)' : '');
+    }
+    if (($snapshot['mode']['match'] ?? null) !== null) {
+        $lines[] = '- Filter: `' . $snapshot['mode']['match'] . '`';
+    }
+    $lines[] = '- Discovered groups: `' . $snapshot['discovery']['groupCount'] . '`';
+    $lines[] = '- Test files covered by discovery: `' . $snapshot['discovery']['testFileCount'] . '`';
+    $lines[] = '';
+    $lines[] = '## Summary';
+    $lines[] = '';
+    $lines[] = '| Pass | Fail | Skip | Attempted | Rate |';
+    $lines[] = '|---:|---:|---:|---:|---:|';
+    $lines[] = sprintf(
+        '| %d | %d | %d | %d | %s |',
+        $snapshot['test262']['totals']['pass'],
+        $snapshot['test262']['totals']['fail'],
+        $snapshot['test262']['totals']['skip'],
+        $snapshot['test262']['totals']['attempted'],
+        formatRate($snapshot['test262']['totals']['attempted'], $snapshot['test262']['totals']['passRate']),
+    );
+    $lines[] = '';
+    $lines[] = '## Top-Level Areas';
+    $lines[] = '';
+    $lines[] = '| Area | Status | Pass | Fail | Skip | Attempted | Rate |';
+    $lines[] = '|---|---|---:|---:|---:|---:|---:|';
+    foreach ($snapshot['test262']['areas'] as $area) {
+        $lines[] = sprintf(
+            '| %s | %s | %d | %d | %d | %d | %s |',
+            $area['name'],
+            strtoupper($area['status']),
+            $area['pass'],
+            $area['fail'],
+            $area['skip'],
+            $area['attempted'],
+            formatRate($area['attempted'], $area['passRate']),
+        );
+    }
+    $lines[] = '';
+    $lines[] = '## Group Coverage';
+    $lines[] = '';
+    $lines[] = '| Group | Status | Pass | Fail | Skip | Attempted | Rate | Visual |';
+    $lines[] = '|---|---|---:|---:|---:|---:|---:|---|';
+    foreach ($snapshot['test262']['groups'] as $group) {
+        $lines[] = sprintf(
+            '| %s | %s | %d | %d | %d | %d | %s | `%s` |',
+            $group['name'],
+            strtoupper($group['status']),
+            $group['pass'],
+            $group['fail'],
+            $group['skip'],
+            $group['attempted'],
+            formatRate($group['attempted'], $group['passRate']),
+            $group['attempted'] > 0 ? asciiBar($group['passRate']) : 'n/a',
+        );
+    }
+    if ($snapshot['test262']['lowestCoverageGroups'] !== []) {
+        $lines[] = '';
+        $lines[] = '## Lowest Coverage Groups';
+        $lines[] = '';
+        $lines[] = '| Group | Pass | Fail | Skip | Attempted | Rate |';
+        $lines[] = '|---|---:|---:|---:|---:|---:|';
+        foreach ($snapshot['test262']['lowestCoverageGroups'] as $group) {
+            $lines[] = sprintf(
+                '| %s | %d | %d | %d | %d | %s |',
+                $group['name'],
+                $group['pass'],
+                $group['fail'],
+                $group['skip'],
+                $group['attempted'],
+                formatRate($group['attempted'], $group['passRate']),
+            );
+        }
+    }
+    $lines[] = '';
+    $lines[] = '## Runner Caveats';
+    $lines[] = '';
+    foreach ($snapshot['runnerCaveats'] as $caveat) {
+        $lines[] = '- ' . $caveat;
+    }
+    $lines[] = '';
+    $lines[] = '## Explicitly Skipped Feature Families';
+    $lines[] = '';
+    foreach ($snapshot['test262']['skippedFeatures'] as $feature) {
+        $lines[] = '- `' . $feature . '`';
+    }
+    $lines[] = '';
+
+    return implode("\n", $lines);
+}

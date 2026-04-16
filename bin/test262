@@ -27,6 +27,7 @@ $report = false;
 $jobs = 1;
 $showFailures = false;
 $limit = 0;
+$filesFrom = null;
 
 $args = array_slice($argv, 1);
 for ($i = 0; $i < count($args); $i++) {
@@ -46,6 +47,9 @@ for ($i = 0; $i < count($args); $i++) {
         case '--limit':
             $limit = (int) ($args[++$i] ?? 0);
             break;
+        case '--files-from':
+            $filesFrom = $args[++$i] ?? null;
+            break;
         default:
             if (!str_starts_with($args[$i], '--')) {
                 $category = $args[$i];
@@ -54,7 +58,12 @@ for ($i = 0; $i < count($args); $i++) {
 }
 
 $testDir = $suiteDir . '/test';
-if ($category !== null) {
+if ($filesFrom !== null) {
+    if (!is_file($filesFrom)) {
+        fwrite(STDERR, "File list not found: {$filesFrom}\n");
+        exit(1);
+    }
+} elseif ($category !== null) {
     $testDir .= '/' . $category;
     if (!is_dir($testDir)) {
         fwrite(STDERR, "Category not found: {$category}\n");
@@ -65,9 +74,30 @@ if ($category !== null) {
 $count = 0;
 $result = new \PhpJs\Tests\Oracle\SuiteResult();
 
-echo "Running test262" . ($category ? " ({$category})" : '') . "...\n";
+echo "Running test262";
+if ($filesFrom !== null) {
+    echo " (file list)";
+} elseif ($category !== null) {
+    echo " ({$category})";
+}
+echo "...\n";
 
-foreach ($runner->runDirectory($testDir) as $testResult) {
+if ($filesFrom !== null) {
+    $paths = file($filesFrom, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($paths === false) {
+        fwrite(STDERR, "Unable to read file list: {$filesFrom}\n");
+        exit(1);
+    }
+    $testResults = (function () use ($runner, $paths): \Generator {
+        foreach ($paths as $path) {
+            yield $runner->run($path);
+        }
+    })();
+} else {
+    $testResults = $runner->runDirectory($testDir);
+}
+
+foreach ($testResults as $testResult) {
     $result->add($testResult);
     $count++;
 

@@ -13,6 +13,7 @@ Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shell
 ./bin/test-regression --category expressions  # By category
 ./bin/test-regression --fast             # Pass/fail only, no reports
 ./bin/support-report                     # Generate support.json + SUPPORT.md from test data
+./bin/compat-report                      # Generate compat.json + COMPAT.md from full test262 coverage
 ./bin/verify-compliance                  # Compatibility alias for support-report
 ./bin/compliance-report                  # test262-only sampled compliance.json
 
@@ -214,6 +215,7 @@ php-js/
 │   ├── test-scenario                    # Full pipeline: oracle → actual → compare
 │   ├── test-regression                  # Run all scenarios
 │   ├── support-report                   # Generate support.json + SUPPORT.md from test data
+│   ├── compat-report                    # Generate compat.json + COMPAT.md from full test262 coverage
 │   ├── verify-compliance                # Compatibility alias for support-report
 │   ├── compliance-report                # Generate sampled test262-only compliance.json
 │   ├── verify-all                       # analyse + cs + phpunit + oracle regression
@@ -598,6 +600,15 @@ The snapshot is built from two automated sources:
 The focused `test262` view remains available through `./bin/compliance-report`, which writes `compliance.json`.
 
 `./bin/test262 --report` is still useful for ad hoc inspection of a single directory or category, but the repo-level support documentation should come from `./bin/support-report`.
+
+### Compatibility Tracking
+
+`./bin/compat-report` runs the full discovered `test262` category set with no sampling and writes:
+
+- `compat.json`: machine-readable full compatibility snapshot
+- `COMPAT.md`: human-readable full compatibility report
+
+Use `support-report` for a fast project snapshot and `compat-report` for the exhaustive view.
 
 ### Comparison with test262.fyi
 
