@@ -17,6 +17,16 @@ class JsArray extends JsObject
         self::$globalPrototype = $proto;
     }
 
+    public static function getGlobalPrototype(): ?JsObject
+    {
+        return self::$globalPrototype;
+    }
+
+    public static function resetGlobalPrototype(): void
+    {
+        self::$globalPrototype = null;
+    }
+
     /**
      * @param list<JsValue> $elements
      */

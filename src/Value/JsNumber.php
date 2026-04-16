@@ -6,6 +6,23 @@ namespace PhpJs\Value;
 
 class JsNumber implements JsValue
 {
+    private static ?JsObject $numberPrototype = null;
+
+    public static function setNumberPrototype(JsObject $proto): void
+    {
+        self::$numberPrototype = $proto;
+    }
+
+    public static function resetNumberPrototype(): void
+    {
+        self::$numberPrototype = null;
+    }
+
+    public static function getNumberPrototype(): ?JsObject
+    {
+        return self::$numberPrototype;
+    }
+
     public function __construct(
         public readonly float $value,
     ) {

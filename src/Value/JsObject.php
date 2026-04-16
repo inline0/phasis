@@ -30,6 +30,11 @@ class JsObject implements JsValue
         return self::$globalPrototype;
     }
 
+    public static function resetGlobalPrototype(): void
+    {
+        self::$globalPrototype = null;
+    }
+
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();

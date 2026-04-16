@@ -6,6 +6,23 @@ namespace PhpJs\Value;
 
 class JsString implements JsValue
 {
+    private static ?JsObject $stringPrototype = null;
+
+    public static function setStringPrototype(JsObject $proto): void
+    {
+        self::$stringPrototype = $proto;
+    }
+
+    public static function resetStringPrototype(): void
+    {
+        self::$stringPrototype = null;
+    }
+
+    public static function getStringPrototype(): ?JsObject
+    {
+        return self::$stringPrototype;
+    }
+
     public function __construct(
         public readonly string $value,
     ) {

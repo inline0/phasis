@@ -6,6 +6,23 @@ namespace PhpJs\Value;
 
 class JsBoolean implements JsValue
 {
+    private static ?JsObject $booleanPrototype = null;
+
+    public static function setBooleanPrototype(JsObject $proto): void
+    {
+        self::$booleanPrototype = $proto;
+    }
+
+    public static function resetBooleanPrototype(): void
+    {
+        self::$booleanPrototype = null;
+    }
+
+    public static function getBooleanPrototype(): ?JsObject
+    {
+        return self::$booleanPrototype;
+    }
+
     public function __construct(
         public readonly bool $value,
     ) {
