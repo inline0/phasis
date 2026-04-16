@@ -219,6 +219,18 @@ class JsFunction extends JsObject
         return $this;
     }
 
+    /**
+     * Override setPrototype so that explicit [[Prototype]] mutations (e.g. via
+     * Object.setPrototypeOf) are honoured by getPrototype(). Without this override,
+     * getPrototype() would always return the static $functionPrototype and ignore
+     * the value stored by the parent class.
+     */
+    public function setPrototype(?JsObject $prototype): void
+    {
+        parent::setPrototype($prototype);
+        $this->hasCustomPrototype = true;
+    }
+
     public function isConstructable(): bool
     {
         // Arrow functions are not constructable.

@@ -3149,6 +3149,15 @@ class Interpreter
             ? $this->evaluate($superClassNode, $env)
             : null;
 
+        // Per spec §15.7.14: if ClassHeritage is present and not null, it must be a constructor.
+        if ($superClass !== null && !($superClass instanceof \PhpJs\Value\JsNull)) {
+            if (!($superClass instanceof JsFunction) || !$superClass->isConstructable()) {
+                throw new TypeError(
+                    'Class extends value ' . TypeConversion::toString($superClass) . ' is not a constructor or null',
+                );
+            }
+        }
+
         $constructor = null;
         $staticMethods = [];
         $instanceMethods = [];
@@ -3244,16 +3253,27 @@ class Interpreter
                     true,
                 ));
             } elseif ($kind === 'get' || $kind === 'set') {
+                // Class method accessors are non-enumerable per spec §15.7.1.
                 $existing = $proto->getOwnPropertyDescriptor($key);
                 if ($kind === 'get') {
                     $proto->defineOwnProperty(
                         $key,
-                        PropertyDescriptor::accessor($fn instanceof JsFunction ? $fn : null, $existing?->set),
+                        PropertyDescriptor::accessor(
+                            $fn instanceof JsFunction ? $fn : null,
+                            $existing?->set,
+                            enumerable: false,
+                            configurable: true,
+                        ),
                     );
                 } else {
                     $proto->defineOwnProperty(
                         $key,
-                        PropertyDescriptor::accessor($existing?->get, $fn instanceof JsFunction ? $fn : null),
+                        PropertyDescriptor::accessor(
+                            $existing?->get,
+                            $fn instanceof JsFunction ? $fn : null,
+                            enumerable: false,
+                            configurable: true,
+                        ),
                     );
                 }
             } else {
@@ -4509,9 +4529,10 @@ class Interpreter
                     $homeObject = null;
                 }
                 $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
-                if ($superBase === null) {
-                    throw new \PhpJs\Exceptions\ReferenceError('super not available');
-                }
+                // Per spec §12.3.5.3 step 5, RequireObjectCoercible(baseValue) throws TypeError
+                // if baseValue is null/undefined. Use JsNull as a sentinel so that the TypeError
+                // is thrown at PutValue/GetValue time (after the RHS is evaluated), not here.
+                $refBase = $superBase ?? \PhpJs\Value\JsNull::instance();
                 // The actual `this` is the receiver for [[Set]] and getter invocations.
                 try {
                     $superThisVal = $env->get('this');
@@ -4523,22 +4544,33 @@ class Interpreter
                     $rawRefKey = $this->evaluate($node->property, $env);
                     if ($rawRefKey instanceof JsSymbol) {
                         return new Reference(
-                            $superBase,
+                            $refBase,
                             '',
                             $this->strictMode,
                             $rawRefKey,
                             thisValue: $superThisObj,
                         );
                     }
+                    // Defer ToPropertyKey for object keys so that RHS is evaluated
+                    // before the key's toString() is invoked (spec evaluation order).
+                    if ($rawRefKey instanceof JsObject) {
+                        return new Reference(
+                            $refBase,
+                            '',
+                            $this->strictMode,
+                            rawKey: $rawRefKey,
+                            thisValue: $superThisObj,
+                        );
+                    }
                     return new Reference(
-                        $superBase,
+                        $refBase,
                         TypeConversion::toString($rawRefKey),
                         $this->strictMode,
                         thisValue: $superThisObj,
                     );
                 }
                 $key = $node->property instanceof Identifier ? $node->property->name : '';
-                return new Reference($superBase, $key, $this->strictMode, thisValue: $superThisObj);
+                return new Reference($refBase, $key, $this->strictMode, thisValue: $superThisObj);
             }
 
             $obj = $this->evaluate($node->object, $env);
