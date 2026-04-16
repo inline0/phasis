@@ -134,7 +134,7 @@ class ObjectConstructor
                 if (!$this_ instanceof JsObject) {
                     return new JsBoolean(false);
                 }
-                $key = $args[0] ?? new JsUndefined();
+                $key = $args[0] ?? JsUndefined::instance();
                 // Per spec, hasOwnProperty accepts symbol keys.
                 if ($key instanceof \PhpJs\Value\JsSymbol) {
                     return new JsBoolean(
@@ -274,6 +274,96 @@ class ObjectConstructor
             1,
         ), true, false, true));
 
+        // Annex B: __defineGetter__(prop, getter) - defines an accessor getter.
+        $proto->defineOwnProperty('__defineGetter__', PropertyDescriptor::data(JsFunction::fromCallable(
+            '__defineGetter__',
+            function (JsValue $this_, array $args): JsValue {
+                $obj = TypeConversion::toObject($this_);
+                $getter = $args[1] ?? JsUndefined::instance();
+                if (!$getter instanceof JsFunction) {
+                    throw new TypeError('__defineGetter__: Argument is not a function');
+                }
+                $prop = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $desc = new PropertyDescriptor(
+                    get: $getter,
+                    enumerable: true,
+                    configurable: true,
+                );
+                $result = $obj->defineOwnProperty($prop, $desc);
+                if (!$result) {
+                    throw new TypeError(
+                        'Cannot redefine property: ' . $prop,
+                    );
+                }
+                return JsUndefined::instance();
+            },
+            2,
+        ), true, false, true));
+
+        // Annex B: __defineSetter__(prop, setter) - defines an accessor setter.
+        $proto->defineOwnProperty('__defineSetter__', PropertyDescriptor::data(JsFunction::fromCallable(
+            '__defineSetter__',
+            function (JsValue $this_, array $args): JsValue {
+                $obj = TypeConversion::toObject($this_);
+                $setter = $args[1] ?? JsUndefined::instance();
+                if (!$setter instanceof JsFunction) {
+                    throw new TypeError('__defineSetter__: Argument is not a function');
+                }
+                $prop = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $desc = new PropertyDescriptor(
+                    set: $setter,
+                    enumerable: true,
+                    configurable: true,
+                );
+                $result = $obj->defineOwnProperty($prop, $desc);
+                if (!$result) {
+                    throw new TypeError(
+                        'Cannot redefine property: ' . $prop,
+                    );
+                }
+                return JsUndefined::instance();
+            },
+            2,
+        ), true, false, true));
+
+        // Annex B: __lookupGetter__(prop) - returns getter for prop walking prototype chain.
+        $proto->defineOwnProperty('__lookupGetter__', PropertyDescriptor::data(JsFunction::fromCallable(
+            '__lookupGetter__',
+            function (JsValue $this_, array $args): JsValue {
+                $obj = TypeConversion::toObject($this_);
+                $prop = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $current = $obj;
+                while ($current !== null) {
+                    $desc = $current->getOwnPropertyDescriptor($prop);
+                    if ($desc !== null) {
+                        return $desc->get instanceof JsFunction ? $desc->get : JsUndefined::instance();
+                    }
+                    $current = $current->getPrototype();
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        ), true, false, true));
+
+        // Annex B: __lookupSetter__(prop) - returns setter for prop walking prototype chain.
+        $proto->defineOwnProperty('__lookupSetter__', PropertyDescriptor::data(JsFunction::fromCallable(
+            '__lookupSetter__',
+            function (JsValue $this_, array $args): JsValue {
+                $obj = TypeConversion::toObject($this_);
+                $prop = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+                $current = $obj;
+                while ($current !== null) {
+                    $desc = $current->getOwnPropertyDescriptor($prop);
+                    if ($desc !== null) {
+                        return $desc->set instanceof JsFunction ? $desc->set : JsUndefined::instance();
+                    }
+                    $current = $current->getPrototype();
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        ), true, false, true));
+
         // toLocaleString delegates to toString per ES spec 20.1.3.5.
         $proto->defineOwnProperty('toLocaleString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toLocaleString',
@@ -366,12 +456,25 @@ class ObjectConstructor
                 if ($source instanceof JsNull || $source instanceof JsUndefined) {
                     continue;
                 }
-                if (!$source instanceof JsObject) {
-                    continue;
-                }
-                $keys = $source->getOwnEnumerableKeys();
-                foreach ($keys as $key) {
-                    $target->set($key, $source->get($key));
+                // Per spec: let from = ToObject(nextSource).
+                // This handles string sources (string objects have index-keyed char properties).
+                $from = $source instanceof JsObject ? $source : TypeConversion::toObject($source);
+                // Iterate own property keys in spec order (integer indices, string keys, symbols).
+                foreach ($from->ordinaryOwnPropertyKeys() as $key) {
+                    if ($key instanceof \PhpJs\Value\JsSymbol) {
+                        $desc = $from->getSymbolPropertyDescriptor($key);
+                        if ($desc !== null && $desc->enumerable === true) {
+                            $value = $from->getBySymbol($key);
+                            $target->setBySymbol($key, $value, true);
+                        }
+                    } elseif ($key instanceof JsString) {
+                        $keyStr = $key->value;
+                        $desc = $from->getOwnPropertyDescriptor($keyStr);
+                        if ($desc !== null && $desc->enumerable === true) {
+                            // Use strict=true: Set(to, nextKey, propValue, true) per spec.
+                            $target->set($keyStr, $from->get($keyStr), true);
+                        }
+                    }
                 }
             }
 
@@ -550,7 +653,7 @@ class ObjectConstructor
                         ));
                     }
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                     if ($desc === null) {
                         continue;
@@ -723,7 +826,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($keyVal);
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                 }
                 if ($desc === null) {
@@ -760,7 +863,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($keyVal);
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                 }
                 if ($desc === null) {
@@ -806,7 +909,7 @@ class ObjectConstructor
                         configurable: false,
                     ));
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $obj->defineOwnProperty($key, new PropertyDescriptor(
                         configurable: false,
                     ));
