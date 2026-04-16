@@ -192,7 +192,12 @@ class Environment
             }
 
             if (isset($this->constants[$name])) {
-                throw new TypeError('Assignment to constant variable');
+                // Per spec: immutable binding assignment throws in strict mode,
+                // silently ignored in non-strict mode.
+                if ($strict) {
+                    throw new TypeError('Assignment to constant variable');
+                }
+                return;
             }
 
             $this->bindings[$name] = $value;

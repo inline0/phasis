@@ -2527,9 +2527,10 @@ class Interpreter
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
         }
-        // Named function expressions can reference themselves
+        // Named function expressions: the name binding is immutable per spec §15.2.4 step 6.
+        // In non-strict mode, assignment is silently ignored; in strict mode it throws TypeError.
         if ($node->name !== null) {
-            $fnEnv->defineVar($node->name, $fn);
+            $fnEnv->defineConst($node->name, $fn);
         }
         $this->setupFunctionPrototype($fn, $node->generator);
         return $fn;
