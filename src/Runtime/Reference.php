@@ -28,15 +28,24 @@ class Reference
     /** Cached result of resolvedName() so ToString is called at most once. */
     private ?string $resolvedNameCache = null;
 
+    /**
+     * For super references: the actual `this` value used as the receiver
+     * when invoking getters/setters or performing [[Set]] on the super base.
+     * Null for normal (non-super) references.
+     */
+    public readonly ?JsObject $thisValue;
+
     public function __construct(
         public readonly JsValue|Environment $base,
         public readonly string $name,
         public readonly bool $strict = false,
         ?JsSymbol $symbolKey = null,
         ?JsValue $rawKey = null,
+        ?JsObject $thisValue = null,
     ) {
         $this->symbolKey = $symbolKey;
         $this->rawKey = $rawKey;
+        $this->thisValue = $thisValue;
     }
 
     /**
@@ -72,8 +81,16 @@ class Reference
         }
 
         if ($this->base instanceof JsObject) {
+            // For super references, use the actual `this` as the receiver so that
+            // getters are invoked with the correct `this` (spec §6.2.4.4 step 5b).
             if ($this->symbolKey !== null) {
+                if ($this->thisValue !== null) {
+                    return $this->base->getBySymbolWithReceiver($this->symbolKey, $this->thisValue);
+                }
                 return $this->base->getBySymbol($this->symbolKey);
+            }
+            if ($this->thisValue !== null) {
+                return $this->base->internalGet($this->resolvedName(), $this->thisValue);
             }
             return $this->base->get($this->resolvedName());
         }
@@ -98,8 +115,24 @@ class Reference
         }
 
         if ($this->base instanceof JsObject) {
+            // For super references, use the actual `this` as the receiver so that
+            // [[Set]] stores the property on `this`, not on the super base
+            // (spec §6.2.4.5 step 6b: base.[[Set]](name, value, GetThisValue(V))).
             if ($this->symbolKey !== null) {
-                $this->base->setBySymbol($this->symbolKey, $value, $this->strict);
+                $receiver = $this->thisValue ?? $this->base;
+                $success = $this->base->internalSetBySymbol($this->symbolKey, $value, $receiver);
+                if (!$success && $this->strict) {
+                    throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}'");
+                }
+                return;
+            }
+            if ($this->thisValue !== null) {
+                $success = $this->base->internalSet($this->resolvedName(), $value, $this->thisValue);
+                if (!$success && $this->strict) {
+                    throw new TypeError(
+                        "Cannot assign to read only property '{$this->resolvedName()}' of object '#<Object>'"
+                    );
+                }
                 return;
             }
             $this->base->set($this->resolvedName(), $value, $this->strict);

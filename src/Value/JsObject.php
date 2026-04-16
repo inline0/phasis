@@ -202,9 +202,10 @@ class JsObject implements JsValue
     }
 
     /**
-     * Internal symbol property lookup that preserves the original receiver.
+     * Symbol property lookup with explicit receiver for getter invocation.
+     * Used by super references to pass the correct `this` to getters.
      */
-    protected function getBySymbolWithReceiver(JsSymbol $symbol, JsObject $receiver): JsValue
+    public function getBySymbolWithReceiver(JsSymbol $symbol, JsObject $receiver): JsValue
     {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
@@ -266,6 +267,41 @@ class JsObject implements JsValue
 
         $this->symbolProperties[$id] = PropertyDescriptor::data($value);
         $this->symbolOrder[$id] = $symbol;
+    }
+
+    /**
+     * Symbol [[Set]] with explicit receiver. Used by super references
+     * so that setters are invoked with the correct `this`.
+     * Returns false if the set failed (non-configurable/non-writable).
+     */
+    public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsObject $receiver): bool
+    {
+        $id = $symbol->getId();
+        if (isset($this->symbolProperties[$id])) {
+            $desc = $this->symbolProperties[$id];
+            if ($desc->set !== null) {
+                $desc->set->call($receiver, [$value]);
+                return true;
+            }
+            if ($desc->isAccessorDescriptor()) {
+                return false;
+            }
+            if ($desc->writable === false) {
+                return false;
+            }
+            $desc->value = $value;
+            return true;
+        }
+        $proto = $this->getPrototype();
+        if ($proto !== null) {
+            return $proto->internalSetBySymbol($symbol, $value, $receiver);
+        }
+        if (!$receiver->extensible) {
+            return false;
+        }
+        $receiver->symbolProperties[$id] = PropertyDescriptor::data($value);
+        $receiver->symbolOrder[$id] = $symbol;
+        return true;
     }
 
     /** Check if the object has a symbol-keyed property. */

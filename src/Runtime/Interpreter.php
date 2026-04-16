@@ -2296,22 +2296,30 @@ class Interpreter
                 $homeObject = null;
             }
             $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
+            // RequireObjectCoercible: if superBase is null, throw TypeError (spec §12.3.5.3 step 5).
             if ($superBase === null) {
-                throw new \PhpJs\Exceptions\ReferenceError(
-                    "Must call super constructor in derived class before accessing 'super'",
+                throw new TypeError(
+                    "Cannot read properties of undefined (super)",
                 );
             }
+            // Use the actual `this` as the receiver so getters are called with the right context.
+            try {
+                $superThisRead = $env->get('this');
+            } catch (\Throwable) {
+                $superThisRead = null;
+            }
+            $superRecvRead = $superThisRead instanceof JsObject ? $superThisRead : $superBase;
             if ($node->computed) {
                 $rawKey = $this->evaluate($node->property, $env);
                 if ($rawKey instanceof JsSymbol) {
-                    return $superBase->getBySymbol($rawKey) ?? JsUndefined::instance();
+                    return $superBase->getBySymbolWithReceiver($rawKey, $superRecvRead);
                 }
-                return $superBase->get(TypeConversion::toString($rawKey));
+                return $superBase->internalGet(TypeConversion::toString($rawKey), $superRecvRead);
             }
             $key = $node->property instanceof Identifier
                 ? $node->property->name
                 : TypeConversion::toString($this->evaluate($node->property, $env));
-            return $superBase->get($key);
+            return $superBase->internalGet($key, $superRecvRead);
         }
 
         $obj = $this->evaluate($node->object, $env);
@@ -3202,14 +3210,21 @@ class Interpreter
         // Mark as class constructor so calling without new throws TypeError.
         $constructor->setClassConstructor($isDerived);
 
-        // Set up prototype chain
-        $proto = new JsObject(
-            $superClass instanceof JsFunction
-                ? ($superClass->get('prototype') instanceof JsObject
-                    ? $superClass->get('prototype')
-                    : null)
-                : null,
-        );
+        // Set up prototype chain.
+        // `class C extends null` must produce C.prototype with null [[Prototype]].
+        // `new JsObject(null)` would fall back to globalPrototype due to `??`, so we
+        // use setPrototype() explicitly for the null-heritage case.
+        if ($superClass instanceof JsFunction) {
+            $superProto = $superClass->get('prototype');
+            $proto = new JsObject($superProto instanceof JsObject ? $superProto : null);
+        } elseif ($superClassNode !== null && $superClass instanceof \PhpJs\Value\JsNull) {
+            // extends null: prototype has no [[Prototype]]
+            $proto = new JsObject();
+            $proto->setPrototype(null);
+        } else {
+            // No extends clause: prototype inherits from Object.prototype (global default)
+            $proto = new JsObject();
+        }
 
         $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         // Per spec, 'constructor' is the first property on the prototype object.
@@ -3272,12 +3287,32 @@ class Interpreter
                     "Classes may not have a static property named 'prototype'",
                 );
             }
-            $constructor->defineOwnProperty($key, PropertyDescriptor::data(
-                $fn instanceof JsValue ? $fn : JsUndefined::instance(),
-                true,
-                false,
-                true,
-            ));
+            // Static getters and setters are accessor properties, like non-static ones.
+            if ($kind === 'get' || $kind === 'set') {
+                $existingSt = $constructor->getOwnPropertyDescriptor($key);
+                if ($kind === 'get') {
+                    $constructor->defineOwnProperty($key, PropertyDescriptor::accessor(
+                        $fn instanceof JsFunction ? $fn : null,
+                        $existingSt?->set,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                } else {
+                    $constructor->defineOwnProperty($key, PropertyDescriptor::accessor(
+                        $existingSt?->get,
+                        $fn instanceof JsFunction ? $fn : null,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                }
+            } else {
+                $constructor->defineOwnProperty($key, PropertyDescriptor::data(
+                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            }
         }
 
         // Inheritance: set [[Prototype]] of constructor to super class.
@@ -4466,7 +4501,7 @@ class Interpreter
 
         if ($node instanceof MemberExpression) {
             // super.prop = value: the reference base is the super prototype,
-            // but setValue must use the current this.
+            // but setValue must use the current this (spec §6.2.4.5 step 6b).
             if ($node->object instanceof Identifier && $node->object->name === 'super') {
                 try {
                     $homeObject = $env->get('[[HomeObject]]');
@@ -4477,15 +4512,33 @@ class Interpreter
                 if ($superBase === null) {
                     throw new \PhpJs\Exceptions\ReferenceError('super not available');
                 }
+                // The actual `this` is the receiver for [[Set]] and getter invocations.
+                try {
+                    $superThisVal = $env->get('this');
+                } catch (\Throwable) {
+                    $superThisVal = null;
+                }
+                $superThisObj = $superThisVal instanceof JsObject ? $superThisVal : null;
                 if ($node->computed) {
                     $rawRefKey = $this->evaluate($node->property, $env);
                     if ($rawRefKey instanceof JsSymbol) {
-                        return new Reference($superBase, '', $this->strictMode, $rawRefKey);
+                        return new Reference(
+                            $superBase,
+                            '',
+                            $this->strictMode,
+                            $rawRefKey,
+                            thisValue: $superThisObj,
+                        );
                     }
-                    return new Reference($superBase, TypeConversion::toString($rawRefKey), $this->strictMode);
+                    return new Reference(
+                        $superBase,
+                        TypeConversion::toString($rawRefKey),
+                        $this->strictMode,
+                        thisValue: $superThisObj,
+                    );
                 }
                 $key = $node->property instanceof Identifier ? $node->property->name : '';
-                return new Reference($superBase, $key, $this->strictMode);
+                return new Reference($superBase, $key, $this->strictMode, thisValue: $superThisObj);
             }
 
             $obj = $this->evaluate($node->object, $env);
