@@ -63,7 +63,8 @@ class ObjectConstructor
         });
         $constructor->setConstructable();
 
-        $constructor->set('prototype', $proto);
+        // Per spec, Object.prototype is non-writable, non-enumerable, non-configurable.
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         // Static methods. Per spec, built-in methods are writable, non-enumerable, configurable.
@@ -392,44 +393,20 @@ class ObjectConstructor
                 $obj->setPrototype(null);
             } elseif ($proto instanceof JsObject) {
                 $obj = new JsObject($proto);
-            } elseif ($proto instanceof JsUndefined) {
-                $obj = new JsObject($defaultProto);
             } else {
                 throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
             }
 
-            // Second argument: property descriptors
-            if (isset($args[1]) && $args[1] instanceof JsObject) {
-                $props = $args[1];
+            // Second argument: property descriptors (ObjectDefineProperties per spec).
+            if (isset($args[1]) && !($args[1] instanceof JsUndefined)) {
+                $props = TypeConversion::toObject($args[1]);
                 foreach ($props->getOwnEnumerableKeys() as $key) {
-                    $desc = $props->get($key);
-                    if ($desc instanceof JsObject) {
-                        $value = $desc->has('value') ? $desc->get('value') : null;
-                        $writable = $desc->has('writable')
-                            ? TypeConversion::toBoolean($desc->get('writable')) : true;
-                        $enumerable = $desc->has('enumerable')
-                            ? TypeConversion::toBoolean($desc->get('enumerable')) : false;
-                        $configurable = $desc->has('configurable')
-                            ? TypeConversion::toBoolean($desc->get('configurable')) : false;
-                        $get = $desc->has('get') ? $desc->get('get') : null;
-                        $set = $desc->has('set') ? $desc->get('set') : null;
-
-                        if ($get instanceof JsFunction || $set instanceof JsFunction) {
-                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor(
-                                $get instanceof JsFunction ? $get : null,
-                                $set instanceof JsFunction ? $set : null,
-                                $enumerable,
-                                $configurable,
-                            ));
-                        } elseif ($value !== null) {
-                            $obj->defineOwnProperty($key, new PropertyDescriptor(
-                                value: $value,
-                                writable: $writable,
-                                enumerable: $enumerable,
-                                configurable: $configurable,
-                            ));
-                        }
+                    $descObj = $props->get($key);
+                    if (!$descObj instanceof JsObject) {
+                        throw new TypeError('Property description must be an object: ' . $key);
                     }
+                    $descriptor = self::toPropertyDescriptor($descObj);
+                    $obj->defineOwnProperty($key, $descriptor);
                 }
             }
 
@@ -453,48 +430,7 @@ class ObjectConstructor
                 throw new TypeError('Property description must be an object');
             }
 
-            $value = $desc->has('value') ? $desc->get('value') : null;
-            $writable = $desc->has('writable') ? TypeConversion::toBoolean($desc->get('writable')) : null;
-            $enumerable = $desc->has('enumerable') ? TypeConversion::toBoolean($desc->get('enumerable')) : null;
-            $configurable = $desc->has('configurable') ? TypeConversion::toBoolean($desc->get('configurable')) : null;
-
-            $getter = null;
-            $setter = null;
-            $hasGetOrSet = false;
-            if ($desc->has('get')) {
-                $hasGetOrSet = true;
-                $g = $desc->get('get');
-                if ($g instanceof JsFunction) {
-                    $getter = $g;
-                } elseif (!$g instanceof JsUndefined) {
-                    throw new TypeError('Getter must be a function');
-                }
-            }
-            if ($desc->has('set')) {
-                $hasGetOrSet = true;
-                $s = $desc->get('set');
-                if ($s instanceof JsFunction) {
-                    $setter = $s;
-                } elseif (!$s instanceof JsUndefined) {
-                    throw new TypeError('Setter must be a function');
-                }
-            }
-
-            if ($hasGetOrSet) {
-                $descriptor = PropertyDescriptor::accessor(
-                    get: $getter,
-                    set: $setter,
-                    enumerable: $enumerable,
-                    configurable: $configurable,
-                );
-            } else {
-                $descriptor = new PropertyDescriptor(
-                    value: $value,
-                    writable: $writable,
-                    enumerable: $enumerable,
-                    configurable: $configurable,
-                );
-            }
+            $descriptor = self::toPropertyDescriptor($desc);
 
             if ($propKey instanceof JsSymbol) {
                 $obj->definePropertyBySymbol($propKey, $descriptor);
@@ -604,54 +540,79 @@ class ObjectConstructor
                 throw new \PhpJs\Exceptions\TypeError('Property descriptors must be an object');
             }
 
-            $keys = $props->getOwnEnumerableKeys();
-            foreach ($keys as $key) {
-                $desc = $props->get($key);
-                if (!$desc instanceof JsObject) {
-                    continue;
+            foreach ($props->getOwnEnumerableKeys() as $key) {
+                $descObj = $props->get($key);
+                if (!$descObj instanceof JsObject) {
+                    throw new TypeError('Property description must be an object: ' . $key);
                 }
-
-                $value = $desc->has('value') ? $desc->get('value') : null;
-                $writable = $desc->has('writable') ? TypeConversion::toBoolean($desc->get('writable')) : null;
-                $enumerable = $desc->has('enumerable') ? TypeConversion::toBoolean($desc->get('enumerable')) : null;
-                $configurable = $desc->has('configurable')
-                    ? TypeConversion::toBoolean($desc->get('configurable'))
-                    : null;
-
-                $getter = null;
-                $setter = null;
-                if ($desc->has('get')) {
-                    $g = $desc->get('get');
-                    if ($g instanceof JsFunction) {
-                        $getter = $g;
-                    }
-                }
-                if ($desc->has('set')) {
-                    $s = $desc->get('set');
-                    if ($s instanceof JsFunction) {
-                        $setter = $s;
-                    }
-                }
-
-                if ($getter !== null || $setter !== null) {
-                    $obj->defineOwnProperty($key, PropertyDescriptor::accessor(
-                        get: $getter,
-                        set: $setter,
-                        enumerable: $enumerable ?? false,
-                        configurable: $configurable ?? false,
-                    ));
-                } else {
-                    $obj->defineOwnProperty($key, new PropertyDescriptor(
-                        value: $value,
-                        writable: $writable ?? false,
-                        enumerable: $enumerable ?? false,
-                        configurable: $configurable ?? false,
-                    ));
-                }
+                $descriptor = self::toPropertyDescriptor($descObj);
+                $obj->defineOwnProperty($key, $descriptor);
             }
 
             return $obj;
         };
+    }
+
+    /**
+     * ToPropertyDescriptor(Obj) — spec §10.1.6.3.
+     *
+     * Converts a JS object to a PropertyDescriptor. Throws TypeError if the
+     * object is not a valid descriptor (e.g. mixing data and accessor fields).
+     */
+    public static function toPropertyDescriptor(JsObject $obj): PropertyDescriptor
+    {
+        $hasValue    = $obj->has('value');
+        $hasWritable = $obj->has('writable');
+        $hasGet      = $obj->has('get');
+        $hasSet      = $obj->has('set');
+
+        // Mixed data + accessor descriptor is invalid.
+        if (($hasValue || $hasWritable) && ($hasGet || $hasSet)) {
+            throw new TypeError('Invalid property descriptor: cannot specify both accessor and data properties');
+        }
+
+        $enumerable  = $obj->has('enumerable') ? TypeConversion::toBoolean($obj->get('enumerable')) : null;
+        $configurable = $obj->has('configurable') ? TypeConversion::toBoolean($obj->get('configurable')) : null;
+
+        if ($hasGet || $hasSet) {
+            $getter = null;
+            $setter = null;
+
+            if ($hasGet) {
+                $g = $obj->get('get');
+                if ($g instanceof JsFunction) {
+                    $getter = $g;
+                } elseif (!$g instanceof JsUndefined) {
+                    throw new TypeError('Getter must be a function or undefined');
+                }
+            }
+
+            if ($hasSet) {
+                $s = $obj->get('set');
+                if ($s instanceof JsFunction) {
+                    $setter = $s;
+                } elseif (!$s instanceof JsUndefined) {
+                    throw new TypeError('Setter must be a function or undefined');
+                }
+            }
+
+            return PropertyDescriptor::accessor(
+                get: $getter,
+                set: $setter,
+                enumerable: $enumerable,
+                configurable: $configurable,
+            );
+        }
+
+        $value   = $hasValue ? $obj->get('value') : null;
+        $writable = $hasWritable ? TypeConversion::toBoolean($obj->get('writable')) : null;
+
+        return new PropertyDescriptor(
+            value: $value,
+            writable: $writable,
+            enumerable: $enumerable,
+            configurable: $configurable,
+        );
     }
 
     private static function getOwnPropertyDescriptorFn(): \Closure

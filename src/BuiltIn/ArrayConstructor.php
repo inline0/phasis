@@ -52,7 +52,10 @@ class ArrayConstructor
         $constructor->defineOwnProperty('of', \PhpJs\Object\PropertyDescriptor::data($ofFn, true, false, true));
 
         // Array.prototype with all standard methods.
-        $proto = new JsArray();
+        // Array.prototype's [[Prototype]] must be Object.prototype, not a previous engine's
+        // Array.prototype (which JsArray::$globalPrototype might point to between engines).
+        // Explicitly pass the current Object.prototype to avoid the static leakage.
+        $proto = new JsArray([], \PhpJs\Value\JsObject::getGlobalPrototype());
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
         self::installPrototypeMethods($proto);
         // Symbol.iterator on Array.prototype, not on each instance.

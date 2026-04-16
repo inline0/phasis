@@ -195,7 +195,8 @@ class Interpreter
         return match (true) {
             $node instanceof ExpressionStatement => $this->execExpressionStatement($node, $env),
             $node instanceof VariableDeclaration => $this->execVariableDeclaration($node, $env),
-            $node instanceof FunctionDeclaration => Completion::normal(JsUndefined::instance()),
+            // Per spec §14.1.32: FunctionDeclaration → NormalCompletion(empty).
+            $node instanceof FunctionDeclaration => new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true),
             $node instanceof ClassDeclaration => $this->execClassDeclaration($node, $env),
             $node instanceof BlockStatement => $this->execBlockStatement($node, $env),
             $node instanceof IfStatement => $this->execIfStatement($node, $env),
@@ -1647,6 +1648,38 @@ class Interpreter
     }
 
     /**
+     * Install the .prototype property on a newly created function.
+     *
+     * For normal functions: creates {constructor: fn} with Object.prototype as prototype.
+     * For generator functions: creates a plain object with %GeneratorPrototype% as prototype,
+     * NO constructor property (per spec §27.3.4).
+     */
+    private function installFunctionPrototype(JsFunction $fn, bool $isGenerator): void
+    {
+        if ($isGenerator) {
+            // Per spec §27.3.4.3: generator function's .prototype is a plain object
+            // whose [[Prototype]] is %GeneratorPrototype%. No own properties.
+            $generatorProto = null;
+            if ($this->globalEnv->has('__GeneratorPrototype__')) {
+                $gp = $this->globalEnv->get('__GeneratorPrototype__');
+                if ($gp instanceof JsObject) {
+                    $generatorProto = $gp;
+                }
+            }
+            $proto = new JsObject($generatorProto);
+            // Non-constructable: generators can't be called with new.
+            $fn->setNonConstructable();
+        } else {
+            $proto = new JsObject();
+            // Per spec, constructor is writable, non-enumerable, configurable.
+            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+        }
+        // Per spec §27.3.4 / §10.2.4: .prototype is writable, non-enumerable, non-configurable for generators;
+        // writable, non-enumerable, non-configurable for regular functions too.
+        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+    }
+
+    /**
      * Execute an interpreted (non-generator) function body.
      *
      * @param list<JsValue> $args
@@ -1913,6 +1946,20 @@ class Interpreter
      */
     private function bindParameters(array $params, array $args, Environment $env): void
     {
+        // Per spec §10.2.1: when there are parameter default expressions,
+        // all parameter names are initially in TDZ. Each is initialized in order,
+        // so a default like `x = x` sees `x` as TDZ and throws ReferenceError.
+        if ($this->hasParameterExpressions($params)) {
+            foreach ($params as $param) {
+                $target = $param instanceof RestElement
+                    ? $param->argument
+                    : ($param instanceof AssignmentPattern ? $param->left : $param);
+                foreach ($this->patternBoundNames($target) as $name) {
+                    $env->declareLet($name);
+                }
+            }
+        }
+
         for ($i = 0; $i < count($params); $i++) {
             $param = $params[$i];
             $value = $args[$i] ?? JsUndefined::instance();
@@ -2009,7 +2056,10 @@ class Interpreter
     private function bindPattern(Node $pattern, JsValue $value, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            $env->defineVar($pattern->name, $value);
+            // Use initializeTdz so that if the name was pre-declared in TDZ
+            // (for default-param TDZ semantics), we properly clear it.
+            // If not in TDZ, this falls back to defineVar.
+            $env->initializeTdz($pattern->name, $value);
             return;
         }
 
@@ -2404,8 +2454,18 @@ class Interpreter
             if ($prop instanceof SpreadElement) {
                 $source = $this->evaluate($prop->argument, $env);
                 if ($source instanceof JsObject) {
+                    // Copy own enumerable string-keyed properties.
                     foreach ($source->getOwnPropertyNames() as $key) {
-                        $obj->set($key, $source->get($key));
+                        $desc = $source->getOwnPropertyDescriptor($key);
+                        if ($desc !== null && $desc->enumerable !== false) {
+                            $obj->set($key, $source->get($key));
+                        }
+                    }
+                    // Copy own enumerable symbol-keyed properties (per spec CopyDataProperties).
+                    foreach ($source->getOwnSymbolsWithDescriptors() as [$sym, $desc]) {
+                        if ($desc->enumerable !== false) {
+                            $obj->setBySymbol($sym, $desc->value ?? JsUndefined::instance());
+                        }
                     }
                 }
                 continue;
@@ -2522,10 +2582,7 @@ class Interpreter
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
         }
-        // Constructor prototype: constructor is writable, configurable but not enumerable.
-        $proto = new JsObject();
-        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
-        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+        $this->installFunctionPrototype($fn, $node->generator);
         return $fn;
     }
 
@@ -2828,7 +2885,8 @@ class Interpreter
                 $this->declareBinding($node->kind, $declarator->id, $init, $env);
             }
         }
-        return Completion::normal(JsUndefined::instance());
+        // Per spec §14.3.2.1: VariableStatement → NormalCompletion(empty).
+        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
     }
 
     /**
@@ -3459,40 +3517,6 @@ class Interpreter
             return Completion::normal($v);
         }
 
-        // Fallback for JsArray without Symbol.iterator (should not normally happen).
-        if ($iterable instanceof JsArray) {
-            $len = $iterable->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                if (++$iterations > $this->maxLoopIterations) {
-                    throw new InternalError('Maximum loop iterations exceeded');
-                }
-
-                $iterEnv = $env->createChild();
-                $this->assignForBinding($node->left, $iterable->get((string) $i), $iterEnv);
-                $completion = $this->executeStatement($node->body, $iterEnv);
-
-                if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
-                    $v = $completion->value;
-                }
-
-                if ($completion->type === CompletionType::Break && ($completion->target === null || ($label !== null && $completion->target === $label))) {
-                    $breakVal = $completion->empty ? $v : $completion->value;
-                    return Completion::normal($breakVal);
-                }
-                if (
-                    $completion->type === CompletionType::Continue
-                    && ($completion->target === null || ($label !== null && $completion->target === $label))
-                ) {
-                    continue;
-                }
-                if ($completion->isAbrupt()) {
-                    return $completion;
-                }
-            }
-
-            return Completion::normal($v);
-        }
-
         throw new TypeError(TypeConversion::toString($iterable) . ' is not iterable');
     }
 
@@ -3983,9 +4007,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
-                $proto = new JsObject();
-                $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
-                $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+                $this->installFunctionPrototype($fn, $stmt->generator);
                 // At global scope, function declarations are enumerable, non-configurable properties.
                 // In nested scopes (env has no linked object), use defineVar as usual.
                 if ($env->getLinkedObject() !== null) {
@@ -4734,6 +4756,10 @@ class Interpreter
 
         $isGlobal = str_contains($flags, 'g');
         $isSticky = str_contains($flags, 'y');
+
+        // Store the compiled PCRE pattern as a non-enumerable internal slot so prototype
+        // methods (exec, test) installed on RegExp.prototype can access it via $this_.
+        $obj->defineOwnProperty('[[PCREPattern]]', PropertyDescriptor::data(new JsString($pcrePattern), false, false, false));
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
         $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {

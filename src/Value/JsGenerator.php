@@ -21,6 +21,14 @@ use PhpJs\Object\PropertyDescriptor;
  */
 class JsGenerator extends JsObject
 {
+    /** %GeneratorPrototype%: the intrinsic default [[Prototype]] for generator instances. */
+    private static ?JsObject $generatorPrototype = null;
+
+    public static function setGeneratorPrototype(JsObject $proto): void
+    {
+        self::$generatorPrototype = $proto;
+    }
+
     /** @var \Fiber<mixed, mixed, mixed, mixed> */
     private \Fiber $fiber;
     private bool $done = false;
@@ -38,7 +46,17 @@ class JsGenerator extends JsObject
         array $args,
         \Closure $executor,
     ) {
-        parent::__construct();
+        // Per spec §27.5.1 via OrdinaryCreateFromConstructor:
+        // The [[Prototype]] is generatorFn.prototype if it's an Object,
+        // otherwise falls back to the intrinsic %GeneratorPrototype%.
+        $instanceProto = null;
+        $fnProto = $generatorFn->get('prototype');
+        if ($fnProto instanceof JsObject) {
+            $instanceProto = $fnProto;
+        } else {
+            $instanceProto = self::$generatorPrototype;
+        }
+        parent::__construct($instanceProto);
 
         $fn = $generatorFn;
         $thisVal = $thisValue;

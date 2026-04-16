@@ -150,6 +150,30 @@ class Environment
         $this->bindings[$name] = $value;
     }
 
+    /**
+     * Initialize a binding if it's currently in TDZ, otherwise define it as a var.
+     * Used during parameter binding when params were pre-declared as TDZ.
+     */
+    public function initializeTdz(string $name, JsValue $value): void
+    {
+        if (isset($this->tdz[$name])) {
+            unset($this->tdz[$name]);
+            $this->bindings[$name] = $value;
+            if (
+                $this->linkedObject !== null
+                && $name !== 'this' && $name !== 'globalThis'
+                && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
+            ) {
+                $this->linkedObject->defineOwnProperty(
+                    $name,
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, false, true),
+                );
+            }
+        } else {
+            $this->defineVar($name, $value);
+        }
+    }
+
     /** Get a binding value, walking the scope chain. Throws on TDZ access or missing binding. */
     public function get(string $name): JsValue
     {

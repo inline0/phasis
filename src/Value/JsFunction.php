@@ -17,6 +17,12 @@ class JsFunction extends JsObject
     /** Lazily resolved: true once fnProto's [[Prototype]] has been wired to Object.prototype. */
     private static bool $functionPrototypeChainWired = false;
 
+    /**
+     * %GeneratorFunction.prototype% intrinsic: [[Prototype]] for all generator function instances.
+     * Its own [[Prototype]] is Function.prototype.
+     */
+    private static ?JsObject $generatorFunctionPrototype = null;
+
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
@@ -26,6 +32,16 @@ class JsFunction extends JsObject
         // Without this, the prototype inherited from JsObject's constructor
         // would point to a previous Engine's Object.prototype.
         $proto->setPrototype(null);
+    }
+
+    public static function setGeneratorFunctionPrototype(JsObject $proto): void
+    {
+        self::$generatorFunctionPrototype = $proto;
+    }
+
+    public static function getGeneratorFunctionPrototype(): ?JsObject
+    {
+        return self::$generatorFunctionPrototype;
     }
 
     public static function setInterpreterCallback(callable $callback): void
@@ -225,6 +241,10 @@ class JsFunction extends JsObject
     public function getPrototype(): ?JsObject
     {
         if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
+            // Generator functions use %GeneratorFunction.prototype% instead of %Function.prototype%.
+            if ($this->isGenerator && self::$generatorFunctionPrototype !== null && $this !== self::$generatorFunctionPrototype) {
+                return self::$generatorFunctionPrototype;
+            }
             return self::$functionPrototype;
         }
         // For Function.prototype itself, lazily wire to Object.prototype.

@@ -38,8 +38,8 @@ class DateConstructor
             // Called with new: construct a Date object.
             $timeValue = self::constructTimeValue($args);
             $this_->setPrototype($proto);
-            $this_->set('[[DateValue]]', new JsNumber($timeValue));
-            $this_->set('[[IsDate]]', new JsBoolean(true));
+            $this_->defineOwnProperty('[[DateValue]]', PropertyDescriptor::data(new JsNumber($timeValue), true, false, true));
+            $this_->defineOwnProperty('[[IsDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
         }, 7);
         $constructor->setConstructable();

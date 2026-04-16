@@ -27,6 +27,11 @@ class RegExpPrototype
 {
     public static function install(JsObject $proto): void
     {
+        $addMethod = static function (string $name, \Closure $fn, int $length) use ($proto): void {
+            $func = JsFunction::fromCallable($name, $fn, $length);
+            $proto->defineOwnProperty($name, PropertyDescriptor::data($func, true, false, true));
+        };
+
         $addSymbol = static function (
             \PhpJs\Value\JsSymbol $sym,
             string $name,
@@ -37,11 +42,159 @@ class RegExpPrototype
             $proto->definePropertyBySymbol($sym, PropertyDescriptor::data($func, true, false, true));
         };
 
+        // Per spec §22.2.6.2: RegExp.prototype.exec reads [[PCREPattern]] from this.
+        $addMethod('exec', self::execMethod(), 1);
+
+        // Per spec §22.2.6.14: RegExp.prototype.test calls exec.
+        $addMethod('test', static function (JsValue $this_, array $args): JsValue {
+            $execMethod = $this_ instanceof JsObject ? $this_->get('exec') : null;
+            if ($execMethod instanceof JsFunction) {
+                $result = $execMethod->call($this_, $args);
+                return new JsBoolean(!$result instanceof JsNull);
+            }
+            return new JsBoolean(false);
+        }, 1);
+
+        // Per spec §22.2.6.15: RegExp.prototype.toString returns /source/flags.
+        $addMethod('toString', static function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.toString called on non-object');
+            }
+            $source = TypeConversion::toString($this_->get('source'));
+            $flags = TypeConversion::toString($this_->get('flags'));
+            return new JsString("/{$source}/{$flags}");
+        }, 0);
+
+        // Accessor properties on RegExp.prototype for source, flags, global, etc.
+        // These read own data properties from each RegExp instance.
+        // Instances have their own shadow data properties, so the accessor is only
+        // invoked when querying RegExp.prototype itself (not instances).
+        $flagAccessor = static function (string $propName) use ($proto): void {
+            $getter = JsFunction::fromCallable('get ' . $propName, static function (JsValue $this_, array $args) use ($propName): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
+                }
+                // For RegExp.prototype itself, return undefined per spec.
+                $pcrePattern = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+                if ($pcrePattern === null) {
+                    return JsUndefined::instance();
+                }
+                return $this_->get($propName);
+            }, 0);
+            $proto->defineOwnProperty($propName, \PhpJs\Object\PropertyDescriptor::accessor(
+                get: $getter,
+                set: null,
+                enumerable: false,
+                configurable: true,
+            ));
+        };
+
+        $flagAccessor('source');
+        $flagAccessor('flags');
+        $flagAccessor('global');
+        $flagAccessor('ignoreCase');
+        $flagAccessor('multiline');
+        $flagAccessor('dotAll');
+        $flagAccessor('unicode');
+        $flagAccessor('unicodeSets');
+        $flagAccessor('sticky');
+        $flagAccessor('hasIndices');
+
         $addSymbol(SymbolConstructor::search(), '[Symbol.search]', self::symbolSearch(), 1);
         $addSymbol(SymbolConstructor::match(), '[Symbol.match]', self::symbolMatch(), 1);
         $addSymbol(SymbolConstructor::replace(), '[Symbol.replace]', self::symbolReplace(), 2);
         $addSymbol(SymbolConstructor::matchAll(), '[Symbol.matchAll]', self::symbolMatchAll(), 1);
         $addSymbol(SymbolConstructor::split(), '[Symbol.split]', self::symbolSplit(), 2);
+    }
+
+    /**
+     * RegExp.prototype.exec(string) - spec §22.2.6.2
+     *
+     * Reads the [[PCREPattern]] internal slot from `this` and executes the match.
+     * This is a shared prototype method; each RegExp instance also has its own
+     * exec that shadows this (preserving backward compatibility for direct invocation).
+     */
+    private static function execMethod(): \Closure
+    {
+        return static function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on non-object');
+            }
+
+            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            if ($pcrePatternDesc === null || !$pcrePatternDesc->value instanceof JsString) {
+                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
+            }
+            $pcrePattern = $pcrePatternDesc->value->value;
+
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $strLen = mb_strlen($str, 'UTF-8');
+
+            $isGlobal  = TypeConversion::toBoolean($this_->get('global'));
+            $isSticky  = TypeConversion::toBoolean($this_->get('sticky'));
+
+            if ($isGlobal || $isSticky) {
+                $lastIndexVal = $this_->get('lastIndex');
+                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
+            } else {
+                $lastIndex = 0;
+            }
+
+            if ($lastIndex < 0 || $lastIndex > $strLen) {
+                if ($isGlobal || $isSticky) {
+                    $this_->set('lastIndex', new JsNumber(0.0), true);
+                }
+                return JsNull::instance();
+            }
+
+            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
+
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset)) {
+                $matchBytePos = $matches[0][1];
+                if ($isSticky && $matchBytePos !== $byteOffset) {
+                    $this_->set('lastIndex', new JsNumber(0.0), true);
+                    return JsNull::instance();
+                }
+                $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
+                $matchStr = $matches[0][0];
+                $matchCharLen = mb_strlen($matchStr, 'UTF-8');
+
+                if ($isGlobal || $isSticky) {
+                    $this_->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
+                }
+
+                $elements = [];
+                foreach ($matches as $key => $match) {
+                    if (is_int($key)) {
+                        $elements[] = $match[1] === -1
+                            ? JsUndefined::instance()
+                            : new JsString($match[0]);
+                    }
+                }
+                $result = JsArray::fromArray($elements);
+                $result->set('index', new JsNumber((float) $matchCharPos));
+                $result->set('input', new JsString($str));
+
+                $groups = new JsObject(null);
+                $hasGroups = false;
+                foreach ($matches as $key => $match) {
+                    if (is_string($key)) {
+                        $hasGroups = true;
+                        $groups->set($key, $match[1] === -1
+                            ? JsUndefined::instance()
+                            : new JsString($match[0]));
+                    }
+                }
+                $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+
+                return $result;
+            }
+
+            if ($isGlobal || $isSticky) {
+                $this_->set('lastIndex', new JsNumber(0.0), true);
+            }
+            return JsNull::instance();
+        };
     }
 
     /**

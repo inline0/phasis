@@ -435,6 +435,47 @@ class GlobalObject
             configurable: false,
         ));
         $env->defineVar('Function', $fnConstructor);
+
+        // Set up %GeneratorFunction.prototype% and %GeneratorPrototype% intrinsics.
+        // Per spec §27.3: GeneratorFunction.prototype [[Prototype]] = Function.prototype.
+        // Per spec §27.1.2: %GeneratorPrototype% [[Prototype]] = %IteratorPrototype%.
+        //
+        // %GeneratorFunction.prototype% is itself a function (because it inherits call/apply/bind
+        // from Function.prototype). We create it as a plain JsObject with $fnProto as prototype.
+        $generatorFunctionProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+        // Wire: GeneratorFunction.prototype -> Function.prototype
+        // (this is done via the custom prototype mechanism)
+        $generatorFunctionProto->setCustomPrototype($fnProto);
+        JsFunction::setGeneratorFunctionPrototype($generatorFunctionProto);
+
+        // %GeneratorPrototype%: the prototype of all generator instances.
+        // Its [[Prototype]] is %IteratorPrototype% (which we approximate as Object.prototype for now).
+        // Generator function .prototype inherits from this.
+        $generatorPrototype = new \PhpJs\Value\JsObject();
+        // Install Symbol.iterator on %GeneratorPrototype% — generators are iterators.
+        $generatorPrototype->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::iterator(),
+            \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable('[Symbol.iterator]', static function (JsValue $this_, array $args): JsValue {
+                    return $this_;
+                }, 0),
+                true,
+                false,
+                true,
+            ),
+        );
+        // Wire: GeneratorFunction.prototype.prototype = %GeneratorPrototype%
+        $generatorFunctionProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+            $generatorPrototype,
+            true,
+            false,
+            false,
+        ));
+        // Register the intrinsic so JsGenerator can use it as fallback when fn.prototype is not an Object.
+        \PhpJs\Value\JsGenerator::setGeneratorPrototype($generatorPrototype);
+        // Store for interpreter access.
+        $env->defineVar('__GeneratorPrototype__', $generatorPrototype);
+        $env->defineVar('__GeneratorFunctionPrototype__', $generatorFunctionProto);
     }
 
     private static function parseInt(): \Closure

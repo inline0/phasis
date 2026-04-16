@@ -25,6 +25,11 @@ class JsObject implements JsValue
         self::$globalPrototype = $proto;
     }
 
+    public static function getGlobalPrototype(): ?JsObject
+    {
+        return self::$globalPrototype;
+    }
+
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();
@@ -480,6 +485,23 @@ class JsObject implements JsValue
     public function getOwnSymbolProperties(): array
     {
         return $this->symbolProperties;
+    }
+
+    /**
+     * Return own symbol-keyed properties as a list of [JsSymbol, PropertyDescriptor] pairs.
+     * Useful for CopyDataProperties and object spread.
+     *
+     * @return list<array{0: JsSymbol, 1: PropertyDescriptor}>
+     */
+    public function getOwnSymbolsWithDescriptors(): array
+    {
+        $result = [];
+        foreach ($this->symbolOrder as $id => $sym) {
+            if (isset($this->symbolProperties[$id])) {
+                $result[] = [$sym, $this->symbolProperties[$id]];
+            }
+        }
+        return $result;
     }
 
     /**

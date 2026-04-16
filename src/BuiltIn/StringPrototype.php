@@ -39,6 +39,8 @@ class StringPrototype
         $d('substring', self::substring(), 2);
         $d('toLowerCase', self::toLowerCase(), 0);
         $d('toUpperCase', self::toUpperCase(), 0);
+        $d('toLocaleLowerCase', self::toLowerCase(), 0);
+        $d('toLocaleUpperCase', self::toUpperCase(), 0);
         $d('trim', self::trim(), 0);
         $d('trimStart', self::trimStart(), 0);
         $d('trimEnd', self::trimEnd(), 0);
@@ -156,9 +158,9 @@ class StringPrototype
             $existing->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
             $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
-            // Static methods on String constructor.
-            $existing->set('fromCharCode', JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1));
-            $existing->set('fromCodePoint', JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1));
+            // Static methods on String constructor — non-enumerable per spec.
+            $existing->defineOwnProperty('fromCharCode', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1), true, false, true));
+            $existing->defineOwnProperty('fromCodePoint', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1), true, false, true));
         }
 
         // Store the prototype so the interpreter can access it for auto-boxing.
