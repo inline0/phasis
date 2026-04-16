@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace PhpJs\Value;
 
+use PhpJs\BuiltIn\IteratorPrototypes;
+use PhpJs\BuiltIn\SymbolConstructor;
 use PhpJs\Exceptions\JsThrowable;
 use PhpJs\Exceptions\RuntimeError;
-use PhpJs\Object\PropertyDescriptor;
 
 /**
  * Represents a JavaScript generator object returned by calling a generator function.
@@ -31,14 +32,17 @@ class JsGenerator extends JsObject
      * @param list<JsValue> $args Arguments passed to the generator function.
      * @param \Closure(JsFunction, JsValue, list<JsValue>): JsValue $executor
      *   Closure that executes the generator function body. Provided by the interpreter.
+     * @param JsObject|null $instanceProto The [[Prototype]] for this generator instance.
+     *   Should be the generator function's .prototype property (or %GeneratorPrototype% as fallback).
      */
     public function __construct(
         JsFunction $generatorFn,
         JsValue $thisValue,
         array $args,
         \Closure $executor,
+        ?JsObject $instanceProto = null,
     ) {
-        parent::__construct();
+        parent::__construct($instanceProto ?? IteratorPrototypes::generatorPrototype());
 
         $fn = $generatorFn;
         $thisVal = $thisValue;
@@ -48,7 +52,12 @@ class JsGenerator extends JsObject
             return $executor($fn, $thisVal, $fnArgs);
         });
 
-        $this->installMethods();
+        // Install Symbol.iterator returning this (generators are self-iterable).
+        $self = $this;
+        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', static function () use ($self): JsValue {
+            return $self;
+        });
+        $this->setBySymbol(SymbolConstructor::iterator(), $iteratorFn);
     }
 
     /**
@@ -201,58 +210,6 @@ class JsGenerator extends JsObject
         $result->set('value', $value);
         $result->set('done', new JsBoolean($done));
         return $result;
-    }
-
-    /**
-     * Install the next, return, and throw methods as properties on this object.
-     */
-    private function installMethods(): void
-    {
-        $gen = $this;
-
-        $nextFn = JsFunction::fromCallable('next', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->next($value);
-        });
-
-        $returnFn = JsFunction::fromCallable('return', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->returnValue($value);
-        });
-
-        $throwFn = JsFunction::fromCallable('throw', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->throwValue($value);
-        });
-
-        $this->defineProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
-        $this->defineProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
-        $this->defineProperty('throw', PropertyDescriptor::data($throwFn, true, false, true));
-
-        // Generators are their own iterators: [Symbol.iterator]() returns this.
-        $self = $this;
-        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', static function () use ($self): JsValue {
-            return $self;
-        });
-        $this->setBySymbol(\PhpJs\BuiltIn\SymbolConstructor::iterator(), $iteratorFn);
     }
 
     public function typeof(): string

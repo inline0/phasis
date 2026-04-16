@@ -1858,7 +1858,14 @@ class Interpreter
             return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
         };
 
-        return new JsGenerator($fn, $thisValue, $args, $executor);
+        // Per spec §25.4.3.2: OrdinaryCreateFromConstructor(fn, "%GeneratorPrototype%").
+        // Use fn.prototype if it's an object; otherwise fall back to %GeneratorPrototype%.
+        $instanceProto = $fn->get('prototype');
+        if (!$instanceProto instanceof JsObject) {
+            $instanceProto = \PhpJs\BuiltIn\IteratorPrototypes::generatorPrototype();
+        }
+
+        return new JsGenerator($fn, $thisValue, $args, $executor, $instanceProto);
     }
 
     /**
@@ -2524,11 +2531,34 @@ class Interpreter
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
         }
-        // Constructor prototype: constructor is writable, configurable but not enumerable.
-        $proto = new JsObject();
-        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
-        $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+        $this->setupFunctionPrototype($fn, $node->generator);
         return $fn;
+    }
+
+    /**
+     * Set up the .prototype property and [[Prototype]] for a newly created function.
+     *
+     * For generator functions:
+     *   - fn.[[Prototype]] = %GeneratorFunction.prototype% (inherits from Function.prototype)
+     *   - fn.prototype = plain object inheriting from %GeneratorPrototype% (no own properties)
+     * For regular functions:
+     *   - fn.[[Prototype]] = Function.prototype (already the default)
+     *   - fn.prototype = plain object with .constructor = fn
+     */
+    private function setupFunctionPrototype(JsFunction $fn, bool $isGenerator): void
+    {
+        if ($isGenerator) {
+            // Set fn's [[Prototype]] to %GeneratorFunction.prototype%.
+            $fn->setCustomPrototype(\PhpJs\BuiltIn\IteratorPrototypes::generatorFunctionPrototype());
+            // fn.prototype = plain object inheriting from %GeneratorPrototype%, no own properties.
+            $proto = new JsObject(\PhpJs\BuiltIn\IteratorPrototypes::generatorPrototype());
+            $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+        } else {
+            // Regular function: prototype has constructor = fn.
+            $proto = new JsObject();
+            $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
+            $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+        }
     }
 
     /**
@@ -3954,9 +3984,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
-                $proto = new JsObject();
-                $proto->defineOwnProperty('constructor', PropertyDescriptor::data($fn, true, false, true));
-                $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+                $this->setupFunctionPrototype($fn, $stmt->generator);
                 $env->defineVar($stmt->id->name, $fn);
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
                 foreach ($stmt->declarations as $decl) {

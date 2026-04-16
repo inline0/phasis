@@ -28,6 +28,11 @@ class JsFunction extends JsObject
         $proto->setPrototype(null);
     }
 
+    public static function getFunctionPrototype(): ?JsObject
+    {
+        return self::$functionPrototype;
+    }
+
     public static function setInterpreterCallback(callable $callback): void
     {
         self::$interpreterCallback = $callback;
@@ -202,6 +207,10 @@ class JsFunction extends JsObject
     {
         // Arrow functions are not constructable.
         if ($this->isArrow) {
+            return false;
+        }
+        // Generator functions cannot be used as constructors per spec §14.4.
+        if ($this->isGenerator) {
             return false;
         }
         return $this->constructable;
