@@ -56,9 +56,16 @@ class Environment
         return $this->linkedObject;
     }
 
+    /** Check whether a binding exists in this scope only (not parents). */
+    public function hasOwnBinding(string $name): bool
+    {
+        return array_key_exists($name, $this->bindings);
+    }
+
     /** Define a var-declared variable in the current environment. */
     public function defineVar(string $name, JsValue $value): void
     {
+        unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         // Sync to the linked global object if present.
         // Skip internal bindings that start with __ (prototypes, etc.)

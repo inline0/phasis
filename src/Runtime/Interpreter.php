@@ -144,6 +144,7 @@ class Interpreter
         }
 
         $this->hoistDeclarations($program->body, $this->globalEnv);
+        $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);
     }
 
@@ -1791,6 +1792,7 @@ class Interpreter
                 // bindings in the body scope, not update parent scope bindings.
                 $this->forceHoistVarNames($body->body, $bodyEnv);
                 $this->hoistDeclarations($body->body, $bodyEnv);
+                $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeBody($body->body, $bodyEnv);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
@@ -1804,6 +1806,7 @@ class Interpreter
             // Execute body
             if ($body instanceof BlockStatement) {
                 $this->hoistDeclarations($body->body, $fnEnv);
+                $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
@@ -1924,6 +1927,7 @@ class Interpreter
             $body = $fn->getBody();
             if ($body instanceof BlockStatement) {
                 $this->hoistDeclarations($body->body, $fnEnv);
+                $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
@@ -3179,6 +3183,7 @@ class Interpreter
     {
         $blockEnv = $env->createChild();
         $this->hoistDeclarations($node->body, $blockEnv);
+        $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
         $completion = $this->executeBody($node->body, $blockEnv);
 
         // Annex B: in sloppy mode, propagate function declaration values from
@@ -3772,6 +3777,17 @@ class Interpreter
     {
         $discriminant = $this->evaluate($node->discriminant, $env);
         $switchEnv = $env->createChild();
+
+        // Hoist let/const TDZ for all case bodies (shared switch scope).
+        $allCaseStmts = [];
+        foreach ($node->cases as $case) {
+            foreach ($case->consequent as $stmt) {
+                $allCaseStmts[] = $stmt;
+            }
+        }
+        $this->hoistDeclarations($allCaseStmts, $switchEnv);
+        $this->hoistEvalLexicalDeclarations($allCaseStmts, $switchEnv);
+
         $matched = false;
         $defaultCase = null;
         $v = JsUndefined::instance();
@@ -4132,7 +4148,7 @@ class Interpreter
     private function hoistVarNames(Node $pattern, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            if (!$env->has($pattern->name)) {
+            if (!$env->hasOwnBinding($pattern->name)) {
                 // At global scope use the correct user-var descriptor; in nested
                 // scopes use defineVar (no linked object).
                 if ($env->getLinkedObject() !== null) {
