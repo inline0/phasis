@@ -1805,6 +1805,11 @@ class Interpreter
 
             // Execute body
             if ($body instanceof BlockStatement) {
+                // Force-hoist var names into the function scope first so that
+                // a var declaration in a nested function always creates a binding
+                // in the function's own scope, even when a parent scope (e.g. global)
+                // has a const/let binding with the same name.
+                $this->forceHoistVarNames($body->body, $fnEnv);
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
@@ -1926,6 +1931,7 @@ class Interpreter
             // Execute body
             $body = $fn->getBody();
             if ($body instanceof BlockStatement) {
+                $this->forceHoistVarNames($body->body, $fnEnv);
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
@@ -4148,7 +4154,7 @@ class Interpreter
     private function hoistVarNames(Node $pattern, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            if (!$env->hasOwnBinding($pattern->name)) {
+            if (!$env->has($pattern->name)) {
                 // At global scope use the correct user-var descriptor; in nested
                 // scopes use defineVar (no linked object).
                 if ($env->getLinkedObject() !== null) {
