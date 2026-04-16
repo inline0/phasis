@@ -301,9 +301,6 @@ class GlobalObject
                     $boundLengthFloat = max(0.0, $tl - count($boundArgs));
                 }
             }
-            // fromCallable takes an int length; for Infinity we override after construction.
-            $boundLengthInt = is_infinite($boundLengthFloat) ? 0 : (int) $boundLengthFloat;
-
             // Determine target name for the bound function's name.
             $targetNameProp = $target->getOwnPropertyDescriptor('name');
             $targetName = $targetNameProp !== null && $targetNameProp->value instanceof JsString
@@ -313,12 +310,15 @@ class GlobalObject
 
             $isConstructable = $target->isConstructable();
 
+            // Always pass 0 to fromCallable to avoid array_fill crash for large lengths;
+            // the length property is always overridden explicitly below.
             $boundFn = JsFunction::fromCallable(
                 $boundName,
                 function (JsValue $th, array $callArgs, ?\PhpJs\Runtime\Interpreter $innerInterp = null) use ($target, $boundThis, $boundArgs, $isConstructable): JsValue {
                     $mergedArgs = array_merge($boundArgs, $callArgs);
                     // Detect if called as constructor (th has [[NewTarget]]).
-                    if ($isConstructable
+                    if (
+                        $isConstructable
                         && $th instanceof \PhpJs\Value\JsObject
                         && !($th->get('[[NewTarget]]') instanceof JsUndefined)
                         && $innerInterp !== null
@@ -332,21 +332,23 @@ class GlobalObject
                     }
                     return $target->call($boundThis, $mergedArgs);
                 },
-                $boundLengthInt,
+                0,
             );
 
-            // Override length if Infinity.
-            if (is_infinite($boundLengthFloat)) {
-                $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-                    value: new JsNumber(INF),
-                    writable: false, enumerable: false, configurable: true,
-                ));
-            }
+            // Always override the length property with the computed bound length.
+            $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+                value: new JsNumber($boundLengthFloat),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            ));
 
             // Set name property per spec: "bound " + targetName.
             $boundFn->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
                 value: new JsString($boundName),
-                writable: false, enumerable: false, configurable: true,
+                writable: false,
+                enumerable: false,
+                configurable: true,
             ));
 
             // Mark constructable if the target is constructable.

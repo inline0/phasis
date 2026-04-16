@@ -103,15 +103,31 @@ class Engine
         GlobalObject::install($this->globalEnv);
         \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
 
-        // Wire Function.prototype -> Object.prototype now that both exist.
-        // This must happen after ObjectConstructor::install sets globalPrototype.
-        if ($this->globalEnv->has('Function') && $this->globalEnv->has('__ObjectPrototype__')) {
-            $fnCtor = $this->globalEnv->get('Function');
+        // Wire prototype objects created in GlobalObject::install to Object.prototype now
+        // that both exist. ObjectConstructor::install set the global prototype, so any
+        // new JsObject() will inherit it — but objects created earlier need explicit wiring.
+        if ($this->globalEnv->has('__ObjectPrototype__')) {
             $objProto = $this->globalEnv->get('__ObjectPrototype__');
-            if ($fnCtor instanceof JsFunction && $objProto instanceof JsObject) {
-                $fnProto = $fnCtor->get('prototype');
-                if ($fnProto instanceof JsObject) {
-                    $fnProto->setPrototype($objProto);
+            if ($objProto instanceof JsObject) {
+                // Function.prototype -> Object.prototype
+                if ($this->globalEnv->has('Function')) {
+                    $fnCtor = $this->globalEnv->get('Function');
+                    if ($fnCtor instanceof JsFunction) {
+                        $fnProto = $fnCtor->get('prototype');
+                        if ($fnProto instanceof JsObject && $fnProto->getPrototype() === null) {
+                            $fnProto->setPrototype($objProto);
+                        }
+                    }
+                }
+                // Boolean.prototype -> Object.prototype
+                if ($this->globalEnv->has('Boolean')) {
+                    $boolCtor = $this->globalEnv->get('Boolean');
+                    if ($boolCtor instanceof JsFunction) {
+                        $boolProto = $boolCtor->get('prototype');
+                        if ($boolProto instanceof JsObject && $boolProto->getPrototype() === null) {
+                            $boolProto->setPrototype($objProto);
+                        }
+                    }
                 }
             }
         }

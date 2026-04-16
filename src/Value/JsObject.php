@@ -572,7 +572,8 @@ class JsObject implements JsValue
 
     /**
      * @return list<string> All enumerable keys including inherited.
-     * Used by for-in. Walks prototype chain.
+     * Used by for-in. Walks prototype chain. Own keys follow spec order:
+     * integer indices ascending, then string keys in insertion order.
      */
     public function getEnumerableKeys(): array
     {
@@ -580,7 +581,7 @@ class JsObject implements JsValue
         $keys = [];
         $obj = $this;
         while ($obj !== null) {
-            foreach ($obj->properties->enumerableKeys() as $key) {
+            foreach ($obj->getOwnEnumerableKeys() as $key) {
                 if (!isset($seen[$key])) {
                     $seen[$key] = true;
                     $keys[] = $key;

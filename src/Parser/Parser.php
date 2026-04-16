@@ -1490,8 +1490,12 @@ class Parser
         }
 
         // Async method: async method() {}
+        // Note: 'async' is tokenized as a keyword (TokenType::Async), not an Identifier.
         $isAsync = false;
-        if (!$isGenerator && $this->checkContextual('async') && !$this->peekIs(TokenType::Colon) && !$this->peekIs(TokenType::Comma) && !$this->peekIs(TokenType::RightBrace)) {
+        $notTrailingPunct = !$this->peekIs(TokenType::Colon)
+            && !$this->peekIs(TokenType::Comma)
+            && !$this->peekIs(TokenType::RightBrace);
+        if (!$isGenerator && $this->check(TokenType::Async) && $notTrailingPunct) {
             $next = $this->peek();
             if (!$next->lineTerminatorBefore && $next->type !== TokenType::LeftParen) {
                 $this->advance();

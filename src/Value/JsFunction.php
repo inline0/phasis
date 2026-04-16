@@ -45,6 +45,12 @@ class JsFunction extends JsObject
     private ?\Closure $nativeCallable = null;
     private bool $constructable = true;
 
+    /** True for class constructors: calling without new throws TypeError. */
+    private bool $isClassConstructor = false;
+
+    /** True for derived class constructors (class C extends B). */
+    private bool $isDerivedConstructor = false;
+
     /** Original source text for Function.prototype.toString(). Null for native functions. */
     private ?string $sourceText = null;
 
@@ -141,6 +147,24 @@ class JsFunction extends JsObject
     {
         $this->constructable = false;
         return $this;
+    }
+
+    /** Mark as a class constructor: calling without `new` throws TypeError. */
+    public function setClassConstructor(bool $derived = false): self
+    {
+        $this->isClassConstructor = true;
+        $this->isDerivedConstructor = $derived;
+        return $this;
+    }
+
+    public function isClassConstructor(): bool
+    {
+        return $this->isClassConstructor;
+    }
+
+    public function isDerivedConstructor(): bool
+    {
+        return $this->isDerivedConstructor;
     }
 
     /**

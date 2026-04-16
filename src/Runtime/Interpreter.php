@@ -1473,8 +1473,17 @@ class Interpreter
 
         $result = $this->callFunction($callee, $newObj, $args);
 
-        // If constructor returned an object, use that; otherwise return newObj
-        return $result instanceof JsObject ? $result : $newObj;
+        // Per spec §10.2.2 [[Construct]]:
+        // - If the constructor returned an Object, use that.
+        // - If derived class constructor returned a non-Object non-undefined value, throw TypeError.
+        // - Otherwise return newObj.
+        if ($result instanceof JsObject) {
+            return $result;
+        }
+        if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
+            throw new TypeError('Derived constructors may only return object or undefined');
+        }
+        return $newObj;
     }
 
     /**
@@ -1535,6 +1544,15 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): JsValue {
+        // Per spec: class constructors cannot be called without `new`.
+        if ($fn->isClassConstructor()) {
+            $calledAsNew = $thisValue instanceof JsObject
+                && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
+            if (!$calledAsNew) {
+                throw new TypeError("Class constructor {$fn->getName()} cannot be invoked without 'new'");
+            }
+        }
+
         // Native (PHP callable) function
         $nativeFn = $fn->getNativeCallable();
         if ($nativeFn !== null) {
@@ -1749,7 +1767,10 @@ class Interpreter
             JsFunction $fn,
             JsValue $thisValue,
             array $args,
-        ) use ($interpreter, $fnEnv): JsValue {
+        ) use (
+            $interpreter,
+            $fnEnv
+): JsValue {
             return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
         };
 
@@ -2851,9 +2872,11 @@ class Interpreter
             }
         }
 
+        $isDerived = $superClass instanceof JsFunction;
+
         if ($constructor === null) {
             // Default constructor
-            if ($superClass instanceof JsFunction) {
+            if ($isDerived) {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
                     function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
@@ -2872,6 +2895,9 @@ class Interpreter
             $constructor = JsFunction::fromCallable($name ?? '', fn() => JsUndefined::instance())->setConstructable();
         }
 
+        // Mark as class constructor so calling without new throws TypeError.
+        $constructor->setClassConstructor($isDerived);
+
         // Set up prototype chain
         $proto = new JsObject(
             $superClass instanceof JsFunction
@@ -2880,6 +2906,10 @@ class Interpreter
                     : null)
                 : null,
         );
+
+        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
+        // Per spec, 'constructor' is the first property on the prototype object.
+        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         foreach ($instanceMethods as [$key, $fn, $kind, $symbolKey]) {
             if ($symbolKey !== null) {
@@ -2913,9 +2943,6 @@ class Interpreter
             }
         }
 
-        $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
-        $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
-
         // Static methods (non-enumerable)
         foreach ($staticMethods as [$key, $fn, $kind, $symbolKey]) {
             if ($symbolKey !== null) {
@@ -2926,6 +2953,12 @@ class Interpreter
                     true,
                 ));
                 continue;
+            }
+            // Per spec §15.7.1: it is a SyntaxError if a static method is named "prototype".
+            if ($key === 'prototype') {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Classes may not have a static property named 'prototype'",
+                );
             }
             $constructor->defineOwnProperty($key, PropertyDescriptor::data(
                 $fn instanceof JsValue ? $fn : JsUndefined::instance(),

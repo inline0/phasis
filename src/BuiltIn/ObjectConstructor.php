@@ -186,6 +186,19 @@ class ObjectConstructor
                 if ($tag !== null) {
                     return new JsString("[object {$tag}]");
                 }
+                // Check wrapper objects with [[PrimitiveValue]] for Boolean/Number/String.
+                if ($this_ instanceof JsObject && $this_->has('[[PrimitiveValue]]')) {
+                    $prim = $this_->get('[[PrimitiveValue]]');
+                    if ($prim instanceof JsBoolean) {
+                        return new JsString('[object Boolean]');
+                    }
+                    if ($prim instanceof JsNumber) {
+                        return new JsString('[object Number]');
+                    }
+                    if ($prim instanceof JsString) {
+                        return new JsString('[object String]');
+                    }
+                }
                 // Check for RegExp-like (has source property)
                 if ($this_ instanceof JsObject && $this_->has('source') && $this_->has('flags')) {
                     return new JsString('[object RegExp]');

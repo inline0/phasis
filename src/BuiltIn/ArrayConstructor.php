@@ -28,7 +28,8 @@ class ArrayConstructor
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
                 $n = $args[0]->value;
                 $len = (int) $n;
-                if ((float) $len !== $n || $len < 0) {
+                // Array length must be a valid uint32 (0 to 4294967295)
+                if ((float) $len !== $n || $len < 0 || $len > 0xFFFFFFFF) {
                     throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
                 $arr = new JsArray();
@@ -40,7 +41,9 @@ class ArrayConstructor
         $constructor->setConstructable();
 
         // Static methods (non-enumerable per spec).
-        $constructor->set('isArray', JsFunction::fromCallable('isArray', self::isArray(), 1));
+        $isArrayFn = JsFunction::fromCallable('isArray', self::isArray(), 1);
+        $isArrayFn->setNonConstructable();
+        $constructor->defineOwnProperty('isArray', \PhpJs\Object\PropertyDescriptor::data($isArrayFn, true, false, true));
         $fromFn = JsFunction::fromCallable('from', self::from(), 1);
         $fromFn->setNonConstructable();
         $constructor->defineOwnProperty('from', \PhpJs\Object\PropertyDescriptor::data($fromFn, true, false, true));
@@ -738,8 +741,8 @@ class ArrayConstructor
                 $this_ = self::toObject($this_);
                 $len = self::getLen($this_);
                 $value = $args[0] ?? JsUndefined::instance();
-                $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
+                $start = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[1]) : 0;
+                $end = (isset($args[2]) && !$args[2] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[2]) : $len;
                 if ($start < 0) {
                     $start = max($len + $start, 0);
                 }
@@ -761,9 +764,9 @@ class ArrayConstructor
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
                 $len = self::getLen($this_);
-                $target = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                $start = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $end = isset($args[2]) ? (int) TypeConversion::toNumber($args[2]) : $len;
+                $target = (isset($args[0]) && !$args[0] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[0]) : 0;
+                $start = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[1]) : 0;
+                $end = (isset($args[2]) && !$args[2] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[2]) : $len;
                 if ($target < 0) {
                     $target = max($len + $target, 0);
                 }
