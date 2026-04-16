@@ -1028,6 +1028,78 @@ class Interpreter
 
     private function evalCallExpression(CallExpression $node, Environment $env): JsValue
     {
+        // Super call: super(args) inside a class constructor.
+        // Calls the super class constructor with the current this and args.
+        if ($node->callee instanceof Identifier && $node->callee->name === 'super') {
+            $args = $this->evaluateArguments($node->arguments, $env);
+            // Get the active function (the constructor being executed).
+            try {
+                $activeFunc = $env->get('[[ActiveFunction]]');
+            } catch (\Throwable) {
+                $activeFunc = null;
+            }
+            // Super constructor is [[GetPrototypeOf]](activeFunction).
+            $superCtor = $activeFunc instanceof JsFunction ? $activeFunc->getPrototype() : null;
+            if (!$superCtor instanceof JsFunction) {
+                throw new TypeError('Super constructor must be a function');
+            }
+            // Get current this value.
+            try {
+                $currentThis = $env->get('this');
+            } catch (\Throwable) {
+                $currentThis = JsUndefined::instance();
+            }
+            // Call the super constructor. It may return a new object (factory pattern).
+            $result = $this->callFunction($superCtor, $currentThis, $args);
+            // If super constructor returned an object, bind that as this.
+            if ($result instanceof JsObject) {
+                $env->set('this', $result);
+                return $result;
+            }
+            return $currentThis;
+        }
+
+        // Super member call: super.method(args) or super[expr](args).
+        if (
+            $node->callee instanceof MemberExpression
+            && $node->callee->object instanceof Identifier
+            && $node->callee->object->name === 'super'
+        ) {
+            try {
+                $homeObject = $env->get('[[HomeObject]]');
+            } catch (\Throwable) {
+                $homeObject = null;
+            }
+            $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
+            if ($superBase === null) {
+                throw new TypeError('Cannot read properties of undefined (super)');
+            }
+            // Resolve the property key.
+            if ($node->callee->computed) {
+                $rawKey = $this->evaluate($node->callee->property, $env);
+                $isSymKey = $rawKey instanceof JsSymbol;
+                $key = $isSymKey ? '' : TypeConversion::toString($rawKey);
+            } else {
+                $rawKey = null;
+                $isSymKey = false;
+                $key = $node->callee->property instanceof Identifier
+                    ? $node->callee->property->name
+                    : TypeConversion::toString($this->evaluate($node->callee->property, $env));
+            }
+            $callee = $isSymKey ? $superBase->getBySymbol($rawKey) : $superBase->get($key);
+            if (!$callee instanceof JsFunction) {
+                throw new TypeError("{$key} is not a function");
+            }
+            // Use current this, not the super object.
+            try {
+                $thisValue = $env->get('this');
+            } catch (\Throwable) {
+                $thisValue = JsUndefined::instance();
+            }
+            $args = $this->evaluateArguments($node->arguments, $env);
+            return $this->callFunction($callee, $thisValue, $args);
+        }
+
         // Direct eval detection: eval(code) called with the identifier 'eval'.
         // Direct eval executes in the current scope, not a fresh environment.
         if ($node->callee instanceof Identifier && $node->callee->name === 'eval') {
@@ -1643,6 +1715,18 @@ class Interpreter
                 }
             }
 
+            // Bind [[HomeObject]] so super property references work inside this function.
+            $homeObject = $fn->getHomeObject();
+            if ($homeObject !== null) {
+                $fnEnv->defineVar('[[HomeObject]]', $homeObject);
+            }
+
+            // For class constructors in derived classes, bind [[ActiveFunction]] so
+            // super() can resolve the super constructor via the function's [[Prototype]].
+            if ($fn->isClassConstructor()) {
+                $fnEnv->defineVar('[[ActiveFunction]]', $fn);
+            }
+
             // Create arguments object before binding parameters, so default
             // parameter expressions can reference `arguments`.
             $params = $fn->getParams();
@@ -2043,6 +2127,32 @@ class Interpreter
 
     private function evalMemberExpression(MemberExpression $node, Environment $env): JsValue
     {
+        // super.prop or super[expr]: look up on [[HomeObject]].[[Prototype]].
+        if ($node->object instanceof Identifier && $node->object->name === 'super') {
+            try {
+                $homeObject = $env->get('[[HomeObject]]');
+            } catch (\Throwable) {
+                $homeObject = null;
+            }
+            $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
+            if ($superBase === null) {
+                throw new \PhpJs\Exceptions\ReferenceError(
+                    "Must call super constructor in derived class before accessing 'super'",
+                );
+            }
+            if ($node->computed) {
+                $rawKey = $this->evaluate($node->property, $env);
+                if ($rawKey instanceof JsSymbol) {
+                    return $superBase->getBySymbol($rawKey) ?? JsUndefined::instance();
+                }
+                return $superBase->get(TypeConversion::toString($rawKey));
+            }
+            $key = $node->property instanceof Identifier
+                ? $node->property->name
+                : TypeConversion::toString($this->evaluate($node->property, $env));
+            return $superBase->get($key);
+        }
+
         $obj = $this->evaluate($node->object, $env);
 
         // Propagate optional chain short-circuit through the chain.
@@ -2331,6 +2441,8 @@ class Interpreter
             if ($prop->kind === 'get' || $prop->kind === 'set') {
                 $fn = $this->evaluate($prop->value, $env);
                 if ($fn instanceof JsFunction) {
+                    // Accessors in object literals have [[HomeObject]] = the object.
+                    $fn->setHomeObject($obj);
                     if ($isSymbolKey) {
                         $existing = $obj->getSymbolPropertyDescriptor($rawKey);
                         if ($prop->kind === 'get') {
@@ -2357,11 +2469,19 @@ class Interpreter
                     $desc = $rawKey->description;
                     $value->setName($desc !== null ? "[{$desc}]" : '');
                 }
+                // Method shorthand: set [[HomeObject]] for super references.
+                if ($prop->method && $value instanceof JsFunction) {
+                    $value->setHomeObject($obj);
+                }
                 $obj->setBySymbol($rawKey, $value);
             } else {
                 // Name inference for property functions
                 if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
                     $value->setName($key);
+                }
+                // Method shorthand: set [[HomeObject]] for super references.
+                if ($prop->method && $value instanceof JsFunction) {
+                    $value->setHomeObject($obj);
                 }
                 $obj->set($key, $value);
             }
@@ -2912,6 +3032,10 @@ class Interpreter
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($constructor, true, false, true));
 
         foreach ($instanceMethods as [$key, $fn, $kind, $symbolKey]) {
+            // Set [[HomeObject]] so super references inside this method resolve correctly.
+            if ($fn instanceof JsFunction) {
+                $fn->setHomeObject($proto);
+            }
             if ($symbolKey !== null) {
                 // Symbol-keyed method (e.g. [Symbol.replace], [Symbol.iterator])
                 $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
@@ -2945,6 +3069,10 @@ class Interpreter
 
         // Static methods (non-enumerable)
         foreach ($staticMethods as [$key, $fn, $kind, $symbolKey]) {
+            // Static methods have [[HomeObject]] = the constructor itself.
+            if ($fn instanceof JsFunction) {
+                $fn->setHomeObject($constructor);
+            }
             if ($symbolKey !== null) {
                 $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
                     $fn instanceof JsValue ? $fn : JsUndefined::instance(),
@@ -2968,9 +3096,16 @@ class Interpreter
             ));
         }
 
-        // Inheritance
+        // Inheritance: set [[Prototype]] of constructor to super class.
+        // Per spec, DogCtor.__proto__ === AnimalCtor so that super() can resolve
+        // the super constructor via [[GetPrototypeOf]](activeFunction).
+        // Must use setCustomPrototype so JsFunction::getPrototype() returns this
+        // value instead of Function.prototype.
         if ($superClass instanceof JsFunction) {
-            $constructor->setPrototype($superClass);
+            $constructor->setCustomPrototype($superClass);
+            // Also set [[HomeObject]] on the constructor itself so super() inside
+            // it can find the super constructor via getPrototype().
+            $constructor->setHomeObject($proto);
         }
 
         return $constructor;
@@ -4154,6 +4289,29 @@ class Interpreter
         }
 
         if ($node instanceof MemberExpression) {
+            // super.prop = value: the reference base is the super prototype,
+            // but setValue must use the current this.
+            if ($node->object instanceof Identifier && $node->object->name === 'super') {
+                try {
+                    $homeObject = $env->get('[[HomeObject]]');
+                } catch (\Throwable) {
+                    $homeObject = null;
+                }
+                $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
+                if ($superBase === null) {
+                    throw new \PhpJs\Exceptions\ReferenceError('super not available');
+                }
+                if ($node->computed) {
+                    $rawRefKey = $this->evaluate($node->property, $env);
+                    if ($rawRefKey instanceof JsSymbol) {
+                        return new Reference($superBase, '', $this->strictMode, $rawRefKey);
+                    }
+                    return new Reference($superBase, TypeConversion::toString($rawRefKey), $this->strictMode);
+                }
+                $key = $node->property instanceof Identifier ? $node->property->name : '';
+                return new Reference($superBase, $key, $this->strictMode);
+            }
+
             $obj = $this->evaluate($node->object, $env);
             // Per spec 6.2.4.5 PutValue, the reference records the raw base value.
             // ToObject() is deferred until PutValue (setValue). For primitives,

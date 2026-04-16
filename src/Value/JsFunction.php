@@ -51,6 +51,13 @@ class JsFunction extends JsObject
     /** True for derived class constructors (class C extends B). */
     private bool $isDerivedConstructor = false;
 
+    /**
+     * [[HomeObject]] internal slot: the object this method was defined on.
+     * Set when a method is installed on a class prototype or object literal.
+     * Used to resolve super property references.
+     */
+    private ?JsObject $homeObject = null;
+
     /** Original source text for Function.prototype.toString(). Null for native functions. */
     private ?string $sourceText = null;
 
@@ -165,6 +172,18 @@ class JsFunction extends JsObject
     public function isDerivedConstructor(): bool
     {
         return $this->isDerivedConstructor;
+    }
+
+    /** Set the [[HomeObject]] for super property resolution. */
+    public function setHomeObject(JsObject $homeObject): self
+    {
+        $this->homeObject = $homeObject;
+        return $this;
+    }
+
+    public function getHomeObject(): ?JsObject
+    {
+        return $this->homeObject;
     }
 
     /**
