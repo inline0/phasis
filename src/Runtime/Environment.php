@@ -76,6 +76,12 @@ class Environment
         return array_key_exists($name, $this->bindings);
     }
 
+    /** Check whether a lexical (let/const/class) binding exists in this scope only. */
+    public function hasLexicalBinding(string $name): bool
+    {
+        return isset($this->lexical[$name]);
+    }
+
     /** Define a var-declared variable in the current environment. */
     public function defineVar(string $name, JsValue $value): void
     {

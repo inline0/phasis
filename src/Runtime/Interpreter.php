@@ -167,30 +167,74 @@ class Interpreter
         if ($globalObj === null) {
             return;
         }
+
+        // Collect lexical names (let/const/class declarations).
+        $lexNames = [];
         foreach ($body as $stmt) {
-            $names = [];
             if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
                 foreach ($stmt->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
-                        $names[] = $n;
+                        $lexNames[] = $n;
                     }
                 }
             } elseif ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
-                $names[] = $stmt->id->name;
+                $lexNames[] = $stmt->id->name;
             }
-            foreach ($names as $name) {
-                if ($globalObj->hasOwnProperty($name)) {
-                    $desc = $globalObj->getOwnPropertyDescriptor($name);
-                    if ($desc !== null && $desc->configurable === false) {
-                        $this->throwJsValue(
-                            $this->phpExceptionToJsValue(
-                                new \PhpJs\Exceptions\SyntaxError(
-                                    "Identifier '{$name}' has already been declared",
-                                ),
+        }
+
+        // Per spec step 5: for each lexical name, check:
+        //   a. HasVarDeclaration or HasLexicalDeclaration => SyntaxError
+        //   c/d. HasRestrictedGlobalProperty => SyntaxError
+        foreach ($lexNames as $name) {
+            // Check for existing lexical binding in the global environment.
+            if ($this->globalEnv->hasLexicalBinding($name)) {
+                $this->throwJsValue(
+                    $this->phpExceptionToJsValue(
+                        new \PhpJs\Exceptions\SyntaxError(
+                            "Identifier '{$name}' has already been declared",
+                        ),
+                    ),
+                );
+            }
+            // Check for restricted global property (non-configurable).
+            if ($globalObj->hasOwnProperty($name)) {
+                $desc = $globalObj->getOwnPropertyDescriptor($name);
+                if ($desc !== null && $desc->configurable === false) {
+                    $this->throwJsValue(
+                        $this->phpExceptionToJsValue(
+                            new \PhpJs\Exceptions\SyntaxError(
+                                "Identifier '{$name}' has already been declared",
                             ),
-                        );
+                        ),
+                    );
+                }
+            }
+        }
+
+        // Collect var names.
+        $varNames = [];
+        foreach ($body as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $varNames[] = $n;
                     }
                 }
+            } elseif ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+                $varNames[] = $stmt->id->name;
+            }
+        }
+
+        // Per spec step 6: for each var name, check HasLexicalDeclaration.
+        foreach ($varNames as $name) {
+            if ($this->globalEnv->hasLexicalBinding($name)) {
+                $this->throwJsValue(
+                    $this->phpExceptionToJsValue(
+                        new \PhpJs\Exceptions\SyntaxError(
+                            "Identifier '{$name}' has already been declared",
+                        ),
+                    ),
+                );
             }
         }
     }
