@@ -174,6 +174,87 @@ class ObjectConstructor
             $builtinMethod('getOwnPropertyDescriptors', $getOwnPropDescsCb, 1),
         );
 
+        $groupByCb = function (JsValue $this_, array $args): JsValue {
+            $items = $args[0] ?? JsUndefined::instance();
+            $callbackfn = $args[1] ?? JsUndefined::instance();
+            if (!$callbackfn instanceof JsFunction) {
+                throw new TypeError(TypeConversion::toString($callbackfn) . ' is not a function');
+            }
+            // Per spec, result has null prototype.
+            $obj = new JsObject();
+            $obj->setPrototype(null);
+            // Get iterator.
+            if ($items instanceof JsUndefined || $items instanceof JsNull) {
+                throw new TypeError('Cannot read properties of ' . TypeConversion::toString($items) . " (reading 'Symbol(Symbol.iterator)')");
+            }
+            $iterSym = SymbolConstructor::iterator();
+            if (!$items instanceof JsObject) {
+                $items = TypeConversion::toObject($items);
+            }
+            $iteratorMethod = $items->getBySymbol($iterSym);
+            if (!$iteratorMethod instanceof JsFunction) {
+                throw new TypeError('object is not iterable');
+            }
+            $iterator = $iteratorMethod->call($items, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError('object is not iterable');
+            }
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('object is not iterable');
+            }
+            $k = 0;
+            while (true) {
+                $result = $nextMethod->call($iterator, []);
+                if (!$result instanceof JsObject) {
+                    break;
+                }
+                if (TypeConversion::toBoolean($result->get('done'))) {
+                    break;
+                }
+                $value = $result->get('value');
+                try {
+                    $key = $callbackfn->call(JsUndefined::instance(), [$value, new JsNumber((float) $k)]);
+                } catch (\Throwable $e) {
+                    // Close iterator on abrupt callback.
+                    $returnMethod = $iterator->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        try {
+                            $returnMethod->call($iterator, []);
+                        } catch (\Throwable) {
+                            // Ignore
+                        }
+                    }
+                    throw $e;
+                }
+                $keyStr = TypeConversion::toPropertyKey($key);
+                if ($keyStr instanceof JsSymbol) {
+                    $existing = $obj->getBySymbol($keyStr);
+                    if ($existing instanceof JsArray) {
+                        $existing->push($value);
+                    } else {
+                        $obj->setBySymbol($keyStr, JsArray::fromArray([$value]));
+                    }
+                } else {
+                    $propName = $keyStr->toJsString();
+                    if ($obj->hasOwnProperty($propName)) {
+                        $existing = $obj->get($propName);
+                        if ($existing instanceof JsArray) {
+                            $existing->push($value);
+                        }
+                    } else {
+                        $obj->defineOwnProperty($propName, PropertyDescriptor::data(JsArray::fromArray([$value])));
+                    }
+                }
+                $k++;
+            }
+            return $obj;
+        };
+        $constructor->defineOwnProperty(
+            'groupBy',
+            $builtinMethod('groupBy', $groupByCb, 2),
+        );
+
         $env->defineVar('Object', $constructor);
 
         // Store the prototype for auto-boxing and object literal creation.

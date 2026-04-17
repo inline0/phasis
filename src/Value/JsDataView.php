@@ -46,12 +46,9 @@ class JsDataView extends JsObject
 
     public function get(string $name): JsValue
     {
-        return match ($name) {
-            'buffer' => $this->buffer,
-            'byteOffset' => new JsNumber((float) $this->byteOffset),
-            'byteLength' => new JsNumber((float) $this->byteLength),
-            default => parent::get($name),
-        };
+        // Let prototype accessors handle buffer, byteOffset, byteLength so that
+        // the spec-mandated detached buffer checks in the getters are executed.
+        return parent::get($name);
     }
 
     // --- Signed integer reads ---

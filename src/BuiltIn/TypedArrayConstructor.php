@@ -205,6 +205,8 @@ class TypedArrayConstructor
                         'Method get DataView.prototype.byteLength called on incompatible receiver'
                     );
                 }
+                // Per spec: throw TypeError if buffer is detached.
+                $this_->validateNotDetached();
                 return new JsNumber((float) $this_->getByteLength());
             },
             0,
@@ -222,6 +224,8 @@ class TypedArrayConstructor
                         'Method get DataView.prototype.byteOffset called on incompatible receiver'
                     );
                 }
+                // Per spec: throw TypeError if buffer is detached.
+                $this_->validateNotDetached();
                 return new JsNumber((float) $this_->getByteOffset());
             },
             0,

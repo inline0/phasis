@@ -297,6 +297,23 @@ class StringPrototype
             ));
         }
 
+        // String.prototype[Symbol.iterator] per spec 22.1.3.34.
+        $iterSym = SymbolConstructor::iterator();
+        $iterFn = JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $this_): JsValue {
+            // RequireObjectCoercible(this value), then ToString.
+            if ($this_ instanceof JsNull || $this_ instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'String.prototype[Symbol.iterator] called on null or undefined',
+                );
+            }
+            $str = $this_ instanceof JsString ? $this_ : new JsString(TypeConversion::toString($this_));
+            return self::createStringIterator($str);
+        }, 0);
+        $proto->definePropertyBySymbol(
+            $iterSym,
+            PropertyDescriptor::data($iterFn, true, false, true),
+        );
+
         // Register the prototype so TypeConversion::toObject can link String wrapper objects.
         \PhpJs\Value\JsString::resetStringPrototype();
         \PhpJs\Value\JsString::setStringPrototype($proto);

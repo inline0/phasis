@@ -4306,9 +4306,9 @@ class Interpreter
                         $this->hoistVarNames($decl->id, $env);
                     }
                 }
-                // Recurse into for-of/for-in body for nested var hoisting.
+                // Recurse into for-of/for-in body for nested var hoisting only.
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->body->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 }
             } elseif ($stmt instanceof ForStatement) {
                 // Hoist var declarations from for-statement init.
@@ -4318,48 +4318,50 @@ class Interpreter
                     }
                 }
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->body->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 }
             } elseif (
                 $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
                 || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement
             ) {
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->body->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+                // Only hoist var declarations from if/else block bodies.
+                // Function declarations in if/else are block-scoped per ES2015+.
                 if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->consequent->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->consequent->body, $env);
                 }
                 if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->alternate->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->alternate->body, $env);
+                } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\IfStatement) {
+                    $this->hoistDeclarations([$stmt->alternate], $env);
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                $this->hoistDeclarations($stmt->body, $env);
+                $this->hoistVarDeclarationsOnly($stmt->body, $env);
             } elseif ($stmt instanceof TryStatement) {
                 // Hoist var declarations from try, catch, and finally blocks.
-                $this->hoistDeclarations($stmt->block->body, $env);
+                $this->hoistVarDeclarationsOnly($stmt->block->body, $env);
                 if ($stmt->handler !== null) {
-                    $this->hoistDeclarations($stmt->handler->body->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->handler->body->body, $env);
                 }
                 if ($stmt->finalizer !== null) {
-                    $this->hoistDeclarations($stmt->finalizer->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->finalizer->body, $env);
                 }
             } elseif ($stmt instanceof SwitchStatement) {
-                // Hoist var declarations from switch case bodies. Per spec,
-                // function declarations inside switch are block-scoped. Annex B
-                // carves out an exception for non-async, non-generator function
-                // declarations in sloppy mode: those are hoisted to the enclosing
-                // scope. Async functions and generators remain block-scoped.
+                // Hoist var declarations from switch case bodies. Function
+                // declarations in switch are block-scoped; only the var binding
+                // name is hoisted via hoistBlockFunctionDeclarations.
                 foreach ($stmt->cases as $case) {
                     foreach ($case->consequent as $inner) {
-                        if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
-                            $this->hoistDeclarations([$inner], $env);
-                        } elseif ($inner instanceof VariableDeclaration && $inner->kind === 'var') {
+                        if ($inner instanceof VariableDeclaration && $inner->kind === 'var') {
                             $this->hoistDeclarations([$inner], $env);
                         } elseif (!($inner instanceof FunctionDeclaration)) {
-                            // Recurse for nested var hoisting (e.g., if/for/while inside case).
-                            $this->hoistDeclarations([$inner], $env);
+                            $this->hoistVarDeclarationsOnly(
+                                $inner instanceof \PhpJs\Ast\Statement\BlockStatement ? $inner->body : [$inner],
+                                $env,
+                            );
                         }
                     }
                 }
@@ -4369,7 +4371,7 @@ class Interpreter
             } elseif ($stmt instanceof WithStatement) {
                 // Var declarations inside with statements hoist to the enclosing scope.
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                    $this->hoistDeclarations($stmt->body->body, $env);
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
                 } else {
                     $this->hoistDeclarations([$stmt->body], $env);
                 }
