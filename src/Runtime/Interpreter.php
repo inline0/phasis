@@ -2403,11 +2403,11 @@ class Interpreter
             if (ctype_digit($key)) {
                 $idx = (int) $key;
                 // JavaScript string indexing uses UTF-16 code units.
-                $u16 = mb_convert_encoding($obj->value, 'UTF-16LE', 'UTF-8');
+                $u16 = JsString::utf8ToUtf16LE($obj->value);
                 $u16Len = (int) (strlen($u16) / 2);
                 if ($idx >= 0 && $idx < $u16Len) {
                     $codeUnit = ord($u16[$idx * 2]) | (ord($u16[$idx * 2 + 1]) << 8);
-                    return new JsString(mb_convert_encoding(pack('v', $codeUnit), 'UTF-8', 'UTF-16LE'));
+                    return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
                 }
                 return JsUndefined::instance();
             }
@@ -2839,9 +2839,8 @@ class Interpreter
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
-            }
-            // Step 5b: received is throw.
-            elseif ($receivedType === 'throw') {
+            } elseif ($receivedType === 'throw') {
+                // Step 5b: received is throw.
                 $throwMethod = $iterator->get('throw');
                 if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
                     // Per spec: if throw is undefined, throw a TypeError and also
@@ -2863,9 +2862,8 @@ class Interpreter
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
-            }
-            // Step 5c: received is return.
-            else {
+            } else {
+                // Step 5c: received is return.
                 $returnMethod = $iterator->get('return');
                 if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
                     // Per spec: if return is undefined, return Completion(received).
@@ -5120,7 +5118,7 @@ class Interpreter
             // Use byte offset for PCRE: convert character offset to byte offset.
             $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
 
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset)) {
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
                 // For sticky regex, the match must start exactly at lastIndex.
                 if ($isSticky && $matchBytePos !== $byteOffset) {
@@ -5143,7 +5141,7 @@ class Interpreter
                 $elements = [];
                 foreach ($matches as $key => $match) {
                     if (is_int($key)) {
-                        $elements[] = $match[1] === -1
+                        $elements[] = ($match[1] === -1 || $match[0] === null)
                             ? JsUndefined::instance()
                             : new JsString($match[0]);
                         $numericCount++;
@@ -5159,7 +5157,7 @@ class Interpreter
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
-                        $groups->set($key, $match[1] === -1
+                        $groups->set($key, ($match[1] === -1 || $match[0] === null)
                             ? JsUndefined::instance()
                             : new JsString($match[0]));
                     }

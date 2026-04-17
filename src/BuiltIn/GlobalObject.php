@@ -736,9 +736,12 @@ class GlobalObject
                 );
                 // valueOf/toString come from String.prototype, not own properties.
                 // Set indexed character properties and length per spec.
-                $len = mb_strlen($str, 'UTF-8');
-                for ($i = 0; $i < $len; $i++) {
-                    $ch = mb_substr($str, $i, 1, 'UTF-8');
+                // JS strings use UTF-16 code units, so use the UTF-16 length.
+                $u16Len = $val->length();
+                $u16 = JsString::utf8ToUtf16LE($str);
+                for ($i = 0; $i < $u16Len; $i++) {
+                    $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+                    $ch = JsString::utf16CodeUnitToUtf8($codeUnit);
                     $this_->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
                         new JsString($ch),
                         false,
@@ -747,7 +750,7 @@ class GlobalObject
                     ));
                 }
                 $this_->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                    new \PhpJs\Value\JsNumber((float) $len),
+                    new \PhpJs\Value\JsNumber((float) $u16Len),
                     false,
                     false,
                     false,

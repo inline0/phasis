@@ -27,6 +27,12 @@ class StringPrototype
     {
         $proto = new JsObject();
 
+        // Per spec, String.prototype is itself a String object with [[PrimitiveValue]] = "".
+        $proto->defineOwnProperty(
+            '[[PrimitiveValue]]',
+            PropertyDescriptor::data(new JsString(''), false, false, false),
+        );
+
         $d = static fn (string $n, \Closure $fn, int $len) => $proto->defineOwnProperty(
             $n,
             PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
@@ -451,24 +457,40 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $len = mb_strlen($str, 'UTF-8');
-            $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $end = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : $len;
 
-            if ($start < 0) {
-                $start = max($len + $start, 0);
+            // Per spec 22.1.3.22: intStart = ToIntegerOrInfinity(start).
+            $startArg = $args[0] ?? JsUndefined::instance();
+            $startFloat = TypeConversion::toIntegerOrInfinity($startArg);
+            if ($startFloat === -INF) {
+                $from = 0;
+            } elseif ($startFloat < 0) {
+                $from = (int) max($len + $startFloat, 0);
+            } else {
+                $from = (int) min($startFloat, $len);
             }
-            if ($end < 0) {
-                $end = max($len + $end, 0);
+
+            // Per spec: if end is undefined, intEnd = len; else intEnd = ToIntegerOrInfinity(end).
+            $endArg = $args[1] ?? JsUndefined::instance();
+            if ($endArg instanceof JsUndefined) {
+                $to = $len;
+            } else {
+                $endFloat = TypeConversion::toIntegerOrInfinity($endArg);
+                if ($endFloat === -INF) {
+                    $to = 0;
+                } elseif ($endFloat < 0) {
+                    $to = (int) max($len + $endFloat, 0);
+                } elseif ($endFloat >= $len) {
+                    $to = $len;
+                } else {
+                    $to = (int) $endFloat;
+                }
             }
 
-            $start = min($start, $len);
-            $end = min($end, $len);
-
-            if ($start >= $end) {
+            if ($from >= $to) {
                 return new JsString('');
             }
 
-            return new JsString(mb_substr($str, $start, $end - $start, 'UTF-8'));
+            return new JsString(mb_substr($str, $from, $to - $from, 'UTF-8'));
         };
     }
 
@@ -477,12 +499,22 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $len = mb_strlen($str, 'UTF-8');
-            $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $end = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : $len;
 
-            // Clamp to [0, length].
-            $start = max(0, min($start, $len));
-            $end = max(0, min($end, $len));
+            // Per spec: ToIntegerOrInfinity(start). NaN -> 0.
+            $startArg = $args[0] ?? JsUndefined::instance();
+            $startRaw = TypeConversion::toIntegerOrInfinity($startArg);
+
+            // Per spec: end is undefined -> len, otherwise ToIntegerOrInfinity(end).
+            $endArg = $args[1] ?? JsUndefined::instance();
+            $endRaw = $endArg instanceof JsUndefined
+                ? (float) $len
+                : TypeConversion::toIntegerOrInfinity($endArg);
+
+            // Clamp to [0, length]. Use float min to avoid (int) INF issue.
+            $startClamped = max(0.0, min($startRaw, (float) $len));
+            $endClamped = max(0.0, min($endRaw, (float) $len));
+            $start = (int) $startClamped;
+            $end = (int) $endClamped;
 
             // If start > end, swap them.
             if ($start > $end) {
@@ -1586,22 +1618,51 @@ class StringPrototype
                 return JsNull::instance();
             }
 
-            // Per spec (22.1.3.11 step 6), non-RegExp arguments are coerced
-            // to a RegExp via RegExpCreate(regexp, undefined). The raw value
-            // (not ToString) is passed to the RegExp constructor, so
-            // match(undefined) produces /(?:)/ (matches empty string).
-            if ($searchArg instanceof JsUndefined) {
-                $pcre = '/(?:)/u';
-            } else {
-                $pattern = TypeConversion::toString($searchArg);
-                $escaped = preg_quote($pattern, '/');
-                $pcre = '/' . $escaped . '/u';
+            // Per spec step 6: Let rx be RegExpCreate(regexp, undefined).
+            // Step 7: Return Invoke(rx, @@match, S).
+            // Create a new RegExp from the argument and delegate to @@match.
+            $regExpConstructor = null;
+            $globalEnv = null;
+            // Try to get RegExp constructor from the environment.
+            // The environment isn't directly accessible here, so use the
+            // constructor stored on RegExp.prototype or string prototype's constructor chain.
+            if ($this_ instanceof JsObject) {
+                // Walk up from String.prototype to find the global scope.
+                $ctor = $this_->get('constructor');
+                if ($ctor instanceof JsFunction) {
+                    $globalObj = $ctor->get('__globalEnv__');
+                }
             }
-            if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+            // Fall back to looking up RegExp via the string prototype's env.
+            $strProto = JsString::getStringPrototype();
+            if ($strProto !== null) {
+                $ctorVal = $strProto->get('constructor');
+                if ($ctorVal instanceof JsFunction) {
+                    // The String constructor lives in the same env as RegExp.
+                    // Use a static reference to the interpreter for RegExp creation.
+                    $patternStr = $searchArg instanceof JsUndefined
+                        ? ''
+                        : TypeConversion::toString($searchArg);
+                    $rx = \PhpJs\Engine::createRegExp($patternStr, '');
+                    if ($rx !== null) {
+                        // Invoke @@match on the new regex.
+                        $matchSym = SymbolConstructor::match();
+                        $matcher = $rx->getBySymbol($matchSym);
+                        if ($matcher instanceof JsFunction) {
+                            return $matcher->call($rx, [new JsString($str)]);
+                        }
+                    }
+                }
+            }
+            // Final fallback: manual PCRE match.
+            $patternStr = $searchArg instanceof JsUndefined ? '(?:)' : TypeConversion::toString($searchArg);
+            $escaped = str_replace('/', '\\/', $patternStr);
+            $pcre = '/' . $escaped . '/u';
+            if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL)) {
                 $elements = [];
                 foreach ($matches as $key => $match) {
                     if (is_int($key)) {
-                        $elements[] = $match[1] === -1
+                        $elements[] = ($match[1] === -1 || $match[0] === null)
                             ? JsUndefined::instance()
                             : new JsString($match[0]);
                     }
@@ -1786,7 +1847,7 @@ class StringPrototype
             $pos = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
 
             // Convert UTF-8 string to UTF-16 code units to match JS semantics.
-            $u16 = mb_convert_encoding($str, 'UTF-16LE', 'UTF-8');
+            $u16 = JsString::utf8ToUtf16LE($str);
             $size = (int) (strlen($u16) / 2);
 
             if ($pos < 0 || $pos >= $size) {

@@ -24,7 +24,10 @@ class JsProxy extends JsObject
 
     public function __construct(JsObject $target, JsObject $handler)
     {
-        parent::__construct($target instanceof JsProxy && $target->isRevoked() ? null : $target->getPrototype());
+        // Per spec ProxyCreate: the proxy does not read the target's [[Prototype]]
+        // at construction time. It always delegates via its getPrototype() override.
+        // Pass null to avoid triggering getPrototypeOf traps on proxy targets.
+        parent::__construct(null);
         $this->target = $target;
         $this->handler = $handler;
         // Per spec ProxyCreate steps 6-7: capture [[Call]] slot existence at creation time.
@@ -439,7 +442,8 @@ class JsProxy extends JsObject
             $this->validateOwnKeysInvariants($trapResult);
             return $trapResult;
         }
-        return $this->target->ownKeys();
+        // Forward to target's [[OwnPropertyKeys]] in spec order.
+        return $this->target->getOwnPropertyNames();
     }
 
     /**
@@ -632,9 +636,10 @@ class JsProxy extends JsObject
             $descObj = self::descriptorToObject($desc);
             $result = $trap->call($this->handler, [$this->target, new JsString($name), $descObj]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
-                throw new TypeError("'defineProperty' on proxy: trap returned falsish for property '{$name}'");
+                return false;
             }
             // Per spec 10.5.6 steps 17-22: validate invariants.
+            // Invariant violations throw TypeError (must propagate, not be caught).
             $this->validateDefinePropertyInvariants($name, $desc);
             return true;
         }
@@ -766,7 +771,9 @@ class JsProxy extends JsObject
 
     public function defineProperty(string $name, PropertyDescriptor $desc): void
     {
-        $this->defineOwnProperty($name, $desc);
+        if (!$this->defineOwnProperty($name, $desc)) {
+            throw new TypeError("'defineProperty' on proxy: trap returned falsish for property '{$name}'");
+        }
     }
 
     /** Symbol-keyed getOwnPropertyDescriptor that goes through the trap. */
@@ -797,7 +804,7 @@ class JsProxy extends JsObject
             $descObj = self::descriptorToObject($desc);
             $result = $trap->call($this->handler, [$this->target, $symbol, $descObj]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
-                throw new TypeError("'defineProperty' on proxy: trap returned falsish for symbol property");
+                return false;
             }
             return true;
         }

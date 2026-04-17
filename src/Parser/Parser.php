@@ -553,12 +553,19 @@ class Parser
         $location = $this->expect(TokenType::For)->location;
         $this->expect(TokenType::LeftParen);
 
-        // Per spec: for ( [lookahead not in { let [ }] ... ) treats `let` as an
-        // identifier when followed by `in` or `of` (non-strict). Only treat `let`
-        // as a declaration keyword when the next token is NOT `in`/`of`.
+        // Per spec: `let` is a declaration keyword in for-headers only when
+        // followed by an identifier, `[`, or `{` (a binding pattern).
+        // Otherwise (followed by `in`, `of`, `;`, `=`, etc.) treat `let` as
+        // an identifier expression.
         $isLetDecl = $this->check(TokenType::Let)
-            && !$this->peekIs(TokenType::In)
-            && !$this->peekIs(TokenType::Of);
+            && ($this->peekIs(TokenType::Identifier)
+                || $this->peekIs(TokenType::LeftBracket)
+                || $this->peekIs(TokenType::LeftBrace)
+                || $this->peekIs(TokenType::Let)
+                || $this->peekIs(TokenType::Yield)
+                || $this->peekIs(TokenType::Await)
+                || $this->peekIs(TokenType::Static_)
+                || $this->peekIs(TokenType::Of));
 
         // for (var/let/const ...
         if ($this->check(TokenType::Var) || $isLetDecl || $this->check(TokenType::Const_)) {

@@ -160,6 +160,12 @@ class JsTypedArray extends JsObject
         $val = $unpacked['val'];
 
         if ($this->isBigInt) {
+            // For BigUint64Array, PHP returns signed int but we need unsigned string.
+            if ($this->typeName === 'BigUint64Array' && $val < 0) {
+                // Add 2^64 to convert negative signed to unsigned.
+                $strVal = bcadd((string) $val, '18446744073709551616');
+                return new JsBigInt($strVal);
+            }
             return new JsBigInt((string) $val);
         }
 
@@ -201,13 +207,20 @@ class JsTypedArray extends JsObject
     private function coerceValue(JsValue $value): int|float
     {
         if ($this->isBigInt) {
+            $strVal = '0';
             if ($value instanceof JsBigInt) {
-                return (int) $value->value;
+                $strVal = $value->value;
+            } else {
+                // Use TypeConversion::toNumber for proper ToPrimitive handling.
+                return (int) TypeConversion::toNumber($value);
             }
-            return (int) $value->toNumber();
+
+            // ToBigInt64 / ToBigUint64: modulo 2^64 with proper sign handling.
+            return self::bigIntModulo($strVal, $this->typeName === 'BigInt64Array');
         }
 
-        $num = $value->toNumber();
+        // Use TypeConversion::toNumber for proper ToPrimitive handling on objects.
+        $num = TypeConversion::toNumber($value);
 
         if ($this->clamped) {
             if (is_nan($num)) {
@@ -645,6 +658,38 @@ class JsTypedArray extends JsObject
             return $a->value === $b->value;
         }
         return false;
+    }
+
+    /**
+     * Convert a BigInt string to a 64-bit signed integer (PHP int) for buffer storage.
+     *
+     * Both BigInt64Array and BigUint64Array store values as 64-bit patterns in
+     * the buffer. PHP int is always signed 64-bit. We compute the value modulo
+     * 2^64 and always return a signed two's complement PHP int. For BigUint64Array,
+     * getIndex() converts back to unsigned.
+     *
+     * Uses bcmath for arbitrary-precision arithmetic.
+     */
+    private static function bigIntModulo(string $strVal, bool $signed): int
+    {
+        // 2^64 = 18446744073709551616
+        $mod = '18446744073709551616';
+        // 2^63 = 9223372036854775808
+        $half = '9223372036854775808';
+
+        // Compute value mod 2^64, normalized to [0, 2^64).
+        $result = bcmod($strVal, $mod);
+        if ($result !== '' && $result[0] === '-') {
+            $result = bcadd($result, $mod);
+        }
+
+        // Always convert to signed two's complement for PHP int storage.
+        // Values >= 2^63 become negative (two's complement).
+        if (bccomp($result, $half) >= 0) {
+            $result = bcsub($result, $mod);
+        }
+
+        return (int) $result;
     }
 
     public function toJsString(): string

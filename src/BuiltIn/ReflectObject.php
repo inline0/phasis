@@ -220,23 +220,18 @@ class ReflectObject
 
                 $descriptor = self::toPropertyDescriptor($desc);
 
-                // For Proxy targets, the trap may throw (abrupt completion propagates)
-                // or return false (Reflect returns false). Only TypeError from
-                // defineOwnProperty internal rejection should yield false.
+                // For Proxy targets, defineOwnProperty returns bool:
+                // true if trap succeeded, false if trap returned falsish.
+                // Invariant violations throw TypeError which must propagate.
                 if ($target instanceof JsProxy) {
-                    // Let proxy throw through on trap errors; catch only
-                    // the TypeError it throws when trap returns falsish.
-                    try {
-                        if ($propKey instanceof JsSymbol) {
-                            $target->definePropertyBySymbol($propKey, $descriptor);
-                        } else {
-                            $target->defineOwnProperty($propKey->toJsString(), $descriptor);
-                        }
-                        return new JsBoolean(true);
-                    } catch (TypeError $e) {
-                        // Proxy trap returned falsish.
-                        return new JsBoolean(false);
+                    if ($propKey instanceof JsSymbol) {
+                        return new JsBoolean(
+                            $target->definePropertyBySymbol($propKey, $descriptor)
+                        );
                     }
+                    return new JsBoolean(
+                        $target->defineOwnProperty($propKey->toJsString(), $descriptor)
+                    );
                 }
 
                 // Regular object: use spec-compliant OrdinaryDefineOwnProperty with bool return.

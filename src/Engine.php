@@ -19,6 +19,8 @@ use PhpJs\Value\JsValue;
 
 class Engine
 {
+    private static ?Interpreter $currentInterpreter = null;
+
     private Environment $globalEnv;
     private Interpreter $interpreter;
     private ConsoleObject $console;
@@ -30,6 +32,7 @@ class Engine
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+        self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
 
@@ -707,8 +710,25 @@ class Engine
         $this->console = new ConsoleObject();
         $this->callStack = new CallStack();
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+        self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
+    }
+
+    /**
+     * Create a RegExp object using the current interpreter.
+     * Used by String.prototype methods to create RegExp from string arguments per spec.
+     */
+    public static function createRegExp(string $pattern, string $flags): ?\PhpJs\Value\JsObject
+    {
+        if (self::$currentInterpreter === null) {
+            return null;
+        }
+        try {
+            return self::$currentInterpreter->createRegExpFromConstructor($pattern, $flags);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public function setLimit(string $name, int $value): void

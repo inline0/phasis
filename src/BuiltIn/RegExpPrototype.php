@@ -153,7 +153,7 @@ class RegExpPrototype
 
             $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
 
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset)) {
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
                 if ($isSticky && $matchBytePos !== $byteOffset) {
                     $this_->set('lastIndex', new JsNumber(0.0), true);
@@ -170,7 +170,7 @@ class RegExpPrototype
                 $elements = [];
                 foreach ($matches as $key => $match) {
                     if (is_int($key)) {
-                        $elements[] = $match[1] === -1
+                        $elements[] = ($match[1] === -1 || $match[0] === null)
                             ? JsUndefined::instance()
                             : new JsString($match[0]);
                     }
@@ -184,7 +184,7 @@ class RegExpPrototype
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
-                        $groups->set($key, $match[1] === -1
+                        $groups->set($key, ($match[1] === -1 || $match[0] === null)
                             ? JsUndefined::instance()
                             : new JsString($match[0]));
                     }

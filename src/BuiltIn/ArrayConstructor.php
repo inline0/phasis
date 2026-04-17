@@ -419,7 +419,12 @@ class ArrayConstructor
                 for ($i = $start; $i < $end; $i++, $n++) {
                     $from = (string) $i;
                     if ($this_->has($from)) {
-                        $result->set((string) $n, $this_->get($from));
+                        // Use defineOwnProperty (CreateDataPropertyOrThrow) to bypass
+                        // non-writable inherited properties on Array.prototype.
+                        $result->defineOwnProperty(
+                            (string) $n,
+                            PropertyDescriptor::data($this_->get($from), true, true, true),
+                        );
                     }
                 }
                 $result->setLength($count);
@@ -457,12 +462,18 @@ class ArrayConstructor
                         for ($k = 0; $k < $intLen; $k++) {
                             $key = (string) $k;
                             if ($e->has($key)) {
-                                $result->set((string) $n, $e->get($key));
+                                $result->defineOwnProperty(
+                                    (string) $n,
+                                    PropertyDescriptor::data($e->get($key), true, true, true),
+                                );
                             }
                             $n++;
                         }
                     } else {
-                        $result->set((string) $n, $e);
+                        $result->defineOwnProperty(
+                            (string) $n,
+                            PropertyDescriptor::data($e, true, true, true),
+                        );
                         $n++;
                     }
                 }
@@ -832,18 +843,24 @@ class ArrayConstructor
         $proto->defineOwnProperty('flatMap', PropertyDescriptor::data(JsFunction::fromCallable(
             'flatMap',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('flatMap callback is not a function');
                 }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 $result = [];
-                $len = self::getLen($this_);
+                $len = self::lengthOfArrayLike($o);
                 for ($i = 0; $i < $len; $i++) {
-                    $val = $this_->get((string) $i);
-                    $mapped = $callback->call($this_, [$val, new JsNumber((float) $i), $this_]);
+                    $key = (string) $i;
+                    if (!$o->has($key)) {
+                        continue;
+                    }
+                    $val = $o->get($key);
+                    $mapped = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
                     if ($mapped instanceof JsArray) {
-                        for ($j = 0; $j < $mapped->getLength(); $j++) {
+                        $innerLen = $mapped->getLength();
+                        for ($j = 0; $j < $innerLen; $j++) {
                             $result[] = $mapped->get((string) $j);
                         }
                     } else {
@@ -859,20 +876,13 @@ class ArrayConstructor
             'fill',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
+                $len = self::lengthOfArrayLike($this_);
                 $value = $args[0] ?? JsUndefined::instance();
-                $hasStart = isset($args[1]) && !$args[1] instanceof JsUndefined;
-                $start = $hasStart ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $hasEnd = isset($args[2]) && !$args[2] instanceof JsUndefined;
-                $end = $hasEnd ? (int) TypeConversion::toNumber($args[2]) : $len;
-                if ($start < 0) {
-                    $start = max($len + $start, 0);
-                }
-                if ($end < 0) {
-                    $end = max($len + $end, 0);
-                }
-                $start = min($start, $len);
-                $end = min($end, $len);
+                $relStart = isset($args[1]) ? TypeConversion::toIntegerOrInfinity($args[1]) : 0.0;
+                $relEnd = (isset($args[2]) && !$args[2] instanceof JsUndefined)
+                    ? TypeConversion::toIntegerOrInfinity($args[2]) : (float) $len;
+                $start = self::normalizeRelativeIndex($relStart, $len);
+                $end = self::normalizeRelativeIndex($relEnd, $len);
                 for ($i = $start; $i < $end; $i++) {
                     $this_->set((string) $i, $value);
                 }
@@ -885,25 +895,14 @@ class ArrayConstructor
             'copyWithin',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
-                $hasTgt = isset($args[0]) && !$args[0] instanceof JsUndefined;
-                $target = $hasTgt ? (int) TypeConversion::toNumber($args[0]) : 0;
-                $hasStart = isset($args[1]) && !$args[1] instanceof JsUndefined;
-                $start = $hasStart ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $hasEnd = isset($args[2]) && !$args[2] instanceof JsUndefined;
-                $end = $hasEnd ? (int) TypeConversion::toNumber($args[2]) : $len;
-                if ($target < 0) {
-                    $target = max($len + $target, 0);
-                }
-                if ($start < 0) {
-                    $start = max($len + $start, 0);
-                }
-                if ($end < 0) {
-                    $end = max($len + $end, 0);
-                }
-                $target = min($target, $len);
-                $start = min($start, $len);
-                $end = min($end, $len);
+                $len = self::lengthOfArrayLike($this_);
+                $relTarget = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+                $relStart = isset($args[1]) ? TypeConversion::toIntegerOrInfinity($args[1]) : 0.0;
+                $relEnd = (isset($args[2]) && !$args[2] instanceof JsUndefined)
+                    ? TypeConversion::toIntegerOrInfinity($args[2]) : (float) $len;
+                $target = self::normalizeRelativeIndex($relTarget, $len);
+                $start = self::normalizeRelativeIndex($relStart, $len);
+                $end = self::normalizeRelativeIndex($relEnd, $len);
                 $count = min($end - $start, $len - $target);
                 // Copy in correct direction to handle overlapping ranges.
                 if ($start < $target && $target < $start + $count) {
@@ -1531,7 +1530,26 @@ class ArrayConstructor
     private static function of(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            return JsArray::fromArray($args);
+            $len = count($args);
+            $isConstructor = ($this_ instanceof JsFunction && $this_->isConstructable());
+            if ($isConstructor) {
+                /** @var JsFunction $this_ */
+                $a = self::constructWith($this_, [new JsNumber((float) $len)]);
+            } else {
+                $a = new JsArray();
+            }
+            for ($k = 0; $k < $len; $k++) {
+                $a->defineOwnProperty(
+                    (string) $k,
+                    PropertyDescriptor::data($args[$k], true, true, true),
+                );
+            }
+            if ($a instanceof JsArray) {
+                $a->setLength($len);
+            } else {
+                $a->set('length', new JsNumber((float) $len));
+            }
+            return $a;
         };
     }
 

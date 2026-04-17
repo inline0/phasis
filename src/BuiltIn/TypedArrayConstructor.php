@@ -405,25 +405,18 @@ class TypedArrayConstructor
                     if ($el instanceof JsUndefined || $el instanceof JsNull) {
                         $parts[] = '';
                     } else {
-                        // Per spec: invoke toLocaleString on the element.
-                        // Elements are numbers (or BigInt), so wrap in a Number object
-                        // and call toLocaleString.
-                        if ($el instanceof JsObject) {
-                            $tlsFn = $el->get('toLocaleString');
-                            if ($tlsFn instanceof JsFunction) {
-                                $parts[] = TypeConversion::toString($tlsFn->call($el, $args));
-                            } else {
-                                $parts[] = $el->toJsString();
-                            }
+                        // Per spec: Invoke(element, "toLocaleString").
+                        // Auto-box primitives to access the method, but call with
+                        // the original primitive as `this` so type checks pass.
+                        $boxed = ($el instanceof JsObject)
+                            ? $el
+                            : TypeConversion::toObject($el);
+                        $tlsFn = $boxed->get('toLocaleString');
+                        if ($tlsFn instanceof JsFunction) {
+                            // Call with original value as `this`, not the wrapper.
+                            $parts[] = TypeConversion::toString($tlsFn->call($el, $args));
                         } else {
-                            // Primitive: auto-box and invoke toLocaleString.
-                            $boxed = TypeConversion::toObject($el);
-                            $tlsFn = $boxed->get('toLocaleString');
-                            if ($tlsFn instanceof JsFunction) {
-                                $parts[] = TypeConversion::toString($tlsFn->call($boxed, $args));
-                            } else {
-                                $parts[] = TypeConversion::toString($el);
-                            }
+                            $parts[] = TypeConversion::toString($el);
                         }
                     }
                 }
