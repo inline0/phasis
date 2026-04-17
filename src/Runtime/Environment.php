@@ -148,10 +148,29 @@ class Environment
         $this->deletable[$name] = true;
     }
 
-    /** Define a var binding created by Annex B block-function hoisting. */
-    public function defineAnnexBVar(string $name, JsValue $value): void
+    /**
+     * Define a var binding created by Annex B block-function hoisting.
+     *
+     * @param bool $configurable For global scope: whether the property should be
+     *     configurable. Scripts use false, eval uses true.
+     */
+    public function defineAnnexBVar(string $name, JsValue $value, bool $configurable = false): void
     {
-        $this->bindings[$name] = $value;
+        if (!array_key_exists($name, $this->bindings)) {
+            $this->bindings[$name] = $value;
+            // For global scope (linked object), also create the property.
+            // Per spec, scripts use CreateGlobalFunctionBinding(F, undefined, false)
+            // and eval uses CreateGlobalVarBinding(F, true).
+            if ($this->linkedObject !== null && !$this->linkedObject->hasOwnProperty($name)) {
+                $this->linkedObject->defineOwnProperty(
+                    $name,
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
+                );
+                if ($configurable) {
+                    $this->deletable[$name] = true;
+                }
+            }
+        }
         $this->annexBHoisted[$name] = true;
     }
 

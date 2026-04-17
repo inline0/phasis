@@ -81,7 +81,7 @@ class JsTypedArray extends JsObject
     /**
      * Throw TypeError if the underlying buffer is detached.
      */
-    private function validateNotDetached(): void
+    public function validateNotDetached(): void
     {
         if ($this->buffer->isDetached()) {
             throw new \PhpJs\Exceptions\TypeError(

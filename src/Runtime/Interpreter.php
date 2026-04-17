@@ -74,6 +74,7 @@ use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsGenerator;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
+use PhpJs\Value\JsArgumentsObject;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsOptionalUndefined;
 use PhpJs\Value\JsString;
@@ -2897,7 +2898,7 @@ class Interpreter
      */
     private function makeArgumentsObject(array $args, ?JsFunction $fn, bool $strictMode): JsObject
     {
-        $argsObj = new JsObject();
+        $argsObj = $strictMode ? new JsObject() : new JsArgumentsObject();
         $argsObj->defineOwnProperty('[[IsArguments]]', PropertyDescriptor::data(
             new JsBoolean(true),
             writable: false,
@@ -3022,6 +3023,10 @@ class Interpreter
      */
     private function setupMappedArguments(JsObject $argsObj, array $params, array $args, Environment $env): void
     {
+        if (!$argsObj instanceof JsArgumentsObject) {
+            return;
+        }
+
         $mappedNames = [];
         // Only map indices up to the number of actual arguments passed.
         $argCount = count($args);
@@ -3038,20 +3043,9 @@ class Interpreter
             $mappedNames[$name] = true;
 
             $index = (string) $i;
-            // Replace the data property with an accessor that proxies to the env binding.
-            $getter = JsFunction::fromCallable('', function () use ($env, $name): JsValue {
-                return $env->get($name);
-            });
-            $setter = JsFunction::fromCallable('', function (JsValue $_this, array $setArgs) use ($env, $name): JsValue {
-                $env->set($name, $setArgs[0] ?? JsUndefined::instance());
-                return JsUndefined::instance();
-            });
-            $argsObj->defineOwnProperty($index, PropertyDescriptor::accessor(
-                get: $getter,
-                set: $setter,
-                enumerable: true,
-                configurable: true,
-            ));
+            // Register the mapping. The JsArgumentsObject handles get/set/defineProperty
+            // through the parameter map per spec 10.4.4.
+            $argsObj->addMapping($index, $name, $env);
         }
     }
 
@@ -4695,7 +4689,17 @@ class Interpreter
     {
         $test = $this->evaluate($node->test, $env);
         if (TypeConversion::toBoolean($test)) {
-            $stmtCompletion = $this->executeStatement($node->consequent, $env);
+            // Per Annex B.3.4, a FunctionDeclaration directly in an if branch
+            // (not wrapped in a block) gets its own implicit block scope for
+            // block-scoped binding semantics. The function is both bound in
+            // the block scope and, if annexBEligible, propagated to the var scope.
+            if ($node->consequent instanceof FunctionDeclaration && !$this->strictMode) {
+                $blockEnv = $env->createChild();
+                $this->hoistDeclarations([$node->consequent], $blockEnv);
+                $stmtCompletion = $this->executeStatement($node->consequent, $blockEnv);
+            } else {
+                $stmtCompletion = $this->executeStatement($node->consequent, $env);
+            }
             // Per spec: Return Completion(UpdateEmpty(stmtCompletion, undefined)).
             if ($stmtCompletion->empty) {
                 return new Completion(
@@ -4707,7 +4711,13 @@ class Interpreter
             return $stmtCompletion;
         }
         if ($node->alternate !== null) {
-            $stmtCompletion = $this->executeStatement($node->alternate, $env);
+            if ($node->alternate instanceof FunctionDeclaration && !$this->strictMode) {
+                $blockEnv = $env->createChild();
+                $this->hoistDeclarations([$node->alternate], $blockEnv);
+                $stmtCompletion = $this->executeStatement($node->alternate, $blockEnv);
+            } else {
+                $stmtCompletion = $this->executeStatement($node->alternate, $env);
+            }
             if ($stmtCompletion->empty) {
                 return new Completion(
                     $stmtCompletion->type,

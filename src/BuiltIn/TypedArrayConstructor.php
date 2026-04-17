@@ -538,6 +538,7 @@ class TypedArrayConstructor
                         'Method %TypedArray%.prototype.toLocaleString called on incompatible receiver'
                     );
                 }
+                $this_->validateNotDetached();
                 $len = $this_->getLength();
                 if ($len === 0) {
                     return new JsString('');
@@ -1086,6 +1087,7 @@ class TypedArrayConstructor
                 }
 
                 $source = $args[0] ?? JsUndefined::instance();
+                // Per spec step 7: ToIntegerOrInfinity(offset), may detach buffer via valueOf.
                 $offset = isset($args[1]) ? self::toInteger($args[1]) : 0;
 
                 // Per spec: throw RangeError if offset < 0.
@@ -1093,9 +1095,14 @@ class TypedArrayConstructor
                     throw new RangeError('Offset is out of bounds');
                 }
 
+                // Per spec step 9: check detached AFTER offset coercion.
+                $this_->validateNotDetached();
+
                 $isBigTarget = $this_->isBigIntArray();
 
                 if ($source instanceof JsTypedArray) {
+                    // Per spec step 12: check source buffer is not detached.
+                    $source->validateNotDetached();
                     $srcLen = $source->getLength();
                     $targetLen = $this_->getLength();
                     // Per spec: if one is BigInt and the other is not, throw TypeError.
@@ -1276,11 +1283,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
+                // Coerce arguments (may detach buffer via valueOf).
                 $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
                 $end = isset($args[2]) && !$args[2] instanceof JsUndefined
                 ? self::toInteger($args[2])
                 : null;
+                // Per spec: check detached AGAIN after argument coercion.
+                $this_->validateNotDetached();
                 return $this_->copyWithinTyped($target, $start, $end);
             },
             2
@@ -1294,6 +1305,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $value = $args[0] ?? JsUndefined::instance();
 
             // Per spec: coerce value to numeric type ONCE before start/end evaluation.
@@ -1303,8 +1315,6 @@ class TypedArrayConstructor
                     if ($value instanceof \PhpJs\Value\JsBigInt) {
                         $coerced = $value;
                     } else {
-                        // ToBigInt: only BigInt and strings that parse as BigInt are valid.
-                        // Numbers, null, undefined, booleans, symbols all throw TypeError.
                         $coerced = TypeConversion::toBigInt($value);
                     }
                 } else {
@@ -1316,6 +1326,8 @@ class TypedArrayConstructor
                 $end = isset($args[2]) && !$args[2] instanceof JsUndefined
                 ? self::toInteger($args[2])
                 : null;
+                // Per spec: check detached AGAIN after value/start/end coercion.
+                $this_->validateNotDetached();
                 return $this_->fillTyped($coerced, $start, $end);
             },
             1
@@ -1408,6 +1420,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.map called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
@@ -1435,13 +1448,16 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.filter called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 $kept = [];
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                // Capture length before the loop per spec step 3.
+                $len = $this_->getLength();
+                for ($i = 0; $i < $len; $i++) {
                     $el = $this_->getIndex($i);
                     $result = $callback->call(
                         $thisArg,
@@ -1590,6 +1606,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
                 if ($this_->getLength() === 0) {
                     return new JsNumber(-1.0);
@@ -1609,6 +1626,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.lastIndexOf called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $len = $this_->getLength();
                 // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
                 if ($len === 0) {
@@ -1706,6 +1724,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.reverse called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 return $this_->reverseTyped();
             },
             0
@@ -1822,6 +1841,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.findLast called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $predicate = $args[0] ?? JsUndefined::instance();
                 if (!$predicate instanceof JsFunction) {
                     throw new TypeError('predicate is not a function');
@@ -1895,6 +1915,7 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.toReversed called on incompatible receiver"
                     );
                 }
+                $this_->validateNotDetached();
                 $len = $this_->getLength();
                 $result = JsTypedArray::fromLength(
                     $this_->getTypeName(),
@@ -1924,6 +1945,7 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.toSorted called on incompatible receiver"
                     );
                 }
+                $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
                 if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
                     throw new TypeError(
