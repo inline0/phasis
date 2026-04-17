@@ -541,9 +541,12 @@ final class TypeConversion
             \PhpJs\Object\PropertyDescriptor::data($value, false, false, false),
         );
 
-        // Install valueOf that returns the wrapped primitive, matching the spec behavior
-        // for Boolean, Number, and String wrapper objects.
-        if ($value instanceof JsBoolean || $value instanceof JsNumber || $value instanceof JsString) {
+        // Per spec, valueOf is inherited from the prototype (e.g. Boolean.prototype.valueOf),
+        // not installed as an own property on wrapper objects. Only install a local valueOf
+        // if no prototype chain is available.
+        if (($value instanceof JsBoolean || $value instanceof JsNumber || $value instanceof JsString)
+            && $wrapperProto === null
+        ) {
             $wrapper->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('valueOf', fn() => $value, 0),
                 true,

@@ -273,18 +273,16 @@ class ObjectConstructor
         $proto->defineOwnProperty('hasOwnProperty', PropertyDescriptor::data(JsFunction::fromCallable(
             'hasOwnProperty',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    return new JsBoolean(false);
-                }
-                $key = $args[0] ?? new JsUndefined();
-                // Per spec, hasOwnProperty accepts symbol keys.
-                if ($key instanceof \PhpJs\Value\JsSymbol) {
+                // Per spec: 1. Let P = ToPropertyKey(V). 2. Let O = ToObject(this).
+                $key = $args[0] ?? JsUndefined::instance();
+                $propKey = TypeConversion::toPropertyKey($key);
+                $obj = TypeConversion::toObject($this_);
+                if ($propKey instanceof \PhpJs\Value\JsSymbol) {
                     return new JsBoolean(
-                        $this_->getSymbolPropertyDescriptor($key) !== null,
+                        $obj->getSymbolPropertyDescriptor($propKey) !== null,
                     );
                 }
-                $prop = TypeConversion::toString($key);
-                return new JsBoolean($this_->hasOwnProperty($prop));
+                return new JsBoolean($obj->hasOwnProperty($propKey->toJsString()));
             },
             1,
         ), true, false, true));

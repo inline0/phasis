@@ -3512,35 +3512,34 @@ class Interpreter
     {
         if (!$this->strictMode) {
             $name = $node->id->name;
-            // Per B.3.3.1 step 3: get fobj from the current lexical environment.
-            // If the function was hoisted into this block scope, get it directly.
-            // If not (e.g. direct child of if-statement), create it on the fly.
+            // Per B.3.3.1 step 3: instantiate the function in the current
+            // lexical environment and propagate to the variable environment.
+            $fobj = new JsFunction(
+                $name,
+                $node->params,
+                $node->body,
+                $env,
+                isGenerator: $node->generator,
+                isAsync: $node->async,
+                strict: false,
+            );
+            if ($node->sourceText !== null) {
+                $fobj->setSourceText($node->sourceText);
+            }
+            $this->installFunctionPrototype($fobj, $node->generator);
+            // Update the block-scope binding if it exists.
             if ($env->hasOwnBinding($name)) {
-                $fobj = $env->get($name);
-            } else {
-                // Create the function (Annex B if-statement case).
-                $fobj = new JsFunction(
-                    $name,
-                    $node->params,
-                    $node->body,
-                    $env,
-                    isGenerator: $node->generator,
-                    isAsync: $node->async,
-                    strict: false,
-                );
-                if ($node->sourceText !== null) {
-                    $fobj->setSourceText($node->sourceText);
-                }
-                $this->installFunctionPrototype($fobj, $node->generator);
+                $env->set($name, $fobj, false);
             }
             // Propagate to the variable environment (enclosing function/global
-            // scope) where the var binding was hoisted. Skip the current env
-            // (block scope) and use parent.set() so the var binding is updated.
+            // scope) where the var binding was hoisted. Walk up through the
+            // parent to find the var binding.
             $parent = $env->getParent();
             if ($parent !== null && $parent->has($name)) {
                 $parent->set($name, $fobj, false);
             }
         }
+
         return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
     }
 
