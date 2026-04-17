@@ -1541,6 +1541,11 @@ class Interpreter
             $isGlobalEval = !$evalStrict && $varEnv->getLinkedObject() !== null;
             if ($isGlobalEval) {
                 $this->hoistEvalGlobalDeclarations($program->body, $varEnv);
+            } elseif (!$evalStrict) {
+                // Non-strict, non-global eval: per EvalDeclarationInstantiation,
+                // var bindings are created in the caller's variable environment
+                // even if a same-named binding exists in an outer scope.
+                $this->hoistEvalLocalDeclarations($program->body, $varEnv);
             } else {
                 $this->hoistDeclarations($program->body, $varEnv);
             }
