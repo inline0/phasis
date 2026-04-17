@@ -296,12 +296,16 @@ class GlobalObject
         // Per ES spec 10.2.4 AddRestrictedFunctionProperties, Function.prototype
         // has "caller" and "arguments" as thrower accessor pairs. Accessing them
         // on any function that inherits from Function.prototype throws TypeError.
-        $thrower = JsFunction::fromCallable('', function (): never {
+        $thrower = JsFunction::fromCallable('ThrowTypeError', function (): never {
             throw new \PhpJs\Exceptions\TypeError(
                 "'caller', 'callee', and 'arguments' properties may not be accessed"
                 . ' on strict mode functions or the arguments objects for calls to them'
             );
         });
+        // Per spec, %ThrowTypeError% is non-constructable with no .prototype.
+        $thrower->setNonConstructable();
+        $thrower->forceDelete('prototype');
+
         $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
             enumerable: false,
             configurable: true,
@@ -310,6 +314,10 @@ class GlobalObject
         );
         $fnProto->defineOwnProperty('caller', $throwerDesc);
         $fnProto->defineOwnProperty('arguments', $throwerDesc);
+
+        // Store %ThrowTypeError% so the arguments object creator can reuse
+        // the same function identity per spec requirement.
+        $env->defineVar('__ThrowTypeError__', $thrower);
 
         // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
         // Sloppy-mode this-wrapping happens inside the function body, not here.
@@ -654,21 +662,36 @@ class GlobalObject
     private static function parseFloat(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            $string = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $string = ltrim($string);
+            $string = isset($args[0])
+                ? TypeConversion::toString($args[0])
+                : 'undefined';
+            // Strip leading Unicode whitespace per spec.
+            $string = preg_replace(
+                '/^[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}'
+                . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+/u',
+                '',
+                $string,
+            );
 
-            if ($string === '' || $string === 'undefined' || $string === 'null') {
+            if ($string === '') {
                 return new JsNumber(NAN);
             }
 
-            if ($string === 'Infinity' || $string === '+Infinity') {
+            // Check for Infinity prefix (not exact match).
+            if (str_starts_with($string, 'Infinity')
+                || str_starts_with($string, '+Infinity')
+            ) {
                 return new JsNumber(INF);
             }
-            if ($string === '-Infinity') {
+            if (str_starts_with($string, '-Infinity')) {
                 return new JsNumber(-INF);
             }
 
-            if (preg_match('/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/', $string, $matches)) {
+            if (preg_match(
+                '/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/',
+                $string,
+                $matches,
+            )) {
                 return new JsNumber((float) $matches[0]);
             }
 
