@@ -553,8 +553,15 @@ class Parser
         $location = $this->expect(TokenType::For)->location;
         $this->expect(TokenType::LeftParen);
 
+        // Per spec: for ( [lookahead not in { let [ }] ... ) treats `let` as an
+        // identifier when followed by `in` or `of` (non-strict). Only treat `let`
+        // as a declaration keyword when the next token is NOT `in`/`of`.
+        $isLetDecl = $this->check(TokenType::Let)
+            && !$this->peekIs(TokenType::In)
+            && !$this->peekIs(TokenType::Of);
+
         // for (var/let/const ...
-        if ($this->check(TokenType::Var) || $this->check(TokenType::Let) || $this->check(TokenType::Const_)) {
+        if ($this->check(TokenType::Var) || $isLetDecl || $this->check(TokenType::Const_)) {
             $kindToken = $this->advance();
             $kind = $kindToken->value;
             $id = $this->parseBindingPattern();

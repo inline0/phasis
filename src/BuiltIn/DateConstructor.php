@@ -154,7 +154,6 @@ class DateConstructor
             $yi += 1900;
         }
 
-        // Use mktime for local time interpretation. PHP mktime handles month/day overflow.
         $mi = (int) $m;
         $di = (int) $dt;
         $hi = (int) $h;
@@ -162,19 +161,9 @@ class DateConstructor
         $si = (int) $s;
         $msi = (int) $milli;
 
-        // mktime uses 1-based months, JS uses 0-based.
-        // Handle month overflow by adjusting year and month.
-        $adjustedYear = $yi + intdiv($mi, 12);
-        $adjustedMonth = $mi % 12;
-        if ($adjustedMonth < 0) {
-            $adjustedMonth += 12;
-            $adjustedYear--;
-        }
-        // mktime month is 1-based.
-        $adjustedMonth += 1;
-
-        $ts = mktime($hi, $mini, $si, $adjustedMonth, $di, $adjustedYear);
-        if ($ts === false) {
+        // Use DateTimeImmutable to correctly handle all years including < 100.
+        $ts = self::composeLocalTimestamp($yi, $mi, $di, $hi, $mini, $si);
+        if ($ts === null) {
             return NAN;
         }
 
@@ -216,16 +205,9 @@ class DateConstructor
         $si = (int) $s;
         $msi = (int) $milli;
 
-        $adjustedYear = $yi + intdiv($mi, 12);
-        $adjustedMonth = $mi % 12;
-        if ($adjustedMonth < 0) {
-            $adjustedMonth += 12;
-            $adjustedYear--;
-        }
-        $adjustedMonth += 1;
-
-        $ts = gmmktime($hi, $mini, $si, $adjustedMonth, $di, $adjustedYear);
-        if ($ts === false) {
+        // Use DateTimeImmutable to correctly handle all years including < 100.
+        $ts = self::composeUtcTimestamp($yi, $mi, $di, $hi, $mini, $si);
+        if ($ts === null) {
             return NAN;
         }
 
@@ -385,7 +367,7 @@ class DateConstructor
             return 'Invalid Date';
         }
 
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         $local = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
 
@@ -398,7 +380,7 @@ class DateConstructor
         if (is_nan($tv)) {
             return 'Invalid Date';
         }
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         $local = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
         return $local->format('D M d Y');
@@ -410,7 +392,7 @@ class DateConstructor
         if (is_nan($tv)) {
             return 'Invalid Date';
         }
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         $local = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
         return $local->format('H:i:s \G\M\TO (T)');
@@ -448,7 +430,7 @@ class DateConstructor
         if (is_nan($tv)) {
             return 'Invalid Date';
         }
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         $utc = $dt->setTimezone(new \DateTimeZone('UTC'));
         return $utc->format('D, d M Y H:i:s') . ' GMT';
@@ -459,7 +441,7 @@ class DateConstructor
      */
     private static function localDateTime(float $tv): \DateTimeImmutable
     {
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         return $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
     }
@@ -469,7 +451,7 @@ class DateConstructor
      */
     private static function utcDateTime(float $tv): \DateTimeImmutable
     {
-        $ts = (int) ($tv / 1000);
+        $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
         return $dt->setTimezone(new \DateTimeZone('UTC'));
     }
@@ -739,14 +721,7 @@ class DateConstructor
         $d('toJSON', function (JsValue $this_): JsValue {
             // ES spec 21.4.4.24 Date.prototype.toJSON ( key )
             // 1. Let O be ? ToObject(this value).
-            if ($this_ instanceof JsUndefined || $this_ instanceof JsNull) {
-                throw new TypeError('Date.prototype.toJSON called on null or undefined');
-            }
-            $o = $this_;
-            if (!$o instanceof JsObject) {
-                // Wrap primitive: use the value itself for ToPrimitive step.
-                $o = $this_;
-            }
+            $o = TypeConversion::toObject($this_);
 
             // 2. Let tv be ? ToPrimitive(O, hint Number).
             $tv = TypeConversion::toPrimitive($o, 'number');
@@ -757,10 +732,7 @@ class DateConstructor
             }
 
             // 4. Return ? Invoke(O, "toISOString").
-            if (!$o instanceof JsObject) {
-                throw new TypeError('toISOString is not a function');
-            }
-            $toISO = $o instanceof JsObject ? $o->get('toISOString') : null;
+            $toISO = $o->get('toISOString');
             if (!$toISO instanceof JsFunction) {
                 throw new TypeError('toISOString is not a function');
             }
@@ -967,17 +939,10 @@ class DateConstructor
                 break;
         }
 
-        // Reconstruct using mktime (local time).
-        $adjustedYear = $y + intdiv($m, 12);
-        $adjustedMonth = $m % 12;
-        if ($adjustedMonth < 0) {
-            $adjustedMonth += 12;
-            $adjustedYear--;
-        }
-        $adjustedMonth += 1;
-
-        $ts = mktime($h, $min, $sec, $adjustedMonth, $dt, $adjustedYear);
-        if ($ts === false) {
+        // Reconstruct using DateTimeImmutable (local time).
+        // We avoid mktime because it misinterprets years 0-99 (adds 1900 or 2000).
+        $ts = self::composeLocalTimestamp($y, $m, $dt, $h, $min, $sec);
+        if ($ts === null) {
             $this_->set('[[DateValue]]', new JsNumber(NAN));
             return new JsNumber(NAN);
         }
@@ -1102,21 +1067,95 @@ class DateConstructor
                 break;
         }
 
-        $adjustedYear = $y + intdiv($m, 12);
-        $adjustedMonth = $m % 12;
-        if ($adjustedMonth < 0) {
-            $adjustedMonth += 12;
-            $adjustedYear--;
-        }
-        $adjustedMonth += 1;
-
-        $ts = gmmktime($h, $min, $sec, $adjustedMonth, $dt, $adjustedYear);
-        if ($ts === false) {
+        // Reconstruct using DateTimeImmutable (UTC).
+        // We avoid gmmktime because it misinterprets years 0-99 (adds 1900 or 2000).
+        $ts = self::composeUtcTimestamp($y, $m, $dt, $h, $min, $sec);
+        if ($ts === null) {
             $this_->set('[[DateValue]]', new JsNumber(NAN));
             return new JsNumber(NAN);
         }
         $newTv = self::timeClip((float) $ts * 1000.0 + (float) $ms);
         $this_->set('[[DateValue]]', new JsNumber($newTv));
         return new JsNumber($newTv);
+    }
+
+    /**
+     * Compose a Unix timestamp from date/time components in local time.
+     *
+     * Uses DateTimeImmutable instead of mktime to correctly handle years < 100
+     * (mktime adds 1900/2000 to years 0-99 which breaks setFullYear).
+     *
+     * @param int $y Year
+     * @param int $m Month (0-based JS month)
+     * @param int $d Day
+     * @param int $h Hours
+     * @param int $min Minutes
+     * @param int $sec Seconds
+     * @return int|null Unix timestamp, or null on failure
+     */
+    private static function composeLocalTimestamp(int $y, int $m, int $d, int $h, int $min, int $sec): ?int
+    {
+        return self::composeTimestamp($y, $m, $d, $h, $min, $sec, new \DateTimeZone(date_default_timezone_get()));
+    }
+
+    /**
+     * Compose a Unix timestamp from date/time components in UTC.
+     *
+     * Uses DateTimeImmutable instead of gmmktime to correctly handle years < 100.
+     *
+     * @param int $y Year
+     * @param int $m Month (0-based JS month)
+     * @param int $d Day
+     * @param int $h Hours
+     * @param int $min Minutes
+     * @param int $sec Seconds
+     * @return int|null Unix timestamp, or null on failure
+     */
+    private static function composeUtcTimestamp(int $y, int $m, int $d, int $h, int $min, int $sec): ?int
+    {
+        return self::composeTimestamp($y, $m, $d, $h, $min, $sec, new \DateTimeZone('UTC'));
+    }
+
+    /**
+     * Compose a Unix timestamp from date/time components in the given timezone.
+     *
+     * Handles month overflow/underflow, day overflow, and arbitrary years
+     * (including years 0-99 which mktime/gmmktime misinterpret).
+     *
+     * @param int $y Year
+     * @param int $m Month (0-based JS month)
+     * @param int $d Day
+     * @param int $h Hours
+     * @param int $min Minutes
+     * @param int $sec Seconds
+     * @return int|null Unix timestamp, or null on failure
+     */
+    private static function composeTimestamp(
+        int $y,
+        int $m,
+        int $d,
+        int $h,
+        int $min,
+        int $sec,
+        \DateTimeZone $tz,
+    ): ?int {
+        // Handle month overflow/underflow: JS months are 0-based.
+        $adjustedYear = $y + intdiv($m, 12);
+        $adjustedMonth = $m % 12;
+        if ($adjustedMonth < 0) {
+            $adjustedMonth += 12;
+            $adjustedYear--;
+        }
+        $phpMonth = $adjustedMonth + 1; // Convert to 1-based
+
+        try {
+            // Use a reference date then setDate/setTime to avoid mktime's year bugs.
+            $dt = new \DateTimeImmutable('2000-01-01 00:00:00', $tz);
+            $dt = $dt->setDate($adjustedYear, $phpMonth, $d);
+            $dt = $dt->setTime($h, $min, $sec);
+            return (int) $dt->format('U');
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

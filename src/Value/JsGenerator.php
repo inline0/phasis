@@ -121,6 +121,11 @@ class JsGenerator extends JsObject
 
         // Fiber is suspended. $suspended is the value passed to Fiber::suspend(),
         // which is the yielded value.
+        // For yield* delegation, the suspended value is a YieldDelegateResult
+        // containing the inner iterator's result object. Return it directly.
+        if ($suspended instanceof YieldDelegateResult) {
+            return $suspended->result;
+        }
         return $this->makeResult(
             $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
             false,
@@ -130,7 +135,13 @@ class JsGenerator extends JsObject
     /**
      * Force the generator to return a specific value and mark it as done.
      *
-     * @return JsObject An iterator result object {value, done: true}.
+     * Per ES spec 27.5.3.4 GeneratorResumeAbrupt for return completions:
+     * the return signal is thrown into the fiber. If the generator body is
+     * inside a yield* delegation or has a finally block, the fiber may
+     * suspend again rather than terminate. In that case the generator is
+     * NOT done yet and we return the inner iterator's result.
+     *
+     * @return JsObject An iterator result object {value, done}.
      */
     public function returnValue(JsValue $value): JsObject
     {
@@ -138,19 +149,47 @@ class JsGenerator extends JsObject
             return $this->makeResult($value, true);
         }
 
-        $this->done = true;
-
-        if ($this->fiber->isStarted() && !$this->fiber->isTerminated()) {
-            try {
-                $this->fiber->throw(new GeneratorReturnSignal($value));
-            } catch (GeneratorReturnSignal) {
-                // Expected: the signal propagated back out because nothing caught it.
-            } catch (\Throwable) {
-                // The generator's finally blocks may have run and thrown something else.
-            }
+        if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
+            $this->done = true;
+            return $this->makeResult($value, true);
         }
 
-        return $this->makeResult($value, true);
+        $suspended = null;
+        try {
+            $suspended = $this->fiber->throw(new GeneratorReturnSignal($value));
+        } catch (GeneratorReturnSignal $e) {
+            // The signal propagated back out (not caught by the body).
+            $this->done = true;
+            return $this->makeResult($e->value, true);
+        } catch (GeneratorThrowSignal $e) {
+            $this->done = true;
+            throw $this->toRuntimeError($e->jsValue);
+        } catch (RuntimeError $e) {
+            $this->done = true;
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->done = true;
+            throw $e;
+        }
+
+        if ($this->fiber->isTerminated()) {
+            $this->done = true;
+            $returnValue = $this->fiber->getReturn();
+            if ($returnValue instanceof JsValue) {
+                return $this->makeResult($returnValue, true);
+            }
+            return $this->makeResult(JsUndefined::instance(), true);
+        }
+
+        // Fiber is suspended: the generator body (via yield* or finally) yielded
+        // a new value. The generator is not done yet.
+        if ($suspended instanceof YieldDelegateResult) {
+            return $suspended->result;
+        }
+        return $this->makeResult(
+            $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
+            false,
+        );
     }
 
     /**
@@ -196,6 +235,9 @@ class JsGenerator extends JsObject
 
         // Fiber is suspended: the generator caught the thrown exception
         // and yielded a new value.
+        if ($suspended instanceof YieldDelegateResult) {
+            return $suspended->result;
+        }
         return $this->makeResult(
             $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
             false,

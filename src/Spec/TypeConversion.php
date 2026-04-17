@@ -716,8 +716,9 @@ final class TypeConversion
         }
 
         // Octal: 0o or 0O. No sign prefix.
-        if (preg_match('/^0[oO][0-7]+$/', $trimmed) === 1) {
-            return (float) intval($trimmed, 8);
+        // PHP's intval does not recognize the 0o prefix, so strip it.
+        if (preg_match('/^0[oO]([0-7]+)$/', $trimmed, $octalMatch) === 1) {
+            return (float) intval($octalMatch[1], 8);
         }
 
         // Binary: 0b or 0B. No sign prefix.
@@ -737,36 +738,30 @@ final class TypeConversion
      * Trim JS whitespace characters from both ends of a string.
      *
      * JS WhiteSpace (11.2) and LineTerminator (11.3) code points:
-     * TAB, VT, FF, SP, NBSP, BOM, and any Unicode "Space_Separator" category,
-     * plus LF, CR, LS (U+2028), PS (U+2029).
+     * TAB (U+0009), VT (U+000B), FF (U+000C), SP (U+0020), NBSP (U+00A0),
+     * BOM/ZWNBSP (U+FEFF), and Unicode "Space_Separator" (Zs) category
+     * (EXCLUDING U+180E which was removed from Zs in Unicode 6.3),
+     * plus LF (U+000A), CR (U+000D), LS (U+2028), PS (U+2029).
      */
     public static function trimWhitespace(string $value): string
     {
-        // Match all JS-defined whitespace and line terminators at start and end.
-        $pattern = '/^[\x09\x0A\x0B\x0C\x0D\x20\xC2\xA0'
-            . '\xE2\x80\x80-\xE2\x80\x8A'  // U+2000..U+200A (en/em spaces etc.)
-            . '\xE2\x80\xA8'                 // U+2028 Line Separator
-            . '\xE2\x80\xA9'                 // U+2029 Paragraph Separator
-            . '\xE2\x80\xAF'                 // U+202F Narrow No-Break Space
-            . '\xE2\x81\x9F'                 // U+205F Medium Mathematical Space
-            . '\xE3\x80\x80'                 // U+3000 Ideographic Space
-            . '\xEF\xBB\xBF'                 // U+FEFF BOM (Zero Width No-Break Space)
-            . ']+/';
+        // Use Unicode-aware regex (u flag) with explicit codepoints.
+        // U+180E is NOT included per modern ECMAScript (removed from Zs in Unicode 6.3).
+        $ws = '[\x{0009}\x{000A}\x{000B}\x{000C}\x{000D}\x{0020}\x{00A0}'
+            . '\x{1680}'            // U+1680 Ogham Space Mark (Zs category)
+            . '\x{2000}-\x{200A}'   // U+2000..U+200A (en/em spaces etc.)
+            . '\x{2028}'            // U+2028 Line Separator
+            . '\x{2029}'            // U+2029 Paragraph Separator
+            . '\x{202F}'            // U+202F Narrow No-Break Space
+            . '\x{205F}'            // U+205F Medium Mathematical Space
+            . '\x{3000}'            // U+3000 Ideographic Space
+            . '\x{FEFF}'            // U+FEFF BOM (Zero Width No-Break Space)
+            . ']';
 
         // Trim leading.
-        $value = preg_replace($pattern, '', $value) ?? $value;
+        $value = preg_replace('/^' . $ws . '+/u', '', $value) ?? $value;
 
-        // Trim trailing. Same character set but anchored at end.
-        $tailPattern = '/[\x09\x0A\x0B\x0C\x0D\x20\xC2\xA0'
-            . '\xE2\x80\x80-\xE2\x80\x8A'
-            . '\xE2\x80\xA8'
-            . '\xE2\x80\xA9'
-            . '\xE2\x80\xAF'
-            . '\xE2\x81\x9F'
-            . '\xE3\x80\x80'
-            . '\xEF\xBB\xBF'
-            . ']+$/';
-
-        return preg_replace($tailPattern, '', $value) ?? $value;
+        // Trim trailing.
+        return preg_replace('/' . $ws . '+$/u', '', $value) ?? $value;
     }
 }

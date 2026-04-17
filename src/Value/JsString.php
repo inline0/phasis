@@ -66,6 +66,8 @@ class JsString implements JsValue
     /** JavaScript String.length (UTF-16 code unit count). */
     public function length(): int
     {
-        return mb_strlen($this->value, 'UTF-16LE') ?: strlen($this->value);
+        // Convert UTF-8 to UTF-16LE and count 2-byte code units.
+        $u16 = mb_convert_encoding($this->value, 'UTF-16LE', 'UTF-8');
+        return (int) (strlen($u16) / 2);
     }
 }

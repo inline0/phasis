@@ -89,7 +89,6 @@ return [
         'iterator-helpers',
         'set-methods',
         'Array.fromAsync',
-        'change-array-by-copy',
         'Math.sumPrecise',
         'well-formed-json-stringify',
         'json-parse-with-source',

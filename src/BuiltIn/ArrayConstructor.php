@@ -711,6 +711,50 @@ class ArrayConstructor
             1
         ), true, false, true));
 
+        $proto->defineOwnProperty('findLast', PropertyDescriptor::data(JsFunction::fromCallable(
+            'findLast',
+            function (JsValue $this_, array $args): JsValue {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                $callback = $args[0] ?? null;
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('findLast callback is not a function');
+                }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
+                for ($i = $len - 1; $i >= 0; $i--) {
+                    $val = $o->get((string) $i);
+                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return $val;
+                    }
+                }
+                return JsUndefined::instance();
+            },
+            1
+        ), true, false, true));
+
+        $proto->defineOwnProperty('findLastIndex', PropertyDescriptor::data(JsFunction::fromCallable(
+            'findLastIndex',
+            function (JsValue $this_, array $args): JsValue {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                $callback = $args[0] ?? null;
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('findLastIndex callback is not a function');
+                }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
+                for ($i = $len - 1; $i >= 0; $i--) {
+                    $val = $o->get((string) $i);
+                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return new JsNumber((float) $i);
+                    }
+                }
+                return new JsNumber(-1.0);
+            },
+            1
+        ), true, false, true));
+
         $proto->defineOwnProperty('some', PropertyDescriptor::data(JsFunction::fromCallable(
             'some',
             function (JsValue $this_, array $args): JsValue {
@@ -966,9 +1010,23 @@ class ArrayConstructor
         $proto->defineOwnProperty('sort', PropertyDescriptor::data(JsFunction::fromCallable(
             'sort',
             function (JsValue $this_, array $args): JsValue {
+                // Per spec, if comparefn is not undefined and not callable, throw TypeError
+                // before accessing the object's length.
+                $compareFnArg = $args[0] ?? JsUndefined::instance();
+                if (!$compareFnArg instanceof JsUndefined && !$compareFnArg instanceof JsFunction) {
+                    throw new TypeError($compareFnArg->display() . ' is not a function');
+                }
                 $this_ = self::toObject($this_);
-                $compareFn = ($args[0] ?? null) instanceof JsFunction ? $args[0] : null;
-                $items = ($this_ instanceof JsArray ? $this_->toList() : self::objToList($this_));
+                $compareFn = $compareFnArg instanceof JsFunction ? $compareFnArg : null;
+                $len = self::getLen($this_);
+                // Collect only existing (non-hole) elements, per spec SortIndexedProperties.
+                $items = [];
+                for ($i = 0; $i < $len; $i++) {
+                    $key = (string) $i;
+                    if ($this_->has($key)) {
+                        $items[] = $this_->get($key);
+                    }
+                }
                 usort($items, function (JsValue $a, JsValue $b) use ($compareFn): int {
                     // undefined values sort to the end.
                     $aIsUndef = $a instanceof JsUndefined;
@@ -1001,9 +1059,14 @@ class ArrayConstructor
                     $sb = TypeConversion::toString($b);
                     return strcmp($sa, $sb);
                 });
-                $len = self::getLen($this_);
-                for ($i = 0; $i < $len; $i++) {
+                $itemCount = count($items);
+                // Write sorted elements.
+                for ($i = 0; $i < $itemCount; $i++) {
                     $this_->set((string) $i, $items[$i]);
+                }
+                // Delete trailing holes (indices that no longer have values).
+                for ($i = $itemCount; $i < $len; $i++) {
+                    $this_->delete((string) $i);
                 }
                 return $this_;
             },
@@ -1073,6 +1136,171 @@ class ArrayConstructor
                 return self::createArrayIterator($this_, 'key+value');
             },
             0
+        ), true, false, true));
+
+        $proto->defineOwnProperty('toReversed', PropertyDescriptor::data(JsFunction::fromCallable(
+            'toReversed',
+            function (JsValue $this_, array $args): JsValue {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                if ($len > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
+                $result = new JsArray();
+                for ($k = 0; $k < $len; $k++) {
+                    $from = (string) ($len - $k - 1);
+                    $result->set((string) $k, $o->get($from));
+                }
+                $result->setLength($len);
+                return $result;
+            },
+            0
+        ), true, false, true));
+
+        $proto->defineOwnProperty('toSorted', PropertyDescriptor::data(JsFunction::fromCallable(
+            'toSorted',
+            function (JsValue $this_, array $args): JsValue {
+                $compareFnArg = $args[0] ?? JsUndefined::instance();
+                if (!$compareFnArg instanceof JsUndefined && !$compareFnArg instanceof JsFunction) {
+                    throw new TypeError($compareFnArg->display() . ' is not a function');
+                }
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                if ($len > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
+                $compareFn = $compareFnArg instanceof JsFunction ? $compareFnArg : null;
+                // Collect all elements (no holes: toSorted reads every index).
+                $items = [];
+                for ($k = 0; $k < $len; $k++) {
+                    $items[] = $o->get((string) $k);
+                }
+                usort($items, function (JsValue $a, JsValue $b) use ($compareFn): int {
+                    $aIsUndef = $a instanceof JsUndefined;
+                    $bIsUndef = $b instanceof JsUndefined;
+                    if ($aIsUndef && $bIsUndef) {
+                        return 0;
+                    }
+                    if ($aIsUndef) {
+                        return 1;
+                    }
+                    if ($bIsUndef) {
+                        return -1;
+                    }
+                    if ($compareFn !== null) {
+                        $result = $compareFn->call(JsUndefined::instance(), [$a, $b]);
+                        $num = TypeConversion::toNumber($result);
+                        if (is_nan($num)) {
+                            return 0;
+                        }
+                        if ($num < 0) {
+                            return -1;
+                        }
+                        if ($num > 0) {
+                            return 1;
+                        }
+                        return 0;
+                    }
+                    $sa = TypeConversion::toString($a);
+                    $sb = TypeConversion::toString($b);
+                    return strcmp($sa, $sb);
+                });
+                $result = new JsArray();
+                for ($k = 0; $k < $len; $k++) {
+                    $result->set((string) $k, $items[$k]);
+                }
+                $result->setLength($len);
+                return $result;
+            },
+            1
+        ), true, false, true));
+
+        $proto->defineOwnProperty('toSpliced', PropertyDescriptor::data(JsFunction::fromCallable(
+            'toSpliced',
+            function (JsValue $this_, array $args): JsValue {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                $relativeStart = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+                $actualStart = self::normalizeRelativeIndex($relativeStart, $len);
+                $insertCount = max(0, count($args) - 2);
+                $insertItems = count($args) > 2 ? array_slice($args, 2) : [];
+
+                if (!isset($args[0])) {
+                    $actualDeleteCount = 0;
+                } elseif (!isset($args[1])) {
+                    $actualDeleteCount = $len - $actualStart;
+                } else {
+                    $dc = TypeConversion::toIntegerOrInfinity($args[1]);
+                    $actualDeleteCount = max(0, min((int) $dc, $len - $actualStart));
+                }
+
+                $newLen = $len + $insertCount - $actualDeleteCount;
+                // Spec step 12: newLen > 2^53 - 1 is TypeError.
+                if ($newLen > 9007199254740991) {
+                    throw new TypeError('Invalid array length');
+                }
+                // ArrayCreate: newLen > 2^32 - 1 is RangeError.
+                if ($newLen > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
+
+                $result = new JsArray();
+                $r = 0;
+                // Copy elements before start.
+                for ($i = 0; $i < $actualStart; $i++) {
+                    $result->set((string) $r, $o->get((string) $i));
+                    $r++;
+                }
+                // Insert new items.
+                foreach ($insertItems as $item) {
+                    $result->set((string) $r, $item);
+                    $r++;
+                }
+                // Copy elements after the deleted range.
+                for ($i = $actualStart + $actualDeleteCount; $i < $len; $i++) {
+                    $result->set((string) $r, $o->get((string) $i));
+                    $r++;
+                }
+                $result->setLength($newLen);
+                return $result;
+            },
+            2
+        ), true, false, true));
+
+        $proto->defineOwnProperty('with', PropertyDescriptor::data(JsFunction::fromCallable(
+            'with',
+            function (JsValue $this_, array $args): JsValue {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                $relativeIndex = TypeConversion::toIntegerOrInfinity($args[0] ?? JsUndefined::instance());
+                if ($relativeIndex === INF || $relativeIndex === -INF) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid index');
+                }
+                $intRelative = (int) $relativeIndex;
+                if ($relativeIndex >= 0) {
+                    $actualIndex = $intRelative;
+                } else {
+                    $actualIndex = $len + $intRelative;
+                }
+                $value = $args[1] ?? JsUndefined::instance();
+                if ($actualIndex < 0 || $actualIndex >= $len) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid index');
+                }
+                if ($len > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
+                $result = new JsArray();
+                for ($k = 0; $k < $len; $k++) {
+                    if ($k === $actualIndex) {
+                        $result->set((string) $k, $value);
+                    } else {
+                        $result->set((string) $k, $o->get((string) $k));
+                    }
+                }
+                $result->setLength($len);
+                return $result;
+            },
+            2
         ), true, false, true));
     }
 

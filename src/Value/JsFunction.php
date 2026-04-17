@@ -383,6 +383,34 @@ class JsFunction extends JsObject
         return JsUndefined::instance();
     }
 
+    /**
+     * Invoke this function as a constructor (the [[Construct]] internal method).
+     *
+     * Creates a new object, sets its prototype from this function's .prototype
+     * property, then calls the function with the new object as `this`.
+     * If the function returns an object, that object is used; otherwise
+     * the newly created object is returned.
+     *
+     * @param list<JsValue> $args
+     */
+    public function construct(array $args): JsValue
+    {
+        $proto = $this->get('prototype');
+        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $newObj->defineOwnProperty(
+            '[[NewTarget]]',
+            \PhpJs\Object\PropertyDescriptor::data($this, false, false, false),
+        );
+
+        $result = $this->call($newObj, $args);
+
+        if ($result instanceof JsObject) {
+            return $result;
+        }
+
+        return $newObj;
+    }
+
     // Property lookup now works correctly via the prototype chain:
     // fn -> Function.prototype -> Object.prototype -> null.
     // The getPrototype() override ensures Function.prototype is in the chain,

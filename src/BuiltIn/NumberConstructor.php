@@ -296,27 +296,54 @@ class NumberConstructor
                 throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
             }
 
-            $result = @sprintf('%.' . min($precision - 1, 53) . 'e', $numValue);
+            // Use sprintf to get the correctly-rounded scientific notation.
+            // sprintf handles the rounding to p significant digits properly.
+            $absValue = abs($numValue);
+            $sprintfDigits = min($precision - 1, 53);
+            $result = @sprintf('%.' . $sprintfDigits . 'e', $absValue);
             $parts = explode('e', $result);
+            $mantissa = $parts[0];
             $exp = (int) $parts[1];
+
+            // If precision exceeds sprintf capacity (53), pad the mantissa.
+            if ($precision - 1 > $sprintfDigits) {
+                if (!str_contains($mantissa, '.')) {
+                    $mantissa .= '.';
+                }
+                $dotPos = strpos($mantissa, '.');
+                $currentDecimals = strlen($mantissa) - $dotPos - 1;
+                $mantissa = str_pad($mantissa, $dotPos + 1 + ($precision - 1), '0');
+            }
+
+            $prefix = $numValue < 0 ? '-' : '';
 
             // Per spec step 10c: use exponential only if e < -6 or e >= p
             if ($exp >= -6 && $exp < $precision) {
-                // Use fixed notation
-                $decimalPlaces = max(0, $precision - $exp - 1);
-                $formatted = number_format(abs($numValue), $decimalPlaces, '.', '');
-                $prefix = $numValue < 0 ? '-' : '';
+                // Use fixed notation: rebuild from the mantissa digits.
+                // Remove the decimal point from mantissa to get the digit string.
+                $digits = str_replace('.', '', $mantissa);
+                // $digits has $precision significant digits. The decimal point goes after
+                // position (exp + 1) from the left.
+                $intPartLen = $exp + 1;
+                if ($intPartLen >= $precision) {
+                    // All digits are before the decimal point, pad with zeros if needed.
+                    $formatted = $digits . str_repeat('0', $intPartLen - $precision);
+                } else {
+                    $intPart = substr($digits, 0, $intPartLen);
+                    $fracPart = substr($digits, $intPartLen);
+                    if ($intPartLen <= 0) {
+                        // Number like 0.00123: intPartLen is 0 or negative
+                        $intPart = '0';
+                        $fracPart = str_repeat('0', -$exp - 1) . $digits;
+                    }
+                    $formatted = $intPart . '.' . $fracPart;
+                }
                 return new JsString($prefix . $formatted);
             }
 
-            // In exponential form, keep all precision digits (don't strip trailing zeros)
-            if ($precision === 1) {
-                $formatted = number_format((float) $parts[0], 0, '.', '');
-            } else {
-                $formatted = number_format((float) $parts[0], $precision - 1, '.', '');
-            }
+            // Exponential form: use the mantissa string directly from sprintf.
             $expSign = $exp >= 0 ? '+' : '-';
-            return new JsString($formatted . 'e' . $expSign . abs($exp));
+            return new JsString($prefix . $mantissa . 'e' . $expSign . abs($exp));
         };
     }
 

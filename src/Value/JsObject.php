@@ -73,10 +73,17 @@ class JsObject implements JsValue
             return false;
         }
 
+        // Per spec 9.1.2.1 OrdinarySetPrototypeOf step 8: walk the prototype
+        // chain to detect cycles. If a link is a Proxy (whose [[GetPrototypeOf]]
+        // is not the ordinary internal method), stop the loop without calling the
+        // proxy's getPrototypeOf trap (spec step 8.c.i).
         $candidate = $prototype;
         while ($candidate !== null) {
             if ($candidate === $this) {
                 return false;
+            }
+            if ($candidate instanceof JsProxy) {
+                break;
             }
             $candidate = $candidate->getPrototype();
         }
@@ -489,6 +496,15 @@ class JsObject implements JsValue
         return $this->properties->delete($name);
     }
 
+    /**
+     * Remove a property regardless of its configurability.
+     * For internal engine use only (e.g., removing .prototype from non-constructable functions).
+     */
+    public function forceDelete(string $name): void
+    {
+        $this->properties->delete($name);
+    }
+
     public function defineProperty(string $name, PropertyDescriptor $desc): void
     {
         $this->properties->set($name, $desc);
@@ -504,10 +520,19 @@ class JsObject implements JsValue
         return $this->properties->has($name);
     }
 
+    /** Check if a property name is an internal slot (e.g. [[NewTarget]], [[PrimitiveValue]]). */
+    protected static function isInternalSlot(string $key): bool
+    {
+        return str_starts_with($key, '[[') && str_ends_with($key, ']]');
+    }
+
     /** @return list<string> */
     public function ownKeys(): array
     {
-        return $this->properties->keys();
+        return array_values(array_filter(
+            $this->properties->keys(),
+            fn(string $k) => !self::isInternalSlot($k),
+        ));
     }
 
     /**
@@ -524,6 +549,9 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($allKeys as $key) {
+            if (self::isInternalSlot($key)) {
+                continue;
+            }
             if (self::isArrayIndex($key)) {
                 $integerIndices[] = $key;
             } else {
@@ -596,6 +624,9 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($stringKeys as $key) {
+            if (self::isInternalSlot($key)) {
+                continue;
+            }
             if (self::isArrayIndex($key)) {
                 $integerIndices[] = $key;
             } else {
@@ -655,6 +686,9 @@ class JsObject implements JsValue
         $integerIndices = [];
         $nonIndexStrings = [];
         foreach ($enumKeys as $key) {
+            if (self::isInternalSlot($key)) {
+                continue;
+            }
             if (self::isArrayIndex($key)) {
                 $integerIndices[] = $key;
             } else {
@@ -678,10 +712,17 @@ class JsObject implements JsValue
         $keys = [];
         $obj = $this;
         while ($obj !== null) {
-            foreach ($obj->getOwnEnumerableKeys() as $key) {
+            // Per spec EnumerateObjectProperties: ALL own property keys must be
+            // tracked as "seen", not just enumerable ones. A non-enumerable own
+            // property shadows an enumerable prototype property with the same name.
+            foreach ($obj->getOwnPropertyNames() as $key) {
                 if (!isset($seen[$key])) {
                     $seen[$key] = true;
-                    $keys[] = $key;
+                    // Only include the key if it is enumerable.
+                    $desc = $obj->getOwnPropertyDescriptor($key);
+                    if ($desc !== null && ($desc->enumerable ?? false)) {
+                        $keys[] = $key;
+                    }
                 }
             }
             $obj = $obj->prototype;

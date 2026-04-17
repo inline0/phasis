@@ -459,7 +459,10 @@ class PromiseConstructor
     private static function constructWith(JsFunction $ctor, array $args): JsValue
     {
         if ($ctor->isConstructable()) {
-            $obj = new JsObject();
+            // Set the prototype from the constructor's .prototype property,
+            // matching evalNewExpression behavior.
+            $proto = $ctor->get('prototype');
+            $obj = new JsObject($proto instanceof JsObject ? $proto : null);
             $obj->defineOwnProperty(
                 '[[NewTarget]]',
                 PropertyDescriptor::data($ctor, false, false, false),

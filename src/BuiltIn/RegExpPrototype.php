@@ -560,70 +560,61 @@ class RegExpPrototype
                 return JsArray::fromArray([]);
             }
 
-            // Get flags from the regexp to determine if unicode.
-            $flagsVal = $this_->get('flags');
-            $flags = TypeConversion::toString($flagsVal);
-            $unicodeMatching = str_contains($flags, 'u') || str_contains($flags, 'v');
+            // Get the PCRE pattern to perform sticky matching directly.
+            // Per spec, @@split creates a copy of the regex with the 'y' flag.
+            // We simulate this with PCRE offset matching and strict position checking.
+            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            $pcrePattern = ($pcrePatternDesc !== null && $pcrePatternDesc->value instanceof JsString)
+                ? $pcrePatternDesc->value->value
+                : null;
 
-            // Create a sticky version of the regex for splitting.
-            // We simulate this by using the exec method directly with manual lastIndex.
-            // Per spec, we create new regexp with 'y' flag. Since we can't easily clone,
-            // we use the exec method but set lastIndex manually each time.
+            // If no compiled PCRE, fall back to exec-based approach via prototype exec.
+            if ($pcrePattern === null) {
+                return self::symbolSplitViaExec($this_, $S, $lim);
+            }
+
             $size = mb_strlen($S, 'UTF-8');
 
             $A = [];
             $lengthA = 0;
 
-            // Empty string special case.
+            // Empty string special case per spec step 11.
             if ($size === 0) {
-                $this_->set('lastIndex', new JsNumber(0.0));
-                $z = self::regExpExec($this_, $S);
-                if (!$z instanceof JsNull) {
+                if (self::stickyMatchAt($pcrePattern, $S, 0) !== null) {
                     return JsArray::fromArray([]);
                 }
                 return JsArray::fromArray([new JsString($S)]);
             }
 
-            $p = 0;
-            $q = $p;
+            $p = 0; // End of last match (character offset).
+            $q = 0; // Current search position (character offset).
 
             while ($q < $size) {
-                $this_->set('lastIndex', new JsNumber((float) $q));
-                $z = self::regExpExec($this_, $S);
+                // Per spec, the splitter has the 'y' flag so it must match
+                // at exactly position q. We simulate sticky matching.
+                $byteOffset = strlen(mb_substr($S, 0, $q, 'UTF-8'));
+                $match = self::stickyMatchAt($pcrePattern, $S, $byteOffset);
 
-                if ($z instanceof JsNull) {
-                    // No match starting at q: advance q by one character (or codepoint).
-                    $q = $unicodeMatching
-                        ? self::advanceStringIndex($S, $q)
-                        : $q + 1;
+                if ($match === null) {
+                    // No match at position q: advance by one character.
+                    $q++;
                     continue;
                 }
 
-                // Match found. Get end position.
-                $lastIndexVal = $this_->get('lastIndex');
-                $e = (int) TypeConversion::toNumber($lastIndexVal);
-                if ($e === $q) {
-                    // Zero-width match at same position: advance to avoid infinite loop.
-                    $q = $unicodeMatching
-                        ? self::advanceStringIndex($S, $q)
-                        : $q + 1;
+                // Match found at position q. Compute e (end of match in char offset).
+                $matchStr = $match[0][0];
+                $matchCharLen = mb_strlen($matchStr, 'UTF-8');
+                $e = $q + $matchCharLen;
+
+                if ($e === $p) {
+                    // Zero-width match at the same split point: advance to avoid
+                    // infinite loop (spec step 13.c.iii.2).
+                    $q++;
                     continue;
                 }
 
-                // We have a match from $q (but actually from exec starting at $q,
-                // the match may start earlier). Per spec, use match start position.
-                $matchStart = (int) TypeConversion::toNumber($z->get('index'));
-
-                if ($matchStart < $p) {
-                    // Match starts before current position: skip.
-                    $q = $unicodeMatching
-                        ? self::advanceStringIndex($S, $q)
-                        : $q + 1;
-                    continue;
-                }
-
-                // Append the part before the match.
-                $T = mb_substr($S, $p, $matchStart - $p, 'UTF-8');
+                // Append the substring from p to q (before the match).
+                $T = mb_substr($S, $p, $q - $p, 'UTF-8');
                 $A[] = new JsString($T);
                 $lengthA++;
                 if ($lengthA === $lim) {
@@ -632,11 +623,19 @@ class RegExpPrototype
 
                 $p = $e;
 
-                // Append capture groups.
-                $nCaptures = max((int) TypeConversion::toNumber($z->get('length')) - 1, 0);
+                // Append capture groups (indices 1..n).
+                $nCaptures = 0;
+                foreach ($match as $key => $val) {
+                    if (is_int($key) && $key > 0) {
+                        $nCaptures = max($nCaptures, $key);
+                    }
+                }
                 for ($i = 1; $i <= $nCaptures; $i++) {
-                    $capN = $z->get((string) $i);
-                    $A[] = $capN;
+                    if (!isset($match[$i]) || $match[$i][1] === -1 || $match[$i][0] === null) {
+                        $A[] = JsUndefined::instance();
+                    } else {
+                        $A[] = new JsString($match[$i][0]);
+                    }
                     $lengthA++;
                     if ($lengthA === $lim) {
                         return JsArray::fromArray($A);
@@ -651,6 +650,84 @@ class RegExpPrototype
             $A[] = new JsString($T);
             return JsArray::fromArray($A);
         };
+    }
+
+    /**
+     * Perform a sticky match at exact byte offset. Returns the match array
+     * (PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL format) or null.
+     *
+     * @return array<int|string, array{0: ?string, 1: int}>|null
+     */
+    private static function stickyMatchAt(string $pcrePattern, string $str, int $byteOffset): ?array
+    {
+        if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset) !== 1) {
+            return null;
+        }
+        // Sticky: match must start exactly at byteOffset.
+        if ($matches[0][1] !== $byteOffset) {
+            return null;
+        }
+        return $matches;
+    }
+
+    /**
+     * Fallback split using exec for objects without [[PCREPattern]].
+     */
+    private static function symbolSplitViaExec(JsObject $rx, string $S, int $lim): JsArray
+    {
+        $size = mb_strlen($S, 'UTF-8');
+
+        if ($size === 0) {
+            $rx->set('lastIndex', new JsNumber(0.0));
+            $z = self::regExpExec($rx, $S);
+            if (!$z instanceof JsNull) {
+                return JsArray::fromArray([]);
+            }
+            return JsArray::fromArray([new JsString($S)]);
+        }
+
+        $A = [];
+        $lengthA = 0;
+        $p = 0;
+        $q = 0;
+
+        while ($q < $size) {
+            $rx->set('lastIndex', new JsNumber((float) $q));
+            $z = self::regExpExec($rx, $S);
+
+            if ($z instanceof JsNull) {
+                $q++;
+                continue;
+            }
+
+            $e = (int) TypeConversion::toNumber($rx->get('lastIndex'));
+            if ($e === $q) {
+                $q++;
+                continue;
+            }
+
+            $matchStart = (int) TypeConversion::toNumber($z->get('index'));
+            $T = mb_substr($S, $p, $matchStart - $p, 'UTF-8');
+            $A[] = new JsString($T);
+            $lengthA++;
+            if ($lengthA === $lim) {
+                return JsArray::fromArray($A);
+            }
+
+            $p = $e;
+            $nCaptures = max((int) TypeConversion::toNumber($z->get('length')) - 1, 0);
+            for ($i = 1; $i <= $nCaptures; $i++) {
+                $A[] = $z->get((string) $i);
+                $lengthA++;
+                if ($lengthA === $lim) {
+                    return JsArray::fromArray($A);
+                }
+            }
+            $q = $p;
+        }
+
+        $A[] = new JsString(mb_substr($S, $p, null, 'UTF-8'));
+        return JsArray::fromArray($A);
     }
 
     /**

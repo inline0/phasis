@@ -382,6 +382,60 @@ class TypedArrayConstructor
             }
         }
 
+        // toLocaleString on %TypedArray%.prototype.
+        // Per spec, uses the same algorithm as Array.prototype.toLocaleString
+        // but reads [[ArrayLength]] instead of "length".
+        $toLocaleStringFn = JsFunction::fromCallable(
+            'toLocaleString',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        'Method %TypedArray%.prototype.toLocaleString called on incompatible receiver'
+                    );
+                }
+                $len = $this_->getLength();
+                if ($len === 0) {
+                    return new JsString('');
+                }
+                // Determine the separator using the locale list separator.
+                $separator = ',';
+                $parts = [];
+                for ($i = 0; $i < $len; $i++) {
+                    $el = $this_->getIndex($i);
+                    if ($el instanceof JsUndefined || $el instanceof JsNull) {
+                        $parts[] = '';
+                    } else {
+                        // Per spec: invoke toLocaleString on the element.
+                        // Elements are numbers (or BigInt), so wrap in a Number object
+                        // and call toLocaleString.
+                        if ($el instanceof JsObject) {
+                            $tlsFn = $el->get('toLocaleString');
+                            if ($tlsFn instanceof JsFunction) {
+                                $parts[] = TypeConversion::toString($tlsFn->call($el, $args));
+                            } else {
+                                $parts[] = $el->toJsString();
+                            }
+                        } else {
+                            // Primitive: auto-box and invoke toLocaleString.
+                            $boxed = TypeConversion::toObject($el);
+                            $tlsFn = $boxed->get('toLocaleString');
+                            if ($tlsFn instanceof JsFunction) {
+                                $parts[] = TypeConversion::toString($tlsFn->call($boxed, $args));
+                            } else {
+                                $parts[] = TypeConversion::toString($el);
+                            }
+                        }
+                    }
+                }
+                return new JsString(implode($separator, $parts));
+            },
+            0,
+        );
+        $typedArrayProto->defineOwnProperty(
+            'toLocaleString',
+            PropertyDescriptor::data($toLocaleStringFn, true, false, true),
+        );
+
         // Install shared accessor properties on %TypedArray%.prototype.
         self::installTypedArrayAccessors($typedArrayProto, 'TypedArray');
 
@@ -414,6 +468,20 @@ class TypedArrayConstructor
 
         // Install static methods on %TypedArray%: from(), of().
         self::installAbstractTypedArrayStaticMethods($typedArrayIntrinsic);
+
+        // Per spec: get %TypedArray%[@@species] returns `this`.
+        $speciesSym = SymbolConstructor::species();
+        $speciesGetter = JsFunction::fromCallable(
+            'get [Symbol.species]',
+            function (JsValue $this_): JsValue {
+                return $this_;
+            },
+            0,
+        );
+        $typedArrayIntrinsic->definePropertyBySymbol(
+            $speciesSym,
+            PropertyDescriptor::accessor($speciesGetter, null, false, true),
+        );
 
         // Install each concrete typed array constructor.
         foreach (JsTypedArray::TYPES as $typeName => $_) {
@@ -504,8 +572,8 @@ class TypedArrayConstructor
                     );
                 }
 
-                return $this_->call(
-                    $this_,
+                // Use Construct to create the new typed array.
+                return $this_->construct(
                     [self::collectFromSource($args)],
                 );
             },
@@ -529,7 +597,8 @@ class TypedArrayConstructor
                     );
                 }
                 $arr = JsArray::fromArray($args);
-                return $this_->call($this_, [$arr]);
+                // Use Construct to create the new typed array.
+                return $this_->construct([$arr]);
             },
             0,
         );
@@ -815,18 +884,88 @@ class TypedArrayConstructor
                 $source = $args[0] ?? JsUndefined::instance();
                 $offset = isset($args[1]) ? self::toInteger($args[1]) : 0;
 
+                // Per spec: throw RangeError if offset < 0.
+                if ($offset < 0) {
+                    throw new RangeError('Offset is out of bounds');
+                }
+
+                $isBigTarget = $this_->isBigIntArray();
+
                 if ($source instanceof JsTypedArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $this_->setIndex($offset + $i, $source->getIndex($i));
+                    $srcLen = $source->getLength();
+                    $targetLen = $this_->getLength();
+                    // Per spec: if one is BigInt and the other is not, throw TypeError.
+                    $isBigSrc = $source->isBigIntArray();
+                    if ($isBigSrc !== $isBigTarget) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Cannot mix BigInt and other types, use explicit conversions'
+                        );
                     }
-                } elseif ($source instanceof JsArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $this_->setIndex($offset + $i, $source->get((string) $i));
+                    // Per spec: if srcLength + targetOffset > targetLength, throw RangeError.
+                    if ($srcLen + $offset > $targetLen) {
+                        throw new RangeError('Source is too large');
                     }
-                } elseif ($source instanceof JsObject) {
-                    $len = (int) TypeConversion::toNumber($source->get('length'));
-                    for ($i = 0; $i < $len; $i++) {
-                        $this_->setIndex($offset + $i, $source->get((string) $i));
+                    // Per spec: if same buffer, clone srcBuffer first.
+                    if ($source->getBuffer() === $this_->getBuffer()) {
+                        $cached = [];
+                        for ($i = 0; $i < $srcLen; $i++) {
+                            $cached[] = $source->getIndex($i);
+                        }
+                        for ($i = 0; $i < $srcLen; $i++) {
+                            $this_->setIndex($offset + $i, $cached[$i]);
+                        }
+                    } else {
+                        for ($i = 0; $i < $srcLen; $i++) {
+                            $this_->setIndex($offset + $i, $source->getIndex($i));
+                        }
+                    }
+                } elseif ($source instanceof JsUndefined || $source instanceof JsNull) {
+                    // Per spec: ToObject(source) throws TypeError for undefined/null.
+                    throw new \PhpJs\Exceptions\TypeError('Cannot convert undefined or null to object');
+                } else {
+                    // Array-like or primitive source path.
+                    // Per spec: src = ToObject(source), srcLength = LengthOfArrayLike(src).
+                    $srcLen = 0;
+                    $srcObj = null;
+                    if ($source instanceof JsArray) {
+                        $srcLen = $source->getLength();
+                        $srcObj = $source;
+                    } elseif ($source instanceof JsObject) {
+                        $srcLen = (int) TypeConversion::toNumber($source->get('length'));
+                        $srcObj = $source;
+                    } elseif ($source instanceof JsString) {
+                        $str = $source->value;
+                        $srcLen = mb_strlen($str, 'UTF-8');
+                        // Build a temporary array-like for string chars.
+                        $srcObj = new JsObject();
+                        for ($i = 0; $i < $srcLen; $i++) {
+                            $srcObj->set(
+                                (string) $i,
+                                new JsString(mb_substr($str, $i, 1, 'UTF-8')),
+                            );
+                        }
+                        $srcObj->set('length', new JsNumber((float) $srcLen));
+                    } else {
+                        // Number, boolean, symbol: ToObject wraps them, length 0.
+                        $srcLen = 0;
+                    }
+
+                    if ($srcLen + $offset > $this_->getLength()) {
+                        throw new RangeError('Source is too large');
+                    }
+
+                    if ($srcObj !== null) {
+                        for ($i = 0; $i < $srcLen; $i++) {
+                            $val = $srcObj->get((string) $i);
+                            // Per spec: for BigInt arrays, use ToBigInt; for others, ToNumber.
+                            if ($isBigTarget) {
+                                $coerced = TypeConversion::toBigInt($val);
+                                $this_->setIndex($offset + $i, $coerced);
+                            } else {
+                                $num = TypeConversion::toNumber($val);
+                                $this_->setIndex($offset + $i, new JsNumber($num));
+                            }
+                        }
                     }
                 }
 
@@ -836,18 +975,48 @@ class TypedArrayConstructor
         );
         $proto->defineOwnProperty('set', PropertyDescriptor::data($setFn, true, false, true));
 
-        // subarray(begin, end).
+        // subarray(begin, end): uses SpeciesConstructor per spec.
         $subarrayFn = JsFunction::fromCallable(
             'subarray',
             function (JsValue $this_, array $args) use ($typeName): JsValue {
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.subarray called on incompatible receiver");
                 }
+                $len = $this_->getLength();
                 $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? self::toInteger($args[1])
-                : null;
-                return $this_->subarray($begin, $end);
+                    ? self::toInteger($args[1])
+                    : null;
+
+                // Resolve begin.
+                if ($begin < 0) {
+                    $begin = max(0, $len + $begin);
+                }
+                $begin = min($begin, $len);
+
+                // Resolve end.
+                if ($end === null) {
+                    $end = $len;
+                } elseif ($end < 0) {
+                    $end = max(0, $len + $end);
+                }
+                $end = min($end, $len);
+
+                $newLength = max(0, $end - $begin);
+                $bpe = $this_->getBytesPerElement();
+                $beginByteOffset = $this_->getByteOffset() + $begin * $bpe;
+
+                // Per spec: TypedArraySpeciesCreate(O, [buffer, beginByteOffset, newLength]).
+                $buffer = $this_->getBuffer();
+                return self::typedArraySpeciesCreate(
+                    $this_,
+                    $newLength,
+                    [
+                        $buffer,
+                        new JsNumber((float) $beginByteOffset),
+                        new JsNumber((float) $newLength),
+                    ],
+                );
             },
             2
         );
@@ -1203,6 +1372,10 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
                 }
+                // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
+                if ($this_->getLength() === 0) {
+                    return new JsNumber(-1.0);
+                }
                 $search = $args[0] ?? JsUndefined::instance();
                 $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
                 return new JsNumber((float) $this_->indexOfTyped($search, $fromIndex));
@@ -1218,15 +1391,30 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.lastIndexOf called on incompatible receiver");
                 }
-                $search = $args[0] ?? JsUndefined::instance();
-                $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : $this_->getLength() - 1;
-                if ($fromIndex < 0) {
-                    $fromIndex = max(0, $this_->getLength() + $fromIndex);
+                $len = $this_->getLength();
+                // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
+                if ($len === 0) {
+                    return new JsNumber(-1.0);
                 }
-                for ($i = min($fromIndex, $this_->getLength() - 1); $i >= 0; $i--) {
+                $search = $args[0] ?? JsUndefined::instance();
+                // Per spec: n defaults to len - 1.
+                $n = isset($args[1]) ? self::toInteger($args[1]) : $len - 1;
+                // Per spec: if n >= 0, k = min(n, len-1); else k = len + n.
+                if ($n >= 0) {
+                    $k = min($n, $len - 1);
+                } else {
+                    $k = $len + $n;
+                }
+                for ($i = $k; $i >= 0; $i--) {
                     $el = $this_->getIndex($i);
+                    // Strict equality: NaN !== NaN.
                     if ($el instanceof JsNumber && $search instanceof JsNumber) {
                         if (!is_nan($el->value) && !is_nan($search->value) && $el->value === $search->value) {
+                            return new JsNumber((float) $i);
+                        }
+                    }
+                    if ($el instanceof \PhpJs\Value\JsBigInt && $search instanceof \PhpJs\Value\JsBigInt) {
+                        if ($el->value === $search->value) {
                             return new JsNumber((float) $i);
                         }
                     }
@@ -1467,6 +1655,168 @@ class TypedArrayConstructor
             1
         );
         $proto->defineOwnProperty('at', PropertyDescriptor::data($atFn, true, false, true));
+
+        // toReversed(): returns a new TypedArray with elements in reverse order.
+        // Per spec, ignores Symbol.species and always creates the same type.
+        $toReversedFn = JsFunction::fromCallable(
+            'toReversed',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method {$typeName}.prototype.toReversed called on incompatible receiver"
+                    );
+                }
+                $len = $this_->getLength();
+                $result = JsTypedArray::fromLength(
+                    $this_->getTypeName(),
+                    $len,
+                    $this_->getPrototype(),
+                );
+                for ($i = 0; $i < $len; $i++) {
+                    $result->setIndex($i, $this_->getIndex($len - 1 - $i));
+                }
+                return $result;
+            },
+            0,
+        );
+        $toReversedFn->setNonConstructable();
+        $proto->defineOwnProperty(
+            'toReversed',
+            PropertyDescriptor::data($toReversedFn, true, false, true),
+        );
+
+        // toSorted(comparefn): returns a new sorted TypedArray.
+        // Per spec, ignores Symbol.species and always creates the same type.
+        $toSortedFn = JsFunction::fromCallable(
+            'toSorted',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method {$typeName}.prototype.toSorted called on incompatible receiver"
+                    );
+                }
+                $arg0 = $args[0] ?? JsUndefined::instance();
+                if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
+                    throw new TypeError(
+                        'The comparison function must be either a function or undefined'
+                    );
+                }
+                $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
+                $elements = $this_->toList();
+
+                usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
+                    if ($comparefn !== null) {
+                        $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
+                        return (int) TypeConversion::toNumber($result);
+                    }
+                    // Default numeric sort for typed arrays per spec.
+                    if (
+                        $a instanceof \PhpJs\Value\JsBigInt
+                        && $b instanceof \PhpJs\Value\JsBigInt
+                    ) {
+                        return \PhpJs\Spec\AbstractOperations::bigStrCompPublic(
+                            $a->value,
+                            $b->value,
+                        );
+                    }
+                    $an = $a->toNumber();
+                    $bn = $b->toNumber();
+                    if (is_nan($an) && is_nan($bn)) {
+                        return 0;
+                    }
+                    if (is_nan($an)) {
+                        return 1;
+                    }
+                    if (is_nan($bn)) {
+                        return -1;
+                    }
+                    if ($an === 0.0 && $bn === 0.0) {
+                        $aNegZero = JsNumber::isNegativeZero($an);
+                        $bNegZero = JsNumber::isNegativeZero($bn);
+                        if ($aNegZero && !$bNegZero) {
+                            return -1;
+                        }
+                        if (!$aNegZero && $bNegZero) {
+                            return 1;
+                        }
+                        return 0;
+                    }
+                    return $an <=> $bn;
+                });
+
+                $result = JsTypedArray::fromLength(
+                    $this_->getTypeName(),
+                    count($elements),
+                    $this_->getPrototype(),
+                );
+                for ($i = 0; $i < count($elements); $i++) {
+                    $result->setIndex($i, $elements[$i]);
+                }
+                return $result;
+            },
+            1,
+        );
+        $toSortedFn->setNonConstructable();
+        $proto->defineOwnProperty(
+            'toSorted',
+            PropertyDescriptor::data($toSortedFn, true, false, true),
+        );
+
+        // with(index, value): returns a new TypedArray with the element at
+        // `index` replaced by `value`. Per spec, ignores Symbol.species.
+        $withFn = JsFunction::fromCallable(
+            'with',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method {$typeName}.prototype.with called on incompatible receiver"
+                    );
+                }
+                $len = $this_->getLength();
+                $relativeIndex = isset($args[0])
+                    ? self::toInteger($args[0])
+                    : 0;
+                $value = $args[1] ?? JsUndefined::instance();
+
+                // Per spec: coerce value to the typed array's numeric type
+                // BEFORE resolving the index, so type errors are thrown first.
+                if ($this_->isBigIntArray()) {
+                    $coerced = TypeConversion::toBigInt($value);
+                } else {
+                    $numVal = TypeConversion::toNumber($value);
+                    $coerced = new JsNumber($numVal);
+                }
+
+                // Resolve relative index.
+                $actualIndex = $relativeIndex >= 0
+                    ? $relativeIndex
+                    : $len + $relativeIndex;
+
+                if ($actualIndex < 0 || $actualIndex >= $len) {
+                    throw new RangeError('Invalid index');
+                }
+
+                $result = JsTypedArray::fromLength(
+                    $this_->getTypeName(),
+                    $len,
+                    $this_->getPrototype(),
+                );
+                for ($i = 0; $i < $len; $i++) {
+                    if ($i === $actualIndex) {
+                        $result->setIndex($i, $coerced);
+                    } else {
+                        $result->setIndex($i, $this_->getIndex($i));
+                    }
+                }
+                return $result;
+            },
+            2,
+        );
+        $withFn->setNonConstructable();
+        $proto->defineOwnProperty(
+            'with',
+            PropertyDescriptor::data($withFn, true, false, true),
+        );
     }
 
     /** Install accessor properties on the typed array prototype. */
@@ -1585,15 +1935,22 @@ class TypedArrayConstructor
     }
 
     /**
-     * TypedArraySpeciesCreate(exemplar, length).
+     * TypedArraySpeciesCreate(exemplar, argumentList).
      *
      * Per spec, looks up exemplar.constructor then constructor[Symbol.species]
      * to determine which constructor to use. Falls back to the default
      * constructor for the exemplar's type.
+     *
+     * When called with a single int $length, creates a new TypedArray of that length.
+     * When called with a list of JsValue args, passes them directly to the species
+     * constructor (used by subarray which passes buffer, byteOffset, length).
+     *
+     * @param list<JsValue>|null $speciesArgs If provided, passed directly to species Construct.
      */
     private static function typedArraySpeciesCreate(
         JsTypedArray $exemplar,
         int $length,
+        ?array $speciesArgs = null,
     ): JsTypedArray {
         $defaultTypeName = $exemplar->getTypeName();
         $proto = $exemplar->getPrototype();
@@ -1603,6 +1960,9 @@ class TypedArrayConstructor
 
         // Step 3: If C is undefined, return defaultConstructor result.
         if ($ctor instanceof JsUndefined) {
+            if ($speciesArgs !== null) {
+                return self::constructDefaultTypedArray($defaultTypeName, $speciesArgs, $proto);
+            }
             return JsTypedArray::fromLength($defaultTypeName, $length, $proto);
         }
 
@@ -1622,6 +1982,9 @@ class TypedArrayConstructor
             $species instanceof JsUndefined
             || $species instanceof JsNull
         ) {
+            if ($speciesArgs !== null) {
+                return self::constructDefaultTypedArray($defaultTypeName, $speciesArgs, $proto);
+            }
             return JsTypedArray::fromLength(
                 $defaultTypeName,
                 $length,
@@ -1629,16 +1992,21 @@ class TypedArrayConstructor
             );
         }
 
-        // Step 7: If IsConstructor(S), use it.
+        // Step 7: If IsConstructor(S), use it via Construct.
         if (
             $species instanceof JsFunction
             && $species->isConstructable()
         ) {
-            $result = $species->call(
-                $species,
-                [new JsNumber((float) $length)],
-            );
+            $constructArgs = $speciesArgs ?? [new JsNumber((float) $length)];
+            $result = $species->construct($constructArgs);
             if ($result instanceof JsTypedArray) {
+                // Per spec: TypedArrayCreate step 3: if argumentList is a single
+                // number and result.length < that number, throw TypeError.
+                if ($speciesArgs === null && $result->getLength() < $length) {
+                    throw new TypeError(
+                        'Derived constructor created a TypedArray which was too small'
+                    );
+                }
                 return $result;
             }
             throw new TypeError(
@@ -1647,5 +2015,35 @@ class TypedArrayConstructor
         }
 
         throw new TypeError('Species constructor is not a constructor');
+    }
+
+    /**
+     * Construct a typed array using the default constructor for the given type.
+     * Used by subarray's species fallback path (buffer, byteOffset, length).
+     *
+     * @param list<JsValue> $args
+     */
+    private static function constructDefaultTypedArray(
+        string $typeName,
+        array $args,
+        ?JsObject $proto,
+    ): JsTypedArray {
+        $bpe = JsTypedArray::TYPES[$typeName][0];
+        // subarray passes (buffer, byteOffset, newLength).
+        if (
+            count($args) === 3
+            && $args[0] instanceof JsArrayBuffer
+        ) {
+            $buffer = $args[0];
+            $byteOffset = (int) TypeConversion::toNumber($args[1]);
+            $newLength = (int) TypeConversion::toNumber($args[2]);
+            return new JsTypedArray($typeName, $buffer, $byteOffset, $newLength, $proto);
+        }
+        // Single length arg.
+        if (count($args) === 1) {
+            $len = (int) TypeConversion::toNumber($args[0]);
+            return JsTypedArray::fromLength($typeName, $len, $proto);
+        }
+        return JsTypedArray::fromLength($typeName, 0, $proto);
     }
 }

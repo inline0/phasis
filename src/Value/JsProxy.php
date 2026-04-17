@@ -576,18 +576,51 @@ class JsProxy extends JsObject
 
     // -- [[SetPrototypeOf]] --
 
-    public function setPrototype(?JsObject $prototype): void
+    /**
+     * Internal [[SetPrototypeOf]] returning bool, for Reflect.setPrototypeOf.
+     */
+    public function internalSetPrototypeOf(?JsObject $prototype): bool
     {
         $trap = $this->getTrap('setPrototypeOf');
         if ($trap !== null) {
             $protoArg = $prototype ?? JsNull::instance();
             $result = $trap->call($this->handler, [$this->target, $protoArg]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
-                throw new TypeError('\'setPrototypeOf\' on proxy: trap returned falsish');
+                return false;
             }
-            return;
+            // Per spec step 10-14: if target is extensible, return true.
+            // Only check the invariant when target is NOT extensible.
+            $extensibleTarget = $this->target->isExtensible();
+            if ($extensibleTarget) {
+                return true;
+            }
+            // Target is not extensible: the prototype must match target's current prototype.
+            $targetProto = $this->target->getPrototype();
+            if ($prototype !== $targetProto) {
+                throw new TypeError(
+                    '\'setPrototypeOf\' on proxy: trap returned truish for setting a'
+                    . ' new prototype on a non-extensible proxy target'
+                );
+            }
+            return true;
         }
-        $this->target->setPrototype($prototype);
+        return $this->target->trySetPrototype($prototype);
+    }
+
+    public function setPrototype(?JsObject $prototype): void
+    {
+        if (!$this->internalSetPrototypeOf($prototype)) {
+            throw new TypeError('\'setPrototypeOf\' on proxy: trap returned falsish');
+        }
+    }
+
+    /**
+     * Override trySetPrototype so Reflect.setPrototypeOf and
+     * OrdinarySetPrototypeOf cycle detection work correctly.
+     */
+    public function trySetPrototype(?JsObject $prototype): bool
+    {
+        return $this->internalSetPrototypeOf($prototype);
     }
 
     // -- [[DefineOwnProperty]] --
@@ -601,9 +634,68 @@ class JsProxy extends JsObject
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
                 throw new TypeError("'defineProperty' on proxy: trap returned falsish for property '{$name}'");
             }
+            // Per spec 10.5.6 steps 17-22: validate invariants.
+            $this->validateDefinePropertyInvariants($name, $desc);
             return true;
         }
         return $this->target->defineOwnProperty($name, $desc);
+    }
+
+    /**
+     * Validate defineProperty invariants per spec 10.5.6 steps 17-22.
+     */
+    private function validateDefinePropertyInvariants(string $name, PropertyDescriptor $desc): void
+    {
+        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $extensibleTarget = $this->target->isExtensible();
+
+        // Step 19: If target property does not exist and target is not extensible, throw.
+        if ($targetDesc === null && !$extensibleTarget) {
+            throw new TypeError(
+                "'defineProperty' on proxy: trap returned truish for defining"
+                . " non-configurable property '{$name}' which cannot exist"
+                . " on the non-extensible proxy target"
+            );
+        }
+
+        // "settingConfigFalse" flag per spec step 16.
+        $settingConfigFalse = $desc->configurable === false;
+
+        if ($targetDesc !== null) {
+            // Step 20b: If settingConfigFalse is true and targetDesc.configurable is true, throw.
+            if ($settingConfigFalse && ($targetDesc->configurable ?? false)) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " defining non-configurable property '{$name}' which"
+                    . " is already configurable in the proxy target"
+                );
+            }
+
+            // Step 20c: If targetDesc is non-configurable data and desc makes it non-writable
+            // but targetDesc is writable, throw TypeError.
+            if (
+                ($targetDesc->configurable ?? false) === false
+                && $targetDesc->isDataDescriptor()
+                && ($targetDesc->writable ?? false)
+                && $desc->isDataDescriptor()
+                && $desc->writable === false
+            ) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " defining non-configurable non-writable property '{$name}'"
+                    . " which is writable in the proxy target"
+                );
+            }
+        }
+
+        // Step 19 variant: desc is non-configurable and target property does not exist.
+        if ($settingConfigFalse && $targetDesc === null) {
+            throw new TypeError(
+                "'defineProperty' on proxy: trap returned truish for"
+                . " defining non-configurable property '{$name}'"
+                . " on a target that does not have this property"
+            );
+        }
     }
 
     public function defineProperty(string $name, PropertyDescriptor $desc): void
@@ -905,21 +997,28 @@ class JsProxy extends JsObject
     public function construct(array $args, ?JsValue $newTarget = null): JsValue
     {
         $this->assertNotRevoked('construct');
+        $nt = $newTarget ?? $this;
         $trap = $this->getTrap('construct');
         if ($trap !== null) {
             $argsArray = JsArray::fromArray($args);
-            $nt = $newTarget ?? $this;
             $result = $trap->call($this->handler, [$this->target, $argsArray, $nt]);
             if (!$result instanceof JsObject) {
                 throw new TypeError('\'construct\' on proxy: trap returned non-object');
             }
             return $result;
         }
+        // Per spec 10.5.13 step 7: no trap, forward Construct(target, args, newTarget).
+        if ($this->target instanceof JsProxy) {
+            return $this->target->construct($args, $nt);
+        }
         if ($this->target instanceof JsFunction && $this->target->isConstructable()) {
-            // Delegate to the interpreter's new expression handling.
-            // The target is the actual constructor, so we create a new object with its prototype.
-            $proto = $this->target->get('prototype');
+            // Use newTarget's prototype (not target's) per spec Construct step 5.
+            $proto = ($nt instanceof JsFunction) ? $nt->get('prototype') : null;
             $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+            $newObj->defineOwnProperty(
+                '[[NewTarget]]',
+                \PhpJs\Object\PropertyDescriptor::data($nt instanceof JsFunction ? $nt : $this->target, false, false, false),
+            );
             $result = $this->target->call($newObj, $args);
             return $result instanceof JsObject ? $result : $newObj;
         }
@@ -943,11 +1042,25 @@ class JsProxy extends JsObject
             $len = $result->getLength();
             for ($i = 0; $i < $len; $i++) {
                 $elem = $result->get((string) $i);
+                // Per spec CreateListFromArrayLike with elementTypes String,Symbol:
+                // each element must be a String or Symbol, otherwise throw TypeError.
+                if (!$elem instanceof JsString && !$elem instanceof JsSymbol) {
+                    throw new TypeError(
+                        \PhpJs\Spec\TypeConversion::toString($elem)
+                        . ' is not a valid property name'
+                    );
+                }
                 $keys[] = \PhpJs\Spec\TypeConversion::toString($elem);
             }
         } else {
             foreach ($result->getOwnPropertyNames() as $k) {
                 $elem = $result->get($k);
+                if (!$elem instanceof JsString && !$elem instanceof JsSymbol) {
+                    throw new TypeError(
+                        \PhpJs\Spec\TypeConversion::toString($elem)
+                        . ' is not a valid property name'
+                    );
+                }
                 $keys[] = \PhpJs\Spec\TypeConversion::toString($elem);
             }
         }
@@ -971,8 +1084,13 @@ class JsProxy extends JsObject
                 $elem = $result->get((string) $i);
                 if ($elem instanceof JsSymbol) {
                     $keys[] = $elem;
+                } elseif ($elem instanceof JsString) {
+                    $keys[] = $elem;
                 } else {
-                    $keys[] = new JsString(\PhpJs\Spec\TypeConversion::toString($elem));
+                    throw new TypeError(
+                        \PhpJs\Spec\TypeConversion::toString($elem)
+                        . ' is not a valid property name'
+                    );
                 }
             }
         }

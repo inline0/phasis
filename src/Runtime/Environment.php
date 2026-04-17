@@ -186,10 +186,10 @@ class Environment
     {
         // "with" object environment record: delegate to the binding object using [[Has]].
         if ($this->withObject !== null) {
-            if ($this->withObject->has($name)) {
+            if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
                 return $this->withObject->get($name);
             }
-            // Not found on the with-object: fall through to parent scope.
+            // Not found on the with-object (or unscopable): fall through to parent scope.
             if ($this->parent !== null) {
                 return $this->parent->get($name);
             }
@@ -199,6 +199,20 @@ class Environment
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->tdz[$name])) {
                 throw new ReferenceError("Cannot access '{$name}' before initialization");
+            }
+
+            // Per ES spec, the global environment uses an Object Environment Record
+            // for var/function bindings. These are backed by the global object.
+            // When the global object property is updated directly (e.g. this.x = ...),
+            // the environment binding may be stale. Prefer the global object value
+            // for non-const non-TDZ bindings that have a matching property.
+            if (
+                $this->linkedObject !== null
+                && $this->parent === null
+                && !isset($this->constants[$name])
+                && $this->linkedObject->hasOwnProperty($name)
+            ) {
+                return $this->linkedObject->get($name);
             }
 
             return $this->bindings[$name];
@@ -230,7 +244,7 @@ class Environment
     {
         // "with" object environment record: delegate to the binding object.
         if ($this->withObject !== null) {
-            if ($this->withObject->has($name)) {
+            if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
                 $this->withObject->set($name, $value, $strict);
                 return;
             }
@@ -305,7 +319,7 @@ class Environment
     {
         // "with" object environment record: delegate to the binding object using [[Has]].
         if ($this->withObject !== null) {
-            if ($this->withObject->has($name)) {
+            if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
                 return true;
             }
             if ($this->parent !== null) {
@@ -369,6 +383,26 @@ class Environment
     public function getParent(): ?Environment
     {
         return $this->parent;
+    }
+
+    /**
+     * Per ES spec HasBinding for Object Environment Records (9.1.1.2.1):
+     * After checking the binding object has the property, check @@unscopables.
+     * If unscopables[name] is truthy, the binding is considered not present.
+     */
+    private function isUnscopable(string $name): bool
+    {
+        if ($this->withObject === null) {
+            return false;
+        }
+        $unscopables = $this->withObject->getBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::unscopables()
+        );
+        if ($unscopables instanceof \PhpJs\Value\JsObject) {
+            $value = $unscopables->get($name);
+            return \PhpJs\Spec\TypeConversion::toBoolean($value);
+        }
+        return false;
     }
 
     /** @return array<string, JsValue> All bindings in this scope (not parents). */

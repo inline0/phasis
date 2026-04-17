@@ -136,15 +136,11 @@ class ReflectObject
         $reflect->defineOwnProperty('ownKeys', PropertyDescriptor::data(
             JsFunction::fromCallable('ownKeys', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.ownKeys');
-                // For Proxy, delegate to the proxy's ownKeys which calls the trap.
-                if ($target instanceof JsProxy) {
-                    $stringKeys = $target->ownKeys();
-                    $keys = array_map(fn(string $k) => new JsString($k), $stringKeys);
-                    return JsArray::fromArray($keys);
-                }
                 // Use ordinaryOwnPropertyKeys which returns keys in the
                 // correct order: integer indices (ascending), then string
                 // keys (insertion order), then symbol keys (insertion order).
+                // For Proxy objects, this calls the proxy's overridden method
+                // which invokes the ownKeys trap if present.
                 $keys = $target->ordinaryOwnPropertyKeys();
                 return JsArray::fromArray($keys);
             }, 1),
@@ -308,8 +304,10 @@ class ReflectObject
         $reflect->defineOwnProperty('construct', PropertyDescriptor::data(
             JsFunction::fromCallable('construct', function (JsValue $this_, array $args): JsValue {
                 $target = $args[0] ?? JsUndefined::instance();
-                // Step 1: If IsConstructor(target) is false, throw a TypeError.
-                if (!$target instanceof JsFunction || !$target->isConstructable()) {
+                // Step 1: IsConstructor(target) -- JsFunction that is constructable, or Proxy wrapping one.
+                $isConstructor = ($target instanceof JsFunction && $target->isConstructable())
+                    || ($target instanceof JsProxy && $target->isCallable());
+                if (!$isConstructor) {
                     throw new TypeError('Reflect.construct: target must be a constructor');
                 }
 
@@ -319,13 +317,29 @@ class ReflectObject
 
                 // Step 2/3: newTarget defaults to target; must be a constructor.
                 $newTarget = $args[2] ?? $target;
-                if (!$newTarget instanceof JsFunction || !$newTarget->isConstructable()) {
+                $ntIsConstructor = ($newTarget instanceof JsFunction && $newTarget->isConstructable())
+                    || ($newTarget instanceof JsProxy && $newTarget->isCallable());
+                if (!$ntIsConstructor) {
                     throw new TypeError('Reflect.construct: newTarget must be a constructor');
+                }
+
+                // For Proxy targets, delegate to the proxy's construct method.
+                if ($target instanceof JsProxy) {
+                    return $target->construct($callArgs, $newTarget);
                 }
 
                 // Use newTarget's prototype (not target's) per spec.
                 $proto = $newTarget->get('prototype');
                 $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                $newObj->defineOwnProperty(
+                    '[[NewTarget]]',
+                    PropertyDescriptor::data(
+                        $newTarget instanceof JsFunction ? $newTarget : $target,
+                        false,
+                        false,
+                        false,
+                    ),
+                );
                 $result = $target->call($newObj, $callArgs);
                 return $result instanceof JsObject ? $result : $newObj;
             }, 2),

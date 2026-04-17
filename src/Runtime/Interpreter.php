@@ -2006,15 +2006,26 @@ class Interpreter
                 configurable: true,
             ));
         } else {
-            $poisonPill = JsFunction::fromCallable(
-                'ThrowTypeError',
-                function (): JsValue {
-                    throw new TypeError(
-                        "'caller', 'callee', and 'arguments' properties may not be accessed "
-                        . 'on strict mode functions or the arguments objects for calls to them',
-                    );
-                },
-            );
+            // Reuse the shared %ThrowTypeError% intrinsic if available,
+            // so that the function identity matches across the engine per spec.
+            $poisonPill = null;
+            if ($this->globalEnv->has('__ThrowTypeError__')) {
+                $tte = $this->globalEnv->get('__ThrowTypeError__');
+                if ($tte instanceof JsFunction) {
+                    $poisonPill = $tte;
+                }
+            }
+            if ($poisonPill === null) {
+                $poisonPill = JsFunction::fromCallable(
+                    'ThrowTypeError',
+                    function (): JsValue {
+                        throw new TypeError(
+                            "'caller', 'callee', and 'arguments' properties may not be accessed "
+                            . 'on strict mode functions or the arguments objects for calls to them',
+                        );
+                    },
+                );
+            }
             $argsObj->defineOwnProperty('callee', PropertyDescriptor::accessor(
                 get: $poisonPill,
                 set: $poisonPill,
@@ -2387,12 +2398,16 @@ class Interpreter
         // String property access (length, indices, prototype methods)
         if ($obj instanceof JsString) {
             if ($key === 'length') {
-                return new JsNumber((float) mb_strlen($obj->value, 'UTF-8'));
+                return new JsNumber((float) $obj->length());
             }
             if (ctype_digit($key)) {
                 $idx = (int) $key;
-                if ($idx >= 0 && $idx < mb_strlen($obj->value, 'UTF-8')) {
-                    return new JsString(mb_substr($obj->value, $idx, 1, 'UTF-8'));
+                // JavaScript string indexing uses UTF-16 code units.
+                $u16 = mb_convert_encoding($obj->value, 'UTF-16LE', 'UTF-8');
+                $u16Len = (int) (strlen($u16) / 2);
+                if ($idx >= 0 && $idx < $u16Len) {
+                    $codeUnit = ord($u16[$idx * 2]) | (ord($u16[$idx * 2 + 1]) << 8);
+                    return new JsString(mb_convert_encoding(pack('v', $codeUnit), 'UTF-8', 'UTF-16LE'));
                 }
                 return JsUndefined::instance();
             }
@@ -2634,6 +2649,10 @@ class Interpreter
             if ($prop->kind === 'get' || $prop->kind === 'set') {
                 $fn = $this->evaluate($prop->value, $env);
                 if ($fn instanceof JsFunction) {
+                    // Per spec, getter/setter functions are not constructable and
+                    // do not have a .prototype property.
+                    $fn->setNonConstructable();
+                    $fn->forceDelete('prototype');
                     // Accessors in object literals have [[HomeObject]] = the object.
                     $fn->setHomeObject($obj);
                     if ($isSymbolKey) {
@@ -2682,8 +2701,12 @@ class Interpreter
                     $value->setName($key);
                 }
                 // Method shorthand: set [[HomeObject]] for super references.
+                // Per spec, method definitions are not constructable and
+                // do not have a .prototype property.
                 if ($prop->method && $value instanceof JsFunction) {
                     $value->setHomeObject($obj);
+                    $value->setNonConstructable();
+                    $value->forceDelete('prototype');
                 }
                 $obj->set($key, $value);
             }
@@ -2775,11 +2798,11 @@ class Interpreter
     }
 
     /**
-     * Handle yield* (delegate yield).
+     * Handle yield* (delegate yield) per ES spec 27.5.3.7.
      *
-     * Iterates the sub-iterable and yields each value. The final result
-     * of the yield* expression is the return value of the sub-iterator
-     * (i.e., the value when done is true).
+     * Uses GetIterator to obtain the sub-iterator, then runs the full
+     * delegation protocol: forwarding next(), throw(), and return() calls
+     * from the outer generator to the inner iterator.
      */
     private function evalYieldDelegate(
         YieldExpression $node,
@@ -2789,85 +2812,102 @@ class Interpreter
             ? $this->evaluate($node->argument, $env)
             : JsUndefined::instance();
 
-        // If the iterable is a JsGenerator, delegate to its iterator protocol.
-        if ($iterable instanceof JsGenerator) {
-            return $this->delegateToGenerator($iterable);
+        // Step 3: Let iterator be ? GetIterator(value).
+        $iterator = $this->getIterator($iterable);
+        if ($iterator === null) {
+            throw new TypeError(
+                TypeConversion::toString($iterable) . ' is not iterable'
+            );
         }
 
-        // If the iterable is a JsArray, yield each element.
-        if ($iterable instanceof JsArray) {
-            $len = $iterable->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $val = $iterable->get((string) $i);
-                \Fiber::suspend($val);
-            }
-            return JsUndefined::instance();
+        $nextMethod = $iterator->get('next');
+        if (!$nextMethod instanceof JsFunction) {
+            throw new TypeError('Iterator result next is not a function');
         }
 
-        // If the iterable is a JsString, yield each character.
-        if ($iterable instanceof JsString) {
-            $str = $iterable->value;
-            $len = mb_strlen($str, 'UTF-8');
-            for ($i = 0; $i < $len; $i++) {
-                \Fiber::suspend(new JsString(mb_substr($str, $i, 1, 'UTF-8')));
-            }
-            return JsUndefined::instance();
-        }
+        // Step 4: received = NormalCompletion(undefined).
+        // Step 5: Repeat.
+        $receivedValue = JsUndefined::instance();
+        $receivedType = 'normal'; // 'normal', 'throw', or 'return'
 
-        // If it has a next() method, treat as an iterator.
-        if ($iterable instanceof JsObject) {
-            $nextFn = $iterable->get('next');
-            if ($nextFn instanceof JsFunction) {
-                return $this->delegateToIterator($iterable, $nextFn);
-            }
-        }
-
-        return JsUndefined::instance();
-    }
-
-    /**
-     * Delegate to a JsGenerator sub-iterator.
-     *
-     * Calls next() on the sub-generator, yielding each value until done.
-     * Values passed to next() on the outer generator are forwarded to the
-     * inner generator.
-     */
-    private function delegateToGenerator(JsGenerator $inner): JsValue
-    {
-        $result = $inner->next();
         while (true) {
-            $done = $result->get('done');
-            if ($done instanceof JsBoolean && $done->value) {
-                return $result->get('value');
+            $innerResult = null;
+
+            // Step 5a: received is normal.
+            if ($receivedType === 'normal') {
+                $innerResult = $this->callFunction($nextMethod, $iterator, [$receivedValue]);
+                if (!$innerResult instanceof JsObject) {
+                    throw new TypeError('Iterator result is not an object');
+                }
+            }
+            // Step 5b: received is throw.
+            elseif ($receivedType === 'throw') {
+                $throwMethod = $iterator->get('throw');
+                if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
+                    // Per spec: if throw is undefined, throw a TypeError and also
+                    // IteratorClose the iterator (close via return method if present).
+                    try {
+                        $returnMethod = $iterator->get('return');
+                        if ($returnMethod instanceof JsFunction) {
+                            $this->callFunction($returnMethod, $iterator, []);
+                        }
+                    } catch (\Throwable) {
+                        // Ignore close errors per spec.
+                    }
+                    throw new TypeError('The iterator does not provide a throw method');
+                }
+                if (!$throwMethod instanceof JsFunction) {
+                    throw new TypeError('The iterator does not provide a throw method');
+                }
+                $innerResult = $this->callFunction($throwMethod, $iterator, [$receivedValue]);
+                if (!$innerResult instanceof JsObject) {
+                    throw new TypeError('Iterator result is not an object');
+                }
+            }
+            // Step 5c: received is return.
+            else {
+                $returnMethod = $iterator->get('return');
+                if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
+                    // Per spec: if return is undefined, return Completion(received).
+                    throw new GeneratorReturnSignal($receivedValue);
+                }
+                if (!$returnMethod instanceof JsFunction) {
+                    throw new GeneratorReturnSignal($receivedValue);
+                }
+                $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
+                if (!$innerResult instanceof JsObject) {
+                    throw new TypeError('Iterator result is not an object');
+                }
             }
 
-            // Yield the inner value to the outer caller.
-            $received = \Fiber::suspend($result->get('value'));
-            $nextArg = $received instanceof JsValue ? $received : JsUndefined::instance();
-
-            $result = $inner->next($nextArg);
-        }
-    }
-
-    /**
-     * Delegate to a generic iterator object (one with a next() method).
-     */
-    private function delegateToIterator(JsObject $iterator, JsFunction $nextFn): JsValue
-    {
-        while (true) {
-            $result = $this->callFunction($nextFn, $iterator, []);
-            if (!$result instanceof JsObject) {
-                return JsUndefined::instance();
+            // Check done.
+            $done = $innerResult->get('done');
+            if (TypeConversion::toBoolean($done)) {
+                // Inner iterator is done. Return its value.
+                $returnVal = $innerResult->get('value');
+                if ($receivedType === 'return') {
+                    // For return delegation: propagate the return completion.
+                    throw new GeneratorReturnSignal($returnVal);
+                }
+                return $returnVal;
             }
 
-            $done = $result->get('done');
-            if ($done instanceof JsBoolean && $done->value) {
-                return $result->get('value');
+            // Not done: yield the inner result to the outer caller.
+            // Per spec GeneratorYield(innerResult): the entire result object is
+            // yielded without accessing its "value" property (the caller sees it).
+            // We use YieldDelegateResult so JsGenerator::next() returns the inner
+            // result directly instead of wrapping it in a new {value, done} object.
+            try {
+                $received = \Fiber::suspend(new \PhpJs\Value\YieldDelegateResult($innerResult));
+                $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
+                $receivedType = 'normal';
+            } catch (GeneratorThrowSignal $e) {
+                $receivedValue = $e->jsValue;
+                $receivedType = 'throw';
+            } catch (GeneratorReturnSignal $e) {
+                $receivedValue = $e->value;
+                $receivedType = 'return';
             }
-
-            $received = \Fiber::suspend($result->get('value'));
-            // For generic iterators we don't forward the received value
-            // (the spec does for generator delegates, handled above).
         }
     }
 
@@ -3206,6 +3246,13 @@ class Interpreter
 
             $fn = $this->evaluate($method->value, $env);
 
+            // Per spec, class methods (non-constructor) are not constructable
+            // and do not have a .prototype property.
+            if ($method->kind !== 'constructor' && $fn instanceof JsFunction) {
+                $fn->setNonConstructable();
+                $fn->forceDelete('prototype');
+            }
+
             if ($method->kind === 'constructor') {
                 $constructor = $fn;
             } elseif ($method->static) {
@@ -3520,7 +3567,21 @@ class Interpreter
 
     private function execForInStatement(ForInStatement $node, Environment $env, ?string $label = null): Completion
     {
-        $obj = $this->evaluate($node->right, $env);
+        // Per spec ForIn/OfHeadEvaluation: if lhs is a lexical binding (let/const),
+        // evaluate the expression in a TDZ environment with bound names.
+        // e.g. `for (const x in { x })` sees x as uninitialized in the RHS.
+        $exprEnv = $env;
+        if ($node->left instanceof VariableDeclaration && $node->left->kind !== 'var') {
+            $tdzEnv = $env->createChild();
+            foreach ($node->left->declarations as $decl) {
+                foreach ($this->patternBoundNames($decl->id) as $name) {
+                    $tdzEnv->declareLet($name);
+                }
+            }
+            $exprEnv = $tdzEnv;
+        }
+
+        $obj = $this->evaluate($node->right, $exprEnv);
         if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
             return Completion::normal(JsUndefined::instance());
         }
@@ -4301,6 +4362,13 @@ class Interpreter
             } elseif ($stmt instanceof LabeledStatement) {
                 // Recurse into labeled statement body for var hoisting.
                 $this->hoistDeclarations([$stmt->body], $env);
+            } elseif ($stmt instanceof WithStatement) {
+                // Var declarations inside with statements hoist to the enclosing scope.
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistDeclarations($stmt->body->body, $env);
+                } else {
+                    $this->hoistDeclarations([$stmt->body], $env);
+                }
             }
 
             // Annex B: in sloppy mode, hoist function declaration names from
@@ -4467,6 +4535,12 @@ class Interpreter
                 }
             } elseif ($stmt instanceof BlockStatement) {
                 $this->forceHoistVarNames($stmt->body, $env);
+            } elseif ($stmt instanceof WithStatement) {
+                if ($stmt->body instanceof BlockStatement) {
+                    $this->forceHoistVarNames($stmt->body->body, $env);
+                } else {
+                    $this->forceHoistVarNames([$stmt->body], $env);
+                }
             }
         }
     }
@@ -5239,13 +5313,52 @@ class Interpreter
                 }
                 // \xNN 2-digit hex escape: convert to PCRE \x{NN} for proper
                 // Unicode mode handling (avoids raw-byte interpretation in UTF-8).
-                if ($next === 'x' && $i + 3 < $len + 1) {
-                    $hex = substr($pattern, $i + 2, 2);
-                    if (strlen($hex) === 2 && ctype_xdigit($hex)) {
-                        $result .= '\\x{' . strtoupper($hex) . '}';
-                        $i += 4;
+                if ($next === 'x') {
+                    if ($i + 3 < $len + 1) {
+                        $hex = substr($pattern, $i + 2, 2);
+                        if (strlen($hex) === 2 && ctype_xdigit($hex)) {
+                            $result .= '\\x{' . strtoupper($hex) . '}';
+                            $i += 4;
+                            continue;
+                        }
+                    }
+                    // \x without valid hex digits: in non-unicode ECMAScript,
+                    // this is treated as literal 'x'. PCRE would error on bare \x.
+                    $result .= 'x';
+                    $i += 2;
+                    continue;
+                }
+                // \k<name> named backreference: In non-unicode ECMAScript,
+                // \k when no named groups exist is treated as literal 'k'.
+                // PCRE always treats \k<...> as a backreference and errors
+                // when the group doesn't exist. Convert to literal 'k' when
+                // no named groups exist in the pattern.
+                if ($next === 'k' && $i + 2 < $len && $pattern[$i + 2] === '<') {
+                    $closeAngle = strpos($pattern, '>', $i + 3);
+                    if ($closeAngle !== false) {
+                        $groupName = substr($pattern, $i + 3, $closeAngle - ($i + 3));
+                        // Check if a named group (?<groupName>...) exists in the pattern.
+                        if (preg_match('/\(\?<' . preg_quote($groupName, '/') . '>/', $pattern) === 1) {
+                            // Named group exists: keep as \k<name>.
+                            $result .= $ch . $next;
+                            $i += 2;
+                        } else {
+                            // No matching named group: treat \k as literal 'k'.
+                            $result .= 'k';
+                            $i += 2;
+                        }
                         continue;
                     }
+                }
+                // PCRE-specific escape sequences that don't exist in ECMAScript:
+                // \X (grapheme cluster), \R (line break), \K (match reset),
+                // \G (start of match), \N (non-newline).
+                // In ECMAScript non-unicode mode, these are identity escapes
+                // matching the literal character.
+                if (in_array($next, ['X', 'R', 'K', 'G', 'N'], true)) {
+                    $result .= $next;
+                    $i += 2;
+                    continue;
                 }
                 // Other escape: pass through both chars.
                 $result .= $ch . $next;
@@ -5254,6 +5367,22 @@ class Interpreter
             }
 
             if ($ch === '[' && !$inCharClass) {
+                // ECMAScript allows [] (empty class, matches nothing) and
+                // [^] (complement of empty class, matches anything).
+                // PCRE does not support these. Convert them to equivalents.
+                if ($i + 1 < $len && $pattern[$i + 1] === ']') {
+                    // [] -> (?![\s\S]) which is a never-matching pattern.
+                    // Use PCRE's (*FAIL) or a simpler approach: [^\s\S]
+                    $result .= '[^\\s\\S]';
+                    $i += 2;
+                    continue;
+                }
+                if ($i + 2 < $len && $pattern[$i + 1] === '^' && $pattern[$i + 2] === ']') {
+                    // [^] -> [\s\S] which matches any character including newline.
+                    $result .= '[\\s\\S]';
+                    $i += 3;
+                    continue;
+                }
                 $inCharClass = true;
                 $result .= $ch;
                 $i++;
@@ -5262,9 +5391,17 @@ class Interpreter
                     $result .= '^';
                     $i++;
                 }
-                // Handle ] as first char in class
+                // Handle ] as first char in class (PCRE treats ] after [ or [^ as literal)
                 if ($i < $len && $pattern[$i] === ']') {
                     $result .= ']';
+                    $i++;
+                }
+                // PCRE interprets [. [= [: after [ as POSIX bracket expressions.
+                // ECMAScript does not have POSIX bracket expressions.
+                // Escape . = : when they appear as the first char in a class
+                // to prevent PCRE from misinterpreting them.
+                if ($i < $len && ($pattern[$i] === '.' || $pattern[$i] === '=' || $pattern[$i] === ':')) {
+                    $result .= '\\' . $pattern[$i];
                     $i++;
                 }
                 continue;
@@ -5273,6 +5410,16 @@ class Interpreter
             if ($ch === ']' && $inCharClass) {
                 $inCharClass = false;
                 $result .= $ch;
+                $i++;
+                continue;
+            }
+
+            // Inside a character class, PCRE interprets [. [= and [: as POSIX
+            // collating element / equivalence class / named class openers.
+            // ECMAScript does not have POSIX bracket expressions; [ inside a
+            // character class is just a literal. Escape it to prevent PCRE errors.
+            if ($ch === '[' && $inCharClass) {
+                $result .= '\\[';
                 $i++;
                 continue;
             }
