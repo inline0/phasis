@@ -1818,11 +1818,11 @@ class Parser
             $name = $this->advance()->value;
         }
 
-        $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
         $this->inAsync = true;
+        $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;

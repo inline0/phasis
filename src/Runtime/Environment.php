@@ -525,6 +525,21 @@ class Environment
     }
 
     /**
+     * Find the nearest variable environment (function scope or global scope).
+     * Per spec, the VariableEnvironment is the enclosing function scope or
+     * the global scope. Block scopes (if, for, try, etc.) are lexical
+     * environments, not variable environments.
+     */
+    public function getVariableEnvironment(): self
+    {
+        $env = $this;
+        while ($env->parent !== null && $env->functionKind === null && $env->linkedObject === null) {
+            $env = $env->parent;
+        }
+        return $env;
+    }
+
+    /**
      * Check whether any environment in the scope chain has 'arguments' as a
      * lexically-bound (let/const) or constant binding. Used by
      * EvalDeclarationInstantiation to determine if var arguments is allowed.

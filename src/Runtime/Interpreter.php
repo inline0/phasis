@@ -1597,7 +1597,9 @@ class Interpreter
         try {
             // In strict mode, eval gets its own variable scope so var and
             // function declarations do not leak to the caller.
-            $varEnv = $evalStrict ? $env->createChild() : $env;
+            // In non-strict mode, the variable environment is the nearest
+            // function scope or global scope per EvalDeclarationInstantiation.
+            $varEnv = $evalStrict ? $env->createChild() : $env->getVariableEnvironment();
 
             // For strict eval, pre-declare all var names as own bindings in the
             // child environment. This prevents hoistDeclarations from skipping them
@@ -1629,7 +1631,11 @@ class Interpreter
             }
 
             // Create a lexical environment for class/let/const TDZ bindings.
-            $lexEnv = $varEnv->createChild();
+            // Per spec step 14: lexEnv = NewDeclarativeEnvironment(ctx.LexicalEnvironment).
+            // For non-strict eval, this must be a child of the caller's lexical
+            // environment ($env), not varEnv, so that with-scopes and block-scopes
+            // from the calling context remain visible during execution.
+            $lexEnv = ($evalStrict ? $varEnv : $env)->createChild();
             $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
 
             // Execute the parsed program body in the lexical environment.
@@ -2555,6 +2561,13 @@ class Interpreter
             // Bind this
             if ($fn->isArrow()) {
                 // Arrow functions inherit this and [[NewTarget]] from closure.
+            } elseif ($fn->isDerivedConstructor()) {
+                // Per spec 8.1.1.3.1 BindThisValue: in a derived constructor,
+                // this starts uninitialized. Accessing it before super() throws
+                // ReferenceError. We use TDZ (declareLet) to achieve this.
+                $fnEnv->declareLet('this');
+                // Store the newObj so super() can pass it to the parent constructor.
+                $fnEnv->defineVar('[[PendingThis]]', $thisValue);
             } else {
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,
@@ -2733,7 +2746,7 @@ class Interpreter
 
         // Set up mapped arguments aliasing for generators.
         if (!$unmapped) {
-            
+            $this->setupMappedArguments($argsObj, $fn->getParams(), $args, $fnEnv);
         }
 
         $interpreter = $this;
@@ -2782,12 +2795,38 @@ class Interpreter
                 $fnEnv->defineVar('arguments', $argsObj);
                 $this->bindParameters($fn->getParams(), $args, $fnEnv);
                 if (!$unmapped) {
-                    
+                    $this->setupMappedArguments($argsObj, $fn->getParams(), $args, $fnEnv);
                 }
             }
 
             // Execute body
             $body = $fn->getBody();
+
+            // When the generator has parameter expressions (defaults, destructuring
+            // with defaults), the body gets a separate environment so closures in
+            // the parameter list do not see body-scoped var declarations.
+            $params = $fn->getParams();
+            $hasDefaultParams = $this->hasParameterExpressions($params);
+
+            if ($hasDefaultParams && $body instanceof BlockStatement) {
+                $bodyEnv = $fnEnv->createChild();
+                foreach ($params as $p) {
+                    $this->copyParamBindings($p, $fnEnv, $bodyEnv);
+                }
+                $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
+                $this->forceHoistVarNames($body->body, $bodyEnv);
+                $this->hoistDeclarations($body->body, $bodyEnv);
+                $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
+                $completion = $this->executeBody($body->body, $bodyEnv);
+                if ($completion->type === CompletionType::Return) {
+                    return $completion->value;
+                }
+                if ($completion->type === CompletionType::Throw) {
+                    $this->throwJsValue($completion->value);
+                }
+                return JsUndefined::instance();
+            }
+
             if ($body instanceof BlockStatement) {
                 $this->forceHoistVarNames($body->body, $fnEnv);
                 $this->hoistDeclarations($body->body, $fnEnv);

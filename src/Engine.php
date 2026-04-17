@@ -686,12 +686,11 @@ class Engine
         $interp = $this->interpreter;
         $globalEnv = $this->globalEnv;
 
-        $asyncFuncCtor = JsFunction::fromCallable('AsyncFunction', function (
+        $asyncFuncCtor = JsFunction::fromCallable('AsyncFunction', static function (
             JsValue $this_,
             array $args,
         ) use (
             $interp,
-            $globalEnv,
         ): JsValue {
             // Build async function source from arguments, same as Function constructor.
             $bodyArg = count($args) > 0 ? array_pop($args) : JsUndefined::instance();
@@ -707,7 +706,7 @@ class Engine
             $ast = $parser->parse();
 
             return $interp->execute($ast);
-        });
+        }, 1);
         $asyncFuncCtor->setConstructable();
 
         // %AsyncFunction%.prototype = %AsyncFunction.prototype%
