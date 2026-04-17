@@ -1155,7 +1155,7 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             foreach ($args as $arg) {
-                $str .= TypeConversion::toString($arg);
+                $str = JsString::concatNormalize($str, TypeConversion::toString($arg));
             }
             return new JsString($str);
         };

@@ -218,4 +218,55 @@ class JsString implements JsValue
 
         return $result;
     }
+
+    /**
+     * Concatenate two internal strings, merging a trailing CESU-8 high
+     * surrogate in $left with a leading CESU-8 low surrogate in $right
+     * into a proper UTF-8 4-byte sequence. This ensures that string
+     * concatenation like '\uD834' + '\uDF06' produces the same internal
+     * bytes as the literal '\uD834\uDF06'.
+     */
+    public static function concatNormalize(string $left, string $right): string
+    {
+        $lLen = strlen($left);
+        $rLen = strlen($right);
+
+        // Quick path: if either is empty or too short, no merging possible.
+        if ($lLen < 3 || $rLen < 3) {
+            return $left . $right;
+        }
+
+        // Check if $left ends with a CESU-8 high surrogate (ED A0-AF xx).
+        $b1 = ord($left[$lLen - 3]);
+        $b2 = ord($left[$lLen - 2]);
+        $b3 = ord($left[$lLen - 1]);
+
+        if ($b1 !== 0xED || ($b2 & 0xF0) !== 0xA0) {
+            return $left . $right;
+        }
+
+        // Check if $right starts with a CESU-8 low surrogate (ED B0-BF xx).
+        $r1 = ord($right[0]);
+        $r2 = ord($right[1]);
+        $r3 = ord($right[2]);
+
+        if ($r1 !== 0xED || ($r2 & 0xF0) !== 0xB0) {
+            return $left . $right;
+        }
+
+        // Decode both surrogates.
+        $high = (($b1 & 0x0F) << 12) | (($b2 & 0x3F) << 6) | ($b3 & 0x3F);
+        $low = (($r1 & 0x0F) << 12) | (($r2 & 0x3F) << 6) | ($r3 & 0x3F);
+
+        // Combine into a single code point.
+        $cp = ($high - 0xD800) * 0x400 + ($low - 0xDC00) + 0x10000;
+
+        // Encode as proper UTF-8.
+        $utf8Char = chr(0xF0 | ($cp >> 18))
+                  . chr(0x80 | (($cp >> 12) & 0x3F))
+                  . chr(0x80 | (($cp >> 6) & 0x3F))
+                  . chr(0x80 | ($cp & 0x3F));
+
+        return substr($left, 0, $lLen - 3) . $utf8Char . substr($right, 3);
+    }
 }

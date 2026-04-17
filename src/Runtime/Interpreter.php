@@ -521,9 +521,9 @@ class Interpreter
 
         // String concatenation takes priority.
         if ($lprim instanceof JsString || $rprim instanceof JsString) {
-            return new JsString(
-                TypeConversion::toString($lprim) . TypeConversion::toString($rprim),
-            );
+            $l = TypeConversion::toString($lprim);
+            $r = TypeConversion::toString($rprim);
+            return new JsString(JsString::concatNormalize($l, $r));
         }
 
         // ToNumeric: if the primitive is already BigInt, keep it; otherwise ToNumber.
@@ -6985,7 +6985,26 @@ class Interpreter
                         if ($cp !== false) {
                             $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
                         } else {
-                            $result .= $mbChar;
+                            // Invalid UTF-8 (likely a CESU-8 encoded surrogate D800-DFFF).
+                            // Decode manually and replace with U+FFFE to avoid PCRE error.
+                            $bytes = array_map('ord', str_split($mbChar));
+                            if (count($bytes) === 3
+                                && ($bytes[0] & 0xF0) === 0xE0
+                                && ($bytes[1] & 0xC0) === 0x80
+                                && ($bytes[2] & 0xC0) === 0x80
+                            ) {
+                                $decoded = (($bytes[0] & 0x0F) << 12)
+                                    | (($bytes[1] & 0x3F) << 6)
+                                    | ($bytes[2] & 0x3F);
+                                if ($decoded >= 0xD800 && $decoded <= 0xDFFF) {
+                                    $result .= '\\x{FFFE}';
+                                } else {
+                                    $result .= '\\x{' . strtoupper(dechex($decoded)) . '}';
+                                }
+                            } else {
+                                // Truly invalid: use replacement char.
+                                $result .= '\\x{FFFE}';
+                            }
                         }
                         $i = $j;
                         continue;
