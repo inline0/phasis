@@ -1,36 +1,3 @@
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-PHP Warning:  Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
-
-Warning: Undefined variable $constructor in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 554
 Alice
 30
 Alice

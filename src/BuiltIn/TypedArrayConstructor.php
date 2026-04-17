@@ -549,9 +549,10 @@ class TypedArrayConstructor
         $proto = new JsObject($typedArrayProto);
         $bpe = JsTypedArray::TYPES[$typeName][0];
 
+        $ctorRef = null;
         $constructor = JsFunction::fromCallable(
             $typeName,
-            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto, $constructor): JsValue {
+            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto, &$ctorRef): JsValue {
                 // Per spec: if NewTarget is undefined, throw TypeError.
                 if (
                     !$this_ instanceof JsObject
@@ -570,7 +571,7 @@ class TypedArrayConstructor
                     $nt = $ntDesc->value;
                     // Only resolve custom proto when newTarget differs from the
                     // typed array constructor itself.
-                    if (!isset($constructor) || $nt !== $constructor) {
+                    if ($ctorRef !== null && $nt !== $ctorRef) {
                         $ntProto = $nt->get('prototype');
                         if ($ntProto instanceof JsObject) {
                             $actualProto = $ntProto;
@@ -581,6 +582,7 @@ class TypedArrayConstructor
             },
             3,
         );
+        $ctorRef = $constructor;
         $constructor->setConstructable();
 
         // Each subtype constructor's [[Prototype]] is %TypedArray%.
@@ -623,6 +625,8 @@ class TypedArrayConstructor
         JsFunction $intrinsic,
     ): void {
         // %TypedArray%.from(source, mapFn, thisArg).
+        // Per spec: uses `this` as the constructor, creates targetObj, then
+        // sets each mapped element individually.
         $fromFn = JsFunction::fromCallable(
             'from',
             function (JsValue $this_, array $args): JsValue {
@@ -636,8 +640,11 @@ class TypedArrayConstructor
                     );
                 }
 
-                // Step 3: Validate mapfn before accessing source.
+                $source = $args[0] ?? JsUndefined::instance();
                 $mapFn = $args[1] ?? JsUndefined::instance();
+                $thisArg = $args[2] ?? JsUndefined::instance();
+
+                // Step 3: Validate mapfn before accessing source.
                 if (
                     !$mapFn instanceof JsUndefined
                     && !$mapFn instanceof JsFunction
@@ -647,10 +654,49 @@ class TypedArrayConstructor
                     );
                 }
 
-                // Use Construct to create the new typed array.
-                return $this_->construct(
-                    [self::collectFromSource($args)],
-                );
+                $hasMapFn = $mapFn instanceof JsFunction;
+
+                // Collect source elements into a list.
+                $elements = [];
+                if ($source instanceof JsTypedArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
+                        $elements[] = $source->getIndex($i);
+                    }
+                } elseif ($source instanceof JsArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
+                        $elements[] = $source->get((string) $i);
+                    }
+                } elseif ($source instanceof JsObject) {
+                    $iterSym = SymbolConstructor::iterator();
+                    $iterMethod = $source->getBySymbol($iterSym);
+                    if ($iterMethod instanceof JsFunction) {
+                        $elements = self::consumeIterator($iterMethod, $source);
+                    } else {
+                        $len = (int) TypeConversion::toNumber($source->get('length'));
+                        for ($i = 0; $i < $len; $i++) {
+                            $elements[] = $source->get((string) $i);
+                        }
+                    }
+                }
+
+                $len = count($elements);
+
+                // TypedArrayCreate(C, [len]): construct via C.
+                $targetObj = $this_->construct([new JsNumber((float) $len)]);
+
+                // Per spec step 12: for each element, map and Set individually.
+                for ($k = 0; $k < $len; $k++) {
+                    $kValue = $elements[$k];
+                    if ($hasMapFn) {
+                        /** @var JsFunction $mapFn */
+                        $mappedValue = $mapFn->call($thisArg, [$kValue, new JsNumber((float) $k)]);
+                    } else {
+                        $mappedValue = $kValue;
+                    }
+                    $targetObj->set((string) $k, $mappedValue);
+                }
+
+                return $targetObj;
             },
             1,
         );
@@ -895,10 +941,12 @@ class TypedArrayConstructor
         JsObject $proto,
     ): void {
         // TypedArray.from(source, mapFn, thisArg).
+        // Per spec (%TypedArray%.from): uses `this` as the constructor (C),
+        // creates targetObj via C, then sets each mapped element individually.
         $fromFn = JsFunction::fromCallable(
             'from',
             function (JsValue $this_, array $args) use ($typeName, $proto): JsValue {
-            // Validate this is a constructor.
+                // Step 1-2: Validate C is a constructor.
                 if (
                     !$this_ instanceof JsFunction
                     || !$this_->isConstructable()
@@ -912,7 +960,7 @@ class TypedArrayConstructor
                 $mapFn = $args[1] ?? JsUndefined::instance();
                 $thisArg = $args[2] ?? JsUndefined::instance();
 
-            // Validate mapfn before accessing source.
+                // Step 3-4: Validate mapfn before accessing source.
                 if (
                     !$mapFn instanceof JsUndefined
                     && !$mapFn instanceof JsFunction
@@ -924,7 +972,7 @@ class TypedArrayConstructor
 
                 $hasMapFn = $mapFn instanceof JsFunction;
 
-            // Collect source elements.
+                // Step 5-8: Collect source elements into a list.
                 $elements = [];
                 if ($source instanceof JsTypedArray) {
                     for ($i = 0; $i < $source->getLength(); $i++) {
@@ -947,16 +995,26 @@ class TypedArrayConstructor
                     }
                 }
 
-            // Apply mapFn if provided.
-                if ($hasMapFn) {
-                    $mapped = [];
-                    foreach ($elements as $i => $el) {
-                        $mapped[] = $mapFn->call($thisArg, [$el, new JsNumber((float) $i)]);
+                $len = count($elements);
+
+                // Step 10: targetObj = TypedArrayCreate(C, [len]).
+                // Use C (this_) as the constructor.
+                $targetObj = $this_->construct([new JsNumber((float) $len)]);
+
+                // Step 12: For each element, map if needed, then Set on targetObj.
+                for ($k = 0; $k < $len; $k++) {
+                    $kValue = $elements[$k];
+                    if ($hasMapFn) {
+                        /** @var JsFunction $mapFn */
+                        $mappedValue = $mapFn->call($thisArg, [$kValue, new JsNumber((float) $k)]);
+                    } else {
+                        $mappedValue = $kValue;
                     }
-                    $elements = $mapped;
+                    // Per spec: Set(targetObj, Pk, mappedValue, true).
+                    $targetObj->set((string) $k, $mappedValue);
                 }
 
-                return JsTypedArray::fromArray($typeName, $elements, $proto);
+                return $targetObj;
             },
             1
         );

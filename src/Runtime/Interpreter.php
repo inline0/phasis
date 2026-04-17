@@ -87,6 +87,9 @@ class Interpreter
     private int $maxLoopIterations;
     private bool $strictMode = false;
 
+    /** Stack of active with-statement binding objects for spec-correct binding resolution. */
+    private array $withObjectStack = [];
+
 
     public function __construct(
         private Environment $globalEnv,
@@ -3640,6 +3643,29 @@ class Interpreter
     {
         foreach ($node->declarations as $declarator) {
             $hasInit = $declarator->init !== null;
+
+            // Per spec 14.3.2.4: for var BindingIdentifier Initializer,
+            // ResolveBinding is done BEFORE evaluating the Initializer.
+            // In a with-environment, this means we capture which with-object
+            // owns the binding before the initializer can delete it.
+            $resolvedWithObj = null;
+            if (
+                $node->kind === 'var'
+                && $hasInit
+                && $declarator->id instanceof Identifier
+                && !empty($this->withObjectStack)
+            ) {
+                $name = $declarator->id->name;
+                // Walk the with-object stack from innermost to outermost to find
+                // which with-object currently holds this binding.
+                for ($wi = count($this->withObjectStack) - 1; $wi >= 0; $wi--) {
+                    if ($this->withObjectStack[$wi]->has($name)) {
+                        $resolvedWithObj = $this->withObjectStack[$wi];
+                        break;
+                    }
+                }
+            }
+
             $init = $hasInit
                 ? $this->evaluate($declarator->init, $env)
                 : JsUndefined::instance();
@@ -3662,7 +3688,13 @@ class Interpreter
             // For var without initializer, skip if already defined (re-declaration is a no-op).
             if ($node->kind === 'var') {
                 if ($hasInit) {
-                    $this->assignVarBinding($declarator->id, $init, $env);
+                    // If the binding was pre-resolved to a with-object, set directly
+                    // on that object (spec: PutValue on the pre-resolved reference).
+                    if ($resolvedWithObj !== null && $declarator->id instanceof Identifier) {
+                        $resolvedWithObj->set($declarator->id->name, $init);
+                    } else {
+                        $this->assignVarBinding($declarator->id, $init, $env);
+                    }
                 } elseif ($declarator->id instanceof Identifier && !$env->has($declarator->id->name)) {
                     $env->defineVar($declarator->id->name, JsUndefined::instance());
                 }
@@ -4231,6 +4263,11 @@ class Interpreter
         foreach ($keys as $key) {
             if (++$iterations > $this->maxLoopIterations) {
                 throw new InternalError('Maximum loop iterations exceeded');
+            }
+
+            // Per spec EnumerateObjectProperties: skip keys deleted during enumeration.
+            if (!$obj->has((string) $key)) {
+                continue;
             }
 
             $iterEnv = $env->createChild();
@@ -4894,7 +4931,12 @@ class Interpreter
             $obj = TypeConversion::toObject($obj);
         }
         $withEnv = $env->createWithEnvironment($obj);
-        $completion = $this->executeStatement($node->body, $withEnv);
+        $this->withObjectStack[] = $obj;
+        try {
+            $completion = $this->executeStatement($node->body, $withEnv);
+        } finally {
+            array_pop($this->withObjectStack);
+        }
         // Per spec 14.11.2 step 9: Return Completion(UpdateEmpty(C, undefined)).
         if ($completion->empty) {
             return new Completion(
@@ -5651,20 +5693,26 @@ class Interpreter
         // Walk the environment chain to find the owning record.
         $cur = $env;
         while ($cur !== null) {
-            // Check if this environment level owns the binding.
-            if ($cur->hasOwnBinding($name)) {
-                // Declarative environment record: return env reference.
-                return new Reference($cur, $name, $this->strictMode);
-            }
-            // Check for "with" (object environment record): the env has the
-            // binding but not as an own declarative binding.
-            if ($cur->has($name) && !$cur->hasOwnBinding($name)) {
-                // This is a with-object environment record. Extract the
-                // binding object so PutValue sets the property directly.
-                $withObj = $this->getWithObject($cur);
-                if ($withObj !== null) {
+            // Check for "with" (object environment record) first: if the
+            // binding object has the property, create a property reference
+            // so PutValue writes directly to the object.
+            $withObj = $this->getWithObject($cur);
+            if ($withObj !== null) {
+                if ($withObj->has($name)) {
                     return new Reference($withObj, $name, $this->strictMode);
                 }
+                // The with-object does not have the binding; skip to parent.
+                $cur = $cur->getParent();
+                continue;
+            }
+            // Declarative environment record: check own bindings.
+            if ($cur->hasOwnBinding($name)) {
+                return new Reference($cur, $name, $this->strictMode);
+            }
+            // Also check the linked global object for properties set directly.
+            $linked = $cur->getLinkedObject();
+            if ($linked !== null && $cur->getParent() === null && $linked->hasOwnProperty($name)) {
+                return new Reference($cur, $name, $this->strictMode);
             }
             $cur = $cur->getParent();
         }
@@ -6392,6 +6440,48 @@ class Interpreter
                         $result .= '\\\\c';
                     }
                     $i += 2;
+                    continue;
+                }
+                // Inside character classes, \1-\9 are always octal escapes
+                // (backreferences don't exist in classes). Convert to \x{XX}.
+                if ($next >= '0' && $next <= '9' && $inCharClass) {
+                    if ($next === '0') {
+                        // \0 is NUL. Collect up to 3 octal digits.
+                        $octalStr = '0';
+                        $oj = $i + 2;
+                        while (
+                            $oj < $len
+                            && $pattern[$oj] >= '0'
+                            && $pattern[$oj] <= '7'
+                            && strlen($octalStr) < 3
+                        ) {
+                            $octalStr .= $pattern[$oj];
+                            $oj++;
+                        }
+                        $cp = octdec($octalStr);
+                        $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
+                        $i = $oj;
+                    } elseif ($next >= '1' && $next <= '7') {
+                        // Octal escape \1-\7 (possibly multi-digit).
+                        $octalStr = '';
+                        $oj = $i + 1;
+                        while (
+                            $oj < $len
+                            && $pattern[$oj] >= '0'
+                            && $pattern[$oj] <= '7'
+                            && strlen($octalStr) < 3
+                        ) {
+                            $octalStr .= $pattern[$oj];
+                            $oj++;
+                        }
+                        $cp = octdec($octalStr);
+                        $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
+                        $i = $oj;
+                    } else {
+                        // \8 or \9: identity escape for the digit.
+                        $result .= '\\x{' . strtoupper(dechex(ord($next))) . '}';
+                        $i += 2;
+                    }
                     continue;
                 }
                 // Numeric backreferences to non-existent groups (Annex B).

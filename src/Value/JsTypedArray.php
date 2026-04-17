@@ -138,6 +138,10 @@ class JsTypedArray extends JsObject
 
     public function getLength(): int
     {
+        // Per spec: if the viewed ArrayBuffer is detached, length is 0.
+        if ($this->buffer->isDetached()) {
+            return 0;
+        }
         return $this->length;
     }
 
@@ -266,12 +270,16 @@ class JsTypedArray extends JsObject
     public function get(string $name): JsValue
     {
         if ($name === 'length') {
-            return new JsNumber((float) $this->length);
+            return new JsNumber((float) $this->getLength());
         }
         if ($name === 'byteLength') {
-            return new JsNumber((float) ($this->length * $this->bytesPerElement));
+            return new JsNumber((float) ($this->getLength() * $this->bytesPerElement));
         }
         if ($name === 'byteOffset') {
+            // Per spec: byteOffset is 0 when buffer is detached.
+            if ($this->buffer->isDetached()) {
+                return new JsNumber(0.0);
+            }
             return new JsNumber((float) $this->byteOffset);
         }
         if ($name === 'buffer') {
