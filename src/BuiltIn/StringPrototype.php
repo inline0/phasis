@@ -914,25 +914,66 @@ class StringPrototype
         };
     }
 
+    /**
+     * Count UTF-16 code units in a UTF-8/CESU-8 string.
+     */
+    private static function utf16Length(string $str): int
+    {
+        return (new JsString($str))->length();
+    }
+
+    /**
+     * Truncate a string to a given number of UTF-16 code units.
+     * Surrogate pairs that remain complete are combined into proper UTF-8.
+     */
+    private static function utf16Truncate(string $str, int $maxCodeUnits): string
+    {
+        $u16 = JsString::utf8ToUtf16LE($str);
+        $u16Len = (int) (strlen($u16) / 2);
+        if ($u16Len <= $maxCodeUnits) {
+            return $str;
+        }
+        $result = '';
+        $i = 0;
+        while ($i < $maxCodeUnits) {
+            $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+            // Check for complete surrogate pair within bounds.
+            if (
+                $cu >= 0xD800 && $cu <= 0xDBFF
+                && $i + 1 < $maxCodeUnits
+            ) {
+                $lo = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
+                    $cp = 0x10000 + ($cu - 0xD800) * 0x400 + ($lo - 0xDC00);
+                    $result .= mb_chr($cp, 'UTF-8');
+                    $i += 2;
+                    continue;
+                }
+            }
+            $result .= JsString::utf16CodeUnitToUtf8($cu);
+            $i++;
+        }
+        return $result;
+    }
+
     private static function padStart(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $targetLength = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $padStr = isset($args[1]) ? TypeConversion::toString($args[1]) : ' ';
+            $fillArg = $args[1] ?? JsUndefined::instance();
+            $padStr = $fillArg instanceof JsUndefined ? ' ' : TypeConversion::toString($fillArg);
 
-            $currentLen = mb_strlen($str, 'UTF-8');
+            $currentLen = self::utf16Length($str);
             if ($currentLen >= $targetLength || $padStr === '') {
                 return new JsString($str);
             }
 
             $needed = $targetLength - $currentLen;
-            $padLen = mb_strlen($padStr, 'UTF-8');
-            $pad = '';
-            while (mb_strlen($pad, 'UTF-8') < $needed) {
-                $pad .= $padStr;
-            }
-            $pad = mb_substr($pad, 0, $needed, 'UTF-8');
+            $padLen = self::utf16Length($padStr);
+            $reps = (int) ceil($needed / max($padLen, 1));
+            $pad = str_repeat($padStr, $reps);
+            $pad = self::utf16Truncate($pad, $needed);
 
             return new JsString($pad . $str);
         };
@@ -943,20 +984,19 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $targetLength = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $padStr = isset($args[1]) ? TypeConversion::toString($args[1]) : ' ';
+            $fillArg = $args[1] ?? JsUndefined::instance();
+            $padStr = $fillArg instanceof JsUndefined ? ' ' : TypeConversion::toString($fillArg);
 
-            $currentLen = mb_strlen($str, 'UTF-8');
+            $currentLen = self::utf16Length($str);
             if ($currentLen >= $targetLength || $padStr === '') {
                 return new JsString($str);
             }
 
             $needed = $targetLength - $currentLen;
-            $padLen = mb_strlen($padStr, 'UTF-8');
-            $pad = '';
-            while (mb_strlen($pad, 'UTF-8') < $needed) {
-                $pad .= $padStr;
-            }
-            $pad = mb_substr($pad, 0, $needed, 'UTF-8');
+            $padLen = self::utf16Length($padStr);
+            $reps = (int) ceil($needed / max($padLen, 1));
+            $pad = str_repeat($padStr, $reps);
+            $pad = self::utf16Truncate($pad, $needed);
 
             return new JsString($str . $pad);
         };

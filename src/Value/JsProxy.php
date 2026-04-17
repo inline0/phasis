@@ -22,6 +22,9 @@ class JsProxy extends JsObject
     /** Captured at creation time per spec ProxyCreate step 7. */
     private bool $targetIsCallable;
 
+    /** Captured at creation time: whether target has [[Construct]]. */
+    private bool $targetIsConstructable;
+
     public function __construct(JsObject $target, JsObject $handler)
     {
         // Per spec ProxyCreate: the proxy does not read the target's [[Prototype]]
@@ -30,8 +33,9 @@ class JsProxy extends JsObject
         parent::__construct(null);
         $this->target = $target;
         $this->handler = $handler;
-        // Per spec ProxyCreate steps 6-7: capture [[Call]] slot existence at creation time.
+        // Per spec ProxyCreate steps 6-7: capture [[Call]] and [[Construct]] existence.
         $this->targetIsCallable = $this->determineCallable($target);
+        $this->targetIsConstructable = $this->determineConstructable($target);
     }
 
     /** Determine if a target has a [[Call]] internal slot. */
@@ -40,8 +44,20 @@ class JsProxy extends JsObject
         if ($target instanceof JsFunction) {
             return true;
         }
-        if ($target instanceof JsProxy) {
+        if ($target instanceof self) {
             return $target->isCallable();
+        }
+        return false;
+    }
+
+    /** Determine if a target has a [[Construct]] internal slot. */
+    private function determineConstructable(JsObject $target): bool
+    {
+        if ($target instanceof JsFunction) {
+            return $target->isConstructable();
+        }
+        if ($target instanceof self) {
+            return $target->isConstructable();
         }
         return false;
     }
@@ -77,6 +93,12 @@ class JsProxy extends JsObject
     public function isCallable(): bool
     {
         return $this->targetIsCallable;
+    }
+
+    /** Whether the proxy's target has a [[Construct]] slot (captured at creation time). */
+    public function isConstructable(): bool
+    {
+        return $this->targetIsConstructable;
     }
 
     private function assertNotRevoked(string $trap = 'get'): void

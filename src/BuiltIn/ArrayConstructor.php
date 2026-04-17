@@ -161,11 +161,9 @@ class ArrayConstructor
                     $o->set((string) $len, $arg);
                     $len++;
                 }
-                if ($o instanceof JsArray) {
-                    $o->setLength($len);
-                } else {
-                    $o->set('length', new JsNumber((float) $len));
-                }
+                // Always go through the property set path so JsArray validates the
+                // new length (e.g. throws RangeError when exceeding 2^32 - 1).
+                $o->set('length', new JsNumber((float) $len));
                 return new JsNumber((float) $len);
             },
             1
@@ -1087,8 +1085,20 @@ class ArrayConstructor
         $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toString',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                return new JsString($this_->toJsString());
+                $array = self::toObject($this_);
+                $join = $array->get('join');
+                if ($join instanceof JsFunction) {
+                    return new JsString(TypeConversion::toString($join->call($array, [])));
+                }
+                // Fall back to Object.prototype.toString per spec.
+                $objProto = JsObject::getGlobalPrototype();
+                if ($objProto !== null) {
+                    $objToStr = $objProto->get('toString');
+                    if ($objToStr instanceof JsFunction) {
+                        return new JsString(TypeConversion::toString($objToStr->call($array, [])));
+                    }
+                }
+                return new JsString('[object Array]');
             },
             0
         ), true, false, true));
@@ -1385,8 +1395,25 @@ class ArrayConstructor
     {
         return function (JsValue $this_, array $args): JsValue {
             $arg = $args[0] ?? JsUndefined::instance();
-            return new JsBoolean($arg instanceof JsArray);
+            return new JsBoolean(self::isArrayValue($arg));
         };
+    }
+
+    /**
+     * Per spec 7.2.2 IsArray: unwrap proxy targets recursively.
+     */
+    private static function isArrayValue(JsValue $arg): bool
+    {
+        if ($arg instanceof JsArray) {
+            return true;
+        }
+        if ($arg instanceof \PhpJs\Value\JsProxy) {
+            if ($arg->isRevoked()) {
+                throw new TypeError('Cannot perform \'IsArray\' on a proxy that has been revoked');
+            }
+            return self::isArrayValue($arg->getTarget());
+        }
+        return false;
     }
 
     /**
@@ -1454,7 +1481,11 @@ class ArrayConstructor
                             if ($mapFn !== null) {
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
-                            $a->set((string) $index, $val);
+                            // CreateDataPropertyOrThrow per spec.
+                            $a->defineOwnProperty(
+                                (string) $index,
+                                PropertyDescriptor::data($val, true, true, true),
+                            );
                             $index++;
                         }
                     } else {
@@ -1481,7 +1512,11 @@ class ArrayConstructor
                             if ($mapFn !== null) {
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
-                            $a->set((string) $index, $val);
+                            // CreateDataPropertyOrThrow per spec.
+                            $a->defineOwnProperty(
+                                (string) $index,
+                                PropertyDescriptor::data($val, true, true, true),
+                            );
                             $index++;
                         }
                     }
@@ -1516,7 +1551,11 @@ class ArrayConstructor
                 if ($mapFn !== null) {
                     $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
                 }
-                $a->set((string) $i, $val);
+                // CreateDataPropertyOrThrow per spec.
+                $a->defineOwnProperty(
+                    (string) $i,
+                    PropertyDescriptor::data($val, true, true, true),
+                );
             }
 
             $a->set('length', new JsNumber((float) $len));
