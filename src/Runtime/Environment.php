@@ -230,23 +230,28 @@ class Environment
         }
     }
 
-    /** Get a binding value, walking the scope chain. Throws on TDZ access or missing binding. */
-    public function get(string $name): JsValue
+    /**
+     * Get a binding value, walking the scope chain.
+     * The optional $strict parameter controls the GetBindingValue
+     * behavior for Object Environment Records (with statements):
+     * when true, a missing binding throws ReferenceError per spec
+     * 9.1.1.2.6 step 3a.
+     */
+    public function get(string $name, bool $strict = false): JsValue
     {
         // "with" object environment record: HasBinding + GetBindingValue.
         if ($this->withObject !== null) {
             // HasBinding: HasProperty then @@unscopables.
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
-                // GetBindingValue step 2: separate HasProperty check.
-                // Proxy traps must fire independently for each spec step.
-                if (!$this->withObject->has($name)) {
-                    return JsUndefined::instance();
-                }
-                return $this->withObject->get($name);
+                // GetBindingValue (9.1.1.2.6): a separate HasProperty check
+                // is required per spec. The @@unscopables getter above can
+                // have side effects (e.g. deleting the property), and Proxy
+                // traps must fire independently for each spec step.
+                return $this->getBindingValueFromWith($name, $strict);
             }
             // Not found or unscopable: fall through to parent.
             if ($this->parent !== null) {
-                return $this->parent->get($name);
+                return $this->parent->get($name, $strict);
             }
             throw new ReferenceError("{$name} is not defined");
         }
@@ -276,7 +281,7 @@ class Environment
         }
 
         if ($this->parent !== null) {
-            return $this->parent->get($name);
+            return $this->parent->get($name, $strict);
         }
 
         // At the global (root) environment. If a linked global object exists,
@@ -460,6 +465,28 @@ class Environment
             return \PhpJs\Spec\TypeConversion::toBoolean($value);
         }
         return false;
+    }
+
+    /**
+     * Per spec 9.1.1.2.6 GetBindingValue for Object Environment Records:
+     * 1. HasProperty(bindingObject, N) - if false, return undefined
+     * 2. Get(bindingObject, N)
+     * Extracted to a separate method so PHPStan does not flag the
+     * second HasProperty check as "always false" (the @@unscopables
+     * getter in HasBinding can delete the property as a side effect).
+     */
+    private function getBindingValueFromWith(
+        string $name,
+        bool $strict = false,
+    ): JsValue {
+        assert($this->withObject !== null);
+        if (!$this->withObject->has($name)) {
+            if ($strict) {
+                throw new ReferenceError("{$name} is not defined");
+            }
+            return JsUndefined::instance();
+        }
+        return $this->withObject->get($name);
     }
 
     /** @return array<string, JsValue> All bindings in this scope (not parents). */

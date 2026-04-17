@@ -94,6 +94,15 @@ class Interpreter
     private bool $skipAnnexBHoisting = false;
 
     /**
+     * Track which FunctionDeclaration AST nodes are eligible for Annex B
+     * propagation. Only function declarations identified during hoisting
+     * should propagate their value to the function scope during execution.
+     * Keyed by spl_object_id of the FunctionDeclaration AST node.
+     * @var array<int, bool>
+     */
+    private array $annexBEligible = [];
+
+    /**
      * Map of with-environment identity to their binding objects.
      * Used for spec-correct binding resolution (ResolveBinding before Initializer).
      * Keys are spl_object_id of the Environment, values are the JsObject.
@@ -479,7 +488,7 @@ class Interpreter
         if ($node->name === 'undefined') {
             return JsUndefined::instance();
         }
-        return $env->get($node->name);
+        return $env->get($node->name, $this->strictMode);
     }
 
     private function evalBinaryExpression(BinaryExpression $node, Environment $env): JsValue
@@ -1084,7 +1093,8 @@ class Interpreter
         }
 
         // Use ToNumeric (not ToNumber) so BigInt values are preserved.
-        $oldNumeric = TypeConversion::toNumeric($ref->getValue());
+        // Use withGetBindingValue for spec-correct HasProperty trap order.
+        $oldNumeric = TypeConversion::toNumeric($this->withGetBindingValue($ref));
 
         if ($oldNumeric instanceof JsBigInt) {
             // BigInt::add(oldValue, BigInt::unit) per spec.
@@ -1162,7 +1172,7 @@ class Interpreter
                     "Cannot read properties of {$typeName}",
                 );
             }
-            $leftVal = $ref->getValue();
+            $leftVal = $this->withGetBindingValue($ref);
             $shouldAssign = match ($node->operator) {
                 '&&=' => TypeConversion::toBoolean($leftVal),
                 '||=' => !TypeConversion::toBoolean($leftVal),
@@ -1189,7 +1199,7 @@ class Interpreter
                 "Cannot read properties of {$typeName}",
             );
         }
-        $leftVal = $ref->getValue();
+        $leftVal = $this->withGetBindingValue($ref);
         $right = $this->evaluate($node->right, $env);
 
         $result = match ($node->operator) {
@@ -4281,17 +4291,19 @@ class Interpreter
             }
             $this->installFunctionPrototype($fobj, $node->generator);
             // Propagate to the variable environment (enclosing function/global
-            // scope) where the var binding was hoisted. Only propagate if the
-            // binding was created by Annex B hoisting (not a parameter or
-            // let/const that would suppress the extension per B.3.3.1 step ii).
-            // Walk up the scope chain starting from env itself to find the
-            // Annex B hoisted binding.
-            $varScope = $env;
-            while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
-                $varScope = $varScope->getParent();
-            }
-            if ($varScope !== null) {
-                $varScope->set($name, $fobj, false);
+            // scope) where the var binding was hoisted. Only propagate if this
+            // FunctionDeclaration AST node was identified as eligible during the
+            // hoisting phase. Per B.3.3.1, only function declarations identified
+            // in step 1 get the modified evaluation that propagates to fenv.
+            error_log("execFuncDecl: " . $name . " nodeId=" . spl_object_id($node) . " eligible=" . (isset($this->annexBEligible[spl_object_id($node)]) ? "yes" : "no") . " total=" . count($this->annexBEligible));
+            if (isset($this->annexBEligible[spl_object_id($node)])) {
+                $varScope = $env;
+                while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
+                    $varScope = $varScope->getParent();
+                }
+                if ($varScope !== null) {
+                    $varScope->set($name, $fobj, false);
+                }
             }
         }
 
@@ -5744,6 +5756,7 @@ class Interpreter
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
+                            $this->annexBEligible[spl_object_id($inner)] = true; error_log("  marked inner: " . $inner->id->name . " id=" . spl_object_id($inner));
                         }
                     }
                 }
@@ -5751,15 +5764,26 @@ class Interpreter
         }
 
         // TryStatement: recursively scan try body, catch body, and finally body
-        // for block-scoped function declarations. Per B.3.5, catch parameters
-        // do NOT prevent Annex B hoisting to the enclosing function scope.
+        // for block-scoped function declarations.
         if ($stmt instanceof TryStatement) {
             foreach ($stmt->block->body as $inner) {
                 $this->hoistBlockFunctionDeclarations($inner, $env, $lexicalNames);
             }
             if ($stmt->handler !== null) {
+                // Per B.3.5: if the catch parameter is a destructuring pattern,
+                // any name bound by it blocks Annex B hoisting of same-named
+                // function declarations inside the catch body. A simple
+                // BindingIdentifier catch param does NOT block hoisting.
+                $catchBlockedNames = $lexicalNames;
+                $catchParam = $stmt->handler->param;
+                if ($catchParam !== null && !($catchParam instanceof Identifier)) {
+                    $catchBound = $this->collectBoundNames($catchParam);
+                    foreach ($catchBound as $bn) {
+                        $catchBlockedNames[$bn] = true;
+                    }
+                }
                 foreach ($stmt->handler->body->body as $inner) {
-                    $this->hoistBlockFunctionDeclarations($inner, $env, $lexicalNames);
+                    $this->hoistBlockFunctionDeclarations($inner, $env, $catchBlockedNames);
                 }
             }
             if ($stmt->finalizer !== null) {
@@ -5782,6 +5806,7 @@ class Interpreter
             if ($child instanceof FunctionDeclaration) {
                 if ($canHoist($child->id->name)) {
                     $env->defineAnnexBVar($child->id->name, JsUndefined::instance());
+                    $this->annexBEligible[spl_object_id($child)] = true; error_log("  marked child: " . $child->id->name . " id=" . spl_object_id($child));
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
@@ -5794,11 +5819,57 @@ class Interpreter
                         }
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
+                            $this->annexBEligible[spl_object_id($inner)] = true; error_log("  marked inner: " . $inner->id->name . " id=" . spl_object_id($inner));
                         }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Collect all bound identifier names from a destructuring pattern node.
+     *
+     * @return string[]
+     */
+    private function collectBoundNames(Node $node): array
+    {
+        if ($node instanceof Identifier) {
+            return [$node->name];
+        }
+        if ($node instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+            $names = [];
+            foreach ($node->properties as $prop) {
+                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                    $names = array_merge($names, $this->collectBoundNames($prop->argument));
+                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                    $names = array_merge($names, $this->collectBoundNames($prop->value));
+                } elseif ($prop instanceof \PhpJs\Ast\Expression\Property) {
+                    $names = array_merge($names, $this->collectBoundNames($prop->value));
+                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+                    $names = array_merge($names, $this->collectBoundNames($prop->left));
+                } else {
+                    $names = array_merge($names, $this->collectBoundNames($prop));
+                }
+            }
+            return $names;
+        }
+        if ($node instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+            $names = [];
+            foreach ($node->elements as $elem) {
+                if ($elem !== null) {
+                    $names = array_merge($names, $this->collectBoundNames($elem));
+                }
+            }
+            return $names;
+        }
+        if ($node instanceof \PhpJs\Ast\Pattern\RestElement) {
+            return $this->collectBoundNames($node->argument);
+        }
+        if ($node instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+            return $this->collectBoundNames($node->left);
+        }
+        return [];
     }
 
     private function hoistVarNames(Node $pattern, Environment $env): void
@@ -6177,11 +6248,41 @@ class Interpreter
     }
 
     /**
+     * Per spec 9.1.1.2.6 GetBindingValue for Object Environment Records:
+     * Before reading a value through a with-binding reference, perform a
+     * separate HasProperty check. This is required because the binding may
+     * have been deleted between HasBinding and GetBindingValue, and Proxy
+     * traps must fire independently for each spec step. Returns the value
+     * from GetBindingValue.
+     */
+    private function withGetBindingValue(Reference $ref): JsValue
+    {
+        if (
+            $ref->base instanceof JsObject
+            && isset($this->activeWithObjectIds[spl_object_id($ref->base)])
+        ) {
+            // GetBindingValue step 2: HasProperty(bindingObject, N).
+            if (!$ref->base->has($ref->name)) {
+                if ($ref->strict) {
+                    throw new ReferenceError(
+                        "{$ref->name} is not defined"
+                    );
+                }
+                return JsUndefined::instance();
+            }
+            // GetBindingValue step 4: Get(bindingObject, N).
+            return $ref->base->get($ref->name);
+        }
+        return $ref->getValue();
+    }
+
+    /**
      * Per spec 9.1.1.2.5 SetMutableBinding for Object Environment Records:
      * Before writing through a with-binding reference, re-check HasProperty
      * on the binding object. If the property no longer exists (e.g. deleted
      * by the RHS expression) and strict mode is active, throw ReferenceError.
-     * This must be called before Reference::setValue() for with-binding references.
+     * This must be called before Reference::setValue() for with-binding
+     * references.
      */
     private function withSetMutableBindingCheck(Reference $ref, JsValue $value): void
     {

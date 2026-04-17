@@ -120,6 +120,15 @@ class RegExpPrototype
                 );
             }
 
+            // Per Annex B step 3: if [[LegacyFeaturesEnabled]] is false, throw TypeError.
+            $legacyDesc = $this_->getOwnPropertyDescriptor("[[LegacyFeaturesEnabled]]");
+            if ($legacyDesc !== null && $legacyDesc->value instanceof \PhpJs\Value\JsBoolean
+                && !$legacyDesc->value->toBoolean()) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Method RegExp.prototype.compile called on incompatible receiver",
+                );
+            }
+
             $patternArg = $args[0] ?? JsUndefined::instance();
             $flagsArg = $args[1] ?? JsUndefined::instance();
 
@@ -637,13 +646,6 @@ class RegExpPrototype
             $limitArg = $args[1] ?? JsUndefined::instance();
 
             $S = TypeConversion::toString($string);
-            $lim = $limitArg instanceof JsUndefined
-                ? 0xFFFFFFFF
-                : TypeConversion::toUint32($limitArg);
-
-            if ($lim === 0) {
-                return JsArray::fromArray([]);
-            }
 
             // Per spec step 4-10: create a copy via SpeciesConstructor with 'y' flag.
             // This allows side effects (like Symbol.match getters that recompile the
@@ -679,6 +681,15 @@ class RegExpPrototype
                         $splitter = $this_;
                     }
                 }
+            }
+
+            // Step 13: ToUint32(limit) happens after splitter creation.
+            $lim = $limitArg instanceof JsUndefined
+                ? 0xFFFFFFFF
+                : TypeConversion::toUint32($limitArg);
+
+            if ($lim === 0) {
+                return JsArray::fromArray([]);
             }
 
             // Get the PCRE pattern from the splitter (which may differ from the

@@ -1,3 +1,5 @@
+execFuncDecl: makeCounter nodeId=5260 eligible=no total=0
+execFuncDecl: makeAdder nodeId=5298 eligible=no total=0
 1
 2
 3

@@ -602,6 +602,16 @@ class Engine
                 }
             }
 
+            // Detect subclass: if [[NewTarget]] is not the base RegExp constructor.
+            $isSubclass = false;
+            if ($calledAsNew && $this_ instanceof \PhpJs\Value\JsObject) {
+                $ntd = $this_->getOwnPropertyDescriptor("[[NewTarget]]");
+                $baseRegExp = $globalEnv->has("RegExp") ? $globalEnv->get("RegExp") : null;
+                if ($ntd !== null && $ntd->value !== null && $ntd->value !== $baseRegExp) {
+                    $isSubclass = true;
+                }
+            }
+
             // If the first argument is already a RegExp object and no flags argument given,
             // return a copy with the same pattern and flags (per spec 22.2.3.1).
             if ($arg0 instanceof \PhpJs\Value\JsObject && $arg0->has('source') && $arg0->has('flags')) {
@@ -613,7 +623,7 @@ class Engine
                 $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
                     ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
                     : \PhpJs\Spec\TypeConversion::toString($arg1);
-                return $interp->createRegExpFromConstructor($pattern, $flags);
+                return $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
             }
 
             $pattern = $arg0 instanceof \PhpJs\Value\JsUndefined
@@ -622,7 +632,7 @@ class Engine
             $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
                 ? ''
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
-            return $interp->createRegExpFromConstructor($pattern, $flags);
+            return $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
         };
         $this->installStubConstructor('RegExp', $regExpCb, 2);
 
