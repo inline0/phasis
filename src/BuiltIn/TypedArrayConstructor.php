@@ -137,21 +137,46 @@ class TypedArrayConstructor
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 $buffer = $args[0] ?? JsUndefined::instance();
                 if (!$buffer instanceof JsArrayBuffer) {
-                    throw new TypeError('First argument to DataView constructor must be an ArrayBuffer');
+                    throw new TypeError(
+                        'First argument to DataView constructor must be an ArrayBuffer'
+                    );
                 }
 
-                $byteOffset = isset($args[1]) && !$args[1] instanceof JsUndefined
-                    ? (int) TypeConversion::toNumber($args[1])
-                    : 0;
-                $byteLength = isset($args[2]) && !$args[2] instanceof JsUndefined
-                    ? (int) TypeConversion::toNumber($args[2])
-                    : null;
+                $offsetNum = isset($args[1]) && !$args[1] instanceof JsUndefined
+                    ? TypeConversion::toNumber($args[1])
+                    : 0.0;
+                $byteOffset = (int) $offsetNum;
 
-                if ($byteOffset < 0 || $byteOffset > $buffer->getByteLength()) {
-                    throw new RangeError('Start offset is outside the bounds of the buffer');
+                // Per spec: IsDetachedBuffer check after ToIndex
+                if ($buffer->isDetached()) {
+                    throw new TypeError(
+                        'Cannot construct DataView on a detached ArrayBuffer'
+                    );
                 }
-                if ($byteLength !== null && ($byteOffset + $byteLength) > $buffer->getByteLength()) {
-                    throw new RangeError('Invalid DataView length');
+
+                $bufLen = $buffer->getByteLength();
+                if (
+                    is_nan($offsetNum) || is_infinite($offsetNum)
+                    || $offsetNum < 0 || $byteOffset > $bufLen
+                ) {
+                    throw new RangeError(
+                        'Start offset is outside the bounds of the buffer'
+                    );
+                }
+
+                $lenArg = $args[2] ?? JsUndefined::instance();
+                if ($lenArg instanceof JsUndefined) {
+                    $byteLength = $bufLen - $byteOffset;
+                } else {
+                    $lenNum = TypeConversion::toNumber($lenArg);
+                    $byteLength = (int) $lenNum;
+                    if (
+                        is_nan($lenNum) || $lenNum < 0
+                        || is_infinite($lenNum)
+                        || ($byteOffset + $byteLength) > $bufLen
+                    ) {
+                        throw new RangeError('Invalid DataView length');
+                    }
                 }
 
                 return new JsDataView($buffer, $byteOffset, $byteLength, $proto);
