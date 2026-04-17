@@ -151,17 +151,22 @@ class ArrayConstructor
         $proto->defineOwnProperty('push', PropertyDescriptor::data(JsFunction::fromCallable(
             'push',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                foreach ($args as $arg) {
-                    if ($this_ instanceof JsArray) {
-                        $this_->push($arg);
-                    } else {
-                        $idx = self::getLen($this_);
-                        $this_->set((string) $idx, $arg);
-                        $this_->set("length", new JsNumber((float) ($idx + 1)));
-                    }
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                $argCount = count($args);
+                if (($len + $argCount) > 9007199254740991) {
+                    throw new TypeError('Array.prototype.push: length would exceed 2^53 - 1');
                 }
-                return new JsNumber((float) self::getLen($this_));
+                foreach ($args as $arg) {
+                    $o->set((string) $len, $arg);
+                    $len++;
+                }
+                if ($o instanceof JsArray) {
+                    $o->setLength($len);
+                } else {
+                    $o->set('length', new JsNumber((float) $len));
+                }
+                return new JsNumber((float) $len);
             },
             1
         ), true, false, true));
@@ -169,17 +174,24 @@ class ArrayConstructor
         $proto->defineOwnProperty('pop', PropertyDescriptor::data(JsFunction::fromCallable(
             'pop',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
-                if (self::getLen($this_) === 0) {
+                $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
+                if ($len === 0) {
+                    if ($o instanceof JsArray) {
+                        $o->setLength(0);
+                    } else {
+                        $o->set('length', new JsNumber(0.0));
+                    }
                     return JsUndefined::instance();
                 }
-                $newLen = self::getLen($this_) - 1;
-                $val = $this_->get((string) $newLen);
-                $this_->delete((string) $newLen);
-                if ($this_ instanceof JsArray) {
-                    $this_->setLength($newLen);
+                $newLen = $len - 1;
+                $index = (string) $newLen;
+                $val = $o->get($index);
+                $o->delete($index);
+                if ($o instanceof JsArray) {
+                    $o->setLength($newLen);
                 } else {
-                    $this_->set("length", new JsNumber((float) ($newLen)));
+                    $o->set('length', new JsNumber((float) $newLen));
                 }
                 return $val;
             },

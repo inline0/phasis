@@ -662,6 +662,15 @@ class JsProxy extends JsObject
         $settingConfigFalse = $desc->configurable === false;
 
         if ($targetDesc !== null) {
+            // Step 20a: IsCompatiblePropertyDescriptor check.
+            if (!self::isCompatiblePropertyDescriptor($extensibleTarget, $desc, $targetDesc)) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " property '{$name}' which is incompatible with the"
+                    . " existing property on the proxy target"
+                );
+            }
+
             // Step 20b: If settingConfigFalse is true and targetDesc.configurable is true, throw.
             if ($settingConfigFalse && ($targetDesc->configurable ?? false)) {
                 throw new TypeError(
@@ -696,6 +705,63 @@ class JsProxy extends JsObject
                 . " on a target that does not have this property"
             );
         }
+    }
+
+    /**
+     * IsCompatiblePropertyDescriptor for proxy defineProperty invariant checking.
+     * Per spec ValidateAndApplyPropertyDescriptor.
+     */
+    private function isCompatiblePropertyDescriptor(
+        bool $extensible,
+        PropertyDescriptor $desc,
+        PropertyDescriptor $current,
+    ): bool {
+        // If current is not configurable, apply restrictions.
+        if ($current->configurable === false) {
+            if ($desc->configurable === true) {
+                return false;
+            }
+            if ($desc->enumerable !== null && $desc->enumerable !== ($current->enumerable ?? false)) {
+                return false;
+            }
+        }
+
+        // Generic descriptor (no value/writable/get/set): always compatible.
+        if (!$desc->isDataDescriptor() && !$desc->isAccessorDescriptor()) {
+            return true;
+        }
+
+        // Switching between data and accessor.
+        $currentIsData = $current->isDataDescriptor();
+        $descIsData = $desc->isDataDescriptor();
+        if ($currentIsData !== $descIsData) {
+            return $current->configurable !== false;
+        }
+
+        // Both data descriptors.
+        if ($currentIsData && $descIsData) {
+            if ($current->configurable === false && $current->writable === false) {
+                if ($desc->writable === true) {
+                    return false;
+                }
+                $curVal = $current->value ?? JsUndefined::instance();
+                if ($desc->value !== null && !$this->sameValue($desc->value, $curVal)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Both accessor descriptors.
+        if ($current->configurable === false) {
+            if ($desc->set !== null && $desc->set !== $current->set) {
+                return false;
+            }
+            if ($desc->get !== null && $desc->get !== $current->get) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public function defineProperty(string $name, PropertyDescriptor $desc): void
