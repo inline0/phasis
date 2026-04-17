@@ -366,7 +366,24 @@ class Environment
             return;
         }
 
-        // At the global (root) environment and the binding was not found.
+        // At the global (root) environment and the binding was not found
+        // in $this->bindings. Check if the linked global object has this
+        // property (e.g. set via Object.defineProperty on the global object).
+        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+            $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
+            if ($desc !== null && $desc->writable === false) {
+                if ($strict) {
+                    throw new TypeError(
+                        "Cannot assign to read only property '{$name}'"
+                    );
+                }
+                return; // Silently fail in sloppy mode
+            }
+            $this->bindings[$name] = $value;
+            $this->linkedObject->set($name, $value);
+            return;
+        }
+
         if ($strict) {
             throw new ReferenceError("{$name} is not defined");
         }

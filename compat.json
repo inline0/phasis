@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-17T22:59:46+00:00",
-    "updatedAt": "2026-04-17T22:59:46+00:00",
+    "generatedAt": "2026-04-17T23:05:11+00:00",
+    "updatedAt": "2026-04-17T23:05:11+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "7d360c5",
+        "commit": "8a2a7fa",
         "isDirty": true
     },
     "environment": {
@@ -222,16 +222,16 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 23658,
-            "fail": 1981,
-            "skip": 17759,
+            "pass": 24166,
+            "fail": 2056,
+            "skip": 17926,
             "blocked": 0,
-            "pending": 6733,
+            "pending": 5983,
             "running": 375,
-            "attempted": 25639,
-            "known": 43398,
+            "attempted": 26222,
+            "known": 44148,
             "total": 50506,
-            "passRate": 92.3
+            "passRate": 92.2
         },
         "areas": [
             {
@@ -251,16 +251,16 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 11236,
-                "fail": 563,
-                "skip": 6789,
+                "pass": 11703,
+                "fail": 605,
+                "skip": 6905,
                 "blocked": 0,
-                "pending": 3766,
+                "pending": 3141,
                 "running": 375,
-                "attempted": 11799,
-                "known": 18588,
+                "attempted": 12308,
+                "known": 19213,
                 "total": 22729,
-                "passRate": 95.2
+                "passRate": 95.1
             },
             {
                 "name": "harness",
@@ -307,16 +307,16 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 493,
-                "fail": 304,
-                "skip": 131,
+                "pass": 534,
+                "fail": 337,
+                "skip": 182,
                 "blocked": 0,
-                "pending": 704,
+                "pending": 579,
                 "running": 0,
-                "attempted": 797,
-                "known": 928,
+                "attempted": 871,
+                "known": 1053,
                 "total": 1632,
-                "passRate": 61.9
+                "passRate": 61.3
             }
         ],
         "groups": [
@@ -579,16 +579,16 @@
                 "name": "built-ins/Array",
                 "area": "built-ins",
                 "status": "running",
-                "pass": 1855,
-                "fail": 79,
-                "skip": 66,
+                "pass": 2056,
+                "fail": 84,
+                "skip": 110,
                 "blocked": 0,
-                "pending": 700,
-                "running": 375,
-                "attempted": 1934,
-                "known": 2000,
+                "pending": 575,
+                "running": 250,
+                "attempted": 2140,
+                "known": 2250,
                 "total": 3075,
-                "passRate": 95.9
+                "passRate": 96.1
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -1028,15 +1028,15 @@
             {
                 "name": "built-ins/Promise",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 51,
-                "fail": 18,
-                "skip": 62,
+                "status": "running",
+                "pass": 105,
+                "fail": 37,
+                "skip": 114,
                 "blocked": 0,
-                "pending": 500,
-                "running": 0,
-                "attempted": 69,
-                "known": 131,
+                "pending": 250,
+                "running": 125,
+                "attempted": 142,
+                "known": 256,
                 "total": 631,
                 "passRate": 73.9
             },
@@ -1074,16 +1074,16 @@
                 "name": "built-ins/RegExp",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 322,
-                "fail": 81,
-                "skip": 847,
+                "pass": 534,
+                "fail": 99,
+                "skip": 867,
                 "blocked": 0,
-                "pending": 617,
+                "pending": 367,
                 "running": 0,
-                "attempted": 403,
-                "known": 1250,
+                "attempted": 633,
+                "known": 1500,
                 "total": 1867,
-                "passRate": 79.9
+                "passRate": 84.4
             },
             {
                 "name": "built-ins/RegExpStringIteratorPrototype",
@@ -2334,16 +2334,16 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 493,
-                "fail": 304,
-                "skip": 131,
+                "pass": 534,
+                "fail": 337,
+                "skip": 182,
                 "blocked": 0,
-                "pending": 500,
+                "pending": 375,
                 "running": 0,
-                "attempted": 797,
-                "known": 928,
+                "attempted": 871,
+                "known": 1053,
                 "total": 1428,
-                "passRate": 61.9
+                "passRate": 61.3
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2415,6 +2415,19 @@
                     "...",
                     "test262/test/language/literals/string/S7.8.4_A7.2_T1.js",
                     "test262/test/language/literals/string/S7.8.4_A7.2_T2.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 16.755,
+                "filesCount": 125,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/fractions.js",
+                    "test262/test/staging/sm/Date/makeday-year-month-is-infinity.js",
+                    "...",
+                    "test262/test/staging/sm/Iterator/prototype/find/check-fn-after-getting-iterator.js",
+                    "test262/test/staging/sm/Iterator/prototype/find/coerce-result-to-boolean.js"
                 ]
             },
             {
@@ -2623,19 +2636,6 @@
                     "...",
                     "test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-74.js",
                     "test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-75.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArrayConstructors",
-                "kind": "normal",
-                "durationSec": 2.956,
-                "filesCount": 236,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-out-of-bounds-non-strict.js",
-                    "test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-out-of-bounds-strict.js",
-                    "...",
-                    "test262/test/built-ins/TypedArrayConstructors/prototype/values/bigint-inherited.js",
-                    "test262/test/built-ins/TypedArrayConstructors/prototype/values/inherited.js"
                 ]
             }
         ]

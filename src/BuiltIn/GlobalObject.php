@@ -298,10 +298,10 @@ class GlobalObject
         );
         $thrower->preventExtensions();
 
-        // caller/arguments accessor: non-configurable per spec
+        // caller/arguments accessor: configurable per ES2024+ spec 10.2.4.
         $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
             enumerable: false,
-            configurable: false,
+            configurable: true,
             get: $thrower,
             set: $thrower,
         );
@@ -366,20 +366,37 @@ class GlobalObject
             $boundArgs = array_slice($args, 1);
             $target = $this_;
 
-            // Per spec 20.2.3.2, the bound function's length is max(0, target.length - |boundArgs|).
-            // Handle Infinity/NaN correctly: do not cast to int.
+            // Per spec 20.2.3.2 steps 5-7:
+            // 5. Let targetHasLength be ? HasOwnProperty(Target, "length").
+            // 6. If targetHasLength, get Target.length; if type is Number, apply ToIntegerOrInfinity.
+            // 7. Else L = 0.
             $boundLengthFloat = 0.0;
-            $targetLengthVal = $target->get('length');
-            if ($targetLengthVal instanceof JsNumber) {
-                $tl = $targetLengthVal->value;
-                if (!is_nan($tl)) {
-                    $boundLengthFloat = max(0.0, $tl - count($boundArgs));
+            if ($target->hasOwnProperty('length')) {
+                $targetLengthVal = $target->get('length');
+                if ($targetLengthVal instanceof JsNumber) {
+                    $tl = $targetLengthVal->value;
+                    if (is_nan($tl) || $tl === -0.0) {
+                        $tl = 0.0;
+                    } elseif ($tl === INF) {
+                        $boundLengthFloat = INF;
+                        $tl = null; // skip further calculation
+                    } elseif ($tl === -INF) {
+                        $tl = 0.0;
+                    } else {
+                        // ToIntegerOrInfinity: truncate toward zero.
+                        $tl = $tl >= 0 ? floor($tl) : ceil($tl);
+                    }
+                    if ($tl !== null) {
+                        $boundLengthFloat = max(0.0, $tl - count($boundArgs));
+                    }
                 }
+                // If type is not Number, L stays 0.
             }
             // Determine target name for the bound function's name.
-            $targetNameProp = $target->getOwnPropertyDescriptor('name');
-            $targetName = $targetNameProp !== null && $targetNameProp->value instanceof JsString
-                ? $targetNameProp->value->value
+            // Per spec step 12-13: Get(Target, "name"), ReturnIfAbrupt.
+            $targetNameVal = $target->get('name');
+            $targetName = $targetNameVal instanceof JsString
+                ? $targetNameVal->value
                 : '';
             $boundName = 'bound ' . $targetName;
 

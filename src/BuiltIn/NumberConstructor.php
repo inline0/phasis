@@ -194,11 +194,16 @@ class NumberConstructor
         return function (JsValue $this_, array $args): JsValue {
             // Get the number value from `this`.
             $numValue = self::extractNumberValue($this_);
-            $digits = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
 
-            if ($digits < 0 || $digits > 100) {
+            // Per spec step 2: ToIntegerOrInfinity(fractionDigits).
+            // Must be done before NaN/Infinity checks on the number value.
+            $fdRaw = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+
+            // Infinity/NaN from ToIntegerOrInfinity means out of range.
+            if (is_infinite($fdRaw) || is_nan($fdRaw) || $fdRaw < 0 || $fdRaw > 100) {
                 throw new \PhpJs\Exceptions\RangeError('toFixed() digits argument must be between 0 and 100');
             }
+            $digits = (int) $fdRaw;
 
             if (is_nan($numValue)) {
                 return new JsString('NaN');
@@ -206,6 +211,11 @@ class NumberConstructor
 
             if (is_infinite($numValue)) {
                 return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
+            }
+
+            // Per spec step 9: if abs(x) >= 10^21, return ToString(x).
+            if (abs($numValue) >= 1e21) {
+                return new JsString((new \PhpJs\Value\JsNumber($numValue))->toJsString());
             }
 
             return new JsString(number_format($numValue, $digits, '.', ''));
@@ -410,25 +420,46 @@ class NumberConstructor
      */
     private static function formatExponential(float $value, int $fractionDigits): string
     {
-        // Calculate exponent.
-        $e = (int) floor(log10($value));
-        // Compute n such that value ~= n * 10^(e - fractionDigits).
-        // n should be an integer with fractionDigits+1 digits.
-        $divisor = 10.0 ** ($e - $fractionDigits);
-        $n = round($value / $divisor);
+        // Use sprintf with extra precision to get enough digits, then
+        // apply JavaScript-style rounding (round half away from zero).
+        $extraDigits = min($fractionDigits + 5, 53);
+        $raw = @sprintf('%.' . $extraDigits . 'e', $value);
+        $parts = explode('e', $raw);
+        $rawMantissa = $parts[0];
+        $e = (int) $parts[1];
 
-        // Check if rounding pushed n to next power of 10.
-        $maxN = 10.0 ** ($fractionDigits + 1);
-        if ($n >= $maxN) {
-            $e++;
-            $divisor = 10.0 ** ($e - $fractionDigits);
-            $n = round($value / $divisor);
+        // Remove the decimal point to get a digit string.
+        $rawDigits = str_replace('.', '', $rawMantissa);
+        // rawDigits has (extraDigits + 1) significant digits.
+        // We need (fractionDigits + 1) significant digits.
+        $needed = $fractionDigits + 1;
+
+        if (strlen($rawDigits) > $needed) {
+            // Round the digit string to $needed digits.
+            // JavaScript uses round-half-away-from-zero.
+            $truncated = substr($rawDigits, 0, $needed);
+            $nextDigit = (int) ($rawDigits[$needed] ?? '0');
+            if ($nextDigit >= 5) {
+                // Round up.
+                $carry = 1;
+                $digits = str_split($truncated);
+                for ($i = count($digits) - 1; $i >= 0 && $carry; $i--) {
+                    $d = (int) $digits[$i] + $carry;
+                    $digits[$i] = (string) ($d % 10);
+                    $carry = (int) ($d >= 10);
+                }
+                $nStr = implode('', $digits);
+                if ($carry) {
+                    // Rounding caused overflow (e.g. 999 -> 1000).
+                    $nStr = '1' . substr($nStr, 0, $needed - 1);
+                    $e++;
+                }
+            } else {
+                $nStr = $truncated;
+            }
+        } else {
+            $nStr = str_pad($rawDigits, $needed, '0');
         }
-
-        $nStr = number_format($n, 0, '', '');
-
-        // Pad to fractionDigits+1 digits if needed.
-        $nStr = str_pad($nStr, $fractionDigits + 1, '0');
 
         if ($fractionDigits > 0) {
             $mantissa = $nStr[0] . '.' . substr($nStr, 1);
