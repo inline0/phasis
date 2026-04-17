@@ -441,16 +441,16 @@ class JsObject implements JsValue
 
         if ($current->isAccessorDescriptor()) {
             if ($current->configurable === false) {
-                if ($desc->set !== null && $desc->set !== $current->set) {
+                if ($desc->hasSet && $desc->set !== $current->set) {
                     return false;
                 }
-                if ($desc->get !== null && $desc->get !== $current->get) {
+                if ($desc->hasGet && $desc->get !== $current->get) {
                     return false;
                 }
             }
             $this->symbolProperties[$id] = PropertyDescriptor::accessor(
-                get: $desc->get ?? $current->get,
-                set: $desc->set ?? $current->set,
+                get: $desc->hasGet ? $desc->get : $current->get,
+                set: $desc->hasSet ? $desc->set : $current->set,
                 enumerable: $desc->enumerable ?? $current->enumerable ?? true,
                 configurable: $desc->configurable ?? $current->configurable ?? true,
             );
@@ -463,8 +463,8 @@ class JsObject implements JsValue
             writable: $desc->writable ?? $current->writable,
             enumerable: $desc->enumerable ?? $current->enumerable,
             configurable: $desc->configurable ?? $current->configurable,
-            get: $desc->get ?? $current->get,
-            set: $desc->set ?? $current->set,
+            get: $desc->hasGet ? $desc->get : ($desc->get ?? $current->get),
+            set: $desc->hasSet ? $desc->set : ($desc->set ?? $current->set),
         );
         return true;
     }
@@ -848,16 +848,20 @@ class JsObject implements JsValue
         // Both are accessor descriptors: merge fields.
         if ($current->isAccessorDescriptor()) {
             if ($current->configurable === false) {
-                if ($desc->set !== null && $desc->set !== $current->set) {
+                // Per spec 10.1.6.3 step 10.a: if desc has [[Set]] and it is
+                // not the same as current [[Set]], reject.
+                if ($desc->hasSet && $desc->set !== $current->set) {
                     return false;
                 }
-                if ($desc->get !== null && $desc->get !== $current->get) {
+                // Per spec 10.1.6.3 step 10.b: if desc has [[Get]] and it is
+                // not the same as current [[Get]], reject.
+                if ($desc->hasGet && $desc->get !== $current->get) {
                     return false;
                 }
             }
             $merged = PropertyDescriptor::accessor(
-                get: $desc->get ?? $current->get,
-                set: $desc->set ?? $current->set,
+                get: $desc->hasGet ? $desc->get : $current->get,
+                set: $desc->hasSet ? $desc->set : $current->set,
                 enumerable: $desc->enumerable ?? $current->enumerable ?? true,
                 configurable: $desc->configurable ?? $current->configurable ?? true,
             );
