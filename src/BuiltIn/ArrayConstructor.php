@@ -1417,6 +1417,17 @@ class ArrayConstructor
             $indexVal = $data->get('index');
             $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
 
+            // Per spec 23.1.5.2.1 step 8: if the array is a TypedArray
+            // with a detached buffer, throw TypeError.
+            if ($array instanceof \PhpJs\Value\JsTypedArray) {
+                $buffer = $array->getBuffer();
+                if ($buffer->isDetached()) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Cannot perform Array Iterator.prototype.next on a detached ArrayBuffer',
+                    );
+                }
+            }
+
             // Re-read length each time for mutable iteration.
             $len = self::getLen($array);
 
