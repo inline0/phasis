@@ -66,13 +66,19 @@ class ErrorConstructor
             // Error.prototype is non-writable, non-configurable per spec
             $constructor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
 
-            // For Error subtypes, set prototype to inherit from Error.prototype
+            // For Error subtypes, set prototype chain:
+            // - SubError.prototype inherits from Error.prototype
+            // - SubError constructor inherits from Error constructor
             if ($name !== 'Error' && $errorProto !== null) {
                 $proto->setPrototype($errorProto);
+                if ($errorConstructor !== null) {
+                    $constructor->setPrototype($errorConstructor);
+                }
             }
 
             if ($name === 'Error') {
                 $errorProto = $proto;
+                $errorConstructor = $constructor;
 
                 // Error.isError(arg) — TC39 Stage 3 proposal
                 $isErrorFn = JsFunction::fromCallable('isError', function (JsValue $this_, array $args): JsValue {

@@ -225,6 +225,15 @@ class JsArray extends JsObject
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
         if ($name === 'length') {
+            // Array length is always non-configurable, non-enumerable.
+            // Attempting to change these attributes must fail (step 3.a.i of 15.4.5.1).
+            if ($desc->configurable === true || $desc->enumerable === true) {
+                return false;
+            }
+            // Cannot convert length to an accessor property.
+            if ($desc->get !== null || $desc->set !== null) {
+                return false;
+            }
             // Handle value change.
             if ($desc->value !== null) {
                 $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
@@ -236,11 +245,31 @@ class JsArray extends JsObject
                     return false;
                 }
                 $newLen = $uint32;
-                // Delete elements above new length (per ArraySetLength).
-                for ($i = $newLen; $i < $this->length; $i++) {
-                    $this->delete((string) $i);
+                // Delete elements above new length (per ArraySetLength step 3.l).
+                // Must delete in descending order, stopping if a non-configurable
+                // element is encountered.
+                $deleteSucceeded = true;
+                for ($i = $this->length - 1; $i >= $newLen; $i--) {
+                    $key = (string) $i;
+                    if ($this->hasOwnProperty($key)) {
+                        $elemDesc = parent::getOwnPropertyDescriptor($key);
+                        if ($elemDesc !== null && $elemDesc->configurable === false) {
+                            // Non-configurable element blocks deletion.
+                            $newLen = $i + 1;
+                            $deleteSucceeded = false;
+                            break;
+                        }
+                        $this->delete($key);
+                    }
                 }
                 $this->length = $newLen;
+                if (!$deleteSucceeded) {
+                    // Handle writable change even on failure.
+                    if ($desc->writable === false) {
+                        $this->lengthWritable = false;
+                    }
+                    return false;
+                }
             }
             // Handle writable change (e.g. Object.freeze sets writable to false).
             if ($desc->writable !== null) {

@@ -467,7 +467,14 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : mb_strlen($str, 'UTF-8');
+            $strLen = mb_strlen($str, 'UTF-8');
+            if (isset($args[1])) {
+                $numPos = TypeConversion::toNumber($args[1]);
+                // Per spec: if numPos is NaN, let pos be +Infinity (search entire string).
+                $fromIndex = is_nan($numPos) ? $strLen : (int) $numPos;
+            } else {
+                $fromIndex = $strLen;
+            }
 
             if ($search === '') {
                 return new JsNumber((float) min($fromIndex, mb_strlen($str, 'UTF-8')));
@@ -1166,7 +1173,20 @@ class StringPrototype
     private static function toStringFn(): \Closure
     {
         return function (JsValue $this_): JsValue {
-            return new JsString(self::extractString($this_));
+            // Per spec: thisStringValue(this value) — throws TypeError if not a
+            // String primitive or a String wrapper object.
+            if ($this_ instanceof JsString) {
+                return $this_;
+            }
+            if ($this_ instanceof JsObject) {
+                $prim = $this_->get('[[PrimitiveValue]]');
+                if ($prim instanceof JsString) {
+                    return $prim;
+                }
+            }
+            throw new \PhpJs\Exceptions\TypeError(
+                'String.prototype.valueOf requires that \'this\' be a String',
+            );
         };
     }
 
@@ -1673,39 +1693,40 @@ class StringPrototype
             // Step 3: ToString(O)
             $str = self::extractString($this_);
 
-            // Non-object or no @@search: convert to regexp and call builtin search.
-            // RegExp argument: use PCRE to find the position.
-            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
-                $pattern = TypeConversion::toString($searchArg->get('source'));
-                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
-                $pcreFlags = '';
-                if (str_contains($flags, 'i')) {
-                    $pcreFlags .= 'i';
-                }
-                if (str_contains($flags, 'm')) {
-                    $pcreFlags .= 'm';
-                }
-                if (str_contains($flags, 's')) {
-                    $pcreFlags .= 's';
-                }
-                $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
-                if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
-                    // Convert byte offset to character position.
-                    $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
-                    return new JsNumber((float) $charPos);
-                }
-                return new JsNumber(-1.0);
-            }
-
-            // Per spec: undefined/null argument → RegExpCreate("", undefined) → /(?:)/.
-            // /(?:)/ matches at position 0 in any string.
-            if ($searchArg instanceof JsUndefined || $searchArg instanceof JsNull) {
+            // Step 4-5: Let rx = RegExpCreate(regexp, undefined), then Invoke(rx, @@search, [string]).
+            // Per spec, undefined → /(?:)/ which matches at position 0.
+            if ($searchArg instanceof JsUndefined) {
                 return new JsNumber(0.0);
             }
 
-            $search = TypeConversion::toString($searchArg);
-            $pos = mb_strpos($str, $search, 0, 'UTF-8');
-            return new JsNumber($pos === false ? -1.0 : (float) $pos);
+            // For RegExp objects that already have source/flags, use them directly.
+            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
+                $pattern = TypeConversion::toString($searchArg->get('source'));
+                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
+            } else {
+                // For null, numbers, strings, objects without @@search:
+                // RegExpCreate(ToString(arg), undefined) creates a regexp from the string.
+                $pattern = TypeConversion::toString($searchArg);
+                $flags = '';
+            }
+
+            $pcreFlags = '';
+            if (str_contains($flags, 'i')) {
+                $pcreFlags .= 'i';
+            }
+            if (str_contains($flags, 'm')) {
+                $pcreFlags .= 'm';
+            }
+            if (str_contains($flags, 's')) {
+                $pcreFlags .= 's';
+            }
+            $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+            if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
+                // Convert byte offset to character position.
+                $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
+                return new JsNumber((float) $charPos);
+            }
+            return new JsNumber(-1.0);
         };
     }
 

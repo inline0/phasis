@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-17T23:35:55+00:00`
+- Snapshot time: `2026-04-17T23:40:56+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `137`
 - Test files: `50506`
-- Git: `main` @ `c20e2ce` (dirty)
+- Git: `main` @ `3a3bfee` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 26594 | 2830 | 19092 | 0 | 1889 | 101 | 29424 | 48516 | 50506 | 90.4% |
+| 26594 | 2830 | 19092 | 0 | 1894 | 96 | 29424 | 48516 | 50506 | 90.4% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 750 | 190 | 14 | 0 | 125 | 0 | 79.8% |
-| built-ins | RUNNING | 13080 | 703 | 7650 | 0 | 1227 | 69 | 94.9% |
+| built-ins | RUNNING | 13080 | 703 | 7650 | 0 | 1200 | 96 | 94.9% |
 | harness | INCOMPLETE | 40 | 1 | 17 | 0 | 58 | 0 | 97.6% |
 | intl402 | INCOMPLETE | 0 | 1136 | 356 | 0 | 74 | 0 | 0.0% |
 | language | INCOMPLETE | 12090 | 394 | 10743 | 0 | 157 | 0 | 96.8% |
-| staging | RUNNING | 634 | 406 | 312 | 0 | 248 | 32 | 61.0% |
+| staging | INCOMPLETE | 634 | 406 | 312 | 0 | 280 | 0 | 61.0% |
 
 ## Group Coverage
 
@@ -50,7 +50,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/literals | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | annexB/language/statements | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
 | built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| built-ins/Array | RUNNING | 2415 | 96 | 176 | 0 | 319 | 69 | 96.2% |
+| built-ins/Array | RUNNING | 2415 | 96 | 176 | 0 | 356 | 32 | 96.2% |
 | built-ins/ArrayBuffer | PARTIAL | 75 | 5 | 112 | 0 | 0 | 0 | 93.8% |
 | built-ins/ArrayIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
 | built-ins/AsyncDisposableStack | SKIPPED | 0 | 0 | 52 | 0 | 0 | 0 | n/a |
@@ -80,7 +80,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/NativeErrors | PARTIAL | 93 | 17 | 29 | 0 | 0 | 0 | 84.5% |
 | built-ins/Number | PARTIAL | 326 | 8 | 1 | 0 | 0 | 0 | 97.6% |
 | built-ins/Object | PARTIAL | 3323 | 74 | 13 | 0 | 0 | 0 | 97.8% |
-| built-ins/Promise | INCOMPLETE | 115 | 51 | 215 | 0 | 250 | 0 | 69.3% |
+| built-ins/Promise | RUNNING | 115 | 51 | 215 | 0 | 186 | 64 | 69.3% |
 | built-ins/Proxy | PARTIAL | 268 | 5 | 38 | 0 | 0 | 0 | 98.2% |
 | built-ins/Reflect | PARTIAL | 152 | 1 | 0 | 0 | 0 | 0 | 99.3% |
 | built-ins/RegExp | INCOMPLETE | 664 | 109 | 969 | 0 | 125 | 0 | 85.9% |
@@ -167,7 +167,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
 | staging/explicit-resource-management | SKIPPED | 0 | 0 | 54 | 0 | 0 | 0 | n/a |
 | staging/set-methods | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| staging/sm | RUNNING | 611 | 364 | 203 | 0 | 218 | 32 | 62.7% |
+| staging/sm | INCOMPLETE | 611 | 364 | 203 | 0 | 250 | 0 | 62.7% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PARTIAL | 23 | 42 | 6 | 0 | 0 | 0 | 35.4% |
 
