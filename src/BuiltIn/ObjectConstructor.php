@@ -449,11 +449,13 @@ class ObjectConstructor
                     throw new TypeError('Getter must be a function');
                 }
                 $keyVal = TypeConversion::toPropertyKey($args[0] ?? JsUndefined::instance());
+                // Per spec: desc = {[[Get]]: getter, [[Enumerable]]: true, [[Configurable]]: true}
                 $desc = PropertyDescriptor::accessor(
                     get: $getter,
                     enumerable: true,
                     configurable: true,
                 );
+                $desc->hasGet = true;
                 if ($keyVal instanceof JsSymbol) {
                     $success = $obj->definePropertyBySymbol($keyVal, $desc);
                     if (!$success) {
@@ -480,11 +482,13 @@ class ObjectConstructor
                     throw new TypeError('Setter must be a function');
                 }
                 $keyVal = TypeConversion::toPropertyKey($args[0] ?? JsUndefined::instance());
+                // Per spec: desc = {[[Set]]: setter, [[Enumerable]]: true, [[Configurable]]: true}
                 $desc = PropertyDescriptor::accessor(
                     set: $setter,
                     enumerable: true,
                     configurable: true,
                 );
+                $desc->hasSet = true;
                 if ($keyVal instanceof JsSymbol) {
                     $success = $obj->definePropertyBySymbol($keyVal, $desc);
                     if (!$success) {
