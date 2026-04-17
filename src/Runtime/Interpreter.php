@@ -7293,6 +7293,21 @@ class Interpreter
         $isGlobal = str_contains($flags, 'g');
         $isSticky = str_contains($flags, 'y');
 
+        // Analyze the original ES pattern for repeated groups that need
+        // ES-compliant capture reset and nullable quantifier handling.
+        $repeatedGroupAnalysis = self::analyzeRepeatedGroups($pattern);
+        $hasRepeatedGroupFixes = !empty($repeatedGroupAnalysis['repeatedGroups']);
+
+        // Build the PCRE flags string (without the delimiter and 'u') for inner patterns.
+        $innerPcreFlags = $pcreFlags . 'u';
+
+        // Transform function for building PCRE patterns from ES sub-patterns.
+        $self = $this;
+        $transformFn = static function (string $esSubPattern) use ($self): string {
+            $transformed = $self->transformEsPatternForPcre($esSubPattern);
+            return $self->escapeForPcreDelimiter($transformed);
+        };
+
         // Store the compiled PCRE pattern as a non-enumerable internal slot so prototype
         // methods (exec, test) installed on RegExp.prototype can access it via $this_.
         $obj->defineOwnProperty(
@@ -7301,7 +7316,7 @@ class Interpreter
         );
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
-        $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
+        $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky, $hasRepeatedGroupFixes, $repeatedGroupAnalysis, $innerPcreFlags, $transformFn): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
             $strLen = mb_strlen($str, 'UTF-8');
 
@@ -7331,8 +7346,28 @@ class Interpreter
                     $obj->set('lastIndex', new JsNumber(0.0), true);
                     return JsNull::instance();
                 }
+
+                // Apply ES-compliant fixes for repeated groups.
+                if ($hasRepeatedGroupFixes) {
+                    // Fix 1: Extend match for nullable quantified groups.
+                    $matches = self::fixNullableQuantifier(
+                        $matches,
+                        $repeatedGroupAnalysis,
+                        $str,
+                        $innerPcreFlags,
+                        $transformFn,
+                    );
+                    // Fix 2: Reset captures inside repeated groups to last iteration values.
+                    $matches = self::fixRepeatedGroupCaptures(
+                        $matches,
+                        $repeatedGroupAnalysis,
+                        $innerPcreFlags,
+                        $transformFn,
+                    );
+                }
+
                 // Convert byte position back to character position.
-                $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
+                $matchCharPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
                 $matchStr = $matches[0][0];
                 $matchCharLen = mb_strlen($matchStr, 'UTF-8');
 
@@ -7449,7 +7484,7 @@ class Interpreter
      * This transforms \s and \S outside character classes to include FEFF.
      * Inside character classes, \s is replaced with \s\x{FEFF}.
      */
-    private function transformEsPatternForPcre(string $pattern): string
+    public function transformEsPatternForPcre(string $pattern): string
     {
         // Count capturing groups for backreference validation (Annex B).
         $numGroups = $this->countCapturingGroups($pattern);
@@ -7861,7 +7896,7 @@ class Interpreter
      * Escape unescaped forward slashes for use with the PCRE / delimiter.
      * Slashes already preceded by an odd number of backslashes are left as-is.
      */
-    private function escapeForPcreDelimiter(string $pattern): string
+    public function escapeForPcreDelimiter(string $pattern): string
     {
         $result = '';
         $len = strlen($pattern);
@@ -8695,5 +8730,545 @@ class Interpreter
             $result = $diff . $result;
         }
         return ltrim($result, '0') ?: '0';
+    }
+
+    /**
+     * Analyze a regex pattern to find quantified (repeated) capturing groups
+     * and determine which inner captures need ES-compliant reset behavior.
+     *
+     * Returns an array with:
+     *   'repeatedGroups' => array of groupIndex => [
+     *       'innerCaptures' => list of capture indices inside this repeated group,
+     *       'bodyPattern' => the pattern text of the group body,
+     *       'nullable' => whether the body can match empty,
+     *   ]
+     *
+     * @return array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>}
+     */
+    public static function analyzeRepeatedGroups(string $pattern): array
+    {
+        $len = strlen($pattern);
+        $groupStack = []; // stack of [captureIndex|null, openPos]
+        $groups = []; // captureIndex => [openPos, closePos, quantifier, bodyPattern]
+        $captureIndex = 0;
+        $inCharClass = false;
+
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $pattern[$i];
+
+            if ($ch === '\\' && $i + 1 < $len) {
+                $i++;
+                continue;
+            }
+
+            if ($ch === '[' && !$inCharClass) {
+                $inCharClass = true;
+                continue;
+            }
+            if ($ch === ']' && $inCharClass) {
+                $inCharClass = false;
+                continue;
+            }
+            if ($inCharClass) {
+                continue;
+            }
+
+            if ($ch === '(') {
+                $isCapturing = false;
+                if ($i + 1 < $len && $pattern[$i + 1] !== '?') {
+                    $isCapturing = true;
+                } elseif (
+                    $i + 3 < $len && $pattern[$i + 1] === '?'
+                    && $pattern[$i + 2] === '<'
+                    && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!'
+                ) {
+                    $isCapturing = true;
+                }
+
+                if ($isCapturing) {
+                    $captureIndex++;
+                    $groupStack[] = [$captureIndex, $i];
+                    $groups[$captureIndex] = [
+                        'openPos' => $i,
+                        'closePos' => null,
+                        'quantifier' => null,
+                    ];
+                } else {
+                    $groupStack[] = [null, $i];
+                }
+                continue;
+            }
+
+            if ($ch === ')' && !empty($groupStack)) {
+                $popped = array_pop($groupStack);
+                $grpIdx = $popped[0];
+
+                if ($grpIdx !== null) {
+                    $groups[$grpIdx]['closePos'] = $i;
+
+                    // Check for quantifier after closing paren.
+                    if ($i + 1 < $len) {
+                        $next = $pattern[$i + 1];
+                        if ($next === '*' || $next === '+' || $next === '?') {
+                            $groups[$grpIdx]['quantifier'] = $next;
+                        } elseif ($next === '{') {
+                            $groups[$grpIdx]['quantifier'] = '{';
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        $repeatedGroups = [];
+        foreach ($groups as $idx => $g) {
+            // Only process groups that have a repeating quantifier (* or +).
+            // {n,m} with m > 1 also counts, but * and + are the common cases.
+            if ($g['quantifier'] !== '*' && $g['quantifier'] !== '+' && $g['quantifier'] !== '{') {
+                continue;
+            }
+            if ($g['closePos'] === null) {
+                continue;
+            }
+
+            // Extract the body pattern (everything between the parens).
+            $bodyStart = $g['openPos'] + 1;
+            // Skip past named group prefix (?<name>) if present.
+            if (
+                $bodyStart < $len && $pattern[$bodyStart] === '?'
+                && $bodyStart + 1 < $len && $pattern[$bodyStart + 1] === '<'
+            ) {
+                $end = strpos($pattern, '>', $bodyStart + 2);
+                if ($end !== false) {
+                    $bodyStart = $end + 1;
+                }
+            }
+            $bodyPattern = substr($pattern, $bodyStart, $g['closePos'] - $bodyStart);
+
+            // Find inner captures (captures whose open position is between this group's parens).
+            $innerCaptures = [];
+            foreach ($groups as $innerIdx => $inner) {
+                if (
+                    $innerIdx !== $idx
+                    && $inner['openPos'] > $g['openPos']
+                    && $inner['closePos'] !== null
+                    && $inner['closePos'] < $g['closePos']
+                ) {
+                    $innerCaptures[] = $innerIdx;
+                }
+            }
+
+            // Check if body is nullable (can match empty string).
+            $nullable = self::isPatternNullable($bodyPattern);
+
+            $repeatedGroups[$idx] = [
+                'innerCaptures' => $innerCaptures,
+                'bodyPattern' => $bodyPattern,
+                'nullable' => $nullable,
+            ];
+        }
+
+        return ['repeatedGroups' => $repeatedGroups];
+    }
+
+    /**
+     * Check if a regex pattern can match the empty string.
+     * This is a conservative check: it returns true if the pattern appears nullable.
+     * For simple patterns (concatenation of optional elements), this is accurate.
+     */
+    private static function isPatternNullable(string $pattern): bool
+    {
+        // A concatenation is nullable if every element is nullable.
+        // An alternation is nullable if any branch is nullable.
+        // We parse the pattern at the top level and check each element.
+        $len = strlen($pattern);
+        $i = 0;
+        $inAlternation = false;
+        $currentBranchNullable = true;
+        $anyBranchNullable = false;
+
+        while ($i < $len) {
+            $ch = $pattern[$i];
+
+            if ($ch === '\\' && $i + 1 < $len) {
+                // Escaped character: not nullable by itself.
+                $i += 2;
+                // Check for quantifier after.
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*')) {
+                    $i++;
+                    if ($i < $len && $pattern[$i] === '?') {
+                        $i++; // lazy modifier
+                    }
+                    // nullable element, continue
+                } elseif ($i < $len && $pattern[$i] === '{') {
+                    // Check if {0,...} or {n,...} with n > 0.
+                    $j = $i + 1;
+                    $digits = '';
+                    while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                        $digits .= $pattern[$j];
+                        $j++;
+                    }
+                    if ($digits !== '' && (int) $digits === 0) {
+                        // {0,...} is nullable.
+                        while ($j < $len && $pattern[$j] !== '}') {
+                            $j++;
+                        }
+                        $i = $j + 1;
+                    } else {
+                        $currentBranchNullable = false;
+                    }
+                } elseif ($i < $len && $pattern[$i] === '+') {
+                    $currentBranchNullable = false;
+                    $i++;
+                } else {
+                    $currentBranchNullable = false;
+                }
+                continue;
+            }
+
+            if ($ch === '[') {
+                // Character class: not nullable by itself.
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                if ($i < $len) {
+                    $i++; // skip ]
+                }
+                // Check for quantifier after.
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*')) {
+                    $i++;
+                    if ($i < $len && $pattern[$i] === '?') {
+                        $i++;
+                    }
+                } elseif ($i < $len && $pattern[$i] === '{') {
+                    $j = $i + 1;
+                    $digits = '';
+                    while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                        $digits .= $pattern[$j];
+                        $j++;
+                    }
+                    if ($digits !== '' && (int) $digits === 0) {
+                        while ($j < $len && $pattern[$j] !== '}') {
+                            $j++;
+                        }
+                        $i = $j + 1;
+                    } else {
+                        $currentBranchNullable = false;
+                    }
+                } elseif ($i < $len && $pattern[$i] === '+') {
+                    $currentBranchNullable = false;
+                    $i++;
+                } else {
+                    $currentBranchNullable = false;
+                }
+                continue;
+            }
+
+            if ($ch === '|') {
+                // Alternation boundary.
+                $inAlternation = true;
+                if ($currentBranchNullable) {
+                    $anyBranchNullable = true;
+                }
+                $currentBranchNullable = true; // reset for next branch
+                $i++;
+                continue;
+            }
+
+            if ($ch === '(') {
+                // Group: skip to matching close paren and check quantifier.
+                $depth = 1;
+                $i++;
+                while ($i < $len && $depth > 0) {
+                    if ($pattern[$i] === '\\') {
+                        $i += 2;
+                        continue;
+                    }
+                    if ($pattern[$i] === '(') {
+                        $depth++;
+                    } elseif ($pattern[$i] === ')') {
+                        $depth--;
+                    }
+                    $i++;
+                }
+                // $i is now past the closing ')'.
+                // Check for quantifier.
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*')) {
+                    $i++;
+                    if ($i < $len && $pattern[$i] === '?') {
+                        $i++;
+                    }
+                    // Nullable (group with ? or * quantifier).
+                } elseif ($i < $len && $pattern[$i] === '{') {
+                    $j = $i + 1;
+                    $digits = '';
+                    while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                        $digits .= $pattern[$j];
+                        $j++;
+                    }
+                    if ($digits !== '' && (int) $digits === 0) {
+                        while ($j < $len && $pattern[$j] !== '}') {
+                            $j++;
+                        }
+                        $i = $j + 1;
+                    } else {
+                        $currentBranchNullable = false;
+                    }
+                } elseif ($i < $len && $pattern[$i] === '+') {
+                    $currentBranchNullable = false;
+                    $i++;
+                } else {
+                    // No quantifier: the group itself must be nullable.
+                    // We'd need to recurse, but for simplicity treat as non-nullable.
+                    $currentBranchNullable = false;
+                }
+                continue;
+            }
+
+            // Anchors and zero-width assertions are nullable.
+            if ($ch === '^' || $ch === '$') {
+                $i++;
+                continue;
+            }
+
+            // Literal character or '.': not nullable by itself.
+            $i++;
+            if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*')) {
+                $i++;
+                if ($i < $len && $pattern[$i] === '?') {
+                    $i++;
+                }
+                // nullable
+            } elseif ($i < $len && $pattern[$i] === '{') {
+                $j = $i + 1;
+                $digits = '';
+                while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                    $digits .= $pattern[$j];
+                    $j++;
+                }
+                if ($digits !== '' && (int) $digits === 0) {
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    $i = $j + 1;
+                } else {
+                    $currentBranchNullable = false;
+                }
+            } elseif ($i < $len && $pattern[$i] === '+') {
+                $currentBranchNullable = false;
+                $i++;
+            } else {
+                $currentBranchNullable = false;
+            }
+        }
+
+        if ($inAlternation) {
+            return $anyBranchNullable || $currentBranchNullable;
+        }
+        return $currentBranchNullable;
+    }
+
+    /**
+     * Post-process PCRE match results to fix ES-compliant capture reset
+     * for capturing groups inside repeated (quantified) outer groups.
+     *
+     * PCRE retains the last successful match for captures inside a repeated group
+     * across all iterations. ES spec requires captures to be reset to undefined
+     * at the start of each iteration, so only captures that participated in the
+     * LAST iteration should have values.
+     *
+     * @param array<int|string, array{0: ?string, 1: int}> $matches PCRE match result
+     * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>} $analysis
+     * @param string $pcreFlags The PCRE flags string (e.g., 'iu')
+     * @param callable $transformFn Transforms ES pattern to PCRE pattern
+     * @return array<int|string, array{0: ?string, 1: int}>
+     */
+    public static function fixRepeatedGroupCaptures(
+        array $matches,
+        array $analysis,
+        string $pcreFlags,
+        callable $transformFn,
+    ): array {
+        foreach ($analysis['repeatedGroups'] as $groupIdx => $info) {
+            if (empty($info['innerCaptures'])) {
+                continue;
+            }
+
+            // Get the last captured value of the outer repeated group.
+            if (!isset($matches[$groupIdx]) || $matches[$groupIdx][0] === null || $matches[$groupIdx][1] === -1) {
+                // Outer group didn't match: all inner captures should be undefined.
+                foreach ($info['innerCaptures'] as $innerIdx) {
+                    if (isset($matches[$innerIdx])) {
+                        $matches[$innerIdx] = [null, -1];
+                    }
+                }
+                continue;
+            }
+
+            $lastCapturedValue = $matches[$groupIdx][0];
+
+            // Build a PCRE pattern for just the inner body with captures.
+            $innerEsPattern = $info['bodyPattern'];
+            $innerPcreBody = $transformFn($innerEsPattern);
+            $innerPcrePattern = '/^' . $innerPcreBody . '$/' . $pcreFlags;
+
+            // Match the inner pattern against the last captured value.
+            $innerResult = @preg_match(
+                $innerPcrePattern,
+                $lastCapturedValue,
+                $innerMatches,
+                PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
+            );
+
+            if ($innerResult === 1) {
+                // Map inner match results back to the original capture indices.
+                $innerCaptureList = $info['innerCaptures'];
+                for ($k = 0; $k < count($innerCaptureList); $k++) {
+                    $originalIdx = $innerCaptureList[$k];
+                    $innerIdx = $k + 1; // Inner match group 1 corresponds to first inner capture.
+                    if (
+                        isset($innerMatches[$innerIdx])
+                        && $innerMatches[$innerIdx][0] !== null
+                        && $innerMatches[$innerIdx][1] !== -1
+                    ) {
+                        // Calculate the byte offset relative to the outer group match position.
+                        $outerByteOffset = $matches[$groupIdx][1];
+                        $matches[$originalIdx] = [
+                            $innerMatches[$innerIdx][0],
+                            $outerByteOffset + $innerMatches[$innerIdx][1],
+                        ];
+                    } else {
+                        $matches[$originalIdx] = [null, -1];
+                    }
+                }
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * Handle nullable quantifier patterns by implementing iterative matching.
+     *
+     * When a quantified group (e.g., (X)*) has a nullable body (X can match empty),
+     * PCRE stops the repetition on empty match, but ES spec discards the empty
+     * iteration and backtracks to find non-empty alternatives.
+     *
+     * This method detects whether the PCRE result was cut short by the nullable
+     * quantifier issue and extends the match using iterative PCRE calls with
+     * PCRE2's (*NOTEMPTY_ATSTART) verb.
+     *
+     * @param array<int|string, array{0: ?string, 1: int}> $matches PCRE match result
+     * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>} $analysis
+     * @param string $str The full input string
+     * @param string $pcreFlags The PCRE flags string (e.g., 'iu')
+     * @param callable $transformFn Transforms ES pattern to PCRE pattern
+     * @return array<int|string, array{0: ?string, 1: int}>
+     */
+    public static function fixNullableQuantifier(
+        array $matches,
+        array $analysis,
+        string $str,
+        string $pcreFlags,
+        callable $transformFn,
+    ): array {
+        foreach ($analysis['repeatedGroups'] as $groupIdx => $info) {
+            if (!$info['nullable']) {
+                continue;
+            }
+
+            // Check if the last capture of this group was empty (PCRE stopped on empty).
+            if (!isset($matches[$groupIdx])) {
+                continue;
+            }
+
+            // Calculate the end position of the current overall match.
+            $overallMatch = $matches[0][0] ?? '';
+            $overallByteStart = $matches[0][1] ?? 0;
+            $overallByteEnd = $overallByteStart + strlen($overallMatch);
+
+            // If we're already at end of string, nothing to extend.
+            if ($overallByteEnd >= strlen($str)) {
+                continue;
+            }
+
+            // Build PCRE pattern for the inner body (one iteration).
+            $innerEsPattern = $info['bodyPattern'];
+            $innerPcreBody = $transformFn($innerEsPattern);
+            // Normal pattern (may match empty).
+            $innerPcreNormal = '/(' . $innerPcreBody . ')/' . $pcreFlags;
+            // Non-empty pattern: uses PCRE2 verb to reject empty matches at start position.
+            $innerPcreNonEmpty = '/(*NOTEMPTY_ATSTART)(' . $innerPcreBody . ')/' . $pcreFlags;
+
+            // Iteratively extend the match from the current end position.
+            $currentByteEnd = $overallByteEnd;
+            $extended = false;
+            $lastGroupCapture = $matches[$groupIdx];
+            $maxIterations = strlen($str) - $currentByteEnd + 1;
+            $iterations = 0;
+
+            while ($currentByteEnd < strlen($str) && $iterations < $maxIterations) {
+                $iterations++;
+
+                // Try matching inner pattern at current end position (sticky).
+                $innerResult = @preg_match(
+                    $innerPcreNormal,
+                    $str,
+                    $innerMatches,
+                    PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
+                    $currentByteEnd,
+                );
+
+                if ($innerResult === 1 && $innerMatches[0][1] === $currentByteEnd) {
+                    $innerMatchStr = $innerMatches[0][0];
+                    if (strlen($innerMatchStr) > 0) {
+                        // Non-empty match: extend and continue.
+                        $currentByteEnd += strlen($innerMatchStr);
+                        $lastGroupCapture = [$innerMatches[1][0], $innerMatches[1][1]];
+                        $extended = true;
+                        continue;
+                    }
+                }
+
+                // Empty match or no match at current position.
+                // Try with non-empty constraint to force backtracking.
+                $innerResult = @preg_match(
+                    $innerPcreNonEmpty,
+                    $str,
+                    $innerMatches,
+                    PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
+                    $currentByteEnd,
+                );
+
+                if (
+                    $innerResult === 1
+                    && $innerMatches[0][1] === $currentByteEnd
+                    && strlen($innerMatches[0][0]) > 0
+                ) {
+                    $currentByteEnd += strlen($innerMatches[0][0]);
+                    $lastGroupCapture = [$innerMatches[1][0], $innerMatches[1][1]];
+                    $extended = true;
+                    continue;
+                }
+
+                // No non-empty match possible: stop iterating.
+                break;
+            }
+
+            if ($extended) {
+                // Update the overall match to include the extended portion.
+                $newOverallMatch = substr($str, $overallByteStart, $currentByteEnd - $overallByteStart);
+                $matches[0] = [$newOverallMatch, $overallByteStart];
+
+                // Update the group capture to reflect the last iteration.
+                $matches[$groupIdx] = $lastGroupCapture;
+            }
+        }
+
+        return $matches;
     }
 }

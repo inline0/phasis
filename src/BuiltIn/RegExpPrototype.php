@@ -255,7 +255,11 @@ class RegExpPrototype
                     $this_->set('lastIndex', new JsNumber(0.0), true);
                     return JsNull::instance();
                 }
-                $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
+
+                // Apply ES-compliant fixes for repeated groups if needed.
+                $matches = self::applyRepeatedGroupFixes($this_, $matches, $str, $pcrePattern);
+
+                $matchCharPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
                 $matchStr = $matches[0][0];
                 $matchCharLen = mb_strlen($matchStr, 'UTF-8');
 
@@ -295,6 +299,66 @@ class RegExpPrototype
             }
             return JsNull::instance();
         };
+    }
+
+    /**
+     * Apply ES-compliant fixes for repeated group captures and nullable quantifiers.
+     * Analyzes the original ES pattern and post-processes PCRE match results.
+     *
+     * @param array<int|string, array{0: ?string, 1: int}> $matches
+     * @return array<int|string, array{0: ?string, 1: int}>
+     */
+    private static function applyRepeatedGroupFixes(
+        JsObject $regexp,
+        array $matches,
+        string $str,
+        string $pcrePattern,
+    ): array {
+        // Get the original ES pattern from internal slot.
+        $srcDesc = $regexp->getOwnPropertyDescriptor('[[OriginalSource]]');
+        if ($srcDesc === null || !$srcDesc->value instanceof JsString) {
+            return $matches;
+        }
+        $esPattern = $srcDesc->value->value;
+
+        // Analyze the pattern for repeated groups.
+        $analysis = \PhpJs\Runtime\Interpreter::analyzeRepeatedGroups($esPattern);
+        if (empty($analysis['repeatedGroups'])) {
+            return $matches;
+        }
+
+        // Extract PCRE flags from the compiled pattern.
+        $lastSlash = strrpos($pcrePattern, '/');
+        $pcreFlags = $lastSlash !== false ? substr($pcrePattern, $lastSlash + 1) : 'u';
+
+        // Build transform function using the current interpreter.
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        if ($interp === null) {
+            return $matches;
+        }
+        $transformFn = static function (string $esSubPattern) use ($interp): string {
+            $transformed = $interp->transformEsPatternForPcre($esSubPattern);
+            return $interp->escapeForPcreDelimiter($transformed);
+        };
+
+        // Fix 1: Extend match for nullable quantified groups.
+        $matches = \PhpJs\Runtime\Interpreter::fixNullableQuantifier(
+            $matches,
+            $analysis,
+            $str,
+            $pcreFlags,
+            $transformFn,
+        );
+
+        // Fix 2: Reset captures inside repeated groups to last iteration values.
+        $matches = \PhpJs\Runtime\Interpreter::fixRepeatedGroupCaptures(
+            $matches,
+            $analysis,
+            $pcreFlags,
+            $transformFn,
+        );
+
+        return $matches;
     }
 
     /**
