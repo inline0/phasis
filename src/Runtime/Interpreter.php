@@ -2539,29 +2539,7 @@ class Interpreter
     private function createStringIteratorFactory(JsString $str): JsFunction
     {
         $iteratorFactory = function () use ($str): JsValue {
-            $chars = [];
-            $len = mb_strlen($str->value, 'UTF-8');
-            for ($i = 0; $i < $len; $i++) {
-                $chars[] = mb_substr($str->value, $i, 1, 'UTF-8');
-            }
-            $index = 0;
-            $total = count($chars);
-
-            $iterator = new JsObject();
-            $nextFn = function () use (&$index, $total, &$chars): JsValue {
-                $result = new JsObject();
-                if ($index < $total) {
-                    $result->set('value', new JsString($chars[$index]));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            return $iterator;
+            return \PhpJs\BuiltIn\StringPrototype::createStringIterator($str);
         };
 
         return JsFunction::fromCallable('[Symbol.iterator]', $iteratorFactory);

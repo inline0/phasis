@@ -548,6 +548,15 @@ class TypedArrayConstructor
         $constructor = JsFunction::fromCallable(
             $typeName,
             function (JsValue $this_, array $args) use ($typeName, $bpe, $proto): JsValue {
+                // Per spec: if NewTarget is undefined, throw TypeError.
+                if (
+                    !$this_ instanceof JsObject
+                    || $this_->getOwnPropertyDescriptor('[[NewTarget]]') === null
+                ) {
+                    throw new TypeError(
+                        "Constructor {$typeName} requires 'new'"
+                    );
+                }
                 return self::constructTypedArray($typeName, $bpe, $proto, $args);
             },
             3,
@@ -740,8 +749,17 @@ class TypedArrayConstructor
             $bufLen = $arg0->getByteLength();
 
             if (isset($args[2]) && !$args[2] instanceof JsUndefined) {
-                // Per spec: newLength = ToIndex(length).
+                // Per spec step 13a: newLength = ToIndex(length).
+                // The valueOf() during ToIndex may detach the buffer.
                 $length = TypeConversion::toIndex($args[2]);
+
+                // Per spec step 14: second IsDetachedBuffer check after length coercion.
+                if ($arg0->isDetached()) {
+                    throw new TypeError(
+                        'Cannot construct a typed array on a detached ArrayBuffer'
+                    );
+                }
+
                 $newByteLength = $length * $bpe;
                 if ($byteOffset + $newByteLength > $bufLen) {
                     throw new RangeError('Invalid typed array length');

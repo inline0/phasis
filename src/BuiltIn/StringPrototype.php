@@ -23,8 +23,118 @@ class StringPrototype
     private const MIN_SAFE_STRING_LENGTH = 16777216;
     private static ?int $maxStringLength = null;
 
+    /** %StringIteratorPrototype%: shared prototype for all string iterators. */
+    private static ?JsObject $stringIteratorPrototype = null;
+
+    /** Reset the shared string iterator prototype (for engine reset). */
+    public static function resetStringIteratorPrototype(): void
+    {
+        self::$stringIteratorPrototype = null;
+    }
+
+    /**
+     * Get or create the %StringIteratorPrototype% intrinsic.
+     */
+    public static function getStringIteratorPrototype(?JsObject $iteratorPrototype = null): JsObject
+    {
+        if (self::$stringIteratorPrototype !== null) {
+            return self::$stringIteratorPrototype;
+        }
+
+        $proto = new JsObject($iteratorPrototype);
+
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method String Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $slotDesc = $this_->getOwnPropertyDescriptor('[[StringIteratorData]]');
+            if ($slotDesc === null) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method String Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $data = $slotDesc->value;
+            if (!$data instanceof JsObject) {
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+            $charsVal = $data->get('chars');
+            $indexVal = $data->get('index');
+            $totalVal = $data->get('total');
+            $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
+            $total = ($totalVal instanceof JsNumber) ? (int) $totalVal->value : 0;
+
+            $result = new JsObject();
+            if ($index < $total) {
+                $char = $charsVal instanceof JsObject ? $charsVal->get((string) $index) : JsUndefined::instance();
+                $data->set('index', new JsNumber((float) ($index + 1)));
+                $result->set('value', $char);
+                $result->set('done', new JsBoolean(false));
+            } else {
+                $this_->defineOwnProperty(
+                    '[[StringIteratorData]]',
+                    PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+                );
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+            }
+            return $result;
+        }, 0);
+        $nextFn->setNonConstructable();
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+
+        // Symbol.toStringTag = "String Iterator".
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('String Iterator'), false, false, true),
+        );
+
+        self::$stringIteratorPrototype = $proto;
+        return $proto;
+    }
+
+    /**
+     * Create a string iterator object with proper prototype chain.
+     */
+    public static function createStringIterator(JsString $str): JsObject
+    {
+        $proto = self::$stringIteratorPrototype;
+        $iterator = new JsObject($proto);
+
+        // Store characters as a JsArray for access from the next method.
+        $chars = [];
+        $len = mb_strlen($str->value, 'UTF-8');
+        for ($i = 0; $i < $len; $i++) {
+            $chars[] = new JsString(mb_substr($str->value, $i, 1, 'UTF-8'));
+        }
+        $charsArr = JsArray::fromArray($chars);
+
+        $data = new JsObject();
+        $data->set('chars', $charsArr);
+        $data->set('index', new JsNumber(0.0));
+        $data->set('total', new JsNumber((float) $len));
+        $iterator->defineOwnProperty(
+            '[[StringIteratorData]]',
+            PropertyDescriptor::data($data, false, false, false),
+        );
+
+        return $iterator;
+    }
+
     public static function install(Environment $env): void
     {
+        self::resetStringIteratorPrototype();
+        $iteratorPrototype = $env->has('__IteratorPrototype__')
+            ? $env->get('__IteratorPrototype__')
+            : null;
+        self::getStringIteratorPrototype(
+            $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
+        );
+
         $proto = new JsObject();
 
         // Per spec, String.prototype is itself a String object with [[PrimitiveValue]] = "".

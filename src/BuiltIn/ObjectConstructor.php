@@ -474,6 +474,40 @@ class ObjectConstructor
             1,
         ), true, false, true));
 
+        // Annex B: Object.prototype.__proto__ accessor property.
+        $protoGetter = JsFunction::fromCallable('get __proto__', function (JsValue $this_): JsValue {
+            $obj = TypeConversion::toObject($this_);
+            $p = $obj->getPrototype();
+            return $p ?? JsNull::instance();
+        }, 0);
+        $protoSetter = JsFunction::fromCallable('set __proto__', function (JsValue $this_, array $args): JsValue {
+            // Per spec B.2.2.1.2: RequireObjectCoercible(O), then if O is not object, return undefined.
+            $o = $this_;
+            if ($o instanceof JsUndefined || $o instanceof JsNull) {
+                throw new TypeError('Cannot set __proto__ of ' . TypeConversion::toString($o));
+            }
+            $newProto = $args[0] ?? JsUndefined::instance();
+            // If proto is not Object and not null, return undefined.
+            if (!$newProto instanceof JsObject && !$newProto instanceof JsNull) {
+                return JsUndefined::instance();
+            }
+            if (!$o instanceof JsObject) {
+                return JsUndefined::instance();
+            }
+            $proto = $newProto instanceof JsNull ? null : $newProto;
+            $success = $o->trySetPrototype($proto);
+            if (!$success) {
+                throw new TypeError('Cyclic __proto__ value');
+            }
+            return JsUndefined::instance();
+        }, 1);
+        $proto->defineOwnProperty('__proto__', PropertyDescriptor::accessor(
+            get: $protoGetter,
+            set: $protoSetter,
+            enumerable: false,
+            configurable: true,
+        ));
+
         return $proto;
     }
 
