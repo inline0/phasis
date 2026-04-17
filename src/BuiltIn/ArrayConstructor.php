@@ -203,11 +203,8 @@ class ArrayConstructor
                 $index = (string) $newLen;
                 $val = $o->get($index);
                 $o->delete($index);
-                if ($o instanceof JsArray) {
-                    $o->setLength($newLen);
-                } else {
-                    $o->set('length', new JsNumber((float) $newLen));
-                }
+                // Per spec, Set(O, "length", newLen, true): throw on failure.
+                $o->set('length', new JsNumber((float) $newLen), true);
                 return $val;
             },
             0
@@ -217,13 +214,10 @@ class ArrayConstructor
             'shift',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
-                    if ($o instanceof JsArray) {
-                        $o->setLength(0);
-                    } else {
-                        $o->set('length', new JsNumber(0.0));
-                    }
+                    // Per spec, Set(O, "length", +0F, true).
+                    $o->set('length', new JsNumber(0.0), true);
                     return JsUndefined::instance();
                 }
                 $first = $o->get('0');
@@ -237,11 +231,8 @@ class ArrayConstructor
                     }
                 }
                 $o->delete((string) ($len - 1));
-                if ($o instanceof JsArray) {
-                    $o->setLength($len - 1);
-                } else {
-                    $o->set('length', new JsNumber((float) ($len - 1)));
-                }
+                // Per spec, Set(O, "length", len - 1, true).
+                $o->set('length', new JsNumber((float) ($len - 1)), true);
                 return $first;
             },
             0
@@ -265,12 +256,10 @@ class ArrayConstructor
                 foreach ($args as $i => $arg) {
                     $o->set((string) $i, $arg);
                 }
-                if ($o instanceof JsArray) {
-                    $o->setLength($len + $count);
-                } else {
-                    $o->set('length', new JsNumber((float) ($len + $count)));
-                }
-                return new JsNumber((float) ($len + $count));
+                // Per spec, Set(O, "length", len + argCount, true).
+                $newLen = $len + $count;
+                $o->set('length', new JsNumber((float) $newLen), true);
+                return new JsNumber((float) $newLen);
             },
             1
         ), true, false, true));
@@ -1006,11 +995,8 @@ class ArrayConstructor
                     $this_->set((string) ($start + $idx), $item);
                 }
 
-                if ($this_ instanceof JsArray) {
-                    $this_->setLength($newLen);
-                } else {
-                    $this_->set("length", new JsNumber((float) ($newLen)));
-                }
+                // Per spec, Set(O, "length", newLen, true): throw on failure.
+                $this_->set('length', new JsNumber((float) $newLen), true);
                 return $removed;
             },
             2
