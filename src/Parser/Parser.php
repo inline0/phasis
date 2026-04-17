@@ -334,11 +334,13 @@ class Parser
         $startOffset = $location->offset;
         $generator = $this->eat(TokenType::Star);
         $id = $this->parseIdentifier();
-        $params = $this->parseFormalParameters();
+        // Set inGenerator/inAsync BEFORE parsing parameters so that default
+        // parameter expressions use the function's own context.
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
         $this->inAsync = false;
+        $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
@@ -479,11 +481,11 @@ class Parser
             $this->advance(); // consume 'function'
             $generator = $this->eat(TokenType::Star);
             $id = $this->parseIdentifier();
-            $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
             $prevAsync = $this->inAsync;
             $this->inGenerator = $generator;
             $this->inAsync = true;
+            $params = $this->parseFormalParameters();
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
@@ -1143,6 +1145,9 @@ class Parser
         $delegate = $this->eat(TokenType::Star);
         $argument = null;
 
+        // For yield* (delegate), the AssignmentExpression is required and a line
+        // terminator between * and the expression does NOT trigger ASI. For plain
+        // yield, a line terminator before the next token means no argument (ASI).
         if (
             !$this->check(TokenType::Semicolon)
             && !$this->check(TokenType::RightBrace)
@@ -1151,7 +1156,7 @@ class Parser
             && !$this->check(TokenType::Comma)
             && !$this->check(TokenType::Colon)
             && !$this->isAtEnd()
-            && !$this->current()->lineTerminatorBefore
+            && ($delegate || !$this->current()->lineTerminatorBefore)
         ) {
             $argument = $this->parseAssignmentExpression();
         }
@@ -1736,11 +1741,15 @@ class Parser
             $name = $this->advance()->value;
         }
 
-        $params = $this->parseFormalParameters();
+        // Set inGenerator/inAsync BEFORE parsing parameters so that default
+        // parameter expressions use the function's own context. E.g. `yield`
+        // in a non-generator function's default params is an identifier, not
+        // a yield expression, even when the enclosing function is a generator.
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
         $this->inAsync = false;
+        $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;

@@ -2601,7 +2601,7 @@ class Interpreter
             // In sloppy mode with simple parameters, arguments[i] and the
             // corresponding parameter name share a live binding.
             if (!$fn->isArrow() && isset($argsObj) && !$unmapped) {
-                
+                $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
             }
 
             // Collect parameter names for Annex B hoisting checks.
@@ -3924,10 +3924,12 @@ class Interpreter
     }
 
     /**
-     * Template object cache: maps parse-node identity (source location) to the
-     * frozen template object, per spec GetTemplateObject (sec-gettemplateobject).
+     * Template object cache: maps AST node identity to the frozen template
+     * object, per spec GetTemplateObject (sec-gettemplateobject). Each Parse
+     * Node (TemplateLiteral AST node) gets its own cache entry. Repeated
+     * evaluation of the same parse node returns the same template object.
      *
-     * @var array<string, JsArray>
+     * @var array<int, JsArray>
      */
     private array $templateObjectCache = [];
 
@@ -3953,8 +3955,10 @@ class Interpreter
         }
 
         // GetTemplateObject: use cached template array if the same parse node
-        // (identified by source location) was seen before.
-        $cacheKey = $node->quasi->location->line . ':' . $node->quasi->location->column;
+        // (same TemplateLiteral AST object) was seen before. Using spl_object_id
+        // ensures each parse invocation (e.g. from eval) gets distinct entries
+        // while re-executions of the same function body share the template object.
+        $cacheKey = spl_object_id($node->quasi);
         if (isset($this->templateObjectCache[$cacheKey])) {
             $strings = $this->templateObjectCache[$cacheKey];
         } else {
@@ -4158,18 +4162,6 @@ class Interpreter
                             ? $prop->key->name
                             : TypeConversion::toString($this->evaluate($prop->key, $env)));
                     $usedKeysAvb[] = $key;
-
-                    // Per spec 14.3.3.3 KeyedBindingInitialization step 2:
-                    // ResolveBinding(bindingId) must happen BEFORE GetV(value, propertyName).
-                    // This triggers HasBinding on with-environments (Proxy has trap).
-                    $bindingTarget = $prop->value;
-                    if ($bindingTarget instanceof AssignmentPattern) {
-                        $bindingTarget = $bindingTarget->left;
-                    }
-                    if ($bindingTarget instanceof Identifier && !empty($this->withEnvObjects)) {
-                        $env->has($bindingTarget->name);
-                    }
-
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
                     $this->assignVarBinding($prop->value, $propValue, $env);
                 }
@@ -5704,28 +5696,96 @@ class Interpreter
      */
     private function hoistEvalGlobalDeclarations(array $statements, Environment $env): void
     {
-        foreach ($statements as $stmt) {
+        $globalObj = $env->getLinkedObject();
+        $isExtensible = $globalObj !== null ? $globalObj->isExtensible() : true;
+
+        // Per EvalDeclarationInstantiation step 8: collect function declarations
+        // in reverse order (last wins) and perform CanDeclareGlobalFunction.
+        $declaredFuncNames = [];
+        $funcsToInit = [];
+        for ($i = count($statements) - 1; $i >= 0; $i--) {
+            $stmt = $statements[$i];
             if ($stmt instanceof FunctionDeclaration) {
-                $fn = new JsFunction(
-                    $stmt->id->name,
-                    $stmt->params,
-                    $stmt->body,
-                    $env,
-                    isGenerator: $stmt->generator,
-                    isAsync: $stmt->async,
-                    strict: $this->strictMode,
-                );
-                if ($stmt->sourceText !== null) {
-                    $fn->setSourceText($stmt->sourceText);
+                $fname = $stmt->id->name;
+                if (!isset($declaredFuncNames[$fname])) {
+                    $declaredFuncNames[$fname] = true;
+                    // CanDeclareGlobalFunction check.
+                    if ($globalObj !== null) {
+                        $existingProp = $globalObj->getOwnPropertyDescriptor($fname);
+                        if ($existingProp === null) {
+                            if (!$isExtensible) {
+                                $this->throwJsValue(
+                                    $this->phpExceptionToJsValue(
+                                        new TypeError("Cannot define property {$fname}, object is not extensible"),
+                                    ),
+                                );
+                            }
+                        } elseif (!$existingProp->configurable) {
+                            $isOk = $existingProp->isDataDescriptor()
+                                && $existingProp->writable === true
+                                && $existingProp->enumerable === true;
+                            if (!$isOk) {
+                                $this->throwJsValue(
+                                    $this->phpExceptionToJsValue(
+                                        new TypeError("Cannot redefine property: {$fname}"),
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    array_unshift($funcsToInit, $stmt);
                 }
-                $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
-                // Eval-created global function bindings are configurable.
-                $env->defineGlobalVar($stmt->id->name, $fn, true);
-            } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+            }
+        }
+
+        // Per EvalDeclarationInstantiation step 10: CanDeclareGlobalVar for
+        // each var name not already a declared function name.
+        if ($globalObj !== null) {
+            foreach ($statements as $stmt) {
+                if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                    foreach ($stmt->declarations as $decl) {
+                        foreach ($this->patternBoundNames($decl->id) as $vn) {
+                            if (!isset($declaredFuncNames[$vn])) {
+                                if (!$globalObj->hasOwnProperty($vn) && !$isExtensible) {
+                                    $this->throwJsValue(
+                                        $this->phpExceptionToJsValue(
+                                            new TypeError("Cannot define property {$vn}, object is not extensible"),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialize function declarations.
+        foreach ($funcsToInit as $stmt) {
+            $fn = new JsFunction(
+                $stmt->id->name,
+                $stmt->params,
+                $stmt->body,
+                $env,
+                isGenerator: $stmt->generator,
+                isAsync: $stmt->async,
+                strict: $this->strictMode,
+            );
+            if ($stmt->sourceText !== null) {
+                $fn->setSourceText($stmt->sourceText);
+            }
+            $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
+            // Eval-created global function bindings are configurable.
+            $env->defineGlobalVar($stmt->id->name, $fn, true);
+        }
+
+        // Hoist var declarations.
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
                 foreach ($stmt->declarations as $decl) {
                     $this->hoistEvalGlobalVarNames($decl->id, $env);
                 }
-            } else {
+            } elseif (!($stmt instanceof FunctionDeclaration)) {
                 // Recurse into compound statements for nested var declarations.
                 $this->hoistEvalGlobalVarCompound($stmt, $env);
             }

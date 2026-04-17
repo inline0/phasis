@@ -697,15 +697,16 @@ class Engine
             $bodyArg = count($args) > 0 ? array_pop($args) : JsUndefined::instance();
             $paramParts = [];
             foreach ($args as $a) {
-                $paramParts[] = \PhpJs\Spec\TypeConversion::toString($a);
+                $paramParts[] = TypeConversion::toString($a);
             }
             $paramStr = implode(',', $paramParts);
-            $bodyStr = \PhpJs\Spec\TypeConversion::toString($bodyArg);
-            $source = "async function anonymous({$paramStr}) {\n{$bodyStr}\n}";
+            $bodyStr = TypeConversion::toString($bodyArg);
+            // Parse as an expression so we get the function value directly.
+            $source = "(async function anonymous({$paramStr}) {\n{$bodyStr}\n})";
             $parser = new Parser($source);
             $ast = $parser->parse();
 
-            return $interp->run($ast, $globalEnv);
+            return $interp->execute($ast);
         });
         $asyncFuncCtor->setConstructable();
 
