@@ -498,7 +498,10 @@ class Lexer
         }
         if ($ch === '0') {
             // \0 followed by another digit is an octal escape (invalid in templates).
-            if ($this->pos + 1 < $this->length && $this->source[$this->pos + 1] >= '0' && $this->source[$this->pos + 1] <= '9') {
+            $nextIsDigit = $this->pos + 1 < $this->length
+                && $this->source[$this->pos + 1] >= '0'
+                && $this->source[$this->pos + 1] <= '9';
+            if ($nextIsDigit) {
                 $this->advance();
                 $cookedInvalid = true;
                 return null;
@@ -751,13 +754,15 @@ class Lexer
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::TemplateTail, $cooked, $start, $this->lineTerminatorBefore, $raw, $cookedInvalid);
+                $ltb = $this->lineTerminatorBefore;
+                return new Token(TokenType::TemplateTail, $cooked, $start, $ltb, $raw, $cookedInvalid);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance();
                 $this->advance();
-                return new Token(TokenType::TemplateMiddle, $cooked, $start, $this->lineTerminatorBefore, $raw, $cookedInvalid);
+                $ltb = $this->lineTerminatorBefore;
+                return new Token(TokenType::TemplateMiddle, $cooked, $start, $ltb, $raw, $cookedInvalid);
             }
 
             if ($ch === '\\') {

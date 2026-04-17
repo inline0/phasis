@@ -612,7 +612,11 @@ class Parser
 
             // Regular for with var declaration
             if ($this->eat(TokenType::Equal)) {
+                // Parse with noIn so that `in` is not consumed as a binary operator.
+                // This allows Annex B: for (var x = expr in obj).
+                $this->noIn = true;
                 $init = $this->parseAssignmentExpression();
+                $this->noIn = false;
             }
 
             // Annex B: for (var x = expr in obj) is valid in sloppy mode.

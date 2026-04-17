@@ -2605,7 +2605,10 @@ class Interpreter
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,
                 // or undefined otherwise. Arrow functions inherit it from the outer scope.
-                if ($thisValue instanceof JsObject && ($ntDesc = $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')) !== null) {
+                $ntDesc = $thisValue instanceof JsObject
+                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                    : null;
+                if ($ntDesc !== null) {
                     // Use the stored newTarget. For Reflect.construct(target, args, newTarget)
                     // this may differ from $fn (the currently executing function).
                     $nt = $ntDesc->value;
@@ -2632,6 +2635,8 @@ class Interpreter
             $params = $fn->getParams();
             $hasDefaultParams = $this->hasParameterExpressions($params);
 
+            $unmapped = true;
+            $argsObj = null;
             if (!$fn->isArrow()) {
                 // Per spec 10.2.11: non-simple parameter lists produce unmapped
                 // arguments objects (poison-pill callee), same as strict mode.
@@ -2646,7 +2651,7 @@ class Interpreter
             // Set up mapped arguments aliasing per spec 10.4.4.7:
             // In sloppy mode with simple parameters, arguments[i] and the
             // corresponding parameter name share a live binding.
-            if (!$fn->isArrow() && isset($argsObj) && !$unmapped) {
+            if ($argsObj !== null && !$unmapped) {
                 $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
             }
 
@@ -4107,7 +4112,11 @@ class Interpreter
             // ResolveBinding is done BEFORE evaluating the Initializer.
             // In a with-environment, this means we capture which with-object
             // owns the binding before the initializer can delete it.
+            // ResolveBinding triggers HasBinding (Proxy has trap) exactly once.
+            // PutValue then uses the resolved Reference directly, avoiding
+            // a redundant second has-trap call.
             $resolvedWithObj = null;
+            $resolvedOuterEnv = null;
             if (
                 $node->kind === 'var'
                 && $hasInit
@@ -4117,10 +4126,6 @@ class Interpreter
             ) {
                 $name = $declarator->id->name;
                 // Walk the env chain to find a with-environment that has this binding.
-                // Only consider with-environments in the current scope chain (not from
-                // unrelated with-blocks like those surrounding a function call).
-                // If the current env has its own binding (hoisted var in function scope),
-                // the binding resolves there, not to a with-object.
                 $walkEnv = $env;
                 while ($walkEnv !== null) {
                     $envId = spl_object_id($walkEnv);
@@ -4129,6 +4134,11 @@ class Interpreter
                         if ($withObj->has($name)) {
                             $resolvedWithObj = $withObj;
                             break;
+                        }
+                        // Proxy returned false: the binding is in the outer scope.
+                        // Record the parent env so PutValue writes there directly.
+                        if ($walkEnv->getParent() !== null) {
+                            $resolvedOuterEnv = $walkEnv->getParent();
                         }
                     }
                     $walkEnv = $walkEnv->getParent();
@@ -4161,6 +4171,11 @@ class Interpreter
                     // on that object (spec: PutValue on the pre-resolved reference).
                     if ($resolvedWithObj !== null && $declarator->id instanceof Identifier) {
                         $resolvedWithObj->set($declarator->id->name, $init);
+                    } elseif ($resolvedOuterEnv !== null && $declarator->id instanceof Identifier) {
+                        // ResolveBinding found the binding in the outer scope (Proxy
+                        // returned false for has). Write directly to avoid a redundant
+                        // second has-trap call.
+                        $resolvedOuterEnv->set($declarator->id->name, $init, false);
                     } else {
                         $this->assignVarBinding($declarator->id, $init, $env);
                     }
@@ -4232,8 +4247,31 @@ class Interpreter
                             ? $prop->key->name
                             : TypeConversion::toString($this->evaluate($prop->key, $env)));
                     $usedKeysAvb[] = $key;
+
+                    // Per spec 14.3.3.3 KeyedBindingInitialization:
+                    // Step 2: ResolveBinding(bindingId) BEFORE GetV.
+                    // This triggers HasBinding (Proxy has trap) at the correct time.
+                    $resolvedBindingEnv = null;
+                    if (!empty($this->withEnvObjects)) {
+                        $bindingTarget = $prop->value;
+                        if ($bindingTarget instanceof AssignmentPattern) {
+                            $bindingTarget = $bindingTarget->left;
+                        }
+                        if ($bindingTarget instanceof Identifier) {
+                            $resolvedBindingEnv = $this->resolveBindingForWith(
+                                $bindingTarget->name,
+                                $env,
+                            );
+                        }
+                    }
+
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
-                    $this->assignVarBinding($prop->value, $propValue, $env);
+
+                    if ($resolvedBindingEnv !== null) {
+                        $this->assignVarBindingResolved($prop->value, $propValue, $env, $resolvedBindingEnv);
+                    } else {
+                        $this->assignVarBinding($prop->value, $propValue, $env);
+                    }
                 }
             }
             return;
@@ -4252,6 +4290,65 @@ class Interpreter
             }
             $this->assignVarBinding($pattern->left, $value, $env);
         }
+    }
+
+    /**
+     * Resolve a binding through the with-environment scope chain.
+     * Triggers HasBinding (Proxy has trap) as required by spec.
+     * Returns the environment where the binding was found, or null if
+     * no with-environment is in the chain.
+     */
+    private function resolveBindingForWith(string $name, Environment $env): ?Environment
+    {
+        $walkEnv = $env;
+        while ($walkEnv !== null) {
+            $envId = spl_object_id($walkEnv);
+            if (isset($this->withEnvObjects[$envId])) {
+                $withObj = $this->withEnvObjects[$envId];
+                if ($withObj->has($name)) {
+                    // The with-object owns this binding.
+                    return $walkEnv;
+                }
+                // Proxy returned false: binding is in the outer scope.
+                if ($walkEnv->getParent() !== null) {
+                    return $walkEnv->getParent();
+                }
+            }
+            $walkEnv = $walkEnv->getParent();
+        }
+        return null;
+    }
+
+    /**
+     * Like assignVarBinding but for the final assignment step, uses a pre-resolved
+     * environment to avoid triggering redundant Proxy has traps.
+     */
+    private function assignVarBindingResolved(
+        Node $pattern,
+        JsValue $value,
+        Environment $env,
+        Environment $resolvedEnv,
+    ): void {
+        if ($pattern instanceof Identifier) {
+            $resolvedEnv->set($pattern->name, $value, false);
+            return;
+        }
+        if ($pattern instanceof AssignmentPattern) {
+            if ($value instanceof JsUndefined) {
+                $value = $this->evaluate($pattern->right, $env);
+                if (
+                    $value instanceof JsFunction
+                    && $pattern->left instanceof Identifier
+                    && $this->isAnonymousFunctionDefinitionNode($pattern->right)
+                ) {
+                    $value->setName($pattern->left->name);
+                }
+            }
+            $this->assignVarBindingResolved($pattern->left, $value, $env, $resolvedEnv);
+            return;
+        }
+        // Fallback for non-simple patterns.
+        $this->assignVarBinding($pattern, $value, $env);
     }
 
     private function declareBinding(string $kind, Node $pattern, JsValue $value, Environment $env): void
@@ -6254,10 +6351,25 @@ class Interpreter
     {
         // Per spec, var declarations inside `with` blocks hoist to the enclosing
         // function/global scope, bypassing the with-environment's binding object.
-        // Skip through with-environments to avoid triggering Proxy has traps.
+        // When hoisting inside a with-body, the env may be a child block-env
+        // of the with-env. Walk up past both with-envs and their children to
+        // avoid triggering Proxy has traps. We detect "inside a with" by
+        // checking if any ancestor env is a tracked with-environment.
         $hoistEnv = $env;
-        while (isset($this->withEnvObjects[spl_object_id($hoistEnv)]) && $hoistEnv->getParent() !== null) {
-            $hoistEnv = $hoistEnv->getParent();
+        if (!empty($this->withEnvObjects)) {
+            $checkEnv = $hoistEnv;
+            $insideWith = false;
+            while ($checkEnv !== null) {
+                if (isset($this->withEnvObjects[spl_object_id($checkEnv)])) {
+                    $insideWith = true;
+                    break;
+                }
+                $checkEnv = $checkEnv->getParent();
+            }
+            if ($insideWith && $checkEnv !== null && $checkEnv->getParent() !== null) {
+                // Skip past the with-environment to its parent (the outer scope).
+                $hoistEnv = $checkEnv->getParent();
+            }
         }
         if ($pattern instanceof Identifier) {
             if (!$hoistEnv->has($pattern->name)) {
