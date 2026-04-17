@@ -42,7 +42,15 @@ class Lexer
             && $this->source[0] === '#'
             && $this->source[1] === '!'
         ) {
-            while ($this->pos < $this->length && $this->source[$this->pos] !== "\n") {
+            while ($this->pos < $this->length) {
+                $ch = $this->source[$this->pos];
+                // Stop at any line terminator: LF, CR, U+2028, U+2029
+                if ($ch === "\n" || $ch === "\r") {
+                    break;
+                }
+                if (ord($ch) >= 0xE0 && $this->isUnicodeLineTerminator()) {
+                    break;
+                }
                 $this->pos++;
                 $this->column++;
             }
