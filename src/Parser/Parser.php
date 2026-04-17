@@ -76,9 +76,13 @@ class Parser
     private bool $inAsync = false;
     private string $source = '';
 
+    /** Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks. */
+    private \SplObjectStorage $parenthesized;
+
     public function __construct(string $source)
     {
         $this->source = $source;
+        $this->parenthesized = new \SplObjectStorage();
         $lexer = new Lexer($source);
         $this->tokens = $lexer->tokenize();
     }
@@ -884,8 +888,9 @@ class Parser
 
         if ($this->current()->type->isAssignmentOperator()) {
             $op = $this->advance();
+            $leftParenthesized = $this->parenthesized->contains($left);
             $right = $this->parseAssignmentExpression();
-            return new AssignmentExpression($left->location, $op->value, $left, $right);
+            return new AssignmentExpression($left->location, $op->value, $left, $right, $leftParenthesized);
         }
 
         // Arrow function: (params) => body OR ident => body
@@ -1354,6 +1359,9 @@ class Parser
             $params = $this->expressionToParams($expr);
             return $this->parseArrowFunctionFromParams($location, $params, false);
         }
+
+        // Mark the expression as parenthesized so IsIdentifierRef returns false.
+        $this->parenthesized->attach($expr);
 
         return $expr;
     }

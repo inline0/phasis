@@ -1,4 +1,1 @@
-Cat makes a sound
-Rex barks
-Rex
-3
+Call to undefined method PhpJs\Runtime\Interpreter::validateGlobalLexicalDeclarations()

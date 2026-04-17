@@ -149,6 +149,10 @@ class Interpreter
             $this->validateStrictModeRestrictions($program->body);
         }
 
+        // Per GlobalDeclarationInstantiation: validate lexical names
+        // do not collide with restricted global properties.
+        $this->validateGlobalLexicalDeclarations($program->body);
+
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);

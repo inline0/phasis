@@ -1085,9 +1085,8 @@ class GlobalObject
             $codePoint = match ($n) {
                 2 => (($octets[0] & 0x1F) << 6) | ($octets[1] & 0x3F),
                 3 => (($octets[0] & 0x0F) << 12) | (($octets[1] & 0x3F) << 6) | ($octets[2] & 0x3F),
-                4 => (($octets[0] & 0x07) << 18) | (($octets[1] & 0x3F) << 12)
+                default => (($octets[0] & 0x07) << 18) | (($octets[1] & 0x3F) << 12)
                      | (($octets[2] & 0x3F) << 6) | ($octets[3] & 0x3F),
-                default => 0,
             };
 
             // Validate: reject overlong encodings and out-of-range codepoints.

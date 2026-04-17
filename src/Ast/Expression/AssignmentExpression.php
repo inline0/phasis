@@ -14,6 +14,7 @@ readonly class AssignmentExpression extends Node
         public string $operator,
         public Node $left,
         public Node $right,
+        public bool $leftParenthesized = false,
     ) {
         parent::__construct($location);
     }

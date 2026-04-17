@@ -248,11 +248,13 @@ class Environment
             // for var/function bindings. These are backed by the global object.
             // When the global object property is updated directly (e.g. this.x = ...),
             // the environment binding may be stale. Prefer the global object value
-            // for non-const non-TDZ bindings that have a matching property.
+            // for non-const non-TDZ non-lexical bindings that have a matching property.
+            // Lexical bindings (let/const) take precedence over the global object.
             if (
                 $this->linkedObject !== null
                 && $this->parent === null
                 && !isset($this->constants[$name])
+                && !isset($this->lexical[$name])
                 && $this->linkedObject->hasOwnProperty($name)
             ) {
                 return $this->linkedObject->get($name);

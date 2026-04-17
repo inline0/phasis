@@ -1,5 +1,1 @@
-55
-8
-5
-128
-5
+Call to undefined method PhpJs\Runtime\Interpreter::validateGlobalLexicalDeclarations()
