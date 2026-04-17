@@ -96,16 +96,74 @@ class TypedArrayConstructor
         $constructor->defineOwnProperty('isView', PropertyDescriptor::data($isViewFn, true, false, true));
 
         // ArrayBuffer.prototype.slice(begin, end).
-        $sliceFn = JsFunction::fromCallable('slice', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsArrayBuffer) {
-                throw new TypeError('Method ArrayBuffer.prototype.slice called on incompatible receiver');
-            }
-            $begin = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[1])
-                : $this_->getByteLength();
-            return $this_->sliceBuffer($begin, $end);
-        }, 2);
+        // Per spec: uses SpeciesConstructor to create the new buffer.
+        $sliceFn = JsFunction::fromCallable(
+            'slice',
+            function (JsValue $this_, array $args) use ($constructor): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError('Method ArrayBuffer.prototype.slice called on incompatible receiver');
+                }
+                $len = $this_->getByteLength();
+
+                // Step 4-5: RelativeStart.
+                $begin = isset($args[0]) ? TypeConversion::toNumber($args[0]) : 0.0;
+
+                // Step 7-8: RelativeEnd.
+                $end = isset($args[1]) && !$args[1] instanceof JsUndefined
+                    ? TypeConversion::toNumber($args[1])
+                    : (float) $len;
+
+                // Compute the slice parameters.
+                [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
+
+                // Step 13: SpeciesConstructor(O, %ArrayBuffer%).
+                $ctor = $this_->get('constructor');
+                if ($ctor instanceof JsUndefined) {
+                    $ctor = $constructor;
+                } elseif (!$ctor instanceof JsObject) {
+                    throw new TypeError(
+                        TypeConversion::toString($ctor) . ' is not an object'
+                    );
+                } else {
+                    $speciesSym = SymbolConstructor::species();
+                    $species = $ctor->getBySymbol($speciesSym);
+                    if ($species instanceof JsUndefined || $species instanceof JsNull) {
+                        $ctor = $constructor;
+                    } else {
+                        $ctor = $species;
+                    }
+                }
+
+                // Step 15: Construct(ctor, newLen).
+                if ($ctor instanceof JsFunction && $ctor->isConstructable()) {
+                    $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
+                } else {
+                    // Default: create a plain ArrayBuffer.
+                    $newBuf = new JsArrayBuffer($newLen, $this_->getPrototype());
+                }
+
+                // Step 17: If new does not have [[ArrayBufferData]], throw TypeError.
+                if (!$newBuf instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'ArrayBuffer.prototype.slice: species constructor did not return an ArrayBuffer'
+                    );
+                }
+
+                // Step 20: If new.byteLength < newLen, throw TypeError.
+                // (species may return a larger buffer, which is OK).
+
+                // Step 24-25: Copy data.
+                if ($newLen > 0 && $newBuf->getByteLength() >= $newLen) {
+                    // Copy bytes from source into the new buffer.
+                    $existingData = $newBuf->getData();
+                    $newData = substr_replace($existingData, $slicedData, 0, $newLen);
+                    $newBuf->setData($newData);
+                }
+
+                return $newBuf;
+            },
+            2,
+        );
         $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
 
         // ArrayBuffer.prototype.byteLength getter.
@@ -138,6 +196,20 @@ class TypedArrayConstructor
             PropertyDescriptor::data($constructor, true, false, true),
         );
         $constructor->set('prototype', $proto);
+
+        // Per spec: get ArrayBuffer[@@species] returns `this`.
+        $speciesSym = SymbolConstructor::species();
+        $speciesGetter = JsFunction::fromCallable(
+            'get [Symbol.species]',
+            function (JsValue $this_): JsValue {
+                return $this_;
+            },
+            0,
+        );
+        $constructor->definePropertyBySymbol(
+            $speciesSym,
+            PropertyDescriptor::accessor($speciesGetter, null, false, true),
+        );
 
         $env->defineVar('ArrayBuffer', $constructor);
     }

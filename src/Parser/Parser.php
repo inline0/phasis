@@ -1929,29 +1929,33 @@ class Parser
 
         if ($token->type === TokenType::NoSubstitutionTemplate) {
             $this->advance();
-            $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $token->value, true);
+            $cooked = $token->cookedInvalid ? null : $token->value;
+            $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $cooked, true);
             return new TemplateLiteral($location, $quasis, $expressions);
         }
 
-        // TemplateHead — tokens are already split by the lexer
+        // TemplateHead: tokens are already split by the lexer.
         $this->advance();
-        $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $token->value, false);
+        $cooked = $token->cookedInvalid ? null : $token->value;
+        $quasis[] = new TemplateElement($token->location, $token->rawValue ?? $token->value, $cooked, false);
 
         while (true) {
             $expressions[] = $this->parseExpression();
 
-            // The lexer has already tokenized the continuation as TemplateTail or TemplateMiddle
+            // The lexer has already tokenized the continuation as TemplateTail or TemplateMiddle.
             $cont = $this->current();
 
             if ($cont->type === TokenType::TemplateTail) {
                 $this->advance();
-                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cont->value, true);
+                $cooked = $cont->cookedInvalid ? null : $cont->value;
+                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cooked, true);
                 break;
             }
 
             if ($cont->type === TokenType::TemplateMiddle) {
                 $this->advance();
-                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cont->value, false);
+                $cooked = $cont->cookedInvalid ? null : $cont->value;
+                $quasis[] = new TemplateElement($cont->location, $cont->rawValue ?? $cont->value, $cooked, false);
                 continue;
             }
 

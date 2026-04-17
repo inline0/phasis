@@ -465,6 +465,100 @@ class Lexer
     }
 
     /**
+     * Read an escape sequence inside a template literal. Per ES2018+ (tagged
+     * template literal revision), invalid escape sequences do not throw at lex
+     * time. Instead, the cooked value is set to null (undefined in JS) while
+     * the raw value is preserved from source text. Returns null when the escape
+     * is invalid, or the cooked string on success.
+     */
+    private function readTemplateEscapeSequence(bool &$cookedInvalid): ?string
+    {
+        // Line continuation: \<LS> or \<PS> (U+2028, U+2029) produce empty string.
+        if ($this->isUnicodeLineTerminator()) {
+            $this->pos += 3;
+            $this->line++;
+            $this->column = 0;
+            return '';
+        }
+
+        $ch = $this->source[$this->pos];
+
+        // Legacy octal escapes (other than \0 not followed by a digit) are
+        // NotEscapeSequence in templates per spec.
+        if ($ch >= '1' && $ch <= '7') {
+            $this->advance();
+            $cookedInvalid = true;
+            return null;
+        }
+        if ($ch === '8' || $ch === '9') {
+            $this->advance();
+            $cookedInvalid = true;
+            return null;
+        }
+        if ($ch === '0') {
+            // \0 followed by another digit is an octal escape (invalid in templates).
+            if ($this->pos + 1 < $this->length && $this->source[$this->pos + 1] >= '0' && $this->source[$this->pos + 1] <= '9') {
+                $this->advance();
+                $cookedInvalid = true;
+                return null;
+            }
+            // \0 alone is the null character.
+            $this->advance();
+            return "\0";
+        }
+
+        $this->advance();
+
+        // For hex and unicode escapes, save position and try; if invalid, restore and mark invalid.
+        if ($ch === 'x') {
+            $savedPos = $this->pos;
+            $savedLine = $this->line;
+            $savedCol = $this->column;
+            try {
+                return $this->readHexEscape(2);
+            } catch (SyntaxError) {
+                $this->pos = $savedPos;
+                $this->line = $savedLine;
+                $this->column = $savedCol;
+                $cookedInvalid = true;
+                return null;
+            }
+        }
+
+        if ($ch === 'u') {
+            $savedPos = $this->pos;
+            $savedLine = $this->line;
+            $savedCol = $this->column;
+            try {
+                return $this->readUnicodeEscape();
+            } catch (SyntaxError) {
+                $this->pos = $savedPos;
+                $this->line = $savedLine;
+                $this->column = $savedCol;
+                $cookedInvalid = true;
+                return null;
+            }
+        }
+
+        return match ($ch) {
+            'n' => "\n",
+            'r' => "\r",
+            't' => "\t",
+            'b' => "\x08",
+            'f' => "\f",
+            'v' => "\v",
+            "\n" => '',
+            "\r" => $this->pos < $this->length && $this->source[$this->pos] === "\n"
+                ? (function () {
+                    $this->advance();
+                    return '';
+                })()
+                : '',
+            default => $ch,
+        };
+    }
+
+    /**
      * AnnexB B.1.4: legacy octal escape sequences.
      *
      * Handles \0 alone (null char) and \0-\377 octal escapes (1-3 digits).
@@ -589,19 +683,20 @@ class Lexer
         $this->advance(); // skip opening backtick
         $cooked = '';
         $raw = '';
+        $cookedInvalid = false;
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::NoSubstitutionTemplate, $cooked, $start, false, $raw);
+                return new Token(TokenType::NoSubstitutionTemplate, $cooked, $start, false, $raw, $cookedInvalid);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance(); // skip $
                 $this->advance(); // skip {
-                return new Token(TokenType::TemplateHead, $cooked, $start, false, $raw);
+                return new Token(TokenType::TemplateHead, $cooked, $start, false, $raw, $cookedInvalid);
             }
 
             if ($ch === '\\') {
@@ -610,7 +705,10 @@ class Lexer
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
-                $cooked .= $this->readEscapeSequence();
+                $result = $this->readTemplateEscapeSequence($cookedInvalid);
+                if ($result !== null && !$cookedInvalid) {
+                    $cooked .= $result;
+                }
                 // Raw value preserves the original escape text from source,
                 // but CR and CRLF are normalized to LF per spec.
                 $rawChunk = substr($this->source, $rawStart, $this->pos - $rawStart);
@@ -645,19 +743,20 @@ class Lexer
         $this->lineTerminatorBefore = false;
         $cooked = '';
         $raw = '';
+        $cookedInvalid = false;
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::TemplateTail, $cooked, $start, $this->lineTerminatorBefore, $raw);
+                return new Token(TokenType::TemplateTail, $cooked, $start, $this->lineTerminatorBefore, $raw, $cookedInvalid);
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
                 $this->advance();
                 $this->advance();
-                return new Token(TokenType::TemplateMiddle, $cooked, $start, $this->lineTerminatorBefore, $raw);
+                return new Token(TokenType::TemplateMiddle, $cooked, $start, $this->lineTerminatorBefore, $raw, $cookedInvalid);
             }
 
             if ($ch === '\\') {
@@ -666,7 +765,10 @@ class Lexer
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
-                $cooked .= $this->readEscapeSequence();
+                $result = $this->readTemplateEscapeSequence($cookedInvalid);
+                if ($result !== null && !$cookedInvalid) {
+                    $cooked .= $result;
+                }
                 $rawChunk = substr($this->source, $rawStart, $this->pos - $rawStart);
                 $rawChunk = str_replace("\r\n", "\n", $rawChunk);
                 $rawChunk = str_replace("\r", "\n", $rawChunk);

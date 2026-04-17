@@ -117,7 +117,6 @@ class Interpreter
      */
     private array $activeWithObjectIds = [];
 
-
     public function __construct(
         private Environment $globalEnv,
         ?CallStack $callStack = null,
@@ -4295,7 +4294,6 @@ class Interpreter
             // FunctionDeclaration AST node was identified as eligible during the
             // hoisting phase. Per B.3.3.1, only function declarations identified
             // in step 1 get the modified evaluation that propagates to fenv.
-            error_log("execFuncDecl: " . $name . " nodeId=" . spl_object_id($node) . " eligible=" . (isset($this->annexBEligible[spl_object_id($node)]) ? "yes" : "no") . " total=" . count($this->annexBEligible));
             if (isset($this->annexBEligible[spl_object_id($node)])) {
                 $varScope = $env;
                 while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
@@ -4313,7 +4311,12 @@ class Interpreter
     private function execBlockStatement(BlockStatement $node, Environment $env): Completion
     {
         $blockEnv = $env->createChild();
+        // Block-level hoisting should not do Annex B function hoisting.
+        // Annex B hoisting is only done at the function scope level.
+        $savedSkip = $this->skipAnnexBHoisting;
+        $this->skipAnnexBHoisting = true;
         $this->hoistDeclarations($node->body, $blockEnv);
+        $this->skipAnnexBHoisting = $savedSkip;
         $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
         return $this->executeBody($node->body, $blockEnv);
     }
@@ -5756,7 +5759,7 @@ class Interpreter
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
-                            $this->annexBEligible[spl_object_id($inner)] = true; error_log("  marked inner: " . $inner->id->name . " id=" . spl_object_id($inner));
+                            $this->annexBEligible[spl_object_id($inner)] = true;
                         }
                     }
                 }
@@ -5806,7 +5809,7 @@ class Interpreter
             if ($child instanceof FunctionDeclaration) {
                 if ($canHoist($child->id->name)) {
                     $env->defineAnnexBVar($child->id->name, JsUndefined::instance());
-                    $this->annexBEligible[spl_object_id($child)] = true; error_log("  marked child: " . $child->id->name . " id=" . spl_object_id($child));
+                    $this->annexBEligible[spl_object_id($child)] = true;
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
@@ -5819,7 +5822,7 @@ class Interpreter
                         }
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
-                            $this->annexBEligible[spl_object_id($inner)] = true; error_log("  marked inner: " . $inner->id->name . " id=" . spl_object_id($inner));
+                            $this->annexBEligible[spl_object_id($inner)] = true;
                         }
                     }
                 }

@@ -77,20 +77,48 @@ class JsArrayBuffer extends JsObject
     }
 
     /**
-     * ArrayBuffer.prototype.slice(begin, end).
+     * ArrayBuffer.prototype.slice(begin, end) core logic.
      *
      * Returns a new ArrayBuffer containing a copy of the bytes from begin
-     * (inclusive) to end (exclusive).
+     * (inclusive) to end (exclusive). Accepts float to handle Infinity.
+     * The caller (TypedArrayConstructor) handles SpeciesConstructor.
+     *
+     * @return array{int, int, string} Tuple of [newLen, begin, slicedData].
+     */
+    public function computeSlice(float $begin, float $end): array
+    {
+        $len = $this->byteLength;
+
+        // Resolve relative begin per spec.
+        if ($begin < 0) {
+            $first = (int) max($len + $begin, 0);
+        } else {
+            $first = (int) min($begin, $len);
+        }
+
+        // Resolve relative end per spec.
+        if ($end < 0) {
+            $final = (int) max($len + $end, 0);
+        } else {
+            $final = (int) min($end, $len);
+        }
+
+        $newLen = max(0, $final - $first);
+        $slicedData = $newLen > 0 ? substr($this->data, $first, $newLen) : '';
+
+        return [$newLen, $first, $slicedData];
+    }
+
+    /**
+     * Simple slice that creates a new ArrayBuffer directly.
+     * Used when SpeciesConstructor is not needed.
      */
     public function sliceBuffer(int $begin, int $end): self
     {
-        $begin = max(0, $begin < 0 ? $this->byteLength + $begin : $begin);
-        $end = min($this->byteLength, $end < 0 ? $this->byteLength + $end : $end);
-        $newLen = max(0, $end - $begin);
-
+        [$newLen, , $slicedData] = $this->computeSlice((float) $begin, (float) $end);
         $newBuffer = new self($newLen, $this->getPrototype());
         if ($newLen > 0) {
-            $newBuffer->data = substr($this->data, $begin, $newLen);
+            $newBuffer->data = $slicedData;
         }
         return $newBuffer;
     }
