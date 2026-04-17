@@ -1,1 +1,24 @@
-Call to undefined method PhpJs\Runtime\Interpreter::validateGlobalLexicalDeclarations()
+3
+7
+20
+3.3333333333333335
+1
+256
+hello world
+53
+2
+2
+1
+number
+string
+boolean
+undefined
+object
+object
+function
+false
+true
+true
+false
+true
+false
