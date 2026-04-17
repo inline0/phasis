@@ -1632,40 +1632,43 @@ class TypedArrayConstructor
         );
         $proto->defineOwnProperty('sort', PropertyDescriptor::data($sortFn, true, false, true));
 
-        // entries().
+        // entries(): per spec uses CreateArrayIterator (shared %ArrayIteratorPrototype%).
         $entriesFn = JsFunction::fromCallable(
             'entries',
             function (JsValue $this_, array $args) use ($typeName): JsValue {
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.entries called on incompatible receiver");
                 }
-                return self::createTypedArrayIterator($this_, 'key+value');
+                self::validateTypedArray($this_);
+                return ArrayConstructor::createArrayIteratorFromSymbol($this_, 'key+value');
             },
             0
         );
         $proto->defineOwnProperty('entries', PropertyDescriptor::data($entriesFn, true, false, true));
 
-        // keys().
+        // keys(): per spec uses CreateArrayIterator.
         $keysFn = JsFunction::fromCallable(
             'keys',
             function (JsValue $this_, array $args) use ($typeName): JsValue {
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.keys called on incompatible receiver");
                 }
-                return self::createTypedArrayIterator($this_, 'key');
+                self::validateTypedArray($this_);
+                return ArrayConstructor::createArrayIteratorFromSymbol($this_, 'key');
             },
             0
         );
         $proto->defineOwnProperty('keys', PropertyDescriptor::data($keysFn, true, false, true));
 
-        // values().
+        // values(): per spec uses CreateArrayIterator.
         $valuesFn = JsFunction::fromCallable(
             'values',
             function (JsValue $this_, array $args) use ($typeName): JsValue {
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.values called on incompatible receiver");
                 }
-                return self::createTypedArrayIterator($this_, 'value');
+                self::validateTypedArray($this_);
+                return ArrayConstructor::createArrayIteratorFromSymbol($this_, 'value');
             },
             0
         );
@@ -1978,6 +1981,18 @@ class TypedArrayConstructor
             'byteOffset',
             PropertyDescriptor::accessor($byteOffsetGetter, null, false, true),
         );
+    }
+
+    /**
+     * ValidateTypedArray per spec: throws TypeError if buffer is detached.
+     */
+    private static function validateTypedArray(JsTypedArray $ta): void
+    {
+        if ($ta->getBuffer()->isDetached()) {
+            throw new TypeError(
+                'Cannot perform %TypedArray%.prototype method on a detached ArrayBuffer'
+            );
+        }
     }
 
     /** Create an iterator for a typed array (entries, keys, or values). */

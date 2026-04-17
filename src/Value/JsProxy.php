@@ -151,6 +151,10 @@ class JsProxy extends JsObject
      */
     public function internalGet(string $name, JsObject $receiver): JsValue
     {
+        // Internal slots bypass proxy traps.
+        if (self::isInternalSlot($name)) {
+            return $this->target->internalGet($name, $this->target);
+        }
         $trap = $this->getTrap('get');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target, new JsString($name), $receiver]);
@@ -368,6 +372,10 @@ class JsProxy extends JsObject
 
     public function has(string $name): bool
     {
+        // Internal slots bypass proxy traps.
+        if (self::isInternalSlot($name)) {
+            return $this->target->has($name);
+        }
         $trap = $this->getTrap('has');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target, new JsString($name)]);
@@ -837,6 +845,11 @@ class JsProxy extends JsObject
 
     public function getOwnPropertyDescriptor(string $name): ?PropertyDescriptor
     {
+        // Internal slots (e.g. [[NewTarget]], [[PrimitiveValue]]) bypass proxy traps.
+        // They are engine-internal markers, not observable JS properties.
+        if (self::isInternalSlot($name)) {
+            return $this->target->getOwnPropertyDescriptor($name);
+        }
         $trap = $this->getTrap('getOwnPropertyDescriptor');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target, new JsString($name)]);

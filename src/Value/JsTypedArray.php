@@ -154,7 +154,10 @@ class JsTypedArray extends JsObject
     /** Get element at typed index. */
     public function getIndex(int $index): JsValue
     {
-        $this->validateNotDetached();
+        // Per spec IntegerIndexedElementGet: return undefined for detached buffers.
+        if ($this->buffer->isDetached()) {
+            return JsUndefined::instance();
+        }
         if ($index < 0 || $index >= $this->length) {
             return JsUndefined::instance();
         }
@@ -193,7 +196,10 @@ class JsTypedArray extends JsObject
     /** Set element at typed index. */
     public function setIndex(int $index, JsValue $value): void
     {
-        $this->validateNotDetached();
+        // Per spec IntegerIndexedElementSet: silently fail for detached buffers.
+        if ($this->buffer->isDetached()) {
+            return;
+        }
         if ($index < 0 || $index >= $this->length) {
             return;
         }
