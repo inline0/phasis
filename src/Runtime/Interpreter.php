@@ -118,6 +118,9 @@ class Interpreter
      */
     private array $activeWithObjectIds = [];
 
+    /** Whether this interpreter is executing indirect eval code. */
+    private bool $isEvalContext = false;
+
     public function __construct(
         private Environment $globalEnv,
         ?CallStack $callStack = null,
@@ -135,6 +138,12 @@ class Interpreter
     public function setMaxLoopIterations(int $limit): void
     {
         $this->maxLoopIterations = $limit;
+    }
+
+    /** Mark this interpreter as running eval code (indirect eval). */
+    public function setEvalContext(bool $isEval): void
+    {
+        $this->isEvalContext = $isEval;
     }
 
     public function isStrictMode(): bool
@@ -6350,7 +6359,7 @@ class Interpreter
                 foreach ($case->consequent as $inner) {
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         if ($canHoist($inner->id->name)) {
-                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
+                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance(), $this->isEvalContext);
                             $this->annexBEligible[spl_object_id($inner)] = true;
                         }
                     }
@@ -6412,7 +6421,7 @@ class Interpreter
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration) {
                 if ($canHoist($child->id->name)) {
-                    $env->defineAnnexBVar($child->id->name, JsUndefined::instance());
+                    $env->defineAnnexBVar($child->id->name, JsUndefined::instance(), $this->isEvalContext);
                     $this->annexBEligible[spl_object_id($child)] = true;
                 }
             } elseif ($child instanceof BlockStatement) {
@@ -6425,7 +6434,7 @@ class Interpreter
                             continue;
                         }
                         if ($canHoist($inner->id->name)) {
-                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
+                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance(), $this->isEvalContext);
                             $this->annexBEligible[spl_object_id($inner)] = true;
                         }
                     }

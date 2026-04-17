@@ -1242,6 +1242,7 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.slice called on incompatible receiver"
                     );
                 }
+                $this_->validateNotDetached();
                 $len = $this_->getLength();
                 $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $end = isset($args[1]) && !$args[1] instanceof JsUndefined
@@ -1263,6 +1264,12 @@ class TypedArrayConstructor
 
                 // TypedArraySpeciesCreate via SpeciesConstructor.
                 $result = self::typedArraySpeciesCreate($this_, $count);
+
+                // Per spec: if count > 0, check if buffer was detached
+                // (may happen during species constructor or start/end coercion).
+                if ($count > 0) {
+                    $this_->validateNotDetached();
+                }
 
                 for ($i = 0; $i < $count; $i++) {
                     $result->setIndex($i, $this_->getIndex($begin + $i));
@@ -1668,7 +1675,8 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
                 }
-            // Per spec: if length is 0, return false before ToInteger(fromIndex).
+                $this_->validateNotDetached();
+                // Per spec: if length is 0, return false before ToInteger(fromIndex).
                 if ($this_->getLength() === 0) {
                     return new JsBoolean(false);
                 }

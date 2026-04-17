@@ -104,6 +104,7 @@ class GlobalObject
             $parser = new \PhpJs\Parser\Parser($code->value);
             $program = $parser->parse();
             $interp = new Interpreter($env);
+            $interp->setEvalContext(true);
             return $interp->execute($program);
         }, 1);
         $env->defineVar('eval', $evalFn);
