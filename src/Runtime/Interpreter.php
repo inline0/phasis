@@ -1642,17 +1642,17 @@ class Interpreter
     {
         $callee = $this->evaluate($node->callee, $env);
 
+        // Per spec EvaluateNew: arguments are evaluated BEFORE the IsConstructor check (step 6 before step 7).
+        $args = $this->evaluateArguments($node->arguments, $env);
+
         // Proxy construct trap: if the callee is a Proxy, invoke its construct().
         if ($callee instanceof \PhpJs\Value\JsProxy) {
-            $args = $this->evaluateArguments($node->arguments, $env);
             return $callee->construct($args, $callee);
         }
 
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
             throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
         }
-
-        $args = $this->evaluateArguments($node->arguments, $env);
 
         // Create a new object with the constructor's prototype
         $proto = $callee->get('prototype');
@@ -3527,24 +3527,18 @@ class Interpreter
                 $fobj->setSourceText($node->sourceText);
             }
             $this->installFunctionPrototype($fobj, $node->generator);
-            // Update the block-scope binding if it exists.
-            if ($env->hasOwnBinding($name)) {
-                $env->set($name, $fobj, false);
-            }
             // Propagate to the variable environment (enclosing function/global
             // scope) where the var binding was hoisted. Only propagate if the
             // binding was created by Annex B hoisting (not a parameter or
             // let/const that would suppress the extension per B.3.3.1 step ii).
-            $parent = $env->getParent();
-            if ($parent !== null) {
-                // Walk up to find the var scope where Annex B hoisting created the binding.
-                $varScope = $parent;
-                while ($varScope !== null && !$varScope->hasOwnBinding($name)) {
-                    $varScope = $varScope->getParent();
-                }
-                if ($varScope !== null && $varScope->isAnnexBHoisted($name)) {
-                    $varScope->set($name, $fobj, false);
-                }
+            // Walk up the scope chain starting from env itself to find the
+            // Annex B hoisted binding.
+            $varScope = $env;
+            while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
+                $varScope = $varScope->getParent();
+            }
+            if ($varScope !== null) {
+                $varScope->set($name, $fobj, false);
             }
         }
 
@@ -4387,6 +4381,21 @@ class Interpreter
     /** @param Node[] $statements */
     private function hoistDeclarations(array $statements, Environment $env): void
     {
+        // Collect top-level lexical names (let/const) so hoistBlockFunctionDeclarations
+        // can skip names that would conflict per B.3.3.1 step ii.
+        $lexicalNames = [];
+        if (!$this->strictMode) {
+            foreach ($statements as $s) {
+                if ($s instanceof VariableDeclaration && ($s->kind === 'let' || $s->kind === 'const')) {
+                    foreach ($s->declarations as $d) {
+                        foreach ($this->patternBoundNames($d->id) as $n) {
+                            $lexicalNames[$n] = true;
+                        }
+                    }
+                }
+            }
+        }
+
         foreach ($statements as $stmt) {
             if ($stmt instanceof FunctionDeclaration) {
                 $fn = new JsFunction(
@@ -4494,7 +4503,7 @@ class Interpreter
             // Annex B: in sloppy mode, hoist function declaration names from
             // nested blocks (if, for, while, etc.) to the enclosing scope.
             if (!$this->strictMode) {
-                $this->hoistBlockFunctionDeclarations($stmt, $env);
+                $this->hoistBlockFunctionDeclarations($stmt, $env, $lexicalNames);
             }
         }
     }
@@ -4582,8 +4591,14 @@ class Interpreter
      * names found inside to the given environment as undefined. The actual
      * value is assigned when the block executes.
      */
-    private function hoistBlockFunctionDeclarations(Node $stmt, Environment $env): void
-    {
+    /**
+     * @param array<string, bool> $lexicalNames Top-level let/const names to skip.
+     */
+    private function hoistBlockFunctionDeclarations(
+        Node $stmt,
+        Environment $env,
+        array $lexicalNames = [],
+    ): void {
         $children = match (true) {
             $stmt instanceof BlockStatement => $stmt->body,
             $stmt instanceof IfStatement => array_filter([
@@ -4594,12 +4609,18 @@ class Interpreter
             default => [],
         };
 
+        // Per B.3.3.1 step ii: skip if the name already exists in the scope
+        // (parameter) or would conflict with a lexical declaration.
+        $canHoist = function (string $name) use ($env, $lexicalNames): bool {
+            return !$env->has($name) && !isset($lexicalNames[$name]);
+        };
+
         // Switch statements: collect function declarations from case bodies.
         if ($stmt instanceof SwitchStatement) {
             foreach ($stmt->cases as $case) {
                 foreach ($case->consequent as $inner) {
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
-                        if (!$env->has($inner->id->name)) {
+                        if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
                         }
                     }
@@ -4609,13 +4630,13 @@ class Interpreter
 
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration) {
-                if (!$env->has($child->id->name)) {
+                if ($canHoist($child->id->name)) {
                     $env->defineAnnexBVar($child->id->name, JsUndefined::instance());
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
                     if ($inner instanceof FunctionDeclaration) {
-                        if (!$env->has($inner->id->name)) {
+                        if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
                         }
                     }
