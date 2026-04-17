@@ -131,6 +131,8 @@ class ObjectConstructor
     private static function createPrototype(): JsObject
     {
         $proto = new JsObject();
+        $proto->setPrototype(null);
+        $proto->setImmutablePrototype();
 
         $proto->defineOwnProperty('hasOwnProperty', PropertyDescriptor::data(JsFunction::fromCallable(
             'hasOwnProperty',
@@ -669,13 +671,15 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return $obj;
             }
-            if ($proto instanceof JsNull) {
-                $obj->setPrototype(null);
-            } elseif ($proto instanceof JsObject) {
-                $obj->setPrototype($proto);
-            } else {
+            if (!$proto instanceof JsNull && !$proto instanceof JsObject) {
                 throw new \PhpJs\Exceptions\TypeError('Object prototype may only be an Object or null');
             }
+
+            $newProto = $proto instanceof JsNull ? null : $proto;
+            if (!$obj->trySetPrototype($newProto)) {
+                throw new \PhpJs\Exceptions\TypeError('Object prototype may not be changed');
+            }
+
             return $obj;
         };
     }

@@ -13,6 +13,7 @@ class JsObject implements JsValue
     private ?JsObject $prototype;
     private static ?JsObject $globalPrototype = null;
     private bool $extensible = true;
+    private bool $immutablePrototype = false;
 
     /** @var array<int, PropertyDescriptor> Symbol-keyed properties, indexed by JsSymbol id. */
     protected array $symbolProperties = [];
@@ -49,6 +50,39 @@ class JsObject implements JsValue
     public function preventExtensions(): void
     {
         $this->extensible = false;
+    }
+
+    public function setImmutablePrototype(bool $immutable = true): void
+    {
+        $this->immutablePrototype = $immutable;
+    }
+
+    public function hasImmutablePrototype(): bool
+    {
+        return $this->immutablePrototype;
+    }
+
+    public function trySetPrototype(?JsObject $prototype): bool
+    {
+        $current = $this->getPrototype();
+        if ($prototype === $current) {
+            return true;
+        }
+
+        if ($this->immutablePrototype || !$this->isExtensible()) {
+            return false;
+        }
+
+        $candidate = $prototype;
+        while ($candidate !== null) {
+            if ($candidate === $this) {
+                return false;
+            }
+            $candidate = $candidate->getPrototype();
+        }
+
+        $this->setPrototype($prototype);
+        return true;
     }
 
     public function get(string $name): JsValue

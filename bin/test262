@@ -10,6 +10,7 @@ require __DIR__ . '/../vendor/autoload.php';
 use PhpJs\Tests\Oracle\Test262Runner;
 
 $suiteDir = __DIR__ . '/../test262';
+$supportConfig = require __DIR__ . '/../config/support.php';
 
 if (!is_dir($suiteDir . '/test')) {
     fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
@@ -18,43 +19,7 @@ if (!is_dir($suiteDir . '/test')) {
 
 $runner = new Test262Runner($suiteDir);
 
-// Features we don't support yet
-$runner->setSkipFeatures([
-    // Async iteration (basic async/await and Promise are now supported)
-    'async-iteration', 'top-level-await',
-    // Binary data (unsupported subset)
-    'Atomics', 'SharedArrayBuffer',
-    'resizable-arraybuffer', 'arraybuffer-transfer', 'Float16Array',
-    // Weak references
-    'WeakRef', 'FinalizationRegistry', 'symbols-as-weakmap-keys',
-    // Modules
-    'import-assertions', 'import-attributes', 'dynamic-import',
-    'arbitrary-module-namespace-names', 'json-modules', 'source-phase-imports',
-    // Symbols (well-known) - unsupported ones
-    'Symbol.species', 'Symbol.asyncIterator',
-    // RegExp advanced
-    'regexp-lookbehind', 'regexp-named-groups', 'regexp-dotall',
-    'regexp-unicode-property-escapes', 'regexp-match-indices', 'regexp-v-flag',
-    'regexp-modifiers', 'regexp-duplicate-named-groups',
-    'RegExp.escape',
-    // Class fields/private
-    'class-fields-public', 'class-fields-private',
-    'class-static-fields-public', 'class-static-fields-private',
-    'class-methods-private', 'class-static-methods-private',
-    'class-static-block',
-    // Non-standard caller/arguments tracking on function instances
-    'caller',
-    // Realms
-    'cross-realm',
-    // Misc advanced
-    'Intl', 'tail-call-optimization', 'ShadowRealm', 'Temporal',
-    'decorators', 'explicit-resource-management',
-    'hashbang', 'IsHTMLDDA',
-    'iterator-helpers', 'set-methods', 'Array.fromAsync',
-    'change-array-by-copy', 'Math.sumPrecise',
-    'well-formed-json-stringify', 'json-parse-with-source',
-    'String.prototype.isWellFormed', 'String.prototype.toWellFormed',
-]);
+$runner->setSkipFeatures($supportConfig['test262_skipped_features']);
 
 // Parse CLI args
 $category = null;
@@ -62,6 +27,9 @@ $report = false;
 $jobs = 1;
 $showFailures = false;
 $limit = 0;
+$filesFrom = null;
+$json = false;
+$progress = true;
 
 $args = array_slice($argv, 1);
 for ($i = 0; $i < count($args); $i++) {
@@ -81,6 +49,16 @@ for ($i = 0; $i < count($args); $i++) {
         case '--limit':
             $limit = (int) ($args[++$i] ?? 0);
             break;
+        case '--files-from':
+            $filesFrom = $args[++$i] ?? null;
+            break;
+        case '--json':
+            $json = true;
+            $progress = false;
+            break;
+        case '--no-progress':
+            $progress = false;
+            break;
         default:
             if (!str_starts_with($args[$i], '--')) {
                 $category = $args[$i];
@@ -89,7 +67,12 @@ for ($i = 0; $i < count($args); $i++) {
 }
 
 $testDir = $suiteDir . '/test';
-if ($category !== null) {
+if ($filesFrom !== null) {
+    if (!is_file($filesFrom)) {
+        fwrite(STDERR, "File list not found: {$filesFrom}\n");
+        exit(1);
+    }
+} elseif ($category !== null) {
     $testDir .= '/' . $category;
     if (!is_dir($testDir)) {
         fwrite(STDERR, "Category not found: {$category}\n");
@@ -100,9 +83,32 @@ if ($category !== null) {
 $count = 0;
 $result = new \PhpJs\Tests\Oracle\SuiteResult();
 
-echo "Running test262" . ($category ? " ({$category})" : '') . "...\n";
+if (!$json) {
+    echo "Running test262";
+    if ($filesFrom !== null) {
+        echo " (file list)";
+    } elseif ($category !== null) {
+        echo " ({$category})";
+    }
+    echo "...\n";
+}
 
-foreach ($runner->runDirectory($testDir) as $testResult) {
+if ($filesFrom !== null) {
+    $paths = file($filesFrom, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($paths === false) {
+        fwrite(STDERR, "Unable to read file list: {$filesFrom}\n");
+        exit(1);
+    }
+    $testResults = (function () use ($runner, $paths): \Generator {
+        foreach ($paths as $path) {
+            yield $runner->run($path);
+        }
+    })();
+} else {
+    $testResults = $runner->runDirectory($testDir);
+}
+
+foreach ($testResults as $testResult) {
     $result->add($testResult);
     $count++;
 
@@ -117,9 +123,18 @@ foreach ($runner->runDirectory($testDir) as $testResult) {
     }
 
     // Progress indicator every 100 tests
-    if ($count % 100 === 0) {
+    if ($progress && $count % 100 === 0) {
         $rate = $result->passRate();
         fprintf(STDERR, "\r  %d tests (%d pass, %d fail, %d skip) %.1f%%", $count, $result->pass, $result->fail, $result->skip, $rate);
+    }
+
+    // Long compat runs execute many tests in one PHP process. Periodic GC and
+    // cache trimming reduces memory growth without changing interpreter semantics.
+    if ($count % 50 === 0) {
+        gc_collect_cycles();
+        if (function_exists('gc_mem_caches')) {
+            gc_mem_caches();
+        }
     }
 
     if ($limit > 0 && $count >= $limit) {
@@ -127,9 +142,22 @@ foreach ($runner->runDirectory($testDir) as $testResult) {
     }
 }
 
-fprintf(STDERR, "\r" . str_repeat(' ', 80) . "\r");
+if ($progress) {
+    fprintf(STDERR, "\r" . str_repeat(' ', 80) . "\r");
+}
 
-if ($report) {
+if ($json) {
+    echo json_encode([
+        'pass' => $result->pass,
+        'fail' => $result->fail,
+        'skip' => $result->skip,
+        'attempted' => $result->pass + $result->fail,
+        'total' => $result->total(),
+        'passRate' => round($result->passRate(), 1),
+        'category' => $category,
+        'filesFrom' => $filesFrom,
+    ], JSON_UNESCAPED_SLASHES) . "\n";
+} elseif ($report) {
     echo $result->report() . "\n";
 } else {
     $attempted = $result->pass + $result->fail;

@@ -22,6 +22,8 @@ use PhpJs\Object\PropertyDescriptor;
 
 class ArrayConstructor
 {
+    private const SPARSE_SCAN_THRESHOLD = 1000000;
+
     public static function install(Environment $env): void
     {
         // Reset global prototype so a new engine instance does not inherit stale prototype.
@@ -244,7 +246,7 @@ class ArrayConstructor
             'indexOf',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
                     return new JsNumber(-1.0);
                 }
@@ -261,6 +263,17 @@ class ArrayConstructor
                 } else {
                     $k = $nNum === -INF ? 0 : max($len + (int) $nNum, 0);
                 }
+
+                if (self::shouldUseSparseIndexScan($o, $len)) {
+                    foreach (self::numericPropertyIndicesInRange($o, $k, $len - 1) as $i) {
+                        $key = (string) $i;
+                        if (AbstractOperations::strictEquals($o->get($key), $search)) {
+                            return new JsNumber((float) $i);
+                        }
+                    }
+                    return new JsNumber(-1.0);
+                }
+
                 for ($i = $k; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
@@ -276,7 +289,7 @@ class ArrayConstructor
             'lastIndexOf',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
                     return new JsNumber(-1.0);
                 }
@@ -293,6 +306,17 @@ class ArrayConstructor
                     }
                     $k = $len + (int) $nNum;
                 }
+
+                if (self::shouldUseSparseIndexScan($o, $len)) {
+                    foreach (self::numericPropertyIndicesInRange($o, 0, $k, true) as $i) {
+                        $key = (string) $i;
+                        if (AbstractOperations::strictEquals($o->get($key), $search)) {
+                            return new JsNumber((float) $i);
+                        }
+                    }
+                    return new JsNumber(-1.0);
+                }
+
                 for ($i = $k; $i >= 0; $i--) {
                     $key = (string) $i;
                     if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
@@ -358,20 +382,30 @@ class ArrayConstructor
             'slice',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
-                $start = isset($args[0]) ? (int) $args[0]->toNumber() : 0;
-                $end = isset($args[1]) ? (int) $args[1]->toNumber() : $len;
-                if ($start < 0) {
-                    $start = max(0, $len + $start);
+                $len = TypeConversion::toLength($this_->get('length'));
+                $relativeStart = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+                $relativeEnd = isset($args[1]) && !($args[1] instanceof JsUndefined)
+                    ? TypeConversion::toIntegerOrInfinity($args[1])
+                    : (float) $len;
+
+                $start = self::normalizeRelativeIndex($relativeStart, $len);
+                $end = self::normalizeRelativeIndex($relativeEnd, $len);
+                $count = max(0, $end - $start);
+
+                if ($count > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
-                if ($end < 0) {
-                    $end = max(0, $len + $end);
+
+                $result = new JsArray();
+                $n = 0;
+                for ($i = $start; $i < $end; $i++, $n++) {
+                    $from = (string) $i;
+                    if ($this_->has($from)) {
+                        $result->set((string) $n, $this_->get($from));
+                    }
                 }
-                $result = [];
-                for ($i = $start; $i < $end && $i < $len; $i++) {
-                    $result[] = $this_->get((string) $i);
-                }
-                return JsArray::fromArray($result);
+                $result->setLength($count);
+                return $result;
             },
             2
         ), true, false, true));
@@ -553,11 +587,30 @@ class ArrayConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduceRight callback is not a function');
                 }
-                $len = self::getLen($o);
-                $initial = $args[1] ?? null;
-                $acc = $initial;
+                $len = self::lengthOfArrayLike($o);
+                $hasInitial = array_key_exists(1, $args);
+                $acc = $hasInitial ? $args[1] : null;
                 $start = $len - 1;
-                if ($acc === null) {
+                if (self::shouldUseSparseIndexScan($o, $len)) {
+                    $indices = self::numericPropertyIndicesInRange($o, 0, $len - 1, true);
+                    if (!$hasInitial) {
+                        if ($indices === []) {
+                            throw new TypeError('Reduce of empty array with no initial value');
+                        }
+                        $initialIndex = array_shift($indices);
+                        $acc = $o->get((string) $initialIndex);
+                    }
+
+                    foreach ($indices as $index) {
+                        $val = $o->get((string) $index);
+                        $idx = new JsNumber((float) $index);
+                        $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $o]);
+                    }
+
+                    return $acc;
+                }
+
+                if (!$hasInitial) {
                     if ($len === 0) {
                         throw new TypeError('Reduce of empty array with no initial value');
                     }
@@ -816,27 +869,40 @@ class ArrayConstructor
             'splice',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
-                $len = self::getLen($this_);
-                $start = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                if ($start < 0) {
-                    $start = max($len + $start, 0);
+                $len = TypeConversion::toLength($this_->get('length'));
+                $relativeStart = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
+                $start = self::normalizeRelativeIndex($relativeStart, $len);
+
+                if (isset($args[1])) {
+                    $relativeDeleteCount = TypeConversion::toIntegerOrInfinity($args[1]);
+                    if ($relativeDeleteCount === INF) {
+                        $deleteCount = $len - $start;
+                    } else {
+                        $deleteCount = max(0, (int) $relativeDeleteCount);
+                    }
                 } else {
-                    $start = min($start, $len);
+                    $deleteCount = $len - $start;
                 }
-                $deleteCount = isset($args[1])
-                ? max(0, (int) TypeConversion::toNumber($args[1]))
-                : $len - $start;
                 $deleteCount = min($deleteCount, $len - $start);
                 $insertItems = array_slice($args, 2);
 
-            // Collect removed elements.
-                $removed = [];
+                // Collect removed elements without materializing a huge PHP array.
+                $removed = new JsArray();
                 for ($i = 0; $i < $deleteCount; $i++) {
-                    $removed[] = $this_->get((string) ($start + $i));
+                    $from = (string) ($start + $i);
+                    if ($this_->has($from)) {
+                        $removed->set((string) $i, $this_->get($from));
+                    }
                 }
+                $removed->setLength($deleteCount);
 
                 $insertCount = count($insertItems);
                 $diff = $insertCount - $deleteCount;
+                $newLen = $len + $diff;
+
+                if ($newLen > 9007199254740991) {
+                    throw new \PhpJs\Exceptions\TypeError('Array length exceeds the supported limit');
+                }
 
                 if ($diff > 0) {
                     // Shift elements right.
@@ -859,13 +925,12 @@ class ArrayConstructor
                     $this_->set((string) ($start + $idx), $item);
                 }
 
-                $newLen = $len + $diff;
                 if ($this_ instanceof JsArray) {
                     $this_->setLength($newLen);
                 } else {
                     $this_->set("length", new JsNumber((float) ($newLen)));
                 }
-                return JsArray::fromArray($removed);
+                return $removed;
             },
             2
         ), true, false, true));
@@ -1217,5 +1282,84 @@ class ArrayConstructor
         return function (JsValue $this_, array $args): JsValue {
             return JsArray::fromArray($args);
         };
+    }
+
+    private static function normalizeRelativeIndex(float $index, int $length): int
+    {
+        if ($index === INF) {
+            return $length;
+        }
+        if ($index === -INF) {
+            return 0;
+        }
+
+        $integerIndex = (int) $index;
+        if ($integerIndex < 0) {
+            return max($length + $integerIndex, 0);
+        }
+
+        return min($integerIndex, $length);
+    }
+
+    private static function lengthOfArrayLike(JsObject $object): int
+    {
+        return TypeConversion::toLength($object->get('length'));
+    }
+
+    private static function shouldUseSparseIndexScan(JsObject $object, int $length): bool
+    {
+        return !$object instanceof JsArray && $length > self::SPARSE_SCAN_THRESHOLD;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function numericPropertyIndicesInRange(
+        JsObject $object,
+        int $start,
+        int $end,
+        bool $descending = false,
+    ): array {
+        if ($end < $start) {
+            return [];
+        }
+
+        $seen = [];
+        $indices = [];
+        $current = $object;
+
+        while ($current !== null) {
+            foreach ($current->getProperties()->keys() as $key) {
+                if (!self::isCanonicalArrayIndexString($key)) {
+                    continue;
+                }
+                if (isset($seen[$key])) {
+                    continue;
+                }
+
+                $index = (int) $key;
+                if ($index < $start || $index > $end) {
+                    continue;
+                }
+
+                $seen[$key] = true;
+                $indices[] = $index;
+            }
+
+            $current = $current->getPrototype();
+        }
+
+        $descending ? rsort($indices) : sort($indices);
+
+        return $indices;
+    }
+
+    private static function isCanonicalArrayIndexString(string $key): bool
+    {
+        if ($key === '' || !ctype_digit($key)) {
+            return false;
+        }
+
+        return $key === '0' || $key[0] !== '0';
     }
 }

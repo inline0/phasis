@@ -66,12 +66,7 @@ class TypedArrayConstructor
             'ArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 $arg0 = $args[0] ?? new JsNumber(0.0);
-                $numLen = TypeConversion::toNumber($arg0);
-                // ToIndex: must be a non-negative integer < 2^53
-                if (is_nan($numLen) || $numLen < 0 || $numLen >= (float) (2 ** 53) || is_infinite($numLen)) {
-                    throw new RangeError('Invalid array buffer length');
-                }
-                $length = (int) $numLen;
+                $length = TypeConversion::toIndex($arg0);
                 return new JsArrayBuffer($length, $proto);
             },
             1,

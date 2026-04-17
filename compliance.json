@@ -1,27 +1,51 @@
 {
-    "date": "2026-04-15T13:26:06+00:00",
+    "date": "2026-04-16T20:11:13+00:00",
     "overall": {
-        "totalPass": 732,
-        "totalFail": 235,
-        "totalSkip": 98,
-        "totalRate": 75.7
+        "totalPass": 1462,
+        "totalFail": 107,
+        "totalSkip": 185,
+        "totalRate": 93.2
     },
     "categories": [
         {
-            "cat": "language\/block-scope",
-            "pass": 27,
+            "cat": "language\/literals",
+            "pass": 50,
             "fail": 0,
-            "skip": 3,
+            "skip": 0,
             "rate": 100,
-            "attempted": 27
+            "attempted": 50
         },
         {
-            "cat": "language\/destructuring",
-            "pass": 17,
+            "cat": "language\/types",
+            "pass": 50,
             "fail": 0,
-            "skip": 2,
+            "skip": 0,
             "rate": 100,
-            "attempted": 17
+            "attempted": 50
+        },
+        {
+            "cat": "language\/expressions",
+            "pass": 50,
+            "fail": 0,
+            "skip": 0,
+            "rate": 100,
+            "attempted": 50
+        },
+        {
+            "cat": "language\/block-scope",
+            "pass": 45,
+            "fail": 0,
+            "skip": 5,
+            "rate": 100,
+            "attempted": 45
+        },
+        {
+            "cat": "language\/asi",
+            "pass": 50,
+            "fail": 0,
+            "skip": 0,
+            "rate": 100,
+            "attempted": 50
         },
         {
             "cat": "language\/keywords",
@@ -33,19 +57,91 @@
         },
         {
             "cat": "language\/line-terminators",
-            "pass": 30,
+            "pass": 41,
             "fail": 0,
             "skip": 0,
             "rate": 100,
-            "attempted": 30
+            "attempted": 41
+        },
+        {
+            "cat": "language\/comments",
+            "pass": 21,
+            "fail": 0,
+            "skip": 29,
+            "rate": 100,
+            "attempted": 21
         },
         {
             "cat": "language\/future-reserved-words",
-            "pass": 30,
+            "pass": 50,
             "fail": 0,
             "skip": 0,
             "rate": 100,
-            "attempted": 30
+            "attempted": 50
+        },
+        {
+            "cat": "language\/reserved-words",
+            "pass": 26,
+            "fail": 0,
+            "skip": 1,
+            "rate": 100,
+            "attempted": 26
+        },
+        {
+            "cat": "built-ins\/Error",
+            "pass": 47,
+            "fail": 0,
+            "skip": 3,
+            "rate": 100,
+            "attempted": 47
+        },
+        {
+            "cat": "built-ins\/Function",
+            "pass": 43,
+            "fail": 0,
+            "skip": 7,
+            "rate": 100,
+            "attempted": 43
+        },
+        {
+            "cat": "built-ins\/Map",
+            "pass": 49,
+            "fail": 0,
+            "skip": 1,
+            "rate": 100,
+            "attempted": 49
+        },
+        {
+            "cat": "built-ins\/Math",
+            "pass": 45,
+            "fail": 0,
+            "skip": 5,
+            "rate": 100,
+            "attempted": 45
+        },
+        {
+            "cat": "built-ins\/Object",
+            "pass": 48,
+            "fail": 0,
+            "skip": 2,
+            "rate": 100,
+            "attempted": 48
+        },
+        {
+            "cat": "built-ins\/Set",
+            "pass": 49,
+            "fail": 0,
+            "skip": 1,
+            "rate": 100,
+            "attempted": 49
+        },
+        {
+            "cat": "built-ins\/Symbol",
+            "pass": 43,
+            "fail": 0,
+            "skip": 7,
+            "rate": 100,
+            "attempted": 43
         },
         {
             "cat": "built-ins\/isNaN",
@@ -64,6 +160,14 @@
             "attempted": 17
         },
         {
+            "cat": "annexB\/built-ins\/escape",
+            "pass": 16,
+            "fail": 0,
+            "skip": 0,
+            "rate": 100,
+            "attempted": 16
+        },
+        {
             "cat": "annexB\/built-ins\/unescape",
             "pass": 19,
             "fail": 0,
@@ -72,250 +176,162 @@
             "attempted": 19
         },
         {
-            "cat": "language\/asi",
-            "pass": 29,
-            "fail": 1,
-            "skip": 0,
-            "rate": 96.7,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/reserved-words",
-            "pass": 25,
+            "cat": "built-ins\/String",
+            "pass": 48,
             "fail": 1,
             "skip": 1,
-            "rate": 96.2,
-            "attempted": 26
+            "rate": 98,
+            "attempted": 49
         },
         {
-            "cat": "built-ins\/Math",
-            "pass": 24,
+            "cat": "built-ins\/Date",
+            "pass": 47,
             "fail": 1,
-            "skip": 5,
-            "rate": 96,
-            "attempted": 25
+            "skip": 2,
+            "rate": 97.9,
+            "attempted": 48
         },
         {
-            "cat": "annexB\/built-ins\/escape",
-            "pass": 15,
+            "cat": "annexB\/built-ins\/String",
+            "pass": 47,
             "fail": 1,
-            "skip": 0,
-            "rate": 93.8,
-            "attempted": 16
+            "skip": 2,
+            "rate": 97.9,
+            "attempted": 48
         },
         {
-            "cat": "language\/arguments-object",
-            "pass": 13,
-            "fail": 1,
-            "skip": 16,
-            "rate": 92.9,
-            "attempted": 14
-        },
-        {
-            "cat": "language\/expressions",
-            "pass": 27,
-            "fail": 3,
-            "skip": 0,
-            "rate": 90,
-            "attempted": 30
-        },
-        {
-            "cat": "built-ins\/parseInt",
-            "pass": 27,
-            "fail": 3,
-            "skip": 0,
-            "rate": 90,
-            "attempted": 30
-        },
-        {
-            "cat": "built-ins\/parseFloat",
-            "pass": 27,
-            "fail": 3,
-            "skip": 0,
-            "rate": 90,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/types",
-            "pass": 26,
-            "fail": 4,
-            "skip": 0,
-            "rate": 86.7,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/comments",
-            "pass": 12,
+            "cat": "built-ins\/Array",
+            "pass": 46,
             "fail": 2,
-            "skip": 16,
-            "rate": 85.7,
-            "attempted": 14
+            "skip": 2,
+            "rate": 95.8,
+            "attempted": 48
+        },
+        {
+            "cat": "built-ins\/JSON",
+            "pass": 45,
+            "fail": 2,
+            "skip": 3,
+            "rate": 95.7,
+            "attempted": 47
+        },
+        {
+            "cat": "language\/destructuring",
+            "pass": 17,
+            "fail": 1,
+            "skip": 1,
+            "rate": 94.4,
+            "attempted": 18
+        },
+        {
+            "cat": "built-ins\/Boolean",
+            "pass": 46,
+            "fail": 3,
+            "skip": 1,
+            "rate": 93.9,
+            "attempted": 49
+        },
+        {
+            "cat": "built-ins\/Number",
+            "pass": 46,
+            "fail": 3,
+            "skip": 1,
+            "rate": 93.9,
+            "attempted": 49
         },
         {
             "cat": "language\/identifier-resolution",
             "pass": 12,
-            "fail": 2,
-            "skip": 0,
-            "rate": 85.7,
-            "attempted": 14
-        },
-        {
-            "cat": "language\/function-code",
-            "pass": 25,
-            "fail": 5,
-            "skip": 0,
-            "rate": 83.3,
-            "attempted": 30
-        },
-        {
-            "cat": "built-ins\/Number",
-            "pass": 24,
-            "fail": 5,
+            "fail": 1,
             "skip": 1,
-            "rate": 82.8,
-            "attempted": 29
-        },
-        {
-            "cat": "language\/rest-parameters",
-            "pass": 9,
-            "fail": 2,
-            "skip": 0,
-            "rate": 81.8,
-            "attempted": 11
-        },
-        {
-            "cat": "built-ins\/String",
-            "pass": 23,
-            "fail": 6,
-            "skip": 1,
-            "rate": 79.3,
-            "attempted": 29
-        },
-        {
-            "cat": "built-ins\/Boolean",
-            "pass": 21,
-            "fail": 8,
-            "skip": 1,
-            "rate": 72.4,
-            "attempted": 29
-        },
-        {
-            "cat": "built-ins\/Date",
-            "pass": 21,
-            "fail": 8,
-            "skip": 1,
-            "rate": 72.4,
-            "attempted": 29
-        },
-        {
-            "cat": "language\/literals",
-            "pass": 21,
-            "fail": 9,
-            "skip": 0,
-            "rate": 70,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/directive-prologue",
-            "pass": 20,
-            "fail": 10,
-            "skip": 0,
-            "rate": 66.7,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/white-space",
-            "pass": 20,
-            "fail": 10,
-            "skip": 0,
-            "rate": 66.7,
-            "attempted": 30
-        },
-        {
-            "cat": "language\/computed-property-names",
-            "pass": 19,
-            "fail": 11,
-            "skip": 0,
-            "rate": 63.3,
-            "attempted": 30
-        },
-        {
-            "cat": "built-ins\/Array",
-            "pass": 17,
-            "fail": 12,
-            "skip": 1,
-            "rate": 58.6,
-            "attempted": 29
-        },
-        {
-            "cat": "built-ins\/Map",
-            "pass": 17,
-            "fail": 12,
-            "skip": 1,
-            "rate": 58.6,
-            "attempted": 29
+            "rate": 92.3,
+            "attempted": 13
         },
         {
             "cat": "built-ins\/RegExp",
-            "pass": 15,
-            "fail": 13,
-            "skip": 2,
-            "rate": 53.6,
-            "attempted": 28
-        },
-        {
-            "cat": "built-ins\/Object",
-            "pass": 13,
-            "fail": 12,
-            "skip": 5,
-            "rate": 52,
+            "pass": 23,
+            "fail": 2,
+            "skip": 25,
+            "rate": 92,
             "attempted": 25
         },
         {
-            "cat": "built-ins\/Function",
-            "pass": 14,
-            "fail": 15,
-            "skip": 1,
-            "rate": 48.3,
-            "attempted": 29
+            "cat": "built-ins\/parseFloat",
+            "pass": 46,
+            "fail": 4,
+            "skip": 0,
+            "rate": 92,
+            "attempted": 50
         },
         {
-            "cat": "built-ins\/Symbol",
-            "pass": 13,
-            "fail": 14,
-            "skip": 3,
-            "rate": 48.1,
-            "attempted": 27
+            "cat": "language\/arguments-object",
+            "pass": 22,
+            "fail": 2,
+            "skip": 26,
+            "rate": 91.7,
+            "attempted": 24
+        },
+        {
+            "cat": "language\/rest-parameters",
+            "pass": 10,
+            "fail": 1,
+            "skip": 0,
+            "rate": 90.9,
+            "attempted": 11
+        },
+        {
+            "cat": "built-ins\/parseInt",
+            "pass": 44,
+            "fail": 6,
+            "skip": 0,
+            "rate": 88,
+            "attempted": 50
+        },
+        {
+            "cat": "language\/directive-prologue",
+            "pass": 43,
+            "fail": 7,
+            "skip": 0,
+            "rate": 86,
+            "attempted": 50
+        },
+        {
+            "cat": "language\/function-code",
+            "pass": 39,
+            "fail": 11,
+            "skip": 0,
+            "rate": 78,
+            "attempted": 50
+        },
+        {
+            "cat": "language\/computed-property-names",
+            "pass": 32,
+            "fail": 16,
+            "skip": 0,
+            "rate": 66.7,
+            "attempted": 48
+        },
+        {
+            "cat": "language\/white-space",
+            "pass": 33,
+            "fail": 17,
+            "skip": 0,
+            "rate": 66,
+            "attempted": 50
         },
         {
             "cat": "language\/eval-code",
-            "pass": 10,
-            "fail": 16,
-            "skip": 4,
-            "rate": 38.5,
-            "attempted": 26
-        },
-        {
-            "cat": "built-ins\/JSON",
-            "pass": 6,
-            "fail": 21,
-            "skip": 3,
-            "rate": 22.2,
-            "attempted": 27
-        },
-        {
-            "cat": "built-ins\/Error",
-            "pass": 5,
-            "fail": 24,
-            "skip": 1,
-            "rate": 17.2,
-            "attempted": 29
+            "pass": 15,
+            "fail": 26,
+            "skip": 9,
+            "rate": 36.6,
+            "attempted": 41
         },
         {
             "cat": "language\/statements",
             "pass": 0,
             "fail": 0,
-            "skip": 30,
+            "skip": 50,
             "rate": 0,
             "attempted": 0
         }

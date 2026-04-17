@@ -152,17 +152,87 @@ class PromiseConstructor
 
         // Promise.race(iterable)
         $raceFn = JsFunction::fromCallable('race', function (JsValue $this_, array $args): JsValue {
-            $items = self::iterableToArray($args[0] ?? JsUndefined::instance());
-            if (empty($items)) {
-                // Empty iterable: return a forever-pending promise.
-                return new JsPromise();
+            if (!$this_ instanceof JsFunction) {
+                throw new TypeError('not a constructor');
             }
-            // Return the first settled promise.
-            $first = self::coerceToPromise($items[0]);
-            if ($first->getState() === JsPromise::STATE_REJECTED) {
-                return JsPromise::rejected($first->getResolvedValue());
+
+            [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+            $iterable = $args[0] ?? JsUndefined::instance();
+            $iterSym = SymbolConstructor::iterator();
+
+            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                throw new TypeError(
+                    "Cannot read properties of " . TypeConversion::toString($iterable)
+                    . " (reading 'Symbol(Symbol.iterator)')",
+                );
             }
-            return JsPromise::resolved($first->getResolvedValue());
+
+            if (!$iterable instanceof JsObject) {
+                return $promise;
+            }
+
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+            if (!$iteratorMethod instanceof JsFunction) {
+                return $promise;
+            }
+
+            $iterator = $iteratorMethod->call($iterable, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError('Result of the Symbol.iterator method is not an object');
+            }
+
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof JsFunction) {
+                return $promise;
+            }
+
+            while (true) {
+                $step = $nextMethod->call($iterator, []);
+                if (!$step instanceof JsObject) {
+                    break;
+                }
+                if (TypeConversion::toBoolean($step->get('done'))) {
+                    break;
+                }
+
+                $nextValue = $step->get('value');
+
+                try {
+                    $resolveMethod = $this_->get('resolve');
+                    if (!$resolveMethod instanceof JsFunction) {
+                        throw new TypeError('Promise resolve is not a function');
+                    }
+                    $nextPromise = $resolveMethod->call($this_, [$nextValue]);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    self::closeIterator($iterator);
+                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                    return $promise;
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    self::closeIterator($iterator);
+                    $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                    return $promise;
+                } catch (\Throwable $e) {
+                    self::closeIterator($iterator);
+                    $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                    return $promise;
+                }
+
+                $coerced = $nextPromise instanceof JsPromise
+                    ? $nextPromise
+                    : self::coerceToPromise($nextPromise);
+
+                if ($coerced->getState() === JsPromise::STATE_FULFILLED) {
+                    $resolve->call(JsUndefined::instance(), [$coerced->getResolvedValue()]);
+                    return $promise;
+                }
+
+                if ($coerced->getState() === JsPromise::STATE_REJECTED) {
+                    $reject->call(JsUndefined::instance(), [$coerced->getResolvedValue()]);
+                    return $promise;
+                }
+            }
+
+            return $promise;
         }, 1);
         $constructor->defineOwnProperty('race', PropertyDescriptor::data($raceFn, true, false, true));
 
@@ -300,6 +370,14 @@ class PromiseConstructor
         return JsPromise::resolved($value);
     }
 
+    private static function closeIterator(JsObject $iterator): void
+    {
+        $returnMethod = $iterator->get('return');
+        if ($returnMethod instanceof JsFunction) {
+            $returnMethod->call($iterator, []);
+        }
+    }
+
     /**
      * NewPromiseCapability(C) then resolve. Used when C is a custom constructor.
      */
@@ -367,7 +445,10 @@ class PromiseConstructor
     {
         if ($ctor->isConstructable()) {
             $obj = new JsObject();
-            $obj->set('__newTarget__', new JsBoolean(true));
+            $obj->defineOwnProperty(
+                '[[NewTarget]]',
+                PropertyDescriptor::data($ctor, false, false, false),
+            );
             $result = $ctor->call($obj, $args);
             return $result instanceof JsObject ? $result : $obj;
         }

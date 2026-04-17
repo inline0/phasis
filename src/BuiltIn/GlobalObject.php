@@ -86,6 +86,9 @@ class GlobalObject
             if (!$code instanceof JsString) {
                 return $code;
             }
+            if (strlen($code->value) > 1024 * 1024) {
+                throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
+            }
             $parser = new \PhpJs\Parser\Parser($code->value);
             $program = $parser->parse();
             $interp = new Interpreter($env);

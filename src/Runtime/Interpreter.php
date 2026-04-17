@@ -1272,6 +1272,9 @@ class Interpreter
         // Parse and validate. Any SyntaxError from parsing or validation
         // must be thrown as a JS SyntaxError catchable by JS try/catch.
         try {
+            if (strlen($arg->value) > 1024 * 1024) {
+                throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
+            }
             $parser = new \PhpJs\Parser\Parser($arg->value);
             $program = $parser->parse();
 

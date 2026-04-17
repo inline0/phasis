@@ -1,0 +1,1448 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+ini_set('memory_limit', '1G');
+
+$options = parseCompatOptions($argv);
+$rootDir = dirname(__DIR__);
+$suiteDir = $rootDir . '/test262/test';
+$supportConfig = require $rootDir . '/config/support.php';
+$stateDir = str_starts_with($options['stateDir'], '/')
+    ? $options['stateDir']
+    : $rootDir . '/' . $options['stateDir'];
+$stateDirDisplay = displayCompatPath($stateDir, $rootDir);
+
+if (!is_dir($suiteDir)) {
+    fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
+    exit(1);
+}
+
+if ($options['reset'] && is_dir($stateDir)) {
+    removeDirectory($stateDir);
+}
+
+ensureDirectory($stateDir);
+ensureDirectory($stateDir . '/results');
+ensureDirectory($stateDir . '/logs');
+ensureDirectory($stateDir . '/manifests');
+clearDirectory($stateDir . '/manifests');
+
+fwrite(STDERR, "Building full compatibility snapshot...\n");
+
+$discovery = discoverCompatGroups($suiteDir, $options['match']);
+if ($discovery['groups'] === []) {
+    fwrite(STDERR, "No compat groups found.\n");
+    exit(1);
+}
+
+$fingerprint = buildCompatFingerprint(
+    $rootDir,
+    $options,
+    $supportConfig,
+    $discovery,
+);
+
+$state = loadOrCreateCompatState(
+    $stateDir,
+    $stateDirDisplay,
+    $rootDir,
+    $fingerprint,
+    $discovery,
+    $options,
+);
+
+resetRunningChunksToPending($state);
+writeCompatState($stateDir, $state);
+writeCompatArtifacts($rootDir, $state, $supportConfig, false);
+
+if (!$state['completed']) {
+    runCompatPass($rootDir, $stateDir, $state, $options, $supportConfig);
+}
+
+writeCompatArtifacts($rootDir, $state, $supportConfig, true);
+
+$summary = compatOverallSummary($state);
+echo "Compatibility snapshot written:\n";
+echo "  - compat.json\n";
+echo "  - COMPAT.md\n";
+echo sprintf(
+    "Summary: %d/%d pass, %d fail, %d skip, %d blocked, %d pending, %d running across %d groups\n",
+    $summary['pass'],
+    $summary['attempted'],
+    $summary['fail'],
+    $summary['skip'],
+    $summary['blocked'],
+    $summary['pending'],
+    $summary['running'],
+    count($state['discovery']['groups']),
+);
+
+/**
+ * @return array{
+ *   jobs: int,
+ *   match: ?string,
+ *   chunkSize: int,
+ *   timeoutSec: int,
+ *   stateDir: string,
+ *   reset: bool
+ * }
+ */
+function parseCompatOptions(array $argv): array
+{
+    $options = [
+        'jobs' => 4,
+        'match' => null,
+        'chunkSize' => 250,
+        'timeoutSec' => 300,
+        'stateDir' => '.compat-state',
+        'reset' => false,
+    ];
+
+    $args = array_slice($argv, 1);
+    for ($i = 0; $i < count($args); $i++) {
+        switch ($args[$i]) {
+            case '--jobs':
+                $options['jobs'] = max(1, (int) ($args[++$i] ?? 4));
+                break;
+            case '--match':
+                $options['match'] = $args[++$i] ?? null;
+                break;
+            case '--chunk-size':
+                $options['chunkSize'] = max(1, (int) ($args[++$i] ?? 250));
+                break;
+            case '--timeout':
+                $options['timeoutSec'] = max(30, (int) ($args[++$i] ?? 300));
+                break;
+            case '--state-dir':
+                $options['stateDir'] = $args[++$i] ?? '.compat-state';
+                break;
+            case '--reset':
+                $options['reset'] = true;
+                break;
+            default:
+                if ($args[$i] !== '' && !str_starts_with($args[$i], '--')) {
+                    $options['jobs'] = max(1, (int) $args[$i]);
+                }
+                break;
+        }
+    }
+
+    return $options;
+}
+
+/**
+ * @return array{groups: array<string, list<string>>, testFileCount: int}
+ */
+function discoverCompatGroups(string $suiteDir, ?string $match): array
+{
+    fwrite(STDERR, "  - discovering categories\n");
+
+    $groups = [];
+    $testFileCount = 0;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($suiteDir, RecursiveDirectoryIterator::SKIP_DOTS),
+    );
+
+    foreach ($iterator as $file) {
+        if ($file->getExtension() !== 'js') {
+            continue;
+        }
+        if (str_contains($file->getFilename(), '_FIXTURE')) {
+            continue;
+        }
+
+        $relativeFile = relativePath($file->getPathname(), $suiteDir . '/');
+        $relativeDir = dirname($relativeFile);
+        $group = compatGroupForDirectory($relativeDir === '.' ? '' : $relativeDir);
+        if ($group === null) {
+            continue;
+        }
+        if ($match !== null && !str_starts_with($group, $match)) {
+            continue;
+        }
+
+        if (!isset($groups[$group])) {
+            $groups[$group] = [];
+        }
+        $groups[$group][] = $file->getPathname();
+        $testFileCount++;
+    }
+
+    ksort($groups);
+    foreach ($groups as &$files) {
+        sort($files);
+    }
+    unset($files);
+
+    return [
+        'groups' => $groups,
+        'testFileCount' => $testFileCount,
+    ];
+}
+
+function compatGroupForDirectory(string $relativeDir): ?string
+{
+    if ($relativeDir === '') {
+        return null;
+    }
+
+    $parts = explode('/', $relativeDir);
+    $depth = match ($parts[0]) {
+        'annexB' => min(count($parts), 3),
+        default => min(count($parts), 2),
+    };
+
+    return implode('/', array_slice($parts, 0, $depth));
+}
+
+/**
+ * @param array{groups: array<string, list<string>>, testFileCount: int} $discovery
+ * @param array{jobs: int, match: ?string, chunkSize: int, timeoutSec: int, stateDir: string, reset: bool} $options
+ * @param array<string, mixed> $supportConfig
+ */
+function buildCompatFingerprint(
+    string $rootDir,
+    array $options,
+    array $supportConfig,
+    array $discovery,
+): string {
+    $groupHashes = [];
+    foreach ($discovery['groups'] as $group => $files) {
+        $relativeFiles = array_map(
+            static fn(string $path): string => relativePath($path, $rootDir . '/'),
+            $files,
+        );
+        $groupHashes[$group] = sha1(implode("\n", $relativeFiles));
+    }
+
+    return sha1(json_encode([
+        'version' => 2,
+        'match' => $options['match'],
+        'chunkSize' => $options['chunkSize'],
+        'supportConfig' => sha1(json_encode($supportConfig)),
+        'compatReportHash' => hashFileOrEmpty($rootDir . '/bin/compat-report'),
+        'test262ScriptHash' => hashFileOrEmpty($rootDir . '/bin/test262'),
+        'runnerHash' => hashFileOrEmpty($rootDir . '/tests/Oracle/Test262Runner.php'),
+        'groupHashes' => $groupHashes,
+    ], JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * @param array{groups: array<string, list<string>>, testFileCount: int} $discovery
+ * @param array{jobs: int, match: ?string, chunkSize: int, timeoutSec: int, stateDir: string, reset: bool} $options
+ * @return array<string, mixed>
+ */
+function loadOrCreateCompatState(
+    string $stateDir,
+    string $stateDirDisplay,
+    string $rootDir,
+    string $fingerprint,
+    array $discovery,
+    array $options,
+): array {
+    $stateFile = $stateDir . '/state.json';
+
+    if (is_file($stateFile)) {
+        $existing = json_decode((string) file_get_contents($stateFile), true);
+        if (is_array($existing) && ($existing['fingerprint'] ?? null) === $fingerprint) {
+            fwrite(STDERR, "  - resuming state\n");
+            $existing['updatedAt'] = date('c');
+            $existing['stateDir'] = $stateDirDisplay;
+            $existing['options']['jobs'] = $options['jobs'];
+            $existing['options']['timeoutSec'] = $options['timeoutSec'];
+            return $existing;
+        }
+
+        fwrite(STDERR, "  - runner/test fingerprint changed, resetting state\n");
+        removeDirectory($stateDir);
+        ensureDirectory($stateDir);
+        ensureDirectory($stateDir . '/results');
+        ensureDirectory($stateDir . '/logs');
+        ensureDirectory($stateDir . '/manifests');
+    }
+
+    $chunks = [];
+    foreach ($discovery['groups'] as $group => $files) {
+        foreach (array_chunk($files, $options['chunkSize']) as $chunkFiles) {
+            $chunk = createCompatChunk($group, $chunkFiles, 0);
+            $chunks[$chunk['id']] = $chunk;
+        }
+    }
+
+    return [
+        'version' => 2,
+        'fingerprint' => $fingerprint,
+        'createdAt' => date('c'),
+        'updatedAt' => date('c'),
+        'completed' => false,
+        'rootDir' => $rootDir,
+        'stateDir' => $stateDirDisplay,
+        'options' => [
+            'match' => $options['match'],
+            'chunkSize' => $options['chunkSize'],
+            'timeoutSec' => $options['timeoutSec'],
+            'jobs' => $options['jobs'],
+        ],
+        'discovery' => [
+            'groupCount' => count($discovery['groups']),
+            'testFileCount' => $discovery['testFileCount'],
+            'groups' => array_map(
+                static fn(array $files): int => count($files),
+                $discovery['groups'],
+            ),
+        ],
+        'chunks' => $chunks,
+    ];
+}
+
+/**
+ * @param array<string, mixed> $state
+ */
+function resetRunningChunksToPending(array &$state): void
+{
+    foreach ($state['chunks'] as &$chunk) {
+        if (($chunk['status'] ?? null) === 'running') {
+            $chunk['status'] = 'pending';
+            $chunk['startedAt'] = null;
+        }
+    }
+    unset($chunk);
+    $state['updatedAt'] = date('c');
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @param array{jobs: int, match: ?string, chunkSize: int, timeoutSec: int, stateDir: string, reset: bool} $options
+ * @param array<string, mixed> $supportConfig
+ */
+function runCompatPass(
+    string $rootDir,
+    string $stateDir,
+    array &$state,
+    array $options,
+    array $supportConfig,
+): void {
+    $running = [];
+
+    while (true) {
+        while (count($running) < $options['jobs']) {
+            $chunkId = nextPendingChunkId($state);
+            if ($chunkId === null) {
+                break;
+            }
+            $running[$chunkId] = launchCompatWorker(
+                $rootDir,
+                $stateDir,
+                $state,
+                $chunkId,
+            );
+            writeCompatState($stateDir, $state);
+        }
+
+        if ($running === [] && nextPendingChunkId($state) === null) {
+            break;
+        }
+
+        if ($running === []) {
+            usleep(200000);
+            continue;
+        }
+
+        $event = waitForCompatWorkerEvent($running, $options['timeoutSec']);
+        $worker = $running[$event['chunkId']];
+        unset($running[$event['chunkId']]);
+
+        $result = finalizeCompatWorker($worker, $event['timedOut']);
+        applyCompatResult(
+            $state,
+            $worker['chunkId'],
+            $result,
+            $stateDir,
+        );
+        writeCompatState($stateDir, $state);
+        writeCompatArtifacts($rootDir, $state, $supportConfig, false);
+    }
+
+    $state['completed'] = true;
+    $state['updatedAt'] = date('c');
+    writeCompatState($stateDir, $state);
+}
+
+/**
+ * @param array<string, mixed> $state
+ */
+function nextPendingChunkId(array $state): ?string
+{
+    $bestId = null;
+    $bestScore = null;
+
+    foreach ($state['chunks'] as $chunkId => $chunk) {
+        if (($chunk['status'] ?? null) !== 'pending') {
+            continue;
+        }
+
+        $score = [
+            $chunk['filesCount'] ?? 0,
+            -($chunk['depth'] ?? 0),
+            $chunkId,
+        ];
+
+        if ($bestScore === null || $score > $bestScore) {
+            $bestId = $chunkId;
+            $bestScore = $score;
+        }
+    }
+
+    return $bestId;
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @return array{chunkId: string, process: resource, stdout: resource, stderrPath: string, manifestPath: string, startedAt: float}
+ */
+function launchCompatWorker(
+    string $rootDir,
+    string $stateDir,
+    array &$state,
+    string $chunkId,
+): array {
+    $chunk = $state['chunks'][$chunkId];
+    $manifestPath = $stateDir . '/manifests/' . $chunkId . '.txt';
+    $stderrPath = $stateDir . '/logs/' . $chunkId . '.stderr';
+
+    file_put_contents($manifestPath, implode("\n", $chunk['files']) . "\n");
+    if (is_file($stderrPath)) {
+        unlink($stderrPath);
+    }
+
+    $command = PHP_BINARY
+        . ' -d memory_limit=1G '
+        . escapeshellarg($rootDir . '/bin/test262')
+        . ' --json --files-from '
+        . escapeshellarg($manifestPath);
+
+    $spec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['file', $stderrPath, 'w'],
+    ];
+    $process = proc_open($command, $spec, $pipes, $rootDir);
+    if (!is_resource($process)) {
+        throw new RuntimeException('Unable to launch compat worker for chunk ' . $chunkId);
+    }
+
+    fclose($pipes[0]);
+
+    $state['chunks'][$chunkId]['status'] = 'running';
+    $state['chunks'][$chunkId]['startedAt'] = date('c');
+    $state['chunks'][$chunkId]['attempt'] = ($state['chunks'][$chunkId]['attempt'] ?? 0) + 1;
+    $state['updatedAt'] = date('c');
+
+    return [
+        'chunkId' => $chunkId,
+        'process' => $process,
+        'stdout' => $pipes[1],
+        'stderrPath' => $stderrPath,
+        'manifestPath' => $manifestPath,
+        'startedAt' => microtime(true),
+    ];
+}
+
+/**
+ * @param array<string, array{chunkId: string, process: resource, stdout: resource, stderrPath: string, manifestPath: string, startedAt: float}> $running
+ * @return array{chunkId: string, timedOut: bool}
+ */
+function waitForCompatWorkerEvent(array $running, int $timeoutSec): array
+{
+    while (true) {
+        foreach ($running as $chunkId => $worker) {
+            if (microtime(true) - $worker['startedAt'] > $timeoutSec) {
+                return [
+                    'chunkId' => $chunkId,
+                    'timedOut' => true,
+                ];
+            }
+
+            $status = proc_get_status($worker['process']);
+            if ($status['running'] === false) {
+                return [
+                    'chunkId' => $chunkId,
+                    'timedOut' => false,
+                ];
+            }
+        }
+
+        usleep(200000);
+    }
+}
+
+/**
+ * @param array{chunkId: string, process: resource, stdout: resource, stderrPath: string, manifestPath: string, startedAt: float} $worker
+ * @return array{
+ *   kind: string,
+ *   pass: int,
+ *   fail: int,
+ *   skip: int,
+ *   blocked: int,
+ *   attempted: int,
+ *   total: int,
+ *   passRate: float,
+ *   exitCode: int,
+ *   durationSec: float,
+ *   message: string,
+ *   stderrPath: string,
+ *   stdout: string
+ * }
+ */
+function finalizeCompatWorker(array $worker, bool $timedOut): array
+{
+    if ($timedOut) {
+        @proc_terminate($worker['process']);
+        usleep(200000);
+        $status = proc_get_status($worker['process']);
+        if (($status['running'] ?? false) === true) {
+            @proc_terminate($worker['process'], 9);
+        }
+    }
+
+    $stdout = stream_get_contents($worker['stdout']);
+    fclose($worker['stdout']);
+    $exitCode = proc_close($worker['process']);
+
+    if (is_file($worker['manifestPath'])) {
+        unlink($worker['manifestPath']);
+    }
+
+    $stderr = is_file($worker['stderrPath'])
+        ? (string) file_get_contents($worker['stderrPath'])
+        : '';
+    $durationSec = round(microtime(true) - $worker['startedAt'], 3);
+
+    if ($timedOut) {
+        return [
+            'kind' => 'timeout',
+            'pass' => 0,
+            'fail' => 0,
+            'skip' => 0,
+            'blocked' => 0,
+            'attempted' => 0,
+            'total' => 0,
+            'passRate' => 0.0,
+            'exitCode' => $exitCode,
+            'durationSec' => $durationSec,
+            'message' => firstMeaningfulLine($stderr) ?: 'Chunk exceeded timeout',
+            'stderrPath' => $worker['stderrPath'],
+            'stdout' => trim($stdout),
+        ];
+    }
+
+    $payload = json_decode(trim($stdout), true);
+    if (is_array($payload) && isset($payload['pass'], $payload['fail'], $payload['skip'], $payload['attempted'], $payload['total'])) {
+        return [
+            'kind' => 'normal',
+            'pass' => (int) $payload['pass'],
+            'fail' => (int) $payload['fail'],
+            'skip' => (int) $payload['skip'],
+            'blocked' => 0,
+            'attempted' => (int) $payload['attempted'],
+            'total' => (int) $payload['total'],
+            'passRate' => (float) $payload['passRate'],
+            'exitCode' => $exitCode,
+            'durationSec' => $durationSec,
+            'message' => '',
+            'stderrPath' => $worker['stderrPath'],
+            'stdout' => trim($stdout),
+        ];
+    }
+
+    $combined = trim($stdout . "\n" . $stderr);
+    $kind = str_contains($combined, 'Allowed memory size')
+        ? 'oom'
+        : (str_contains($combined, 'Fatal error') ? 'crash' : 'error');
+
+    return [
+        'kind' => $kind,
+        'pass' => 0,
+        'fail' => 0,
+        'skip' => 0,
+        'blocked' => 0,
+        'attempted' => 0,
+        'total' => 0,
+        'passRate' => 0.0,
+        'exitCode' => $exitCode,
+        'durationSec' => $durationSec,
+        'message' => firstMeaningfulLine($combined) ?: 'Chunk exited without JSON result',
+        'stderrPath' => $worker['stderrPath'],
+        'stdout' => trim($stdout),
+    ];
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @param array{
+ *   kind: string,
+ *   pass: int,
+ *   fail: int,
+ *   skip: int,
+ *   blocked: int,
+ *   attempted: int,
+ *   total: int,
+ *   passRate: float,
+ *   exitCode: int,
+ *   durationSec: float,
+ *   message: string,
+ *   stderrPath: string,
+ *   stdout: string
+ * } $result
+ */
+function applyCompatResult(
+    array &$state,
+    string $chunkId,
+    array $result,
+    string $stateDir,
+): void {
+    $chunk = $state['chunks'][$chunkId];
+
+    if ($result['kind'] === 'normal') {
+        finalizeCompatChunk(
+            $state,
+            $chunkId,
+            buildChunkSummary($chunk, $result, null),
+            $stateDir,
+        );
+        cleanupSuccessfulChunkLog($result['stderrPath']);
+        return;
+    }
+
+    $logRelative = persistChunkLog($stateDir, $chunkId, $result['stderrPath'], $result['stdout'], $result['message']);
+
+    if (($chunk['filesCount'] ?? 0) > 1) {
+        splitCompatChunk($state, $chunkId, $result['kind'], $result['message'], $logRelative);
+        return;
+    }
+
+    $result['blocked'] = 1;
+    finalizeCompatChunk(
+        $state,
+        $chunkId,
+        buildChunkSummary($chunk, $result, $logRelative),
+        $stateDir,
+    );
+}
+
+function cleanupSuccessfulChunkLog(string $stderrPath): void
+{
+    if (is_file($stderrPath)) {
+        unlink($stderrPath);
+    }
+}
+
+/**
+ * @param array<string, mixed> $state
+ */
+function splitCompatChunk(
+    array &$state,
+    string $chunkId,
+    string $reason,
+    string $message,
+    ?string $logRelative,
+): void {
+    $chunk = $state['chunks'][$chunkId];
+    $files = $chunk['files'];
+    $mid = intdiv(count($files), 2);
+    $leftFiles = array_slice($files, 0, $mid);
+    $rightFiles = array_slice($files, $mid);
+
+    if ($leftFiles === [] || $rightFiles === []) {
+        throw new RuntimeException('Cannot split chunk ' . $chunkId . ' further');
+    }
+
+    $left = createCompatChunk($chunk['group'], $leftFiles, $chunk['depth'] + 1);
+    $right = createCompatChunk($chunk['group'], $rightFiles, $chunk['depth'] + 1);
+
+    $state['chunks'][$left['id']] = $left;
+    $state['chunks'][$right['id']] = $right;
+    $state['chunks'][$chunkId] = [
+        'id' => $chunkId,
+        'group' => $chunk['group'],
+        'area' => $chunk['area'],
+        'status' => 'split',
+        'depth' => $chunk['depth'],
+        'filesCount' => $chunk['filesCount'],
+        'children' => [$left['id'], $right['id']],
+        'reason' => $reason,
+        'message' => $message,
+        'logFile' => $logRelative,
+        'sampleFiles' => sampleChunkFiles($files),
+    ];
+    $state['updatedAt'] = date('c');
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @param array<string, mixed> $summary
+ */
+function finalizeCompatChunk(
+    array &$state,
+    string $chunkId,
+    array $summary,
+    string $stateDir,
+): void {
+    $chunk = $state['chunks'][$chunkId];
+
+    $state['chunks'][$chunkId] = [
+        'id' => $chunkId,
+        'group' => $chunk['group'],
+        'area' => $chunk['area'],
+        'status' => 'complete',
+        'depth' => $chunk['depth'],
+        'filesCount' => $chunk['filesCount'],
+        'sampleFiles' => shouldKeepFiles($summary['kind'], $chunk['filesCount'])
+            ? ($chunk['files'] ?? sampleChunkFiles($chunk['sampleFiles'] ?? []))
+            : sampleChunkFiles($chunk['files'] ?? []),
+        'summary' => $summary,
+        'completedAt' => date('c'),
+    ];
+
+    $resultPath = $stateDir . '/results/' . $chunkId . '.json';
+    writeJsonFile($resultPath, [
+        'chunkId' => $chunkId,
+        'group' => $chunk['group'],
+        'filesCount' => $chunk['filesCount'],
+        'sampleFiles' => $state['chunks'][$chunkId]['sampleFiles'],
+        'summary' => $summary,
+    ]);
+
+    $state['updatedAt'] = date('c');
+}
+
+/**
+ * @param array<string, mixed> $chunk
+ * @param array{
+ *   kind: string,
+ *   pass: int,
+ *   fail: int,
+ *   skip: int,
+ *   blocked: int,
+ *   attempted: int,
+ *   total: int,
+ *   passRate: float,
+ *   exitCode: int,
+ *   durationSec: float,
+ *   message: string
+ * } $result
+ * @return array<string, mixed>
+ */
+function buildChunkSummary(array $chunk, array $result, ?string $logRelative): array
+{
+    return [
+        'kind' => $result['kind'],
+        'pass' => $result['pass'],
+        'fail' => $result['fail'],
+        'skip' => $result['skip'],
+        'blocked' => $result['blocked'],
+        'attempted' => $result['attempted'],
+        'total' => $result['total'] > 0 ? $result['total'] : $chunk['filesCount'],
+        'passRate' => $result['passRate'],
+        'exitCode' => $result['exitCode'],
+        'durationSec' => $result['durationSec'],
+        'message' => $result['message'],
+        'logFile' => $logRelative,
+    ];
+}
+
+/**
+ * @param array<string> $files
+ * @return array<string, mixed>
+ */
+function createCompatChunk(string $group, array $files, int $depth): array
+{
+    return [
+        'id' => compatChunkId($group, $files),
+        'group' => $group,
+        'area' => explode('/', $group)[0],
+        'status' => 'pending',
+        'depth' => $depth,
+        'filesCount' => count($files),
+        'files' => $files,
+        'sampleFiles' => sampleChunkFiles($files),
+        'attempt' => 0,
+        'startedAt' => null,
+    ];
+}
+
+/**
+ * @param array<string> $files
+ */
+function compatChunkId(string $group, array $files): string
+{
+    return sha1($group . "\n" . implode("\n", $files));
+}
+
+/**
+ * @param array<string> $files
+ * @return array<string>
+ */
+function sampleChunkFiles(array $files): array
+{
+    $count = count($files);
+    if ($count <= 6) {
+        return $files;
+    }
+
+    return [
+        $files[0],
+        $files[1],
+        '...',
+        $files[$count - 2],
+        $files[$count - 1],
+    ];
+}
+
+function shouldKeepFiles(string $kind, int $filesCount): bool
+{
+    return $kind !== 'normal' || $filesCount <= 10;
+}
+
+function persistChunkLog(
+    string $stateDir,
+    string $chunkId,
+    string $stderrPath,
+    string $stdout,
+    string $message,
+): ?string {
+    $finalPath = $stateDir . '/logs/' . $chunkId . '.log';
+    $sections = [];
+
+    if (trim($message) !== '') {
+        $sections[] = "[message]\n" . trim($message);
+    }
+    if (trim($stdout) !== '') {
+        $sections[] = "[stdout]\n" . trim($stdout);
+    }
+    if (is_file($stderrPath)) {
+        $stderr = trim((string) file_get_contents($stderrPath));
+        if ($stderr !== '') {
+            $sections[] = "[stderr]\n" . $stderr;
+        }
+        unlink($stderrPath);
+    }
+
+    if ($sections === []) {
+        return null;
+    }
+
+    file_put_contents($finalPath, implode("\n\n", $sections) . "\n");
+
+    return relativePath($finalPath, dirname($stateDir) . '/');
+}
+
+function hashFileOrEmpty(string $path): string
+{
+    return is_file($path) ? sha1_file($path) ?: '' : '';
+}
+
+function firstMeaningfulLine(string $text): string
+{
+    $lines = preg_split('/\R/', $text) ?: [];
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === '') {
+            continue;
+        }
+        return $trimmed;
+    }
+
+    return '';
+}
+
+function ensureDirectory(string $path): void
+{
+    if (!is_dir($path) && !mkdir($path, 0777, true) && !is_dir($path)) {
+        throw new RuntimeException('Unable to create directory ' . $path);
+    }
+}
+
+function clearDirectory(string $path): void
+{
+    if (!is_dir($path)) {
+        return;
+    }
+
+    $iterator = new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS);
+    foreach ($iterator as $item) {
+        if ($item->isDir()) {
+            removeDirectory($item->getPathname());
+        } else {
+            unlink($item->getPathname());
+        }
+    }
+}
+
+function removeDirectory(string $path): void
+{
+    if (!is_dir($path)) {
+        return;
+    }
+
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+
+    foreach ($iterator as $item) {
+        if ($item->isDir()) {
+            rmdir($item->getPathname());
+        } else {
+            unlink($item->getPathname());
+        }
+    }
+
+    rmdir($path);
+}
+
+/**
+ * @param array<string, mixed> $state
+ */
+function writeCompatState(string $stateDir, array $state): void
+{
+    $state['updatedAt'] = date('c');
+    writeJsonFile($stateDir . '/state.json', $state);
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @param array<string, mixed> $supportConfig
+ */
+function writeCompatArtifacts(
+    string $rootDir,
+    array $state,
+    array $supportConfig,
+    bool $final,
+): void {
+    $snapshot = buildCompatSnapshot($rootDir, $state, $supportConfig, $final);
+    writeJsonFile($rootDir . '/compat.json', $snapshot);
+    writeTextFile($rootDir . '/COMPAT.md', renderCompatMarkdown($snapshot));
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @param array<string, mixed> $supportConfig
+ * @return array<string, mixed>
+ */
+function buildCompatSnapshot(
+    string $rootDir,
+    array $state,
+    array $supportConfig,
+    bool $final,
+): array {
+    $leafChunks = compatLeafChunks($state);
+    $groups = [];
+
+    foreach ($state['discovery']['groups'] as $groupName => $groupTotal) {
+        $groups[$groupName] = [
+            'name' => $groupName,
+            'area' => explode('/', $groupName)[0],
+            'status' => 'pending',
+            'pass' => 0,
+            'fail' => 0,
+            'skip' => 0,
+            'blocked' => 0,
+            'pending' => 0,
+            'running' => 0,
+            'attempted' => 0,
+            'known' => 0,
+            'total' => $groupTotal,
+            'passRate' => 0.0,
+        ];
+    }
+
+    $blockedChunks = [];
+    $slowChunks = [];
+
+    foreach ($leafChunks as $chunk) {
+        $group = &$groups[$chunk['group']];
+
+        switch ($chunk['status']) {
+            case 'pending':
+                $group['pending'] += $chunk['filesCount'];
+                break;
+            case 'running':
+                $group['running'] += $chunk['filesCount'];
+                break;
+            case 'complete':
+                $summary = $chunk['summary'];
+                $group['pass'] += $summary['pass'];
+                $group['fail'] += $summary['fail'];
+                $group['skip'] += $summary['skip'];
+                $group['blocked'] += $summary['blocked'];
+                $group['attempted'] += $summary['attempted'];
+                $group['known'] += $summary['total'];
+                if (($summary['blocked'] ?? 0) > 0) {
+                    $blockedChunks[] = [
+                        'group' => $chunk['group'],
+                        'kind' => $summary['kind'],
+                        'message' => $summary['message'],
+                        'filesCount' => $chunk['filesCount'],
+                        'sampleFiles' => array_map(
+                            static fn(string $path): string => $path === '...'
+                                ? '...'
+                                : relativePath($path, $rootDir . '/'),
+                            $chunk['sampleFiles'] ?? [],
+                        ),
+                        'logFile' => $summary['logFile'] ?? null,
+                    ];
+                }
+                if (($summary['durationSec'] ?? 0) > 0) {
+                    $slowChunks[] = [
+                        'group' => $chunk['group'],
+                        'kind' => $summary['kind'],
+                        'durationSec' => $summary['durationSec'],
+                        'filesCount' => $chunk['filesCount'],
+                        'sampleFiles' => array_map(
+                            static fn(string $path): string => $path === '...'
+                                ? '...'
+                                : relativePath($path, $rootDir . '/'),
+                            $chunk['sampleFiles'] ?? [],
+                        ),
+                    ];
+                }
+                break;
+        }
+        unset($group);
+    }
+
+    $areas = [];
+    foreach ($groups as &$group) {
+        $group['status'] = compatAggregateStatus($group);
+        $group['passRate'] = compatPassRate($group['pass'], $group['fail']);
+
+        if (!isset($areas[$group['area']])) {
+            $areas[$group['area']] = [
+                'name' => $group['area'],
+                'status' => 'pending',
+                'pass' => 0,
+                'fail' => 0,
+                'skip' => 0,
+                'blocked' => 0,
+                'pending' => 0,
+                'running' => 0,
+                'attempted' => 0,
+                'known' => 0,
+                'total' => 0,
+                'passRate' => 0.0,
+            ];
+        }
+
+        $areas[$group['area']]['pass'] += $group['pass'];
+        $areas[$group['area']]['fail'] += $group['fail'];
+        $areas[$group['area']]['skip'] += $group['skip'];
+        $areas[$group['area']]['blocked'] += $group['blocked'];
+        $areas[$group['area']]['pending'] += $group['pending'];
+        $areas[$group['area']]['running'] += $group['running'];
+        $areas[$group['area']]['attempted'] += $group['attempted'];
+        $areas[$group['area']]['known'] += $group['known'];
+        $areas[$group['area']]['total'] += $group['total'];
+    }
+    unset($group);
+
+    foreach ($areas as &$area) {
+        $area['status'] = compatAggregateStatus($area);
+        $area['passRate'] = compatPassRate($area['pass'], $area['fail']);
+    }
+    unset($area);
+
+    ksort($areas);
+    ksort($groups);
+
+    usort(
+        $slowChunks,
+        static fn(array $left, array $right): int => $right['durationSec'] <=> $left['durationSec'],
+    );
+    $slowChunks = array_slice($slowChunks, 0, 20);
+
+    $overall = compatOverallSummary($state);
+
+    return [
+        'generatedAt' => date('c'),
+        'updatedAt' => $state['updatedAt'],
+        'complete' => $state['completed'] && $final,
+        'git' => detectGitMetadata($rootDir),
+        'environment' => [
+            'phpVersion' => PHP_VERSION,
+            'nodeVersion' => detectCommandVersion('node --version', $rootDir),
+        ],
+        'mode' => [
+            'match' => $state['options']['match'],
+            'jobs' => $state['options']['jobs'],
+            'chunkSize' => $state['options']['chunkSize'],
+            'timeoutSec' => $state['options']['timeoutSec'],
+        ],
+        'state' => [
+            'directory' => $state['stateDir'],
+            'fingerprint' => $state['fingerprint'],
+        ],
+        'discovery' => $state['discovery'],
+        'runnerCaveats' => [
+            'Feature families listed in config/support.php are skipped before execution.',
+            'Tests flagged as module are skipped by the current runner.',
+            'Tests flagged as async are skipped by the current runner.',
+            'Mixed-mode tests currently run only in sloppy mode unless onlyStrict or noStrict is set.',
+            'Chunks that timeout, OOM, or crash are split automatically until a single-file blocker is isolated.',
+        ],
+        'test262' => [
+            'skippedFeatures' => array_values($supportConfig['test262_skipped_features']),
+            'totals' => $overall,
+            'areas' => array_values($areas),
+            'groups' => array_values($groups),
+            'blockedChunks' => $blockedChunks,
+            'slowChunks' => $slowChunks,
+        ],
+    ];
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @return array<string, mixed>
+ */
+function compatOverallSummary(array $state): array
+{
+    $summary = [
+        'pass' => 0,
+        'fail' => 0,
+        'skip' => 0,
+        'blocked' => 0,
+        'pending' => 0,
+        'running' => 0,
+        'attempted' => 0,
+        'known' => 0,
+        'total' => 0,
+        'passRate' => 0.0,
+    ];
+
+    foreach (compatLeafChunks($state) as $chunk) {
+        switch ($chunk['status']) {
+            case 'pending':
+                $summary['pending'] += $chunk['filesCount'];
+                $summary['total'] += $chunk['filesCount'];
+                break;
+            case 'running':
+                $summary['running'] += $chunk['filesCount'];
+                $summary['total'] += $chunk['filesCount'];
+                break;
+            case 'complete':
+                $chunkSummary = $chunk['summary'];
+                $summary['pass'] += $chunkSummary['pass'];
+                $summary['fail'] += $chunkSummary['fail'];
+                $summary['skip'] += $chunkSummary['skip'];
+                $summary['blocked'] += $chunkSummary['blocked'];
+                $summary['attempted'] += $chunkSummary['attempted'];
+                $summary['known'] += $chunkSummary['total'];
+                $summary['total'] += $chunkSummary['total'];
+                break;
+        }
+    }
+
+    $summary['passRate'] = compatPassRate($summary['pass'], $summary['fail']);
+
+    return $summary;
+}
+
+/**
+ * @param array<string, mixed> $state
+ * @return list<array<string, mixed>>
+ */
+function compatLeafChunks(array $state): array
+{
+    return array_values(array_filter(
+        $state['chunks'],
+        static fn(array $chunk): bool => in_array($chunk['status'], ['pending', 'running', 'complete'], true),
+    ));
+}
+
+/**
+ * @param array<string, mixed> $row
+ */
+function compatAggregateStatus(array $row): string
+{
+    if (($row['running'] ?? 0) > 0) {
+        return 'running';
+    }
+    if (($row['pending'] ?? 0) > 0) {
+        return ($row['known'] ?? 0) > 0 ? 'incomplete' : 'pending';
+    }
+    if (($row['blocked'] ?? 0) > 0) {
+        return 'blocked';
+    }
+    if (($row['attempted'] ?? 0) === 0) {
+        return ($row['skip'] ?? 0) > 0 ? 'skipped' : 'empty';
+    }
+    if (($row['fail'] ?? 0) === 0) {
+        return 'pass';
+    }
+    if (($row['pass'] ?? 0) === 0) {
+        return 'fail';
+    }
+
+    return 'partial';
+}
+
+function compatPassRate(int $pass, int $fail): float
+{
+    $attempted = $pass + $fail;
+    if ($attempted === 0) {
+        return 0.0;
+    }
+
+    return round(($pass / $attempted) * 100, 1);
+}
+
+/**
+ * @param array<string, mixed> $snapshot
+ */
+function renderCompatMarkdown(array $snapshot): string
+{
+    $totals = $snapshot['test262']['totals'];
+    $lines = [];
+    $lines[] = '# Compatibility Snapshot';
+    $lines[] = '';
+    $lines[] = $snapshot['complete']
+        ? 'Generated from a completed `test262` pass. Do not edit by hand.'
+        : 'Generated from an in-progress `test262` pass. Do not edit by hand.';
+    $lines[] = '';
+    $lines[] = '- Refresh: `./bin/compat-report`';
+    if (!$snapshot['complete']) {
+        $lines[] = '- Resume: `./bin/compat-report`';
+    }
+    $lines[] = '- Snapshot time: `' . $snapshot['generatedAt'] . '`';
+    $lines[] = '- Chunk size: `' . $snapshot['mode']['chunkSize'] . '`';
+    $lines[] = '- Timeout: `' . $snapshot['mode']['timeoutSec'] . 's`';
+    $lines[] = '- Jobs: `' . $snapshot['mode']['jobs'] . '`';
+    if (($snapshot['mode']['match'] ?? null) !== null) {
+        $lines[] = '- Filter: `' . $snapshot['mode']['match'] . '`';
+    }
+    $lines[] = '- Groups: `' . $snapshot['discovery']['groupCount'] . '`';
+    $lines[] = '- Test files: `' . $snapshot['discovery']['testFileCount'] . '`';
+    if (($snapshot['git']['commit'] ?? null) !== null) {
+        $lines[] = '- Git: `' . $snapshot['git']['branch'] . '` @ `' . $snapshot['git']['commit'] . '`'
+            . (($snapshot['git']['isDirty'] ?? false) ? ' (dirty)' : '');
+    }
+    $lines[] = '';
+    $lines[] = '## Summary';
+    $lines[] = '';
+    $lines[] = '| Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |';
+    $lines[] = '|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|';
+    $lines[] = sprintf(
+        '| %d | %d | %d | %d | %d | %d | %d | %d | %d | %s |',
+        $totals['pass'],
+        $totals['fail'],
+        $totals['skip'],
+        $totals['blocked'],
+        $totals['pending'],
+        $totals['running'],
+        $totals['attempted'],
+        $totals['known'],
+        $totals['total'],
+        formatRate($totals['attempted'], $totals['passRate']),
+    );
+    $lines[] = '';
+    $lines[] = '## Top-Level Areas';
+    $lines[] = '';
+    $lines[] = '| Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |';
+    $lines[] = '|---|---|---:|---:|---:|---:|---:|---:|---:|';
+    foreach ($snapshot['test262']['areas'] as $area) {
+        $lines[] = sprintf(
+            '| %s | %s | %d | %d | %d | %d | %d | %d | %s |',
+            $area['name'],
+            strtoupper($area['status']),
+            $area['pass'],
+            $area['fail'],
+            $area['skip'],
+            $area['blocked'],
+            $area['pending'],
+            $area['running'],
+            formatRate($area['attempted'], $area['passRate']),
+        );
+    }
+    $lines[] = '';
+    $lines[] = '## Group Coverage';
+    $lines[] = '';
+    $lines[] = '| Group | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |';
+    $lines[] = '|---|---|---:|---:|---:|---:|---:|---:|---:|';
+    foreach ($snapshot['test262']['groups'] as $group) {
+        $lines[] = sprintf(
+            '| %s | %s | %d | %d | %d | %d | %d | %d | %s |',
+            $group['name'],
+            strtoupper($group['status']),
+            $group['pass'],
+            $group['fail'],
+            $group['skip'],
+            $group['blocked'],
+            $group['pending'],
+            $group['running'],
+            formatRate($group['attempted'], $group['passRate']),
+        );
+    }
+    if ($snapshot['test262']['blockedChunks'] !== []) {
+        $lines[] = '';
+        $lines[] = '## Blocked Chunks';
+        $lines[] = '';
+        $lines[] = '| Group | Kind | Files | Sample | Log |';
+        $lines[] = '|---|---|---:|---|---|';
+        foreach ($snapshot['test262']['blockedChunks'] as $blocked) {
+            $sample = implode('<br>', array_map(
+                static fn(string $item): string => $item === '...' ? '...' : '`' . $item . '`',
+                $blocked['sampleFiles'],
+            ));
+            $log = $blocked['logFile'] !== null ? '`' . $blocked['logFile'] . '`' : '';
+            $lines[] = sprintf(
+                '| %s | %s | %d | %s | %s |',
+                $blocked['group'],
+                strtoupper($blocked['kind']),
+                $blocked['filesCount'],
+                $sample,
+                $log,
+            );
+        }
+    }
+    if ($snapshot['test262']['slowChunks'] !== []) {
+        $lines[] = '';
+        $lines[] = '## Slowest Chunks';
+        $lines[] = '';
+        $lines[] = '| Group | Kind | Duration | Files | Sample |';
+        $lines[] = '|---|---|---:|---:|---|';
+        foreach ($snapshot['test262']['slowChunks'] as $chunk) {
+            $sample = implode('<br>', array_map(
+                static fn(string $item): string => $item === '...' ? '...' : '`' . $item . '`',
+                $chunk['sampleFiles'],
+            ));
+            $lines[] = sprintf(
+                '| %s | %s | %.3fs | %d | %s |',
+                $chunk['group'],
+                strtoupper($chunk['kind']),
+                $chunk['durationSec'],
+                $chunk['filesCount'],
+                $sample,
+            );
+        }
+    }
+    $lines[] = '';
+    $lines[] = '## Runner Caveats';
+    $lines[] = '';
+    foreach ($snapshot['runnerCaveats'] as $caveat) {
+        $lines[] = '- ' . $caveat;
+    }
+    $lines[] = '';
+    $lines[] = '## Explicitly Skipped Feature Families';
+    $lines[] = '';
+    foreach ($snapshot['test262']['skippedFeatures'] as $feature) {
+        $lines[] = '- `' . $feature . '`';
+    }
+    $lines[] = '';
+
+    return implode("\n", $lines);
+}
+
+function formatRate(int $attempted, float $passRate): string
+{
+    if ($attempted === 0) {
+        return 'n/a';
+    }
+
+    return sprintf('%.1f%%', $passRate);
+}
+
+/**
+ * @return array{branch: ?string, commit: ?string, isDirty: bool}
+ */
+function detectGitMetadata(string $rootDir): array
+{
+    $branch = trim(runShellCommand('git rev-parse --abbrev-ref HEAD', $rootDir)['output']);
+    $commit = trim(runShellCommand('git rev-parse --short HEAD', $rootDir)['output']);
+    $dirty = trim(runShellCommand('git status --short', $rootDir)['output']) !== '';
+
+    return [
+        'branch' => $branch !== '' ? $branch : null,
+        'commit' => $commit !== '' ? $commit : null,
+        'isDirty' => $dirty,
+    ];
+}
+
+function detectCommandVersion(string $command, string $rootDir): ?string
+{
+    $result = runShellCommand($command, $rootDir);
+    if ($result['exitCode'] !== 0) {
+        return null;
+    }
+
+    $version = trim($result['output']);
+
+    return $version !== '' ? $version : null;
+}
+
+function displayCompatPath(string $path, string $rootDir): string
+{
+    $normalizedRoot = rtrim(str_replace('\\', '/', $rootDir), '/');
+    $normalizedPath = str_replace('\\', '/', $path);
+
+    if (str_starts_with($normalizedPath, $normalizedRoot . '/')) {
+        return relativePath($normalizedPath, $normalizedRoot . '/');
+    }
+
+    return $normalizedPath;
+}
+
+/**
+ * @return array{exitCode: int, output: string}
+ */
+function runShellCommand(string $command, string $rootDir): array
+{
+    $spec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open($command, $spec, $pipes, $rootDir);
+    if (!is_resource($process)) {
+        return ['exitCode' => 1, 'output' => ''];
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+
+    return [
+        'exitCode' => $exitCode,
+        'output' => $stdout . $stderr,
+    ];
+}
+
+function relativePath(string $path, string $prefix): string
+{
+    $relative = str_starts_with($path, $prefix) ? substr($path, strlen($prefix)) : $path;
+
+    return str_replace(DIRECTORY_SEPARATOR, '/', $relative);
+}
+
+/**
+ * @param array<string, mixed> $data
+ */
+function writeJsonFile(string $path, array $data): void
+{
+    writeTextFile(
+        $path,
+        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n",
+    );
+}
+
+function writeTextFile(string $path, string $contents): void
+{
+    $tmpPath = $path . '.tmp';
+    file_put_contents($tmpPath, $contents);
+    rename($tmpPath, $path);
+}
