@@ -7868,7 +7868,8 @@ class Interpreter
         // Analyze the original ES pattern for repeated groups that need
         // ES-compliant capture reset and nullable quantifier handling.
         $repeatedGroupAnalysis = self::analyzeRepeatedGroups($pattern);
-        $hasRepeatedGroupFixes = !empty($repeatedGroupAnalysis['repeatedGroups']);
+        $hasRepeatedGroupFixes = !empty($repeatedGroupAnalysis['repeatedGroups'])
+            || !empty($repeatedGroupAnalysis['nullableNonCapturingGroups']);
 
         // Build the PCRE flags string (without the delimiter and 'u') for inner patterns.
         $innerPcreFlags = $pcreFlags . 'u';
@@ -7947,6 +7948,14 @@ class Interpreter
                         $repeatedGroupAnalysis,
                         $innerPcreFlags,
                         $transformFn,
+                    );
+                    // Fix 3: Reset captures inside nullable non-capturing groups.
+                    // Per ES spec RepeatMatcher step 2.b: when min=0 and the body
+                    // matched zero-length, the repetition fails and captures inside
+                    // are reset to undefined.
+                    $matches = self::fixNullableNonCapturingGroupCaptures(
+                        $matches,
+                        $repeatedGroupAnalysis,
                     );
                 }
 
@@ -8339,7 +8348,12 @@ class Interpreter
                     ) {
                         $result .= '(?:)';
                     } else {
-                        $result .= $ch . $numStr;
+                        // In ECMAScript, a backreference to a non-participating
+                        // group (one that exists but didn't capture) matches the
+                        // empty string. PCRE fails the match instead. Wrap the
+                        // backreference in (?:\N|) so that when the group didn't
+                        // participate, the empty alternative is taken.
+                        $result .= '(?:' . $ch . $numStr . '|)';
                     }
                     $i = $j;
                     continue;
@@ -9397,9 +9411,11 @@ class Interpreter
     public static function analyzeRepeatedGroups(string $pattern): array
     {
         $len = strlen($pattern);
-        $groupStack = []; // stack of [captureIndex|null, openPos]
-        $groups = []; // captureIndex => [openPos, closePos, quantifier, bodyPattern]
+        $groupStack = []; // stack of [captureIndex|null, openPos, isNonCapturing]
+        $groups = []; // captureIndex => [openPos, closePos, quantifier]
+        $allGroups = []; // sequential id => [openPos, closePos, quantifier, captureIndex|null, isNonCapturing]
         $captureIndex = 0;
+        $seqIndex = 0;
         $inCharClass = false;
 
         for ($i = 0; $i < $len; $i++) {
@@ -9424,6 +9440,7 @@ class Interpreter
 
             if ($ch === '(') {
                 $isCapturing = false;
+                $isNonCapturing = false;
                 if ($i + 1 < $len && $pattern[$i + 1] !== '?') {
                     $isCapturing = true;
                 } elseif (
@@ -9432,18 +9449,38 @@ class Interpreter
                     && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!'
                 ) {
                     $isCapturing = true;
+                } elseif (
+                    $i + 2 < $len && $pattern[$i + 1] === '?'
+                    && $pattern[$i + 2] === ':'
+                ) {
+                    $isNonCapturing = true;
                 }
 
+                $thisSeq = $seqIndex++;
                 if ($isCapturing) {
                     $captureIndex++;
-                    $groupStack[] = [$captureIndex, $i];
+                    $groupStack[] = [$captureIndex, $i, false, $thisSeq];
                     $groups[$captureIndex] = [
                         'openPos' => $i,
                         'closePos' => null,
                         'quantifier' => null,
                     ];
+                    $allGroups[$thisSeq] = [
+                        'openPos' => $i,
+                        'closePos' => null,
+                        'quantifier' => null,
+                        'captureIndex' => $captureIndex,
+                        'isNonCapturing' => false,
+                    ];
                 } else {
-                    $groupStack[] = [null, $i];
+                    $groupStack[] = [null, $i, $isNonCapturing, $thisSeq];
+                    $allGroups[$thisSeq] = [
+                        'openPos' => $i,
+                        'closePos' => null,
+                        'quantifier' => null,
+                        'captureIndex' => null,
+                        'isNonCapturing' => $isNonCapturing,
+                    ];
                 }
                 continue;
             }
@@ -9451,20 +9488,25 @@ class Interpreter
             if ($ch === ')' && !empty($groupStack)) {
                 $popped = array_pop($groupStack);
                 $grpIdx = $popped[0];
+                $thisSeq = $popped[3];
+
+                // Check for quantifier after closing paren.
+                $quantifier = null;
+                if ($i + 1 < $len) {
+                    $next = $pattern[$i + 1];
+                    if ($next === '*' || $next === '+' || $next === '?') {
+                        $quantifier = $next;
+                    } elseif ($next === '{') {
+                        $quantifier = '{';
+                    }
+                }
 
                 if ($grpIdx !== null) {
                     $groups[$grpIdx]['closePos'] = $i;
-
-                    // Check for quantifier after closing paren.
-                    if ($i + 1 < $len) {
-                        $next = $pattern[$i + 1];
-                        if ($next === '*' || $next === '+' || $next === '?') {
-                            $groups[$grpIdx]['quantifier'] = $next;
-                        } elseif ($next === '{') {
-                            $groups[$grpIdx]['quantifier'] = '{';
-                        }
-                    }
+                    $groups[$grpIdx]['quantifier'] = $quantifier;
                 }
+                $allGroups[$thisSeq]['closePos'] = $i;
+                $allGroups[$thisSeq]['quantifier'] = $quantifier;
                 continue;
             }
         }
@@ -9517,7 +9559,205 @@ class Interpreter
             ];
         }
 
-        return ['repeatedGroups' => $repeatedGroups];
+        // Detect non-capturing groups with min-zero quantifiers (?, *, {0,...})
+        // that contain capturing groups. Per ES spec RepeatMatcher step 2.b,
+        // when min=0 and the body matches zero-length, the repetition returns
+        // failure, causing captures inside to be reset to undefined. PCRE does
+        // not implement this, so we track these for post-processing.
+        $nullableNonCapturingGroups = [];
+        foreach ($allGroups as $seqIdx => $ag) {
+            if (!$ag['isNonCapturing'] || $ag['closePos'] === null) {
+                continue;
+            }
+            // Check if the quantifier allows zero matches.
+            $q = $ag['quantifier'];
+            $minZero = false;
+            if ($q === '?' || $q === '*') {
+                $minZero = true;
+            } elseif ($q === '{') {
+                // Parse {N,...} to check if N is 0.
+                $bPos = $ag['closePos'] + 2; // after ){
+                $digits = '';
+                while ($bPos < $len && $pattern[$bPos] >= '0' && $pattern[$bPos] <= '9') {
+                    $digits .= $pattern[$bPos];
+                    $bPos++;
+                }
+                if ($digits !== '' && (int) $digits === 0) {
+                    $minZero = true;
+                }
+            }
+
+            if (!$minZero) {
+                continue;
+            }
+
+            // Find capturing groups inside this non-capturing group.
+            $innerCaptures = [];
+            foreach ($groups as $capIdx => $g) {
+                if (
+                    $g['openPos'] > $ag['openPos']
+                    && $g['closePos'] !== null
+                    && $g['closePos'] < $ag['closePos']
+                ) {
+                    $innerCaptures[] = $capIdx;
+                }
+            }
+
+            if (empty($innerCaptures)) {
+                continue;
+            }
+
+            // Check if the body is purely zero-width (only lookaheads/lookbehinds).
+            $bodyStart = $ag['openPos'] + 1;
+            // Skip ?: prefix.
+            if (
+                $bodyStart < $len && $pattern[$bodyStart] === '?'
+                && $bodyStart + 1 < $len && $pattern[$bodyStart + 1] === ':'
+            ) {
+                $bodyStart += 2;
+            }
+            $bodyPattern = substr($pattern, $bodyStart, $ag['closePos'] - $bodyStart);
+            $zeroWidth = self::isPatternZeroWidth($bodyPattern);
+
+            if ($zeroWidth) {
+                $nullableNonCapturingGroups[] = [
+                    'innerCaptures' => $innerCaptures,
+                ];
+            }
+        }
+
+        return [
+            'repeatedGroups' => $repeatedGroups,
+            'nullableNonCapturingGroups' => $nullableNonCapturingGroups,
+        ];
+    }
+
+    /**
+     * Check if a regex pattern body consists entirely of zero-width assertions.
+     * Returns true if the body can only match zero-length (lookaheads, lookbehinds,
+     * word boundaries, anchors).
+     */
+    private static function isPatternZeroWidth(string $pattern): bool
+    {
+        $len = strlen($pattern);
+        $i = 0;
+
+        while ($i < $len) {
+            $ch = $pattern[$i];
+
+            // Skip whitespace.
+            if ($ch === ' ' || $ch === "\t" || $ch === "\n") {
+                $i++;
+                continue;
+            }
+
+            // Anchors are zero-width.
+            if ($ch === '^' || $ch === '$') {
+                $i++;
+                continue;
+            }
+
+            // \b and \B are zero-width.
+            if ($ch === '\\' && $i + 1 < $len && ($pattern[$i + 1] === 'b' || $pattern[$i + 1] === 'B')) {
+                $i += 2;
+                continue;
+            }
+
+            // Lookahead/lookbehind groups are zero-width.
+            if (
+                $ch === '(' && $i + 2 < $len
+                && $pattern[$i + 1] === '?'
+                && ($pattern[$i + 2] === '=' || $pattern[$i + 2] === '!')
+            ) {
+                // Skip to the matching close paren.
+                $depth = 1;
+                $j = $i + 1;
+                while ($j < $len && $depth > 0) {
+                    if ($pattern[$j] === '\\') {
+                        $j += 2;
+                        continue;
+                    }
+                    if ($pattern[$j] === '(') {
+                        $depth++;
+                    } elseif ($pattern[$j] === ')') {
+                        $depth--;
+                    }
+                    $j++;
+                }
+                $i = $j;
+                // Skip any quantifier after.
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*' || $pattern[$i] === '+')) {
+                    $i++;
+                }
+                continue;
+            }
+
+            // Lookbehind (?<=...) or (?<!...).
+            if (
+                $ch === '(' && $i + 3 < $len
+                && $pattern[$i + 1] === '?'
+                && $pattern[$i + 2] === '<'
+                && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')
+            ) {
+                $depth = 1;
+                $j = $i + 1;
+                while ($j < $len && $depth > 0) {
+                    if ($pattern[$j] === '\\') {
+                        $j += 2;
+                        continue;
+                    }
+                    if ($pattern[$j] === '(') {
+                        $depth++;
+                    } elseif ($pattern[$j] === ')') {
+                        $depth--;
+                    }
+                    $j++;
+                }
+                $i = $j;
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*' || $pattern[$i] === '+')) {
+                    $i++;
+                }
+                continue;
+            }
+
+            // Non-capturing group containing only zero-width patterns.
+            if (
+                $ch === '(' && $i + 2 < $len
+                && $pattern[$i + 1] === '?'
+                && $pattern[$i + 2] === ':'
+            ) {
+                $depth = 1;
+                $j = $i + 1;
+                while ($j < $len && $depth > 0) {
+                    if ($pattern[$j] === '\\') {
+                        $j += 2;
+                        continue;
+                    }
+                    if ($pattern[$j] === '(') {
+                        $depth++;
+                    } elseif ($pattern[$j] === ')') {
+                        $depth--;
+                    }
+                    $j++;
+                }
+                // Extract body and recurse.
+                $bodyInner = substr($pattern, $i + 3, $j - 1 - ($i + 3));
+                if (!self::isPatternZeroWidth($bodyInner)) {
+                    return false;
+                }
+                $i = $j;
+                // Skip quantifier.
+                if ($i < $len && ($pattern[$i] === '?' || $pattern[$i] === '*' || $pattern[$i] === '+')) {
+                    $i++;
+                }
+                continue;
+            }
+
+            // Anything else is not zero-width.
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -9928,6 +10168,38 @@ class Interpreter
 
                 // Update the group capture to reflect the last iteration.
                 $matches[$groupIdx] = $lastGroupCapture;
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * Fix captures inside nullable non-capturing groups.
+     *
+     * Per ES spec RepeatMatcher step 2.b: when min=0 and the body matched
+     * zero-length, the repetition returns failure and captures inside are
+     * reset to undefined. PCRE does not implement this: it keeps captures
+     * from the zero-width match. This method detects such cases and resets
+     * the affected captures.
+     *
+     * @param array<int|string, array{0: ?string, 1: int}> $matches
+     * @return array<int|string, array{0: ?string, 1: int}>
+     */
+    public static function fixNullableNonCapturingGroupCaptures(
+        array $matches,
+        array $analysis,
+    ): array {
+        if (empty($analysis['nullableNonCapturingGroups'])) {
+            return $matches;
+        }
+
+        foreach ($analysis['nullableNonCapturingGroups'] as $info) {
+            foreach ($info['innerCaptures'] as $capIdx) {
+                if (isset($matches[$capIdx])) {
+                    // Reset the capture to unmatched (null at offset -1).
+                    $matches[$capIdx] = [null, -1];
+                }
             }
         }
 

@@ -23,6 +23,7 @@ class ErrorConstructor
         ];
 
         $errorProto = null;
+        $errorConstructor = null;
 
         foreach ($errorTypes as $name) {
             $proto = new JsObject();

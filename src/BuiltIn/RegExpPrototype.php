@@ -323,7 +323,7 @@ class RegExpPrototype
 
         // Analyze the pattern for repeated groups.
         $analysis = \PhpJs\Runtime\Interpreter::analyzeRepeatedGroups($esPattern);
-        if (empty($analysis['repeatedGroups'])) {
+        if (empty($analysis['repeatedGroups']) && empty($analysis['nullableNonCapturingGroups'])) {
             return $matches;
         }
 
@@ -356,6 +356,12 @@ class RegExpPrototype
             $analysis,
             $pcreFlags,
             $transformFn,
+        );
+
+        // Fix 3: Reset captures inside nullable non-capturing groups.
+        $matches = \PhpJs\Runtime\Interpreter::fixNullableNonCapturingGroupCaptures(
+            $matches,
+            $analysis,
         );
 
         return $matches;

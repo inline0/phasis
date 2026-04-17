@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-17T23:30:54+00:00`
+- Snapshot time: `2026-04-17T23:35:55+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `137`
 - Test files: `50506`
-- Git: `main` @ `fff379c` (dirty)
+- Git: `main` @ `c20e2ce` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 26560 | 2830 | 19092 | 0 | 1855 | 169 | 29390 | 48482 | 50506 | 90.4% |
+| 26594 | 2830 | 19092 | 0 | 1889 | 101 | 29424 | 48516 | 50506 | 90.4% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 750 | 190 | 14 | 0 | 125 | 0 | 79.8% |
-| built-ins | RUNNING | 13080 | 703 | 7650 | 0 | 1185 | 111 | 94.9% |
-| harness | RUNNING | 40 | 1 | 17 | 0 | 0 | 58 | 97.6% |
+| built-ins | RUNNING | 13080 | 703 | 7650 | 0 | 1227 | 69 | 94.9% |
+| harness | INCOMPLETE | 40 | 1 | 17 | 0 | 58 | 0 | 97.6% |
 | intl402 | INCOMPLETE | 0 | 1136 | 356 | 0 | 74 | 0 | 0.0% |
-| language | INCOMPLETE | 12056 | 394 | 10743 | 0 | 191 | 0 | 96.8% |
-| staging | INCOMPLETE | 634 | 406 | 312 | 0 | 280 | 0 | 61.0% |
+| language | INCOMPLETE | 12090 | 394 | 10743 | 0 | 157 | 0 | 96.8% |
+| staging | RUNNING | 634 | 406 | 312 | 0 | 248 | 32 | 61.0% |
 
 ## Group Coverage
 
@@ -50,7 +50,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/literals | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | annexB/language/statements | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
 | built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| built-ins/Array | INCOMPLETE | 2415 | 96 | 176 | 0 | 388 | 0 | 96.2% |
+| built-ins/Array | RUNNING | 2415 | 96 | 176 | 0 | 319 | 69 | 96.2% |
 | built-ins/ArrayBuffer | PARTIAL | 75 | 5 | 112 | 0 | 0 | 0 | 93.8% |
 | built-ins/ArrayIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
 | built-ins/AsyncDisposableStack | SKIPPED | 0 | 0 | 52 | 0 | 0 | 0 | n/a |
@@ -100,8 +100,8 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/WeakMap | PARTIAL | 91 | 1 | 10 | 0 | 0 | 0 | 98.9% |
 | built-ins/WeakRef | PENDING | 0 | 0 | 0 | 0 | 29 | 0 | n/a |
 | built-ins/WeakSet | PARTIAL | 76 | 1 | 8 | 0 | 0 | 0 | 98.7% |
-| built-ins/decodeURI | RUNNING | 0 | 0 | 0 | 0 | 0 | 55 | n/a |
-| built-ins/decodeURIComponent | RUNNING | 0 | 0 | 0 | 0 | 0 | 56 | n/a |
+| built-ins/decodeURI | PENDING | 0 | 0 | 0 | 0 | 55 | 0 | n/a |
+| built-ins/decodeURIComponent | PENDING | 0 | 0 | 0 | 0 | 56 | 0 | n/a |
 | built-ins/encodeURI | PENDING | 0 | 0 | 0 | 0 | 31 | 0 | n/a |
 | built-ins/encodeURIComponent | PENDING | 0 | 0 | 0 | 0 | 31 | 0 | n/a |
 | built-ins/eval | PENDING | 0 | 0 | 0 | 0 | 10 | 0 | n/a |
@@ -111,7 +111,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/parseFloat | PARTIAL | 58 | 1 | 0 | 0 | 0 | 0 | 98.3% |
 | built-ins/parseInt | PENDING | 0 | 0 | 0 | 0 | 60 | 0 | n/a |
 | built-ins/undefined | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| harness | RUNNING | 40 | 1 | 17 | 0 | 0 | 58 | 97.6% |
+| harness | INCOMPLETE | 40 | 1 | 17 | 0 | 58 | 0 | 97.6% |
 | intl402 | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
 | intl402/Array | PENDING | 0 | 0 | 0 | 0 | 2 | 0 | n/a |
 | intl402/BigInt | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
@@ -149,7 +149,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/import | PASS | 6 | 0 | 79 | 0 | 0 | 0 | 100.0% |
 | language/keywords | PENDING | 0 | 0 | 0 | 0 | 25 | 0 | n/a |
 | language/line-terminators | PASS | 41 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/literals | INCOMPLETE | 413 | 4 | 83 | 0 | 34 | 0 | 99.0% |
+| language/literals | PARTIAL | 447 | 4 | 83 | 0 | 0 | 0 | 99.1% |
 | language/module-code | SKIPPED | 0 | 0 | 583 | 0 | 0 | 0 | n/a |
 | language/punctuators | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
 | language/reserved-words | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
@@ -167,7 +167,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
 | staging/explicit-resource-management | SKIPPED | 0 | 0 | 54 | 0 | 0 | 0 | n/a |
 | staging/set-methods | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| staging/sm | INCOMPLETE | 611 | 364 | 203 | 0 | 250 | 0 | 62.7% |
+| staging/sm | RUNNING | 611 | 364 | 203 | 0 | 218 | 32 | 62.7% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PARTIAL | 23 | 42 | 6 | 0 | 0 | 0 | 35.4% |
 
