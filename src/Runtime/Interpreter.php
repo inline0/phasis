@@ -87,6 +87,9 @@ class Interpreter
     private int $maxLoopIterations;
     private bool $strictMode = false;
 
+    /** @var array<string, bool> Current function parameter names for Annex B hoisting. */
+    private array $currentParamNames = [];
+
     /**
      * Map of with-environment identity to their binding objects.
      * Used for spec-correct binding resolution (ResolveBinding before Initializer).
@@ -2511,6 +2514,15 @@ class Interpreter
             // Bind parameters
             $this->bindParameters($params, $args, $fnEnv);
 
+            // Collect parameter names for Annex B hoisting checks.
+            $savedParamNames = $this->currentParamNames;
+            $this->currentParamNames = [];
+            foreach ($params as $p) {
+                foreach ($this->patternBoundNames($p) as $pName) {
+                    $this->currentParamNames[$pName] = true;
+                }
+            }
+
             // When the function has parameter expressions (defaults, destructuring
             // with defaults), the body gets a separate environment so closures in
             // the parameter list do not see body-scoped var declarations.
@@ -2530,6 +2542,7 @@ class Interpreter
                 // bindings in the body scope, not update parent scope bindings.
                 $this->forceHoistVarNames($body->body, $bodyEnv);
                 $this->hoistDeclarations($body->body, $bodyEnv);
+                $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeBody($body->body, $bodyEnv);
                 if ($completion->type === CompletionType::Return) {
@@ -2549,6 +2562,7 @@ class Interpreter
                 // has a const/let binding with the same name.
                 $this->forceHoistVarNames($body->body, $fnEnv);
                 $this->hoistDeclarations($body->body, $fnEnv);
+                $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
                 if ($completion->type === CompletionType::Return) {
@@ -5635,6 +5649,10 @@ class Interpreter
                 return false;
             }
             if ($env->hasLexicalBinding($name)) {
+                return false;
+            }
+            // Per B.3.3.1: "F is not an element of BoundNames of argumentsList"
+            if (isset($this->currentParamNames[$name])) {
                 return false;
             }
             return true;
