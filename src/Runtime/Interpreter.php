@@ -2518,12 +2518,17 @@ class Interpreter
             $this->bindParameters($params, $args, $fnEnv);
 
             // Collect parameter names for Annex B hoisting checks.
+            // Per spec, 'arguments' is treated as a parameter name when the
+            // arguments object is created (22.1.3.3 step 22f).
             $savedParamNames = $this->currentParamNames;
             $this->currentParamNames = [];
             foreach ($params as $p) {
                 foreach ($this->patternBoundNames($p) as $pName) {
                     $this->currentParamNames[$pName] = true;
                 }
+            }
+            if (!$fn->isArrow()) {
+                $this->currentParamNames['arguments'] = true;
             }
 
             // When the function has parameter expressions (defaults, destructuring
@@ -5214,7 +5219,8 @@ class Interpreter
 
             // Annex B: in sloppy mode, hoist function declaration names from
             // nested blocks (if, for, while, etc.) to the enclosing scope.
-            if (!$this->strictMode) {
+            // Skip when processing catch bodies (handled at function scope level).
+            if (!$this->strictMode && !$this->skipAnnexBHoisting) {
                 $this->hoistBlockFunctionDeclarations($stmt, $env, $lexicalNames);
             }
         }

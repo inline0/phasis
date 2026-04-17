@@ -686,7 +686,12 @@ class Engine
             );
         };
 
-        $accessor = function (string $prop, string $alias, string $key, bool $hasSetter) use (
+        $accessor = function (
+            string $prop,
+            string $alias,
+            string $key,
+            bool $hasSetter
+        ) use (
             $ctor,
             $makeGetter,
             $makeSetter,
