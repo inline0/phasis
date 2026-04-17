@@ -4383,7 +4383,16 @@ class Interpreter
             $obj = TypeConversion::toObject($obj);
         }
         $withEnv = $env->createWithEnvironment($obj);
-        return $this->executeStatement($node->body, $withEnv);
+        $completion = $this->executeStatement($node->body, $withEnv);
+        // Per spec 14.11.2 step 9: Return Completion(UpdateEmpty(C, undefined)).
+        if ($completion->empty) {
+            return new Completion(
+                $completion->type,
+                JsUndefined::instance(),
+                $completion->target,
+            );
+        }
+        return $completion;
     }
 
     // -------------------------------------------------------------------------
