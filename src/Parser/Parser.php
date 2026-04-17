@@ -127,7 +127,8 @@ class Parser
                 || $next->type === TokenType::LeftBrace
                 || $next->type === TokenType::Yield
                 || $next->type === TokenType::Await
-                || $next->type === TokenType::Let;
+                || $next->type === TokenType::Let
+                || $next->type === TokenType::Async;
             if ($isDeclaration) {
                 return $this->parseVariableDeclaration();
             }
@@ -571,7 +572,8 @@ class Parser
                 || $this->peekIs(TokenType::Yield)
                 || $this->peekIs(TokenType::Await)
                 || $this->peekIs(TokenType::Static_)
-                || $this->peekIs(TokenType::Of));
+                || $this->peekIs(TokenType::Of)
+                || $this->peekIs(TokenType::Async));
 
         // for (var/let/const ...
         if ($this->check(TokenType::Var) || $isLetDecl || $this->check(TokenType::Const_)) {
@@ -612,6 +614,22 @@ class Parser
             if ($this->eat(TokenType::Equal)) {
                 $init = $this->parseAssignmentExpression();
             }
+
+            // Annex B: for (var x = expr in obj) is valid in sloppy mode.
+            // The initializer is evaluated, then the for-in loop runs normally.
+            if ($init !== null && $kind === 'var' && $this->check(TokenType::In)) {
+                $this->advance();
+                $right = $this->parseExpression();
+                $this->expect(TokenType::RightParen);
+                $body = $this->parseStatement();
+                $left = new VariableDeclaration(
+                    $kindToken->location,
+                    $kind,
+                    [new VariableDeclarator($id->location, $id, $init)],
+                );
+                return new ForInStatement($location, $left, $right, $body);
+            }
+
             $declarations = [new VariableDeclarator($id->location, $id, $init)];
             while ($this->eat(TokenType::Comma)) {
                 $declarations[] = $this->parseVariableDeclarator();
@@ -1252,7 +1270,7 @@ class Parser
     private function parseIdentifier(): Identifier
     {
         $token = $this->current();
-        // In sloppy mode, `let`, `static`, `of`, and `yield` can be used as identifiers.
+        // In sloppy mode, `let`, `static`, `of`, `yield`, and `async` can be used as identifiers.
         if (
             $token->type !== TokenType::Identifier
             && $token->type !== TokenType::Let
@@ -1260,6 +1278,7 @@ class Parser
             && $token->type !== TokenType::Of
             && $token->type !== TokenType::Yield
             && $token->type !== TokenType::Await
+            && $token->type !== TokenType::Async
         ) {
             throw new ParseError('Expected identifier', $token);
         }

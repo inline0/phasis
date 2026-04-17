@@ -1255,18 +1255,53 @@ class Interpreter
             }
             // Super constructor is [[GetPrototypeOf]](activeFunction).
             $superCtor = $activeFunc instanceof JsFunction ? $activeFunc->getPrototype() : null;
-            if (!$superCtor instanceof JsFunction) {
-                throw new TypeError('Super constructor must be a function');
+            $isDerived = $activeFunc instanceof JsFunction && $activeFunc->isDerivedConstructor();
+
+            // Per spec: check IsConstructor after evaluating arguments.
+            if (!$superCtor instanceof JsFunction || !$superCtor->isConstructable()) {
+                throw new TypeError('Super constructor must be a constructor');
             }
-            // Get current this value.
-            try {
-                $currentThis = $env->get('this');
-            } catch (\Throwable) {
-                $currentThis = JsUndefined::instance();
+
+            // For derived constructors, this is in TDZ until super() initializes it.
+            // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
+            // calling super() again throws ReferenceError.
+            if ($isDerived) {
+                // Check if this is already initialized (double super() call).
+                $thisInitialized = false;
+                try {
+                    $env->get('this');
+                    $thisInitialized = true;
+                } catch (\Throwable) {
+                    // this is in TDZ, which is expected for the first super() call.
+                }
+                if ($thisInitialized) {
+                    throw new ReferenceError('Super constructor may only be called once');
+                }
+                // Get the pending this object created by new.
+                try {
+                    $currentThis = $env->get('[[PendingThis]]');
+                } catch (\Throwable) {
+                    $currentThis = JsUndefined::instance();
+                }
+            } else {
+                try {
+                    $currentThis = $env->get('this');
+                } catch (\Throwable) {
+                    $currentThis = JsUndefined::instance();
+                }
             }
+
             // Call the super constructor. It may return a new object (factory pattern).
             $result = $this->callFunction($superCtor, $currentThis, $args);
-            // If super constructor returned an object, bind that as this.
+
+            // Bind this: for derived constructors, initialize the TDZ binding.
+            if ($isDerived) {
+                $thisVal = $result instanceof JsObject ? $result : $currentThis;
+                $env->defineLet('this', $thisVal);
+                return $thisVal;
+            }
+
+            // Non-derived: if super returned an object, bind that as this.
             if ($result instanceof JsObject) {
                 $env->set('this', $result);
                 return $result;
@@ -1305,12 +1340,10 @@ class Interpreter
             if (!$callee instanceof JsFunction) {
                 throw new TypeError("{$key} is not a function");
             }
-            // Use current this, not the super object.
-            try {
-                $thisValue = $env->get('this');
-            } catch (\Throwable) {
-                $thisValue = JsUndefined::instance();
-            }
+            // Use current this, not the super object. Per spec, if this is
+            // uninitialized (derived constructor before super()), this throws
+            // ReferenceError via GetThisBinding().
+            $thisValue = $env->get('this');
             $args = $this->evaluateArguments($node->arguments, $env);
             return $this->callFunction($callee, $thisValue, $args);
         }
@@ -3284,12 +3317,10 @@ class Interpreter
                     "Cannot read properties of undefined (super)",
                 );
             }
-            // Use the actual `this` as the receiver so getters are called with the right context.
-            try {
-                $superThisRead = $env->get('this');
-            } catch (\Throwable) {
-                $superThisRead = null;
-            }
+            // Per spec 12.3.5.3 MakeSuperPropertyReference step 3:
+            // let actualThis = env.GetThisBinding(). If this is uninitialized
+            // (derived constructor before super()), this throws ReferenceError.
+            $superThisRead = $env->get('this');
             $superRecvRead = $superThisRead instanceof JsObject ? $superThisRead : $superBase;
             if ($node->computed) {
                 $rawKey = $this->evaluate($node->property, $env);
@@ -4713,6 +4744,18 @@ class Interpreter
             $exprEnv = $tdzEnv;
         }
 
+        // Annex B: for (var x = expr in obj) evaluates the initializer before the loop.
+        if ($node->left instanceof VariableDeclaration && $node->left->kind === 'var') {
+            foreach ($node->left->declarations as $decl) {
+                if ($decl->init !== null) {
+                    $initVal = $this->evaluate($decl->init, $env);
+                    if ($decl->id instanceof Identifier) {
+                        $env->set($decl->id->name, $initVal, false);
+                    }
+                }
+            }
+        }
+
         $obj = $this->evaluate($node->right, $exprEnv);
         if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
             return Completion::normal(JsUndefined::instance());
@@ -6116,12 +6159,24 @@ class Interpreter
             }
         }
 
-        // Collect function declaration names directly in this block
-        // (they create lexical bindings that block nested Annex B hoisting).
-        $blockFuncNames = [];
+        // Collect lexical names (let/const/class/function declarations) directly
+        // in this block. These create lexical bindings that block nested Annex B
+        // hoisting. Per B.3.3.1: "replacing the FunctionDeclaration f with a
+        // VariableStatement ... would not produce any Early Errors".
+        $blockLexNames = [];
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
-                $blockFuncNames[$child->id->name] = true;
+                $blockLexNames[$child->id->name] = true;
+            }
+            if ($child instanceof VariableDeclaration && ($child->kind === 'let' || $child->kind === 'const')) {
+                foreach ($child->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $blockLexNames[$n] = true;
+                    }
+                }
+            }
+            if ($child instanceof ClassDeclaration && $child->id !== null) {
+                $blockLexNames[$child->id->name] = true;
             }
         }
 
@@ -6135,9 +6190,9 @@ class Interpreter
                 foreach ($child->body as $inner) {
                     if ($inner instanceof FunctionDeclaration) {
                         // Per B.3.3.1: skip if the enclosing block already has a
-                        // lexical binding for this name (e.g. another function
-                        // declaration). Replacing with var would be an Early Error.
-                        if (isset($blockFuncNames[$inner->id->name])) {
+                        // lexical binding for this name (let/const/class/function).
+                        // Replacing with var would be an Early Error.
+                        if (isset($blockLexNames[$inner->id->name])) {
                             continue;
                         }
                         if ($canHoist($inner->id->name)) {
@@ -6430,11 +6485,9 @@ class Interpreter
                 // is thrown at PutValue/GetValue time (after the RHS is evaluated), not here.
                 $refBase = $superBase ?? \PhpJs\Value\JsNull::instance();
                 // The actual `this` is the receiver for [[Set]] and getter invocations.
-                try {
-                    $superThisVal = $env->get('this');
-                } catch (\Throwable) {
-                    $superThisVal = null;
-                }
+                // Per spec, if this is uninitialized (derived constructor before super()),
+                // GetThisBinding() throws ReferenceError.
+                $superThisVal = $env->get('this');
                 $superThisObj = $superThisVal instanceof JsObject ? $superThisVal : null;
                 if ($node->computed) {
                     $rawRefKey = $this->evaluate($node->property, $env);

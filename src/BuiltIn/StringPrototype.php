@@ -435,12 +435,14 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $len = mb_strlen($str, 'UTF-8');
+            // Index by UTF-16 code units, not Unicode codepoints.
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $len = (int) (strlen($u16) / 2);
             if ($index < 0 || $index >= $len) {
                 return new JsNumber(NAN);
             }
-            $char = mb_substr($str, $index, 1, 'UTF-8');
-            return new JsNumber((float) mb_ord($char, 'UTF-8'));
+            $cu = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
+            return new JsNumber((float) $cu);
         };
     }
 
