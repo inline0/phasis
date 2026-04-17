@@ -555,11 +555,13 @@ class GlobalObject
         );
         $env->defineVar('__IteratorPrototype__', $iteratorPrototype);
 
-        // Set up %GeneratorFunction.prototype% and %GeneratorPrototype% intrinsics.
-        // Per spec 27.3: GeneratorFunction.prototype [[Prototype]] = Function.prototype.
+        // Set up %GeneratorFunction%, %GeneratorFunction.prototype%, and %GeneratorPrototype%.
+        // Per spec 27.3: GeneratorFunction.prototype is an ordinary non-callable object
+        // whose [[Prototype]] is Function.prototype.
         // Per spec 27.1.2: %GeneratorPrototype% [[Prototype]] = %IteratorPrototype%.
-        $generatorFunctionProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
-        $generatorFunctionProto->setCustomPrototype($fnProto);
+
+        // %GeneratorFunction.prototype%: ordinary object (NOT callable), [[Prototype]] = Function.prototype.
+        $generatorFunctionProto = new \PhpJs\Value\JsObject($fnProto);
         JsFunction::setGeneratorFunctionPrototype($generatorFunctionProto);
 
         // %GeneratorPrototype%: the prototype of all generator instances.
@@ -575,13 +577,6 @@ class GlobalObject
                 true,
             ),
         );
-        // constructor: non-writable, non-enumerable, configurable, pointing to %GeneratorFunction.prototype%.
-        $generatorPrototype->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
-            $generatorFunctionProto,
-            false,
-            false,
-            true,
-        ));
         // Install next/return/throw on %GeneratorPrototype% per spec 27.5.1.
         $nextFn = JsFunction::fromCallable('next', static function (
             JsValue $thisValue,
@@ -640,18 +635,122 @@ class GlobalObject
             false,
             true,
         ));
+
         // Wire: GeneratorFunction.prototype.prototype = %GeneratorPrototype%
+        // Per spec 27.3.3.2: {writable: false, enumerable: false, configurable: true}.
         $generatorFunctionProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
             $generatorPrototype,
+            false,
+            false,
             true,
-            false,
-            false,
         ));
+
+        // constructor on %GeneratorPrototype%: points to %GeneratorFunction.prototype%.
+        // Per spec 27.5.1.1: {writable: false, enumerable: false, configurable: true}.
+        $generatorPrototype->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $generatorFunctionProto,
+            false,
+            false,
+            true,
+        ));
+
+        // %GeneratorFunction% constructor: like Function() but for generators.
+        // Per spec 27.3.1.1: GeneratorFunction(p1, p2, ..., pn, body).
+        $genFnConstructor = JsFunction::fromCallable(
+            'GeneratorFunction',
+            function (JsValue $this_, array $args) use ($env): JsValue {
+                $body = '';
+                $params = '';
+                if (count($args) > 0) {
+                    $stringArgs = [];
+                    foreach ($args as $arg) {
+                        $stringArgs[] = TypeConversion::toString($arg);
+                    }
+                    $body = array_pop($stringArgs);
+                    $params = implode(',', $stringArgs);
+                }
+                // Per spec step 20: if parameters Contains YieldExpression, throw SyntaxError.
+                // Detect yield in parameters by parsing as a generator and checking params.
+                if ($params !== '') {
+                    // Parse as a regular function to detect yield in params.
+                    // If `yield` appears in params and is not inside the body,
+                    // it should throw SyntaxError.
+                    try {
+                        $testSource = "(function({$params}\n) {})";
+                        $testParser = new \PhpJs\Parser\Parser($testSource);
+                        $testParser->parse();
+                    } catch (\Throwable $e) {
+                        throw new \PhpJs\Exceptions\SyntaxError($e->getMessage());
+                    }
+                    // Check if params contain `yield` as keyword (not inside a string).
+                    // Parse as generator to see if yield is treated as expression in params.
+                    if (preg_match('/\byield\b/', $params)) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            'Yield expression is not allowed in formal parameters'
+                        );
+                    }
+                }
+                $source = "(function* anonymous({$params}\n) {\n{$body}\n})";
+                $parser = new \PhpJs\Parser\Parser($source);
+                $program = $parser->parse();
+                $interp = new Interpreter($env);
+                $fn = $interp->execute($program);
+                return $fn;
+            },
+            1,
+        );
+        $genFnConstructor->setConstructable();
+        // Per spec 27.3.2: GeneratorFunction.length = 1.
+        $genFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsNumber(1.0),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
+        // Per spec: GeneratorFunction.name = "GeneratorFunction".
+        $genFnConstructor->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString('GeneratorFunction'),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        ));
+        // Per spec 27.3.2.1: GeneratorFunction.prototype = %GeneratorFunction.prototype%.
+        // {writable: false, enumerable: false, configurable: false}.
+        $genFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $generatorFunctionProto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        ));
+        // GeneratorFunction [[Prototype]] is Function per spec 27.3.2.
+        $genFnConstructor->setCustomPrototype($fnConstructor);
+
+        // %GeneratorFunction.prototype%.constructor = %GeneratorFunction%
+        // Per spec 27.3.3.1: {writable: false, enumerable: false, configurable: true}.
+        $generatorFunctionProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $genFnConstructor,
+            false,
+            false,
+            true,
+        ));
+
+        // Symbol.toStringTag = "GeneratorFunction" per spec 27.3.3.3.
+        $generatorFunctionProto->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            new \PhpJs\Object\PropertyDescriptor(
+                value: new JsString('GeneratorFunction'),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            ),
+        );
+
         // Register the intrinsic so JsGenerator can use it as fallback when fn.prototype is not an Object.
         \PhpJs\Value\JsGenerator::setGeneratorPrototype($generatorPrototype);
         // Store for interpreter access.
         $env->defineVar('__GeneratorPrototype__', $generatorPrototype);
         $env->defineVar('__GeneratorFunctionPrototype__', $generatorFunctionProto);
+        $env->defineVar('GeneratorFunction', $genFnConstructor);
     }
 
     private static function parseInt(): \Closure

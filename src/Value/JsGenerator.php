@@ -33,6 +33,9 @@ class JsGenerator extends JsObject
     private \Fiber $fiber;
     private bool $done = false;
 
+    /** True while the generator body is actively running (not suspended). */
+    private bool $executing = false;
+
     /**
      * @param JsFunction $generatorFn The generator function that created this generator.
      * @param JsValue $thisValue The this-value for the generator function call.
