@@ -1760,14 +1760,24 @@ class Parser
         $generator = $this->eat(TokenType::Star);
         $name = null;
 
+        // For non-generator function expressions, `yield` and `await`
+        // can be used as the binding identifier name in sloppy mode.
         if ($this->check(TokenType::Identifier)) {
+            $name = $this->advance()->value;
+        } elseif (
+            !$generator
+            && $this->check(TokenType::Yield)
+        ) {
+            $name = $this->advance()->value;
+        } elseif (
+            !$generator
+            && $this->check(TokenType::Await)
+        ) {
             $name = $this->advance()->value;
         }
 
         // Set inGenerator/inAsync BEFORE parsing parameters so that default
-        // parameter expressions use the function's own context. E.g. `yield`
-        // in a non-generator function's default params is an identifier, not
-        // a yield expression, even when the enclosing function is a generator.
+        // parameter expressions use the function's own context.
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
         $this->inGenerator = $generator;
