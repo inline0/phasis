@@ -959,11 +959,13 @@ class Interpreter
             // If IsAnonymousFunctionDefinition is true, then
             //   a. Let hasNameProperty be HasOwnProperty(rval, "name").
             //   b. If hasNameProperty is false, perform SetFunctionName(rval, lref).
+            // Note: JsFunction constructor always defines .name, so we check whether
+            // it was explicitly overridden (e.g. static name() in a class body).
             if (
                 $right instanceof JsFunction
                 && $node->left instanceof Identifier
                 && $this->isAnonymousFunctionDefinitionNode($node->right)
-                && !$right->hasOwnProperty('name')
+                && !$this->hasExplicitNameProperty($right)
             ) {
                 $right->setName($node->left->name);
             }
@@ -1297,6 +1299,33 @@ class Interpreter
             if (!$inMethod && $this->astContainsSuper($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
+
+            // Per spec 15.1.1: new.target in eval is a SyntaxError unless
+            // the direct eval is contained in function code that is not an
+            // ArrowFunction.
+            if ($this->astContainsNewTarget($program->body)) {
+                $funcKind = $env->getEnclosingFunctionKind();
+                // Allowed only if inside a regular function, generator, or async function.
+                // Not allowed in global code or arrow functions.
+                if ($funcKind === null || $funcKind === 'arrow') {
+                    throw new \PhpJs\Exceptions\SyntaxError("new.target expression is not allowed here");
+                }
+            }
+
+            // Per EvalDeclarationInstantiation: var-declared names in eval
+            // must not conflict with existing lexical (let/const/TDZ) bindings
+            // in the enclosing scope chain. This catches cases like:
+            //   function f(p = eval("var arguments"), arguments) {}
+            // where the TDZ binding for "arguments" (the following parameter)
+            // would conflict with the var from eval.
+            $evalVarNames = $this->collectEvalVarNames($program->body);
+            foreach ($evalVarNames as $varName) {
+                if ($env->hasLexicalBindingInScope($varName)) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Identifier '{$varName}' has already been declared",
+                    );
+                }
+            }
         } catch (\PhpJs\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
@@ -1323,8 +1352,29 @@ class Interpreter
             // function declarations do not leak to the caller.
             $varEnv = $evalStrict ? $env->createChild() : $env;
 
+            // For strict eval, pre-declare all var names as own bindings in the
+            // child environment. This prevents hoistDeclarations from skipping them
+            // when the parent scope has a same-named binding (since has() walks the
+            // chain). Without this, strict eval's var declarations would shadow
+            // rather than isolate from the outer scope.
+            if ($evalStrict && $varEnv !== $env) {
+                $strictVarNames = $this->collectEvalVarNames($program->body);
+                foreach ($strictVarNames as $vn) {
+                    if (!$varEnv->hasOwnBinding($vn)) {
+                        $varEnv->defineVar($vn, JsUndefined::instance());
+                    }
+                }
+            }
+
             // Hoist var declarations and function declarations.
-            $this->hoistDeclarations($program->body, $varEnv);
+            // For eval at global scope, function/var bindings must be
+            // configurable (per EvalDeclarationInstantiation step 15/18).
+            $isGlobalEval = !$evalStrict && $varEnv->getLinkedObject() !== null;
+            if ($isGlobalEval) {
+                $this->hoistEvalGlobalDeclarations($program->body, $varEnv);
+            } else {
+                $this->hoistDeclarations($program->body, $varEnv);
+            }
 
             // Create a lexical environment for class/let/const TDZ bindings.
             $lexEnv = $varEnv->createChild();
@@ -1673,6 +1723,196 @@ class Interpreter
                 );
             }
         }
+    }
+
+    /**
+     * Collect all var-declared names from eval code's top-level statements.
+     * Does not descend into function/class bodies (they create their own scope).
+     *
+     * @param Node[] $statements
+     * @return list<string>
+     */
+    private function collectEvalVarNames(array $statements): array
+    {
+        $names = [];
+        foreach ($statements as $stmt) {
+            $this->collectVarNamesFromNode($stmt, $names);
+        }
+        return $names;
+    }
+
+    /**
+     * Recursively collect var-declared names from a node.
+     * Stops at function/class boundaries.
+     *
+     * @param list<string> $names collected var names (passed by reference)
+     */
+    private function collectVarNamesFromNode(Node $node, array &$names): void
+    {
+        if ($node instanceof VariableDeclaration && $node->kind === 'var') {
+            foreach ($node->declarations as $decl) {
+                foreach ($this->patternBoundNames($decl->id) as $n) {
+                    $names[] = $n;
+                }
+            }
+            return;
+        }
+        if ($node instanceof FunctionDeclaration) {
+            if ($node->id !== null) {
+                $names[] = $node->id->name;
+            }
+            return;
+        }
+
+        // Stop at function/class expression boundaries.
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return;
+        }
+
+        // Recurse into compound statements.
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $child) {
+                $this->collectVarNamesFromNode($child, $names);
+            }
+        } elseif ($node instanceof IfStatement) {
+            $this->collectVarNamesFromNode($node->consequent, $names);
+            if ($node->alternate !== null) {
+                $this->collectVarNamesFromNode($node->alternate, $names);
+            }
+        } elseif ($node instanceof ForStatement) {
+            if ($node->init instanceof VariableDeclaration && $node->init->kind === 'var') {
+                foreach ($node->init->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $names[] = $n;
+                    }
+                }
+            }
+            $this->collectVarNamesFromNode($node->body, $names);
+        } elseif ($node instanceof ForInStatement || $node instanceof ForOfStatement) {
+            if ($node->left instanceof VariableDeclaration && $node->left->kind === 'var') {
+                foreach ($node->left->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $names[] = $n;
+                    }
+                }
+            }
+            $this->collectVarNamesFromNode($node->body, $names);
+        } elseif ($node instanceof WhileStatement || $node instanceof DoWhileStatement) {
+            $this->collectVarNamesFromNode($node->body, $names);
+        } elseif ($node instanceof SwitchStatement) {
+            foreach ($node->cases as $case) {
+                if ($case instanceof SwitchCase) {
+                    foreach ($case->consequent as $child) {
+                        $this->collectVarNamesFromNode($child, $names);
+                    }
+                }
+            }
+        } elseif ($node instanceof TryStatement) {
+            $this->collectVarNamesFromNode($node->block, $names);
+            if ($node->handler !== null) {
+                $this->collectVarNamesFromNode($node->handler->body, $names);
+            }
+            if ($node->finalizer !== null) {
+                $this->collectVarNamesFromNode($node->finalizer, $names);
+            }
+        } elseif ($node instanceof LabeledStatement) {
+            $this->collectVarNamesFromNode($node->body, $names);
+        } elseif ($node instanceof WithStatement) {
+            $this->collectVarNamesFromNode($node->body, $names);
+        }
+    }
+
+    /**
+     * Check if the eval code contains new.target (represented as [[NewTarget]] identifier).
+     * Per spec, new.target in eval is SyntaxError unless the eval is contained in
+     * function code that is not the function code of an ArrowFunction.
+     *
+     * @param Node[] $statements
+     */
+    private function astContainsNewTarget(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsNewTarget($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsNewTarget(Node $node): bool
+    {
+        if ($node instanceof Identifier && $node->name === '[[NewTarget]]') {
+            return true;
+        }
+
+        // Stop at function/class boundaries.
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+
+        if ($node instanceof ExpressionStatement) {
+            return $this->nodeContainsNewTarget($node->expression);
+        }
+        if ($node instanceof BlockStatement) {
+            return $this->astContainsNewTarget($node->body);
+        }
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null && $this->nodeContainsNewTarget($decl->init)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof CallExpression) {
+            if ($this->nodeContainsNewTarget($node->callee)) {
+                return true;
+            }
+            foreach ($node->arguments as $arg) {
+                if ($this->nodeContainsNewTarget($arg)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof MemberExpression) {
+            return $this->nodeContainsNewTarget($node->object) || $this->nodeContainsNewTarget($node->property);
+        }
+        if ($node instanceof AssignmentExpression) {
+            return $this->nodeContainsNewTarget($node->left) || $this->nodeContainsNewTarget($node->right);
+        }
+        if ($node instanceof BinaryExpression) {
+            return $this->nodeContainsNewTarget($node->left) || $this->nodeContainsNewTarget($node->right);
+        }
+        if ($node instanceof IfStatement) {
+            if ($this->nodeContainsNewTarget($node->test)) {
+                return true;
+            }
+            if ($this->nodeContainsNewTarget($node->consequent)) {
+                return true;
+            }
+            return $node->alternate !== null && $this->nodeContainsNewTarget($node->alternate);
+        }
+        if ($node instanceof TryStatement) {
+            if ($this->astContainsNewTarget($node->block->body)) {
+                return true;
+            }
+            if ($node->handler !== null && $this->astContainsNewTarget($node->handler->body->body)) {
+                return true;
+            }
+            return $node->finalizer !== null && $this->astContainsNewTarget($node->finalizer->body);
+        }
+
+        return false;
     }
 
     /**
@@ -3228,12 +3468,14 @@ class Interpreter
                 ? $this->evaluate($declarator->init, $env)
                 : JsUndefined::instance();
 
-            // Name inference: var f = function() {} → f.name = "f" (only for anonymous function definitions)
+            // Name inference per spec 14.3.2.1: only when IsAnonymousFunctionDefinition is true
+            // and HasOwnProperty(value, "name") is false (i.e. not explicitly overridden).
             if (
                 $init instanceof JsFunction
                 && $declarator->id instanceof Identifier
                 && $hasInit
                 && $this->isAnonymousFunctionDefinitionNode($declarator->init)
+                && !$this->hasExplicitNameProperty($init)
             ) {
                 $init->setName($declarator->id->name);
             }
@@ -5259,6 +5501,34 @@ class Interpreter
             return true;
         }
         if ($node instanceof ClassExpression && $node->id === null) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Check whether a function/class has an explicitly user-defined .name property.
+     *
+     * JsFunction constructor always sets .name (writable:false, enumerable:false, configurable:true)
+     * with a JsString value. If the .name property has been overridden by user code (e.g.
+     * static name() {} in a class body), the descriptor will differ (writable:true, or value
+     * is not a JsString). This lets name inference distinguish default .name from explicit .name.
+     */
+    private function hasExplicitNameProperty(JsFunction $fn): bool
+    {
+        $desc = $fn->getOwnPropertyDescriptor('name');
+        if ($desc === null) {
+            return false;
+        }
+        // If the name property is not a simple data property with a string value and
+        // writable:false, it was explicitly overridden (e.g. static name() {} method).
+        if ($desc->isAccessorDescriptor()) {
+            return true;
+        }
+        if ($desc->writable !== false) {
+            return true;
+        }
+        if (!$desc->value instanceof JsString) {
             return true;
         }
         return false;

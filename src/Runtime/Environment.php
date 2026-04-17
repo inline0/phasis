@@ -102,21 +102,26 @@ class Environment
      * non-enumerable and configurable). If the property already exists, only the
      * value is updated, preserving the existing descriptor.
      */
-    public function defineGlobalVar(string $name, JsValue $value): void
+    public function defineGlobalVar(string $name, JsValue $value, bool $configurable = false): void
     {
         $this->bindings[$name] = $value;
         if ($this->linkedObject !== null) {
             if ($this->linkedObject->hasOwnProperty($name)) {
                 // Property already exists (e.g. duplicate var or function + var):
-                // update value only.
+                // update value only, preserving the existing descriptor.
                 $this->linkedObject->set($name, $value);
             } else {
-                // Per spec: {[[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: false}
+                // Per spec: {[[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: D}
+                // D is false for script-level declarations, true for eval-created ones.
                 $this->linkedObject->defineOwnProperty(
                     $name,
-                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, false),
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
                 );
             }
+        }
+        // Track configurability for deletability.
+        if ($configurable) {
+            $this->deletable[$name] = true;
         }
     }
 
@@ -482,6 +487,31 @@ class Environment
             }
             // If this environment is a function boundary, stop.
             if ($env->functionKind !== null) {
+                return false;
+            }
+            $env = $env->parent;
+        }
+        return false;
+    }
+
+    /**
+     * Check if a name has a TDZ (let/const) binding in the scope chain
+     * between the current environment and the enclosing function's varEnv.
+     * Per EvalDeclarationInstantiation, a var declaration in eval must not
+     * conflict with existing lexical declarations.
+     */
+    public function hasLexicalBindingInScope(string $name): bool
+    {
+        $env = $this;
+        while ($env !== null) {
+            if (
+                array_key_exists($name, $env->bindings)
+                && (isset($env->constants[$name]) || isset($env->tdz[$name]))
+            ) {
+                return true;
+            }
+            // Stop at function boundaries or at the global environment.
+            if ($env->functionKind !== null || $env->parent === null) {
                 return false;
             }
             $env = $env->parent;

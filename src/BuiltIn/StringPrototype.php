@@ -2089,7 +2089,10 @@ class StringPrototype
             $str = '';
             foreach ($args as $arg) {
                 $code = \PhpJs\Spec\TypeConversion::toUint16($arg);
-                $str .= mb_chr($code, 'UTF-8');
+                // Use utf16CodeUnitToUtf8 to handle surrogates (U+D800-U+DFFF)
+                // which mb_chr rejects as invalid UTF-8. Surrogates are stored
+                // internally as CESU-8 3-byte sequences.
+                $str .= JsString::utf16CodeUnitToUtf8($code);
             }
             return new JsString($str);
         };
