@@ -5628,8 +5628,8 @@ class Interpreter
         };
 
         // Per B.3.3.1 step ii: skip if the name would conflict with a lexical
-        // declaration. Parameter names also block hoisting. A pre-existing var
-        // binding does NOT block hoisting; we still mark it for Annex B update.
+        // declaration or is a parameter name. A pre-existing var binding does
+        // NOT block hoisting; we still mark it for Annex B update.
         $canHoist = function (string $name) use ($env, $lexicalNames): bool {
             if (isset($lexicalNames[$name])) {
                 return false;
