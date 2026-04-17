@@ -20,6 +20,9 @@ class Environment
     /** @var array<string, bool> Track which bindings are in the temporal dead zone. */
     private array $tdz = [];
 
+    /** @var array<string, bool> Track which bindings are lexical (let/const/class). */
+    private array $lexical = [];
+
     /** @var array<string, bool> Track which bindings are deletable (implicit globals). */
     private array $deletable = [];
 
@@ -106,17 +109,24 @@ class Environment
     {
         $this->bindings[$name] = $value;
         if ($this->linkedObject !== null) {
-            if ($this->linkedObject->hasOwnProperty($name)) {
-                // Property already exists (e.g. duplicate var or function + var):
-                // update value only, preserving the existing descriptor.
-                $this->linkedObject->set($name, $value);
-            } else {
-                // Per spec: {[[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: D}
+            $existingProp = $this->linkedObject->getOwnPropertyDescriptor($name);
+            if ($existingProp === null) {
+                // New property: {[[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: D}
                 // D is false for script-level declarations, true for eval-created ones.
                 $this->linkedObject->defineOwnProperty(
                     $name,
                     \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
                 );
+            } elseif ($existingProp->configurable) {
+                // Per spec CreateGlobalFunctionBinding step 5: if existing prop is
+                // configurable, replace with full descriptor.
+                $this->linkedObject->defineOwnProperty(
+                    $name,
+                    \PhpJs\Object\PropertyDescriptor::data($value, true, true, $configurable),
+                );
+            } else {
+                // Per spec step 6: non-configurable existing property. Just update value.
+                $this->linkedObject->set($name, $value);
             }
         }
         // Track configurability for deletability.
@@ -150,6 +160,7 @@ class Environment
     {
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
+        $this->lexical[$name] = true;
     }
 
     /** Define a const-declared variable (block-scoped, initialized, immutable). */
@@ -158,12 +169,14 @@ class Environment
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         $this->constants[$name] = true;
+        $this->lexical[$name] = true;
     }
 
     /** Declare a let binding without initializing it (enters TDZ). */
     public function declareLet(string $name): void
     {
         $this->tdz[$name] = true;
+        $this->lexical[$name] = true;
         $this->bindings[$name] = JsUndefined::instance();
     }
 
@@ -172,6 +185,7 @@ class Environment
     {
         $this->tdz[$name] = true;
         $this->constants[$name] = true;
+        $this->lexical[$name] = true;
         $this->bindings[$name] = JsUndefined::instance();
     }
 
@@ -478,11 +492,7 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
-            // Stop at function boundaries (environments with functionKind set).
-            if (
-                array_key_exists('arguments', $env->bindings)
-                && (isset($env->constants['arguments']) || isset($env->tdz['arguments']))
-            ) {
+            if (isset($env->lexical['arguments'])) {
                 return true;
             }
             // If this environment is a function boundary, stop.
@@ -504,10 +514,7 @@ class Environment
     {
         $env = $this;
         while ($env !== null) {
-            if (
-                array_key_exists($name, $env->bindings)
-                && (isset($env->constants[$name]) || isset($env->tdz[$name]))
-            ) {
+            if (isset($env->lexical[$name])) {
                 return true;
             }
             // Stop at function boundaries or at the global environment.

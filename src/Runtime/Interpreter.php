@@ -2065,7 +2065,13 @@ class Interpreter
             for ($i = 0; $i < $len; $i++) {
                 $target[] = $iterable->get((string) $i);
             }
+            return;
         }
+
+        // Per spec, if the value is not iterable, throw TypeError.
+        throw new TypeError(
+            TypeConversion::toString($iterable) . ' is not iterable',
+        );
     }
 
     /** @param JsValue[] $args */
