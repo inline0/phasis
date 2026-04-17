@@ -267,6 +267,32 @@ class JsTypedArray extends JsObject
         return (int) $num;
     }
 
+    /**
+     * Whether a property key is a CanonicalNumericIndexString per spec 7.1.21.
+     *
+     * A string is a CanonicalNumericIndexString when ToString(ToNumber(s)) === s.
+     * This includes "NaN", "Infinity", "-Infinity", "-0", and any numeric string
+     * whose JS ToString round-trips (e.g. "1.5", "0", "100"). TypedArray exotic
+     * methods intercept all such keys.
+     */
+    private static function isCanonicalNumericIndex(string $name): bool
+    {
+        if ($name === '-0') {
+            return true;
+        }
+        // JS special values.
+        if ($name === 'NaN' || $name === 'Infinity' || $name === '-Infinity') {
+            return true;
+        }
+        // Numeric strings: is_numeric covers integers and floats.
+        // Verify round-trip: the PHP string form of the float must match exactly.
+        if (is_numeric($name)) {
+            $f = (float) $name;
+            return (string) $f === $name;
+        }
+        return false;
+    }
+
     public function get(string $name): JsValue
     {
         if ($name === 'length') {
@@ -289,9 +315,15 @@ class JsTypedArray extends JsObject
             return new JsNumber((float) $this->bytesPerElement);
         }
 
-        // Numeric index access.
+        // Numeric index access (digit-only fast path).
         if (ctype_digit($name)) {
             return $this->getIndex((int) $name);
+        }
+
+        // CanonicalNumericIndexString: intercept keys like "NaN", "-0", "1.5".
+        // These are never forwarded to the prototype chain.
+        if (self::isCanonicalNumericIndex($name)) {
+            return JsUndefined::instance();
         }
 
         return parent::get($name);
@@ -303,6 +335,12 @@ class JsTypedArray extends JsObject
         if (ctype_digit($name)) {
             $index = (int) $name;
             $this->setIndex($index, $value);
+            return;
+        }
+
+        // CanonicalNumericIndexString: intercept keys like "NaN", "-0", "1.5".
+        // Non-integer numeric indices are silently ignored.
+        if (self::isCanonicalNumericIndex($name)) {
             return;
         }
 
@@ -322,6 +360,14 @@ class JsTypedArray extends JsObject
             }
             return false;
         }
+
+        // CanonicalNumericIndexString: TypedArray exotic [[Set]] intercepts all
+        // such keys. If it is not a valid integer index, return false so the
+        // property is NOT created on the receiver.
+        if (self::isCanonicalNumericIndex($name)) {
+            return false;
+        }
+
         return parent::internalSet($name, $value, $receiver);
     }
 
@@ -329,7 +375,8 @@ class JsTypedArray extends JsObject
      * Override getOwnPropertyDescriptor for integer-indexed properties.
      *
      * Per spec, TypedArray numeric indices appear as writable, enumerable,
-     * non-configurable data properties.
+     * non-configurable data properties. CanonicalNumericIndexStrings that are
+     * not valid integer indices return null.
      */
     public function getOwnPropertyDescriptor(
         string $name,
@@ -346,6 +393,12 @@ class JsTypedArray extends JsObject
             }
             return null;
         }
+
+        // CanonicalNumericIndexString: return null for non-integer numeric keys.
+        if (self::isCanonicalNumericIndex($name)) {
+            return null;
+        }
+
         return parent::getOwnPropertyDescriptor($name);
     }
 
@@ -354,6 +407,7 @@ class JsTypedArray extends JsObject
      *
      * Per spec, defining a numeric index property on a TypedArray sets the
      * value if the descriptor is compatible, otherwise silently fails.
+     * CanonicalNumericIndexStrings that are not valid integer indices return false.
      */
     public function defineOwnProperty(
         string $name,
@@ -379,6 +433,12 @@ class JsTypedArray extends JsObject
             }
             return true;
         }
+
+        // CanonicalNumericIndexString: return false for non-integer numeric keys.
+        if (self::isCanonicalNumericIndex($name)) {
+            return false;
+        }
+
         return parent::defineOwnProperty($name, $desc);
     }
 
@@ -393,6 +453,12 @@ class JsTypedArray extends JsObject
 
         if (ctype_digit($name) && (int) $name < $this->length) {
             return true;
+        }
+
+        // CanonicalNumericIndexString: return false for non-integer numeric keys.
+        // Do not delegate to prototype chain.
+        if (self::isCanonicalNumericIndex($name)) {
+            return false;
         }
 
         return parent::has($name);
