@@ -1693,7 +1693,10 @@ class Interpreter
             JsFunction $fn,
             JsValue $thisValue,
             array $args,
-        ) use ($interpreter, $fnEnv): JsValue {
+        ) use (
+            $interpreter,
+            $fnEnv
+): JsValue {
             return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
         };
 
