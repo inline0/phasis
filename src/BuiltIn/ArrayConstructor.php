@@ -1575,10 +1575,15 @@ class ArrayConstructor
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
                             // CreateDataPropertyOrThrow per spec.
-                            $a->defineOwnProperty(
+                            $success = $a->defineOwnProperty(
                                 (string) $index,
                                 PropertyDescriptor::data($val, true, true, true),
                             );
+                            if (!$success) {
+                                throw new TypeError(
+                                    'Cannot define property ' . $index . ' on result object'
+                                );
+                            }
                             $index++;
                         }
                     } else {
@@ -1606,10 +1611,24 @@ class ArrayConstructor
                                 $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
                             }
                             // CreateDataPropertyOrThrow per spec.
-                            $a->defineOwnProperty(
+                            $success = $a->defineOwnProperty(
                                 (string) $index,
                                 PropertyDescriptor::data($val, true, true, true),
                             );
+                            if (!$success) {
+                                // Per spec: IteratorClose(iterator, defineStatus).
+                                $returnMethod = $iterator->get('return');
+                                if ($returnMethod instanceof JsFunction) {
+                                    try {
+                                        $returnMethod->call($iterator, []);
+                                    } catch (\Throwable $e) {
+                                        // Ignore errors from iterator close.
+                                    }
+                                }
+                                throw new TypeError(
+                                    'Cannot define property ' . $index . ' on result object'
+                                );
+                            }
                             $index++;
                         }
                     }
@@ -1645,10 +1664,15 @@ class ArrayConstructor
                     $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
                 }
                 // CreateDataPropertyOrThrow per spec.
-                $a->defineOwnProperty(
+                $success = $a->defineOwnProperty(
                     (string) $i,
                     PropertyDescriptor::data($val, true, true, true),
                 );
+                if (!$success) {
+                    throw new TypeError(
+                        'Cannot define property ' . $i . ' on result object'
+                    );
+                }
             }
 
             $a->set('length', new JsNumber((float) $len));

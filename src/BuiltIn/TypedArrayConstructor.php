@@ -551,7 +551,7 @@ class TypedArrayConstructor
 
         $constructor = JsFunction::fromCallable(
             $typeName,
-            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto): JsValue {
+            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto, $constructor): JsValue {
                 // Per spec: if NewTarget is undefined, throw TypeError.
                 if (
                     !$this_ instanceof JsObject
@@ -561,7 +561,23 @@ class TypedArrayConstructor
                         "Constructor {$typeName} requires 'new'"
                     );
                 }
-                return self::constructTypedArray($typeName, $bpe, $proto, $args);
+                // Per spec (AllocateTypedArray): use GetPrototypeFromConstructor
+                // to determine the prototype. When called via Reflect.construct
+                // with a custom newTarget, use newTarget's prototype.
+                $actualProto = $proto;
+                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                    $nt = $ntDesc->value;
+                    // Only resolve custom proto when newTarget differs from the
+                    // typed array constructor itself.
+                    if (!isset($constructor) || $nt !== $constructor) {
+                        $ntProto = $nt->get('prototype');
+                        if ($ntProto instanceof JsObject) {
+                            $actualProto = $ntProto;
+                        }
+                    }
+                }
+                return self::constructTypedArray($typeName, $bpe, $actualProto, $args);
             },
             3,
         );

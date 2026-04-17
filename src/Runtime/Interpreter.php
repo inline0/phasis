@@ -1440,6 +1440,7 @@ class Interpreter
 
         // Parse and validate. Any SyntaxError from parsing or validation
         // must be thrown as a JS SyntaxError catchable by JS try/catch.
+        $evalStrict = $this->strictMode;
         try {
             if (strlen($arg->value) > 1024 * 1024) {
                 throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
@@ -1470,26 +1471,33 @@ class Interpreter
                 }
             }
 
+            // Detect if the eval code itself enables strict mode. This must
+            // happen before the var/lex conflict check because strict eval
+            // isolates its var declarations in a separate scope.
+            $evalStrict = $this->strictMode || $this->hasUseStrictDirective($program->body);
+
             // Per EvalDeclarationInstantiation: var-declared names in eval
             // must not conflict with existing lexical (let/const/TDZ) bindings
             // in the enclosing scope chain. This catches cases like:
             //   function f(p = eval("var arguments"), arguments) {}
             // where the TDZ binding for "arguments" (the following parameter)
             // would conflict with the var from eval.
-            $evalVarNames = $this->collectEvalVarNames($program->body);
-            foreach ($evalVarNames as $varName) {
-                if ($env->hasLexicalBindingInScope($varName)) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
-                        "Identifier '{$varName}' has already been declared",
-                    );
+            // Skip this check for strict eval: strict mode eval creates its own
+            // variable scope, so var declarations do not leak and cannot conflict
+            // with outer lexical bindings.
+            if (!$evalStrict) {
+                $evalVarNames = $this->collectEvalVarNames($program->body);
+                foreach ($evalVarNames as $varName) {
+                    if ($env->hasLexicalBindingInScope($varName)) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Identifier '{$varName}' has already been declared",
+                        );
+                    }
                 }
             }
         } catch (\PhpJs\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
-
-        // Detect if the eval code itself enables strict mode.
-        $evalStrict = $this->strictMode || $this->hasUseStrictDirective($program->body);
         $previousStrictMode = $this->strictMode;
 
         // In strict mode, additional early errors must be checked after parsing.
@@ -5534,7 +5542,14 @@ class Interpreter
     private function resolveReference(Node $node, Environment $env): Reference
     {
         if ($node instanceof Identifier) {
-            return new Reference($env, $node->name, $this->strictMode);
+            // Per spec 13.15.2 step 1: evaluate the LHS to get a Reference.
+            // For identifier references, the spec resolves which environment
+            // record owns the binding at reference-creation time. This matters
+            // when a "with" object environment record is involved: PutValue
+            // must use the originally-resolved binding object even if the
+            // binding is deleted or a new binding is created before PutValue
+            // runs (see S11.13.1_A5_T2, S11.13.1_A5_T3, S11.13.1_A6_T3).
+            return $this->resolveIdentifierReference($env, $node->name);
         }
 
         if ($node instanceof MemberExpression) {
@@ -5619,6 +5634,56 @@ class Interpreter
         }
 
         throw new ReferenceError('Invalid assignment target');
+    }
+
+    /**
+     * Eagerly resolve an identifier reference by walking the environment chain.
+     *
+     * Per spec 9.1.2.1 GetIdentifierReference: this finds the environment
+     * record that owns the binding and returns a Reference whose base is
+     * either that environment (for declarative records) or the binding
+     * object (for object environment records, i.e. "with" scopes). This
+     * ensures PutValue operates on the originally-resolved target even if
+     * the scope chain changes between LHS evaluation and PutValue.
+     */
+    private function resolveIdentifierReference(Environment $env, string $name): Reference
+    {
+        // Walk the environment chain to find the owning record.
+        $cur = $env;
+        while ($cur !== null) {
+            // Check if this environment level owns the binding.
+            if ($cur->hasOwnBinding($name)) {
+                // Declarative environment record: return env reference.
+                return new Reference($cur, $name, $this->strictMode);
+            }
+            // Check for "with" (object environment record): the env has the
+            // binding but not as an own declarative binding.
+            if ($cur->has($name) && !$cur->hasOwnBinding($name)) {
+                // This is a with-object environment record. Extract the
+                // binding object so PutValue sets the property directly.
+                $withObj = $this->getWithObject($cur);
+                if ($withObj !== null) {
+                    return new Reference($withObj, $name, $this->strictMode);
+                }
+            }
+            $cur = $cur->getParent();
+        }
+        // Not found: return reference to the original env (will throw on set in strict mode).
+        return new Reference($env, $name, $this->strictMode);
+    }
+
+    /**
+     * Extract the private withObject from an Environment using reflection.
+     * This is needed to create property references for "with" scopes so that
+     * PutValue operates on the binding object directly.
+     */
+    private function getWithObject(Environment $env): ?JsObject
+    {
+        static $prop = null;
+        if ($prop === null) {
+            $prop = new \ReflectionProperty(Environment::class, 'withObject');
+        }
+        return $prop->getValue($env);
     }
 
     private function isDestructuringTarget(Node $node): bool
@@ -6301,13 +6366,31 @@ class Interpreter
                     }
                     continue;
                 }
-                // PCRE-specific escape sequences that don't exist in ECMAScript:
-                // \X (grapheme cluster), \R (line break), \K (match reset),
-                // \G (start of match), \N (non-newline).
-                // In ECMAScript non-unicode mode, these are identity escapes
-                // matching the literal character.
-                if (in_array($next, ['X', 'R', 'K', 'G', 'N'], true)) {
-                    $result .= $next;
+                // \c escape: In ECMAScript, \cX where X is a letter A-Z/a-z
+                // produces a control character. If X is NOT a letter, Annex B
+                // says treat \c as a literal backslash followed by 'c' (the
+                // remaining chars are parsed normally).
+                if ($next === 'c') {
+                    if ($i + 2 < $len) {
+                        $controlChar = $pattern[$i + 2];
+                        if (
+                            ($controlChar >= 'A' && $controlChar <= 'Z')
+                            || ($controlChar >= 'a' && $controlChar <= 'z')
+                        ) {
+                            // Valid \cX: pass through as PCRE handles it.
+                            $result .= $ch . $next . $controlChar;
+                            $i += 3;
+                            continue;
+                        }
+                    }
+                    // Invalid \c: Annex B treats this as literal backslash + 'c'.
+                    if ($inCharClass) {
+                        // Inside character class: [\c<invalid>] means [\, c, <char>].
+                        $result .= '\\\\c';
+                    } else {
+                        // Outside: \c<invalid> matches literal \c (backslash then c).
+                        $result .= '\\\\c';
+                    }
                     $i += 2;
                     continue;
                 }
@@ -6352,8 +6435,49 @@ class Interpreter
                     $i = $j;
                     continue;
                 }
-                // Other escape: pass through both chars.
-                $result .= $ch . $next;
+                // Other escape: in ECMAScript non-unicode mode, any \X where
+                // X is not a meaningful escape character is an identity escape
+                // matching the literal character X. PCRE may interpret some of
+                // these differently (e.g. \a = BEL, \e = ESC) or error on them
+                // (e.g. \F, \I, \J). Convert to PCRE-safe form.
+                // Escapes that PCRE handles the same as ECMAScript identity:
+                $ecmaMeaningful = 'dDwWbBnrtfv0';
+                // Regex syntax characters that should stay escaped:
+                $syntaxChars = '\\^$.|*+?()[]{}/-';
+                if (strpos($ecmaMeaningful, $next) !== false) {
+                    // Meaningful ECMAScript escape that PCRE also handles.
+                    $result .= $ch . $next;
+                } elseif (strpos($syntaxChars, $next) !== false) {
+                    // Syntax character: keep escaped for PCRE.
+                    $result .= $ch . $next;
+                } else {
+                    // Identity escape: convert to PCRE-safe literal.
+                    $ord = ord($next);
+                    if ($ord >= 0x20 && $ord <= 0x7E) {
+                        // Printable ASCII: use \x{XX} to avoid PCRE misinterpretation.
+                        $result .= '\\x{' . strtoupper(dechex($ord)) . '}';
+                    } elseif ($ord < 0x80) {
+                        // Non-printable ASCII: use \x{XX}.
+                        $result .= '\\x{' . strtoupper(dechex($ord)) . '}';
+                    } else {
+                        // Multi-byte UTF-8 start: consume the full character and
+                        // emit it as a \x{XXXX} code point.
+                        $mbChar = $next;
+                        $j = $i + 2;
+                        while ($j < $len && (ord($pattern[$j]) & 0xC0) === 0x80) {
+                            $mbChar .= $pattern[$j];
+                            $j++;
+                        }
+                        $cp = mb_ord($mbChar, 'UTF-8');
+                        if ($cp !== false) {
+                            $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
+                        } else {
+                            $result .= $mbChar;
+                        }
+                        $i = $j;
+                        continue;
+                    }
+                }
                 $i += 2;
                 continue;
             }

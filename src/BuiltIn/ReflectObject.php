@@ -323,19 +323,29 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Use newTarget's prototype (not target's) per spec.
-                $proto = $newTarget->get('prototype');
-                $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                // Per spec, built-in constructors call OrdinaryCreateFromConstructor
+                // (which accesses newTarget.prototype) at a specific step, often after
+                // argument validation. Defer prototype resolution: create the this
+                // object with target's prototype initially and store newTarget. If the
+                // constructor returns its own object the prototype is irrelevant. If
+                // the constructor falls through, resolve newTarget's prototype then.
+                $targetProto = $target->get('prototype');
+                $newObj = new JsObject($targetProto instanceof JsObject ? $targetProto : null);
+                $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
                 $newObj->defineOwnProperty(
                     '[[NewTarget]]',
-                    PropertyDescriptor::data(
-                        $newTarget instanceof JsFunction ? $newTarget : $target,
-                        false,
-                        false,
-                        false,
-                    ),
+                    PropertyDescriptor::data($ntValue, false, false, false),
                 );
                 $result = $target->call($newObj, $callArgs);
+                if ($result instanceof JsObject && $result !== $newObj) {
+                    return $result;
+                }
+                // Constructor did not return a new object; resolve newTarget's
+                // prototype now and apply it to newObj.
+                $proto = $newTarget->get('prototype');
+                if ($proto instanceof JsObject) {
+                    $newObj->setPrototype($proto);
+                }
                 return $result instanceof JsObject ? $result : $newObj;
             }, 2),
             true,

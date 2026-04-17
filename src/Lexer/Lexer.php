@@ -1041,6 +1041,12 @@ class Lexer
         if ($b0 === 0xC2 && $this->pos + 1 < $this->length && ord($this->source[$this->pos + 1]) === 0xA0) {
             return true;
         }
+        // 3-byte: U+1680 OGHAM SPACE MARK = E1 9A 80
+        if ($b0 === 0xE1 && $this->pos + 2 < $this->length) {
+            if (ord($this->source[$this->pos + 1]) === 0x9A && ord($this->source[$this->pos + 2]) === 0x80) {
+                return true;
+            }
+        }
         // 3-byte sequences
         if ($b0 === 0xE2 && $this->pos + 2 < $this->length) {
             $b1 = ord($this->source[$this->pos + 1]);

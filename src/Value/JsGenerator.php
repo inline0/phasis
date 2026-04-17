@@ -82,9 +82,17 @@ class JsGenerator extends JsObject
             return $this->makeResult(JsUndefined::instance(), true);
         }
 
+        // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
+        if ($this->executing) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Generator is already running',
+            );
+        }
+
         $value ??= JsUndefined::instance();
         $suspended = null;
 
+        $this->executing = true;
         try {
             if (!$this->fiber->isStarted()) {
                 // First call to next(). Start the fiber. The first argument
@@ -95,18 +103,23 @@ class JsGenerator extends JsObject
                 // as the result of the yield expression.
                 $suspended = $this->fiber->resume($value);
             }
+            $this->executing = false;
         } catch (GeneratorReturnSignal $e) {
             // The generator.return() method forced a return.
+            $this->executing = false;
             $this->done = true;
             return $this->makeResult($e->value, true);
         } catch (GeneratorThrowSignal $e) {
             // A throw propagated back out without being caught.
+            $this->executing = false;
             $this->done = true;
             throw $this->toRuntimeError($e->jsValue);
         } catch (RuntimeError $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         } catch (\Throwable $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         }
@@ -150,25 +163,38 @@ class JsGenerator extends JsObject
             return $this->makeResult($value, true);
         }
 
+        // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
+        if ($this->executing) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Generator is already running',
+            );
+        }
+
         if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
             $this->done = true;
             return $this->makeResult($value, true);
         }
 
         $suspended = null;
+        $this->executing = true;
         try {
             $suspended = $this->fiber->throw(new GeneratorReturnSignal($value));
+            $this->executing = false;
         } catch (GeneratorReturnSignal $e) {
             // The signal propagated back out (not caught by the body).
+            $this->executing = false;
             $this->done = true;
             return $this->makeResult($e->value, true);
         } catch (GeneratorThrowSignal $e) {
+            $this->executing = false;
             $this->done = true;
             throw $this->toRuntimeError($e->jsValue);
         } catch (RuntimeError $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         } catch (\Throwable $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         }
@@ -205,6 +231,13 @@ class JsGenerator extends JsObject
             throw $this->toRuntimeError($value);
         }
 
+        // Per spec 27.5.3.2 GeneratorValidate step 5: if state is "executing", throw TypeError.
+        if ($this->executing) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Generator is already running',
+            );
+        }
+
         if (!$this->fiber->isStarted()) {
             $this->done = true;
             throw $this->toRuntimeError($value);
@@ -212,15 +245,20 @@ class JsGenerator extends JsObject
 
         $suspended = null;
 
+        $this->executing = true;
         try {
             $suspended = $this->fiber->throw(new GeneratorThrowSignal($value));
+            $this->executing = false;
         } catch (GeneratorThrowSignal $e) {
+            $this->executing = false;
             $this->done = true;
             throw $this->toRuntimeError($e->jsValue);
         } catch (RuntimeError $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         } catch (\Throwable $e) {
+            $this->executing = false;
             $this->done = true;
             throw $e;
         }
