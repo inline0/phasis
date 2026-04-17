@@ -35,6 +35,19 @@ class Lexer
         $this->line = 1;
         $this->column = 0;
 
+        // Skip hashbang (#!) at the very start of the source per spec.
+        if (
+            $this->pos === 0
+            && $this->length >= 2
+            && $this->source[0] === '#'
+            && $this->source[1] === '!'
+        ) {
+            while ($this->pos < $this->length && $this->source[$this->pos] !== "\n") {
+                $this->pos++;
+                $this->column++;
+            }
+        }
+
         while ($this->pos < $this->length) {
             $this->lineTerminatorBefore = false;
             $this->skipWhitespaceAndComments();
