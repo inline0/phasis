@@ -237,6 +237,69 @@ class Interpreter
                 );
             }
         }
+
+        // Per spec step 10: CanDeclareGlobalFunction for each function declaration.
+        // Per spec step 12: CanDeclareGlobalVar for each var name.
+        $isExtensible = !method_exists($globalObj, 'isExtensible') || $globalObj->isExtensible();
+
+        // Collect function declaration names (in reverse order, last wins).
+        $declaredFuncNames = [];
+        for ($i = count($body) - 1; $i >= 0; $i--) {
+            $stmt = $body[$i];
+            if ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+                $fn = $stmt->id->name;
+                if (!isset($declaredFuncNames[$fn])) {
+                    $declaredFuncNames[$fn] = true;
+                    // CanDeclareGlobalFunction check.
+                    $existingProp = $globalObj->getOwnPropertyDescriptor($fn);
+                    if ($existingProp === null) {
+                        // No existing property: check extensibility.
+                        if (!$isExtensible) {
+                            $this->throwJsValue(
+                                $this->phpExceptionToJsValue(
+                                    new TypeError("Cannot define property {$fn}, object is not extensible"),
+                                ),
+                            );
+                        }
+                    } elseif (!$existingProp->configurable) {
+                        // Non-configurable: must be data, writable, enumerable.
+                        $isOk = $existingProp->isDataDescriptor()
+                            && $existingProp->writable === true
+                            && $existingProp->enumerable === true;
+                        if (!$isOk) {
+                            $this->throwJsValue(
+                                $this->phpExceptionToJsValue(
+                                    new TypeError(
+                                        "Cannot redefine property: {$fn}",
+                                    ),
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // CanDeclareGlobalVar for each var name not already a declared function.
+        foreach ($body as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $vn) {
+                        if (!isset($declaredFuncNames[$vn])) {
+                            if (!$globalObj->hasOwnProperty($vn) && !$isExtensible) {
+                                $this->throwJsValue(
+                                    $this->phpExceptionToJsValue(
+                                        new TypeError(
+                                            "Cannot define property {$vn}, object is not extensible",
+                                        ),
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** @param Node[] $statements */
@@ -1052,9 +1115,12 @@ class Interpreter
             //   b. If hasNameProperty is false, perform SetFunctionName(rval, lref).
             // Note: JsFunction constructor always defines .name, so we check whether
             // it was explicitly overridden (e.g. static name() in a class body).
+            // Per spec, IsIdentifierRef returns false for parenthesized expressions
+            // like (fn) = function() {}, so name inference must not apply.
+            $isIdentRef = $node->left instanceof Identifier && !$node->leftParenthesized;
             if (
                 $right instanceof JsFunction
-                && $node->left instanceof Identifier
+                && $isIdentRef
                 && $this->isAnonymousFunctionDefinitionNode($node->right)
                 && !$this->hasExplicitNameProperty($right)
             ) {

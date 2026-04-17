@@ -357,10 +357,18 @@ PHP;
         };
         JS);
 
-        // $262.evalScript(code) - evaluate code in this realm
+        // $262.evalScript(code) - evaluate code in this realm.
+        // The closure receives PHP-converted arguments via PhpToJs wrapper,
+        // so $code is a PHP string (not JsString).
         $engine->setGlobal('__262_evalScript', function ($code) use ($engine) {
+            $src = null;
             if ($code instanceof \PhpJs\Value\JsString) {
-                return $engine->eval($code->value);
+                $src = $code->value;
+            } elseif (is_string($code)) {
+                $src = $code;
+            }
+            if ($src !== null) {
+                return $engine->eval($src);
             }
             return null;
         });
