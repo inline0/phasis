@@ -597,9 +597,14 @@ class GlobalObject
                 ? 0
                 : TypeConversion::toInt32($radixArg);
 
-            // Strip leading/trailing Unicode whitespace per spec.
+            // Strip leading/trailing ECMAScript whitespace per spec.
+            // Do NOT use \s — PCRE2 \s includes U+180E which ES removed.
+            $ws = '[\x09\x0A\x0B\x0C\x0D\x20'
+                . '\x{00A0}\x{FEFF}\x{1680}'
+                . '\x{2000}-\x{200A}'
+                . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]';
             $string = preg_replace(
-                '/^[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+|[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+$/u',
+                '/^' . $ws . '+|' . $ws . '+$/u',
                 '',
                 $string,
             );
@@ -665,10 +670,13 @@ class GlobalObject
             $string = isset($args[0])
                 ? TypeConversion::toString($args[0])
                 : 'undefined';
-            // Strip leading Unicode whitespace per spec.
+            // Strip leading ECMAScript whitespace per spec (no \s — excludes U+180E).
+            $ws = '[\x09\x0A\x0B\x0C\x0D\x20'
+                . '\x{00A0}\x{FEFF}\x{1680}'
+                . '\x{2000}-\x{200A}'
+                . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]';
             $string = preg_replace(
-                '/^[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}'
-                . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+/u',
+                '/^' . $ws . '+/u',
                 '',
                 $string,
             );
