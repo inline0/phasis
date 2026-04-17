@@ -1595,13 +1595,10 @@ class Interpreter
                                 "Identifier 'arguments' has already been declared",
                             );
                         }
-                        // Per spec, if the enclosing function has non-simple
-                        // parameters (default values, destructuring), the
-                        // arguments object is created in the parameter scope.
-                        // A var arguments in eval would conflict with this
-                        // binding. Check if "arguments" is already an own
-                        // binding in the function scope.
-                        if ($env->hasArgumentsVarBinding()) {
+                        // Per spec, var arguments is only a conflict when
+                        // arguments is a LEXICAL binding (non-simple params)
+                        // in the enclosing scope.
+                        if ($env->hasLexicalBinding('arguments')) {
                             throw new \PhpJs\Exceptions\SyntaxError(
                                 "Identifier 'arguments' has already been declared",
                             );
