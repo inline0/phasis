@@ -90,6 +90,9 @@ class Interpreter
     /** @var array<string, bool> Current function parameter names for Annex B hoisting. */
     private array $currentParamNames = [];
 
+    /** When true, hoistDeclarations skips Annex B block-function hoisting. */
+    private bool $skipAnnexBHoisting = false;
+
     /**
      * Map of with-environment identity to their binding objects.
      * Used for spec-correct binding resolution (ResolveBinding before Initializer).
@@ -4987,7 +4990,13 @@ class Interpreter
             //    in default values of destructuring patterns must not see
             //    body-scoped lexical declarations.
             $bodyEnv = $catchEnv->createChild();
+            // Use limited hoisting for catch body: hoist var names and function
+            // declarations but do NOT create Annex B var markers. The Annex B
+            // hoisting was already handled at the enclosing function scope level.
+            $savedSkip = $this->skipAnnexBHoisting;
+            $this->skipAnnexBHoisting = true;
             $this->hoistDeclarations($node->handler->body->body, $bodyEnv);
+            $this->skipAnnexBHoisting = $savedSkip;
             $completion = $this->executeBody($node->handler->body->body, $bodyEnv);
         }
 
