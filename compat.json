@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-17T23:15:12+00:00",
-    "updatedAt": "2026-04-17T23:15:12+00:00",
+    "generatedAt": "2026-04-17T23:20:13+00:00",
+    "updatedAt": "2026-04-17T23:20:13+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "30650b1",
+        "commit": "87973f2",
         "isDirty": true
     },
     "environment": {
@@ -222,45 +222,45 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 25532,
-            "fail": 2607,
-            "skip": 18518,
+            "pass": 25740,
+            "fail": 2698,
+            "skip": 18594,
             "blocked": 0,
-            "pending": 3660,
-            "running": 189,
-            "attempted": 28139,
-            "known": 46657,
+            "pending": 3286,
+            "running": 188,
+            "attempted": 28438,
+            "known": 47032,
             "total": 50506,
-            "passRate": 90.7
+            "passRate": 90.5
         },
         "areas": [
             {
                 "name": "annexB",
                 "status": "incomplete",
-                "pass": 696,
+                "pass": 750,
                 "fail": 190,
-                "skip": 6,
+                "skip": 14,
                 "blocked": 0,
-                "pending": 187,
+                "pending": 125,
                 "running": 0,
-                "attempted": 886,
-                "known": 892,
+                "attempted": 940,
+                "known": 954,
                 "total": 1079,
-                "passRate": 78.6
+                "passRate": 79.8
             },
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 12517,
-                "fail": 675,
-                "skip": 7233,
+                "pass": 12578,
+                "fail": 689,
+                "skip": 7284,
                 "blocked": 0,
-                "pending": 2178,
-                "running": 126,
-                "attempted": 13192,
-                "known": 20425,
+                "pending": 2053,
+                "running": 125,
+                "attempted": 13267,
+                "known": 20551,
                 "total": 22729,
-                "passRate": 94.9
+                "passRate": 94.8
             },
             {
                 "name": "harness",
@@ -280,43 +280,43 @@
                 "name": "intl402",
                 "status": "incomplete",
                 "pass": 0,
-                "fail": 970,
-                "skip": 353,
+                "fail": 1031,
+                "skip": 354,
                 "blocked": 0,
-                "pending": 243,
+                "pending": 181,
                 "running": 0,
-                "attempted": 970,
-                "known": 1323,
+                "attempted": 1031,
+                "known": 1385,
                 "total": 1566,
                 "passRate": 0
             },
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 11762,
+                "pass": 11824,
                 "fail": 393,
                 "skip": 10738,
                 "blocked": 0,
-                "pending": 491,
+                "pending": 429,
                 "running": 0,
-                "attempted": 12155,
-                "known": 22893,
+                "attempted": 12217,
+                "known": 22955,
                 "total": 23384,
                 "passRate": 96.8
             },
             {
                 "name": "staging",
                 "status": "running",
-                "pass": 557,
-                "fail": 379,
-                "skip": 188,
+                "pass": 588,
+                "fail": 395,
+                "skip": 204,
                 "blocked": 0,
-                "pending": 445,
+                "pending": 382,
                 "running": 63,
-                "attempted": 936,
-                "known": 1124,
+                "attempted": 983,
+                "known": 1187,
                 "total": 1632,
-                "passRate": 59.5
+                "passRate": 59.8
             }
         ],
         "groups": [
@@ -383,17 +383,17 @@
             {
                 "name": "annexB/built-ins/RegExp",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 54,
                 "fail": 0,
-                "skip": 0,
+                "skip": 8,
                 "blocked": 0,
-                "pending": 62,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 54,
+                "known": 62,
                 "total": 62,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "annexB/built-ins/String",
@@ -579,16 +579,16 @@
                 "name": "built-ins/Array",
                 "area": "built-ins",
                 "status": "running",
-                "pass": 2238,
-                "fail": 87,
+                "pass": 2295,
+                "fail": 93,
                 "skip": 113,
                 "blocked": 0,
-                "pending": 574,
-                "running": 63,
-                "attempted": 2325,
-                "known": 2438,
+                "pending": 512,
+                "running": 62,
+                "attempted": 2388,
+                "known": 2501,
                 "total": 3075,
-                "passRate": 96.3
+                "passRate": 96.1
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -1028,17 +1028,17 @@
             {
                 "name": "built-ins/Promise",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 105,
-                "fail": 37,
-                "skip": 114,
+                "status": "running",
+                "pass": 109,
+                "fail": 45,
+                "skip": 165,
                 "blocked": 0,
-                "pending": 375,
-                "running": 0,
-                "attempted": 142,
-                "known": 256,
+                "pending": 249,
+                "running": 63,
+                "attempted": 154,
+                "known": 319,
                 "total": 631,
-                "passRate": 73.9
+                "passRate": 70.8
             },
             {
                 "name": "built-ins/Proxy",
@@ -1073,13 +1073,13 @@
             {
                 "name": "built-ins/RegExp",
                 "area": "built-ins",
-                "status": "running",
+                "status": "incomplete",
                 "pass": 606,
                 "fail": 105,
                 "skip": 969,
                 "blocked": 0,
-                "pending": 124,
-                "running": 63,
+                "pending": 187,
+                "running": 0,
                 "attempted": 711,
                 "known": 1680,
                 "total": 1867,
@@ -1553,15 +1553,15 @@
             {
                 "name": "intl402/Collator",
                 "area": "intl402",
-                "status": "pending",
+                "status": "fail",
                 "pass": 0,
-                "fail": 0,
-                "skip": 0,
+                "fail": 61,
+                "skip": 1,
                 "blocked": 0,
-                "pending": 62,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 61,
+                "known": 62,
                 "total": 62,
                 "passRate": 0
             },
@@ -1883,17 +1883,17 @@
             {
                 "name": "language/directive-prologue",
                 "area": "language",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 62,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 62,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 62,
+                "known": 62,
                 "total": 62,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "language/eval-code",
@@ -2334,16 +2334,16 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "running",
-                "pass": 534,
-                "fail": 337,
-                "skip": 182,
+                "pass": 565,
+                "fail": 353,
+                "skip": 198,
                 "blocked": 0,
-                "pending": 312,
+                "pending": 249,
                 "running": 63,
-                "attempted": 871,
-                "known": 1053,
+                "attempted": 918,
+                "known": 1116,
                 "total": 1428,
-                "passRate": 61.3
+                "passRate": 61.5
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2402,6 +2402,32 @@
                     "...",
                     "test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js",
                     "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js"
+                ]
+            },
+            {
+                "group": "annexB/built-ins/RegExp",
+                "kind": "normal",
+                "durationSec": 54.206,
+                "filesCount": 62,
+                "sampleFiles": [
+                    "test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js",
+                    "test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js",
+                    "...",
+                    "test262/test/annexB/built-ins/RegExp/prototype/compile/this-subclass-instance.js",
+                    "test262/test/annexB/built-ins/RegExp/prototype/flags/order-after-compile.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 37.573,
+                "filesCount": 63,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Symbol/equality.js",
+                    "test262/test/staging/sm/Symbol/errors.js",
+                    "...",
+                    "test262/test/staging/sm/TypedArray/findLast-and-findLastIndex.js",
+                    "test262/test/staging/sm/TypedArray/forEach.js"
                 ]
             },
             {
@@ -2610,32 +2636,6 @@
                     "...",
                     "test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-not-numeric-index-non-strict.js",
                     "test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-not-numeric-index-strict.js"
-                ]
-            },
-            {
-                "group": "intl402/Intl",
-                "kind": "normal",
-                "durationSec": 3.307,
-                "filesCount": 67,
-                "sampleFiles": [
-                    "test262/test/intl402/Intl/DateTimeFormat/prototype/formatRange/fails-on-distinct-temporal-types.js",
-                    "test262/test/intl402/Intl/DateTimeFormat/prototype/formatRangeToParts/fails-on-distinct-temporal-types.js",
-                    "...",
-                    "test262/test/intl402/Intl/toStringTag/toString.js",
-                    "test262/test/intl402/Intl/toStringTag/toStringTag.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 3.279,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/return-abrupt-tointeger-fromindex-symbol.js",
-                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/return-abrupt-tointeger-fromindex.js",
-                    "...",
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/array-arg-target-arraylength-internal.js",
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/array-arg-targetbuffer-detached-on-tointeger-offset-throws.js"
                 ]
             }
         ]

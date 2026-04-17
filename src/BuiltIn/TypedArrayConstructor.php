@@ -1746,6 +1746,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.sort called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
                 if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
                     throw new TypeError('The comparison function must be either a function or undefined');
@@ -1875,6 +1876,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.findLastIndex called on incompatible receiver");
                 }
+                $this_->validateNotDetached();
                 $predicate = $args[0] ?? JsUndefined::instance();
                 if (!$predicate instanceof JsFunction) {
                     throw new TypeError('predicate is not a function');
