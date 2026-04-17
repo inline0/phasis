@@ -7338,7 +7338,7 @@ class Interpreter
             // Use byte offset for PCRE: convert character offset to byte offset.
             $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
 
-            if (preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
+            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
                 // For sticky regex, the match must start exactly at lastIndex.
                 if ($isSticky && $matchBytePos !== $byteOffset) {
@@ -7348,18 +7348,6 @@ class Interpreter
                 }
 
                 // Apply ES-compliant fixes for repeated groups.
-                // DEBUG: test preg_match directly here
-                // Check if $str has already been used in a preg_match
-                // and if copying it makes a difference
-                $strCopy = '' . $str . '';
-                $dbgM = [];
-                $dbgR = preg_match('/(*NOTEMPTY_ATSTART)(a?b??)/u', $strCopy, $dbgM, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, 1);
-                error_log("DEBUG exec: copy r=$dbgR match0=" . ($dbgR === 1 ? '"' . $dbgM[0][0] . '"' : 'N/A'));
-                // Try with a genuinely new string
-                $newStr = chr(ord('a')) . chr(ord('b'));
-                $dbgM2 = [];
-                $dbgR2 = preg_match('/(*NOTEMPTY_ATSTART)(a?b??)/u', $newStr, $dbgM2, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, 1);
-                error_log("DEBUG exec: newStr r=$dbgR2 match0=" . ($dbgR2 === 1 ? '"' . $dbgM2[0][0] . '"' : 'N/A'));
                 if ($hasRepeatedGroupFixes) {
                     // Fix 1: Extend match for nullable quantified groups.
                     $matches = self::fixNullableQuantifier(
@@ -9171,8 +9159,8 @@ class Interpreter
      * iteration and backtracks to find non-empty alternatives.
      *
      * This method detects whether the PCRE result was cut short by the nullable
-     * quantifier issue and extends the match using iterative PCRE calls with
-     * PCRE2's (*NOTEMPTY_ATSTART) verb.
+     * quantifier issue and extends the match by trying substrings of increasing
+     * length against the anchored inner pattern, forcing non-empty matches.
      *
      * @param array<int|string, array{0: ?string, 1: int}> $matches PCRE match result
      * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>} $analysis
@@ -9190,13 +9178,10 @@ class Interpreter
     ): array {
         foreach ($analysis['repeatedGroups'] as $groupIdx => $info) {
             if (!$info['nullable']) {
-                error_log("fixNullableQuantifier: group $groupIdx not nullable, skipping");
                 continue;
             }
 
-            // Check if the last capture of this group was empty (PCRE stopped on empty).
             if (!isset($matches[$groupIdx])) {
-                error_log("fixNullableQuantifier: group $groupIdx not in matches, skipping");
                 continue;
             }
 
@@ -9205,97 +9190,91 @@ class Interpreter
             $overallByteStart = $matches[0][1] ?? 0;
             $overallByteEnd = $overallByteStart + strlen($overallMatch);
 
-            error_log("fixNullableQuantifier: group $groupIdx, overallByteEnd=$overallByteEnd, strlen=" . strlen($str));
-
             // If we're already at end of string, nothing to extend.
             if ($overallByteEnd >= strlen($str)) {
-                error_log("fixNullableQuantifier: at end of string, skipping");
                 continue;
             }
 
-            // Build PCRE pattern for the inner body (one iteration).
+            // Build anchored PCRE pattern for the inner body. Using ^ and $ anchors
+            // forces PCRE to match the entire substring, which prevents the nullable
+            // body from matching empty when there are characters available.
+            // This avoids PCRE2 JIT bugs with (*NOTEMPTY_ATSTART).
             $innerEsPattern = $info['bodyPattern'];
-            error_log("fixNullableQuantifier: innerEsPattern=$innerEsPattern");
             $innerPcreBody = $transformFn($innerEsPattern);
-            error_log("fixNullableQuantifier: innerPcreBody=$innerPcreBody");
-            // Normal pattern (may match empty).
-            $innerPcreNormal = '/(' . $innerPcreBody . ')/' . $pcreFlags;
-            // Non-empty pattern: uses PCRE2 verb to reject empty matches at start position.
-            $innerPcreNonEmpty = '/(*NOTEMPTY_ATSTART)(' . $innerPcreBody . ')/' . $pcreFlags;
+            $anchoredPattern = '/^(' . $innerPcreBody . ')$/' . $pcreFlags;
 
-            error_log("fixNullableQuantifier: innerPcreNormal=$innerPcreNormal");
-            error_log("fixNullableQuantifier: innerPcreNonEmpty=$innerPcreNonEmpty");
-            error_log("fixNullableQuantifier: currentByteEnd=$overallByteEnd, strLen=" . strlen($str));
+            // Also build an unanchored pattern for normal (non-empty) matching.
+            $normalPattern = '/(' . $innerPcreBody . ')/' . $pcreFlags;
 
             // Iteratively extend the match from the current end position.
             $currentByteEnd = $overallByteEnd;
             $extended = false;
             $lastGroupCapture = $matches[$groupIdx];
-            $maxIterations = strlen($str) - $currentByteEnd + 1;
-            $iterations = 0;
+            $strLen = strlen($str);
 
-            while ($currentByteEnd < strlen($str) && $iterations < $maxIterations) {
-                $iterations++;
-                error_log("fixNullableQuantifier: loop iteration $iterations, currentByteEnd=$currentByteEnd");
-
-                // Try matching inner pattern at current end position (sticky).
+            while ($currentByteEnd < $strLen) {
+                // First, try normal unanchored match at current position.
+                // This handles the common case where the inner pattern matches
+                // non-empty without needing the substring workaround.
                 $innerMatches = [];
-                $innerResult = preg_match(
-                    $innerPcreNormal,
+                $innerResult = @preg_match(
+                    $normalPattern,
                     $str,
                     $innerMatches,
                     PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
                     $currentByteEnd,
                 );
-                error_log("fixNullableQuantifier: normal match result=$innerResult, matchOffset=" . ($innerResult === 1 ? $innerMatches[0][1] : 'N/A') . ", matchStr=" . ($innerResult === 1 ? '"' . $innerMatches[0][0] . '"' : 'N/A'));
-
-                if ($innerResult === 1 && $innerMatches[0][1] === $currentByteEnd) {
-                    $innerMatchStr = $innerMatches[0][0];
-                    if (strlen($innerMatchStr) > 0) {
-                        // Non-empty match: extend and continue.
-                        $currentByteEnd += strlen($innerMatchStr);
-                        $lastGroupCapture = [$innerMatches[1][0], $innerMatches[1][1]];
-                        $extended = true;
-                        continue;
-                    }
-                }
-
-                // Empty match or no match at current position.
-                // Try with non-empty constraint to force backtracking.
-                // Use PCRE_NOTEMPTY_ATSTART as an integer flag.
-                // PHP's preg_match doesn't expose this constant, but the PCRE2 value is 0x10000000.
-                // However, PHP may not pass this flag through. Let's try.
-                $notemptyFlag = 0x10000000; // PCRE2_NOTEMPTY_ATSTART
-                $innerMatches2 = [];
-                $innerResult2 = preg_match(
-                    $innerPcreNormal, // Use normal pattern, not the verb version
-                    $str,
-                    $innerMatches2,
-                    PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL | $notemptyFlag,
-                    $currentByteEnd,
-                );
-                error_log("fixNullableQuantifier: flag-based non-empty result=$innerResult2, dump=" . var_export($innerMatches2, true) . ", err=" . preg_last_error_msg());
 
                 if (
-                    $innerResult2 === 1
-                    && $innerMatches2[0][1] === $currentByteEnd
-                    && strlen($innerMatches2[0][0]) > 0
+                    $innerResult === 1
+                    && $innerMatches[0][1] === $currentByteEnd
+                    && strlen($innerMatches[0][0]) > 0
                 ) {
-                    $currentByteEnd += strlen($innerMatches2[0][0]);
-                    $lastGroupCapture = [$innerMatches2[1][0], $innerMatches2[1][1]];
+                    // Non-empty match at current position: extend and continue.
+                    $currentByteEnd += strlen($innerMatches[0][0]);
+                    $lastGroupCapture = [$innerMatches[1][0], $innerMatches[1][1]];
                     $extended = true;
                     continue;
                 }
 
-                // No non-empty match possible: stop iterating.
-                break;
+                // Empty match or no match. Use the substring approach:
+                // try substrings of length 1, 2, ... from current position and
+                // match the anchored pattern (^body$) against each. The anchors
+                // force PCRE to use the available characters rather than matching empty.
+                $found = false;
+                $remaining = $strLen - $currentByteEnd;
+                for ($tryLen = 1; $tryLen <= $remaining; $tryLen++) {
+                    $sub = substr($str, $currentByteEnd, $tryLen);
+                    // Verify this is a valid UTF-8 boundary (don't split multi-byte chars).
+                    if (mb_check_encoding($sub, 'UTF-8') === false) {
+                        continue;
+                    }
+                    $subMatches = [];
+                    $subResult = @preg_match(
+                        $anchoredPattern,
+                        $sub,
+                        $subMatches,
+                        PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
+                    );
+                    if ($subResult === 1 && strlen($subMatches[0][0]) > 0) {
+                        // Found a non-empty match of length $tryLen.
+                        $lastGroupCapture = [$subMatches[1][0], $currentByteEnd + $subMatches[1][1]];
+                        $currentByteEnd += strlen($subMatches[0][0]);
+                        $extended = true;
+                        $found = true;
+                        break;
+                    }
+                }
+
+                if (!$found) {
+                    // No non-empty match possible at this position: stop iterating.
+                    break;
+                }
             }
 
-            error_log("fixNullableQuantifier: loop done, extended=" . ($extended ? 'true' : 'false') . ", currentByteEnd=$currentByteEnd");
             if ($extended) {
                 // Update the overall match to include the extended portion.
                 $newOverallMatch = substr($str, $overallByteStart, $currentByteEnd - $overallByteStart);
-                error_log("fixNullableQuantifier: newOverallMatch=$newOverallMatch");
                 $matches[0] = [$newOverallMatch, $overallByteStart];
 
                 // Update the group capture to reflect the last iteration.
