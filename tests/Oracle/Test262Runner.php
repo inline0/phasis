@@ -98,6 +98,9 @@ class Test262Runner
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
 
+        // Install $262 host object for test262 harness.
+        $this->install262HostObject($engine);
+
         try {
             if (!$isRaw) {
                 $this->loadHarness($engine, 'sta.js');
@@ -309,6 +312,74 @@ PHP;
         } catch (\Throwable $e) {
             return new TestResult($testPath, TestStatus::Fail, $e::class . ': ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Install the $262 host object for test262.
+     *
+     * Provides createRealm, detachArrayBuffer, evalScript, and gc.
+     */
+    private function install262HostObject(Engine $engine): void
+    {
+        $runner = $this;
+        $engine->eval(<<<'JS'
+        var $262 = {};
+        JS);
+
+        // $262.createRealm() - create a fresh Engine and return its $262
+        $engine->setGlobal('__262_createRealm', function () use ($runner) {
+            $realm = new Engine();
+            $realm->setLimit('maxLoopIterations', 2_000_000);
+            $runner->install262HostObject($realm);
+            // Load standard harness in the new realm
+            try {
+                $runner->loadHarnessPublic($realm, 'sta.js');
+                $runner->loadHarnessPublic($realm, 'assert.js');
+            } catch (\Throwable) {
+            }
+            return $realm->eval('$262');
+        });
+        $engine->eval(<<<'JS'
+        $262.createRealm = function() {
+            return { global: globalThis, $262: __262_createRealm() };
+        };
+        JS);
+
+        // $262.detachArrayBuffer(buffer) - detach an ArrayBuffer
+        $engine->setGlobal('__262_detachArrayBuffer', function ($buf) {
+            if ($buf instanceof \PhpJs\Value\JsArrayBuffer) {
+                $buf->detach();
+            }
+        });
+        $engine->eval(<<<'JS'
+        $262.detachArrayBuffer = function(buf) {
+            __262_detachArrayBuffer(buf);
+        };
+        JS);
+
+        // $262.evalScript(code) - evaluate code in this realm
+        $engine->setGlobal('__262_evalScript', function ($code) use ($engine) {
+            if ($code instanceof \PhpJs\Value\JsString) {
+                return $engine->eval($code->value);
+            }
+            return null;
+        });
+        $engine->eval(<<<'JS'
+        $262.evalScript = function(code) {
+            return __262_evalScript(code);
+        };
+        JS);
+
+        // $262.gc() - no-op (PHP has no manual GC trigger useful here)
+        $engine->eval('$262.gc = function() {};');
+    }
+
+    /**
+     * Public wrapper for loadHarness (used by createRealm).
+     */
+    public function loadHarnessPublic(Engine $engine, string $filename): void
+    {
+        $this->loadHarness($engine, $filename);
     }
 
     private function loadHarness(Engine $engine, string $filename): void
