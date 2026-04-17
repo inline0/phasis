@@ -143,6 +143,12 @@ class Interpreter
             $this->strictMode = true;
         }
 
+        // Validate strict mode restrictions (reserved words, with, etc.)
+        // so that indirect eval with 'use strict' code gets checked.
+        if ($this->strictMode) {
+            $this->validateStrictModeRestrictions($program->body);
+        }
+
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);
@@ -4858,6 +4864,168 @@ class Interpreter
             // nested blocks (if, for, while, etc.) to the enclosing scope.
             if (!$this->strictMode) {
                 $this->hoistBlockFunctionDeclarations($stmt, $env, $lexicalNames);
+            }
+        }
+    }
+
+    /**
+     * Hoist declarations in eval code at global scope.
+     * Per EvalDeclarationInstantiation, function and var bindings created by eval
+     * at the global level use configurable: true (unlike script-level which uses
+     * configurable: false). This mirrors CreateGlobalFunctionBinding(fn, fo, true)
+     * and CreateGlobalVarBinding(vn, true) from the spec.
+     *
+     * @param Node[] $statements
+     */
+    private function hoistEvalGlobalDeclarations(array $statements, Environment $env): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof FunctionDeclaration) {
+                $fn = new JsFunction(
+                    $stmt->id->name,
+                    $stmt->params,
+                    $stmt->body,
+                    $env,
+                    isGenerator: $stmt->generator,
+                    isAsync: $stmt->async,
+                    strict: $this->strictMode,
+                );
+                if ($stmt->sourceText !== null) {
+                    $fn->setSourceText($stmt->sourceText);
+                }
+                $this->installFunctionPrototype($fn, $stmt->generator);
+                // Eval-created global function bindings are configurable.
+                $env->defineGlobalVar($stmt->id->name, $fn, true);
+            } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    $this->hoistEvalGlobalVarNames($decl->id, $env);
+                }
+            } else {
+                // Recurse into compound statements for nested var declarations.
+                $this->hoistEvalGlobalVarCompound($stmt, $env);
+            }
+        }
+    }
+
+    /**
+     * Hoist a var name into global scope from eval, using configurable: true.
+     */
+    private function hoistEvalGlobalVarNames(Node $pattern, Environment $env): void
+    {
+        if ($pattern instanceof Identifier) {
+            if (!$env->has($pattern->name)) {
+                $env->defineGlobalVar($pattern->name, JsUndefined::instance(), true);
+            }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $this->hoistEvalGlobalVarNames($elem, $env);
+                }
+            }
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->hoistEvalGlobalVarNames($prop->value, $env);
+                } elseif ($prop instanceof RestElement) {
+                    $this->hoistEvalGlobalVarNames($prop->argument, $env);
+                }
+            }
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->hoistEvalGlobalVarNames($pattern->left, $env);
+        } elseif ($pattern instanceof RestElement) {
+            $this->hoistEvalGlobalVarNames($pattern->argument, $env);
+        }
+    }
+
+    /**
+     * Recurse into compound statements for eval global var hoisting.
+     */
+    private function hoistEvalGlobalVarCompound(Node $stmt, Environment $env): void
+    {
+        if ($stmt instanceof ForOfStatement || $stmt instanceof ForInStatement) {
+            if ($stmt->left instanceof VariableDeclaration && $stmt->left->kind === 'var') {
+                foreach ($stmt->left->declarations as $decl) {
+                    $this->hoistEvalGlobalVarNames($decl->id, $env);
+                }
+            }
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof ForStatement) {
+            if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
+                foreach ($stmt->init->declarations as $decl) {
+                    $this->hoistEvalGlobalVarNames($decl->id, $env);
+                }
+            }
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof WhileStatement || $stmt instanceof DoWhileStatement) {
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof IfStatement) {
+            if ($stmt->consequent instanceof BlockStatement) {
+                foreach ($stmt->consequent->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+            if ($stmt->alternate instanceof BlockStatement) {
+                foreach ($stmt->alternate->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            } elseif ($stmt->alternate instanceof IfStatement) {
+                $this->hoistEvalGlobalVarCompound($stmt->alternate, $env);
+            }
+        } elseif ($stmt instanceof BlockStatement) {
+            foreach ($stmt->body as $s) {
+                $this->hoistEvalGlobalVarCompound($s, $env);
+            }
+        } elseif ($stmt instanceof TryStatement) {
+            foreach ($stmt->block->body as $s) {
+                $this->hoistEvalGlobalVarCompound($s, $env);
+            }
+            if ($stmt->handler !== null) {
+                foreach ($stmt->handler->body->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+            if ($stmt->finalizer !== null) {
+                foreach ($stmt->finalizer->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof SwitchStatement) {
+            foreach ($stmt->cases as $case) {
+                foreach ($case->consequent as $inner) {
+                    if ($inner instanceof VariableDeclaration && $inner->kind === 'var') {
+                        foreach ($inner->declarations as $decl) {
+                            $this->hoistEvalGlobalVarNames($decl->id, $env);
+                        }
+                    } else {
+                        $this->hoistEvalGlobalVarCompound($inner, $env);
+                    }
+                }
+            }
+        } elseif ($stmt instanceof LabeledStatement) {
+            $this->hoistEvalGlobalVarCompound($stmt->body, $env);
+        } elseif ($stmt instanceof WithStatement) {
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalGlobalVarCompound($s, $env);
+                }
+            } else {
+                $this->hoistEvalGlobalVarCompound($stmt->body, $env);
+            }
+        } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+            foreach ($stmt->declarations as $decl) {
+                $this->hoistEvalGlobalVarNames($decl->id, $env);
             }
         }
     }
