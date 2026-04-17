@@ -5194,6 +5194,173 @@ class Interpreter
     }
 
     /**
+     * Hoist declarations in non-strict, non-global eval code.
+     *
+     * Per EvalDeclarationInstantiation step 15/16, var and function bindings
+     * created by eval in a local (function) scope are deletable. This means
+     * they use CreateMutableBinding(name, true) so that `delete name` works.
+     *
+     * @param Node[] $statements
+     */
+    private function hoistEvalLocalDeclarations(array $statements, Environment $env): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof FunctionDeclaration) {
+                $fn = new JsFunction(
+                    $stmt->id->name,
+                    $stmt->params,
+                    $stmt->body,
+                    $env,
+                    isGenerator: $stmt->generator,
+                    isAsync: $stmt->async,
+                    strict: $this->strictMode,
+                );
+                if ($stmt->sourceText !== null) {
+                    $fn->setSourceText($stmt->sourceText);
+                }
+                $this->installFunctionPrototype($fn, $stmt->generator);
+                // Eval-created local function bindings are deletable per spec.
+                // If a binding already exists, just update its value.
+                if ($env->hasOwnBinding($stmt->id->name)) {
+                    $env->set($stmt->id->name, $fn);
+                } else {
+                    $env->defineDeletable($stmt->id->name, $fn);
+                }
+            } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    $this->hoistEvalLocalVarNames($decl->id, $env);
+                }
+            } else {
+                $this->hoistEvalLocalVarCompound($stmt, $env);
+            }
+        }
+    }
+
+    /**
+     * Hoist a var name from eval local code as a deletable binding.
+     */
+    private function hoistEvalLocalVarNames(Node $pattern, Environment $env): void
+    {
+        if ($pattern instanceof Identifier) {
+            // Only create if not already bound in any scope.
+            if (!$env->has($pattern->name)) {
+                $env->defineDeletable($pattern->name, JsUndefined::instance());
+            }
+        } elseif ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $this->hoistEvalLocalVarNames($elem, $env);
+                }
+            }
+        } elseif ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->hoistEvalLocalVarNames($prop->value, $env);
+                } elseif ($prop instanceof RestElement) {
+                    $this->hoistEvalLocalVarNames($prop->argument, $env);
+                }
+            }
+        } elseif ($pattern instanceof AssignmentPattern) {
+            $this->hoistEvalLocalVarNames($pattern->left, $env);
+        } elseif ($pattern instanceof RestElement) {
+            $this->hoistEvalLocalVarNames($pattern->argument, $env);
+        }
+    }
+
+    /**
+     * Recurse into compound statements for eval local var hoisting.
+     */
+    private function hoistEvalLocalVarCompound(Node $stmt, Environment $env): void
+    {
+        if ($stmt instanceof ForStatement) {
+            if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
+                foreach ($stmt->init->declarations as $decl) {
+                    $this->hoistEvalLocalVarNames($decl->id, $env);
+                }
+            }
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof ForOfStatement || $stmt instanceof ForInStatement) {
+            if ($stmt->left instanceof VariableDeclaration && $stmt->left->kind === 'var') {
+                foreach ($stmt->left->declarations as $decl) {
+                    $this->hoistEvalLocalVarNames($decl->id, $env);
+                }
+            }
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof WhileStatement || $stmt instanceof DoWhileStatement) {
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof IfStatement) {
+            if ($stmt->consequent instanceof BlockStatement) {
+                foreach ($stmt->consequent->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+            if ($stmt->alternate instanceof BlockStatement) {
+                foreach ($stmt->alternate->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            } elseif ($stmt->alternate instanceof IfStatement) {
+                $this->hoistEvalLocalVarCompound($stmt->alternate, $env);
+            }
+        } elseif ($stmt instanceof BlockStatement) {
+            foreach ($stmt->body as $s) {
+                $this->hoistEvalLocalVarCompound($s, $env);
+            }
+        } elseif ($stmt instanceof TryStatement) {
+            foreach ($stmt->block->body as $s) {
+                $this->hoistEvalLocalVarCompound($s, $env);
+            }
+            if ($stmt->handler !== null) {
+                foreach ($stmt->handler->body->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+            if ($stmt->finalizer !== null) {
+                foreach ($stmt->finalizer->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            }
+        } elseif ($stmt instanceof SwitchStatement) {
+            foreach ($stmt->cases as $case) {
+                foreach ($case->consequent as $inner) {
+                    if ($inner instanceof VariableDeclaration && $inner->kind === 'var') {
+                        foreach ($inner->declarations as $decl) {
+                            $this->hoistEvalLocalVarNames($decl->id, $env);
+                        }
+                    } else {
+                        $this->hoistEvalLocalVarCompound($inner, $env);
+                    }
+                }
+            }
+        } elseif ($stmt instanceof LabeledStatement) {
+            $this->hoistEvalLocalVarCompound($stmt->body, $env);
+        } elseif ($stmt instanceof WithStatement) {
+            if ($stmt->body instanceof BlockStatement) {
+                foreach ($stmt->body->body as $s) {
+                    $this->hoistEvalLocalVarCompound($s, $env);
+                }
+            } else {
+                $this->hoistEvalLocalVarCompound($stmt->body, $env);
+            }
+        } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+            foreach ($stmt->declarations as $decl) {
+                $this->hoistEvalLocalVarNames($decl->id, $env);
+            }
+        }
+    }
+
+    /**
      * Hoist declarations in eval code at global scope.
      * Per EvalDeclarationInstantiation, function and var bindings created by eval
      * at the global level use configurable: true (unlike script-level which uses

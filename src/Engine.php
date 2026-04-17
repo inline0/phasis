@@ -14,6 +14,7 @@ use PhpJs\Runtime\Interpreter;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -629,6 +630,109 @@ class Engine
         /** @var \PhpJs\Value\JsObject $regexpProto */
         $regexpProto = $this->globalEnv->get('__RegExpPrototype__');
         \PhpJs\BuiltIn\RegExpPrototype::install($regexpProto);
+
+        // Annex B: Legacy RegExp static properties.
+        $regExpCtor = $this->globalEnv->get('RegExp');
+        if ($regExpCtor instanceof JsFunction) {
+            $this->installLegacyRegExpStatics($regExpCtor);
+        }
+    }
+
+    /**
+     * Install Annex B legacy static properties on the RegExp constructor.
+     * These track the state of the last successful regexp match.
+     */
+    private function installLegacyRegExpStatics(JsFunction $ctor): void
+    {
+        $state = [
+            'input' => '',
+            'lastMatch' => '',
+            'lastParen' => '',
+            'leftContext' => '',
+            'rightContext' => '',
+            'groups' => [],
+        ];
+
+        $makeGetter = function (string $stateKey) use ($ctor, &$state): JsFunction {
+            return JsFunction::fromCallable(
+                'get ' . $stateKey,
+                function (JsValue $this_) use ($ctor, $stateKey, &$state): JsValue {
+                    if ($this_ !== $ctor) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Method get RegExp.' . $stateKey . ' called on incompatible receiver',
+                        );
+                    }
+                    return new JsString($state[$stateKey]);
+                },
+                0,
+            );
+        };
+
+        $makeSetter = function (string $stateKey) use ($ctor, &$state): JsFunction {
+            return JsFunction::fromCallable(
+                'set ' . $stateKey,
+                function (JsValue $this_, array $args) use ($ctor, $stateKey, &$state): JsValue {
+                    if ($this_ !== $ctor) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Method set RegExp.' . $stateKey . ' called on incompatible receiver',
+                        );
+                    }
+                    $state[$stateKey] = isset($args[0])
+                        ? TypeConversion::toString($args[0])
+                        : '';
+                    return JsUndefined::instance();
+                },
+                1,
+            );
+        };
+
+        $accessor = function (string $prop, string $alias, string $key, bool $hasSetter) use (
+            $ctor,
+            $makeGetter,
+            $makeSetter,
+        ): void {
+            $getter = $makeGetter($key);
+            $setter = $hasSetter ? $makeSetter($key) : null;
+            $desc = \PhpJs\Object\PropertyDescriptor::accessor(
+                get: $getter,
+                set: $setter,
+                enumerable: false,
+                configurable: true,
+            );
+            $ctor->defineOwnProperty($prop, $desc);
+            $ctor->defineOwnProperty($alias, $desc);
+        };
+
+        $accessor('input', '$_', 'input', true);
+        $accessor('lastMatch', '$&', 'lastMatch', false);
+        $accessor('rightContext', "\$'", 'rightContext', false);
+        $accessor('leftContext', '$`', 'leftContext', false);
+        $accessor('lastParen', '$+', 'lastParen', false);
+
+        for ($i = 1; $i <= 9; $i++) {
+            $idx = $i;
+            $getter = JsFunction::fromCallable(
+                'get $' . $i,
+                function (JsValue $this_) use ($ctor, $idx, &$state): JsValue {
+                    if ($this_ !== $ctor) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Method get RegExp.$' . $idx . ' called on incompatible receiver',
+                        );
+                    }
+                    return new JsString($state['groups'][$idx - 1] ?? '');
+                },
+                0,
+            );
+            $ctor->defineOwnProperty(
+                '$' . $i,
+                \PhpJs\Object\PropertyDescriptor::accessor(
+                    get: $getter,
+                    set: null,
+                    enumerable: false,
+                    configurable: true,
+                ),
+            );
+        }
     }
 
     private function installStubConstructor(string $name, callable $fn, int $length = 0): void
