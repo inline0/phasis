@@ -1151,16 +1151,72 @@ class ObjectConstructor
     {
         return function (JsValue $this_, array $args) use ($proto): JsValue {
             $iterable = $args[0] ?? JsUndefined::instance();
+            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                throw new TypeError('Cannot read properties of ' . TypeConversion::toString($iterable) . " (reading 'Symbol(Symbol.iterator)')");
+            }
             $obj = new JsObject($proto);
 
-            if ($iterable instanceof JsArray) {
-                for ($i = 0; $i < $iterable->getLength(); $i++) {
-                    $entry = $iterable->get((string) $i);
-                    if ($entry instanceof JsArray && $entry->getLength() >= 2) {
-                        $key = TypeConversion::toString($entry->get('0'));
-                        $value = $entry->get('1');
-                        $obj->set($key, $value);
+            // Get iterator from iterable.
+            if (!$iterable instanceof JsObject) {
+                $iterable = TypeConversion::toObject($iterable);
+            }
+            $iterSym = SymbolConstructor::iterator();
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+            if (!$iteratorMethod instanceof JsFunction) {
+                throw new TypeError('object is not iterable');
+            }
+            $iterator = $iteratorMethod->call($iterable, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError('Result of the Symbol.iterator method is not an object');
+            }
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('iterator.next is not a function');
+            }
+
+            while (true) {
+                $result = $nextMethod->call($iterator, []);
+                if (!$result instanceof JsObject) {
+                    throw new TypeError('Iterator value is not an object');
+                }
+                if (TypeConversion::toBoolean($result->get('done'))) {
+                    break;
+                }
+                $value = $result->get('value');
+                // Per spec, each entry must be an object.
+                if (!$value instanceof JsObject) {
+                    // Close iterator, then throw TypeError.
+                    $returnMethod = $iterator->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        try {
+                            $returnMethod->call($iterator, []);
+                        } catch (\Throwable) {
+                            // Ignore
+                        }
                     }
+                    throw new TypeError('Iterator value ' . TypeConversion::toString($value) . ' is not an entry object');
+                }
+                try {
+                    $entryKey = $value->get('0');
+                    $entryValue = $value->get('1');
+                    $propKey = TypeConversion::toPropertyKey($entryKey);
+                    if ($propKey instanceof JsSymbol) {
+                        $obj->defineOwnSymbolProperty($propKey, PropertyDescriptor::data($entryValue));
+                    } else {
+                        // Per spec, use CreateDataPropertyOrThrow.
+                        $obj->defineOwnProperty($propKey->toJsString(), PropertyDescriptor::data($entryValue));
+                    }
+                } catch (\Throwable $e) {
+                    // Close iterator on abrupt completion.
+                    $returnMethod = $iterator->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        try {
+                            $returnMethod->call($iterator, []);
+                        } catch (\Throwable) {
+                            // Ignore
+                        }
+                    }
+                    throw $e;
                 }
             }
 

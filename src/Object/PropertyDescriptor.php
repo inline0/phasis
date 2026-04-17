@@ -81,8 +81,6 @@ class PropertyDescriptor
             set: $set,
         );
         $desc->isAccessor = true;
-        $desc->hasGet = true;
-        $desc->hasSet = true;
         return $desc;
     }
 }
