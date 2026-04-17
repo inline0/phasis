@@ -346,7 +346,18 @@ class NumberConstructor
             $numValue = abs($numValue);
 
             if ($fractionDigits !== null) {
-                $result = sprintf('%.' . $fractionDigits . 'e', $numValue);
+                $formatDigits = min($fractionDigits, 53);
+                $result = sprintf('%.' . $formatDigits . 'e', $numValue);
+
+                if ($fractionDigits > $formatDigits) {
+                    [$mantissa, $exponent] = explode('e', $result);
+                    if (!str_contains($mantissa, '.')) {
+                        $mantissa .= '.';
+                    }
+                    [$integer, $fraction] = explode('.', $mantissa, 2);
+                    $fraction = str_pad($fraction, $fractionDigits, '0');
+                    $result = $integer . '.' . $fraction . 'e' . $exponent;
+                }
             } else {
                 $result = sprintf('%.20e', $numValue);
                 $parts = explode('e', $result);

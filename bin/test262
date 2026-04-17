@@ -28,6 +28,8 @@ $jobs = 1;
 $showFailures = false;
 $limit = 0;
 $filesFrom = null;
+$json = false;
+$progress = true;
 
 $args = array_slice($argv, 1);
 for ($i = 0; $i < count($args); $i++) {
@@ -49,6 +51,13 @@ for ($i = 0; $i < count($args); $i++) {
             break;
         case '--files-from':
             $filesFrom = $args[++$i] ?? null;
+            break;
+        case '--json':
+            $json = true;
+            $progress = false;
+            break;
+        case '--no-progress':
+            $progress = false;
             break;
         default:
             if (!str_starts_with($args[$i], '--')) {
@@ -74,13 +83,15 @@ if ($filesFrom !== null) {
 $count = 0;
 $result = new \PhpJs\Tests\Oracle\SuiteResult();
 
-echo "Running test262";
-if ($filesFrom !== null) {
-    echo " (file list)";
-} elseif ($category !== null) {
-    echo " ({$category})";
+if (!$json) {
+    echo "Running test262";
+    if ($filesFrom !== null) {
+        echo " (file list)";
+    } elseif ($category !== null) {
+        echo " ({$category})";
+    }
+    echo "...\n";
 }
-echo "...\n";
 
 if ($filesFrom !== null) {
     $paths = file($filesFrom, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -112,9 +123,18 @@ foreach ($testResults as $testResult) {
     }
 
     // Progress indicator every 100 tests
-    if ($count % 100 === 0) {
+    if ($progress && $count % 100 === 0) {
         $rate = $result->passRate();
         fprintf(STDERR, "\r  %d tests (%d pass, %d fail, %d skip) %.1f%%", $count, $result->pass, $result->fail, $result->skip, $rate);
+    }
+
+    // Long compat runs execute many tests in one PHP process. Periodic GC and
+    // cache trimming reduces memory growth without changing interpreter semantics.
+    if ($count % 50 === 0) {
+        gc_collect_cycles();
+        if (function_exists('gc_mem_caches')) {
+            gc_mem_caches();
+        }
     }
 
     if ($limit > 0 && $count >= $limit) {
@@ -122,9 +142,22 @@ foreach ($testResults as $testResult) {
     }
 }
 
-fprintf(STDERR, "\r" . str_repeat(' ', 80) . "\r");
+if ($progress) {
+    fprintf(STDERR, "\r" . str_repeat(' ', 80) . "\r");
+}
 
-if ($report) {
+if ($json) {
+    echo json_encode([
+        'pass' => $result->pass,
+        'fail' => $result->fail,
+        'skip' => $result->skip,
+        'attempted' => $result->pass + $result->fail,
+        'total' => $result->total(),
+        'passRate' => round($result->passRate(), 1),
+        'category' => $category,
+        'filesFrom' => $filesFrom,
+    ], JSON_UNESCAPED_SLASHES) . "\n";
+} elseif ($report) {
     echo $result->report() . "\n";
 } else {
     $attempted = $result->pass + $result->fail;

@@ -12,6 +12,9 @@ namespace PhpJs\Value;
  */
 class JsArrayBuffer extends JsObject
 {
+    private const FALLBACK_MAX_BYTE_LENGTH = 268435456; // 256 MiB
+    private const MIN_SAFE_BYTE_LENGTH = 16777216; // 16 MiB
+
     private string $data;
     private int $byteLength;
     private bool $detached = false;
@@ -19,8 +22,13 @@ class JsArrayBuffer extends JsObject
     public function __construct(int $byteLength, ?JsObject $prototype = null)
     {
         parent::__construct($prototype);
+
+        if ($byteLength < 0 || $byteLength > self::maxAllocatableByteLength()) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+        }
+
         $this->byteLength = $byteLength;
-        $this->data = str_repeat("\0", $byteLength);
+        $this->data = $byteLength === 0 ? '' : str_repeat("\0", $byteLength);
     }
 
     public function getByteLength(): int
@@ -104,5 +112,49 @@ class JsArrayBuffer extends JsObject
     public function display(): string
     {
         return 'ArrayBuffer { byteLength: ' . $this->byteLength . ' }';
+    }
+
+    private static function maxAllocatableByteLength(): int
+    {
+        static $cached = null;
+
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $memoryLimit = self::parseIniByteSize((string) ini_get('memory_limit'));
+        if ($memoryLimit === null || $memoryLimit <= 0) {
+            return $cached = self::FALLBACK_MAX_BYTE_LENGTH;
+        }
+
+        $reserved = 64 * 1024 * 1024;
+        $usable = max(self::MIN_SAFE_BYTE_LENGTH, $memoryLimit - $reserved);
+
+        return $cached = max(
+            self::MIN_SAFE_BYTE_LENGTH,
+            min(self::FALLBACK_MAX_BYTE_LENGTH, intdiv($usable, 2)),
+        );
+    }
+
+    private static function parseIniByteSize(string $value): ?int
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '' || $trimmed === '-1') {
+            return null;
+        }
+
+        if (!preg_match('/^(?<number>\d+)(?<suffix>[KMG]?)$/i', $trimmed, $matches)) {
+            return null;
+        }
+
+        $bytes = (int) $matches['number'];
+        $suffix = strtoupper($matches['suffix']);
+
+        return match ($suffix) {
+            'G' => $bytes * 1024 * 1024 * 1024,
+            'M' => $bytes * 1024 * 1024,
+            'K' => $bytes * 1024,
+            default => $bytes,
+        };
     }
 }

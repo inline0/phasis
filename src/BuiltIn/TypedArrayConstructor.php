@@ -66,10 +66,7 @@ class TypedArrayConstructor
             'ArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 $arg0 = $args[0] ?? new JsNumber(0.0);
-                $length = (int) TypeConversion::toNumber($arg0);
-                if ($length < 0) {
-                    throw new RangeError('Invalid array buffer length');
-                }
+                $length = TypeConversion::toIndex($arg0);
                 return new JsArrayBuffer($length, $proto);
             },
             1,

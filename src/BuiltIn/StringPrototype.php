@@ -19,6 +19,10 @@ use PhpJs\Object\PropertyDescriptor;
 
 class StringPrototype
 {
+    private const FALLBACK_MAX_STRING_LENGTH = 268435456;
+    private const MIN_SAFE_STRING_LENGTH = 16777216;
+    private static ?int $maxStringLength = null;
+
     public static function install(Environment $env): void
     {
         $proto = new JsObject();
@@ -620,7 +624,7 @@ class StringPrototype
                     }, $str, $limit);
                 } else {
                     $repl = TypeConversion::toString($replArg);
-                    $result = @preg_replace($pcre, $repl, $str, $limit);
+                    $result = self::replaceRegexpWithString($pcre, $str, $repl, $isGlobal);
                 }
                 return new JsString($result ?? $str);
             }
@@ -802,6 +806,204 @@ class StringPrototype
             $replacement = TypeConversion::toString($replacer);
             return new JsString(str_replace($search, $replacement, $str));
         };
+    }
+
+    private static function replaceRegexpWithString(
+        string $pcre,
+        string $subject,
+        string $replacement,
+        bool $isGlobal,
+    ): string {
+        $flags = PREG_SET_ORDER | PREG_OFFSET_CAPTURE;
+        if (defined('PREG_UNMATCHED_AS_NULL')) {
+            $flags |= PREG_UNMATCHED_AS_NULL;
+        }
+
+        $matched = @preg_match_all($pcre, $subject, $matches, $flags);
+        if ($matched !== null && $matched !== false && $matched > 0) {
+            $result = '';
+            $cursor = 0;
+            $matchLimit = $isGlobal ? $matched : 1;
+
+            for ($i = 0; $i < $matchLimit; $i++) {
+                $match = $matches[$i];
+                $fullMatch = (string) ($match[0][0] ?? '');
+                $offset = (int) ($match[0][1] ?? 0);
+
+                if ($offset < $cursor) {
+                    continue;
+                }
+
+                self::appendWithLimit($result, substr($subject, $cursor, $offset - $cursor));
+                self::appendWithLimit(
+                    $result,
+                    self::applyStringReplacement($replacement, $match, $subject, $offset, $fullMatch),
+                );
+                $cursor = $offset + strlen($fullMatch);
+            }
+
+            self::appendWithLimit($result, substr($subject, $cursor));
+            return $result;
+        }
+
+        return $subject;
+    }
+
+    /**
+     * @param array<int, array{0: ?string, 1: int}> $match
+     */
+    private static function applyStringReplacement(
+        string $replacement,
+        array $match,
+        string $subject,
+        int $offset,
+        string $fullMatch,
+    ): string {
+        $result = '';
+        $length = strlen($replacement);
+        $captureCount = count($match) - 1;
+
+        for ($i = 0; $i < $length; $i++) {
+            $ch = $replacement[$i];
+            if ($ch !== '$' || $i + 1 >= $length) {
+                self::appendWithLimit($result, $ch);
+                continue;
+            }
+
+            $next = $replacement[$i + 1];
+            switch ($next) {
+                case '$':
+                    self::appendWithLimit($result, '$');
+                    $i++;
+                    continue 2;
+                case '&':
+                    self::appendWithLimit($result, $fullMatch);
+                    $i++;
+                    continue 2;
+                case '`':
+                    self::appendWithLimit($result, substr($subject, 0, $offset));
+                    $i++;
+                    continue 2;
+                case "'":
+                    self::appendWithLimit($result, substr($subject, $offset + strlen($fullMatch)));
+                    $i++;
+                    continue 2;
+            }
+
+            if ($next >= '0' && $next <= '9') {
+                $captureIndex = null;
+                $consume = 0;
+
+                if ($i + 2 < $length) {
+                    $nextDigit = $replacement[$i + 2];
+                    if ($nextDigit >= '0' && $nextDigit <= '9') {
+                        $candidate = (int) ($next . $nextDigit);
+                        if ($candidate >= 1 && $candidate <= $captureCount) {
+                            $captureIndex = $candidate;
+                            $consume = 2;
+                        }
+                    }
+                }
+
+                if ($captureIndex === null && $next !== '0') {
+                    $singleDigitCapture = (int) $next;
+                    if ($singleDigitCapture <= $captureCount) {
+                        $captureIndex = $singleDigitCapture;
+                        $consume = 1;
+                    }
+                }
+
+                if ($captureIndex !== null) {
+                    $capture = $match[$captureIndex][0] ?? null;
+                    if ($capture !== null) {
+                        self::appendWithLimit($result, $capture);
+                    }
+                    $i += $consume;
+                    continue;
+                }
+
+                if ($next === '0') {
+                    self::appendWithLimit($result, '$0');
+                    $i++;
+                    continue;
+                }
+            }
+
+            self::appendWithLimit($result, '$');
+        }
+
+        return $result;
+    }
+
+    private static function appendWithLimit(string &$buffer, string $fragment): void
+    {
+        if ($fragment === '') {
+            return;
+        }
+
+        $newLength = strlen($buffer) + strlen($fragment);
+        if ($newLength > self::maxStringLength()) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid string length');
+        }
+
+        $buffer .= $fragment;
+    }
+
+    private static function maxStringLength(): int
+    {
+        if (self::$maxStringLength !== null) {
+            return self::$maxStringLength;
+        }
+
+        $memoryLimit = ini_get('memory_limit');
+        if (!is_string($memoryLimit) || $memoryLimit === '' || $memoryLimit === '-1') {
+            return self::$maxStringLength = self::FALLBACK_MAX_STRING_LENGTH;
+        }
+
+        $bytes = self::parseMemoryLimitToBytes($memoryLimit);
+        if ($bytes === null) {
+            return self::$maxStringLength = self::FALLBACK_MAX_STRING_LENGTH;
+        }
+
+        $safeLimit = max(
+            self::MIN_SAFE_STRING_LENGTH,
+            min(self::FALLBACK_MAX_STRING_LENGTH, intdiv($bytes, 4)),
+        );
+
+        return self::$maxStringLength = $safeLimit;
+    }
+
+    private static function parseMemoryLimitToBytes(string $value): ?int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        $unit = strtolower(substr($value, -1));
+        if (ctype_alpha($unit)) {
+            $number = substr($value, 0, -1);
+        } else {
+            $unit = '';
+            $number = $value;
+        }
+
+        if (!is_numeric($number)) {
+            return null;
+        }
+
+        $bytes = (float) $number;
+        switch ($unit) {
+            case 'g':
+                $bytes *= 1024;
+            case 'm':
+                $bytes *= 1024;
+            case 'k':
+                $bytes *= 1024;
+                break;
+        }
+
+        return $bytes > 0 ? (int) $bytes : null;
     }
 
     private static function search(): \Closure

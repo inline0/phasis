@@ -174,31 +174,7 @@ class ReflectObject
                     throw new TypeError('Object prototype may only be an Object or null');
                 }
                 $newProto = $proto instanceof JsNull ? null : $proto;
-
-                // Implement [[SetPrototypeOf]] (9.1.2) spec algorithm.
-                $current = $target->getPrototype();
-
-                // Step 4: If SameValue(V, current), return true.
-                if ($newProto === $current) {
-                    return new JsBoolean(true);
-                }
-
-                // Step 5: If extensible is false, return false.
-                if (!$target->isExtensible()) {
-                    return new JsBoolean(false);
-                }
-
-                // Step 8: Cycle detection. Walk proto's chain looking for target.
-                $p = $newProto;
-                while ($p !== null) {
-                    if ($p === $target) {
-                        return new JsBoolean(false);
-                    }
-                    $p = $p->getPrototype();
-                }
-
-                $target->setPrototype($newProto);
-                return new JsBoolean(true);
+                return new JsBoolean($target->trySetPrototype($newProto));
             }, 2),
             true,
             false,
