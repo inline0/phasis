@@ -149,9 +149,50 @@ class Interpreter
             $this->validateStrictModeRestrictions($program->body);
         }
 
+        $this->validateGlobalLexDecls($program->body);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);
+    }
+
+    /**
+     * Per GlobalDeclarationInstantiation step 5c/5d: lexical declarations
+     * must not collide with restricted (non-configurable) global properties.
+     *
+     * @param Node[] $body
+     */
+    private function validateGlobalLexDecls(array $body): void
+    {
+        $globalObj = $this->globalEnv->getLinkedObject();
+        if ($globalObj === null) {
+            return;
+        }
+        foreach ($body as $stmt) {
+            $names = [];
+            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $names[] = $n;
+                    }
+                }
+            } elseif ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
+                $names[] = $stmt->id->name;
+            }
+            foreach ($names as $name) {
+                if ($globalObj->hasOwnProperty($name)) {
+                    $desc = $globalObj->getOwnPropertyDescriptor($name);
+                    if ($desc !== null && $desc->configurable === false) {
+                        $this->throwJsValue(
+                            $this->phpExceptionToJsValue(
+                                new \PhpJs\Exceptions\SyntaxError(
+                                    "Identifier '{$name}' has already been declared",
+                                ),
+                            ),
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /** @param Node[] $statements */
@@ -1251,9 +1292,11 @@ class Interpreter
             return JsOptionalUndefined::instance();
         }
 
+        // Per spec, arguments are evaluated before the callability check.
+        $args = $this->evaluateArguments($node->arguments, $env);
+
         // Proxy apply trap: if the callee is a Proxy wrapping a function, invoke its apply().
         if ($callee instanceof \PhpJs\Value\JsProxy) {
-            $args = $this->evaluateArguments($node->arguments, $env);
             return $callee->apply($thisValue, $args);
         }
 
@@ -1269,7 +1312,6 @@ class Interpreter
         // We do NOT set thisValue = globalObject here so that explicit apply(globalObject)
         // calls pass the global object through without being cleared by executeFunction.
 
-        $args = $this->evaluateArguments($node->arguments, $env);
         return $this->callFunction($callee, $thisValue, $args);
     }
 
@@ -1611,9 +1653,11 @@ class Interpreter
 
         // Function declarations must not use strict-mode reserved words as the function name.
         if ($node instanceof FunctionDeclaration && $node->id !== null) {
-            if ($this->isStrictReservedWord($node->id->name)
+            if (
+                $this->isStrictReservedWord($node->id->name)
                 || $node->id->name === 'eval'
-                || $node->id->name === 'arguments') {
+                || $node->id->name === 'arguments'
+            ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     "Unexpected strict mode reserved word '{$node->id->name}'",
                 );
@@ -1689,9 +1733,11 @@ class Interpreter
     private function checkStrictBindingNames(Node $node): void
     {
         if ($node instanceof Identifier) {
-            if ($this->isStrictReservedWord($node->name)
+            if (
+                $this->isStrictReservedWord($node->name)
                 || $node->name === 'eval'
-                || $node->name === 'arguments') {
+                || $node->name === 'arguments'
+            ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     "Unexpected strict mode reserved word '{$node->name}'",
                 );

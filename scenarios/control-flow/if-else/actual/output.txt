@@ -1,0 +1,106 @@
+{
+  "body": [
+    {
+      "alternate": null,
+      "consequent": {
+        "body": [
+          {
+            "expression": {
+              "name": "y",
+              "type": "Identifier"
+            },
+            "type": "ExpressionStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "test": {
+        "name": "x",
+        "type": "Identifier"
+      },
+      "type": "IfStatement"
+    },
+    {
+      "alternate": {
+        "body": [
+          {
+            "expression": {
+              "name": "c",
+              "type": "Identifier"
+            },
+            "type": "ExpressionStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "consequent": {
+        "body": [
+          {
+            "expression": {
+              "name": "b",
+              "type": "Identifier"
+            },
+            "type": "ExpressionStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "test": {
+        "name": "a",
+        "type": "Identifier"
+      },
+      "type": "IfStatement"
+    },
+    {
+      "alternate": {
+        "alternate": {
+          "body": [
+            {
+              "expression": {
+                "name": "e",
+                "type": "Identifier"
+              },
+              "type": "ExpressionStatement"
+            }
+          ],
+          "type": "BlockStatement"
+        },
+        "consequent": {
+          "body": [
+            {
+              "expression": {
+                "name": "d",
+                "type": "Identifier"
+              },
+              "type": "ExpressionStatement"
+            }
+          ],
+          "type": "BlockStatement"
+        },
+        "test": {
+          "name": "c",
+          "type": "Identifier"
+        },
+        "type": "IfStatement"
+      },
+      "consequent": {
+        "body": [
+          {
+            "expression": {
+              "name": "b",
+              "type": "Identifier"
+            },
+            "type": "ExpressionStatement"
+          }
+        ],
+        "type": "BlockStatement"
+      },
+      "test": {
+        "name": "a",
+        "type": "Identifier"
+      },
+      "type": "IfStatement"
+    }
+  ],
+  "type": "Program"
+}
