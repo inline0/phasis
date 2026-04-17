@@ -1290,10 +1290,14 @@ class Interpreter
                 $callee = null;
             }
             if ($callee instanceof JsFunction && $callee->getName() === 'eval' && $callee->isNative()) {
-                $arg = isset($node->arguments[0])
-                    ? $this->evaluate($node->arguments[0], $env)
-                    : JsUndefined::instance();
-                return $this->performDirectEval($arg, $env);
+                // Per spec 12.3.4.1 step 3.a: evaluate all arguments (including
+                // spreads) to get argList, then use the first element as evalText.
+                // If argList is empty, return undefined.
+                $argList = $this->evaluateArguments($node->arguments, $env);
+                if (count($argList) === 0) {
+                    return JsUndefined::instance();
+                }
+                return $this->performDirectEval($argList[0], $env);
             }
         }
 
@@ -6038,36 +6042,42 @@ class Interpreter
                     }
                     break;
                 }
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
                 if ($elem === null) {
                     // Elision: advance iterator but discard value.
+                    $this->iteratorNext($iterator, $nextMethod, $done);
                     continue;
                 }
+                // Per spec 13.15.5.3 IteratorDestructuringAssignmentEvaluation:
+                // Step 1: evaluate DestructuringAssignmentTarget to get lref
+                // BEFORE stepping the iterator (step 2).
+                $elemTarget = $elem;
+                $defaultNode = null;
+                $ref = null;
                 if ($elem instanceof AssignmentPattern || $elem instanceof AssignmentExpression) {
                     $elemTarget = $elem instanceof AssignmentPattern ? $elem->left : $elem->left;
                     $defaultNode = $elem instanceof AssignmentPattern ? $elem->right : $elem->right;
-                    if ($elemValue instanceof JsUndefined) {
-                        $elemValue = $this->evaluate($defaultNode, $env);
-                        // Function name inference: check AST node type.
-                        if (
-                            $elemValue instanceof JsFunction
-                            && $elemTarget instanceof Identifier
-                            && $this->isAnonymousFunctionDefinitionNode($defaultNode)
-                        ) {
-                            $elemValue->setName($elemTarget->name);
-                        }
+                }
+                if (!$this->isDestructuringTarget($elemTarget)) {
+                    $ref = $this->resolveReference($elemTarget, $env);
+                }
+                // Step 2: advance the iterator.
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                // Steps 3-5: apply default value if present and value is undefined.
+                if ($defaultNode !== null && $elemValue instanceof JsUndefined) {
+                    $elemValue = $this->evaluate($defaultNode, $env);
+                    if (
+                        $elemValue instanceof JsFunction
+                        && $elemTarget instanceof Identifier
+                        && $this->isAnonymousFunctionDefinitionNode($defaultNode)
+                    ) {
+                        $elemValue->setName($elemTarget->name);
                     }
-                    if ($this->isDestructuringTarget($elemTarget)) {
-                        $this->destructureAssign($elemTarget, $elemValue, $env);
-                    } else {
-                        $ref = $this->resolveReference($elemTarget, $env);
-                        $ref->setValue($elemValue);
-                    }
-                } elseif ($this->isDestructuringTarget($elem)) {
-                    $this->destructureAssign($elem, $elemValue, $env);
-                } else {
-                    $ref = $this->resolveReference($elem, $env);
+                }
+                // Steps 6-8: assign the value.
+                if ($ref !== null) {
                     $ref->setValue($elemValue);
+                } else {
+                    $this->destructureAssign($elemTarget, $elemValue, $env);
                 }
             }
             return;
@@ -6104,6 +6114,7 @@ class Interpreter
                     break;
                 }
                 $propNode = $prop instanceof AssignmentProperty ? $prop : $prop;
+                // Step 1: evaluate PropertyName to get the source key.
                 $key = ($propNode instanceof AssignmentProperty || $propNode instanceof Property)
                     ? ($propNode->computed
                         ? TypeConversion::toString($this->evaluate($propNode->key, $env))
@@ -6112,41 +6123,52 @@ class Interpreter
                             : TypeConversion::toString($this->evaluate($propNode->key, $env))))
                     : '';
                 $usedKeys[] = $key;
-                $propValue = ($value instanceof JsObject)
-                    ? $value->get($key)
-                    : JsUndefined::instance();
 
                 $valueNode = ($propNode instanceof AssignmentProperty || $propNode instanceof Property)
                     ? $propNode->value
                     : $propNode;
+
+                // Determine the actual target and default node.
+                $realTarget = $valueNode;
+                $defaultNode2 = null;
                 if ($valueNode instanceof AssignmentPattern || $valueNode instanceof AssignmentExpression) {
                     $realTarget = $valueNode instanceof AssignmentPattern
                         ? $valueNode->left
                         : $valueNode->left;
-                    $defaultNode2 = $valueNode instanceof AssignmentPattern ? $valueNode->right : $valueNode->right;
-                    if ($propValue instanceof JsUndefined) {
-                        $propValue = $this->evaluate($defaultNode2, $env);
-                        // Function name inference: check AST node type.
-                        if (
-                            $propValue instanceof JsFunction
-                            && $realTarget instanceof Identifier
-                            && $this->isAnonymousFunctionDefinitionNode($defaultNode2)
-                        ) {
-                            $propValue->setName($realTarget->name);
-                        }
+                    $defaultNode2 = $valueNode instanceof AssignmentPattern
+                        ? $valueNode->right
+                        : $valueNode->right;
+                }
+
+                // Per spec 13.15.5.4 KeyedDestructuringAssignmentEvaluation:
+                // Step 1: evaluate DestructuringAssignmentTarget BEFORE GetV.
+                $ref = null;
+                if (!$this->isDestructuringTarget($realTarget)) {
+                    $ref = $this->resolveReference($realTarget, $env);
+                }
+
+                // Step 2: GetV(value, propertyName).
+                $propValue = ($value instanceof JsObject)
+                    ? $value->get($key)
+                    : JsUndefined::instance();
+
+                // Step 3: apply default if present and value is undefined.
+                if ($defaultNode2 !== null && $propValue instanceof JsUndefined) {
+                    $propValue = $this->evaluate($defaultNode2, $env);
+                    if (
+                        $propValue instanceof JsFunction
+                        && $realTarget instanceof Identifier
+                        && $this->isAnonymousFunctionDefinitionNode($defaultNode2)
+                    ) {
+                        $propValue->setName($realTarget->name);
                     }
-                    if ($this->isDestructuringTarget($realTarget)) {
-                        $this->destructureAssign($realTarget, $propValue, $env);
-                    } else {
-                        $ref = $this->resolveReference($realTarget, $env);
-                        $ref->setValue($propValue);
-                    }
-                } elseif ($this->isDestructuringTarget($valueNode)) {
-                    // Nested destructuring target (e.g., { x: { y } } = ...).
-                    $this->destructureAssign($valueNode, $propValue, $env);
-                } else {
-                    $ref = $this->resolveReference($valueNode, $env);
+                }
+
+                // Steps 4-7: assign via PutValue or nested destructuring.
+                if ($ref !== null) {
                     $ref->setValue($propValue);
+                } else {
+                    $this->destructureAssign($realTarget, $propValue, $env);
                 }
             }
         }
@@ -6369,7 +6391,7 @@ class Interpreter
 
         // Per spec §22.2.5.3 get RegExp.prototype.flags, flags are returned in canonical order:
         // d, g, i, m, s, u, v, y (alphabetical subset of valid flag characters).
-        $canonicalFlagOrder = 'dgimsvy';
+        $canonicalFlagOrder = 'dgimsuvy';
         $sortedFlags = '';
         for ($fi = 0; $fi < strlen($canonicalFlagOrder); $fi++) {
             if (str_contains($flags, $canonicalFlagOrder[$fi])) {
@@ -7127,6 +7149,46 @@ class Interpreter
             }
         }
         return $count;
+    }
+
+    /**
+     * Get the byte positions of each capturing group's opening parenthesis.
+     * Returns an array indexed from 0 where index N is the byte position of
+     * group N+1's opening '(' in the pattern.
+     *
+     * @return list<int>
+     */
+    private function getCapturingGroupPositions(string $pattern): array
+    {
+        $positions = [];
+        $len = strlen($pattern);
+        for ($i = 0; $i < $len; $i++) {
+            if ($pattern[$i] === '\\') {
+                $i++;
+                continue;
+            }
+            if ($pattern[$i] === '[') {
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                continue;
+            }
+            if ($pattern[$i] === '(' && $i + 1 < $len) {
+                if ($pattern[$i + 1] !== '?') {
+                    $positions[] = $i;
+                } elseif (
+                    $i + 2 < $len && $pattern[$i + 2] === '<'
+                    && $i + 3 < $len && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!'
+                ) {
+                    $positions[] = $i;
+                }
+            }
+        }
+        return $positions;
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */
