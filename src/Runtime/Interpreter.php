@@ -955,11 +955,15 @@ class Interpreter
 
         if ($node->operator === '=') {
             $right = $this->evaluate($node->right, $env);
-            // Function name inference per spec 13.15.2 step 1.e.
+            // Function name inference per spec 13.15.2 step 1.e:
+            // If IsAnonymousFunctionDefinition is true, then
+            //   a. Let hasNameProperty be HasOwnProperty(rval, "name").
+            //   b. If hasNameProperty is false, perform SetFunctionName(rval, lref).
             if (
                 $right instanceof JsFunction
                 && $node->left instanceof Identifier
                 && $this->isAnonymousFunctionDefinitionNode($node->right)
+                && !$right->hasOwnProperty('name')
             ) {
                 $right->setName($node->left->name);
             }
@@ -1524,11 +1528,45 @@ class Interpreter
         }
     }
 
+    /** Strict-mode future reserved words per ES 12.1.1. */
+    private const STRICT_RESERVED_WORDS = [
+        'implements', 'interface', 'let', 'package',
+        'private', 'protected', 'public', 'static', 'yield',
+    ];
+
+    private function isStrictReservedWord(string $name): bool
+    {
+        return \in_array($name, self::STRICT_RESERVED_WORDS, true);
+    }
+
     private function validateStrictModeNode(Node $node): void
     {
         // 'with' statement is forbidden in strict mode.
         if ($node instanceof WithStatement) {
             throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+        }
+
+        // Variable declarations must not use strict-mode reserved words as binding names.
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                $this->checkStrictBindingNames($decl->id);
+            }
+        }
+
+        // Function declarations must not use strict-mode reserved words as the function name.
+        if ($node instanceof FunctionDeclaration && $node->id !== null) {
+            if ($this->isStrictReservedWord($node->id->name)
+                || $node->id->name === 'eval'
+                || $node->id->name === 'arguments') {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Unexpected strict mode reserved word '{$node->id->name}'",
+                );
+            }
+        }
+
+        // Expression statements may contain assignments to reserved words.
+        if ($node instanceof ExpressionStatement) {
+            $this->checkStrictExpressionNode($node->expression);
         }
 
         if ($node instanceof TryStatement) {
@@ -1579,6 +1617,59 @@ class Interpreter
             if ($param->name === 'eval' || $param->name === 'arguments') {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     "Binding 'eval' or 'arguments' in strict mode catch is not allowed",
+                );
+            }
+            if ($this->isStrictReservedWord($param->name)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Unexpected strict mode reserved word '{$param->name}'",
+                );
+            }
+        }
+    }
+
+    /**
+     * Check that binding names in a pattern do not use strict-mode reserved words.
+     */
+    private function checkStrictBindingNames(Node $node): void
+    {
+        if ($node instanceof Identifier) {
+            if ($this->isStrictReservedWord($node->name)
+                || $node->name === 'eval'
+                || $node->name === 'arguments') {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Unexpected strict mode reserved word '{$node->name}'",
+                );
+            }
+        } elseif ($node instanceof ArrayPattern) {
+            foreach ($node->elements as $el) {
+                if ($el !== null) {
+                    $this->checkStrictBindingNames($el);
+                }
+            }
+        } elseif ($node instanceof ObjectPattern) {
+            foreach ($node->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->checkStrictBindingNames($prop->value);
+                } elseif ($prop instanceof RestElement) {
+                    $this->checkStrictBindingNames($prop->argument);
+                }
+            }
+        } elseif ($node instanceof RestElement) {
+            $this->checkStrictBindingNames($node->argument);
+        } elseif ($node instanceof AssignmentPattern) {
+            $this->checkStrictBindingNames($node->left);
+        }
+    }
+
+    /**
+     * Check that expressions do not assign to strict-mode reserved words.
+     */
+    private function checkStrictExpressionNode(Node $node): void
+    {
+        if ($node instanceof AssignmentExpression && $node->left instanceof Identifier) {
+            if ($this->isStrictReservedWord($node->left->name)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Unexpected strict mode reserved word '{$node->left->name}'",
                 );
             }
         }

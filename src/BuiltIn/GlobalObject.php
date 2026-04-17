@@ -108,63 +108,45 @@ class GlobalObject
         }, 1);
         $env->defineVar('eval', $evalFn);
 
-        // encodeURIComponent / decodeURIComponent
+        // encodeURIComponent / decodeURIComponent / encodeURI / decodeURI
+        // Per spec sections 19.2.6.2-19.2.6.5, these functions operate on
+        // UTF-16 code units and must throw URIError for lone surrogates
+        // (encode) or malformed percent-encoded UTF-8 sequences (decode).
+
         $encodeCompFn = JsFunction::fromCallable(
             'encodeURIComponent',
-            function (JsValue $this_, array $args): JsValue {
+            function (JsValue $this_, array $args) use ($env): JsValue {
                 $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-                return new JsString(rawurlencode($str));
+                return new JsString(self::specEncode($str, false, $env));
             },
             1,
         );
         $env->defineVar('encodeURIComponent', $encodeCompFn);
         $decodeCompFn = JsFunction::fromCallable(
             'decodeURIComponent',
-            function (JsValue $this_, array $args): JsValue {
+            function (JsValue $this_, array $args) use ($env): JsValue {
                 $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-                return new JsString(rawurldecode($str));
+                return new JsString(self::specDecode($str, false, $env));
             },
             1,
         );
         $env->defineVar('decodeURIComponent', $decodeCompFn);
         $encodeUriFn = JsFunction::fromCallable(
             'encodeURI',
-            function (JsValue $this_, array $args): JsValue {
+            function (JsValue $this_, array $args) use ($env): JsValue {
                 $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-                $encoded = [
-                    '%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24',
-                    '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D',
-                ];
-                $decoded = [
-                    ':', '/', '?', '#', '[', ']', '@', '!', '$',
-                    '&', "'", '(', ')', '*', '+', ',', ';', '=',
-                ];
-                return new JsString(str_replace($encoded, $decoded, rawurlencode($str)));
+                return new JsString(self::specEncode($str, true, $env));
             },
             1,
         );
         $env->defineVar('encodeURI', $encodeUriFn);
         $decodeUriFn = JsFunction::fromCallable(
             'decodeURI',
-            function (JsValue $this_, array $args): JsValue {
+            function (JsValue $this_, array $args) use ($env): JsValue {
                 $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            // decodeURI does not decode reserved URI characters.
-                $reserved = [
-                '%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24',
-                '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D',
-                ];
-            // Temporarily protect reserved sequences so rawurldecode does not touch them.
-                $placeholders = [];
-                foreach ($reserved as $i => $seq) {
-                    $placeholders[$seq] = "\x00RESERVED{$i}\x00";
-                }
-                $protected = str_ireplace(array_keys($placeholders), array_values($placeholders), $str);
-                $decoded = rawurldecode($protected);
-                return new JsString(
-                    str_replace(array_values($placeholders), array_keys($placeholders), $decoded),
-                );
+                return new JsString(self::specDecode($str, true, $env));
             },
-            1
+            1,
         );
         $env->defineVar('decodeURI', $decodeUriFn);
 
@@ -899,6 +881,279 @@ class GlobalObject
             }
             return new JsBoolean($bool);
         };
+    }
+
+    /**
+     * Throw a JS URIError. Constructs a proper URIError object with the
+     * correct prototype chain so that `e instanceof URIError` works.
+     *
+     * @return never
+     */
+    private static function throwURIError(string $message, Environment $env): void
+    {
+        $errorObj = new \PhpJs\Value\JsObject();
+        $errorObj->set('message', new JsString($message));
+        $errorObj->set('name', new JsString('URIError'));
+        $errorObj->set('stack', new JsString('URIError: ' . $message));
+        if ($env->has('URIError')) {
+            $constructor = $env->get('URIError');
+            if ($constructor instanceof JsFunction) {
+                $errorObj->set('constructor', $constructor);
+                $proto = $constructor->get('prototype');
+                if ($proto instanceof \PhpJs\Value\JsObject) {
+                    $errorObj->setPrototype($proto);
+                }
+            }
+        }
+        throw new \PhpJs\Exceptions\JsThrowable($errorObj, 'URIError: ' . $message);
+    }
+
+    /**
+     * Spec-compliant Encode(string, unescapedSet) per ES2023 section 19.2.6.1.1.
+     * Operates on UTF-16 code units of the input string.
+     *
+     * @param bool $isUri true for encodeURI, false for encodeURIComponent
+     */
+    private static function specEncode(string $str, bool $isUri, Environment $env): string
+    {
+        // Unescaped characters for encodeURIComponent: uriUnescaped
+        //   uriAlpha (A-Z, a-z) + DecimalDigit (0-9) + uriMark (- _ . ! ~ * ' ( ))
+        // Unescaped characters for encodeURI: uriReserved + uriUnescaped + "#"
+        //   uriReserved: ; / ? : @ & = + $ ,
+        //   "#"
+
+        // Build a lookup set of ASCII code points that are unescaped.
+        $unescaped = [];
+        // uriUnescaped: A-Z, a-z, 0-9
+        for ($c = ord('A'); $c <= ord('Z'); $c++) {
+            $unescaped[$c] = true;
+        }
+        for ($c = ord('a'); $c <= ord('z'); $c++) {
+            $unescaped[$c] = true;
+        }
+        for ($c = ord('0'); $c <= ord('9'); $c++) {
+            $unescaped[$c] = true;
+        }
+        // uriMark: - _ . ! ~ * ' ( )
+        foreach (['-', '_', '.', '!', '~', '*', "'", '(', ')'] as $ch) {
+            $unescaped[ord($ch)] = true;
+        }
+        if ($isUri) {
+            // uriReserved: ; / ? : @ & = + $ ,
+            foreach ([';', '/', '?', ':', '@', '&', '=', '+', '$', ','] as $ch) {
+                $unescaped[ord($ch)] = true;
+            }
+            // "#"
+            $unescaped[ord('#')] = true;
+        }
+
+        // Get the UTF-16 code units from the internal string representation.
+        $u16 = JsString::utf8ToUtf16LE($str);
+        $u16Len = (int) (strlen($u16) / 2);
+
+        $result = '';
+        for ($k = 0; $k < $u16Len; $k++) {
+            $codeUnit = ord($u16[$k * 2]) | (ord($u16[$k * 2 + 1]) << 8);
+
+            // Check if the code unit is in the unescaped set (only BMP non-surrogate).
+            if ($codeUnit < 0x80 && isset($unescaped[$codeUnit])) {
+                $result .= chr($codeUnit);
+                continue;
+            }
+
+            // Lone low surrogate: throw URIError.
+            if ($codeUnit >= 0xDC00 && $codeUnit <= 0xDFFF) {
+                self::throwURIError('URI malformed', $env);
+            }
+
+            $codePoint = $codeUnit;
+            if ($codeUnit >= 0xD800 && $codeUnit <= 0xDBFF) {
+                // High surrogate: must be followed by a low surrogate.
+                if ($k + 1 >= $u16Len) {
+                    self::throwURIError('URI malformed', $env);
+                }
+                $next = ord($u16[($k + 1) * 2]) | (ord($u16[($k + 1) * 2 + 1]) << 8);
+                if ($next < 0xDC00 || $next > 0xDFFF) {
+                    self::throwURIError('URI malformed', $env);
+                }
+                // Decode surrogate pair to codepoint.
+                $codePoint = ($codeUnit - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
+                $k++; // skip the low surrogate
+            }
+
+            // Encode the codepoint as UTF-8 bytes, then percent-encode each byte.
+            $utf8Bytes = self::codePointToUtf8Bytes($codePoint);
+            foreach ($utf8Bytes as $byte) {
+                $result .= '%' . strtoupper(str_pad(dechex($byte), 2, '0', STR_PAD_LEFT));
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Spec-compliant Decode(string, reservedSet) per ES2023 section 19.2.6.1.2.
+     *
+     * @param bool $isUri true for decodeURI (preserves reserved), false for decodeURIComponent
+     */
+    private static function specDecode(string $str, bool $isUri, Environment $env): string
+    {
+        // Reserved set for decodeURI: uriReserved + "#"
+        // Characters: ; / ? : @ & = + $ , #
+        // Their percent-encoded forms should NOT be decoded.
+        $reservedBytes = [];
+        if ($isUri) {
+            foreach ([';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '#'] as $ch) {
+                $reservedBytes[ord($ch)] = true;
+            }
+        }
+
+        $len = strlen($str);
+        $result = '';
+        $k = 0;
+
+        while ($k < $len) {
+            $ch = $str[$k];
+            if ($ch !== '%') {
+                $result .= $ch;
+                $k++;
+                continue;
+            }
+
+            // '%' found at position $k.
+            $start = $k;
+
+            // Step: k + 2 must be < len, and the two chars after % must be hex digits.
+            if ($k + 2 >= $len) {
+                self::throwURIError('URI malformed', $env);
+            }
+            if (!ctype_xdigit($str[$k + 1]) || !ctype_xdigit($str[$k + 2])) {
+                self::throwURIError('URI malformed', $env);
+            }
+
+            $b = (int) hexdec($str[$k + 1] . $str[$k + 2]);
+            $k += 3;
+
+            if ($b < 0x80) {
+                // Single-byte: ASCII character.
+                // For decodeURI, check if this byte is in the reserved set.
+                if ($isUri && isset($reservedBytes[$b])) {
+                    // Keep the percent-encoded form exactly as it appeared in the input.
+                    $result .= substr($str, $start, 3);
+                } else {
+                    $result .= chr($b);
+                }
+                continue;
+            }
+
+            // Multi-byte UTF-8 sequence. Determine the expected byte count from
+            // the leading byte.
+            if (($b & 0xE0) === 0xC0) {
+                $n = 2;
+            } elseif (($b & 0xF0) === 0xE0) {
+                $n = 3;
+            } elseif (($b & 0xF8) === 0xF0) {
+                $n = 4;
+            } else {
+                // Invalid leading byte (0x80-0xBF, or 0xF8-0xFF).
+                self::throwURIError('URI malformed', $env);
+            }
+
+            $octets = [$b];
+
+            // Read the remaining n-1 continuation bytes, each as %XX.
+            for ($j = 1; $j < $n; $j++) {
+                if ($k >= $len || $str[$k] !== '%') {
+                    self::throwURIError('URI malformed', $env);
+                }
+                if ($k + 2 >= $len) {
+                    self::throwURIError('URI malformed', $env);
+                }
+                if (!ctype_xdigit($str[$k + 1]) || !ctype_xdigit($str[$k + 2])) {
+                    self::throwURIError('URI malformed', $env);
+                }
+                $cb = (int) hexdec($str[$k + 1] . $str[$k + 2]);
+                // Continuation bytes must be 10xxxxxx (0x80-0xBF).
+                if (($cb & 0xC0) !== 0x80) {
+                    self::throwURIError('URI malformed', $env);
+                }
+                $octets[] = $cb;
+                $k += 3;
+            }
+
+            // Decode the UTF-8 byte sequence to a Unicode codepoint.
+            $codePoint = match ($n) {
+                2 => (($octets[0] & 0x1F) << 6) | ($octets[1] & 0x3F),
+                3 => (($octets[0] & 0x0F) << 12) | (($octets[1] & 0x3F) << 6) | ($octets[2] & 0x3F),
+                4 => (($octets[0] & 0x07) << 18) | (($octets[1] & 0x3F) << 12)
+                     | (($octets[2] & 0x3F) << 6) | ($octets[3] & 0x3F),
+                default => 0,
+            };
+
+            // Validate: reject overlong encodings and out-of-range codepoints.
+            if ($n === 2 && $codePoint < 0x80) {
+                self::throwURIError('URI malformed', $env);
+            }
+            if ($n === 3 && $codePoint < 0x800) {
+                self::throwURIError('URI malformed', $env);
+            }
+            if ($n === 4 && $codePoint < 0x10000) {
+                self::throwURIError('URI malformed', $env);
+            }
+            if ($codePoint > 0x10FFFF) {
+                self::throwURIError('URI malformed', $env);
+            }
+            // Surrogates (U+D800-U+DFFF) are not valid Unicode codepoints in UTF-8.
+            if ($codePoint >= 0xD800 && $codePoint <= 0xDFFF) {
+                self::throwURIError('URI malformed', $env);
+            }
+
+            // Convert the codepoint to the internal string representation.
+            // Codepoints > U+FFFF are stored as CESU-8 surrogate pairs internally.
+            if ($codePoint <= 0xFFFF) {
+                $result .= JsString::utf16CodeUnitToUtf8($codePoint);
+            } else {
+                // Supplementary plane: encode as surrogate pair in CESU-8.
+                $cp = $codePoint - 0x10000;
+                $hi = 0xD800 + ($cp >> 10);
+                $lo = 0xDC00 + ($cp & 0x3FF);
+                $result .= JsString::utf16CodeUnitToUtf8($hi);
+                $result .= JsString::utf16CodeUnitToUtf8($lo);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Encode a Unicode codepoint to its UTF-8 byte sequence.
+     *
+     * @return int[] array of byte values
+     */
+    private static function codePointToUtf8Bytes(int $cp): array
+    {
+        if ($cp <= 0x7F) {
+            return [$cp];
+        }
+        if ($cp <= 0x7FF) {
+            return [
+                0xC0 | ($cp >> 6),
+                0x80 | ($cp & 0x3F),
+            ];
+        }
+        if ($cp <= 0xFFFF) {
+            return [
+                0xE0 | ($cp >> 12),
+                0x80 | (($cp >> 6) & 0x3F),
+                0x80 | ($cp & 0x3F),
+            ];
+        }
+        return [
+            0xF0 | ($cp >> 18),
+            0x80 | (($cp >> 12) & 0x3F),
+            0x80 | (($cp >> 6) & 0x3F),
+            0x80 | ($cp & 0x3F),
+        ];
     }
 
     /**
