@@ -18,6 +18,9 @@ class GlobalObject
 {
     public static function install(Environment $env): void
     {
+        // Per spec §19.1, these are value properties of the global object.
+        // Use defineVar so they're accessible by name, but they will be
+        // overridden as non-writable on the global object in Engine::setupGlobal.
         $env->defineVar('undefined', JsUndefined::instance());
         $env->defineVar('NaN', new JsNumber(NAN));
         $env->defineVar('Infinity', new JsNumber(INF));

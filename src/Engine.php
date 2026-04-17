@@ -96,10 +96,29 @@ class Engine
         // top-level var declarations and assignments create properties
         // on globalThis (per ES spec 9.1.1.1 Global Environment Records).
         $this->globalEnv->linkGlobalObject($globalObj);
+
+        // Per spec §19.1: NaN, Infinity, undefined are non-writable
+        // on the global object. Must be set AFTER linkGlobalObject.
+        $ro = static fn ($v) => \PhpJs\Object\PropertyDescriptor::data(
+            $v,
+            false,
+            false,
+            false,
+        );
+        $globalObj->defineOwnProperty('NaN', $ro(new \PhpJs\Value\JsNumber(NAN)));
+        $globalObj->defineOwnProperty('Infinity', $ro(new \PhpJs\Value\JsNumber(INF)));
+        $globalObj->defineOwnProperty('undefined', $ro(\PhpJs\Value\JsUndefined::instance()));
     }
 
     private function installBuiltins(): void
     {
+        // Reset global prototype before installing builtins so that objects
+        // created during GlobalObject::install (e.g. Boolean.prototype) get a
+        // null [[Prototype]]. The wiring step after ObjectConstructor::install
+        // will set the correct prototype chain. Without this reset, a stale
+        // globalPrototype from a previous Engine instance would leak in.
+        JsObject::resetGlobalPrototype();
+
         GlobalObject::install($this->globalEnv);
         \PhpJs\BuiltIn\ObjectConstructor::install($this->globalEnv);
 

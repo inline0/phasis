@@ -253,18 +253,28 @@ class Environment
                 throw new TypeError('Assignment to constant variable');
             }
 
-            $this->bindings[$name] = $value;
-            // Sync to the linked global object when the binding is in the global env.
-            // Only update the property if it already exists on the global object (meaning
-            // it was created by a var/function declaration via defineVar). Let/const bindings
-            // are NOT properties on the global object and must not be created here.
+            // Check global object writability before updating the binding.
+            // Per spec, non-writable global properties (NaN, Infinity, undefined)
+            // silently fail in sloppy mode and throw TypeError in strict mode.
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
                 && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
                 && $this->linkedObject->hasOwnProperty($name)
             ) {
+                $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
+                if ($desc !== null && $desc->writable === false) {
+                    if ($strict) {
+                        throw new TypeError(
+                            "Cannot assign to read only property '{$name}'"
+                        );
+                    }
+                    return; // Silently fail in sloppy mode
+                }
+                $this->bindings[$name] = $value;
                 $this->linkedObject->set($name, $value);
+            } else {
+                $this->bindings[$name] = $value;
             }
             return;
         }
@@ -328,6 +338,17 @@ class Environment
      */
     public function deleteBinding(string $name): bool
     {
+        // "with" object environment record: delegate delete to the binding object.
+        if ($this->withObject !== null) {
+            if ($this->withObject->has($name)) {
+                return $this->withObject->delete($name);
+            }
+            if ($this->parent !== null) {
+                return $this->parent->deleteBinding($name);
+            }
+            return true;
+        }
+
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->deletable[$name])) {
                 unset($this->bindings[$name], $this->deletable[$name]);
