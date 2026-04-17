@@ -105,13 +105,15 @@ class TypedArrayConstructor
                 }
                 $len = $this_->getByteLength();
 
-                // Step 4-5: RelativeStart.
-                $begin = isset($args[0]) ? TypeConversion::toNumber($args[0]) : 0.0;
+                // Step 4-5: RelativeStart = ToIntegerOrInfinity(start).
+                $startArg = $args[0] ?? JsUndefined::instance();
+                $begin = TypeConversion::toIntegerOrInfinity($startArg);
 
-                // Step 7-8: RelativeEnd.
-                $end = isset($args[1]) && !$args[1] instanceof JsUndefined
-                    ? TypeConversion::toNumber($args[1])
-                    : (float) $len;
+                // Step 7-8: RelativeEnd. If end is undefined, use len.
+                $endArg = $args[1] ?? JsUndefined::instance();
+                $end = $endArg instanceof JsUndefined
+                    ? (float) $len
+                    : TypeConversion::toIntegerOrInfinity($endArg);
 
                 // Compute the slice parameters.
                 [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);

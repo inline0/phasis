@@ -122,8 +122,10 @@ class RegExpPrototype
 
             // Per Annex B step 3: if [[LegacyFeaturesEnabled]] is false, throw TypeError.
             $legacyDesc = $this_->getOwnPropertyDescriptor("[[LegacyFeaturesEnabled]]");
-            if ($legacyDesc !== null && $legacyDesc->value instanceof \PhpJs\Value\JsBoolean
-                && !$legacyDesc->value->toBoolean()) {
+            if (
+                $legacyDesc !== null && $legacyDesc->value instanceof \PhpJs\Value\JsBoolean
+                && !$legacyDesc->value->toBoolean()
+            ) {
                 throw new \PhpJs\Exceptions\TypeError(
                     "Method RegExp.prototype.compile called on incompatible receiver",
                 );

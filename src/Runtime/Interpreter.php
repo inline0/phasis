@@ -1648,7 +1648,7 @@ class Interpreter
             if ($stmt instanceof ContinueStatement) {
                 throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
             }
-            $this->validateEvalNoFreeJumps($stmt);
+            $this->validateEvalNoFreeJumps($stmt, []);
         }
     }
 
@@ -1658,7 +1658,10 @@ class Interpreter
      * Recurses into blocks and conditionals but stops at loops, switch
      * statements, and functions (which provide their own targets).
      */
-    private function validateEvalNoFreeJumps(Node $node): void
+    /**
+     * @param string[] $labels Labels currently in scope
+     */
+    private function validateEvalNoFreeJumps(Node $node, array $labels): void
     {
         if (
             $node instanceof ForStatement
@@ -1678,25 +1681,32 @@ class Interpreter
                     throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
                 }
                 if ($child instanceof BreakStatement) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+                    if ($child->label === null || !in_array($child->label, $labels, true)) {
+                        throw new \PhpJs\Exceptions\SyntaxError('Illegal break statement');
+                    }
+                    continue;
                 }
                 if ($child instanceof ContinueStatement) {
-                    throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+                    if ($child->label === null || !in_array($child->label, $labels, true)) {
+                        throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
+                    }
+                    continue;
                 }
-                $this->validateEvalNoFreeJumps($child);
+                $this->validateEvalNoFreeJumps($child, $labels);
             }
             return;
         }
 
         if ($node instanceof IfStatement) {
-            $this->validateEvalNoFreeJumps($node->consequent);
+            $this->validateEvalNoFreeJumps($node->consequent, $labels);
             if ($node->alternate !== null) {
-                $this->validateEvalNoFreeJumps($node->alternate);
+                $this->validateEvalNoFreeJumps($node->alternate, $labels);
             }
         }
 
         if ($node instanceof LabeledStatement) {
-            $this->validateEvalNoFreeJumps($node->body);
+            $labels[] = $node->label;
+            $this->validateEvalNoFreeJumps($node->body, $labels);
         }
     }
 
@@ -2436,8 +2446,15 @@ class Interpreter
      * For generator functions: creates a plain object with %GeneratorPrototype% as prototype,
      * NO constructor property (per spec §27.3.4).
      */
-    private function installFunctionPrototype(JsFunction $fn, bool $isGenerator): void
+    private function installFunctionPrototype(JsFunction $fn, bool $isGenerator, bool $isAsync = false): void
     {
+        // Per spec §25.7.1: async functions are not constructable and do not
+        // have a .prototype property.
+        if ($isAsync && !$isGenerator) {
+            $fn->setNonConstructable();
+            return;
+        }
+
         if ($isGenerator) {
             // Per spec §27.3.4.3: generator function's .prototype is a plain object
             // whose [[Prototype]] is %GeneratorPrototype%. No own properties.
@@ -3551,7 +3568,7 @@ class Interpreter
         if ($node->name !== null) {
             $fnEnv->defineVar($node->name, $fn);
         }
-        $this->installFunctionPrototype($fn, $node->generator);
+        $this->installFunctionPrototype($fn, $node->generator, $node->async);
         return $fn;
     }
 
@@ -3793,6 +3810,14 @@ class Interpreter
     {
         $parts = [];
         for ($i = 0; $i < count($node->quasis); $i++) {
+            // Per ES2018, untagged templates with invalid escape sequences must
+            // throw SyntaxError at runtime (null cookedValue signals this).
+            if ($node->quasis[$i]->cookedValue === null) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Invalid escape sequence in template literal',
+                    $node->quasis[$i]->location,
+                );
+            }
             $parts[] = $node->quasis[$i]->cookedValue;
             if ($i < count($node->expressions)) {
                 $parts[] = TypeConversion::toString($this->evaluate($node->expressions[$i], $env));
@@ -3801,29 +3826,95 @@ class Interpreter
         return new JsString(implode('', $parts));
     }
 
+    /**
+     * Template object cache: maps parse-node identity (source location) to the
+     * frozen template object, per spec GetTemplateObject (sec-gettemplateobject).
+     *
+     * @var array<string, JsArray>
+     */
+    private array $templateObjectCache = [];
+
     private function evalTaggedTemplate(TaggedTemplate $node, Environment $env): JsValue
     {
-        $tag = $this->evaluate($node->tag, $env);
+        // Resolve the tag function, preserving this-binding for member expressions.
+        $tag = null;
+        $thisValue = JsUndefined::instance();
+        if ($node->tag instanceof MemberExpression) {
+            $obj = $this->evaluate($node->tag->object, $env);
+            $propName = $node->tag->computed
+                ? TypeConversion::toString($this->evaluate($node->tag->property, $env))
+                : ($node->tag->property instanceof Identifier
+                    ? $node->tag->property->name
+                    : TypeConversion::toString($this->evaluate($node->tag->property, $env)));
+            $tag = $obj instanceof JsObject ? $obj->get($propName) : JsUndefined::instance();
+            $thisValue = $obj;
+        } else {
+            $tag = $this->evaluate($node->tag, $env);
+        }
         if (!$tag instanceof JsFunction) {
             throw new TypeError('Tag is not a function');
         }
 
-        $strings = new JsArray();
-        $raw = new JsArray();
-        foreach ($node->quasi->quasis as $i => $quasi) {
-            $strings->set((string) $i, new JsString($quasi->cookedValue));
-            $raw->set((string) $i, new JsString($quasi->rawValue));
+        // GetTemplateObject: use cached template array if the same parse node
+        // (identified by source location) was seen before.
+        $cacheKey = $node->quasi->location->line . ':' . $node->quasi->location->column;
+        if (isset($this->templateObjectCache[$cacheKey])) {
+            $strings = $this->templateObjectCache[$cacheKey];
+        } else {
+            $strings = new JsArray();
+            $raw = new JsArray();
+            $count = count($node->quasi->quasis);
+            foreach ($node->quasi->quasis as $i => $quasi) {
+                $cookedVal = $quasi->cookedValue === null
+                    ? JsUndefined::instance()
+                    : new JsString($quasi->cookedValue);
+                $strings->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    $cookedVal,
+                    false,
+                    true,
+                    false,
+                ));
+                $raw->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    new JsString($quasi->rawValue),
+                    false,
+                    true,
+                    false,
+                ));
+            }
+            // Set length as non-writable, non-enumerable, non-configurable.
+            $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                new JsNumber((float) $count),
+                false,
+                false,
+                false,
+            ));
+            $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                new JsNumber((float) $count),
+                false,
+                false,
+                false,
+            ));
+            // Freeze the raw array.
+            $raw->preventExtensions();
+            // Set raw as non-writable, non-enumerable, non-configurable on strings.
+            $strings->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+                $raw,
+                false,
+                false,
+                false,
+            ));
+            // Freeze the strings array.
+            $strings->preventExtensions();
+
+            $this->templateObjectCache[$cacheKey] = $strings;
         }
-        $strings->set('length', new JsNumber((float) count($node->quasi->quasis)));
-        $raw->set('length', new JsNumber((float) count($node->quasi->quasis)));
-        $strings->set('raw', $raw);
 
         $args = [$strings];
         foreach ($node->quasi->expressions as $expr) {
             $args[] = $this->evaluate($expr, $env);
         }
 
-        return $this->callFunction($tag, JsUndefined::instance(), $args);
+        return $this->callFunction($tag, $thisValue, $args);
     }
 
     // -------------------------------------------------------------------------
@@ -4288,7 +4379,7 @@ class Interpreter
             if ($node->sourceText !== null) {
                 $fobj->setSourceText($node->sourceText);
             }
-            $this->installFunctionPrototype($fobj, $node->generator);
+            $this->installFunctionPrototype($fobj, $node->generator, $node->async);
             // Propagate to the variable environment (enclosing function/global
             // scope) where the var binding was hoisted. Only propagate if this
             // FunctionDeclaration AST node was identified as eligible during the
@@ -5206,7 +5297,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
-                $this->installFunctionPrototype($fn, $stmt->generator);
+                $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
                 // At global scope, function declarations are enumerable, non-configurable properties.
                 // In nested scopes (env has no linked object), use defineVar as usual.
                 if ($env->getLinkedObject() !== null) {
@@ -5330,7 +5421,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
-                $this->installFunctionPrototype($fn, $stmt->generator);
+                $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
                 // Eval-created local function bindings are deletable per spec.
                 // If a binding already exists, just update its value.
                 if ($env->hasOwnBinding($stmt->id->name)) {
@@ -5497,7 +5588,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
-                $this->installFunctionPrototype($fn, $stmt->generator);
+                $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
                 // Eval-created global function bindings are configurable.
                 $env->defineGlobalVar($stmt->id->name, $fn, true);
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
@@ -6967,6 +7058,22 @@ class Interpreter
         while ($i < $len) {
             $ch = $pattern[$i];
 
+            // Detect raw UTF-8 encoded surrogate bytes (U+D800-U+DFFF).
+            // These are 3-byte sequences: 0xED 0xA0-0xBF 0x80-0xBF.
+            // PCRE2 in UTF-8 mode rejects them, so replace with U+FFFE.
+            if (
+                ord($ch) === 0xED
+                && $i + 2 < $len
+                && ord($pattern[$i + 1]) >= 0xA0
+                && ord($pattern[$i + 1]) <= 0xBF
+                && ord($pattern[$i + 2]) >= 0x80
+                && ord($pattern[$i + 2]) <= 0xBF
+            ) {
+                $result .= '\\x{FFFE}';
+                $i += 3;
+                continue;
+            }
+
             if ($ch === '\\' && $i + 1 < $len) {
                 $next = $pattern[$i + 1];
                 if ($next === 's') {
@@ -7228,7 +7335,8 @@ class Interpreter
                             // Invalid UTF-8 (likely a CESU-8 encoded surrogate D800-DFFF).
                             // Decode manually and replace with U+FFFE to avoid PCRE error.
                             $bytes = array_map('ord', str_split($mbChar));
-                            if (count($bytes) === 3
+                            if (
+                                count($bytes) === 3
                                 && ($bytes[0] & 0xF0) === 0xE0
                                 && ($bytes[1] & 0xC0) === 0x80
                                 && ($bytes[2] & 0xC0) === 0x80

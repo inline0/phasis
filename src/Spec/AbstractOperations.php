@@ -267,22 +267,62 @@ final class AbstractOperations
         return $lenA < $lenB;
     }
 
-    /** @return int[] Array of UTF-16 code unit values. */
+    /**
+     * Convert an internal UTF-8/CESU-8 string to an array of UTF-16 code unit values.
+     * Handles CESU-8 encoded lone surrogates that mb_ord rejects as invalid UTF-8.
+     *
+     * @return int[] Array of UTF-16 code unit values.
+     */
     private static function toUtf16CodeUnits(string $utf8): array
     {
         $units = [];
-        $len = mb_strlen($utf8, 'UTF-8');
-        for ($i = 0; $i < $len; $i++) {
-            $cp = mb_ord(mb_substr($utf8, $i, 1, 'UTF-8'), 'UTF-8');
-            if ($cp >= 0x10000) {
-                // Supplementary character: encode as surrogate pair.
-                $cp -= 0x10000;
-                $units[] = 0xD800 | ($cp >> 10);
-                $units[] = 0xDC00 | ($cp & 0x3FF);
-            } else {
+        $len = strlen($utf8);
+        $i = 0;
+
+        while ($i < $len) {
+            $byte = ord($utf8[$i]);
+
+            if ($byte < 0x80) {
+                // ASCII
+                $units[] = $byte;
+                $i++;
+            } elseif (($byte & 0xE0) === 0xC0) {
+                // 2-byte sequence
+                if ($i + 1 < $len) {
+                    $cp = (($byte & 0x1F) << 6) | (ord($utf8[$i + 1]) & 0x3F);
+                    $units[] = $cp;
+                }
+                $i += 2;
+            } elseif ($byte === 0xED && $i + 2 < $len && (ord($utf8[$i + 1]) & 0xE0) === 0xA0) {
+                // CESU-8 surrogate (ED A0-BF xx): emit as a single code unit.
+                $cp = (($byte & 0x0F) << 12) | ((ord($utf8[$i + 1]) & 0x3F) << 6) | (ord($utf8[$i + 2]) & 0x3F);
                 $units[] = $cp;
+                $i += 3;
+            } elseif (($byte & 0xF0) === 0xE0) {
+                // 3-byte sequence (non-surrogate BMP character)
+                if ($i + 2 < $len) {
+                    $cp = (($byte & 0x0F) << 12) | ((ord($utf8[$i + 1]) & 0x3F) << 6) | (ord($utf8[$i + 2]) & 0x3F);
+                    $units[] = $cp;
+                }
+                $i += 3;
+            } elseif (($byte & 0xF8) === 0xF0) {
+                // 4-byte sequence (supplementary character -> surrogate pair)
+                if ($i + 3 < $len) {
+                    $cp = (($byte & 0x07) << 18)
+                        | ((ord($utf8[$i + 1]) & 0x3F) << 12)
+                        | ((ord($utf8[$i + 2]) & 0x3F) << 6)
+                        | (ord($utf8[$i + 3]) & 0x3F);
+                    $cp -= 0x10000;
+                    $units[] = 0xD800 | ($cp >> 10);
+                    $units[] = 0xDC00 | ($cp & 0x3FF);
+                }
+                $i += 4;
+            } else {
+                // Invalid byte: skip
+                $i++;
             }
         }
+
         return $units;
     }
 

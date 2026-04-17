@@ -23,6 +23,12 @@ class JsFunction extends JsObject
      */
     private static ?JsObject $generatorFunctionPrototype = null;
 
+    /**
+     * %AsyncFunction.prototype% intrinsic: [[Prototype]] for all async function instances.
+     * Its own [[Prototype]] is Function.prototype. It is a non-callable ordinary object.
+     */
+    private static ?JsObject $asyncFunctionPrototype = null;
+
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
@@ -42,6 +48,16 @@ class JsFunction extends JsObject
     public static function getGeneratorFunctionPrototype(): ?JsObject
     {
         return self::$generatorFunctionPrototype;
+    }
+
+    public static function setAsyncFunctionPrototype(JsObject $proto): void
+    {
+        self::$asyncFunctionPrototype = $proto;
+    }
+
+    public static function getAsyncFunctionPrototype(): ?JsObject
+    {
+        return self::$asyncFunctionPrototype;
     }
 
     public static function setInterpreterCallback(callable $callback): void
@@ -260,6 +276,14 @@ class JsFunction extends JsObject
                 && $this !== self::$generatorFunctionPrototype
             ) {
                 return self::$generatorFunctionPrototype;
+            }
+            // Async functions use %AsyncFunction.prototype% instead of %Function.prototype%.
+            if (
+                $this->isAsync
+                && !$this->isGenerator
+                && self::$asyncFunctionPrototype !== null
+            ) {
+                return self::$asyncFunctionPrototype;
             }
             return self::$functionPrototype;
         }

@@ -1875,7 +1875,7 @@ class Parser
     {
         $location = $this->expect(TokenType::New)->location;
 
-        // new.target — meta-property, resolves to the [[NewTarget]] env binding.
+        // new.target: meta-property, resolves to the [[NewTarget]] env binding.
         if ($this->eat(TokenType::Dot)) {
             $token = $this->current();
             if ($token->type === TokenType::Identifier && $token->value === 'target') {
@@ -1891,16 +1891,25 @@ class Parser
         } else {
             $callee = $this->parsePrimaryExpression();
 
-            // Allow member access on callee: new Foo.Bar()
-            while ($this->check(TokenType::Dot) || $this->check(TokenType::LeftBracket)) {
+            // Allow member access and tagged templates on callee: new Foo.Bar(), new tag`tmpl`
+            while (
+                $this->check(TokenType::Dot)
+                || $this->check(TokenType::LeftBracket)
+                || $this->check(TokenType::NoSubstitutionTemplate)
+                || $this->check(TokenType::TemplateHead)
+            ) {
                 if ($this->eat(TokenType::Dot)) {
                     $property = $this->parseIdentifierOrKeyword();
                     $callee = new MemberExpression($callee->location, $callee, $property, false, false);
-                } else {
+                } elseif ($this->check(TokenType::LeftBracket)) {
                     $this->advance();
                     $property = $this->parseExpression();
                     $this->expect(TokenType::RightBracket);
                     $callee = new MemberExpression($callee->location, $callee, $property, true, false);
+                } else {
+                    // Tagged template: new tag`template` means new (tag`template`)
+                    $quasi = $this->parseTemplateLiteral();
+                    $callee = new TaggedTemplate($callee->location, $callee, $quasi);
                 }
             }
         }

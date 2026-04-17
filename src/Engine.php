@@ -646,6 +646,92 @@ class Engine
         if ($regExpCtor instanceof JsFunction) {
             $this->installLegacyRegExpStatics($regExpCtor);
         }
+
+        // %AsyncFunction% intrinsic: the constructor for async functions.
+        // Not exposed as a global, but accessible via (async function(){}).constructor.
+        $this->installAsyncFunctionIntrinsic();
+    }
+
+    /**
+     * Set up the %AsyncFunction% constructor and %AsyncFunction.prototype%.
+     * Per spec 25.7: AsyncFunction is not directly exposed as a global property,
+     * but is reachable via the constructor property of any async function instance.
+     */
+    private function installAsyncFunctionIntrinsic(): void
+    {
+        $fnProto = null;
+        if ($this->globalEnv->has('Function')) {
+            $fnCtor = $this->globalEnv->get('Function');
+            if ($fnCtor instanceof JsFunction) {
+                $fnProto = $fnCtor->get('prototype');
+            }
+        }
+
+        // %AsyncFunction.prototype% is a non-callable ordinary object.
+        // Its [[Prototype]] is Function.prototype.
+        $asyncFuncProto = new JsObject($fnProto instanceof JsObject ? $fnProto : null);
+
+        // Symbol.toStringTag = "AsyncFunction", non-writable, non-enumerable, configurable.
+        $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+        if ($toStringTagSym !== null) {
+            $asyncFuncProto->definePropertyBySymbol(
+                $toStringTagSym,
+                \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncFunction'), false, false, true),
+            );
+        }
+
+        // Create the %AsyncFunction% constructor itself.
+        // Per spec 25.7.1, AsyncFunction can be called with or without new.
+        // It creates a new async function from source text, like Function() for regular functions.
+        $interp = $this->interpreter;
+        $globalEnv = $this->globalEnv;
+
+        $asyncFuncCtor = JsFunction::fromCallable('AsyncFunction', function (
+            JsValue $this_,
+            array $args,
+        ) use ($interp, $globalEnv): JsValue {
+            // Build async function source from arguments, same as Function constructor.
+            $bodyArg = count($args) > 0 ? array_pop($args) : JsUndefined::instance();
+            $paramParts = [];
+            foreach ($args as $a) {
+                $paramParts[] = \PhpJs\Spec\TypeConversion::toString($a);
+            }
+            $paramStr = implode(',', $paramParts);
+            $bodyStr = \PhpJs\Spec\TypeConversion::toString($bodyArg);
+            $source = "async function anonymous({$paramStr}) {\n{$bodyStr}\n}";
+            $parser = new Parser($source);
+            $ast = $parser->parse();
+
+            return $interp->run($ast, $globalEnv);
+        });
+        $asyncFuncCtor->setConstructable();
+
+        // %AsyncFunction%.prototype = %AsyncFunction.prototype%
+        $asyncFuncCtor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
+            $asyncFuncProto,
+            false,
+            false,
+            false,
+        ));
+
+        // %AsyncFunction.prototype%.constructor = %AsyncFunction%
+        $asyncFuncProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $asyncFuncCtor,
+            true,
+            false,
+            true,
+        ));
+
+        // Per spec, AsyncFunction.__proto__ === Function (the Function constructor).
+        if ($this->globalEnv->has('Function')) {
+            $fnCtorVal = $this->globalEnv->get('Function');
+            if ($fnCtorVal instanceof JsFunction) {
+                $asyncFuncCtor->setCustomPrototype($fnCtorVal);
+            }
+        }
+
+        // Store AsyncFunction.prototype so async function instances can find their constructor.
+        JsFunction::setAsyncFunctionPrototype($asyncFuncProto);
     }
 
     /**
