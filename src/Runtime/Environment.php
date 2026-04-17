@@ -40,6 +40,14 @@ class Environment
      */
     private ?\PhpJs\Value\JsObject $withObject = null;
 
+    /**
+     * Tracks the kind of function this environment belongs to.
+     * Used by EvalDeclarationInstantiation to enforce restrictions on
+     * var arguments declarations in generators and arrow functions.
+     * Possible values: null, 'generator', 'async-generator', 'arrow', 'function'.
+     */
+    private ?string $functionKind = null;
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
@@ -425,6 +433,60 @@ class Environment
     public function allBindings(): array
     {
         return $this->bindings;
+    }
+
+    /** Set the function kind for this environment (generator, async-generator, arrow, function). */
+    public function setFunctionKind(string $kind): void
+    {
+        $this->functionKind = $kind;
+    }
+
+    /** Get the function kind for this environment. */
+    public function getFunctionKind(): ?string
+    {
+        return $this->functionKind;
+    }
+
+    /**
+     * Walk the scope chain to find the enclosing function kind.
+     * Returns the functionKind of the nearest ancestor environment that has one set,
+     * or null if we are at global scope.
+     */
+    public function getEnclosingFunctionKind(): ?string
+    {
+        $env = $this;
+        while ($env !== null) {
+            if ($env->functionKind !== null) {
+                return $env->functionKind;
+            }
+            $env = $env->parent;
+        }
+        return null;
+    }
+
+    /**
+     * Check whether any environment in the scope chain has 'arguments' as a
+     * lexically-bound (let/const) or constant binding. Used by
+     * EvalDeclarationInstantiation to determine if var arguments is allowed.
+     */
+    public function hasLexicalArgumentsBinding(): bool
+    {
+        $env = $this;
+        while ($env !== null) {
+            // Stop at function boundaries (environments with functionKind set).
+            if (
+                array_key_exists('arguments', $env->bindings)
+                && (isset($env->constants['arguments']) || isset($env->tdz['arguments']))
+            ) {
+                return true;
+            }
+            // If this environment is a function boundary, stop.
+            if ($env->functionKind !== null) {
+                return false;
+            }
+            $env = $env->parent;
+        }
+        return false;
     }
 
     /** Create a child environment with this environment as its parent. */

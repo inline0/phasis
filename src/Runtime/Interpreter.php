@@ -1816,6 +1816,14 @@ class Interpreter
         try {
             $fnEnv = $fn->getClosure()->createChild();
 
+            // Tag the environment with the function kind so
+            // EvalDeclarationInstantiation can enforce restrictions.
+            if ($fn->isArrow()) {
+                $fnEnv->setFunctionKind('arrow');
+            } else {
+                $fnEnv->setFunctionKind('function');
+            }
+
             // Per spec 10.2.1.2: A function's strict mode is determined by its own
             // [[Strict]] flag (set at definition time from the enclosing scope) OR by
             // a "use strict" directive in its body. The CALLER's strict mode is irrelevant.
@@ -1992,6 +2000,7 @@ class Interpreter
         // synchronously when the generator function is called, before the generator
         // object is returned. Only the body execution is deferred to the Fiber.
         $fnEnv = $fn->getClosure()->createChild();
+        $fnEnv->setFunctionKind($fn->isAsync() ? 'async-generator' : 'generator');
         $fnEnv->defineVar('this', $thisValue);
         $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
         $fnEnv->defineVar('arguments', $argsObj);
@@ -2745,10 +2754,13 @@ class Interpreter
                         }
                     } else {
                         $existing = $obj->getOwnPropertyDescriptor($key);
+                        // Use defineProperty (direct set) instead of defineOwnProperty to
+                        // avoid the hasGet/hasSet merge logic re-merging the descriptor we
+                        // already assembled from the existing one.
                         if ($prop->kind === 'get') {
-                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor($fn, $existing?->set));
+                            $obj->defineProperty($key, PropertyDescriptor::accessor($fn, $existing?->set));
                         } else {
-                            $obj->defineOwnProperty($key, PropertyDescriptor::accessor($existing?->get, $fn));
+                            $obj->defineProperty($key, PropertyDescriptor::accessor($existing?->get, $fn));
                         }
                     }
                 }
