@@ -125,6 +125,46 @@ class ArrayConstructor
         return TypeConversion::toObject($this_);
     }
 
+    /**
+     * ArraySpeciesCreate(originalArray, length) per spec 7.3.20.
+     *
+     * Uses the @@species pattern to create the result array. Falls back to
+     * a plain Array when the species is undefined or the original is not an array.
+     */
+    private static function arraySpeciesCreate(JsObject $originalArray, int $length): JsObject
+    {
+        if (!$originalArray instanceof JsArray) {
+            $arr = new JsArray();
+            $arr->setLength($length);
+            return $arr;
+        }
+        $c = $originalArray->get('constructor');
+        if ($c instanceof JsUndefined) {
+            $arr = new JsArray();
+            $arr->setLength($length);
+            return $arr;
+        }
+        if ($c instanceof JsObject) {
+            $speciesSym = SymbolConstructor::species();
+            $species = $c->getBySymbol($speciesSym);
+            if ($species instanceof JsNull || $species instanceof JsUndefined) {
+                $arr = new JsArray();
+                $arr->setLength($length);
+                return $arr;
+            }
+            $c = $species;
+        }
+        if ($c instanceof JsUndefined) {
+            $arr = new JsArray();
+            $arr->setLength($length);
+            return $arr;
+        }
+        if (!$c instanceof JsFunction || !$c->isConstructable()) {
+            throw new TypeError('Species constructor is not a valid constructor');
+        }
+        return $c->construct([new JsNumber((float) $length)]);
+    }
+
     private static function getLen(JsValue $obj): int
     {
         if ($obj instanceof JsArray) {
@@ -844,13 +884,34 @@ class ArrayConstructor
         $proto->defineOwnProperty('flat', PropertyDescriptor::data(JsFunction::fromCallable(
             'flat',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
                 $depthVal = $args[0] ?? JsUndefined::instance();
-                $depthNum = $depthVal instanceof JsUndefined ? 1.0 : TypeConversion::toNumber($depthVal);
-                // Infinity should flatten fully; PHP (int) INF is 0, so cap at a large value.
-                $depth = is_infinite($depthNum) ? PHP_INT_MAX : (int) $depthNum;
-                $result = self::flattenArray($this_, $depth);
-                return JsArray::fromArray($result);
+                // Per spec: ToIntegerOrInfinity(depth). Default is 1.
+                if ($depthVal instanceof JsUndefined) {
+                    $depth = 1;
+                } else {
+                    $depthNum = TypeConversion::toIntegerOrInfinity($depthVal);
+                    if (is_infinite($depthNum) && $depthNum > 0) {
+                        $depth = PHP_INT_MAX;
+                    } elseif ($depthNum < 0 || is_nan($depthNum)) {
+                        $depth = 0;
+                    } else {
+                        $depth = (int) $depthNum;
+                    }
+                }
+                // ArraySpeciesCreate: validates constructor/species.
+                $a = self::arraySpeciesCreate($o, 0);
+                $result = self::flattenArray($o, $depth);
+                // Populate the species-created array.
+                foreach ($result as $i => $val) {
+                    $a->set((string) $i, $val);
+                }
+                if ($a instanceof JsArray) {
+                    $a->setLength(count($result));
+                } else {
+                    $a->set('length', new JsNumber((float) count($result)));
+                }
+                return $a;
             },
             0
         ), true, false, true));

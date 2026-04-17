@@ -300,8 +300,10 @@ class ObjectConstructor
                     return new JsString('[object Null]');
                 }
 
-                // For primitives, determine builtinTag before converting to object.
-                // This is because ToObject wraps them and we lose the original type.
+                // For primitives with spec-defined internal data slots, record the
+                // builtinTag before ToObject wraps them. Per spec, only Boolean, Number,
+                // and String have dedicated builtinTags. Symbol and BigInt rely on
+                // their prototype's @@toStringTag for their tag.
                 $primitiveTag = null;
                 if ($this_ instanceof JsBoolean) {
                     $primitiveTag = 'Boolean';
@@ -309,10 +311,6 @@ class ObjectConstructor
                     $primitiveTag = 'Number';
                 } elseif ($this_ instanceof JsString) {
                     $primitiveTag = 'String';
-                } elseif ($this_ instanceof JsSymbol) {
-                    $primitiveTag = 'Symbol';
-                } elseif ($this_ instanceof JsBigInt) {
-                    $primitiveTag = 'BigInt';
                 }
 
                 // Step 3: Let O = ToObject(this value).
@@ -337,13 +335,9 @@ class ObjectConstructor
                         $builtinTag = 'Number';
                     } elseif ($prim instanceof JsString) {
                         $builtinTag = 'String';
-                    } elseif ($prim instanceof JsBigInt) {
-                        $builtinTag = 'BigInt';
                     } else {
                         $builtinTag = 'Object';
                     }
-                } elseif ($o->hasOwnProperty('[[BigIntData]]')) {
-                    $builtinTag = 'BigInt';
                 } elseif ($o->has('[[IsDate]]')) {
                     $builtinTag = 'Date';
                 } elseif ($o->hasOwnProperty('[[PCREPattern]]')) {
