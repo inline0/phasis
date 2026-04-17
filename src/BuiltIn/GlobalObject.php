@@ -770,7 +770,8 @@ class GlobalObject
             }
 
             // Check for Infinity prefix (not exact match).
-            if (str_starts_with($string, 'Infinity')
+            if (
+                str_starts_with($string, 'Infinity')
                 || str_starts_with($string, '+Infinity')
             ) {
                 return new JsNumber(INF);
@@ -779,11 +780,13 @@ class GlobalObject
                 return new JsNumber(-INF);
             }
 
-            if (preg_match(
-                '/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/',
-                $string,
-                $matches,
-            )) {
+            if (
+                preg_match(
+                    '/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/',
+                    $string,
+                    $matches,
+                )
+            ) {
                 return new JsNumber((float) $matches[0]);
             }
 

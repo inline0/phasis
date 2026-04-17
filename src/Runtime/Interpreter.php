@@ -5343,6 +5343,8 @@ class Interpreter
      */
     private function transformEsPatternForPcre(string $pattern): string
     {
+        // Count capturing groups for backreference validation (Annex B).
+        $numGroups = $this->countCapturingGroups($pattern);
         $result = '';
         $len = strlen($pattern);
         $inCharClass = false;
@@ -5428,22 +5430,27 @@ class Interpreter
                 // PCRE always treats \k<...> as a backreference and errors
                 // when the group doesn't exist. Convert to literal 'k' when
                 // no named groups exist in the pattern.
-                if ($next === 'k' && $i + 2 < $len && $pattern[$i + 2] === '<') {
-                    $closeAngle = strpos($pattern, '>', $i + 3);
-                    if ($closeAngle !== false) {
-                        $groupName = substr($pattern, $i + 3, $closeAngle - ($i + 3));
-                        // Check if a named group (?<groupName>...) exists in the pattern.
-                        if (preg_match('/\(\?<' . preg_quote($groupName, '/') . '>/', $pattern) === 1) {
-                            // Named group exists: keep as \k<name>.
-                            $result .= $ch . $next;
-                            $i += 2;
+                if ($next === 'k') {
+                    if ($i + 2 < $len && $pattern[$i + 2] === '<') {
+                        $closeAngle = strpos($pattern, '>', $i + 3);
+                        if ($closeAngle !== false) {
+                            $groupName = substr($pattern, $i + 3, $closeAngle - ($i + 3));
+                            if (preg_match('/\(\?<' . preg_quote($groupName, '/') . '>/', $pattern) === 1) {
+                                $result .= $ch . $next;
+                                $i += 2;
+                            } else {
+                                $result .= 'k';
+                                $i += 2;
+                            }
                         } else {
-                            // No matching named group: treat \k as literal 'k'.
                             $result .= 'k';
                             $i += 2;
                         }
-                        continue;
+                    } else {
+                        $result .= 'k';
+                        $i += 2;
                     }
+                    continue;
                 }
                 // PCRE-specific escape sequences that don't exist in ECMAScript:
                 // \X (grapheme cluster), \R (line break), \K (match reset),
@@ -5453,6 +5460,47 @@ class Interpreter
                 if (in_array($next, ['X', 'R', 'K', 'G', 'N'], true)) {
                     $result .= $next;
                     $i += 2;
+                    continue;
+                }
+                // Numeric backreferences to non-existent groups (Annex B).
+                // In non-unicode mode, \N where N exceeds the group count is
+                // treated as an octal escape (digits 0-7) or identity escape
+                // (digits 8-9). PCRE would error on invalid backreferences.
+                if ($next >= '1' && $next <= '9' && !$inCharClass) {
+                    $numStr = '';
+                    $j = $i + 1;
+                    while ($j < $len && $pattern[$j] >= '0' && $pattern[$j] <= '9') {
+                        $numStr .= $pattern[$j];
+                        $j++;
+                    }
+                    $refNum = (int) $numStr;
+                    if ($refNum > $numGroups) {
+                        // Not a valid backreference. Convert to octal or identity.
+                        if ($next >= '0' && $next <= '7') {
+                            $octalStr = '';
+                            $oj = $i + 1;
+                            while (
+                                $oj < $len
+                                && $pattern[$oj] >= '0'
+                                && $pattern[$oj] <= '7'
+                                && strlen($octalStr) < 3
+                            ) {
+                                $octalStr .= $pattern[$oj];
+                                $oj++;
+                            }
+                            $cp = octdec($octalStr);
+                            $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
+                            $i = $oj;
+                        } else {
+                            // \8 or \9: identity escape for the digit.
+                            $result .= $next;
+                            $i += 2;
+                        }
+                        continue;
+                    }
+                    // Valid backreference: pass through as-is.
+                    $result .= $ch . $numStr;
+                    $i = $j;
                     continue;
                 }
                 // Other escape: pass through both chars.

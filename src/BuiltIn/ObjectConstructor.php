@@ -999,6 +999,12 @@ class ObjectConstructor
     {
         return function (JsValue $this_, array $args): JsValue {
             $obj = $args[0] ?? JsUndefined::instance();
+            // Per spec step 1: RequireObjectCoercible(O).
+            if ($obj instanceof JsUndefined || $obj instanceof JsNull) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Object.setPrototypeOf called on null or undefined',
+                );
+            }
             $proto = $args[1] ?? JsUndefined::instance();
             if (!$obj instanceof JsObject) {
                 return $obj;

@@ -81,9 +81,11 @@ class ArrayConstructor
         $unscopablesList = new JsObject();
         $unscopablesList->setPrototype(null);
         $trueVal = new JsBoolean(true);
-        foreach (['at', 'copyWithin', 'entries', 'fill', 'find', 'findIndex',
+        foreach (
+            ['at', 'copyWithin', 'entries', 'fill', 'find', 'findIndex',
             'findLast', 'findLastIndex', 'flat', 'flatMap', 'includes',
-            'keys', 'toReversed', 'toSorted', 'toSpliced', 'values'] as $name) {
+            'keys', 'toReversed', 'toSorted', 'toSpliced', 'values'] as $name
+        ) {
             $unscopablesList->defineOwnProperty(
                 $name,
                 PropertyDescriptor::data($trueVal, true, true, true),
