@@ -99,24 +99,44 @@ class StringPrototype
 
     /**
      * Create a string iterator object with proper prototype chain.
+     *
+     * Per spec 22.1.5.2.1: iteration yields code points (combining surrogate
+     * pairs), but lone surrogates are yielded individually.
      */
     public static function createStringIterator(JsString $str): JsObject
     {
         $proto = self::$stringIteratorPrototype;
         $iterator = new JsObject($proto);
 
-        // Store characters as a JsArray for access from the next method.
+        // Build character list using UTF-16 code units, combining valid
+        // surrogate pairs into single code points.
         $chars = [];
-        $len = mb_strlen($str->value, 'UTF-8');
-        for ($i = 0; $i < $len; $i++) {
-            $chars[] = new JsString(mb_substr($str->value, $i, 1, 'UTF-8'));
+        $u16 = JsString::utf8ToUtf16LE($str->value);
+        $u16Len = (int) (strlen($u16) / 2);
+        $i = 0;
+        while ($i < $u16Len) {
+            $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+            if ($cu >= 0xD800 && $cu <= 0xDBFF && $i + 1 < $u16Len) {
+                $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                if ($next >= 0xDC00 && $next <= 0xDFFF) {
+                    // Valid surrogate pair: combine into a single code point.
+                    $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
+                    $ch = mb_chr($cp, 'UTF-8');
+                    $chars[] = new JsString($ch !== false ? $ch : '?');
+                    $i += 2;
+                    continue;
+                }
+            }
+            // Lone surrogate or BMP character.
+            $chars[] = new JsString(JsString::utf16CodeUnitToUtf8($cu));
+            $i++;
         }
         $charsArr = JsArray::fromArray($chars);
 
         $data = new JsObject();
         $data->set('chars', $charsArr);
         $data->set('index', new JsNumber(0.0));
-        $data->set('total', new JsNumber((float) $len));
+        $data->set('total', new JsNumber((float) count($chars)));
         $iterator->defineOwnProperty(
             '[[StringIteratorData]]',
             PropertyDescriptor::data($data, false, false, false),
@@ -182,9 +202,10 @@ class StringPrototype
         $proto->defineOwnProperty('length', PropertyDescriptor::data(new JsNumber(0), false, false, false));
 
         // AnnexB methods: B.2.3.1 String.prototype.substr(start, length)
+        // Operates on UTF-16 code units per spec.
         $d('substr', function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $size = mb_strlen($str, 'UTF-8');
+            $size = self::utf16Length($str);
 
             // Step 4: intStart = ToIntegerOrInfinity(start)
             $intStart = isset($args[0])
@@ -206,17 +227,17 @@ class StringPrototype
                 ? (float) $size
                 : TypeConversion::toIntegerOrInfinity($lengthArg);
 
-            // Step 9: clamp intLength to [0, size] (float min/max handles INF)
-            $intLength = (int) min(max($rawLength, 0), $size);
+            // Step 9: resultLength = min(max(end, 0), size - intStart)
+            $resultLength = (int) min(max($rawLength, 0), $size - $intStart);
 
-            // Step 10: intEnd
-            $intEnd = (int) min($intStart + $intLength, $size);
-
-            if ($intEnd <= $intStart) {
+            if ($resultLength <= 0) {
                 return new JsString('');
             }
 
-            return new JsString(mb_substr($str, $intStart, $intEnd - $intStart, 'UTF-8'));
+            // Extract using UTF-16 code unit indices.
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $sliced = substr($u16, $intStart * 2, $resultLength * 2);
+            return new JsString(JsString::utf16LEToUtf8($sliced));
         }, 2);
 
         // trimLeft/trimRight must be the SAME function object as trimStart/trimEnd

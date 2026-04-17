@@ -170,4 +170,52 @@ class JsString implements JsValue
 
         return $result;
     }
+
+    /**
+     * Convert a UTF-16LE byte string back to internal UTF-8/CESU-8.
+     * Lone surrogates are preserved as CESU-8 3-byte sequences.
+     * Valid surrogate pairs are combined into proper UTF-8 4-byte sequences.
+     */
+    public static function utf16LEToUtf8(string $u16): string
+    {
+        $len = strlen($u16);
+        $result = '';
+        $i = 0;
+
+        while ($i + 1 < $len) {
+            $cu = ord($u16[$i]) | (ord($u16[$i + 1]) << 8);
+
+            if ($cu >= 0xD800 && $cu <= 0xDBFF && $i + 3 < $len) {
+                // High surrogate: check for trail.
+                $next = ord($u16[$i + 2]) | (ord($u16[$i + 3]) << 8);
+                if ($next >= 0xDC00 && $next <= 0xDFFF) {
+                    // Valid surrogate pair: encode as UTF-8 4-byte sequence.
+                    $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
+                    $result .= chr(0xF0 | ($cp >> 18))
+                             . chr(0x80 | (($cp >> 12) & 0x3F))
+                             . chr(0x80 | (($cp >> 6) & 0x3F))
+                             . chr(0x80 | ($cp & 0x3F));
+                    $i += 4;
+                    continue;
+                }
+                // Lone high surrogate: encode as CESU-8.
+                $result .= self::utf16CodeUnitToUtf8($cu);
+                $i += 2;
+                continue;
+            }
+
+            if ($cu >= 0xDC00 && $cu <= 0xDFFF) {
+                // Lone low surrogate: encode as CESU-8.
+                $result .= self::utf16CodeUnitToUtf8($cu);
+                $i += 2;
+                continue;
+            }
+
+            // Regular BMP character.
+            $result .= self::utf16CodeUnitToUtf8($cu);
+            $i += 2;
+        }
+
+        return $result;
+    }
 }

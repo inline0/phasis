@@ -2688,7 +2688,8 @@ class Interpreter
             } else {
                 $fnEnv = $fn->getClosure()->createChild();
                 $fnEnv->defineVar('this', $thisValue);
-                $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
+                $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
+                $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
                 $fnEnv->defineVar('arguments', $argsObj);
                 $this->bindParameters($fn->getParams(), $args, $fnEnv);
             }
@@ -2878,6 +2879,29 @@ class Interpreter
 
             $this->bindPattern($param, $value, $env);
         }
+    }
+
+    /**
+     * Per spec 10.2.11: a parameter list is non-simple if it contains
+     * default values, rest elements, or destructuring patterns. Non-simple
+     * parameter lists produce unmapped arguments objects.
+     *
+     * @param Node[] $params
+     */
+    private function isNonSimpleParameterList(array $params): bool
+    {
+        foreach ($params as $param) {
+            if ($param instanceof AssignmentPattern) {
+                return true;
+            }
+            if ($param instanceof RestElement) {
+                return true;
+            }
+            if ($param instanceof ArrayPattern || $param instanceof ObjectPattern) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -1170,8 +1170,24 @@ class Lexer
                     if ($ch === "\n" || $ch === "\r" || $this->isUnicodeLineTerminator()) {
                         throw new SyntaxError('Unterminated regular expression', $start);
                     }
-                    $pattern .= $this->source[$this->pos];
-                    $this->advance();
+                    // Capture a full UTF-8 character (may be multi-byte).
+                    $b0 = ord($this->source[$this->pos]);
+                    if ($b0 < 0x80) {
+                        $pattern .= $this->source[$this->pos];
+                        $this->advance();
+                    } elseif ($b0 < 0xE0) {
+                        $pattern .= substr($this->source, $this->pos, 2);
+                        $this->pos += 2;
+                        $this->column++;
+                    } elseif ($b0 < 0xF0) {
+                        $pattern .= substr($this->source, $this->pos, 3);
+                        $this->pos += 3;
+                        $this->column++;
+                    } else {
+                        $pattern .= substr($this->source, $this->pos, 4);
+                        $this->pos += 4;
+                        $this->column++;
+                    }
                 }
                 continue;
             }

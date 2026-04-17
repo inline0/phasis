@@ -108,6 +108,8 @@ class WeakMapConstructor
             return;
         }
 
+        $returnMethod = $iterator->get('return');
+
         while (true) {
             $result = $nextMethod->call($iterator, []);
             if (!$result instanceof JsObject) {
@@ -118,11 +120,27 @@ class WeakMapConstructor
             }
             $entry = $result->get('value');
             if (!$entry instanceof JsObject) {
+                // Close the iterator, then throw.
+                if ($returnMethod instanceof JsFunction) {
+                    $returnMethod->call($iterator, []);
+                }
                 throw new TypeError('Iterator value is not an entry object');
             }
-            $key = $entry->get('0');
-            $value = $entry->get('1');
-            $map->weakMapSet($key, $value);
+            try {
+                $key = $entry->get('0');
+                $value = $entry->get('1');
+                $map->weakMapSet($key, $value);
+            } catch (\Throwable $e) {
+                // Per spec: if getting key/value or set throws, close the iterator.
+                if ($returnMethod instanceof JsFunction) {
+                    try {
+                        $returnMethod->call($iterator, []);
+                    } catch (\Throwable) {
+                        // Ignore errors from return method per spec.
+                    }
+                }
+                throw $e;
+            }
         }
     }
 
