@@ -1181,6 +1181,18 @@ class Interpreter
                 return $leftVal;
             }
             $right = $this->evaluate($node->right, $env);
+            // NamedEvaluation: per spec 13.15.3 step 5, if the RHS is an
+            // anonymous function definition and the LHS is an identifier ref,
+            // set the function name to the identifier name.
+            $isIdentRef = $node->left instanceof Identifier && !$node->leftParenthesized;
+            if (
+                $right instanceof JsFunction
+                && $isIdentRef
+                && $this->isAnonymousFunctionDefinitionNode($node->right)
+                && !$this->hasExplicitNameProperty($right)
+            ) {
+                $right->setName($node->left->name);
+            }
             $this->withSetMutableBindingCheck($ref, $right);
             return $right;
         }
@@ -1305,7 +1317,10 @@ class Interpreter
 
         // Direct eval detection: eval(code) called with the identifier 'eval'.
         // Direct eval executes in the current scope, not a fresh environment.
-        if ($node->callee instanceof Identifier && $node->callee->name === 'eval') {
+        // Per spec, eval?.() is NOT a direct eval (it is an indirect eval),
+        // because the optional chain makes it an OptionalExpression, not a
+        // direct CallExpression with eval as the callee.
+        if ($node->callee instanceof Identifier && $node->callee->name === 'eval' && !$node->optional) {
             try {
                 $callee = $env->get('eval');
             } catch (ReferenceError) {
@@ -2579,6 +2594,13 @@ class Interpreter
             // Bind parameters
             $this->bindParameters($params, $args, $fnEnv);
 
+            // Set up mapped arguments aliasing per spec 10.4.4.7:
+            // In sloppy mode with simple parameters, arguments[i] and the
+            // corresponding parameter name share a live binding.
+            if (!$fn->isArrow() && isset($argsObj) && !$unmapped) {
+                $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
+            }
+
             // Collect parameter names for Annex B hoisting checks.
             // Per spec, 'arguments' is treated as a parameter name when the
             // arguments object is created (22.1.3.3 step 22f).
@@ -2705,6 +2727,11 @@ class Interpreter
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
         $this->bindParameters($fn->getParams(), $args, $fnEnv);
+
+        // Set up mapped arguments aliasing for generators.
+        if (!$unmapped) {
+            $this->setupMappedArguments($argsObj, $fn->getParams(), $args, $fnEnv);
+        }
 
         $interpreter = $this;
 
@@ -3203,6 +3230,12 @@ class Interpreter
         $rawKey = null;
         if ($node->computed) {
             $rawKey = $this->evaluate($node->property, $env);
+            // The computed property expression is a separate expression context.
+            // If it contained an optional chain (e.g. c?.[a?.b]), the inner chain's
+            // JsOptionalUndefined sentinel must be unwrapped to JsUndefined here.
+            if ($rawKey instanceof JsOptionalUndefined) {
+                $rawKey = JsUndefined::instance();
+            }
         }
 
         // Per spec: ToObject(base) precedes ToPropertyKey(key). Accessing a
@@ -3564,9 +3597,21 @@ class Interpreter
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
         }
-        // Named function expressions can reference themselves
+        // Named function expressions have an immutable binding for their own name.
+        // Per spec 15.2.5: the BindingIdentifier is created as an immutable binding
+        // in the function's scope. In strict mode, assignment throws TypeError.
+        // In non-strict mode, assignment is silently ignored.
         if ($node->name !== null) {
+            // Use a linked object with a non-writable property so that
+            // Environment::set() enforces immutability correctly:
+            // strict mode throws TypeError, sloppy mode silently ignores.
+            $immutableObj = new JsObject();
+            $fnEnv->linkGlobalObject($immutableObj);
             $fnEnv->defineVar($node->name, $fn);
+            $immutableObj->defineOwnProperty(
+                $node->name,
+                PropertyDescriptor::data($fn, false, false, false),
+            );
         }
         $this->installFunctionPrototype($fn, $node->generator, $node->async);
         return $fn;
@@ -4457,6 +4502,7 @@ class Interpreter
 
         // Collect the let/const binding names for per-iteration copying.
         $perIterationBindings = [];
+        $isConstDecl = $node->init instanceof VariableDeclaration && $node->init->kind === 'const';
         if ($isLetConst) {
             /** @var VariableDeclaration $varDecl */
             $varDecl = $node->init;
@@ -4472,7 +4518,11 @@ class Interpreter
         if ($perIterationBindings !== []) {
             $iterEnv = $env->createChild();
             foreach ($perIterationBindings as $name) {
-                $iterEnv->defineVar($name, $loopEnv->get($name));
+                if ($isConstDecl) {
+                    $iterEnv->defineConst($name, $loopEnv->get($name));
+                } else {
+                    $iterEnv->defineLet($name, $loopEnv->get($name));
+                }
             }
         }
 
@@ -4523,7 +4573,11 @@ class Interpreter
             if ($perIterationBindings !== []) {
                 $nextIterEnv = $env->createChild();
                 foreach ($perIterationBindings as $name) {
-                    $nextIterEnv->defineVar($name, $iterEnv->get($name));
+                    if ($isConstDecl) {
+                        $nextIterEnv->defineConst($name, $iterEnv->get($name));
+                    } else {
+                        $nextIterEnv->defineLet($name, $iterEnv->get($name));
+                    }
                 }
                 $iterEnv = $nextIterEnv;
             }
@@ -5968,14 +6022,21 @@ class Interpreter
 
     private function hoistVarNames(Node $pattern, Environment $env): void
     {
+        // Per spec, var declarations inside `with` blocks hoist to the enclosing
+        // function/global scope, bypassing the with-environment's binding object.
+        // Skip through with-environments to avoid triggering Proxy has traps.
+        $hoistEnv = $env;
+        while (isset($this->withEnvObjects[spl_object_id($hoistEnv)]) && $hoistEnv->getParent() !== null) {
+            $hoistEnv = $hoistEnv->getParent();
+        }
         if ($pattern instanceof Identifier) {
-            if (!$env->has($pattern->name)) {
+            if (!$hoistEnv->has($pattern->name)) {
                 // At global scope use the correct user-var descriptor; in nested
                 // scopes use defineVar (no linked object).
-                if ($env->getLinkedObject() !== null) {
-                    $env->defineGlobalVar($pattern->name, JsUndefined::instance());
+                if ($hoistEnv->getLinkedObject() !== null) {
+                    $hoistEnv->defineGlobalVar($pattern->name, JsUndefined::instance());
                 } else {
-                    $env->defineVar($pattern->name, JsUndefined::instance());
+                    $hoistEnv->defineVar($pattern->name, JsUndefined::instance());
                 }
             }
         } elseif ($pattern instanceof ArrayPattern) {

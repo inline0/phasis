@@ -689,7 +689,10 @@ class Engine
         $asyncFuncCtor = JsFunction::fromCallable('AsyncFunction', function (
             JsValue $this_,
             array $args,
-        ) use ($interp, $globalEnv): JsValue {
+        ) use (
+            $interp,
+            $globalEnv,
+        ): JsValue {
             // Build async function source from arguments, same as Function constructor.
             $bodyArg = count($args) > 0 ? array_pop($args) : JsUndefined::instance();
             $paramParts = [];

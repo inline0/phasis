@@ -1,8 +1,1 @@
-1
-2
-3
-8
-15
-2
-4
-6
+Call to undefined method PhpJs\Runtime\Interpreter::setupMappedArguments()
