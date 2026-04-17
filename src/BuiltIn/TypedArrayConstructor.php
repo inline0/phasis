@@ -1210,12 +1210,14 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.find called on incompatible receiver");
                 }
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $predicate = $args[0] ?? JsUndefined::instance();
                 if (!$predicate instanceof JsFunction) {
                     throw new TypeError('predicate is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                for ($i = 0; $i < $len; $i++) {
                     $el = $this_->getIndex($i);
                     $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
@@ -1235,12 +1237,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.findIndex called on incompatible receiver");
                 }
+                // Per spec: ValidateTypedArray first, then capture length.
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $predicate = $args[0] ?? JsUndefined::instance();
                 if (!$predicate instanceof JsFunction) {
                     throw new TypeError('predicate is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                for ($i = 0; $i < $len; $i++) {
                     $el = $this_->getIndex($i);
                     $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
@@ -1260,12 +1265,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.forEach called on incompatible receiver");
                 }
+                // Per spec: ValidateTypedArray first, then capture length.
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                for ($i = 0; $i < $len; $i++) {
                     $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
                 }
                 return JsUndefined::instance();
@@ -1409,12 +1417,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.some called on incompatible receiver");
                 }
+                // Per spec: ValidateTypedArray first, then capture length.
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                for ($i = 0; $i < $len; $i++) {
                     $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return new JsBoolean(true);
@@ -1433,12 +1444,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.every called on incompatible receiver");
                 }
+                // Per spec: ValidateTypedArray first, then capture length.
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
-                for ($i = 0; $i < $this_->getLength(); $i++) {
+                for ($i = 0; $i < $len; $i++) {
                     $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
                     if (!TypeConversion::toBoolean($result)) {
                         return new JsBoolean(false);
@@ -1536,9 +1550,17 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.join called on incompatible receiver");
                 }
+                // Per spec: ValidateTypedArray first (throws if detached).
+                self::validateTypedArray($this_);
+                // Capture length before separator toString (which may detach buffer).
+                $len = $this_->getLength();
                 $separator = isset($args[0]) && !$args[0] instanceof JsUndefined
                 ? TypeConversion::toString($args[0])
                 : ',';
+                // If buffer was detached during separator toString, return commas.
+                if ($this_->getBuffer()->isDetached()) {
+                    return new JsString($len > 0 ? str_repeat($separator, $len - 1) : '');
+                }
                 return new JsString($this_->joinTyped($separator));
             },
             1
