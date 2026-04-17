@@ -729,49 +729,6 @@ class TypedArrayConstructor
         );
     }
 
-    /**
-     * Collect elements from source for TypedArray.from.
-     * Returns a JsArray for passing to the constructor.
-     */
-    private static function collectFromSource(array $args): JsArray
-    {
-        $source = $args[0] ?? JsUndefined::instance();
-        $mapFn = $args[1] ?? JsUndefined::instance();
-        $thisArg = $args[2] ?? JsUndefined::instance();
-        $hasMapFn = $mapFn instanceof JsFunction;
-
-        $elements = [];
-        if ($source instanceof JsTypedArray) {
-            for ($i = 0; $i < $source->getLength(); $i++) {
-                $elements[] = $source->getIndex($i);
-            }
-        } elseif ($source instanceof JsArray) {
-            for ($i = 0; $i < $source->getLength(); $i++) {
-                $elements[] = $source->get((string) $i);
-            }
-        } elseif ($source instanceof JsObject) {
-            $iterSym = SymbolConstructor::iterator();
-            $iterMethod = $source->getBySymbol($iterSym);
-            if ($iterMethod instanceof JsFunction) {
-                $elements = self::consumeIterator($iterMethod, $source);
-            } else {
-                $len = (int) TypeConversion::toNumber($source->get('length'));
-                for ($i = 0; $i < $len; $i++) {
-                    $elements[] = $source->get((string) $i);
-                }
-            }
-        }
-
-        if ($hasMapFn) {
-            $mapped = [];
-            foreach ($elements as $i => $el) {
-                $mapped[] = $mapFn->call($thisArg, [$el, new JsNumber((float) $i)]);
-            }
-            $elements = $mapped;
-        }
-
-        return JsArray::fromArray($elements);
-    }
 
     /**
      * Construct a typed array from arguments. Handles all constructor overloads:

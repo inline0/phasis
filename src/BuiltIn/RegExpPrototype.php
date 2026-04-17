@@ -104,6 +104,78 @@ class RegExpPrototype
         $flagAccessor('sticky');
         $flagAccessor('hasIndices');
 
+        // Annex B: RegExp.prototype.compile(pattern, flags).
+        // Re-initializes the regexp in-place with new pattern and flags.
+        $addMethod('compile', static function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype.compile called on incompatible receiver',
+                );
+            }
+            // Check for [[RegExpMatcher]] internal slot (we use [[PCREPattern]]).
+            $pcreDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            if ($pcreDesc === null) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype.compile called on incompatible receiver',
+                );
+            }
+
+            $patternArg = $args[0] ?? JsUndefined::instance();
+            $flagsArg = $args[1] ?? JsUndefined::instance();
+
+            // If pattern is a RegExp object, flags must be undefined.
+            $isRegExp = false;
+            if ($patternArg instanceof JsObject) {
+                $patternPcre = $patternArg->getOwnPropertyDescriptor('[[PCREPattern]]');
+                if ($patternPcre !== null) {
+                    $isRegExp = true;
+                }
+            }
+
+            if ($isRegExp) {
+                if (!$flagsArg instanceof JsUndefined) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Cannot supply flags when constructing one RegExp from another',
+                    );
+                }
+                /** @var JsObject $patternArg */
+                $p = TypeConversion::toString($patternArg->get('source'));
+                if ($p === '(?:)') {
+                    $p = '';
+                }
+                $f = TypeConversion::toString($patternArg->get('flags'));
+            } else {
+                $p = $patternArg instanceof JsUndefined
+                    ? ''
+                    : TypeConversion::toString($patternArg);
+                $f = $flagsArg instanceof JsUndefined
+                    ? ''
+                    : TypeConversion::toString($flagsArg);
+            }
+
+            // Create a temporary regexp to validate and get compiled data.
+            // This propagates SyntaxError for invalid patterns/flags.
+            $temp = \PhpJs\Engine::createRegExpOrThrow($p, $f);
+
+            // Copy properties from temp to this in-place.
+            $propsToUpdate = [
+                'source', 'flags', 'global', 'ignoreCase', 'multiline',
+                'dotAll', 'unicode', 'unicodeSets', 'sticky', 'hasIndices',
+                '[[PCREPattern]]', 'exec', 'test', 'toString',
+            ];
+            foreach ($propsToUpdate as $prop) {
+                $desc = $temp->getOwnPropertyDescriptor($prop);
+                if ($desc !== null) {
+                    $this_->defineOwnProperty($prop, $desc);
+                }
+            }
+
+            // Set lastIndex to 0 per spec. This may throw if lastIndex is non-writable.
+            $this_->set('lastIndex', new JsNumber(0.0), true);
+
+            return $this_;
+        }, 2);
+
         $addSymbol(SymbolConstructor::search(), '[Symbol.search]', self::symbolSearch(), 1);
         $addSymbol(SymbolConstructor::match(), '[Symbol.match]', self::symbolMatch(), 1);
         $addSymbol(SymbolConstructor::replace(), '[Symbol.replace]', self::symbolReplace(), 2);

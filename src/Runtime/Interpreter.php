@@ -87,8 +87,13 @@ class Interpreter
     private int $maxLoopIterations;
     private bool $strictMode = false;
 
-    /** Stack of active with-statement binding objects for spec-correct binding resolution. */
-    private array $withObjectStack = [];
+    /**
+     * Map of with-environment identity to their binding objects.
+     * Used for spec-correct binding resolution (ResolveBinding before Initializer).
+     * Keys are spl_object_id of the Environment, values are the JsObject.
+     * @var array<int, JsObject>
+     */
+    private array $withEnvObjects = [];
 
 
     public function __construct(
@@ -1457,8 +1462,14 @@ class Interpreter
 
             // Per 18.2.1.1.1: super is a SyntaxError in eval unless the
             // direct eval is inside a method (environment has [[HomeObject]]).
+            // Per 18.2.1.1.2: super() (SuperCall) is additionally restricted
+            // to constructor methods only.
             $inMethod = $env->has('[[HomeObject]]');
+            $inConstructor = $env->has('[[ActiveFunction]]');
             if (!$inMethod && $this->astContainsSuper($program->body)) {
+                throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
+            }
+            if ($inMethod && !$inConstructor && $this->astContainsSuperCall($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
 
@@ -1635,6 +1646,91 @@ class Interpreter
         if ($node instanceof LabeledStatement) {
             $this->validateEvalNoFreeJumps($node->body);
         }
+    }
+
+    /**
+     * Check whether an AST contains super() call expressions (SuperCall).
+     *
+     * Does not recurse into nested functions. This is used to enforce
+     * the restriction that super() is only allowed in constructors,
+     * not in regular methods.
+     *
+     * @param Node[] $statements
+     */
+    private function astContainsSuperCall(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsSuperCall($stmt)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check a single AST node for super() call expressions.
+     */
+    private function nodeContainsSuperCall(Node $node): bool
+    {
+        // Direct super() call.
+        if ($node instanceof CallExpression && $node->callee instanceof Identifier && $node->callee->name === 'super') {
+            return true;
+        }
+
+        // Stop recursion at function boundaries.
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+
+        // Recurse into child nodes.
+        if ($node instanceof ExpressionStatement) {
+            return $this->nodeContainsSuperCall($node->expression);
+        }
+        if ($node instanceof BlockStatement) {
+            return $this->astContainsSuperCall($node->body);
+        }
+        if ($node instanceof IfStatement) {
+            if ($this->nodeContainsSuperCall($node->test)) {
+                return true;
+            }
+            if ($this->nodeContainsSuperCall($node->consequent)) {
+                return true;
+            }
+
+            return $node->alternate !== null && $this->nodeContainsSuperCall($node->alternate);
+        }
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null && $this->nodeContainsSuperCall($decl->init)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof CallExpression) {
+            if ($this->nodeContainsSuperCall($node->callee)) {
+                return true;
+            }
+            foreach ($node->arguments as $arg) {
+                if ($this->nodeContainsSuperCall($arg)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof AssignmentExpression) {
+            return $this->nodeContainsSuperCall($node->left) || $this->nodeContainsSuperCall($node->right);
+        }
+        if ($node instanceof BinaryExpression) {
+            return $this->nodeContainsSuperCall($node->left) || $this->nodeContainsSuperCall($node->right);
+        }
+
+        return false;
     }
 
     /**
@@ -3658,16 +3754,26 @@ class Interpreter
                 $node->kind === 'var'
                 && $hasInit
                 && $declarator->id instanceof Identifier
-                && !empty($this->withObjectStack)
+                && !empty($this->withEnvObjects)
+                && !$env->hasOwnBinding($declarator->id->name)
             ) {
                 $name = $declarator->id->name;
-                // Walk the with-object stack from innermost to outermost to find
-                // which with-object currently holds this binding.
-                for ($wi = count($this->withObjectStack) - 1; $wi >= 0; $wi--) {
-                    if ($this->withObjectStack[$wi]->has($name)) {
-                        $resolvedWithObj = $this->withObjectStack[$wi];
-                        break;
+                // Walk the env chain to find a with-environment that has this binding.
+                // Only consider with-environments in the current scope chain (not from
+                // unrelated with-blocks like those surrounding a function call).
+                // If the current env has its own binding (hoisted var in function scope),
+                // the binding resolves there, not to a with-object.
+                $walkEnv = $env;
+                while ($walkEnv !== null) {
+                    $envId = spl_object_id($walkEnv);
+                    if (isset($this->withEnvObjects[$envId])) {
+                        $withObj = $this->withEnvObjects[$envId];
+                        if ($withObj->has($name)) {
+                            $resolvedWithObj = $withObj;
+                            break;
+                        }
                     }
+                    $walkEnv = $walkEnv->getParent();
                 }
             }
 
@@ -4936,11 +5042,11 @@ class Interpreter
             $obj = TypeConversion::toObject($obj);
         }
         $withEnv = $env->createWithEnvironment($obj);
-        $this->withObjectStack[] = $obj;
+        $this->withEnvObjects[spl_object_id($withEnv)] = $obj;
         try {
             $completion = $this->executeStatement($node->body, $withEnv);
         } finally {
-            array_pop($this->withObjectStack);
+            unset($this->withEnvObjects[spl_object_id($withEnv)]);
         }
         // Per spec 14.11.2 step 9: Return Completion(UpdateEmpty(C, undefined)).
         if ($completion->empty) {

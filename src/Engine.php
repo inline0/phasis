@@ -731,6 +731,18 @@ class Engine
         }
     }
 
+    /**
+     * Create a RegExp object, propagating exceptions.
+     * Used by RegExp.prototype.compile where errors must be visible to JS code.
+     */
+    public static function createRegExpOrThrow(string $pattern, string $flags): JsObject
+    {
+        if (self::$currentInterpreter === null) {
+            throw new \PhpJs\Exceptions\TypeError('Cannot compile RegExp');
+        }
+        return self::$currentInterpreter->createRegExpFromConstructor($pattern, $flags);
+    }
+
     public function setLimit(string $name, int $value): void
     {
         if ($name === 'maxLoopIterations') {
