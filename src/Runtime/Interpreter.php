@@ -3448,10 +3448,12 @@ class Interpreter
                 }
                 $this->installFunctionPrototype($fobj, $node->generator);
             }
-            // Propagate to the variable environment via set() which walks up
-            // the scope chain to the hoisted var binding.
-            if ($env->has($name)) {
-                $env->set($name, $fobj, false);
+            // Propagate to the variable environment (enclosing function/global
+            // scope) where the var binding was hoisted. Skip the current env
+            // (block scope) and use parent.set() so the var binding is updated.
+            $parent = $env->getParent();
+            if ($parent !== null && $parent->has($name)) {
+                $parent->set($name, $fobj, false);
             }
         }
         return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
@@ -4404,6 +4406,82 @@ class Interpreter
     }
 
     /**
+     * Hoist only var declarations (not function declarations) from nested blocks.
+     *
+     * Used when recursing into block-like structures during hoisting. Function
+     * declarations inside blocks are block-scoped per ES2015+; only their var
+     * binding name is hoisted via hoistBlockFunctionDeclarations (Annex B).
+     *
+     * @param Node[] $statements
+     */
+    private function hoistVarDeclarationsOnly(array $statements, Environment $env): void
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    $this->hoistVarNames($decl->id, $env);
+                }
+            } elseif ($stmt instanceof ForOfStatement || $stmt instanceof ForInStatement) {
+                if ($stmt->left instanceof VariableDeclaration && $stmt->left->kind === 'var') {
+                    foreach ($stmt->left->declarations as $decl) {
+                        $this->hoistVarNames($decl->id, $env);
+                    }
+                }
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof ForStatement) {
+                if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
+                    foreach ($stmt->init->declarations as $decl) {
+                        $this->hoistVarNames($decl->id, $env);
+                    }
+                }
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                }
+            } elseif (
+                $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
+                || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement
+            ) {
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->consequent->body, $env);
+                }
+                if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->alternate->body, $env);
+                } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\IfStatement) {
+                    $this->hoistVarDeclarationsOnly([$stmt->alternate], $env);
+                }
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                $this->hoistVarDeclarationsOnly($stmt->body, $env);
+            } elseif ($stmt instanceof TryStatement) {
+                $this->hoistVarDeclarationsOnly($stmt->block->body, $env);
+                if ($stmt->handler !== null) {
+                    $this->hoistVarDeclarationsOnly($stmt->handler->body->body, $env);
+                }
+                if ($stmt->finalizer !== null) {
+                    $this->hoistVarDeclarationsOnly($stmt->finalizer->body, $env);
+                }
+            } elseif ($stmt instanceof SwitchStatement) {
+                foreach ($stmt->cases as $case) {
+                    $this->hoistVarDeclarationsOnly($case->consequent, $env);
+                }
+            } elseif ($stmt instanceof LabeledStatement) {
+                $this->hoistVarDeclarationsOnly([$stmt->body], $env);
+            } elseif ($stmt instanceof WithStatement) {
+                if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
+                }
+            }
+        }
+    }
+
+    /**
      * Annex B block-scoped function hoisting for sloppy mode.
      *
      * Recurse into block-like structures and hoist any function declaration
@@ -4421,6 +4499,19 @@ class Interpreter
             $stmt instanceof LabeledStatement => [$stmt->body],
             default => [],
         };
+
+        // Switch statements: collect function declarations from case bodies.
+        if ($stmt instanceof SwitchStatement) {
+            foreach ($stmt->cases as $case) {
+                foreach ($case->consequent as $inner) {
+                    if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
+                        if (!$env->has($inner->id->name)) {
+                            $env->defineVar($inner->id->name, JsUndefined::instance());
+                        }
+                    }
+                }
+            }
+        }
 
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration) {

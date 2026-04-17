@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace PhpJs\Interop;
 
 use PhpJs\Value\JsArray;
+use PhpJs\Value\JsArrayBuffer;
 use PhpJs\Value\JsBoolean;
+use PhpJs\Value\JsDataView;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
+use PhpJs\Value\JsTypedArray;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -83,6 +86,15 @@ final class PhpToJs
         }
         if ($value instanceof JsString) {
             return $value->value;
+        }
+        // Opaque JS objects that have no natural PHP equivalent: return as-is
+        // so that PHP callbacks can operate on the original JsValue identity.
+        if (
+            $value instanceof JsArrayBuffer
+            || $value instanceof JsDataView
+            || $value instanceof JsTypedArray
+        ) {
+            return $value;
         }
         if ($value instanceof JsArray) {
             $result = [];

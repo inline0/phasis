@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace PhpJs\BuiltIn;
 
 use PhpJs\Exceptions\TypeError;
+use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Runtime\Environment;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
@@ -17,7 +18,6 @@ use PhpJs\Value\JsSet;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
-use PhpJs\Object\PropertyDescriptor;
 
 /**
  * Set constructor and prototype methods.
@@ -27,8 +27,19 @@ use PhpJs\Object\PropertyDescriptor;
  */
 class SetConstructor
 {
+    /** %SetIteratorPrototype%: shared prototype for all set iterators. */
+    private static ?JsObject $setIteratorPrototype = null;
+
     public static function install(Environment $env): void
     {
+        self::resetSetIteratorPrototype();
+        $iteratorPrototype = $env->has('__IteratorPrototype__')
+            ? $env->get('__IteratorPrototype__')
+            : null;
+        self::getSetIteratorPrototype(
+            $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
+        );
+
         $proto = self::createPrototype();
 
         $constructor = JsFunction::fromCallable(
@@ -52,6 +63,89 @@ class SetConstructor
         );
 
         $env->defineVar('Set', $constructor);
+    }
+
+    /** Reset the shared set iterator prototype (for engine reset). */
+    public static function resetSetIteratorPrototype(): void
+    {
+        self::$setIteratorPrototype = null;
+    }
+
+    /**
+     * Get or create the %SetIteratorPrototype% intrinsic.
+     */
+    public static function getSetIteratorPrototype(?JsObject $iteratorPrototype = null): JsObject
+    {
+        if (self::$setIteratorPrototype !== null) {
+            return self::$setIteratorPrototype;
+        }
+
+        $proto = new JsObject($iteratorPrototype);
+
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError(
+                    'Method Set Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $slotDesc = $this_->getOwnPropertyDescriptor('[[SetIteratorData]]');
+            if ($slotDesc === null) {
+                throw new TypeError(
+                    'Method Set Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $data = $slotDesc->value;
+            if (!$data instanceof JsObject) {
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+            $set = $data->get('set');
+            if (!$set instanceof JsSet) {
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+            $kind = ($data->get('kind') instanceof JsString) ? $data->get('kind')->value : 'value';
+            $indexVal = $data->get('index');
+            $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
+
+            $result = new JsObject();
+            while ($index < $set->slotCount()) {
+                $value = $set->getSlot($index);
+                $index++;
+                $data->set('index', new JsNumber((float) $index));
+                if ($value !== null) {
+                    $result->set('done', new JsBoolean(false));
+                    $result->set('value', match ($kind) {
+                        'key+value' => JsArray::fromArray([$value, $value]),
+                        default => $value,
+                    });
+                    return $result;
+                }
+            }
+            // Exhausted.
+            $this_->defineOwnProperty(
+                '[[SetIteratorData]]',
+                PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+            );
+            $result->set('value', JsUndefined::instance());
+            $result->set('done', new JsBoolean(true));
+            return $result;
+        }, 0);
+        $nextFn->setNonConstructable();
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+
+        // Symbol.toStringTag = "Set Iterator".
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Set Iterator'), false, false, true),
+        );
+
+        self::$setIteratorPrototype = $proto;
+        return $proto;
     }
 
     /**
@@ -195,7 +289,7 @@ class SetConstructor
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.values called on incompatible receiver');
             }
-            return self::createValueIterator($this_);
+            return self::createSetIterator($this_, 'value');
         }, 0);
         $proto->defineOwnProperty('values', PropertyDescriptor::data($valuesFn, true, false, true));
         $proto->defineOwnProperty('keys', PropertyDescriptor::data($valuesFn, true, false, true));
@@ -204,7 +298,7 @@ class SetConstructor
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.entries called on incompatible receiver');
             }
-            return self::createEntryIterator($this_);
+            return self::createSetIterator($this_, 'key+value');
         }, 0);
         $proto->defineOwnProperty('entries', PropertyDescriptor::data($entriesFn, true, false, true));
 
@@ -238,78 +332,22 @@ class SetConstructor
     }
 
     /**
-     * Create a live Set value iterator object.
-     * Uses slot-based iteration to handle additions/deletions during iteration.
+     * Create a live Set iterator object with proper prototype chain.
      */
-    private static function createValueIterator(JsSet $set): JsObject
+    private static function createSetIterator(JsSet $set, string $kind): JsObject
     {
-        $index = 0;
-        $finished = false;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-        $nextFn = function () use ($set, &$index, &$finished): JsValue {
-            $result = new JsObject();
-            if (!$finished) {
-                while ($index < $set->slotCount()) {
-                    $value = $set->getSlot($index);
-                    $index++;
-                    if ($value !== null) {
-                        $result->set('value', $value);
-                        $result->set('done', new JsBoolean(false));
-                        return $result;
-                    }
-                }
-                $finished = true;
-            }
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
-            return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
-        );
-        return $iterator;
-    }
+        $proto = self::$setIteratorPrototype;
+        $iterator = new JsObject($proto);
 
-    /**
-     * Create a live Set entry iterator object (each entry is [value, value]).
-     * Uses slot-based iteration to handle additions/deletions during iteration.
-     */
-    private static function createEntryIterator(JsSet $set): JsObject
-    {
-        $index = 0;
-        $finished = false;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-        $nextFn = function () use ($set, &$index, &$finished): JsValue {
-            $result = new JsObject();
-            if (!$finished) {
-                while ($index < $set->slotCount()) {
-                    $value = $set->getSlot($index);
-                    $index++;
-                    if ($value !== null) {
-                        $result->set('value', JsArray::fromArray([$value, $value]));
-                        $result->set('done', new JsBoolean(false));
-                        return $result;
-                    }
-                }
-                $finished = true;
-            }
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
-            return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
+        $data = new JsObject();
+        $data->set('set', $set);
+        $data->set('kind', new JsString($kind));
+        $data->set('index', new JsNumber(0.0));
+        $iterator->defineOwnProperty(
+            '[[SetIteratorData]]',
+            PropertyDescriptor::data($data, false, false, false),
         );
+
         return $iterator;
     }
 }
