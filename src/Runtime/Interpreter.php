@@ -6216,6 +6216,16 @@ class Interpreter
         $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, true);
         $obj->defineOwnProperty('source', $noenum(new JsString($pattern === '' ? '(?:)' : $pattern)));
         $obj->defineOwnProperty('flags', $noenum(new JsString($sortedFlags)));
+        // Internal slots for compile() per Annex B: these are not affected by
+        // user-visible property overrides on the instance.
+        $obj->defineOwnProperty(
+            '[[OriginalSource]]',
+            PropertyDescriptor::data(new JsString($pattern), false, false, false),
+        );
+        $obj->defineOwnProperty(
+            '[[OriginalFlags]]',
+            PropertyDescriptor::data(new JsString($sortedFlags), false, false, false),
+        );
         $obj->defineOwnProperty('global', $noenum(new JsBoolean(str_contains($flags, 'g'))));
         $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
         $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));

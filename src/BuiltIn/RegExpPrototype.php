@@ -138,12 +138,24 @@ class RegExpPrototype
                         'Cannot supply flags when constructing one RegExp from another',
                     );
                 }
+                // Read from [[OriginalSource]]/[[OriginalFlags]] internal slots
+                // to avoid triggering user-defined accessors on the instance.
                 /** @var JsObject $patternArg */
-                $p = TypeConversion::toString($patternArg->get('source'));
-                if ($p === '(?:)') {
-                    $p = '';
+                $srcDesc = $patternArg->getOwnPropertyDescriptor('[[OriginalSource]]');
+                $flgDesc = $patternArg->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                if ($srcDesc !== null && $srcDesc->value !== null) {
+                    $p = TypeConversion::toString($srcDesc->value);
+                } else {
+                    $p = TypeConversion::toString($patternArg->get('source'));
+                    if ($p === '(?:)') {
+                        $p = '';
+                    }
                 }
-                $f = TypeConversion::toString($patternArg->get('flags'));
+                if ($flgDesc !== null && $flgDesc->value !== null) {
+                    $f = TypeConversion::toString($flgDesc->value);
+                } else {
+                    $f = TypeConversion::toString($patternArg->get('flags'));
+                }
             } else {
                 $p = $patternArg instanceof JsUndefined
                     ? ''
@@ -161,7 +173,8 @@ class RegExpPrototype
             $propsToUpdate = [
                 'source', 'flags', 'global', 'ignoreCase', 'multiline',
                 'dotAll', 'unicode', 'unicodeSets', 'sticky', 'hasIndices',
-                '[[PCREPattern]]', 'exec', 'test', 'toString',
+                '[[PCREPattern]]', '[[OriginalSource]]', '[[OriginalFlags]]',
+                'exec', 'test', 'toString',
             ];
             foreach ($propsToUpdate as $prop) {
                 $desc = $temp->getOwnPropertyDescriptor($prop);
