@@ -645,17 +645,53 @@ class RegExpPrototype
                 return JsArray::fromArray([]);
             }
 
-            // Get the PCRE pattern to perform sticky matching directly.
-            // Per spec, @@split creates a copy of the regex with the 'y' flag.
-            // We simulate this with PCRE offset matching and strict position checking.
-            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            // Per spec step 4-10: create a copy via SpeciesConstructor with 'y' flag.
+            // This allows side effects (like Symbol.match getters that recompile the
+            // regex) to take effect before splitting begins.
+            $splitter = $this_;
+            $regExpCtor = \PhpJs\Engine::$currentInterpreter
+                ? \PhpJs\Engine::$currentInterpreter->getGlobalValue('RegExp')
+                : null;
+            if ($regExpCtor instanceof \PhpJs\Value\JsFunction) {
+                // SpeciesConstructor: check rx.constructor[Symbol.species] or default to RegExp.
+                $C = $regExpCtor;
+                $ctorVal = $this_->get('constructor');
+                if ($ctorVal instanceof JsObject) {
+                    $speciesSymbol = SymbolConstructor::species();
+                    $speciesVal = $ctorVal->getBySymbol($speciesSymbol);
+                    if ($speciesVal instanceof \PhpJs\Value\JsFunction) {
+                        $C = $speciesVal;
+                    } elseif (!($speciesVal instanceof JsUndefined) && !($speciesVal instanceof \PhpJs\Value\JsNull)) {
+                        // Use default
+                    }
+                }
+                // Get flags and add 'y'.
+                $flags = TypeConversion::toString($this_->get('flags'));
+                if (!str_contains($flags, 'y')) {
+                    $flags .= 'y';
+                }
+                // Construct(C, [rx, newFlags]): calls new C(rx, flags).
+                // This triggers IsRegExp on rx which may access Symbol.match.
+                $interp = \PhpJs\Engine::$currentInterpreter;
+                if ($interp !== null) {
+                    $splitter = $interp->callNew($C, [$this_, new JsString($flags)]);
+                    if (!$splitter instanceof JsObject) {
+                        $splitter = $this_;
+                    }
+                }
+            }
+
+            // Get the PCRE pattern from the splitter (which may differ from the
+            // original if side effects recompiled the regex).
+            /** @var JsObject $splitter */
+            $pcrePatternDesc = $splitter->getOwnPropertyDescriptor('[[PCREPattern]]');
             $pcrePattern = ($pcrePatternDesc !== null && $pcrePatternDesc->value instanceof JsString)
                 ? $pcrePatternDesc->value->value
                 : null;
 
             // If no compiled PCRE, fall back to exec-based approach via prototype exec.
             if ($pcrePattern === null) {
-                return self::symbolSplitViaExec($this_, $S, $lim);
+                return self::symbolSplitViaExec($splitter, $S, $lim);
             }
 
             $size = mb_strlen($S, 'UTF-8');

@@ -1095,7 +1095,7 @@ class Interpreter
                 $raw = '0';
             }
             $newValue = new JsBigInt($raw);
-            $ref->setValue($newValue);
+            $this->withSetMutableBindingCheck($ref, $newValue);
             return $node->prefix ? $newValue : $oldNumeric;
         }
 
@@ -1104,7 +1104,7 @@ class Interpreter
         );
         $delta = $node->operator === '++' ? 1.0 : -1.0;
         $newValue = new JsNumber($oldValue->value + $delta);
-        $ref->setValue($newValue);
+        $this->withSetMutableBindingCheck($ref, $newValue);
 
         return $node->prefix ? $newValue : $oldValue;
     }
@@ -1147,7 +1147,7 @@ class Interpreter
             ) {
                 $right->setName($node->left->name);
             }
-            $ref->setValue($right);
+            $this->withSetMutableBindingCheck($ref, $right);
             return $right;
         }
 
@@ -1172,7 +1172,7 @@ class Interpreter
                 return $leftVal;
             }
             $right = $this->evaluate($node->right, $env);
-            $ref->setValue($right);
+            $this->withSetMutableBindingCheck($ref, $right);
             return $right;
         }
 
@@ -1208,7 +1208,7 @@ class Interpreter
             default => throw new InternalError("Unknown assignment operator: {$node->operator}"),
         };
 
-        $ref->setValue($result);
+        $this->withSetMutableBindingCheck($ref, $result);
         return $result;
     }
 
@@ -6148,6 +6148,38 @@ class Interpreter
             $prop = new \ReflectionProperty(Environment::class, 'withObject');
         }
         return $prop->getValue($env);
+    }
+
+    /**
+     * Per spec 9.1.1.2.5 SetMutableBinding for Object Environment Records:
+     * Before writing through a with-binding reference, re-check HasProperty
+     * on the binding object. If the property no longer exists (e.g. deleted
+     * by the RHS expression) and strict mode is active, throw ReferenceError.
+     * This must be called before Reference::setValue() for with-binding references.
+     */
+    private function withSetMutableBindingCheck(Reference $ref, JsValue $value): void
+    {
+        if (
+            $ref->base instanceof JsObject
+            && isset($this->activeWithObjectIds[spl_object_id($ref->base)])
+        ) {
+            // Step 2: Let stillExists be HasProperty(bindingObject, N).
+            $stillExists = $ref->base->has($ref->name);
+            // Step 3: If stillExists is false and S is true, throw ReferenceError.
+            if (!$stillExists && $ref->strict) {
+                throw new ReferenceError("{$ref->name} is not defined");
+            }
+            // Step 4: Perform Set(bindingObject, N, V, S).
+            // Use internalSet so we get the boolean success result for strict mode.
+            $success = $ref->base->internalSet($ref->name, $value, $ref->base);
+            if (!$success && $ref->strict) {
+                throw new TypeError(
+                    "Cannot assign to read only property '{$ref->name}' of object '#<Object>'"
+                );
+            }
+            return;
+        }
+        $ref->setValue($value);
     }
 
     private function isDestructuringTarget(Node $node): bool
