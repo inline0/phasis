@@ -1397,14 +1397,22 @@ class ArrayConstructor
                 );
             }
             $data = $slotDesc->value;
-            if (!$data instanceof JsObject) {
-                // Iterator is exhausted (data cleared).
+            $isExhausted = $data instanceof JsObject
+                && $data->get('exhausted') instanceof JsBoolean
+                && $data->get('exhausted')->value;
+            if (!$data instanceof JsObject || $isExhausted) {
                 $result = new JsObject();
                 $result->set('value', JsUndefined::instance());
                 $result->set('done', new JsBoolean(true));
                 return $result;
             }
             $array = $data->get('array');
+            if (!$array instanceof JsObject) {
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
             $kind = ($data->get('kind') instanceof JsString) ? $data->get('kind')->value : 'value';
             $indexVal = $data->get('index');
             $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
@@ -1425,11 +1433,8 @@ class ArrayConstructor
                     default => $value,
                 });
             } else {
-                // Mark as exhausted.
-                $this_->defineOwnProperty(
-                    '[[ArrayIteratorData]]',
-                    PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
-                );
+                // Mark as exhausted so subsequent calls stay done.
+                $data->set('exhausted', new JsBoolean(true));
                 $result->set('value', JsUndefined::instance());
                 $result->set('done', new JsBoolean(true));
             }

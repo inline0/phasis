@@ -95,7 +95,10 @@ class SetConstructor
                 );
             }
             $data = $slotDesc->value;
-            if (!$data instanceof JsObject) {
+            $isExhausted = $data instanceof JsObject
+                && $data->get('exhausted') instanceof JsBoolean
+                && $data->get('exhausted')->value;
+            if (!$data instanceof JsObject || $isExhausted) {
                 $result = new JsObject();
                 $result->set('value', JsUndefined::instance());
                 $result->set('done', new JsBoolean(true));
@@ -126,11 +129,8 @@ class SetConstructor
                     return $result;
                 }
             }
-            // Exhausted.
-            $this_->defineOwnProperty(
-                '[[SetIteratorData]]',
-                PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
-            );
+            // Mark as exhausted so subsequent calls stay done.
+            $data->set('exhausted', new JsBoolean(true));
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));
             return $result;

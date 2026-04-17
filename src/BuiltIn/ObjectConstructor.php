@@ -662,12 +662,27 @@ class ObjectConstructor
                 if ($source instanceof JsNull || $source instanceof JsUndefined) {
                     continue;
                 }
-                if (!$source instanceof JsObject) {
-                    continue;
-                }
-                $keys = $source->getOwnEnumerableKeys();
-                foreach ($keys as $key) {
-                    $target->set($key, $source->get($key));
+                // Per spec, coerce non-object sources to objects.
+                $from = TypeConversion::toObject($source);
+                // Per spec, use [[OwnPropertyKeys]] (includes symbols) and check enumerability.
+                $allKeys = $from->ordinaryOwnPropertyKeys();
+                foreach ($allKeys as $keyVal) {
+                    if ($keyVal instanceof JsSymbol) {
+                        $desc = $from->getSymbolPropertyDescriptor($keyVal);
+                        if ($desc === null || $desc->enumerable !== true) {
+                            continue;
+                        }
+                        $propValue = $from->getBySymbol($keyVal);
+                        $target->setBySymbol($keyVal, $propValue, true);
+                    } else {
+                        $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                        $desc = $from->getOwnPropertyDescriptor($key);
+                        if ($desc === null || $desc->enumerable !== true) {
+                            continue;
+                        }
+                        $propValue = $from->get($key);
+                        $target->set($key, $propValue, true);
+                    }
                 }
             }
 

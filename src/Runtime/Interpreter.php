@@ -1403,6 +1403,106 @@ class Interpreter
     }
 
     /**
+     * Check whether an AST contains super property or super call references.
+     *
+     * Does not recurse into nested functions (they have their own [[HomeObject]]).
+     *
+     * @param Node[] $statements
+     */
+    private function astContainsSuper(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsSuper($stmt)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function nodeContainsSuper(Node $node): bool
+    {
+        // Direct super references.
+        if ($node instanceof CallExpression && $node->callee instanceof Identifier && $node->callee->name === 'super') {
+            return true;
+        }
+        if ($node instanceof MemberExpression && $node->object instanceof Identifier && $node->object->name === 'super') {
+            return true;
+        }
+        // Check if the node has a "super" keyword token directly (for super.prop, super[expr]).
+        if ($node instanceof Identifier && $node->name === 'super') {
+            return true;
+        }
+
+        // Stop recursion at function boundaries (they have their own [[HomeObject]]).
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+
+        // Recurse into child nodes.
+        if ($node instanceof ExpressionStatement) {
+            return $this->nodeContainsSuper($node->expression);
+        }
+        if ($node instanceof BlockStatement) {
+            return $this->astContainsSuper($node->body);
+        }
+        if ($node instanceof IfStatement) {
+            if ($this->nodeContainsSuper($node->test)) {
+                return true;
+            }
+            if ($this->nodeContainsSuper($node->consequent)) {
+                return true;
+            }
+
+            return $node->alternate !== null && $this->nodeContainsSuper($node->alternate);
+        }
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null && $this->nodeContainsSuper($decl->init)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof CallExpression) {
+            if ($this->nodeContainsSuper($node->callee)) {
+                return true;
+            }
+            foreach ($node->arguments as $arg) {
+                if ($this->nodeContainsSuper($arg)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof MemberExpression) {
+            return $this->nodeContainsSuper($node->object);
+        }
+        if ($node instanceof AssignmentExpression) {
+            return $this->nodeContainsSuper($node->left) || $this->nodeContainsSuper($node->right);
+        }
+        if ($node instanceof BinaryExpression) {
+            return $this->nodeContainsSuper($node->left) || $this->nodeContainsSuper($node->right);
+        }
+        if ($node instanceof TryStatement) {
+            if ($this->astContainsSuper($node->block->body)) {
+                return true;
+            }
+            if ($node->handler !== null && $this->astContainsSuper($node->handler->body->body)) {
+                return true;
+            }
+
+            return $node->finalizer !== null && $this->astContainsSuper($node->finalizer->body);
+        }
+
+        return false;
+    }
+
+    /**
      * Validate strict-mode early errors in parsed eval code.
      *
      * Per spec 13.15.1, catch parameters named 'eval' or 'arguments'

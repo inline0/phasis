@@ -100,7 +100,10 @@ class MapConstructor
                 );
             }
             $data = $slotDesc->value;
-            if (!$data instanceof JsObject) {
+            $isExhausted = $data instanceof JsObject
+                && $data->get('exhausted') instanceof JsBoolean
+                && $data->get('exhausted')->value;
+            if (!$data instanceof JsObject || $isExhausted) {
                 $result = new JsObject();
                 $result->set('value', JsUndefined::instance());
                 $result->set('done', new JsBoolean(true));
@@ -132,11 +135,8 @@ class MapConstructor
                     return $result;
                 }
             }
-            // Exhausted. Clear data.
-            $this_->defineOwnProperty(
-                '[[MapIteratorData]]',
-                PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
-            );
+            // Mark as exhausted so subsequent calls stay done.
+            $data->set('exhausted', new JsBoolean(true));
             $result->set('value', JsUndefined::instance());
             $result->set('done', new JsBoolean(true));
             return $result;
