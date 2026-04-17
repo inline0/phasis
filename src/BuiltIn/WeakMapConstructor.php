@@ -68,6 +68,12 @@ class WeakMapConstructor
             return;
         }
 
+        // Per spec: get the set method BEFORE iterating
+        $adder = $map->get('set');
+        if (!$adder instanceof JsFunction) {
+            throw new TypeError('WeakMap.prototype.set is not a function');
+        }
+
         if ($iterable instanceof JsArray) {
             $length = $iterable->getLength();
             for ($i = 0; $i < $length; $i++) {
@@ -77,7 +83,7 @@ class WeakMapConstructor
                 }
                 $key = $entry->get('0');
                 $value = $entry->get('1');
-                $map->weakMapSet($key, $value);
+                $adder->call($map, [$key, $value]);
             }
             return;
         }

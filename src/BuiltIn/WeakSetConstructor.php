@@ -67,10 +67,16 @@ class WeakSetConstructor
             return;
         }
 
+        // Per spec: get the add method BEFORE iterating
+        $adder = $set->get('add');
+        if (!$adder instanceof JsFunction) {
+            throw new TypeError('WeakSet.prototype.add is not a function');
+        }
+
         if ($iterable instanceof \PhpJs\Value\JsArray) {
             $length = $iterable->getLength();
             for ($i = 0; $i < $length; $i++) {
-                $set->weakSetAdd($iterable->get((string) $i));
+                $adder->call($set, [$iterable->get((string) $i)]);
             }
             return;
         }
