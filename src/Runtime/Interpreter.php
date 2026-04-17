@@ -3588,9 +3588,11 @@ class Interpreter
                         $obj->set($key, $source->get($key));
                     }
                     // Copy own enumerable symbol-keyed properties (per spec CopyDataProperties).
+                    // Use getBySymbol to invoke accessor getters, matching the
+                    // behavior of string-keyed property copying above.
                     foreach ($source->getOwnSymbolsWithDescriptors() as [$sym, $desc]) {
                         if ($desc->enumerable !== false) {
-                            $obj->setBySymbol($sym, $desc->value ?? JsUndefined::instance());
+                            $obj->setBySymbol($sym, $source->getBySymbol($sym));
                         }
                     }
                 }
@@ -7514,14 +7516,41 @@ class Interpreter
                 }
                 // \uXXXX 4-digit Unicode escape: convert to PCRE \x{XXXX}.
                 // Surrogate code points (D800-DFFF) are invalid in UTF-8 and
-                // rejected by PCRE. Replace them with U+FFFE (non-character)
-                // so the regex compiles; the alternatives won't match real text.
+                // rejected by PCRE. A lead surrogate (D800-DBFF) followed
+                // immediately by \uXXXX trail surrogate (DC00-DFFF) forms a
+                // surrogate pair encoding a supplementary code point. Decode
+                // them into a single \x{XXXXX} for PCRE. Lone surrogates are
+                // replaced with U+FFFE so the regex compiles.
                 if ($next === 'u' && $i + 5 < $len + 1) {
                     $hex = substr($pattern, $i + 2, 4);
                     if (strlen($hex) === 4 && ctype_xdigit($hex)) {
                         $codePoint = hexdec($hex);
-                        if ($codePoint >= 0xD800 && $codePoint <= 0xDFFF) {
-                            // Surrogate: replace with non-character U+FFFE to avoid PCRE error.
+                        if ($codePoint >= 0xD800 && $codePoint <= 0xDBFF) {
+                            // Lead surrogate: check for trail surrogate \uXXXX immediately after.
+                            $afterLead = $i + 6;
+                            if (
+                                $afterLead + 5 < $len + 1
+                                && $pattern[$afterLead] === '\\'
+                                && ($afterLead + 1 < $len) && $pattern[$afterLead + 1] === 'u'
+                            ) {
+                                $trailHex = substr($pattern, $afterLead + 2, 4);
+                                if (strlen($trailHex) === 4 && ctype_xdigit($trailHex)) {
+                                    $trailCp = hexdec($trailHex);
+                                    if ($trailCp >= 0xDC00 && $trailCp <= 0xDFFF) {
+                                        // Decode surrogate pair: UTF16Decode(lead, trail).
+                                        $combined = 0x10000
+                                            + (($codePoint - 0xD800) << 10)
+                                            + ($trailCp - 0xDC00);
+                                        $result .= '\\x{' . strtoupper(dechex($combined)) . '}';
+                                        $i = $afterLead + 6;
+                                        continue;
+                                    }
+                                }
+                            }
+                            // Lone lead surrogate: replace with U+FFFE.
+                            $result .= '\\x{FFFE}';
+                        } elseif ($codePoint >= 0xDC00 && $codePoint <= 0xDFFF) {
+                            // Lone trail surrogate: replace with U+FFFE.
                             $result .= '\\x{FFFE}';
                         } else {
                             $result .= '\\x{' . strtoupper($hex) . '}';
