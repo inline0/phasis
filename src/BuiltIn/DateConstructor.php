@@ -763,7 +763,7 @@ class DateConstructor
                 (int) $local->format('n'),
                 (int) $local->format('j'),
             );
-            $newTv = (float) $newDate->getTimestamp() * 1000 + $ms;
+            $newTv = self::timeClip((float) $newDate->getTimestamp() * 1000 + $ms);
             $this_->set('[[DateValue]]', new JsNumber($newTv));
             return new JsNumber($newTv);
         }, 1);

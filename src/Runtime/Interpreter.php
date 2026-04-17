@@ -2510,7 +2510,10 @@ class Interpreter
             $hasDefaultParams = $this->hasParameterExpressions($params);
 
             if (!$fn->isArrow()) {
-                $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
+                // Per spec 10.2.11: non-simple parameter lists produce unmapped
+                // arguments objects (poison-pill callee), same as strict mode.
+                $unmapped = $this->strictMode || $this->isNonSimpleParameterList($params);
+                $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
                 $fnEnv->defineVar('arguments', $argsObj);
             }
 
@@ -2639,7 +2642,8 @@ class Interpreter
         $fnEnv = $fn->getClosure()->createChild();
         $fnEnv->setFunctionKind($fn->isAsync() ? 'async-generator' : 'generator');
         $fnEnv->defineVar('this', $thisValue);
-        $argsObj = $this->makeArgumentsObject($args, $fn, $this->strictMode);
+        $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
+        $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
         $this->bindParameters($fn->getParams(), $args, $fnEnv);
 
