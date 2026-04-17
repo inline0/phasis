@@ -1189,9 +1189,12 @@ class Lexer
             $this->advance();
         }
 
-        // Read flags
+        // Read flags (ASCII letters only, not locale-dependent ctype_alpha)
         $flags = '';
-        while ($this->pos < $this->length && ctype_alpha($this->source[$this->pos])) {
+        while (
+            $this->pos < $this->length
+            && preg_match('/[a-zA-Z]/', $this->source[$this->pos])
+        ) {
             $flags .= $this->source[$this->pos];
             $this->advance();
         }
