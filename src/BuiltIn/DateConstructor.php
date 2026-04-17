@@ -718,6 +718,56 @@ class DateConstructor
             return new JsString(self::toUTCString($tv));
         });
 
+        // Annex B: toGMTString is an alias for toUTCString
+        $proto->defineOwnProperty(
+            'toGMTString',
+            PropertyDescriptor::data($proto->get('toUTCString'), true, false, true),
+        );
+
+        // Annex B: getYear() returns year - 1900
+        $d('getYear', function (JsValue $this_): JsValue {
+            $tv = self::getTimeValue($this_);
+            if (is_nan($tv)) {
+                return new JsNumber(NAN);
+            }
+            $local = self::localDateTime($tv);
+            return new JsNumber((float) ((int) $local->format('Y') - 1900));
+        }, 0);
+
+        // Annex B: setYear(year) sets the year (adds 1900 if 0-99)
+        $d('setYear', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
+                throw new TypeError('this is not a Date object');
+            }
+            $yearArg = $args[0] ?? JsUndefined::instance();
+            $y = TypeConversion::toNumber($yearArg);
+            if (is_nan($y)) {
+                $this_->set('[[DateValue]]', new JsNumber(NAN));
+                return new JsNumber(NAN);
+            }
+            $yi = (int) $y;
+            if ($yi >= 0 && $yi <= 99) {
+                $yi += 1900;
+            }
+            $tv = self::getTimeValue($this_);
+            if (is_nan($tv)) {
+                $tv = 0.0;
+            }
+            $local = self::localDateTime($tv);
+            $ms = (int) $tv % 1000;
+            if ($ms < 0) {
+                $ms += 1000;
+            }
+            $newDate = $local->setDate(
+                $yi,
+                (int) $local->format('n'),
+                (int) $local->format('j'),
+            );
+            $newTv = (float) $newDate->getTimestamp() * 1000 + $ms;
+            $this_->set('[[DateValue]]', new JsNumber($newTv));
+            return new JsNumber($newTv);
+        }, 1);
+
         $d('toJSON', function (JsValue $this_): JsValue {
             // ES spec 21.4.4.24 Date.prototype.toJSON ( key )
             // 1. Let O be ? ToObject(this value).
