@@ -197,7 +197,10 @@ class Interpreter
             $node instanceof ExpressionStatement => $this->execExpressionStatement($node, $env),
             $node instanceof VariableDeclaration => $this->execVariableDeclaration($node, $env),
             // Per spec §14.1.32: FunctionDeclaration → NormalCompletion(empty).
-            $node instanceof FunctionDeclaration => new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true),
+            $node instanceof FunctionDeclaration => new Completion(
+                CompletionType::Normal,
+                JsUndefined::instance(), empty: true,
+            ),
             $node instanceof ClassDeclaration => $this->execClassDeclaration($node, $env),
             $node instanceof BlockStatement => $this->execBlockStatement($node, $env),
             $node instanceof IfStatement => $this->execIfStatement($node, $env),
@@ -214,7 +217,10 @@ class Interpreter
             $node instanceof ContinueStatement => Completion::continue($node->label),
             $node instanceof LabeledStatement => $this->execLabeledStatement($node, $env),
             $node instanceof WithStatement => $this->execWithStatement($node, $env),
-            $node instanceof EmptyStatement => new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true),
+            $node instanceof EmptyStatement => new Completion(
+                CompletionType::Normal,
+                JsUndefined::instance(), empty: true,
+            ),
             $node instanceof DebuggerStatement => Completion::normal(JsUndefined::instance()),
             default => throw new InternalError('Unknown statement type: ' . $node->type()),
         };
@@ -567,7 +573,8 @@ class Interpreter
         if ($shifted === '') {
             return new JsBigInt($leftNeg ? '-1' : '0');
         }
-        return new JsBigInt($this->twosCompBinToDecimal(str_pad($shifted, strlen($bin), $leftNeg ? '1' : '0', STR_PAD_LEFT)));
+        $padded = str_pad($shifted, strlen($bin), $leftNeg ? '1' : '0', STR_PAD_LEFT);
+        return new JsBigInt($this->twosCompBinToDecimal($padded));
     }
 
     /** Compute 2^n as a decimal string using pure-PHP string doubling. */
@@ -1208,7 +1215,9 @@ class Interpreter
             if ($rawObj instanceof JsSymbol) {
                 $symProtoForCall = JsSymbol::getSymbolPrototype();
                 if ($symProtoForCall !== null) {
-                    $method = $isSymbolCallKey ? $symProtoForCall->getBySymbol($rawCallKey) : $symProtoForCall->get($key);
+                    $method = $isSymbolCallKey
+                        ? $symProtoForCall->getBySymbol($rawCallKey)
+                        : $symProtoForCall->get($key);
                     if ($method instanceof JsFunction) {
                         $args = $this->evaluateArguments($node->arguments, $env);
                         return $this->callFunction($method, $rawObj, $args);
@@ -1547,7 +1556,10 @@ class Interpreter
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
         // Mark as new.target so constructors can detect new vs call.
         // Use a non-enumerable, non-configurable property so it does not leak into iteration.
-        $newObj->defineOwnProperty('[[NewTarget]]', \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false));
+        $newObj->defineOwnProperty(
+            '[[NewTarget]]',
+            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+        );
 
         $result = $this->callFunction($callee, $newObj, $args);
 
@@ -2208,7 +2220,9 @@ class Interpreter
                     && $this->isAnonymousFunctionDefinitionNode($pattern->right)
                 ) {
                     $nameDesc = $value->getOwnPropertyDescriptor('name');
-                    if ($nameDesc === null || ($nameDesc->value instanceof JsString && $nameDesc->value->value === '')) {
+                    $isEmptyName = $nameDesc === null
+                        || ($nameDesc->value instanceof JsString && $nameDesc->value->value === '');
+                    if ($isEmptyName) {
                         $value->setName($pattern->left->name);
                     }
                 }
@@ -3037,7 +3051,8 @@ class Interpreter
             $done = false;
             foreach ($pattern->elements as $element) {
                 if ($element instanceof RestElement) {
-                    $this->assignVarBinding($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                    $rest = $this->iteratorRest($iterator, $nextMethod, $done);
+                    $this->assignVarBinding($element->argument, $rest, $env);
                     break;
                 }
                 $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
@@ -3808,7 +3823,8 @@ class Interpreter
             $done = false;
             foreach ($pattern->elements as $element) {
                 if ($element instanceof RestElement) {
-                    $this->assignPatternToEnv($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                    $rest = $this->iteratorRest($iterator, $nextMethod, $done);
+                    $this->assignPatternToEnv($element->argument, $rest, $env);
                     break;
                 }
                 $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
@@ -4162,7 +4178,7 @@ class Interpreter
 
         // Labeled break targeting this label consumes the break.
         if ($completion->type === CompletionType::Break && $completion->target === $label) {
-            return Completion::normal($completion->value instanceof JsUndefined ? $completion->value : $completion->value);
+            return Completion::normal($completion->value);
         }
 
         // Labeled continue targeting this label should have been consumed by
@@ -4239,7 +4255,10 @@ class Interpreter
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistDeclarations($stmt->body->body, $env);
                 }
-            } elseif ($stmt instanceof \PhpJs\Ast\Statement\WhileStatement || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement) {
+            } elseif (
+                $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
+                || $stmt instanceof \PhpJs\Ast\Statement\DoWhileStatement
+            ) {
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistDeclarations($stmt->body->body, $env);
                 }
@@ -4989,7 +5008,9 @@ class Interpreter
 
         // Validate the pattern compiles. Throw SyntaxError if invalid.
         if (@preg_match($pcrePattern, '') === false) {
-            throw new \PhpJs\Exceptions\SyntaxError('Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg());
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
+            );
         }
 
         $isGlobal = str_contains($flags, 'g');
@@ -4997,7 +5018,10 @@ class Interpreter
 
         // Store the compiled PCRE pattern as a non-enumerable internal slot so prototype
         // methods (exec, test) installed on RegExp.prototype can access it via $this_.
-        $obj->defineOwnProperty('[[PCREPattern]]', PropertyDescriptor::data(new JsString($pcrePattern), false, false, false));
+        $obj->defineOwnProperty(
+            '[[PCREPattern]]',
+            PropertyDescriptor::data(new JsString($pcrePattern), false, false, false),
+        );
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
         $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
@@ -5368,8 +5392,13 @@ class Interpreter
      * Validate a decimal escape sequence starting at $pos in /u mode.
      * In character classes, any decimal escape (except \0 not followed by a digit) is forbidden.
      */
-    private function validateUnicodeDecimalEscape(string $pattern, int $pos, int $len, int $groupCount, bool $inClass): void
-    {
+    private function validateUnicodeDecimalEscape(
+        string $pattern,
+        int $pos,
+        int $len,
+        int $groupCount,
+        bool $inClass,
+    ): void {
         $next = $pattern[$pos];
         if ($inClass) {
             // In character classes in /u mode, \0 is OK only if not followed by another digit.
@@ -5383,7 +5412,8 @@ class Interpreter
             }
             // \1-\9 inside character class in /u mode: always invalid.
             throw new \PhpJs\Exceptions\SyntaxError(
-                'Invalid regular expression: decimal escape sequences are not allowed in unicode mode character classes',
+                'Invalid regular expression: decimal escape sequences are not allowed'
+                . ' in unicode mode character classes',
             );
         }
     }
@@ -5435,7 +5465,10 @@ class Interpreter
             if ($pattern[$i] === '(' && $i + 1 < $len) {
                 if ($pattern[$i + 1] !== '?') {
                     $count++;
-                } elseif ($i + 2 < $len && $pattern[$i + 2] === '<' && $i + 3 < $len && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!') {
+                } elseif (
+                    $i + 2 < $len && $pattern[$i + 2] === '<'
+                    && $i + 3 < $len && $pattern[$i + 3] !== '=' && $pattern[$i + 3] !== '!'
+                ) {
                     // Named capturing group (?<name>...)
                     $count++;
                 }

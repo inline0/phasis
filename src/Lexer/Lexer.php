@@ -300,7 +300,11 @@ class Lexer
                     // Emit as 0o-prefixed so the parser uses octdec().
                     $this->advance(); // skip leading 0
                     $result = '0o';
-                    while ($this->pos < $this->length && $this->source[$this->pos] >= '0' && $this->source[$this->pos] <= '7') {
+                    while (
+                        $this->pos < $this->length
+                        && $this->source[$this->pos] >= '0'
+                        && $this->source[$this->pos] <= '7'
+                    ) {
                         $result .= $this->source[$this->pos];
                         $this->advance();
                     }
@@ -1135,7 +1139,8 @@ class Lexer
                 $this->advance();
                 if ($this->pos < $this->length) {
                     // Backslash before a line terminator is illegal in regexp.
-                    if ($this->source[$this->pos] === "\n" || $this->source[$this->pos] === "\r" || $this->isUnicodeLineTerminator()) {
+                    $ch = $this->source[$this->pos];
+                    if ($ch === "\n" || $ch === "\r" || $this->isUnicodeLineTerminator()) {
                         throw new SyntaxError('Unterminated regular expression', $start);
                     }
                     $pattern .= $this->source[$this->pos];

@@ -152,33 +152,37 @@ class Engine
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
         // When called as function, converts value to BigInt.
-        $bigIntFn = \PhpJs\Value\JsFunction::fromCallable('BigInt', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-            if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                throw new \PhpJs\Exceptions\TypeError('BigInt is not a constructor');
-            }
-            $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
-
-            // Per spec BigInt(value) step 2: prim = ToPrimitive(value, number).
-            $prim = \PhpJs\Spec\TypeConversion::toPrimitive($val, 'number');
-
-            // Step 3: If Type(prim) is Number, return ? NumberToBigInt(prim).
-            if ($prim instanceof \PhpJs\Value\JsNumber) {
-                $n = $prim->value;
-                if (!is_finite($n) || floor($n) !== $n) {
-                    throw new \PhpJs\Exceptions\RangeError(
-                        'The number ' . $n . ' cannot be converted to a BigInt because it is not an integer'
-                    );
+        $bigIntFn = \PhpJs\Value\JsFunction::fromCallable(
+            'BigInt',
+            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+                if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                    throw new \PhpJs\Exceptions\TypeError('BigInt is not a constructor');
                 }
-                // Use string representation for large integers beyond PHP_INT_MAX.
-                if ($n > PHP_INT_MAX || $n < PHP_INT_MIN) {
-                    return new \PhpJs\Value\JsBigInt(number_format($n, 0, '.', ''));
-                }
-                return new \PhpJs\Value\JsBigInt((string) (int) $n);
-            }
+                $val = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
 
-            // Step 4: Otherwise, return ? ToBigInt(prim).
-            return \PhpJs\Spec\TypeConversion::toBigInt($prim);
-        });
+                // Per spec BigInt(value) step 2: prim = ToPrimitive(value, number).
+                $prim = \PhpJs\Spec\TypeConversion::toPrimitive($val, 'number');
+
+                // Step 3: If Type(prim) is Number, return ? NumberToBigInt(prim).
+                if ($prim instanceof \PhpJs\Value\JsNumber) {
+                    $n = $prim->value;
+                    if (!is_finite($n) || floor($n) !== $n) {
+                        throw new \PhpJs\Exceptions\RangeError(
+                            'The number ' . $n . ' cannot be converted to a BigInt'
+                            . ' because it is not an integer'
+                        );
+                    }
+                    // Use string representation for large integers beyond PHP_INT_MAX.
+                    if ($n > PHP_INT_MAX || $n < PHP_INT_MIN) {
+                        return new \PhpJs\Value\JsBigInt(number_format($n, 0, '.', ''));
+                    }
+                    return new \PhpJs\Value\JsBigInt((string) (int) $n);
+                }
+
+                // Step 4: Otherwise, return ? ToBigInt(prim).
+                return \PhpJs\Spec\TypeConversion::toBigInt($prim);
+            },
+        );
         // BigInt has [[Construct]] per spec (just throws TypeError when called as constructor).
         $bigIntFn->setConstructable();
 
@@ -195,8 +199,9 @@ class Engine
         $bigIntProto = new \PhpJs\Value\JsObject();
 
         // BigInt.prototype.toString([radix])
-        $bigIntProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsFunction::fromCallable('toString', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+        $bigIntToStr = \PhpJs\Value\JsFunction::fromCallable(
+            'toString',
+            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
                 $bigint = $this_ instanceof \PhpJs\Value\JsBigInt ? $this_ : null;
                 if ($bigint === null && $this_ instanceof \PhpJs\Value\JsObject) {
                     // BigInt wrapper object.
@@ -248,15 +253,17 @@ class Engine
                     }
                 }
                 return new \PhpJs\Value\JsString($negative ? '-' . $result : $result);
-            }),
-            true,
-            false,
-            true
-        ));
+            },
+        );
+        $bigIntProto->defineOwnProperty(
+            'toString',
+            \PhpJs\Object\PropertyDescriptor::data($bigIntToStr, true, false, true),
+        );
 
         // BigInt.prototype.valueOf()
-        $bigIntProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsFunction::fromCallable('valueOf', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+        $bigIntValOf = \PhpJs\Value\JsFunction::fromCallable(
+            'valueOf',
+            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
                 if ($this_ instanceof \PhpJs\Value\JsBigInt) {
                     return $this_;
                 }
@@ -267,24 +274,27 @@ class Engine
                     }
                 }
                 throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.valueOf called on non-BigInt');
-            }),
-            true,
-            false,
-            true
-        ));
+            },
+        );
+        $bigIntProto->defineOwnProperty(
+            'valueOf',
+            \PhpJs\Object\PropertyDescriptor::data($bigIntValOf, true, false, true),
+        );
 
         // BigInt.prototype.toLocaleString() - same as toString() per spec.
-        $bigIntProto->defineOwnProperty('toLocaleString', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsFunction::fromCallable('toLocaleString', function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+        $bigIntLocale = \PhpJs\Value\JsFunction::fromCallable(
+            'toLocaleString',
+            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
                 if ($this_ instanceof \PhpJs\Value\JsBigInt) {
                     return new \PhpJs\Value\JsString($this_->value);
                 }
                 throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
-            }),
-            true,
-            false,
-            true
-        ));
+            },
+        );
+        $bigIntProto->defineOwnProperty(
+            'toLocaleString',
+            \PhpJs\Object\PropertyDescriptor::data($bigIntLocale, true, false, true),
+        );
 
         // BigInt.prototype[Symbol.toStringTag] = "BigInt"
         $bigIntProto->definePropertyBySymbol(
@@ -374,7 +384,15 @@ class Engine
         // Compute bigint mod 2^width (result is non-negative decimal string).
         // We do this by computing the binary representation of |bigint| mod 2^width,
         // then adjusting for sign.
-        $bigUintN = static function (string $val, int $width) use ($pow2str, $bigCmpUns, $bigSubUns, $bigModSmall): string {
+        $bigUintN = static function (
+            string $val,
+            int $width,
+        ) use (
+            $pow2str,
+            $bigCmpUns,
+            $bigSubUns,
+            $bigModSmall,
+        ): string {
             if ($width === 0) {
                 return '0';
             }
@@ -467,42 +485,55 @@ class Engine
         };
 
         // BigInt.asUintN(width, bigint): modulo 2^width, unsigned.
-        $bigIntFn->defineOwnProperty('asUintN', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsFunction::fromCallable('asUintN', function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN): \PhpJs\Value\JsValue {
+        $asUintNFn = \PhpJs\Value\JsFunction::fromCallable(
+            'asUintN',
+            function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN): \PhpJs\Value\JsValue {
                 $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
-                // Per spec, ToBigInt(undefined) throws TypeError. Always call ToBigInt.
-                $bigint = \PhpJs\Spec\TypeConversion::toBigInt($args[1] ?? \PhpJs\Value\JsUndefined::instance());
+                $bigint = \PhpJs\Spec\TypeConversion::toBigInt(
+                    $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+                );
                 $mod = $bigUintN($bigint->value, $width);
                 return new \PhpJs\Value\JsBigInt($mod);
-            }, 2),
-            true,
-            false,
-            true
-        ));
+            },
+            2,
+        );
+        $bigIntFn->defineOwnProperty(
+            'asUintN',
+            \PhpJs\Object\PropertyDescriptor::data($asUintNFn, true, false, true),
+        );
 
         // BigInt.asIntN(width, bigint): modulo 2^width, signed.
-        $bigIntFn->defineOwnProperty('asIntN', \PhpJs\Object\PropertyDescriptor::data(
-            \PhpJs\Value\JsFunction::fromCallable('asIntN', function (\PhpJs\Value\JsValue $this_, array $args) use ($bigUintN, $pow2str, $bigCmpUns, $bigSubUns): \PhpJs\Value\JsValue {
-                $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
-                // Per spec, ToBigInt(undefined) throws TypeError. Always call ToBigInt.
-                $bigint = \PhpJs\Spec\TypeConversion::toBigInt($args[1] ?? \PhpJs\Value\JsUndefined::instance());
-                if ($width === 0) {
-                    return new \PhpJs\Value\JsBigInt('0');
-                }
-                $mod = $bigUintN($bigint->value, $width);
-                // If mod >= 2^(width-1), result = mod - 2^width (i.e. negative).
-                $half = $pow2str($width - 1);
-                if ($bigCmpUns($mod, $half) >= 0) {
-                    $pow2 = $pow2str($width);
-                    $diff = $bigSubUns($pow2, $mod);
-                    return new \PhpJs\Value\JsBigInt($diff === '0' ? '0' : '-' . $diff);
-                }
-                return new \PhpJs\Value\JsBigInt($mod);
-            }, 2),
-            true,
-            false,
-            true
-        ));
+        $asIntNCb = function (
+            \PhpJs\Value\JsValue $this_,
+            array $args,
+        ) use (
+            $bigUintN,
+            $pow2str,
+            $bigCmpUns,
+            $bigSubUns,
+        ): \PhpJs\Value\JsValue {
+            $width = isset($args[0]) ? \PhpJs\Spec\TypeConversion::toIndex($args[0]) : 0;
+            $bigint = \PhpJs\Spec\TypeConversion::toBigInt(
+                $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+            );
+            if ($width === 0) {
+                return new \PhpJs\Value\JsBigInt('0');
+            }
+            $mod = $bigUintN($bigint->value, $width);
+            // If mod >= 2^(width-1), result = mod - 2^width (i.e. negative).
+            $half = $pow2str($width - 1);
+            if ($bigCmpUns($mod, $half) >= 0) {
+                $pow2 = $pow2str($width);
+                $diff = $bigSubUns($pow2, $mod);
+                return new \PhpJs\Value\JsBigInt($diff === '0' ? '0' : '-' . $diff);
+            }
+            return new \PhpJs\Value\JsBigInt($mod);
+        };
+        $asIntNFn = \PhpJs\Value\JsFunction::fromCallable('asIntN', $asIntNCb, 2);
+        $bigIntFn->defineOwnProperty(
+            'asIntN',
+            \PhpJs\Object\PropertyDescriptor::data($asIntNFn, true, false, true),
+        );
 
         // Store the prototype so JsBigInt primitive lookups can find it.
         \PhpJs\Value\JsBigInt::setPrototype($bigIntProto);
@@ -513,7 +544,13 @@ class Engine
 
         $interp = $this->interpreter;
         $globalEnv = $this->globalEnv;
-        $this->installStubConstructor('RegExp', function (\PhpJs\Value\JsValue $this_, array $args) use ($interp, $globalEnv): \PhpJs\Value\JsValue {
+        $regExpCb = function (
+            \PhpJs\Value\JsValue $this_,
+            array $args,
+        ) use (
+            $interp,
+            $globalEnv
+): \PhpJs\Value\JsValue {
             $arg0 = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
             $arg1 = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
 
@@ -563,7 +600,8 @@ class Engine
                 ? ''
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
             return $interp->createRegExpFromConstructor($pattern, $flags);
-        }, 2);
+        };
+        $this->installStubConstructor('RegExp', $regExpCb, 2);
 
         // Install Symbol methods on RegExp.prototype.
         /** @var \PhpJs\Value\JsObject $regexpProto */

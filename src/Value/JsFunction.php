@@ -254,7 +254,11 @@ class JsFunction extends JsObject
     {
         if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
             // Generator functions use %GeneratorFunction.prototype% instead of %Function.prototype%.
-            if ($this->isGenerator && self::$generatorFunctionPrototype !== null && $this !== self::$generatorFunctionPrototype) {
+            if (
+                $this->isGenerator
+                && self::$generatorFunctionPrototype !== null
+                && $this !== self::$generatorFunctionPrototype
+            ) {
                 return self::$generatorFunctionPrototype;
             }
             return self::$functionPrototype;

@@ -163,8 +163,16 @@ class StringPrototype
             $proto->defineOwnProperty('constructor', PropertyDescriptor::data($existing, true, false, true));
 
             // Static methods on String constructor — non-enumerable per spec.
-            $existing->defineOwnProperty('fromCharCode', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1), true, false, true));
-            $existing->defineOwnProperty('fromCodePoint', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1), true, false, true));
+            $fromCharCodeFn = JsFunction::fromCallable('fromCharCode', self::fromCharCode(), 1);
+            $existing->defineOwnProperty(
+                'fromCharCode',
+                \PhpJs\Object\PropertyDescriptor::data($fromCharCodeFn, true, false, true),
+            );
+            $fromCodePointFn = JsFunction::fromCallable('fromCodePoint', self::fromCodePoint(), 1);
+            $existing->defineOwnProperty(
+                'fromCodePoint',
+                \PhpJs\Object\PropertyDescriptor::data($fromCodePointFn, true, false, true),
+            );
             $existing->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('raw', self::rawFn(), 1),
                 true,
@@ -656,7 +664,8 @@ class StringPrototype
 
                     // For zero-length matches, advance q by one character.
                     if ($matchLen === 0) {
-                        $charLen = strlen(mb_substr($str, mb_strlen(substr($str, 0, $matchStart), 'UTF-8'), 1, 'UTF-8'));
+                        $charIdx = mb_strlen(substr($str, 0, $matchStart), 'UTF-8');
+                        $charLen = strlen(mb_substr($str, $charIdx, 1, 'UTF-8'));
                         $q = $matchStart + max($charLen, 1);
                     } else {
                         $q = $e;
@@ -812,7 +821,14 @@ class StringPrototype
                             while (count($captures) < $nExpectedCaptures) {
                                 $captures[] = null;
                             }
-                            return self::getSubstitution($matched, $str, $charOffset, $captures, $replStr, $namedCaptures);
+                            return self::getSubstitution(
+                                $matched,
+                                $str,
+                                $charOffset,
+                                $captures,
+                                $replStr,
+                                $namedCaptures,
+                            );
                         },
                         $str,
                         $limit,
@@ -1087,7 +1103,8 @@ class StringPrototype
                             $result .= $captures[$index - 1] ?? '';
                         } else {
                             // Not a valid capture index: output as literal reference
-                            $result .= '$' . substr($next . ($digitCount === 2 ? ($replacement[$i + 2] ?? '') : ''), 0, $digitCount);
+                            $suffix = $digitCount === 2 ? ($replacement[$i + 2] ?? '') : '';
+                            $result .= '$' . substr($next . $suffix, 0, $digitCount);
                         }
                         $i += 1 + $digitCount;
                     } else {

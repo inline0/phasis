@@ -17,7 +17,10 @@ class ErrorConstructor
 {
     public static function install(Environment $env): void
     {
-        $errorTypes = ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'];
+        $errorTypes = [
+            'Error', 'TypeError', 'RangeError', 'ReferenceError',
+            'SyntaxError', 'URIError', 'EvalError', 'AggregateError',
+        ];
 
         $errorProto = null;
 
@@ -32,7 +35,9 @@ class ErrorConstructor
                 'toString',
                 function (JsValue $this_): JsValue {
                     if (!$this_ instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\TypeError('Error.prototype.toString requires that \'this\' be an Object');
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Error.prototype.toString requires that \'this\' be an Object',
+                        );
                     }
                     // Step 3: Let name be Get(O, "name"). If undefined, use "Error".
                     $n = $this_->get('name');

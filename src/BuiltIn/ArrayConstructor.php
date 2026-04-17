@@ -47,7 +47,10 @@ class ArrayConstructor
         // Static methods (non-enumerable per spec).
         $isArrayFn = JsFunction::fromCallable('isArray', self::isArray(), 1);
         $isArrayFn->setNonConstructable();
-        $constructor->defineOwnProperty('isArray', \PhpJs\Object\PropertyDescriptor::data($isArrayFn, true, false, true));
+        $constructor->defineOwnProperty(
+            'isArray',
+            \PhpJs\Object\PropertyDescriptor::data($isArrayFn, true, false, true),
+        );
         $fromFn = JsFunction::fromCallable('from', self::from(), 1);
         $fromFn->setNonConstructable();
         $constructor->defineOwnProperty('from', \PhpJs\Object\PropertyDescriptor::data($fromFn, true, false, true));
@@ -65,7 +68,10 @@ class ArrayConstructor
         // Symbol.iterator on Array.prototype, not on each instance.
         JsArray::installSymbolIteratorOnPrototype($proto);
 
-        $constructor->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false));
+        $constructor->defineOwnProperty(
+            'prototype',
+            \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false),
+        );
         JsArray::setGlobalPrototype($proto);
 
         $env->defineVar('Array', $constructor);
@@ -799,8 +805,10 @@ class ArrayConstructor
                 $this_ = self::toObject($this_);
                 $len = self::getLen($this_);
                 $value = $args[0] ?? JsUndefined::instance();
-                $start = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $end = (isset($args[2]) && !$args[2] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[2]) : $len;
+                $hasStart = isset($args[1]) && !$args[1] instanceof JsUndefined;
+                $start = $hasStart ? (int) TypeConversion::toNumber($args[1]) : 0;
+                $hasEnd = isset($args[2]) && !$args[2] instanceof JsUndefined;
+                $end = $hasEnd ? (int) TypeConversion::toNumber($args[2]) : $len;
                 if ($start < 0) {
                     $start = max($len + $start, 0);
                 }
@@ -822,9 +830,12 @@ class ArrayConstructor
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
                 $len = self::getLen($this_);
-                $target = (isset($args[0]) && !$args[0] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                $start = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[1]) : 0;
-                $end = (isset($args[2]) && !$args[2] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[2]) : $len;
+                $hasTgt = isset($args[0]) && !$args[0] instanceof JsUndefined;
+                $target = $hasTgt ? (int) TypeConversion::toNumber($args[0]) : 0;
+                $hasStart = isset($args[1]) && !$args[1] instanceof JsUndefined;
+                $start = $hasStart ? (int) TypeConversion::toNumber($args[1]) : 0;
+                $hasEnd = isset($args[2]) && !$args[2] instanceof JsUndefined;
+                $end = $hasEnd ? (int) TypeConversion::toNumber($args[2]) : $len;
                 if ($target < 0) {
                     $target = max($len + $target, 0);
                 }

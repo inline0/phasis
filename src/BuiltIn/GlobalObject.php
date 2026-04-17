@@ -36,8 +36,14 @@ class GlobalObject
         $booleanFn->setConstructable();
         $boolProto = new \PhpJs\Value\JsObject();
         // Boolean.prototype has [[PrimitiveValue]] = false per spec
-        $boolProto->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data(new JsBoolean(false), false, false, false));
-        $boolProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($booleanFn, true, false, true));
+        $boolProto->defineOwnProperty(
+            '[[PrimitiveValue]]',
+            \PhpJs\Object\PropertyDescriptor::data(new JsBoolean(false), false, false, false),
+        );
+        $boolProto->defineOwnProperty(
+            'constructor',
+            \PhpJs\Object\PropertyDescriptor::data($booleanFn, true, false, true),
+        );
         $boolProto->defineOwnProperty('valueOf', \PhpJs\Object\PropertyDescriptor::data(
             JsFunction::fromCallable('valueOf', function (JsValue $this_): JsValue {
                 if ($this_ instanceof JsBoolean) {
@@ -73,7 +79,10 @@ class GlobalObject
             true,
         ));
         // Boolean.prototype is non-writable, non-configurable per spec
-        $booleanFn->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($boolProto, false, false, false));
+        $booleanFn->defineOwnProperty(
+            'prototype',
+            \PhpJs\Object\PropertyDescriptor::data($boolProto, false, false, false),
+        );
         $env->defineVar('Boolean', $booleanFn);
 
         // Register the prototype so TypeConversion::toObject can link Boolean wrapper objects.
@@ -81,7 +90,7 @@ class GlobalObject
         JsBoolean::setBooleanPrototype($boolProto);
 
         // eval
-        $env->defineVar('eval', JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
+        $evalFn = JsFunction::fromCallable('eval', function (JsValue $this_, array $args) use ($env): JsValue {
             $code = $args[0] ?? JsUndefined::instance();
             if (!$code instanceof JsString) {
                 return $code;
@@ -93,42 +102,72 @@ class GlobalObject
             $program = $parser->parse();
             $interp = new Interpreter($env);
             return $interp->execute($program);
-        }, 1));
+        }, 1);
+        $env->defineVar('eval', $evalFn);
 
         // encodeURIComponent / decodeURIComponent
-        $env->defineVar('encodeURIComponent', JsFunction::fromCallable('encodeURIComponent', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            return new JsString(rawurlencode($str));
-        }, 1));
-        $env->defineVar('decodeURIComponent', JsFunction::fromCallable('decodeURIComponent', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            return new JsString(rawurldecode($str));
-        }, 1));
-        $env->defineVar('encodeURI', JsFunction::fromCallable('encodeURI', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            return new JsString(str_replace(
-                ['%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24', '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D'],
-                [':', '/', '?', '#', '[', ']', '@', '!', '$', '&', "'", '(', ')', '*', '+', ',', ';', '='],
-                rawurlencode($str),
-            ));
-        }, 1));
-        $env->defineVar('decodeURI', JsFunction::fromCallable('decodeURI', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+        $encodeCompFn = JsFunction::fromCallable(
+            'encodeURIComponent',
+            function (JsValue $this_, array $args): JsValue {
+                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                return new JsString(rawurlencode($str));
+            },
+            1,
+        );
+        $env->defineVar('encodeURIComponent', $encodeCompFn);
+        $decodeCompFn = JsFunction::fromCallable(
+            'decodeURIComponent',
+            function (JsValue $this_, array $args): JsValue {
+                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                return new JsString(rawurldecode($str));
+            },
+            1,
+        );
+        $env->defineVar('decodeURIComponent', $decodeCompFn);
+        $encodeUriFn = JsFunction::fromCallable(
+            'encodeURI',
+            function (JsValue $this_, array $args): JsValue {
+                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                $encoded = [
+                    '%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24',
+                    '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D',
+                ];
+                $decoded = [
+                    ':', '/', '?', '#', '[', ']', '@', '!', '$',
+                    '&', "'", '(', ')', '*', '+', ',', ';', '=',
+                ];
+                return new JsString(str_replace($encoded, $decoded, rawurlencode($str)));
+            },
+            1,
+        );
+        $env->defineVar('encodeURI', $encodeUriFn);
+        $decodeUriFn = JsFunction::fromCallable(
+            'decodeURI',
+            function (JsValue $this_, array $args): JsValue {
+                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
             // decodeURI does not decode reserved URI characters.
-            $reserved = ['%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24', '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D'];
+                $reserved = [
+                '%3A', '%2F', '%3F', '%23', '%5B', '%5D', '%40', '%21', '%24',
+                '%26', '%27', '%28', '%29', '%2A', '%2B', '%2C', '%3B', '%3D',
+                ];
             // Temporarily protect reserved sequences so rawurldecode does not touch them.
-            $placeholders = [];
-            foreach ($reserved as $i => $seq) {
-                $placeholders[$seq] = "\x00RESERVED{$i}\x00";
-            }
-            $protected = str_ireplace(array_keys($placeholders), array_values($placeholders), $str);
-            $decoded = rawurldecode($protected);
-            return new JsString(str_replace(array_values($placeholders), array_keys($placeholders), $decoded));
-        }, 1));
+                $placeholders = [];
+                foreach ($reserved as $i => $seq) {
+                    $placeholders[$seq] = "\x00RESERVED{$i}\x00";
+                }
+                $protected = str_ireplace(array_keys($placeholders), array_values($placeholders), $str);
+                $decoded = rawurldecode($protected);
+                return new JsString(
+                    str_replace(array_values($placeholders), array_keys($placeholders), $decoded),
+                );
+            },
+            1
+        );
+        $env->defineVar('decodeURI', $decodeUriFn);
 
         // escape/unescape (AnnexB)
         // ES spec B.2.1.1: escape operates on UTF-16 code units.
-        $env->defineVar('escape', JsFunction::fromCallable('escape', function (JsValue $this_, array $args): JsValue {
+        $escapeFn = JsFunction::fromCallable('escape', function (JsValue $this_, array $args): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
             // Convert UTF-8 string to array of UTF-16 code units.
             $codeUnits = self::utf8ToUtf16CodeUnits($str);
@@ -148,90 +187,100 @@ class GlobalObject
                 }
             }
             return new JsString($result);
-        }, 1));
+        }, 1);
+        $env->defineVar('escape', $escapeFn);
         // ES spec B.2.1.2: unescape converts %uXXXX and %XX back to characters.
-        $env->defineVar('unescape', JsFunction::fromCallable('unescape', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $length = strlen($str);
-            $result = '';
-            $k = 0;
-            while ($k < $length) {
-                $c = $str[$k];
-                if ($c === '%') {
-                    // Check for %uXXXX (6 chars total)
-                    if (
-                        $k + 5 < $length
-                        && $str[$k + 1] === 'u'
-                        && ctype_xdigit($str[$k + 2])
-                        && ctype_xdigit($str[$k + 3])
-                        && ctype_xdigit($str[$k + 4])
-                        && ctype_xdigit($str[$k + 5])
-                    ) {
-                        $code = (int) hexdec(substr($str, $k + 2, 4));
-                        $chr = mb_chr($code, 'UTF-8');
-                        $result .= $chr !== false ? $chr : $c;
-                        if ($chr !== false) {
-                            $k += 6;
-                            continue;
+        $unescapeFn = JsFunction::fromCallable(
+            'unescape',
+            function (JsValue $this_, array $args): JsValue {
+                $str = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
+                $length = strlen($str);
+                $result = '';
+                $k = 0;
+                while ($k < $length) {
+                    $c = $str[$k];
+                    if ($c === '%') {
+                        // Check for %uXXXX (6 chars total)
+                        if (
+                            $k + 5 < $length
+                            && $str[$k + 1] === 'u'
+                            && ctype_xdigit($str[$k + 2])
+                            && ctype_xdigit($str[$k + 3])
+                            && ctype_xdigit($str[$k + 4])
+                            && ctype_xdigit($str[$k + 5])
+                        ) {
+                            $code = (int) hexdec(substr($str, $k + 2, 4));
+                            $chr = mb_chr($code, 'UTF-8');
+                            $result .= $chr !== false ? $chr : $c;
+                            if ($chr !== false) {
+                                $k += 6;
+                                continue;
+                            }
+                        }
+                        // Check for %XX (3 chars total)
+                        if (
+                            $k + 2 < $length
+                            && ctype_xdigit($str[$k + 1])
+                            && ctype_xdigit($str[$k + 2])
+                        ) {
+                            $code = (int) hexdec(substr($str, $k + 1, 2));
+                            $chr = mb_chr($code, 'UTF-8');
+                            $result .= $chr !== false ? $chr : $c;
+                            if ($chr !== false) {
+                                $k += 3;
+                                continue;
+                            }
                         }
                     }
-                    // Check for %XX (3 chars total)
-                    if (
-                        $k + 2 < $length
-                        && ctype_xdigit($str[$k + 1])
-                        && ctype_xdigit($str[$k + 2])
-                    ) {
-                        $code = (int) hexdec(substr($str, $k + 1, 2));
-                        $chr = mb_chr($code, 'UTF-8');
-                        $result .= $chr !== false ? $chr : $c;
-                        if ($chr !== false) {
-                            $k += 3;
-                            continue;
-                        }
-                    }
+                    $result .= $c;
+                    $k++;
                 }
-                $result .= $c;
-                $k++;
-            }
-            return new JsString($result);
-        }, 1));
+                return new JsString($result);
+            },
+            1,
+        );
+        $env->defineVar('unescape', $unescapeFn);
 
         // Function constructor: per spec, the created function's scope chain
         // consists of the global environment only (not the calling scope).
         // We capture $env here so the Function constructor always uses the
         // engine's global environment for the created function.
-        $fnConstructor = JsFunction::fromCallable('Function', function (JsValue $this_, array $args) use ($env): JsValue {
-            $body = '';
-            $params = '';
-            if (count($args) > 0) {
-                // Per spec 20.2.1.1 step 5-9, ToString is called on each
-                // argument left-to-right: first all parameter args, then body.
-                // If any ToString throws, propagate before reaching the next.
-                $stringArgs = [];
-                foreach ($args as $arg) {
-                    $stringArgs[] = TypeConversion::toString($arg);
+        $fnConstructor = JsFunction::fromCallable(
+            'Function',
+            function (JsValue $this_, array $args) use ($env): JsValue {
+                $body = '';
+                $params = '';
+                if (count($args) > 0) {
+                    // Per spec 20.2.1.1 step 5-9, ToString is called on each
+                    // argument left-to-right: first all parameter args, then body.
+                    // If any ToString throws, propagate before reaching the next.
+                    $stringArgs = [];
+                    foreach ($args as $arg) {
+                        $stringArgs[] = TypeConversion::toString($arg);
+                    }
+                    $body = array_pop($stringArgs);
+                    $params = implode(',', $stringArgs);
                 }
-                $body = array_pop($stringArgs);
-                $params = implode(',', $stringArgs);
-            }
             // Per spec steps 17-18, params are parsed first as FormalParameters
             // (no preceding line terminator, so --> in params is a SyntaxError).
             // The body gets line feeds per step 41 so AnnexB HTML comments work.
-            $source = "(function anonymous({$params}\n) {\n{$body}\n})";
-            $parser = new \PhpJs\Parser\Parser($source);
-            $program = $parser->parse();
+                $source = "(function anonymous({$params}\n) {\n{$body}\n})";
+                $parser = new \PhpJs\Parser\Parser($source);
+                $program = $parser->parse();
 
             // Per spec 20.2.1.1 step 20c-d, detect strict mode in the
             // body and validate strict-mode early errors (with statement,
             // duplicate params, etc.).
-            self::validateDynamicFunction($program, $params);
+                self::validateDynamicFunction($program, $params);
 
             // Use the global environment so the created function can see
             // global variables (per spec: "scope chain consisting of the
             // global object").
-            $interp = new Interpreter($env);
-            return $interp->execute($program);
-        }, 1);
+                $interp = new Interpreter($env);
+                return $interp->execute($program);
+            },
+            1,
+        );
 
         // Function.prototype with call/apply/bind
         $fnProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
@@ -261,14 +310,18 @@ class GlobalObject
 
         // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
         // Sloppy-mode this-wrapping happens inside the function body, not here.
-        $fnProto->defineOwnProperty('call', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
+        $callFn = JsFunction::fromCallable('call', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('call called on non-function');
             }
             $thisArg = $args[0] ?? JsUndefined::instance();
             return $this_->call($thisArg, array_slice($args, 1));
-        }, 1), true, false, true));
-        $fnProto->defineOwnProperty('apply', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
+        }, 1);
+        $fnProto->defineOwnProperty(
+            'call',
+            \PhpJs\Object\PropertyDescriptor::data($callFn, true, false, true),
+        );
+        $applyFn = JsFunction::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('apply called on non-function');
             }
@@ -292,8 +345,16 @@ class GlobalObject
                 }
             }
             return $this_->call($thisArg, $callArgs);
-        }, 2), true, false, true));
-        $fnProto->defineOwnProperty('bind', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('bind', function (JsValue $this_, array $args, ?\PhpJs\Runtime\Interpreter $interp = null): JsValue {
+        }, 2);
+        $fnProto->defineOwnProperty(
+            'apply',
+            \PhpJs\Object\PropertyDescriptor::data($applyFn, true, false, true),
+        );
+        $bindCb = function (
+            JsValue $this_,
+            array $args,
+            ?\PhpJs\Runtime\Interpreter $interp = null,
+        ): JsValue {
             if (!$this_ instanceof JsFunction) {
                 throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
             }
@@ -324,7 +385,16 @@ class GlobalObject
             // the length property is always overridden explicitly below.
             $boundFn = JsFunction::fromCallable(
                 $boundName,
-                function (JsValue $th, array $callArgs, ?\PhpJs\Runtime\Interpreter $innerInterp = null) use ($target, $boundThis, $boundArgs, $isConstructable): JsValue {
+                function (
+                    JsValue $th,
+                    array $callArgs,
+                    ?\PhpJs\Runtime\Interpreter $innerInterp = null,
+                ) use (
+                    $target,
+                    $boundThis,
+                    $boundArgs,
+                    $isConstructable
+                ): JsValue {
                     $mergedArgs = array_merge($boundArgs, $callArgs);
                     // Detect if called as constructor (th has [[NewTarget]]).
                     if (
@@ -335,8 +405,12 @@ class GlobalObject
                     ) {
                         // Called via new: construct the target with merged args.
                         $proto = $target->get('prototype');
-                        $newObj = new \PhpJs\Value\JsObject($proto instanceof \PhpJs\Value\JsObject ? $proto : null);
-                        $newObj->defineOwnProperty('[[NewTarget]]', \PhpJs\Object\PropertyDescriptor::data($target, false, false, false));
+                        $protoObj = $proto instanceof \PhpJs\Value\JsObject ? $proto : null;
+                        $newObj = new \PhpJs\Value\JsObject($protoObj);
+                        $newObj->defineOwnProperty(
+                            '[[NewTarget]]',
+                            \PhpJs\Object\PropertyDescriptor::data($target, false, false, false),
+                        );
                         $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
                         return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
                     }
@@ -374,12 +448,17 @@ class GlobalObject
                 $boundFn->set('prototype', $targetProto);
             }
             return $boundFn;
-        }, 1), true, false, true));
+        };
+        $bindFn = JsFunction::fromCallable('bind', $bindCb, 1);
+        $fnProto->defineOwnProperty(
+            'bind',
+            \PhpJs\Object\PropertyDescriptor::data($bindFn, true, false, true),
+        );
 
         // Function.prototype.toString: per spec, returns source text for
         // user-defined functions and NativeFunction syntax for built-ins.
         // Proxy exotic objects wrapping a callable also return NativeFunction syntax.
-        $fnProto->defineOwnProperty('toString', \PhpJs\Object\PropertyDescriptor::data(JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
+        $toStringFn = JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
             if ($this_ instanceof JsFunction) {
                 return new JsString($this_->toJsString());
             }
@@ -387,36 +466,46 @@ class GlobalObject
             if ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable()) {
                 return new JsString('function () { [native code] }');
             }
-            throw new \PhpJs\Exceptions\TypeError('Function.prototype.toString requires that \'this\' be a Function');
-        }, 0), true, false, true));
+            throw new \PhpJs\Exceptions\TypeError(
+                'Function.prototype.toString requires that \'this\' be a Function'
+            );
+        }, 0);
+        $fnProto->defineOwnProperty(
+            'toString',
+            \PhpJs\Object\PropertyDescriptor::data($toStringFn, true, false, true),
+        );
 
         // Function.prototype[Symbol.hasInstance] per spec 19.2.3.6.
         // OrdinaryHasInstance: check if the left operand's prototype chain
         // includes the function's .prototype property.
-        $hasInstanceFn = JsFunction::fromCallable('[Symbol.hasInstance]', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                return new JsBoolean(false);
-            }
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof \PhpJs\Value\JsObject) {
-                return new JsBoolean(false);
-            }
-            $proto = $this_->get('prototype');
-            if (!$proto instanceof \PhpJs\Value\JsObject) {
-                throw new \PhpJs\Exceptions\TypeError(
-                    'Function has non-object prototype in instanceof check',
-                );
-            }
-            // Walk the prototype chain of value.
-            $current = $value->getPrototype();
-            while ($current !== null) {
-                if ($current === $proto) {
-                    return new JsBoolean(true);
+        $hasInstanceFn = JsFunction::fromCallable(
+            '[Symbol.hasInstance]',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsFunction) {
+                    return new JsBoolean(false);
                 }
-                $current = $current->getPrototype();
-            }
-            return new JsBoolean(false);
-        }, 1);
+                $value = $args[0] ?? JsUndefined::instance();
+                if (!$value instanceof \PhpJs\Value\JsObject) {
+                    return new JsBoolean(false);
+                }
+                $proto = $this_->get('prototype');
+                if (!$proto instanceof \PhpJs\Value\JsObject) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Function has non-object prototype in instanceof check',
+                    );
+                }
+            // Walk the prototype chain of value.
+                $current = $value->getPrototype();
+                while ($current !== null) {
+                    if ($current === $proto) {
+                        return new JsBoolean(true);
+                    }
+                    $current = $current->getPrototype();
+                }
+                return new JsBoolean(false);
+            },
+            1,
+        );
         $hasInstanceFn->setName('[Symbol.hasInstance]');
         $fnProto->definePropertyBySymbol(
             \PhpJs\BuiltIn\SymbolConstructor::hasInstance(),
@@ -599,7 +688,10 @@ class GlobalObject
             // When called as constructor (new String(x)), create wrapper object
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = new JsString($str);
-                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
+                $this_->defineOwnProperty(
+                    '[[PrimitiveValue]]',
+                    \PhpJs\Object\PropertyDescriptor::data($val, false, false, false),
+                );
                 // valueOf/toString come from String.prototype, not own properties.
                 // Set indexed character properties and length per spec.
                 $len = mb_strlen($str, 'UTF-8');
@@ -643,7 +735,10 @@ class GlobalObject
             // valueOf/toString come from Number.prototype, not own properties.
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 $val = new JsNumber($num);
-                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($val, false, false, false));
+                $this_->defineOwnProperty(
+                    '[[PrimitiveValue]]',
+                    \PhpJs\Object\PropertyDescriptor::data($val, false, false, false),
+                );
                 return $this_;
             }
             return new JsNumber($num);
@@ -656,7 +751,10 @@ class GlobalObject
             $bool = empty($args) ? false : TypeConversion::toBoolean($args[0]);
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                 // Only set [[PrimitiveValue]], don't shadow prototype methods
-                $this_->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data(new JsBoolean($bool), false, false, false));
+                $this_->defineOwnProperty(
+                    '[[PrimitiveValue]]',
+                    \PhpJs\Object\PropertyDescriptor::data(new JsBoolean($bool), false, false, false),
+                );
                 return $this_;
             }
             return new JsBoolean($bool);

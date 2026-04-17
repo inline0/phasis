@@ -735,7 +735,8 @@ class JsObject implements JsValue
             }
         }
 
-        if ($current->isDataDescriptor() && ($desc->get !== null || $desc->set !== null || $desc->isAccessorDescriptor())) {
+        $convertingToAccessor = $desc->get !== null || $desc->set !== null || $desc->isAccessorDescriptor();
+        if ($current->isDataDescriptor() && $convertingToAccessor) {
             // Converting data to accessor.
             if ($current->configurable === false) {
                 return false;
@@ -773,7 +774,10 @@ class JsObject implements JsValue
                         return false;
                     }
                     // If writable is false and configurable is false, reject value change.
-                    if ($desc->value !== null && !\PhpJs\Spec\AbstractOperations::sameValue($desc->value, $current->value ?? JsUndefined::instance())) {
+                    $currentVal = $current->value ?? JsUndefined::instance();
+                    $changed = $desc->value !== null
+                        && !\PhpJs\Spec\AbstractOperations::sameValue($desc->value, $currentVal);
+                    if ($changed) {
                         return false;
                     }
                 }

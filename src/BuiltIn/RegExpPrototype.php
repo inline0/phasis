@@ -70,17 +70,21 @@ class RegExpPrototype
         // Instances have their own shadow data properties, so the accessor is only
         // invoked when querying RegExp.prototype itself (not instances).
         $flagAccessor = static function (string $propName) use ($proto): void {
-            $getter = JsFunction::fromCallable('get ' . $propName, static function (JsValue $this_, array $args) use ($propName): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
-                }
+            $getter = JsFunction::fromCallable(
+                'get ' . $propName,
+                static function (JsValue $this_, array $args) use ($propName): JsValue {
+                    if (!$this_ instanceof JsObject) {
+                        throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
+                    }
                 // For RegExp.prototype itself, return undefined per spec.
-                $pcrePattern = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
-                if ($pcrePattern === null) {
-                    return JsUndefined::instance();
-                }
-                return $this_->get($propName);
-            }, 0);
+                    $pcrePattern = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+                    if ($pcrePattern === null) {
+                        return JsUndefined::instance();
+                    }
+                    return $this_->get($propName);
+                },
+                0,
+            );
             $proto->defineOwnProperty($propName, \PhpJs\Object\PropertyDescriptor::accessor(
                 get: $getter,
                 set: null,

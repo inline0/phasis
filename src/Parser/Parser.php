@@ -339,7 +339,16 @@ class Parser
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
 
-        return new FunctionDeclaration($location, $id, $params, $body, $generator, false, false, $this->extractSource($startOffset));
+        return new FunctionDeclaration(
+            $location,
+            $id,
+            $params,
+            $body,
+            $generator,
+            false,
+            false,
+            $this->extractSource($startOffset),
+        );
     }
 
     private function parseClassDeclaration(): ClassDeclaration
@@ -445,7 +454,15 @@ class Parser
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
 
-        $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $this->extractSource($methodStartOffset));
+        $value = new FunctionExpression(
+            $body->location,
+            null,
+            $params,
+            $body,
+            $isGenerator,
+            $isAsync,
+            $this->extractSource($methodStartOffset),
+        );
         return new ClassMethod($location, $key, $value, $kind, $isStatic, $computed);
     }
 
@@ -466,7 +483,16 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            return new FunctionDeclaration($location, $id, $params, $body, $generator, true, false, $this->extractSource($startOffset));
+            return new FunctionDeclaration(
+                $location,
+                $id,
+                $params,
+                $body,
+                $generator,
+                true,
+                false,
+                $this->extractSource($startOffset),
+            );
         }
 
         return $this->parseExpressionStatement();
@@ -1123,7 +1149,8 @@ class Parser
             TokenType::String => $this->parseStringLiteral(),
             TokenType::True, TokenType::False => $this->parseBooleanLiteral(),
             TokenType::Null => $this->parseNullLiteral(),
-            TokenType::Identifier, TokenType::Let, TokenType::Await, TokenType::Static_, TokenType::Yield, TokenType::Of => $this->parseIdentifierExpression(),
+            TokenType::Identifier, TokenType::Let, TokenType::Await,
+            TokenType::Static_, TokenType::Yield, TokenType::Of => $this->parseIdentifierExpression(),
             TokenType::This => $this->parseThisExpression(),
             TokenType::LeftParen => $this->parseParenthesizedOrArrow(),
             TokenType::LeftBracket => $this->parseArrayExpression(),
@@ -1542,7 +1569,15 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $this->extractSource($methodStartOffset));
+            $value = new FunctionExpression(
+                $body->location,
+                null,
+                $params,
+                $body,
+                $isGenerator,
+                $isAsync,
+                $this->extractSource($methodStartOffset),
+            );
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1558,7 +1593,15 @@ class Parser
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
-            $value = new FunctionExpression($body->location, null, $params, $body, $isGenerator, $isAsync, $this->extractSource($methodStartOffset));
+            $value = new FunctionExpression(
+                $body->location,
+                null,
+                $params,
+                $body,
+                $isGenerator,
+                $isAsync,
+                $this->extractSource($methodStartOffset),
+            );
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1568,7 +1611,15 @@ class Parser
             $methodStartOffset = $location->offset;
             $params = $this->parseFormalParameters();
             $body = $this->parseBlockStatement();
-            $value = new FunctionExpression($body->location, null, $params, $body, false, false, $this->extractSource($methodStartOffset));
+            $value = new FunctionExpression(
+                $body->location,
+                null,
+                $params,
+                $body,
+                false,
+                false,
+                $this->extractSource($methodStartOffset),
+            );
             return new Property($location, $key, $value, $kind, $computed, $shorthand, $method);
         }
 
@@ -1672,7 +1723,15 @@ class Parser
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
 
-        return new FunctionExpression($location, $name, $params, $body, $generator, false, $this->extractSource($startOffset));
+        return new FunctionExpression(
+            $location,
+            $name,
+            $params,
+            $body,
+            $generator,
+            false,
+            $this->extractSource($startOffset),
+        );
     }
 
     private function parseAsyncExpression(): Node
@@ -1737,7 +1796,15 @@ class Parser
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
 
-        return new FunctionExpression($location, $name, $params, $body, $generator, true, $this->extractSource($startOffset));
+        return new FunctionExpression(
+            $location,
+            $name,
+            $params,
+            $body,
+            $generator,
+            true,
+            $this->extractSource($startOffset),
+        );
     }
 
     private function parseClassExpression(): ClassExpression

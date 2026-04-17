@@ -29,41 +29,44 @@ class ObjectConstructor
         JsObject::resetGlobalPrototype();
         $proto = self::createPrototype();
 
-        $constructor = JsFunction::fromCallable('Object', function (JsValue $this_, array $args) use ($proto, $env): JsValue {
-            if (empty($args) || $args[0] instanceof JsUndefined || $args[0] instanceof JsNull) {
-                // When called via new with no arg / null / undefined, create new object
-                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
-                    return $this_;
+        $constructor = JsFunction::fromCallable(
+            'Object',
+            function (JsValue $this_, array $args) use ($proto, $env): JsValue {
+                if (empty($args) || $args[0] instanceof JsUndefined || $args[0] instanceof JsNull) {
+                    // When called via new with no arg / null / undefined, create new object
+                    if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                        return $this_;
+                    }
+                    $obj = new JsObject($proto);
+                    return $obj;
                 }
-                $obj = new JsObject($proto);
-                return $obj;
-            }
-            $val = $args[0];
+                $val = $args[0];
             // If already an object, return it directly
-            if ($val instanceof JsObject) {
-                return $val;
-            }
+                if ($val instanceof JsObject) {
+                    return $val;
+                }
             // For primitives, create wrapper with correct prototype
-            $wrapper = TypeConversion::toObject($val);
+                $wrapper = TypeConversion::toObject($val);
             // Try to set the correct prototype from the global constructor
-            $ctorName = match (true) {
-                $val instanceof JsString => 'String',
-                $val instanceof JsNumber => 'Number',
-                $val instanceof JsBoolean => 'Boolean',
-                $val instanceof JsSymbol => 'Symbol',
-                default => null,
-            };
-            if ($ctorName !== null && $env->has($ctorName)) {
-                $ctor = $env->get($ctorName);
-                if ($ctor instanceof JsFunction) {
-                    $ctorProto = $ctor->get('prototype');
-                    if ($ctorProto instanceof JsObject) {
-                        $wrapper->setPrototype($ctorProto);
+                $ctorName = match (true) {
+                    $val instanceof JsString => 'String',
+                    $val instanceof JsNumber => 'Number',
+                    $val instanceof JsBoolean => 'Boolean',
+                    $val instanceof JsSymbol => 'Symbol',
+                    default => null,
+                };
+                if ($ctorName !== null && $env->has($ctorName)) {
+                    $ctor = $env->get($ctorName);
+                    if ($ctor instanceof JsFunction) {
+                        $ctorProto = $ctor->get('prototype');
+                        if ($ctorProto instanceof JsObject) {
+                            $wrapper->setPrototype($ctorProto);
+                        }
                     }
                 }
-            }
-            return $wrapper;
-        });
+                return $wrapper;
+            },
+        );
         $constructor->setConstructable();
 
         // Per spec, Object.prototype is non-writable, non-enumerable, non-configurable.
@@ -79,19 +82,37 @@ class ObjectConstructor
         $constructor->defineOwnProperty('entries', $builtinMethod('entries', self::entries(), 1));
         $constructor->defineOwnProperty('assign', $builtinMethod('assign', self::assign(), 2));
         $constructor->defineOwnProperty('create', $builtinMethod('create', self::create($proto), 2));
-        $constructor->defineOwnProperty('defineProperty', $builtinMethod('defineProperty', self::definePropertyFn(), 3));
-        $constructor->defineOwnProperty('getPrototypeOf', $builtinMethod('getPrototypeOf', self::getPrototypeOf(), 1));
+        $constructor->defineOwnProperty(
+            'defineProperty',
+            $builtinMethod('defineProperty', self::definePropertyFn(), 3),
+        );
+        $constructor->defineOwnProperty(
+            'getPrototypeOf',
+            $builtinMethod('getPrototypeOf', self::getPrototypeOf(), 1),
+        );
         $constructor->defineOwnProperty('freeze', $builtinMethod('freeze', self::freeze(), 1));
         $constructor->defineOwnProperty('is', $builtinMethod('is', self::is(), 2));
-        $constructor->defineOwnProperty('getOwnPropertyNames', $builtinMethod('getOwnPropertyNames', self::getOwnPropertyNamesFn(), 1));
-        $constructor->defineOwnProperty('defineProperties', $builtinMethod('defineProperties', self::definePropertiesFn(), 2));
-        $constructor->defineOwnProperty('getOwnPropertyDescriptor', $builtinMethod('getOwnPropertyDescriptor', self::getOwnPropertyDescriptorFn(), 2));
+        $constructor->defineOwnProperty(
+            'getOwnPropertyNames',
+            $builtinMethod('getOwnPropertyNames', self::getOwnPropertyNamesFn(), 1),
+        );
+        $constructor->defineOwnProperty(
+            'defineProperties',
+            $builtinMethod('defineProperties', self::definePropertiesFn(), 2),
+        );
+        $constructor->defineOwnProperty(
+            'getOwnPropertyDescriptor',
+            $builtinMethod('getOwnPropertyDescriptor', self::getOwnPropertyDescriptorFn(), 2),
+        );
         $constructor->defineOwnProperty('setPrototypeOf', $builtinMethod('setPrototypeOf', self::setPrototypeOf(), 2));
         $constructor->defineOwnProperty('isFrozen', $builtinMethod('isFrozen', self::isFrozen(), 1));
         $constructor->defineOwnProperty('isSealed', $builtinMethod('isSealed', self::isSealed(), 1));
         $constructor->defineOwnProperty('isExtensible', $builtinMethod('isExtensible', self::isExtensible(), 1));
         $constructor->defineOwnProperty('seal', $builtinMethod('seal', self::seal(), 1));
-        $constructor->defineOwnProperty('preventExtensions', $builtinMethod('preventExtensions', self::preventExtensions(), 1));
+        $constructor->defineOwnProperty(
+            'preventExtensions',
+            $builtinMethod('preventExtensions', self::preventExtensions(), 1),
+        );
         $constructor->defineOwnProperty('fromEntries', $builtinMethod('fromEntries', self::fromEntries($proto), 1));
 
         // Modern APIs (non-enumerable per spec)
@@ -106,7 +127,7 @@ class ObjectConstructor
         $hasOwnFn->setNonConstructable();
         $constructor->defineOwnProperty('hasOwn', PropertyDescriptor::data($hasOwnFn, true, false, true));
 
-        $constructor->defineOwnProperty('getOwnPropertySymbols', $builtinMethod('getOwnPropertySymbols', function (JsValue $this_, array $args): JsValue {
+        $getOwnSymbolsCb = function (JsValue $this_, array $args): JsValue {
             $obj = TypeConversion::toObject($args[0] ?? JsUndefined::instance());
             // Per spec, GetOwnPropertyKeys(O, Symbol) uses [[OwnPropertyKeys]] and filters for symbols.
             $allKeys = $obj->ordinaryOwnPropertyKeys();
@@ -117,7 +138,11 @@ class ObjectConstructor
                 }
             }
             return JsArray::fromArray($symbols);
-        }, 1));
+        };
+        $constructor->defineOwnProperty(
+            'getOwnPropertySymbols',
+            $builtinMethod('getOwnPropertySymbols', $getOwnSymbolsCb, 1),
+        );
 
         $env->defineVar('Object', $constructor);
 

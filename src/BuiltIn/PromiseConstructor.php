@@ -81,38 +81,49 @@ class PromiseConstructor
         // 3. If IsPromise(x) and x.constructor === C, return x
         // 4. Let capability = NewPromiseCapability(C)
         // 5. Call capability.[[Resolve]](x)
-        $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use ($constructor): JsValue {
+        $resolveFn = JsFunction::fromCallable(
+            'resolve',
+            function (JsValue $this_, array $args) use ($constructor): JsValue {
             // this_ is the constructor value (Promise or subclass)
-            if (!$this_ instanceof JsObject) {
-                throw new TypeError('Promise.resolve called on non-object');
-            }
-            $value = $args[0] ?? JsUndefined::instance();
-            // If already a promise whose constructor matches, return directly
-            if ($value instanceof JsPromise) {
-                $ctor = $value->get('constructor');
-                if ($ctor === $this_) {
-                    return $value;
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Promise.resolve called on non-object');
                 }
-            }
+                $value = $args[0] ?? JsUndefined::instance();
+            // If already a promise whose constructor matches, return directly
+                if ($value instanceof JsPromise) {
+                    $ctor = $value->get('constructor');
+                    if ($ctor === $this_) {
+                        return $value;
+                    }
+                }
             // If this_ is a custom constructor (not our Promise), use NewPromiseCapability
-            if ($this_ instanceof JsFunction && $this_ !== $constructor) {
-                return self::newPromiseCapabilityResolve($this_, $value);
-            }
-            return JsPromise::resolved($value);
-        }, 1);
-        $constructor->defineOwnProperty('resolve', PropertyDescriptor::data($resolveFn, true, false, true));
+                if ($this_ instanceof JsFunction && $this_ !== $constructor) {
+                    return self::newPromiseCapabilityResolve($this_, $value);
+                }
+                return JsPromise::resolved($value);
+            },
+            1,
+        );
+        $constructor->defineOwnProperty(
+            'resolve',
+            PropertyDescriptor::data($resolveFn, true, false, true),
+        );
 
         // Promise.reject(reason) — per spec §25.6.4.4
-        $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use ($constructor): JsValue {
-            if (!$this_ instanceof JsObject) {
-                throw new TypeError('Promise.reject called on non-object');
-            }
-            $reason = $args[0] ?? JsUndefined::instance();
-            if ($this_ instanceof JsFunction && $this_ !== $constructor) {
-                return self::newPromiseCapabilityReject($this_, $reason);
-            }
-            return JsPromise::rejected($reason);
-        }, 1);
+        $rejectFn = JsFunction::fromCallable(
+            'reject',
+            function (JsValue $this_, array $args) use ($constructor): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Promise.reject called on non-object');
+                }
+                $reason = $args[0] ?? JsUndefined::instance();
+                if ($this_ instanceof JsFunction && $this_ !== $constructor) {
+                    return self::newPromiseCapabilityReject($this_, $reason);
+                }
+                return JsPromise::rejected($reason);
+            },
+            1,
+        );
         $constructor->defineOwnProperty('reject', PropertyDescriptor::data($rejectFn, true, false, true));
 
         // Promise.all(iterable)
@@ -391,21 +402,25 @@ class PromiseConstructor
     {
         $resolve = null;
         $reject = null;
-        $executor = JsFunction::fromCallable('executor', function (JsValue $this_, array $args) use (&$resolve, &$reject): JsValue {
-            $r = $args[0] ?? JsUndefined::instance();
-            $j = $args[1] ?? JsUndefined::instance();
+        $executor = JsFunction::fromCallable(
+            'executor',
+            function (JsValue $this_, array $args) use (&$resolve, &$reject): JsValue {
+                $r = $args[0] ?? JsUndefined::instance();
+                $j = $args[1] ?? JsUndefined::instance();
             // Per spec §25.6.1.5.1 GetCapabilitiesExecutor:
             // Only throw if resolve/reject are already set to non-undefined
-            if ($resolve !== null && !$resolve instanceof JsUndefined) {
-                throw new TypeError('resolve function already set');
-            }
-            if ($reject !== null && !$reject instanceof JsUndefined) {
-                throw new TypeError('reject function already set');
-            }
-            $resolve = $r;
-            $reject = $j;
-            return JsUndefined::instance();
-        }, 2);
+                if ($resolve !== null && !$resolve instanceof JsUndefined) {
+                    throw new TypeError('resolve function already set');
+                }
+                if ($reject !== null && !$reject instanceof JsUndefined) {
+                    throw new TypeError('reject function already set');
+                }
+                $resolve = $r;
+                $reject = $j;
+                return JsUndefined::instance();
+            },
+            2,
+        );
 
         $promise = self::constructWith($ctor, [$executor]);
 

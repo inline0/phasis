@@ -21,19 +21,20 @@ class MathObject
         $math = new JsObject();
 
         // Constants.
-        $math->defineOwnProperty('PI', PropertyDescriptor::data(new JsNumber(M_PI), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('E', PropertyDescriptor::data(new JsNumber(M_E), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('LN2', PropertyDescriptor::data(new JsNumber(M_LN2), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('LN10', PropertyDescriptor::data(new JsNumber(M_LN10), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('LOG2E', PropertyDescriptor::data(new JsNumber(M_LOG2E), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('LOG10E', PropertyDescriptor::data(new JsNumber(M_LOG10E), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('SQRT2', PropertyDescriptor::data(new JsNumber(M_SQRT2), writable: false, enumerable: false, configurable: false));
-        $math->defineOwnProperty('SQRT1_2', PropertyDescriptor::data(
-            new JsNumber(M_SQRT1_2),
+        $c = static fn (float $v) => PropertyDescriptor::data(
+            new JsNumber($v),
             writable: false,
             enumerable: false,
             configurable: false,
-        ));
+        );
+        $math->defineOwnProperty('PI', $c(M_PI));
+        $math->defineOwnProperty('E', $c(M_E));
+        $math->defineOwnProperty('LN2', $c(M_LN2));
+        $math->defineOwnProperty('LN10', $c(M_LN10));
+        $math->defineOwnProperty('LOG2E', $c(M_LOG2E));
+        $math->defineOwnProperty('LOG10E', $c(M_LOG10E));
+        $math->defineOwnProperty('SQRT2', $c(M_SQRT2));
+        $math->defineOwnProperty('SQRT1_2', $c(M_SQRT1_2));
 
         // Single-argument math functions.
         // Helper to install a Math method (writable, non-enumerable, configurable).
@@ -69,19 +70,19 @@ class MathObject
         $m('acosh', self::singleArgFn('acosh'));
         $m('atanh', self::singleArgFn('atanh'));
         $m('log1p', self::singleArgFn('log1p'));
-        $math->defineOwnProperty('atan2', PropertyDescriptor::data(JsFunction::fromCallable('atan2', function (JsValue $this_, array $args): JsValue {
+        $m('atan2', function (JsValue $this_, array $args): JsValue {
             $y = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $x = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
             return new JsNumber(atan2($y, $x));
-        }, 2), true, false, true));
-        $math->defineOwnProperty('clz32', PropertyDescriptor::data(JsFunction::fromCallable('clz32', function (JsValue $this_, array $args): JsValue {
+        }, 2);
+        $m('clz32', function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
             if ($x === 0) {
                 return new JsNumber(32.0);
             }
             return new JsNumber((float) (31 - (int) floor(log($x, 2))));
-        }, 1), true, false, true));
-        $math->defineOwnProperty('imul', PropertyDescriptor::data(JsFunction::fromCallable('imul', function (JsValue $this_, array $args): JsValue {
+        });
+        $m('imul', function (JsValue $this_, array $args): JsValue {
             $a = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
             $b = isset($args[1]) ? TypeConversion::toUint32($args[1]) : 0;
             // Split into 16-bit halves to avoid 64-bit overflow
@@ -96,14 +97,14 @@ class MathObject
                 $product -= 0x100000000;
             }
             return new JsNumber((float) $product);
-        }, 2), true, false, true));
+        }, 2);
 
         // Multi-argument or special functions.
-        $math->defineOwnProperty('pow', PropertyDescriptor::data(JsFunction::fromCallable('pow', self::powFn(), 2), true, false, true));
-        $math->defineOwnProperty('max', PropertyDescriptor::data(JsFunction::fromCallable('max', self::maxFn(), 2), true, false, true));
-        $math->defineOwnProperty('min', PropertyDescriptor::data(JsFunction::fromCallable('min', self::minFn(), 2), true, false, true));
-        $math->defineOwnProperty('random', PropertyDescriptor::data(JsFunction::fromCallable('random', self::randomFn(), 0), true, false, true));
-        $math->defineOwnProperty('hypot', PropertyDescriptor::data(JsFunction::fromCallable('hypot', self::hypotFn(), 2), true, false, true));
+        $m('pow', self::powFn(), 2);
+        $m('max', self::maxFn(), 2);
+        $m('min', self::minFn(), 2);
+        $m('random', self::randomFn(), 0);
+        $m('hypot', self::hypotFn(), 2);
 
         // Symbol.toStringTag = "Math" (non-writable, non-enumerable, configurable)
         $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();

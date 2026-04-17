@@ -805,44 +805,52 @@ class TypedArrayConstructor
     private static function installTypedArrayPrototypeMethods(JsObject $proto, string $typeName): void
     {
         // set(source, offset).
-        $setFn = JsFunction::fromCallable('set', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.set called on incompatible receiver");
-            }
-
-            $source = $args[0] ?? JsUndefined::instance();
-            $offset = isset($args[1]) ? self::toInteger($args[1]) : 0;
-
-            if ($source instanceof JsTypedArray) {
-                for ($i = 0; $i < $source->getLength(); $i++) {
-                    $this_->setIndex($offset + $i, $source->getIndex($i));
+        $setFn = JsFunction::fromCallable(
+            'set',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.set called on incompatible receiver");
                 }
-            } elseif ($source instanceof JsArray) {
-                for ($i = 0; $i < $source->getLength(); $i++) {
-                    $this_->setIndex($offset + $i, $source->get((string) $i));
-                }
-            } elseif ($source instanceof JsObject) {
-                $len = (int) TypeConversion::toNumber($source->get('length'));
-                for ($i = 0; $i < $len; $i++) {
-                    $this_->setIndex($offset + $i, $source->get((string) $i));
-                }
-            }
 
-            return JsUndefined::instance();
-        }, 1);
+                $source = $args[0] ?? JsUndefined::instance();
+                $offset = isset($args[1]) ? self::toInteger($args[1]) : 0;
+
+                if ($source instanceof JsTypedArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
+                        $this_->setIndex($offset + $i, $source->getIndex($i));
+                    }
+                } elseif ($source instanceof JsArray) {
+                    for ($i = 0; $i < $source->getLength(); $i++) {
+                        $this_->setIndex($offset + $i, $source->get((string) $i));
+                    }
+                } elseif ($source instanceof JsObject) {
+                    $len = (int) TypeConversion::toNumber($source->get('length'));
+                    for ($i = 0; $i < $len; $i++) {
+                        $this_->setIndex($offset + $i, $source->get((string) $i));
+                    }
+                }
+
+                return JsUndefined::instance();
+            },
+            1
+        );
         $proto->defineOwnProperty('set', PropertyDescriptor::data($setFn, true, false, true));
 
         // subarray(begin, end).
-        $subarrayFn = JsFunction::fromCallable('subarray', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.subarray called on incompatible receiver");
-            }
-            $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
-            $end = isset($args[1]) && !$args[1] instanceof JsUndefined
+        $subarrayFn = JsFunction::fromCallable(
+            'subarray',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.subarray called on incompatible receiver");
+                }
+                $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
+                $end = isset($args[1]) && !$args[1] instanceof JsUndefined
                 ? self::toInteger($args[1])
                 : null;
-            return $this_->subarray($begin, $end);
-        }, 2);
+                return $this_->subarray($begin, $end);
+            },
+            2
+        );
         $proto->defineOwnProperty('subarray', PropertyDescriptor::data($subarrayFn, true, false, true));
 
         // slice(begin, end): uses SpeciesConstructor per spec.
@@ -889,479 +897,575 @@ class TypedArrayConstructor
         );
 
         // copyWithin(target, start, end).
-        $copyWithinFn = JsFunction::fromCallable('copyWithin', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
-            }
-            $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
-            $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
-            $end = isset($args[2]) && !$args[2] instanceof JsUndefined
+        $copyWithinFn = JsFunction::fromCallable(
+            'copyWithin',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
+                }
+                $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
+                $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
+                $end = isset($args[2]) && !$args[2] instanceof JsUndefined
                 ? self::toInteger($args[2])
                 : null;
-            return $this_->copyWithinTyped($target, $start, $end);
-        }, 2);
+                return $this_->copyWithinTyped($target, $start, $end);
+            },
+            2
+        );
         $proto->defineOwnProperty('copyWithin', PropertyDescriptor::data($copyWithinFn, true, false, true));
 
         // fill(value, start, end).
-        $fillFn = JsFunction::fromCallable('fill', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
-            }
-            $value = $args[0] ?? JsUndefined::instance();
+        $fillFn = JsFunction::fromCallable(
+            'fill',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
+                }
+                $value = $args[0] ?? JsUndefined::instance();
 
             // Per spec: coerce value to numeric type ONCE before start/end evaluation.
             // If ContentType is BigInt, set value to ToBigInt(value).
             // Otherwise, set value to ToNumber(value).
-            if ($this_->isBigIntArray()) {
-                if ($value instanceof \PhpJs\Value\JsBigInt) {
-                    $coerced = $value;
+                if ($this_->isBigIntArray()) {
+                    if ($value instanceof \PhpJs\Value\JsBigInt) {
+                        $coerced = $value;
+                    } else {
+                        // ToBigInt: only BigInt and strings that parse as BigInt are valid.
+                        // Numbers, null, undefined, booleans, symbols all throw TypeError.
+                        $coerced = TypeConversion::toBigInt($value);
+                    }
                 } else {
-                    // ToBigInt: only BigInt and strings that parse as BigInt are valid.
-                    // Numbers, null, undefined, booleans, symbols all throw TypeError.
-                    $coerced = TypeConversion::toBigInt($value);
+                    $numVal = TypeConversion::toNumber($value);
+                    $coerced = new JsNumber($numVal);
                 }
-            } else {
-                $numVal = TypeConversion::toNumber($value);
-                $coerced = new JsNumber($numVal);
-            }
 
-            $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
-            $end = isset($args[2]) && !$args[2] instanceof JsUndefined
+                $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
+                $end = isset($args[2]) && !$args[2] instanceof JsUndefined
                 ? self::toInteger($args[2])
                 : null;
-            return $this_->fillTyped($coerced, $start, $end);
-        }, 1);
+                return $this_->fillTyped($coerced, $start, $end);
+            },
+            1
+        );
         $proto->defineOwnProperty('fill', PropertyDescriptor::data($fillFn, true, false, true));
 
         // find(predicate, thisArg).
-        $findFn = JsFunction::fromCallable('find', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.find called on incompatible receiver");
-            }
-            $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('predicate is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $el = $this_->getIndex($i);
-                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
-                if (TypeConversion::toBoolean($result)) {
-                    return $el;
+        $findFn = JsFunction::fromCallable(
+            'find',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.find called on incompatible receiver");
                 }
-            }
-            return JsUndefined::instance();
-        }, 1);
+                $predicate = $args[0] ?? JsUndefined::instance();
+                if (!$predicate instanceof JsFunction) {
+                    throw new TypeError('predicate is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $el = $this_->getIndex($i);
+                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return $el;
+                    }
+                }
+                return JsUndefined::instance();
+            },
+            1
+        );
         $proto->defineOwnProperty('find', PropertyDescriptor::data($findFn, true, false, true));
 
         // findIndex(predicate, thisArg).
-        $findIndexFn = JsFunction::fromCallable('findIndex', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.findIndex called on incompatible receiver");
-            }
-            $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('predicate is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $el = $this_->getIndex($i);
-                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
-                if (TypeConversion::toBoolean($result)) {
-                    return new JsNumber((float) $i);
+        $findIndexFn = JsFunction::fromCallable(
+            'findIndex',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.findIndex called on incompatible receiver");
                 }
-            }
-            return new JsNumber(-1.0);
-        }, 1);
-        $proto->defineOwnProperty('findIndex', PropertyDescriptor::data($findIndexFn, true, false, true));
-
-        // forEach(callback, thisArg).
-        $forEachFn = JsFunction::fromCallable('forEach', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.forEach called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
-            }
-            return JsUndefined::instance();
-        }, 1);
-        $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
-
-        // map(callback, thisArg): uses SpeciesConstructor per spec.
-        $mapFn = JsFunction::fromCallable('map', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.map called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            $len = $this_->getLength();
-            $result = self::typedArraySpeciesCreate($this_, $len);
-            for ($i = 0; $i < $len; $i++) {
-                $mapped = $callback->call(
-                    $thisArg,
-                    [$this_->getIndex($i), new JsNumber((float) $i), $this_],
-                );
-                $result->setIndex($i, $mapped);
-            }
-            return $result;
-        }, 1);
-        $proto->defineOwnProperty('map', PropertyDescriptor::data($mapFn, true, false, true));
-
-        // filter(callback, thisArg): uses SpeciesConstructor per spec.
-        $filterFn = JsFunction::fromCallable('filter', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.filter called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            $kept = [];
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $el = $this_->getIndex($i);
-                $result = $callback->call(
-                    $thisArg,
-                    [$el, new JsNumber((float) $i), $this_],
-                );
-                if (TypeConversion::toBoolean($result)) {
-                    $kept[] = $el;
+                $predicate = $args[0] ?? JsUndefined::instance();
+                if (!$predicate instanceof JsFunction) {
+                    throw new TypeError('predicate is not a function');
                 }
-            }
-            $filtered = self::typedArraySpeciesCreate($this_, count($kept));
-            foreach ($kept as $i => $el) {
-                $filtered->setIndex($i, $el);
-            }
-            return $filtered;
-        }, 1);
-        $proto->defineOwnProperty('filter', PropertyDescriptor::data($filterFn, true, false, true));
-
-        // reduce(callback, initialValue).
-        $reduceFn = JsFunction::fromCallable('reduce', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.reduce called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $len = $this_->getLength();
-            $k = 0;
-            if (isset($args[1])) {
-                $accumulator = $args[1];
-            } else {
-                if ($len === 0) {
-                    throw new TypeError('Reduce of empty array with no initial value');
-                }
-                $accumulator = $this_->getIndex(0);
-                $k = 1;
-            }
-            for (; $k < $len; $k++) {
-                $accumulator = $callback->call(
-                    JsUndefined::instance(),
-                    [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
-                );
-            }
-            return $accumulator;
-        }, 1);
-        $proto->defineOwnProperty('reduce', PropertyDescriptor::data($reduceFn, true, false, true));
-
-        // reduceRight(callback, initialValue).
-        $reduceRightFn = JsFunction::fromCallable('reduceRight', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.reduceRight called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $len = $this_->getLength();
-            $k = $len - 1;
-            if (isset($args[1])) {
-                $accumulator = $args[1];
-            } else {
-                if ($len === 0) {
-                    throw new TypeError('Reduce of empty array with no initial value');
-                }
-                $accumulator = $this_->getIndex($k);
-                $k--;
-            }
-            for (; $k >= 0; $k--) {
-                $accumulator = $callback->call(
-                    JsUndefined::instance(),
-                    [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
-                );
-            }
-            return $accumulator;
-        }, 1);
-        $proto->defineOwnProperty('reduceRight', PropertyDescriptor::data($reduceRightFn, true, false, true));
-
-        // some(callback, thisArg).
-        $someFn = JsFunction::fromCallable('some', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.some called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
-                if (TypeConversion::toBoolean($result)) {
-                    return new JsBoolean(true);
-                }
-            }
-            return new JsBoolean(false);
-        }, 1);
-        $proto->defineOwnProperty('some', PropertyDescriptor::data($someFn, true, false, true));
-
-        // every(callback, thisArg).
-        $everyFn = JsFunction::fromCallable('every', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.every called on incompatible receiver");
-            }
-            $callback = $args[0] ?? JsUndefined::instance();
-            if (!$callback instanceof JsFunction) {
-                throw new TypeError('callback is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = 0; $i < $this_->getLength(); $i++) {
-                $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
-                if (!TypeConversion::toBoolean($result)) {
-                    return new JsBoolean(false);
-                }
-            }
-            return new JsBoolean(true);
-        }, 1);
-        $proto->defineOwnProperty('every', PropertyDescriptor::data($everyFn, true, false, true));
-
-        // indexOf(searchElement, fromIndex).
-        $indexOfFn = JsFunction::fromCallable('indexOf', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
-            }
-            $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
-            return new JsNumber((float) $this_->indexOfTyped($search, $fromIndex));
-        }, 1);
-        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data($indexOfFn, true, false, true));
-
-        // lastIndexOf(searchElement, fromIndex).
-        $lastIndexOfFn = JsFunction::fromCallable('lastIndexOf', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.lastIndexOf called on incompatible receiver");
-            }
-            $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : $this_->getLength() - 1;
-            if ($fromIndex < 0) {
-                $fromIndex = max(0, $this_->getLength() + $fromIndex);
-            }
-            for ($i = min($fromIndex, $this_->getLength() - 1); $i >= 0; $i--) {
-                $el = $this_->getIndex($i);
-                if ($el instanceof JsNumber && $search instanceof JsNumber) {
-                    if (!is_nan($el->value) && !is_nan($search->value) && $el->value === $search->value) {
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $el = $this_->getIndex($i);
+                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    if (TypeConversion::toBoolean($result)) {
                         return new JsNumber((float) $i);
                     }
                 }
-            }
-            return new JsNumber(-1.0);
-        }, 1);
+                return new JsNumber(-1.0);
+            },
+            1
+        );
+        $proto->defineOwnProperty('findIndex', PropertyDescriptor::data($findIndexFn, true, false, true));
+
+        // forEach(callback, thisArg).
+        $forEachFn = JsFunction::fromCallable(
+            'forEach',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.forEach called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                }
+                return JsUndefined::instance();
+            },
+            1
+        );
+        $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
+
+        // map(callback, thisArg): uses SpeciesConstructor per spec.
+        $mapFn = JsFunction::fromCallable(
+            'map',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.map called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                $len = $this_->getLength();
+                $result = self::typedArraySpeciesCreate($this_, $len);
+                for ($i = 0; $i < $len; $i++) {
+                    $mapped = $callback->call(
+                        $thisArg,
+                        [$this_->getIndex($i), new JsNumber((float) $i), $this_],
+                    );
+                    $result->setIndex($i, $mapped);
+                }
+                return $result;
+            },
+            1
+        );
+        $proto->defineOwnProperty('map', PropertyDescriptor::data($mapFn, true, false, true));
+
+        // filter(callback, thisArg): uses SpeciesConstructor per spec.
+        $filterFn = JsFunction::fromCallable(
+            'filter',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.filter called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                $kept = [];
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $el = $this_->getIndex($i);
+                    $result = $callback->call(
+                        $thisArg,
+                        [$el, new JsNumber((float) $i), $this_],
+                    );
+                    if (TypeConversion::toBoolean($result)) {
+                        $kept[] = $el;
+                    }
+                }
+                $filtered = self::typedArraySpeciesCreate($this_, count($kept));
+                foreach ($kept as $i => $el) {
+                    $filtered->setIndex($i, $el);
+                }
+                return $filtered;
+            },
+            1
+        );
+        $proto->defineOwnProperty('filter', PropertyDescriptor::data($filterFn, true, false, true));
+
+        // reduce(callback, initialValue).
+        $reduceFn = JsFunction::fromCallable(
+            'reduce',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.reduce called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $len = $this_->getLength();
+                $k = 0;
+                if (isset($args[1])) {
+                    $accumulator = $args[1];
+                } else {
+                    if ($len === 0) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
+                    $accumulator = $this_->getIndex(0);
+                    $k = 1;
+                }
+                for (; $k < $len; $k++) {
+                    $accumulator = $callback->call(
+                        JsUndefined::instance(),
+                        [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
+                    );
+                }
+                return $accumulator;
+            },
+            1
+        );
+        $proto->defineOwnProperty('reduce', PropertyDescriptor::data($reduceFn, true, false, true));
+
+        // reduceRight(callback, initialValue).
+        $reduceRightFn = JsFunction::fromCallable(
+            'reduceRight',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.reduceRight called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $len = $this_->getLength();
+                $k = $len - 1;
+                if (isset($args[1])) {
+                    $accumulator = $args[1];
+                } else {
+                    if ($len === 0) {
+                        throw new TypeError('Reduce of empty array with no initial value');
+                    }
+                    $accumulator = $this_->getIndex($k);
+                    $k--;
+                }
+                for (; $k >= 0; $k--) {
+                    $accumulator = $callback->call(
+                        JsUndefined::instance(),
+                        [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
+                    );
+                }
+                return $accumulator;
+            },
+            1
+        );
+        $proto->defineOwnProperty('reduceRight', PropertyDescriptor::data($reduceRightFn, true, false, true));
+
+        // some(callback, thisArg).
+        $someFn = JsFunction::fromCallable(
+            'some',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.some called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return new JsBoolean(true);
+                    }
+                }
+                return new JsBoolean(false);
+            },
+            1
+        );
+        $proto->defineOwnProperty('some', PropertyDescriptor::data($someFn, true, false, true));
+
+        // every(callback, thisArg).
+        $everyFn = JsFunction::fromCallable(
+            'every',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.every called on incompatible receiver");
+                }
+                $callback = $args[0] ?? JsUndefined::instance();
+                if (!$callback instanceof JsFunction) {
+                    throw new TypeError('callback is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = 0; $i < $this_->getLength(); $i++) {
+                    $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                    if (!TypeConversion::toBoolean($result)) {
+                        return new JsBoolean(false);
+                    }
+                }
+                return new JsBoolean(true);
+            },
+            1
+        );
+        $proto->defineOwnProperty('every', PropertyDescriptor::data($everyFn, true, false, true));
+
+        // indexOf(searchElement, fromIndex).
+        $indexOfFn = JsFunction::fromCallable(
+            'indexOf',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
+                }
+                $search = $args[0] ?? JsUndefined::instance();
+                $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
+                return new JsNumber((float) $this_->indexOfTyped($search, $fromIndex));
+            },
+            1
+        );
+        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data($indexOfFn, true, false, true));
+
+        // lastIndexOf(searchElement, fromIndex).
+        $lastIndexOfFn = JsFunction::fromCallable(
+            'lastIndexOf',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.lastIndexOf called on incompatible receiver");
+                }
+                $search = $args[0] ?? JsUndefined::instance();
+                $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : $this_->getLength() - 1;
+                if ($fromIndex < 0) {
+                    $fromIndex = max(0, $this_->getLength() + $fromIndex);
+                }
+                for ($i = min($fromIndex, $this_->getLength() - 1); $i >= 0; $i--) {
+                    $el = $this_->getIndex($i);
+                    if ($el instanceof JsNumber && $search instanceof JsNumber) {
+                        if (!is_nan($el->value) && !is_nan($search->value) && $el->value === $search->value) {
+                            return new JsNumber((float) $i);
+                        }
+                    }
+                }
+                return new JsNumber(-1.0);
+            },
+            1
+        );
         $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data($lastIndexOfFn, true, false, true));
 
         // includes(searchElement, fromIndex).
-        $includesFn = JsFunction::fromCallable('includes', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
-            }
+        $includesFn = JsFunction::fromCallable(
+            'includes',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
+                }
             // Per spec: if length is 0, return false before ToInteger(fromIndex).
-            if ($this_->getLength() === 0) {
-                return new JsBoolean(false);
-            }
-            $search = $args[0] ?? JsUndefined::instance();
-            $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
-            return new JsBoolean($this_->includesTyped($search, $fromIndex));
-        }, 1);
+                if ($this_->getLength() === 0) {
+                    return new JsBoolean(false);
+                }
+                $search = $args[0] ?? JsUndefined::instance();
+                $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
+                return new JsBoolean($this_->includesTyped($search, $fromIndex));
+            },
+            1
+        );
         $proto->defineOwnProperty('includes', PropertyDescriptor::data($includesFn, true, false, true));
 
         // join(separator).
-        $joinFn = JsFunction::fromCallable('join', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.join called on incompatible receiver");
-            }
-            $separator = isset($args[0]) && !$args[0] instanceof JsUndefined
+        $joinFn = JsFunction::fromCallable(
+            'join',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.join called on incompatible receiver");
+                }
+                $separator = isset($args[0]) && !$args[0] instanceof JsUndefined
                 ? TypeConversion::toString($args[0])
                 : ',';
-            return new JsString($this_->joinTyped($separator));
-        }, 1);
+                return new JsString($this_->joinTyped($separator));
+            },
+            1
+        );
         $proto->defineOwnProperty('join', PropertyDescriptor::data($joinFn, true, false, true));
 
         // toString() - delegates to join.
-        $toStringFn = JsFunction::fromCallable('toString', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.toString called on incompatible receiver");
-            }
-            return new JsString($this_->joinTyped(','));
-        }, 0);
+        $toStringFn = JsFunction::fromCallable(
+            'toString',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.toString called on incompatible receiver");
+                }
+                return new JsString($this_->joinTyped(','));
+            },
+            0
+        );
         $proto->defineOwnProperty('toString', PropertyDescriptor::data($toStringFn, true, false, true));
 
         // reverse().
-        $reverseFn = JsFunction::fromCallable('reverse', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.reverse called on incompatible receiver");
-            }
-            return $this_->reverseTyped();
-        }, 0);
+        $reverseFn = JsFunction::fromCallable(
+            'reverse',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.reverse called on incompatible receiver");
+                }
+                return $this_->reverseTyped();
+            },
+            0
+        );
         $proto->defineOwnProperty('reverse', PropertyDescriptor::data($reverseFn, true, false, true));
 
         // sort(comparefn).
-        $sortFn = JsFunction::fromCallable('sort', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.sort called on incompatible receiver");
-            }
-            $arg0 = $args[0] ?? JsUndefined::instance();
-            if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
-                throw new TypeError('The comparison function must be either a function or undefined');
-            }
-            $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
-            $elements = $this_->toList();
+        $sortFn = JsFunction::fromCallable(
+            'sort',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.sort called on incompatible receiver");
+                }
+                $arg0 = $args[0] ?? JsUndefined::instance();
+                if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
+                    throw new TypeError('The comparison function must be either a function or undefined');
+                }
+                $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
+                $elements = $this_->toList();
 
-            usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
-                if ($comparefn !== null) {
-                    $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
-                    return (int) TypeConversion::toNumber($result);
-                }
-                // Default numeric sort for typed arrays per spec.
-                // BigInt comparisons: compare as integers.
-                if ($a instanceof \PhpJs\Value\JsBigInt && $b instanceof \PhpJs\Value\JsBigInt) {
-                    return \PhpJs\Spec\AbstractOperations::bigStrCompPublic($a->value, $b->value);
-                }
-                $an = $a->toNumber();
-                $bn = $b->toNumber();
-                // NaN sorts to end.
-                if (is_nan($an) && is_nan($bn)) {
-                    return 0;
-                }
-                if (is_nan($an)) {
-                    return 1;
-                }
-                if (is_nan($bn)) {
-                    return -1;
-                }
-                // -0 sorts before +0. Use IEEE 754 sign-bit
-                // detection to avoid division by zero on PHP 8+.
-                if ($an === 0.0 && $bn === 0.0) {
-                    $aNegZero = JsNumber::isNegativeZero($an);
-                    $bNegZero = JsNumber::isNegativeZero($bn);
-                    if ($aNegZero && !$bNegZero) {
-                        return -1;
+                usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
+                    if ($comparefn !== null) {
+                        $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
+                        return (int) TypeConversion::toNumber($result);
                     }
-                    if (!$aNegZero && $bNegZero) {
+                    // Default numeric sort for typed arrays per spec.
+                    // BigInt comparisons: compare as integers.
+                    if ($a instanceof \PhpJs\Value\JsBigInt && $b instanceof \PhpJs\Value\JsBigInt) {
+                        return \PhpJs\Spec\AbstractOperations::bigStrCompPublic($a->value, $b->value);
+                    }
+                    $an = $a->toNumber();
+                    $bn = $b->toNumber();
+                    // NaN sorts to end.
+                    if (is_nan($an) && is_nan($bn)) {
+                        return 0;
+                    }
+                    if (is_nan($an)) {
                         return 1;
                     }
-                    return 0;
-                }
-                return $an <=> $bn;
-            });
+                    if (is_nan($bn)) {
+                        return -1;
+                    }
+                    // -0 sorts before +0. Use IEEE 754 sign-bit
+                    // detection to avoid division by zero on PHP 8+.
+                    if ($an === 0.0 && $bn === 0.0) {
+                        $aNegZero = JsNumber::isNegativeZero($an);
+                        $bNegZero = JsNumber::isNegativeZero($bn);
+                        if ($aNegZero && !$bNegZero) {
+                            return -1;
+                        }
+                        if (!$aNegZero && $bNegZero) {
+                            return 1;
+                        }
+                        return 0;
+                    }
+                    return $an <=> $bn;
+                });
 
-            for ($i = 0; $i < count($elements); $i++) {
-                $this_->setIndex($i, $elements[$i]);
-            }
-            return $this_;
-        }, 1);
+                for ($i = 0; $i < count($elements); $i++) {
+                    $this_->setIndex($i, $elements[$i]);
+                }
+                return $this_;
+            },
+            1
+        );
         $proto->defineOwnProperty('sort', PropertyDescriptor::data($sortFn, true, false, true));
 
         // entries().
-        $entriesFn = JsFunction::fromCallable('entries', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.entries called on incompatible receiver");
-            }
-            return self::createTypedArrayIterator($this_, 'key+value');
-        }, 0);
+        $entriesFn = JsFunction::fromCallable(
+            'entries',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.entries called on incompatible receiver");
+                }
+                return self::createTypedArrayIterator($this_, 'key+value');
+            },
+            0
+        );
         $proto->defineOwnProperty('entries', PropertyDescriptor::data($entriesFn, true, false, true));
 
         // keys().
-        $keysFn = JsFunction::fromCallable('keys', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.keys called on incompatible receiver");
-            }
-            return self::createTypedArrayIterator($this_, 'key');
-        }, 0);
+        $keysFn = JsFunction::fromCallable(
+            'keys',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.keys called on incompatible receiver");
+                }
+                return self::createTypedArrayIterator($this_, 'key');
+            },
+            0
+        );
         $proto->defineOwnProperty('keys', PropertyDescriptor::data($keysFn, true, false, true));
 
         // values().
-        $valuesFn = JsFunction::fromCallable('values', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.values called on incompatible receiver");
-            }
-            return self::createTypedArrayIterator($this_, 'value');
-        }, 0);
+        $valuesFn = JsFunction::fromCallable(
+            'values',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.values called on incompatible receiver");
+                }
+                return self::createTypedArrayIterator($this_, 'value');
+            },
+            0
+        );
         $proto->defineOwnProperty('values', PropertyDescriptor::data($valuesFn, true, false, true));
 
         // findLast(predicate, thisArg).
-        $findLastFn = JsFunction::fromCallable('findLast', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.findLast called on incompatible receiver");
-            }
-            $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('predicate is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
-                $el = $this_->getIndex($i);
-                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
-                if (TypeConversion::toBoolean($result)) {
-                    return $el;
+        $findLastFn = JsFunction::fromCallable(
+            'findLast',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.findLast called on incompatible receiver");
                 }
-            }
-            return JsUndefined::instance();
-        }, 1);
+                $predicate = $args[0] ?? JsUndefined::instance();
+                if (!$predicate instanceof JsFunction) {
+                    throw new TypeError('predicate is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
+                    $el = $this_->getIndex($i);
+                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return $el;
+                    }
+                }
+                return JsUndefined::instance();
+            },
+            1
+        );
         $proto->defineOwnProperty('findLast', PropertyDescriptor::data($findLastFn, true, false, true));
 
         // findLastIndex(predicate, thisArg).
-        $findLastIndexFn = JsFunction::fromCallable('findLastIndex', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.findLastIndex called on incompatible receiver");
-            }
-            $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('predicate is not a function');
-            }
-            $thisArg = $args[1] ?? JsUndefined::instance();
-            for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
-                $el = $this_->getIndex($i);
-                $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
-                if (TypeConversion::toBoolean($result)) {
-                    return new JsNumber((float) $i);
+        $findLastIndexFn = JsFunction::fromCallable(
+            'findLastIndex',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.findLastIndex called on incompatible receiver");
                 }
-            }
-            return new JsNumber(-1.0);
-        }, 1);
+                $predicate = $args[0] ?? JsUndefined::instance();
+                if (!$predicate instanceof JsFunction) {
+                    throw new TypeError('predicate is not a function');
+                }
+                $thisArg = $args[1] ?? JsUndefined::instance();
+                for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
+                    $el = $this_->getIndex($i);
+                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    if (TypeConversion::toBoolean($result)) {
+                        return new JsNumber((float) $i);
+                    }
+                }
+                return new JsNumber(-1.0);
+            },
+            1
+        );
         $proto->defineOwnProperty('findLastIndex', PropertyDescriptor::data($findLastIndexFn, true, false, true));
 
         // at(index).
-        $atFn = JsFunction::fromCallable('at', function (JsValue $this_, array $args) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError("Method {$typeName}.prototype.at called on incompatible receiver");
-            }
-            $index = isset($args[0]) ? self::toInteger($args[0]) : 0;
-            if ($index < 0) {
-                $index = $this_->getLength() + $index;
-            }
-            if ($index < 0 || $index >= $this_->getLength()) {
-                return JsUndefined::instance();
-            }
-            return $this_->getIndex($index);
-        }, 1);
+        $atFn = JsFunction::fromCallable(
+            'at',
+            function (JsValue $this_, array $args) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError("Method {$typeName}.prototype.at called on incompatible receiver");
+                }
+                $index = isset($args[0]) ? self::toInteger($args[0]) : 0;
+                if ($index < 0) {
+                    $index = $this_->getLength() + $index;
+                }
+                if ($index < 0 || $index >= $this_->getLength()) {
+                    return JsUndefined::instance();
+                }
+                return $this_->getIndex($index);
+            },
+            1
+        );
         $proto->defineOwnProperty('at', PropertyDescriptor::data($atFn, true, false, true));
     }
 
@@ -1369,56 +1473,72 @@ class TypedArrayConstructor
     private static function installTypedArrayAccessors(JsObject $proto, string $typeName): void
     {
         // length getter.
-        $lengthGetter = JsFunction::fromCallable('get length', function (JsValue $this_) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError(
-                    "Method get {$typeName}.prototype.length called on incompatible receiver"
-                );
-            }
-            return new JsNumber((float) $this_->getLength());
-        }, 0);
+        $lengthGetter = JsFunction::fromCallable(
+            'get length',
+            function (JsValue $this_) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method get {$typeName}.prototype.length called on incompatible receiver"
+                    );
+                }
+                return new JsNumber((float) $this_->getLength());
+            },
+            0
+        );
         $proto->defineOwnProperty(
             'length',
             PropertyDescriptor::accessor($lengthGetter, null, false, true),
         );
 
         // buffer getter.
-        $bufferGetter = JsFunction::fromCallable('get buffer', function (JsValue $this_) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError(
-                    "Method get {$typeName}.prototype.buffer called on incompatible receiver"
-                );
-            }
-            return $this_->getBuffer();
-        }, 0);
+        $bufferGetter = JsFunction::fromCallable(
+            'get buffer',
+            function (JsValue $this_) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method get {$typeName}.prototype.buffer called on incompatible receiver"
+                    );
+                }
+                return $this_->getBuffer();
+            },
+            0
+        );
         $proto->defineOwnProperty(
             'buffer',
             PropertyDescriptor::accessor($bufferGetter, null, false, true),
         );
 
         // byteLength getter.
-        $byteLengthGetter = JsFunction::fromCallable('get byteLength', function (JsValue $this_) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError(
-                    "Method get {$typeName}.prototype.byteLength called on incompatible receiver"
-                );
-            }
-            return new JsNumber((float) ($this_->getLength() * $this_->getBytesPerElement()));
-        }, 0);
+        $byteLengthGetter = JsFunction::fromCallable(
+            'get byteLength',
+            function (JsValue $this_) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method get {$typeName}.prototype.byteLength called on incompatible receiver"
+                    );
+                }
+                return new JsNumber((float) ($this_->getLength() * $this_->getBytesPerElement()));
+            },
+            0
+        );
         $proto->defineOwnProperty(
             'byteLength',
             PropertyDescriptor::accessor($byteLengthGetter, null, false, true),
         );
 
         // byteOffset getter.
-        $byteOffsetGetter = JsFunction::fromCallable('get byteOffset', function (JsValue $this_) use ($typeName): JsValue {
-            if (!$this_ instanceof JsTypedArray) {
-                throw new TypeError(
-                    "Method get {$typeName}.prototype.byteOffset called on incompatible receiver"
-                );
-            }
-            return new JsNumber((float) $this_->getByteOffset());
-        }, 0);
+        $byteOffsetGetter = JsFunction::fromCallable(
+            'get byteOffset',
+            function (JsValue $this_) use ($typeName): JsValue {
+                if (!$this_ instanceof JsTypedArray) {
+                    throw new TypeError(
+                        "Method get {$typeName}.prototype.byteOffset called on incompatible receiver"
+                    );
+                }
+                return new JsNumber((float) $this_->getByteOffset());
+            },
+            0
+        );
         $proto->defineOwnProperty(
             'byteOffset',
             PropertyDescriptor::accessor($byteOffsetGetter, null, false, true),

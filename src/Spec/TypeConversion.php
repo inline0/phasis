@@ -536,7 +536,10 @@ final class TypeConversion
             $wrapperProto = JsString::getStringPrototype();
         }
         $wrapper = new JsObject($wrapperProto);
-        $wrapper->defineOwnProperty('[[PrimitiveValue]]', \PhpJs\Object\PropertyDescriptor::data($value, false, false, false));
+        $wrapper->defineOwnProperty(
+            '[[PrimitiveValue]]',
+            \PhpJs\Object\PropertyDescriptor::data($value, false, false, false),
+        );
 
         // Install valueOf that returns the wrapped primitive, matching the spec behavior
         // for Boolean, Number, and String wrapper objects.
@@ -572,7 +575,10 @@ final class TypeConversion
 
         // BigInt wrappers: store [[BigIntData]] and link to BigInt.prototype per spec 21.2.4.
         if ($value instanceof JsBigInt) {
-            $wrapper->defineOwnProperty('[[BigIntData]]', \PhpJs\Object\PropertyDescriptor::data($value, false, false, false));
+            $wrapper->defineOwnProperty(
+                '[[BigIntData]]',
+                \PhpJs\Object\PropertyDescriptor::data($value, false, false, false),
+            );
             $bigIntProto = JsBigInt::getPrototype();
             if ($bigIntProto !== null) {
                 $wrapper->setPrototype($bigIntProto);
