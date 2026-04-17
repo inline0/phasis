@@ -66,8 +66,22 @@ class TypedArrayConstructor
             'ArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
                 $arg0 = $args[0] ?? new JsNumber(0.0);
+                // Step 2: ToIndex(length).
                 $length = TypeConversion::toIndex($arg0);
-                return new JsArrayBuffer($length, $proto);
+                // Step 3: AllocateArrayBuffer calls OrdinaryCreateFromConstructor
+                // which accesses NewTarget.prototype. When called via Reflect.construct
+                // with a custom newTarget, this may trigger a getter or throw.
+                $useProto = $proto;
+                if ($this_ instanceof JsObject) {
+                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                    if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                        $ntProto = $ntDesc->value->get('prototype');
+                        if ($ntProto instanceof JsObject) {
+                            $useProto = $ntProto;
+                        }
+                    }
+                }
+                return new JsArrayBuffer($length, $useProto);
             },
             1,
         );

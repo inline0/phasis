@@ -3810,10 +3810,10 @@ class Interpreter
                     } else {
                         $this->assignVarBinding($declarator->id, $init, $env);
                     }
-                } elseif ($declarator->id instanceof Identifier && !$env->has($declarator->id->name)) {
-                    $env->defineVar($declarator->id->name, JsUndefined::instance());
                 }
-                // else: var without init and binding exists — no-op (hoisting already declared it)
+                // else: var without init — no-op. Hoisting already created the binding.
+                // If the binding was deleted (eval-created deletable binding), it should
+                // remain deleted per spec.
             } else {
                 $this->declareBinding($node->kind, $declarator->id, $init, $env);
             }
@@ -5627,10 +5627,17 @@ class Interpreter
             default => [],
         };
 
-        // Per B.3.3.1 step ii: skip if the name already exists in the scope
-        // (parameter) or would conflict with a lexical declaration.
+        // Per B.3.3.1 step ii: skip if the name would conflict with a lexical
+        // declaration. Parameter names also block hoisting. A pre-existing var
+        // binding does NOT block hoisting; we still mark it for Annex B update.
         $canHoist = function (string $name) use ($env, $lexicalNames): bool {
-            return !$env->has($name) && !isset($lexicalNames[$name]);
+            if (isset($lexicalNames[$name])) {
+                return false;
+            }
+            if ($env->hasLexicalBinding($name)) {
+                return false;
+            }
+            return true;
         };
 
         // Switch statements: collect function declarations from case bodies.
@@ -5646,6 +5653,34 @@ class Interpreter
             }
         }
 
+        // TryStatement: recursively scan try body, catch body, and finally body
+        // for block-scoped function declarations. Per B.3.5, catch parameters
+        // do NOT prevent Annex B hoisting to the enclosing function scope.
+        if ($stmt instanceof TryStatement) {
+            foreach ($stmt->block->body as $inner) {
+                $this->hoistBlockFunctionDeclarations($inner, $env, $lexicalNames);
+            }
+            if ($stmt->handler !== null) {
+                foreach ($stmt->handler->body->body as $inner) {
+                    $this->hoistBlockFunctionDeclarations($inner, $env, $lexicalNames);
+                }
+            }
+            if ($stmt->finalizer !== null) {
+                foreach ($stmt->finalizer->body as $inner) {
+                    $this->hoistBlockFunctionDeclarations($inner, $env, $lexicalNames);
+                }
+            }
+        }
+
+        // Collect function declaration names directly in this block
+        // (they create lexical bindings that block nested Annex B hoisting).
+        $blockFuncNames = [];
+        foreach ($children as $child) {
+            if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
+                $blockFuncNames[$child->id->name] = true;
+            }
+        }
+
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration) {
                 if ($canHoist($child->id->name)) {
@@ -5654,6 +5689,12 @@ class Interpreter
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
                     if ($inner instanceof FunctionDeclaration) {
+                        // Per B.3.3.1: skip if the enclosing block already has a
+                        // lexical binding for this name (e.g. another function
+                        // declaration). Replacing with var would be an Early Error.
+                        if (isset($blockFuncNames[$inner->id->name])) {
+                            continue;
+                        }
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
                         }
