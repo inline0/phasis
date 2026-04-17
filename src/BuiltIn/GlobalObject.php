@@ -584,9 +584,17 @@ class GlobalObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $string = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $radix = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $radixArg = $args[1] ?? JsUndefined::instance();
+            $radix = $radixArg instanceof JsUndefined
+                ? 0
+                : TypeConversion::toInt32($radixArg);
 
-            $string = trim($string);
+            // Strip leading/trailing Unicode whitespace per spec.
+            $string = preg_replace(
+                '/^[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+|[\s\x{FEFF}\x{00A0}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+$/u',
+                '',
+                $string,
+            );
             if ($string === '') {
                 return new JsNumber(NAN);
             }
@@ -630,7 +638,15 @@ class GlobalObject
                 return new JsNumber(NAN);
             }
 
-            $value = (float) intval($result, $radix);
+            // Use float arithmetic to avoid PHP_INT overflow.
+            $value = 0.0;
+            for ($j = 0; $j < strlen($result); $j++) {
+                $digit = strpos(
+                    '0123456789abcdefghijklmnopqrstuvwxyz',
+                    $result[$j],
+                );
+                $value = $value * $radix + $digit;
+            }
             return new JsNumber($negative ? -$value : $value);
         };
     }
