@@ -1525,6 +1525,32 @@ class Interpreter
                         );
                     }
                 }
+                // Per EvalDeclarationInstantiation step 5.a: special handling
+                // for "arguments" in eval when the varEnv is a Function
+                // Environment Record.
+                if (in_array('arguments', $evalVarNames, true)) {
+                    $funcKind = $env->getEnclosingFunctionKind();
+                    if ($funcKind !== null && $funcKind !== 'arrow') {
+                        // Step 5.a.v.1: generators and async generators always
+                        // throw SyntaxError for var arguments in eval.
+                        if ($funcKind === 'generator' || $funcKind === 'async-generator') {
+                            throw new \PhpJs\Exceptions\SyntaxError(
+                                "Identifier 'arguments' has already been declared",
+                            );
+                        }
+                        // Per spec, if the enclosing function has non-simple
+                        // parameters (default values, destructuring), the
+                        // arguments object is created in the parameter scope.
+                        // A var arguments in eval would conflict with this
+                        // binding. Check if "arguments" is already an own
+                        // binding in the function scope.
+                        if ($env->hasArgumentsVarBinding()) {
+                            throw new \PhpJs\Exceptions\SyntaxError(
+                                "Identifier 'arguments' has already been declared",
+                            );
+                        }
+                    }
+                }
             }
         } catch (\PhpJs\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
@@ -6509,9 +6535,55 @@ class Interpreter
      * Create a RegExp-like object from a pattern and flags string.
      * Uses PHP's PCRE2 engine under the hood.
      */
-    public function createRegExpFromConstructor(string $pattern, string $flags): JsObject
+    public function createRegExpFromConstructor(string $pattern, string $flags, bool $isSubclass = false): JsObject
     {
-        return $this->createRegExpObject($pattern, $flags);
+        $obj = $this->createRegExpObject($pattern, $flags);
+        if ($isSubclass) {
+            $obj->defineOwnProperty(
+                '[[LegacyFeaturesEnabled]]',
+                PropertyDescriptor::data(new JsBoolean(false), false, false, false),
+            );
+        }
+        return $obj;
+    }
+
+    /**
+     * Get a global value by name. Used by built-in methods that need access
+     * to constructors like RegExp, Array, etc.
+     */
+    public function getGlobalValue(string $name): JsValue
+    {
+        if ($this->globalEnv->has($name)) {
+            return $this->globalEnv->get($name);
+        }
+        return JsUndefined::instance();
+    }
+
+    /**
+     * Call a function as a constructor (new F(args)). Used by built-in methods
+     * for SpeciesConstructor calls.
+     *
+     * @param JsValue[] $args
+     */
+    public function callNew(JsValue $callee, array $args): JsValue
+    {
+        if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
+            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+        }
+        $proto = $callee->get('prototype');
+        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $newObj->defineOwnProperty(
+            '[[NewTarget]]',
+            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+        );
+        $result = $this->callFunction($callee, $newObj, $args);
+        if ($result instanceof JsObject) {
+            return $result;
+        }
+        if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
+            throw new TypeError('Derived constructors may only return object or undefined');
+        }
+        return $newObj;
     }
 
     private function createRegExpObject(string $pattern, string $flags): JsObject
@@ -7264,6 +7336,25 @@ class Interpreter
             } elseif ($next === 'c') {
                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
                 $i += 2; // skip \cX
+            } elseif ($next === 'u') {
+                // \u{HHHH} braced Unicode escape: skip past the closing }.
+                if ($i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $j = $i + 3;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    if ($j < $len) {
+                        $i = $j; // position on the closing }
+                    } else {
+                        $i++; // malformed: PCRE will report it
+                    }
+                } else {
+                    // \uHHHH: skip 4 hex digits after \u.
+                    $i += 5; // \u + 4 hex = 6 chars, but loop increments, so +5
+                    if ($i >= $len) {
+                        $i = $len - 1;
+                    }
+                }
             } else {
                 $i++; // skip the backslash and the next character
             }

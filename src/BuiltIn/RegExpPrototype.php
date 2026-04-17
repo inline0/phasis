@@ -649,8 +649,8 @@ class RegExpPrototype
             // This allows side effects (like Symbol.match getters that recompile the
             // regex) to take effect before splitting begins.
             $splitter = $this_;
-            $regExpCtor = \PhpJs\Engine::$currentInterpreter
-                ? \PhpJs\Engine::$currentInterpreter->getGlobalValue('RegExp')
+            $regExpCtor = \PhpJs\Engine::getCurrentInterpreter()
+                ? \PhpJs\Engine::getCurrentInterpreter()->getGlobalValue('RegExp')
                 : null;
             if ($regExpCtor instanceof \PhpJs\Value\JsFunction) {
                 // SpeciesConstructor: check rx.constructor[Symbol.species] or default to RegExp.
@@ -672,7 +672,7 @@ class RegExpPrototype
                 }
                 // Construct(C, [rx, newFlags]): calls new C(rx, flags).
                 // This triggers IsRegExp on rx which may access Symbol.match.
-                $interp = \PhpJs\Engine::$currentInterpreter;
+                $interp = \PhpJs\Engine::getCurrentInterpreter();
                 if ($interp !== null) {
                     $splitter = $interp->callNew($C, [$this_, new JsString($flags)]);
                     if (!$splitter instanceof JsObject) {

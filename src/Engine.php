@@ -841,6 +841,14 @@ class Engine
     }
 
     /**
+     * Get the current interpreter for built-in methods.
+     */
+    public static function getCurrentInterpreter(): ?\PhpJs\Runtime\Interpreter
+    {
+        return self::$currentInterpreter;
+    }
+
+    /**
      * Create a RegExp object, propagating exceptions.
      * Used by RegExp.prototype.compile where errors must be visible to JS code.
      */

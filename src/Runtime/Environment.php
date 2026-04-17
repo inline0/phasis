@@ -233,12 +233,18 @@ class Environment
     /** Get a binding value, walking the scope chain. Throws on TDZ access or missing binding. */
     public function get(string $name): JsValue
     {
-        // "with" object environment record: delegate to the binding object using [[Has]].
+        // "with" object environment record: HasBinding + GetBindingValue.
         if ($this->withObject !== null) {
+            // HasBinding: HasProperty then @@unscopables.
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
+                // GetBindingValue step 2: separate HasProperty check.
+                // Proxy traps must fire independently for each spec step.
+                if (!$this->withObject->has($name)) {
+                    return JsUndefined::instance();
+                }
                 return $this->withObject->get($name);
             }
-            // Not found on the with-object (or unscopable): fall through to parent scope.
+            // Not found or unscopable: fall through to parent.
             if ($this->parent !== null) {
                 return $this->parent->get($name);
             }
@@ -533,6 +539,31 @@ class Environment
         }
     }
 
+    /**
+     * Check whether "arguments" exists as a non-lexical (var) own
+     * binding in this environment or any ancestor up to the function
+     * boundary. Used by EvalDeclarationInstantiation to detect when
+     * eval("var arguments") would conflict with the function's
+     * arguments object binding.
+     */
+    public function hasArgumentsVarBinding(): bool
+    {
+        $env = $this;
+        while ($env !== null) {
+            if (
+                array_key_exists('arguments', $env->bindings)
+                && !isset($env->lexical['arguments'])
+            ) {
+                return true;
+            }
+            if ($env->functionKind !== null) {
+                return false;
+            }
+            $env = $env->parent;
+        }
+        return false;
+    }
+
     /** Create a child environment with this environment as its parent. */
     public function createChild(): self
     {
@@ -540,10 +571,11 @@ class Environment
     }
 
     /**
-     * Create a child "with" environment that delegates lookups to the given object.
-     * Per ES spec, a with statement creates an Object Environment Record whose
-     * binding object is the with-expression value. Variable lookups use [[Has]]
-     * on this object, which enables Proxy has/get traps.
+     * Create a child "with" environment that delegates lookups to
+     * the given object. Per ES spec, a with statement creates an
+     * Object Environment Record whose binding object is the
+     * with-expression value. Variable lookups use [[Has]] on this
+     * object, which enables Proxy has/get traps.
      */
     public function createWithEnvironment(\PhpJs\Value\JsObject $obj): self
     {
