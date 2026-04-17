@@ -2003,8 +2003,9 @@ class StringPrototype
                     }
                 }
             } else {
-                // String argument: treat as a literal string.
-                $search = TypeConversion::toString($searchArg);
+                // Non-RegExp argument: per spec, RegExpCreate(ToString(regexp), "g").
+                // undefined → /(?:)/g which matches empty string at every position.
+                $search = ($searchArg instanceof JsUndefined) ? '' : TypeConversion::toString($searchArg);
                 $offset = 0;
                 if ($search === '') {
                     $len = mb_strlen($str, 'UTF-8');

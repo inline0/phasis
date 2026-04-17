@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-17T23:40:56+00:00",
-    "updatedAt": "2026-04-17T23:40:56+00:00",
+    "generatedAt": "2026-04-17T23:45:56+00:00",
+    "updatedAt": "2026-04-17T23:45:56+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "3a3bfee",
+        "commit": "70005ad",
         "isDirty": true
     },
     "environment": {
@@ -222,14 +222,14 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 26594,
-            "fail": 2830,
-            "skip": 19092,
+            "pass": 26684,
+            "fail": 2833,
+            "skip": 19093,
             "blocked": 0,
-            "pending": 1894,
-            "running": 96,
-            "attempted": 29424,
-            "known": 48516,
+            "pending": 1803,
+            "running": 93,
+            "attempted": 29517,
+            "known": 48610,
             "total": 50506,
             "passRate": 90.4
         },
@@ -251,14 +251,14 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 13080,
-                "fail": 703,
-                "skip": 7650,
+                "pass": 13170,
+                "fail": 706,
+                "skip": 7651,
                 "blocked": 0,
-                "pending": 1200,
-                "running": 96,
-                "attempted": 13783,
-                "known": 21433,
+                "pending": 1109,
+                "running": 93,
+                "attempted": 13876,
+                "known": 21527,
                 "total": 22729,
                 "passRate": 94.9
             },
@@ -583,8 +583,8 @@
                 "fail": 96,
                 "skip": 176,
                 "blocked": 0,
-                "pending": 356,
-                "running": 32,
+                "pending": 357,
+                "running": 31,
                 "attempted": 2511,
                 "known": 2687,
                 "total": 3075,
@@ -1033,8 +1033,8 @@
                 "fail": 51,
                 "skip": 215,
                 "blocked": 0,
-                "pending": 186,
-                "running": 64,
+                "pending": 219,
+                "running": 31,
                 "attempted": 166,
                 "known": 381,
                 "total": 631,
@@ -1073,17 +1073,17 @@
             {
                 "name": "built-ins/RegExp",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 664,
-                "fail": 109,
-                "skip": 969,
+                "status": "running",
+                "pass": 692,
+                "fail": 112,
+                "skip": 970,
                 "blocked": 0,
-                "pending": 125,
-                "running": 0,
-                "attempted": 773,
-                "known": 1742,
+                "pending": 62,
+                "running": 31,
+                "attempted": 804,
+                "known": 1774,
                 "total": 1867,
-                "passRate": 85.9
+                "passRate": 86.1
             },
             {
                 "name": "built-ins/RegExpStringIteratorPrototype",
@@ -1358,32 +1358,32 @@
             {
                 "name": "built-ins/encodeURI",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 31,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 31,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 31,
+                "known": 31,
                 "total": 31,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/encodeURIComponent",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 31,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 31,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 31,
+                "known": 31,
                 "total": 31,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/eval",
@@ -2431,6 +2431,32 @@
                 ]
             },
             {
+                "group": "built-ins/encodeURI",
+                "kind": "normal",
+                "durationSec": 32.777,
+                "filesCount": 31,
+                "sampleFiles": [
+                    "test262/test/built-ins/encodeURI/S15.1.3.3_A1.1_T1.js",
+                    "test262/test/built-ins/encodeURI/S15.1.3.3_A1.1_T2.js",
+                    "...",
+                    "test262/test/built-ins/encodeURI/not-a-constructor.js",
+                    "test262/test/built-ins/encodeURI/prop-desc.js"
+                ]
+            },
+            {
+                "group": "built-ins/encodeURIComponent",
+                "kind": "normal",
+                "durationSec": 31.282,
+                "filesCount": 31,
+                "sampleFiles": [
+                    "test262/test/built-ins/encodeURIComponent/S15.1.3.4_A1.1_T1.js",
+                    "test262/test/built-ins/encodeURIComponent/S15.1.3.4_A1.1_T2.js",
+                    "...",
+                    "test262/test/built-ins/encodeURIComponent/not-a-constructor.js",
+                    "test262/test/built-ins/encodeURIComponent/prop-desc.js"
+                ]
+            },
+            {
                 "group": "language/comments",
                 "kind": "normal",
                 "durationSec": 26.002,
@@ -2610,32 +2636,6 @@
                     "...",
                     "test262/test/built-ins/TypedArray/prototype/every/values-are-not-cached.js",
                     "test262/test/built-ins/TypedArray/prototype/fill/BigInt/coerced-indexes.js"
-                ]
-            },
-            {
-                "group": "built-ins/Math",
-                "kind": "normal",
-                "durationSec": 3.725,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/Math/E/prop-desc.js",
-                    "test262/test/built-ins/Math/E/value.js",
-                    "...",
-                    "test262/test/built-ins/Math/random/length.js",
-                    "test262/test/built-ins/Math/random/name.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 3.53,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/array-arg-targetbuffer-detached-throws.js",
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/bigint-tobigint64.js",
-                    "...",
-                    "test262/test/built-ins/TypedArray/prototype/sort/prop-desc.js",
-                    "test262/test/built-ins/TypedArray/prototype/sort/resizable-buffer-default-comparator.js"
                 ]
             }
         ]

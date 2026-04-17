@@ -10,11 +10,13 @@ use PhpJs\Runtime\Environment;
 use PhpJs\Spec\AbstractOperations;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsArray;
+use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsProxy;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
@@ -290,81 +292,73 @@ class ObjectConstructor
         $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toString',
             function (JsValue $this_): JsValue {
+                // Step 1-2: undefined and null handled before ToObject.
                 if ($this_ instanceof JsUndefined) {
                     return new JsString('[object Undefined]');
                 }
                 if ($this_ instanceof JsNull) {
                     return new JsString('[object Null]');
                 }
+
+                // For primitives, determine builtinTag before converting to object.
+                // This is because ToObject wraps them and we lose the original type.
+                $primitiveTag = null;
                 if ($this_ instanceof JsBoolean) {
-                    return new JsString('[object Boolean]');
+                    $primitiveTag = 'Boolean';
+                } elseif ($this_ instanceof JsNumber) {
+                    $primitiveTag = 'Number';
+                } elseif ($this_ instanceof JsString) {
+                    $primitiveTag = 'String';
+                } elseif ($this_ instanceof JsSymbol) {
+                    $primitiveTag = 'Symbol';
+                } elseif ($this_ instanceof JsBigInt) {
+                    $primitiveTag = 'BigInt';
                 }
-                if ($this_ instanceof JsNumber) {
-                    return new JsString('[object Number]');
-                }
-                if ($this_ instanceof JsString) {
-                    return new JsString('[object String]');
-                }
-                if ($this_ instanceof JsSymbol) {
-                    return new JsString('[object Symbol]');
-                }
-                if ($this_ instanceof JsFunction) {
-                    return new JsString('[object Function]');
-                }
-                if ($this_ instanceof JsArray) {
-                    return new JsString('[object Array]');
-                }
-                // Check for arguments objects (created by makeArgumentsObject).
-                if ($this_ instanceof JsObject && $this_->hasOwnProperty('[[IsArguments]]')) {
-                    return new JsString('[object Arguments]');
-                }
-                // Check for Symbol.toStringTag
-                $tag = null;
-                if ($this_ instanceof JsObject) {
-                    $tagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
-                    $tagVal = $this_->getBySymbol($tagSym);
-                    if ($tagVal instanceof JsString) {
-                        $tag = $tagVal->value;
-                    }
-                }
-                if ($tag !== null) {
-                    return new JsString("[object {$tag}]");
-                }
-                // Check wrapper objects with [[PrimitiveValue]] for Boolean/Number/String.
-                if ($this_ instanceof JsObject && $this_->has('[[PrimitiveValue]]')) {
-                    $prim = $this_->get('[[PrimitiveValue]]');
+
+                // Step 3: Let O = ToObject(this value).
+                $o = ($this_ instanceof JsObject) ? $this_ : TypeConversion::toObject($this_);
+
+                // Step 4-14: Determine builtinTag based on internal slots.
+                if ($primitiveTag !== null) {
+                    $builtinTag = $primitiveTag;
+                } elseif (self::isArrayForToString($o)) {
+                    $builtinTag = 'Array';
+                } elseif ($o->hasOwnProperty('[[IsArguments]]')) {
+                    $builtinTag = 'Arguments';
+                } elseif (self::isCallableForToString($o)) {
+                    $builtinTag = 'Function';
+                } elseif ($o->hasOwnProperty('[[ErrorData]]')) {
+                    $builtinTag = 'Error';
+                } elseif ($o->has('[[PrimitiveValue]]')) {
+                    $prim = $o->get('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
-                        return new JsString('[object Boolean]');
+                        $builtinTag = 'Boolean';
+                    } elseif ($prim instanceof JsNumber) {
+                        $builtinTag = 'Number';
+                    } elseif ($prim instanceof JsString) {
+                        $builtinTag = 'String';
+                    } elseif ($prim instanceof JsBigInt) {
+                        $builtinTag = 'BigInt';
+                    } else {
+                        $builtinTag = 'Object';
                     }
-                    if ($prim instanceof JsNumber) {
-                        return new JsString('[object Number]');
-                    }
-                    if ($prim instanceof JsString) {
-                        return new JsString('[object String]');
-                    }
+                } elseif ($o->hasOwnProperty('[[BigIntData]]')) {
+                    $builtinTag = 'BigInt';
+                } elseif ($o->has('[[IsDate]]')) {
+                    $builtinTag = 'Date';
+                } elseif ($o->hasOwnProperty('[[PCREPattern]]')) {
+                    $builtinTag = 'RegExp';
+                } else {
+                    $builtinTag = 'Object';
                 }
-                // Check for RegExp-like (has source property)
-                if ($this_ instanceof JsObject && $this_->has('source') && $this_->has('flags')) {
-                    return new JsString('[object RegExp]');
-                }
-                // Check for [[ErrorData]] — error objects have 'stack' and inherit from Error.prototype
-                if ($this_ instanceof JsObject && $this_->has('stack')) {
-                    $nameVal = $this_->get('name');
-                    if ($nameVal instanceof JsString) {
-                        $n = $nameVal->value;
-                        $errNames = ['Error', 'TypeError', 'RangeError',
-                            'ReferenceError', 'SyntaxError', 'URIError',
-                            'EvalError', 'AggregateError'];
-                        if (in_array($n, $errNames, true)) {
-                            return new JsString('[object Error]');
-                        }
-                    }
-                }
-                // Check for Date-like (has [[IsDate]] internal slot)
-                if ($this_ instanceof JsObject && $this_->has('[[IsDate]]')) {
-                    return new JsString('[object Date]');
-                }
-                return new JsString('[object Object]');
+
+                // Step 15: Let tag = Get(O, @@toStringTag).
+                $tagSym = SymbolConstructor::toStringTag();
+                $tagVal = $o->getBySymbol($tagSym);
+                // Step 16: If tag is not a string, let tag = builtinTag.
+                $tag = ($tagVal instanceof JsString) ? $tagVal->value : $builtinTag;
+                // Step 17
+                return new JsString("[object {$tag}]");
             },
             0,
         ), true, false, true));
@@ -912,6 +906,38 @@ class ObjectConstructor
                 }
             }
         }
+    }
+
+    /**
+     * IsArray for Object.prototype.toString: checks through Proxy chains.
+     */
+    private static function isArrayForToString(JsObject $o): bool
+    {
+        if ($o instanceof JsArray) {
+            return true;
+        }
+        if ($o instanceof JsProxy) {
+            if ($o->isRevoked()) {
+                return false;
+            }
+            $target = $o->getTarget();
+            return $target !== null && self::isArrayForToString($target);
+        }
+        return false;
+    }
+
+    /**
+     * Check if object has [[Call]] for Object.prototype.toString: checks through Proxy chains.
+     */
+    private static function isCallableForToString(JsObject $o): bool
+    {
+        if ($o instanceof JsFunction) {
+            return true;
+        }
+        if ($o instanceof JsProxy) {
+            return $o->isCallable();
+        }
+        return false;
     }
 
     /**
