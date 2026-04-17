@@ -7092,6 +7092,15 @@ class Interpreter
         };
 
         $errorObj = new JsObject();
+        $errorObj->defineOwnProperty(
+            '[[ErrorData]]',
+            \PhpJs\Object\PropertyDescriptor::data(
+                JsUndefined::instance(),
+                false,
+                false,
+                false,
+            ),
+        );
         $errorObj->set('message', new JsString($e->getMessage()));
         $errorObj->set('name', new JsString($name));
         $errorObj->set('stack', new JsString($name . ': ' . $e->getMessage()));
@@ -7316,7 +7325,19 @@ class Interpreter
         );
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
-        $execFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky, $hasRepeatedGroupFixes, $repeatedGroupAnalysis, $innerPcreFlags, $transformFn): JsValue {
+        $execFn = function (
+            JsValue $this_,
+            array $args
+        ) use (
+            $pcrePattern,
+            $obj,
+            $isGlobal,
+            $isSticky,
+            $hasRepeatedGroupFixes,
+            $repeatedGroupAnalysis,
+            $innerPcreFlags,
+            $transformFn,
+        ): JsValue {
             $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
             $strLen = mb_strlen($str, 'UTF-8');
 

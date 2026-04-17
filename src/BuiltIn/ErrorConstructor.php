@@ -79,20 +79,11 @@ class ErrorConstructor
                     if (!$arg instanceof JsObject) {
                         return new \PhpJs\Value\JsBoolean(false);
                     }
-                    // Check if the object has an 'Error' or known error type as its name on prototype
-                    $name = $arg->get('name');
-                    if ($name instanceof JsString) {
-                        $nameStr = $name->value;
-                        $errorNames = ['Error', 'TypeError', 'RangeError', 'ReferenceError',
-                            'SyntaxError', 'URIError', 'EvalError', 'AggregateError'];
-                        if (in_array($nameStr, $errorNames, true)) {
-                            // Also verify it has a message property (to distinguish from random objects)
-                            if ($arg->has('message') || $arg->has('stack')) {
-                                return new \PhpJs\Value\JsBoolean(true);
-                            }
-                        }
-                    }
-                    return new \PhpJs\Value\JsBoolean(false);
+                    // Per spec, check for [[ErrorData]] internal slot.
+                    // We mark real error objects with this slot during construction.
+                    return new \PhpJs\Value\JsBoolean(
+                        $arg->hasOwnProperty('[[ErrorData]]')
+                    );
                 }, 1);
                 $constructor->defineOwnProperty('isError', PropertyDescriptor::data($isErrorFn, true, false, true));
 
@@ -115,6 +106,16 @@ class ErrorConstructor
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 // Called via new: populate the already-created object.
                 $this_->setPrototype($proto);
+                // Mark as real error with [[ErrorData]] internal slot.
+                $this_->defineOwnProperty(
+                    '[[ErrorData]]',
+                    PropertyDescriptor::data(
+                        \PhpJs\Value\JsUndefined::instance(),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
                 if ($message !== null) {
                     $this_->defineOwnProperty('message', PropertyDescriptor::data(
                         new JsString($message),
@@ -143,6 +144,15 @@ class ErrorConstructor
 
             // Called as a function: create a new object with the correct prototype.
             $obj = new JsObject($proto);
+            $obj->defineOwnProperty(
+                '[[ErrorData]]',
+                PropertyDescriptor::data(
+                    \PhpJs\Value\JsUndefined::instance(),
+                    false,
+                    false,
+                    false,
+                ),
+            );
             if ($message !== null) {
                 $obj->defineOwnProperty('message', PropertyDescriptor::data(
                     new JsString($message),
