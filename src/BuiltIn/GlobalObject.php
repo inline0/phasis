@@ -1360,12 +1360,18 @@ class GlobalObject
         }
 
         // Validate: no duplicate parameter names in strict mode.
+        // Also check for restricted names: 'eval' and 'arguments'.
         if ($params !== '') {
             $names = array_map('trim', explode(',', $params));
             $seen = [];
             foreach ($names as $name) {
                 if ($name === '') {
                     continue;
+                }
+                if ($name === 'eval' || $name === 'arguments') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Unexpected eval or arguments in strict mode",
+                    );
                 }
                 if (in_array($name, $seen, true)) {
                     throw new \PhpJs\Exceptions\SyntaxError(

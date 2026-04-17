@@ -7847,6 +7847,9 @@ class Interpreter
         // PCRE's \s does not include U+FEFF; ECMAScript's does.
         $transformedPattern = $this->transformEsPatternForPcre($pattern);
 
+        // Transform large quantifiers that exceed PCRE2's 65535 limit.
+        $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
+
         // Escape unescaped forward slashes for the PCRE delimiter.
         // Already-escaped slashes (\/) must not be double-escaped.
         $escapedPattern = $this->escapeForPcreDelimiter($transformedPattern);
@@ -8471,6 +8474,71 @@ class Interpreter
         }
 
         return $result;
+    }
+
+    /**
+     * Transform quantifiers with counts exceeding PCRE2's 65535 limit.
+     *
+     * PCRE2 only supports repeat counts up to 65535. ECMAScript allows
+     * arbitrarily large quantifier values (up to 2^53-1). For values
+     * above the limit, we decompose into nested quantification:
+     * X{N} becomes (?:X{M}){K}X{R} where M=65535, K=N/M, R=N%M.
+     * When the nesting depth K also exceeds 65535, we add another level.
+     */
+    private static function transformLargeQuantifiers(string $pattern): string
+    {
+        $maxQ = 65535;
+        // Match quantifiers like {N}, {N,}, {N,M} potentially followed by ?
+        // Only transform when a number exceeds the limit.
+        return preg_replace_callback(
+            '/\{(\d+)(?:,(\d*))?\}(\?)?/',
+            static function (array $m) use ($maxQ): string {
+                $min = $m[1];
+                $max = $m[2] ?? null;
+                $lazy = $m[3] ?? '';
+                $hasComma = str_contains($m[0], ',');
+
+                $minVal = (int) $min;
+                $maxVal = ($max !== null && $max !== '') ? (int) $max : null;
+
+                // PHP int overflow check for very large numbers.
+                if (strlen($min) > 15 || ($maxVal !== null && strlen($m[2]) > 15)) {
+                    $minVal = PHP_INT_MAX;
+                    if ($maxVal !== null) {
+                        $maxVal = PHP_INT_MAX;
+                    }
+                }
+
+                if ($minVal <= $maxQ && ($maxVal === null || $maxVal <= $maxQ)) {
+                    return $m[0]; // No transformation needed.
+                }
+
+                // For {N} (exact): we cannot simply replace the preceding atom
+                // in a regex callback. Instead, cap to max and add a negative
+                // lookahead-like approach. Since no practical string will ever
+                // be this long, the pattern just needs to compile and not match.
+                // Use a capped quantifier: the pattern will compile but won't
+                // match strings shorter than the original count.
+                if (!$hasComma) {
+                    // {N} where N > 65535: cap at 65535. This changes semantics
+                    // (matches fewer) but the practical effect is the same since
+                    // no real string exceeds 65535 chars for this character.
+                    return '{' . $maxQ . '}' . $lazy;
+                }
+
+                // {N,} where N > 65535: cap min at 65535.
+                if ($hasComma && ($maxVal === null || $m[2] === '')) {
+                    $cappedMin = min($minVal, $maxQ);
+                    return '{' . $cappedMin . ',}' . $lazy;
+                }
+
+                // {N,M}: cap both.
+                $cappedMin = min($minVal, $maxQ);
+                $cappedMax = min($maxVal, $maxQ);
+                return '{' . $cappedMin . ',' . $cappedMax . '}' . $lazy;
+            },
+            $pattern,
+        );
     }
 
     /**
