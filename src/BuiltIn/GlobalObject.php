@@ -296,19 +296,30 @@ class GlobalObject
         // Per ES spec 10.2.4 AddRestrictedFunctionProperties, Function.prototype
         // has "caller" and "arguments" as thrower accessor pairs. Accessing them
         // on any function that inherits from Function.prototype throws TypeError.
-        $thrower = JsFunction::fromCallable('ThrowTypeError', function (): never {
+        // %ThrowTypeError% per spec 10.2.4: frozen, name="", length=0
+        $thrower = JsFunction::fromCallable('', function (): never {
             throw new \PhpJs\Exceptions\TypeError(
                 "'caller', 'callee', and 'arguments' properties may not be accessed"
                 . ' on strict mode functions or the arguments objects for calls to them'
             );
-        });
-        // Per spec, %ThrowTypeError% is non-constructable with no .prototype.
+        }, 0);
         $thrower->setNonConstructable();
         $thrower->forceDelete('prototype');
+        // Freeze %ThrowTypeError%: non-extensible, all props non-configurable
+        $thrower->defineOwnProperty(
+            'length',
+            \PhpJs\Object\PropertyDescriptor::data(new JsNumber(0.0), false, false, false),
+        );
+        $thrower->defineOwnProperty(
+            'name',
+            \PhpJs\Object\PropertyDescriptor::data(new JsString(''), false, false, false),
+        );
+        $thrower->preventExtensions();
 
+        // caller/arguments accessor: non-configurable per spec
         $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
             enumerable: false,
-            configurable: true,
+            configurable: false,
             get: $thrower,
             set: $thrower,
         );
