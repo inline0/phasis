@@ -4592,7 +4592,7 @@ class Interpreter
                 foreach ($case->consequent as $inner) {
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         if (!$env->has($inner->id->name)) {
-                            $env->defineVar($inner->id->name, JsUndefined::instance());
+                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
                         }
                     }
                 }
@@ -4602,13 +4602,13 @@ class Interpreter
         foreach ($children as $child) {
             if ($child instanceof FunctionDeclaration) {
                 if (!$env->has($child->id->name)) {
-                    $env->defineVar($child->id->name, JsUndefined::instance());
+                    $env->defineAnnexBVar($child->id->name, JsUndefined::instance());
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
                     if ($inner instanceof FunctionDeclaration) {
                         if (!$env->has($inner->id->name)) {
-                            $env->defineVar($inner->id->name, JsUndefined::instance());
+                            $env->defineAnnexBVar($inner->id->name, JsUndefined::instance());
                         }
                     }
                 }

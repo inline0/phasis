@@ -23,6 +23,9 @@ class Environment
     /** @var array<string, bool> Track which bindings are deletable (implicit globals). */
     private array $deletable = [];
 
+    /** @var array<string, bool> Track Annex B block-function hoisted var bindings. */
+    private array $annexBHoisted = [];
+
     /**
      * When set, var declarations and assignments in this environment
      * also create/update properties on the linked object. Used for
@@ -114,6 +117,19 @@ class Environment
     {
         $this->bindings[$name] = $value;
         $this->deletable[$name] = true;
+    }
+
+    /** Define a var binding created by Annex B block-function hoisting. */
+    public function defineAnnexBVar(string $name, JsValue $value): void
+    {
+        $this->bindings[$name] = $value;
+        $this->annexBHoisted[$name] = true;
+    }
+
+    /** Check whether a binding was created by Annex B block-function hoisting. */
+    public function isAnnexBHoisted(string $name): bool
+    {
+        return isset($this->annexBHoisted[$name]);
     }
 
     /** Define a let-declared variable (block-scoped, initialized). */
