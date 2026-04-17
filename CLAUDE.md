@@ -52,7 +52,17 @@ After every meaningful work pass, run the full matrix from the repo root before 
 ./bin/verify-all
 ```
 
-No partial sign-off. `./bin/verify-all` is the repo gate. `./bin/compat-report` is the canonical compatibility snapshot. test262 compliance must never regress. If a change reduces the test262 pass count, the change is broken.
+No partial sign-off. `./bin/verify-all` is the repo gate.
+
+After any meaningful compliance work (not every small fix, but after a batch of improvements), update the canonical compatibility snapshot:
+
+```bash
+./bin/compat-report --jobs 4
+```
+
+This writes `compat.json` and `COMPAT.md`. Commit both. This is how compliance is tracked across sessions. Do not rely on ad-hoc test runs for compliance numbers.
+
+test262 compliance must never regress. If a change reduces the test262 pass count, the change is broken.
 
 ## What This Is
 
@@ -61,9 +71,10 @@ A JavaScript interpreter that:
 1. Lexes source text into tokens (identifiers, literals, operators, keywords)
 2. Parses tokens into an AST (expressions, statements, declarations, functions)
 3. Evaluates the AST in an environment with scope chains and closures
-4. Implements ECMAScript built-in objects (Array, String, Object, Math, JSON, etc.)
-5. Supports modern syntax (arrow functions, destructuring, template literals, let/const, classes)
+4. Implements the full ECMAScript standard library (Array, String, Object, Math, JSON, Date, RegExp, Map, Set, Promise, Proxy, Reflect, Symbol, TypedArray, generators, async/await, BigInt, and more)
+5. Supports modern syntax (arrow functions, destructuring, template literals, let/const, classes, optional chaining, nullish coalescing, for-of, spread/rest, computed properties)
 6. Provides direct PHP interop (share objects between PHP and JS without serialization)
+7. Achieves 95%+ test262 compliance across major built-in categories (see COMPAT.md)
 
 All without `exec('node ...')`. The only PHP requirement is PHP 8.2+ with `mbstring`. No extensions.
 
@@ -158,34 +169,42 @@ php-js/
 │   │   ├── JsArray.php                 # Array (extends JsObject with length tracking)
 │   │   ├── JsFunction.php              # Function (closure with captured environment)
 │   │   ├── JsSymbol.php                # Symbol primitive
-│   │   ├── JsBigInt.php                # BigInt (post-v1)
-│   │   └── JsRegExp.php               # RegExp (wraps PCRE2)
+│   │   ├── JsBigInt.php                # BigInt (arbitrary precision via bcmath)
+│   │   ├── JsProxy.php                 # Proxy (all traps, revocable)
+│   │   ├── JsPromise.php               # Promise (synchronous execution model)
+│   │   ├── JsGenerator.php             # Generator (PHP Fiber-based)
+│   │   ├── JsMap.php                   # Map (slot-based live iteration)
+│   │   ├── JsSet.php                   # Set (slot-based live iteration)
+│   │   ├── JsWeakMap.php               # WeakMap
+│   │   ├── JsWeakSet.php               # WeakSet
+│   │   ├── JsArrayBuffer.php           # ArrayBuffer (binary data)
+│   │   ├── JsTypedArray.php            # TypedArray (all 11 types)
+│   │   └── JsDataView.php              # DataView (mixed-type buffer access)
 │   │
 │   ├── Object/
-│   │   ├── PropertyDescriptor.php       # {value, writable, enumerable, configurable} or {get, set}
-│   │   ├── PropertyMap.php              # Ordered property storage
-│   │   └── PrototypeChain.php          # [[Prototype]] lookup
+│   │   └── PropertyDescriptor.php       # {value, writable, enumerable, configurable} or {get, set}
 │   │
 │   ├── BuiltIn/
-│   │   ├── GlobalObject.php             # Global scope bindings (parseInt, isNaN, etc.)
-│   │   ├── ObjectConstructor.php        # Object, Object.keys, Object.assign, etc.
-│   │   ├── ArrayConstructor.php         # Array, Array.from, Array.isArray
-│   │   ├── ArrayPrototype.php           # map, filter, reduce, forEach, find, etc.
-│   │   ├── StringConstructor.php        # String, String.fromCharCode
-│   │   ├── StringPrototype.php          # slice, indexOf, replace, split, trim, etc.
+│   │   ├── GlobalObject.php             # Global scope (parseInt, isNaN, eval, call/apply/bind)
+│   │   ├── ObjectConstructor.php        # Object, Object.keys, Object.assign, freeze, seal, etc.
+│   │   ├── ArrayConstructor.php         # Array, Array.from, Array.isArray, all prototype methods
+│   │   ├── StringPrototype.php          # String, String.fromCharCode, all prototype methods
 │   │   ├── NumberConstructor.php        # Number, Number.isFinite, Number.parseInt
-│   │   ├── BooleanConstructor.php       # Boolean
-│   │   ├── FunctionPrototype.php        # call, apply, bind
 │   │   ├── MathObject.php               # Math.floor, Math.random, Math.max, etc.
 │   │   ├── JsonObject.php               # JSON.parse, JSON.stringify
 │   │   ├── DateConstructor.php          # Date (wraps PHP DateTime)
-│   │   ├── RegExpConstructor.php        # RegExp (wraps PCRE2)
+│   │   ├── RegExpPrototype.php          # RegExp prototype (Symbol.match/replace/split/search)
 │   │   ├── ErrorConstructor.php         # Error, TypeError, RangeError, etc.
-│   │   ├── PromiseConstructor.php       # Promise (post-v1)
-│   │   ├── MapConstructor.php           # Map
-│   │   ├── SetConstructor.php           # Set
-│   │   ├── ConsoleObject.php            # console.log, console.error, etc.
-│   │   └── Intrinsics.php              # Registry of all built-in prototypes and constructors
+│   │   ├── PromiseConstructor.php       # Promise, Promise.all/race/any/allSettled
+│   │   ├── ProxyConstructor.php         # Proxy, Proxy.revocable
+│   │   ├── ReflectObject.php            # Reflect (13 static methods)
+│   │   ├── SymbolConstructor.php        # Symbol, well-known symbols, Symbol.for/keyFor
+│   │   ├── MapConstructor.php           # Map (with groupBy, live iteration)
+│   │   ├── SetConstructor.php           # Set (live iteration)
+│   │   ├── WeakMapConstructor.php       # WeakMap
+│   │   ├── WeakSetConstructor.php       # WeakSet
+│   │   ├── TypedArrayConstructor.php    # ArrayBuffer, DataView, all 11 TypedArray types
+│   │   └── ConsoleObject.php            # console.log, console.error, etc.
 │   │
 │   ├── Interop/
 │   │   ├── PhpBridge.php                # Expose PHP values/objects to JS
@@ -194,10 +213,8 @@ php-js/
 │   │   └── HostFunction.php            # Wrap PHP callable as JS function
 │   │
 │   ├── Spec/
-│   │   ├── TypeConversion.php           # ToNumber, ToString, ToBoolean, ToPrimitive
-│   │   ├── AbstractOperations.php       # Abstract equality, strict equality, relational comparison
-│   │   ├── AbstractRelational.php       # Less-than, greater-than comparison algorithm
-│   │   └── IteratorProtocol.php         # Symbol.iterator, next(), done protocol
+│   │   ├── TypeConversion.php           # ToNumber, ToString, ToBoolean, ToPrimitive, ToObject
+│   │   └── AbstractOperations.php       # Equality, relational comparison, instanceof
 │   │
 │   └── Exceptions/
 │       ├── SyntaxError.php              # Parse error
@@ -367,6 +384,11 @@ php-js/
 │       ├── annexB/
 │       └── staging/
 │
+├── config/
+│   └── support.php                      # test262 category list and skipped features
+│
+├── compat.json                          # Machine-readable compatibility snapshot
+├── COMPAT.md                            # Human-readable compatibility report
 ├── composer.json
 ├── phpunit.xml.dist
 ├── phpcs.xml
@@ -609,87 +631,43 @@ test262.fyi runs the same suite daily against V8, SpiderMonkey, JavaScriptCore, 
 | JavaScriptCore (Safari) | 99.4% |
 | QuickJS | ~97% |
 | Hermes (React Native) | ~95% |
-| **php-js** | **track it here** |
+| **php-js** | **see COMPAT.md** |
 
-## Implementation Order
+## Compliance Tracking
 
-Build bottom-up. Each phase unlocks new scenario categories and test262 sections. Write the scenarios first, capture the oracle, then implement until actual matches oracle.
+All six implementation phases are complete. The engine implements the full ECMAScript standard library. Ongoing work focuses on edge-case compliance measured by the test262 suite.
 
-### Phase 1: Lexer + Parser (prove we can read JavaScript)
+### Canonical workflow
 
-1. `Lexer`: tokenize identifiers, numbers, strings, operators, keywords, punctuation
-2. `TokenType` enum (~80 types)
-3. `Parser`: Pratt parser for expressions with correct precedence
-4. AST node types for expressions and statements
-5. Automatic semicolon insertion (ASI)
+After any compliance work, regenerate the compatibility snapshot:
 
-**Oracle gate:** parse known JS files, serialize AST to JSON, compare against output from a reference parser (e.g., Acorn or Esprima via Node.js). All parse scenarios green.
+```bash
+./bin/compat-report --jobs 4       # Generates compat.json + COMPAT.md
+```
 
-### Phase 2: Core interpreter (prove we can run basic JavaScript)
+This is the single source of truth. Do not track compliance numbers in ad-hoc console output or conversation summaries. Always commit the updated `COMPAT.md` and `compat.json` so the repo reflects current state.
 
-6. `Interpreter`: tree-walking evaluator
-7. `Environment`: scope chain with var hoisting, let/const block scoping, TDZ
-8. `JsValue` types: Undefined, Null, Boolean, Number, String
-9. `TypeConversion`: ToNumber, ToString, ToBoolean, ToPrimitive
-10. `Completion` records: normal, return, throw, break, continue
-11. Operators: arithmetic, comparison, equality (== and ===), logical, unary, assignment
-12. Control flow: if/else, for, while, do-while, switch, try/catch/finally, break/continue
-13. Functions: declaration, expression, arrow, closures, default params, rest params
-14. `CallStack` with depth limit
+For quick spot checks on a single category during development:
 
-**Oracle gate:** `./bin/test-regression --category literals --category operators --category variables --category control-flow --category functions` all green. test262 `language/expressions/` and `language/statements/` sections showing meaningful pass rates.
+```bash
+./bin/test262 --category built-ins/Array --limit 200 --failures
+```
 
-### Phase 3: Objects and prototypes (prove we handle JS object model)
+But repo-level documentation must come from `./bin/compat-report`.
 
-15. `JsObject`: property map, prototype chain, property descriptors
-16. `JsArray`: length tracking, array methods
-17. `JsFunction`: `this` binding (default, method, call/apply/bind, arrow)
-18. Object literals: shorthand, computed properties, getters/setters, spread
-19. Destructuring: array and object patterns, default values, rest
-20. Classes: constructor, methods, inheritance, static, super
-21. `for...in`, `for...of`, iterator protocol
+### Remaining structural gaps
 
-**Oracle gate:** `./bin/test-regression --category objects --category arrays --category classes` all green. test262 `language/` showing >20% pass rate.
+These failures cannot be fixed without architectural changes:
 
-### Phase 4: Built-in objects (prove we implement the standard library)
+- **`$262` / cross-realm**: test262 tests that use the `$262` host API for creating realms, detaching ArrayBuffers, etc. We do not implement multi-realm support.
+- **Detached ArrayBuffers**: requires `$262.detachArrayBuffer()` host API.
+- **PCRE2 vs ECMAScript regex**: PCRE2 handles some regex features differently (nullable quantifier capture groups, backreference reset in repetitions). Would require a custom regex engine.
+- **UTF-16 surrogates**: URI encode/decode functions need to validate lone surrogates per UTF-16 semantics. Requires tracking surrogate pairs in string operations.
+- **ES modules**: `import`/`export` not implemented.
 
-22. `GlobalObject`: parseInt, parseFloat, isNaN, isFinite, encodeURI, decodeURI
-23. `Object`: keys, values, entries, assign, create, defineProperty, freeze
-24. `Array.prototype`: map, filter, reduce, forEach, find, findIndex, includes, flat, sort, slice, splice
-25. `String.prototype`: slice, indexOf, replace, split, trim, startsWith, endsWith, padStart, repeat
-26. `Number`: isFinite, isInteger, isNaN, parseInt, parseFloat
-27. `Math`: floor, ceil, round, max, min, random, abs, pow, sqrt, log, sin, cos
-28. `JSON`: parse, stringify
-29. `Date`: constructor, getTime, toISOString (wrap PHP DateTime)
-30. `RegExp`: constructor, test, exec (wrap PCRE2)
-31. `Error` types: Error, TypeError, RangeError, ReferenceError, SyntaxError
-32. `Map`, `Set`: constructor, get, set, has, delete, forEach, size
-33. `console`: log, error, warn, info
+### Skip list
 
-**Oracle gate:** `./bin/test-regression --category builtins` all green. test262 `built-ins/` showing meaningful pass rates. Overall compliance >10%.
-
-### Phase 5: Advanced features (chase higher compliance)
-
-34. Generators: function*, yield, yield*
-35. Promises: constructor, then, catch, finally, Promise.all, Promise.race
-36. async/await: async function, await expression
-37. Symbol: Symbol(), Symbol.iterator, well-known symbols
-38. Proxy and Reflect (partial)
-39. WeakMap, WeakSet
-40. Template literal tags
-41. Modules: import/export (if practical)
-
-**Oracle gate:** test262 compliance >25%. No regressions from Phase 4.
-
-### Phase 6: Harden (chase edge cases)
-
-42. Strict mode: all restrictions and behavioral differences
-43. Annex B: legacy octal literals, HTML-like comments, additional built-in methods
-44. Unicode: identifiers, string operations, RegExp unicode mode
-45. Edge cases: -0, NaN boxing, sparse arrays, prototype pollution, with statement
-46. Resource limit enforcement: stack overflow, infinite loops, string bombs
-
-**Oracle gate:** `./bin/compat-report` refreshed with no regressions. All custom scenarios pass. test262 compliance steadily climbing with zero regressions.
+The skip list in `config/support.php` (`test262_skipped_features`) controls which test262 feature flags cause tests to be skipped. Only add features that are genuinely unimplemented. Remove features from the skip list as soon as they are supported.
 
 ## Comment Policy
 
