@@ -222,13 +222,10 @@ class JsTypedArray extends JsObject
     private function coerceValue(JsValue $value): int|float
     {
         if ($this->isBigInt) {
-            $strVal = '0';
-            if ($value instanceof JsBigInt) {
-                $strVal = $value->value;
-            } else {
-                // Use TypeConversion::toNumber for proper ToPrimitive handling.
-                return (int) TypeConversion::toNumber($value);
-            }
+            // Per spec: for BigInt typed arrays, use ToBigInt which throws TypeError
+            // for Number, undefined, null, and Symbol values.
+            $bigInt = TypeConversion::toBigInt($value);
+            $strVal = $bigInt->value;
 
             // ToBigInt64 / ToBigUint64: modulo 2^64 with proper sign handling.
             return self::bigIntModulo($strVal, $this->typeName === 'BigInt64Array');

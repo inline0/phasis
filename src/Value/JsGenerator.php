@@ -65,8 +65,6 @@ class JsGenerator extends JsObject
         $this->fiber = new \Fiber(static function () use ($executor, $fn, $thisVal, $fnArgs): mixed {
             return $executor($fn, $thisVal, $fnArgs);
         });
-
-        $this->installMethods();
     }
 
     /**
@@ -261,58 +259,6 @@ class JsGenerator extends JsObject
         $result->set('value', $value);
         $result->set('done', new JsBoolean($done));
         return $result;
-    }
-
-    /**
-     * Install the next, return, and throw methods as properties on this object.
-     */
-    private function installMethods(): void
-    {
-        $gen = $this;
-
-        $nextFn = JsFunction::fromCallable('next', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->next($value);
-        });
-
-        $returnFn = JsFunction::fromCallable('return', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->returnValue($value);
-        });
-
-        $throwFn = JsFunction::fromCallable('throw', static function (
-            JsValue $thisValue,
-            array $args,
-        ) use ($gen): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            if (!$value instanceof JsValue) {
-                $value = JsUndefined::instance();
-            }
-            return $gen->throwValue($value);
-        });
-
-        $this->defineProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
-        $this->defineProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
-        $this->defineProperty('throw', PropertyDescriptor::data($throwFn, true, false, true));
-
-        // Generators are their own iterators: [Symbol.iterator]() returns this.
-        $self = $this;
-        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', static function () use ($self): JsValue {
-            return $self;
-        });
-        $this->setBySymbol(\PhpJs\BuiltIn\SymbolConstructor::iterator(), $iteratorFn);
     }
 
     public function typeof(): string

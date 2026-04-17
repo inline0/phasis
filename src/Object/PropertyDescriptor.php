@@ -15,6 +15,20 @@ class PropertyDescriptor
      */
     private bool $isAccessor = false;
 
+    /**
+     * When true, the "get" field was explicitly present in the descriptor
+     * (even if its value was undefined/null). Used by defineOwnProperty to
+     * distinguish "set getter to undefined" from "getter not specified".
+     */
+    public bool $hasGet = false;
+
+    /**
+     * When true, the "set" field was explicitly present in the descriptor
+     * (even if its value was undefined/null). Used by defineOwnProperty to
+     * distinguish "set setter to undefined" from "setter not specified".
+     */
+    public bool $hasSet = false;
+
     public function __construct(
         public ?JsValue $value = null,
         public ?bool $writable = null,
@@ -67,6 +81,8 @@ class PropertyDescriptor
             set: $set,
         );
         $desc->isAccessor = true;
+        $desc->hasGet = true;
+        $desc->hasSet = true;
         return $desc;
     }
 }

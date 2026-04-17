@@ -50,36 +50,11 @@ class JsArray extends JsObject
     public static function installSymbolIteratorOnPrototype(JsObject $proto): void
     {
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $factory = function (JsValue $this_) use ($iterSym): JsValue {
+        $factory = function (JsValue $this_): JsValue {
             $array = $this_ instanceof JsObject ? $this_ : new JsObject();
-            $index = 0;
-            $iterator = new JsObject();
-            $nextFn = function () use ($array, &$index): JsValue {
-                $result = new JsObject();
-                $len = ($array instanceof JsArray)
-                    ? $array->getLength()
-                    : (int) \PhpJs\Spec\TypeConversion::toNumber($array->get('length'));
-                if ($index < $len) {
-                    $result->set('value', $array->get((string) $index));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $selfIterFn = JsFunction::fromCallable(
-                '[Symbol.iterator]',
-                function (JsValue $self_): JsValue {
-                    return $self_;
-                },
-            );
-            $iterator->setBySymbol($iterSym, $selfIterFn);
-            return $iterator;
+            return \PhpJs\BuiltIn\ArrayConstructor::createArrayIteratorFromSymbol($array, 'value');
         };
-        $iteratorFn = JsFunction::fromCallable('[Symbol.iterator]', $factory);
+        $iteratorFn = JsFunction::fromCallable('values', $factory);
         $proto->setBySymbol($iterSym, $iteratorFn);
     }
 

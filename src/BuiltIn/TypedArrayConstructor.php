@@ -142,39 +142,32 @@ class TypedArrayConstructor
                     );
                 }
 
-                $offsetNum = isset($args[1]) && !$args[1] instanceof JsUndefined
-                    ? TypeConversion::toNumber($args[1])
-                    : 0.0;
-                $byteOffset = (int) $offsetNum;
+                // Step 3: offset = ToIndex(byteOffset).
+                $offsetArg = $args[1] ?? JsUndefined::instance();
+                $byteOffset = TypeConversion::toIndex($offsetArg);
 
-                // Per spec: IsDetachedBuffer check after ToIndex
+                // Step 4-5: IsDetachedBuffer check after ToIndex(byteOffset).
                 if ($buffer->isDetached()) {
                     throw new TypeError(
                         'Cannot construct DataView on a detached ArrayBuffer'
                     );
                 }
 
+                // Step 6: If offset > bufferByteLength, throw RangeError.
                 $bufLen = $buffer->getByteLength();
-                if (
-                    is_nan($offsetNum) || is_infinite($offsetNum)
-                    || $offsetNum < 0 || $byteOffset > $bufLen
-                ) {
+                if ($byteOffset > $bufLen) {
                     throw new RangeError(
                         'Start offset is outside the bounds of the buffer'
                     );
                 }
 
+                // Step 8-9: byteLength.
                 $lenArg = $args[2] ?? JsUndefined::instance();
                 if ($lenArg instanceof JsUndefined) {
                     $byteLength = $bufLen - $byteOffset;
                 } else {
-                    $lenNum = TypeConversion::toNumber($lenArg);
-                    $byteLength = (int) $lenNum;
-                    if (
-                        is_nan($lenNum) || $lenNum < 0
-                        || is_infinite($lenNum)
-                        || ($byteOffset + $byteLength) > $bufLen
-                    ) {
+                    $byteLength = TypeConversion::toIndex($lenArg);
+                    if (($byteOffset + $byteLength) > $bufLen) {
                         throw new RangeError('Invalid DataView length');
                     }
                 }
@@ -256,104 +249,139 @@ class TypedArrayConstructor
 
     /**
      * Install all DataView get/set methods on the prototype.
+     *
+     * Per spec (GetViewValue / SetViewValue), the operation order is:
+     * 1. Validate `this` is a DataView
+     * 2. getIndex = ToIndex(requestIndex) -- may throw RangeError/TypeError
+     * 3. For setters: numberValue = ToNumber(value) -- may throw TypeError
+     * 4. littleEndian = ToBoolean(isLittleEndian)
+     * 5. IsDetachedBuffer check -- throws TypeError
+     * 6. Bounds check -- throws RangeError
+     * 7. Perform the read/write
      */
     private static function installDataViewMethods(JsObject $proto): void
     {
         $methods = [
-            'getInt8' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getInt8' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getInt8($offset));
             }],
-            'getUint8' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getUint8' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getUint8($offset));
             }],
-            'getInt16' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getInt16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getInt16($offset, $le));
             }],
-            'getUint16' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getUint16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getUint16($offset, $le));
             }],
-            'getInt32' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getInt32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getInt32($offset, $le));
             }],
-            'getUint32' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getUint32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getUint32($offset, $le));
             }],
-            'getFloat32' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getFloat32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber($dv->getFloat32($offset, $le));
             }],
-            'getFloat64' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getFloat64' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber($dv->getFloat64($offset, $le));
             }],
-            'setInt8' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setInt8($offset, (int) $val);
-                return JsUndefined::instance();
-            }],
-            'setUint8' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setUint8($offset, (int) $val);
-                return JsUndefined::instance();
-            }],
-            'setInt16' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setInt16($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setUint16' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setUint16($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setInt32' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setInt32($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setUint32' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setUint32($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setFloat32' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setFloat32($offset, $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setFloat64' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setFloat64($offset, $val, $le);
-                return JsUndefined::instance();
-            }],
-            'getBigInt64' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'setInt8' => [2, false, null],
+            'setUint8' => [2, false, null],
+            'setInt16' => [2, false, null],
+            'setUint16' => [2, false, null],
+            'setInt32' => [2, false, null],
+            'setUint32' => [2, false, null],
+            'setFloat32' => [2, false, null],
+            'setFloat64' => [2, false, null],
+            'getBigInt64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new \PhpJs\Value\JsBigInt((string) $dv->getBigInt64($offset, $le));
             }],
-            'getBigUint64' => [1, function (JsDataView $dv, int $offset, bool $le): JsValue {
+            'getBigUint64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new \PhpJs\Value\JsBigInt((string) $dv->getBigUint64($offset, $le));
             }],
-            'setBigInt64' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setBigInt64($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
-            'setBigUint64' => [2, function (JsDataView $dv, int $offset, bool $le, float $val): JsValue {
-                $dv->setBigUint64($offset, (int) $val, $le);
-                return JsUndefined::instance();
-            }],
+            'setBigInt64' => [2, true, null],
+            'setBigUint64' => [2, true, null],
         ];
 
-        foreach ($methods as $name => [$length, $handler]) {
+        foreach ($methods as $name => [$length, $isBigInt, $handler]) {
             $isGetter = str_starts_with($name, 'get');
-            $cb = function (JsValue $this_, array $args) use ($name, $handler, $isGetter): JsValue {
+            $cb = function (JsValue $this_, array $args) use ($name, $handler, $isGetter, $isBigInt): JsValue {
                 if (!$this_ instanceof JsDataView) {
                     throw new TypeError("Method DataView.prototype.{$name} called on incompatible receiver");
                 }
 
-                $offset = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                $littleEndian = isset($args[$isGetter ? 1 : 2])
-                    ? TypeConversion::toBoolean($args[$isGetter ? 1 : 2])
-                    : false;
+                // Step 2: getIndex = ToIndex(requestIndex).
+                $offsetArg = $args[0] ?? JsUndefined::instance();
+                $getIndex = TypeConversion::toIndex($offsetArg);
 
                 if ($isGetter) {
-                    return $handler($this_, $offset, $littleEndian);
+                    // Step 3 (getter): littleEndian = ToBoolean(isLittleEndian).
+                    $littleEndian = isset($args[1])
+                        ? TypeConversion::toBoolean($args[1])
+                        : false;
+
+                    // Step 4: IsDetachedBuffer check.
+                    $this_->validateNotDetached();
+
+                    // Step 5-6: bounds check + read (inside handler via checkBounds).
+                    return $handler($this_, $getIndex, $littleEndian);
                 }
 
-                $value = isset($args[1]) ? TypeConversion::toNumber($args[1]) : 0.0;
-                return $handler($this_, $offset, $littleEndian, $value);
+                // Setter path.
+                // Step 3: numberValue = ToNumber(value) or ToBigInt(value).
+                $valueArg = $args[1] ?? JsUndefined::instance();
+                if ($isBigInt) {
+                    $numValue = TypeConversion::toBigInt($valueArg);
+                    $rawInt = self::bigIntToRawInt($numValue);
+                } else {
+                    $numValue = TypeConversion::toNumber($valueArg);
+                }
+
+                // Step 4: littleEndian = ToBoolean(isLittleEndian).
+                $littleEndian = isset($args[2])
+                    ? TypeConversion::toBoolean($args[2])
+                    : false;
+
+                // Step 5: IsDetachedBuffer check.
+                $this_->validateNotDetached();
+
+                // Step 6-7: bounds check + write.
+                match ($name) {
+                    'setInt8' => $this_->setInt8($getIndex, (int) $numValue),
+                    'setUint8' => $this_->setUint8($getIndex, (int) $numValue),
+                    'setInt16' => $this_->setInt16($getIndex, (int) $numValue, $littleEndian),
+                    'setUint16' => $this_->setUint16($getIndex, (int) $numValue, $littleEndian),
+                    'setInt32' => $this_->setInt32($getIndex, (int) $numValue, $littleEndian),
+                    'setUint32' => $this_->setUint32($getIndex, (int) $numValue, $littleEndian),
+                    'setFloat32' => $this_->setFloat32($getIndex, $numValue, $littleEndian),
+                    'setFloat64' => $this_->setFloat64($getIndex, $numValue, $littleEndian),
+                    'setBigInt64' => $this_->setBigInt64($getIndex, $rawInt, $littleEndian),
+                    'setBigUint64' => $this_->setBigUint64($getIndex, $rawInt, $littleEndian),
+                };
+
+                return JsUndefined::instance();
             };
             $fn = JsFunction::fromCallable($name, $cb, $length);
             $proto->defineOwnProperty($name, PropertyDescriptor::data($fn, true, false, true));
         }
+    }
+
+    /**
+     * Convert a JsBigInt value to a raw PHP int for DataView setBigInt64/setBigUint64.
+     */
+    private static function bigIntToRawInt(\PhpJs\Value\JsBigInt $bigInt): int
+    {
+        $mod = '18446744073709551616'; // 2^64
+        $half = '9223372036854775808'; // 2^63
+        $result = bcmod($bigInt->value, $mod);
+        if ($result !== '' && $result[0] === '-') {
+            $result = bcadd($result, $mod);
+        }
+        if (bccomp($result, $half) >= 0) {
+            $result = bcsub($result, $mod);
+        }
+        return (int) $result;
     }
 
     /**
@@ -686,37 +714,47 @@ class TypedArrayConstructor
 
         $arg0 = $args[0];
 
-        // new TypedArray(length).
-        if ($arg0 instanceof JsNumber) {
-            $len = (int) $arg0->value;
-            if ($len < 0 || $arg0->value !== (float) $len) {
-                throw new RangeError('Invalid typed array length: ' . $arg0->toJsString());
-            }
+        // new TypedArray(length): non-object first arg uses ToIndex.
+        if (!$arg0 instanceof JsObject) {
+            $len = TypeConversion::toIndex($arg0);
             return JsTypedArray::fromLength($typeName, $len, $proto);
         }
 
         // new TypedArray(buffer, byteOffset, length).
         if ($arg0 instanceof JsArrayBuffer) {
-            $byteOffset = isset($args[1]) && !$args[1] instanceof JsUndefined
-                ? (int) TypeConversion::toNumber($args[1])
-                : 0;
+            // Per spec: byteOffset = ToIndex(byteOffset).
+            $offsetArg = $args[1] ?? JsUndefined::instance();
+            $byteOffset = TypeConversion::toIndex($offsetArg);
+
+            // Per spec: IsDetachedBuffer check after ToIndex(byteOffset).
+            if ($arg0->isDetached()) {
+                throw new TypeError(
+                    'Cannot construct a typed array on a detached ArrayBuffer'
+                );
+            }
 
             if ($byteOffset % $bpe !== 0) {
                 throw new RangeError("Start offset of {$typeName} should be a multiple of {$bpe}");
             }
 
+            $bufLen = $arg0->getByteLength();
+
             if (isset($args[2]) && !$args[2] instanceof JsUndefined) {
-                $length = (int) TypeConversion::toNumber($args[2]);
+                // Per spec: newLength = ToIndex(length).
+                $length = TypeConversion::toIndex($args[2]);
+                $newByteLength = $length * $bpe;
+                if ($byteOffset + $newByteLength > $bufLen) {
+                    throw new RangeError('Invalid typed array length');
+                }
             } else {
-                $remaining = $arg0->getByteLength() - $byteOffset;
+                if ($byteOffset > $bufLen) {
+                    throw new RangeError("Start offset of {$typeName} is outside the bounds of the buffer");
+                }
+                $remaining = $bufLen - $byteOffset;
                 if ($remaining % $bpe !== 0) {
                     throw new RangeError("Byte length of {$typeName} should be a multiple of {$bpe}");
                 }
                 $length = (int) ($remaining / $bpe);
-            }
-
-            if ($length < 0) {
-                throw new RangeError('Invalid typed array length');
             }
 
             return new JsTypedArray($typeName, $arg0, $byteOffset, $length, $proto);
@@ -742,7 +780,7 @@ class TypedArrayConstructor
             return $result;
         }
 
-        // Generic object with length property.
+        // Generic object with length property or iterable.
         if ($arg0 instanceof JsObject) {
             // Try iterator protocol first.
             $iterSym = SymbolConstructor::iterator();
@@ -750,6 +788,13 @@ class TypedArrayConstructor
             if ($iterMethod instanceof JsFunction) {
                 $elements = self::consumeIterator($iterMethod, $arg0);
                 return JsTypedArray::fromArray($typeName, $elements, $proto);
+            }
+            // Per spec: if @@iterator is not undefined/null but not callable, throw.
+            if (
+                !$iterMethod instanceof JsUndefined
+                && !$iterMethod instanceof JsNull
+            ) {
+                throw new TypeError('object is not iterable');
             }
 
             // Fall back to array-like (has .length).
@@ -766,9 +811,9 @@ class TypedArrayConstructor
             return JsTypedArray::fromLength($typeName, 0, $proto);
         }
 
-        // Single primitive value: treat as length.
-        $len = (int) TypeConversion::toNumber($arg0);
-        return JsTypedArray::fromLength($typeName, max(0, $len), $proto);
+        // Single primitive value: treat as length via ToIndex.
+        $len = TypeConversion::toIndex($arg0);
+        return JsTypedArray::fromLength($typeName, $len, $proto);
     }
 
     /**

@@ -196,11 +196,7 @@ class Interpreter
         return match (true) {
             $node instanceof ExpressionStatement => $this->execExpressionStatement($node, $env),
             $node instanceof VariableDeclaration => $this->execVariableDeclaration($node, $env),
-            // Per spec §14.1.32: FunctionDeclaration → NormalCompletion(empty).
-            $node instanceof FunctionDeclaration => new Completion(
-                CompletionType::Normal,
-                JsUndefined::instance(), empty: true,
-            ),
+            $node instanceof FunctionDeclaration => $this->execFunctionDeclaration($node, $env),
             $node instanceof ClassDeclaration => $this->execClassDeclaration($node, $env),
             $node instanceof BlockStatement => $this->execBlockStatement($node, $env),
             $node instanceof IfStatement => $this->execIfStatement($node, $env),
@@ -3419,24 +3415,54 @@ class Interpreter
         return $constructor;
     }
 
+    /**
+     * Annex B.3.3 function declaration evaluation.
+     *
+     * In strict mode, FunctionDeclaration evaluation is NormalCompletion(empty)
+     * because the function was already hoisted. In sloppy mode, block-scoped
+     * function declarations propagate their value to the enclosing variable
+     * environment (the function or global scope) per B.3.3.1 step 3.
+     */
+    private function execFunctionDeclaration(FunctionDeclaration $node, Environment $env): Completion
+    {
+        if (!$this->strictMode) {
+            $name = $node->id->name;
+            // Per B.3.3.1 step 3: get fobj from the current lexical environment.
+            // If the function was hoisted into this block scope, get it directly.
+            // If not (e.g. direct child of if-statement), create it on the fly.
+            if ($env->hasOwnBinding($name)) {
+                $fobj = $env->get($name);
+            } else {
+                // Create the function (Annex B if-statement case).
+                $fobj = new JsFunction(
+                    $name,
+                    $node->params,
+                    $node->body,
+                    $env,
+                    isGenerator: $node->generator,
+                    isAsync: $node->async,
+                    strict: false,
+                );
+                if ($node->sourceText !== null) {
+                    $fobj->setSourceText($node->sourceText);
+                }
+                $this->installFunctionPrototype($fobj, $node->generator);
+            }
+            // Propagate to the variable environment via set() which walks up
+            // the scope chain to the hoisted var binding.
+            if ($env->has($name)) {
+                $env->set($name, $fobj, false);
+            }
+        }
+        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+    }
+
     private function execBlockStatement(BlockStatement $node, Environment $env): Completion
     {
         $blockEnv = $env->createChild();
         $this->hoistDeclarations($node->body, $blockEnv);
         $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
-        $completion = $this->executeBody($node->body, $blockEnv);
-
-        // Annex B: in sloppy mode, propagate function declaration values from
-        // block scope back to the enclosing scope so they are visible outside.
-        if (!$this->strictMode) {
-            foreach ($node->body as $stmt) {
-                if ($stmt instanceof FunctionDeclaration && $env->has($stmt->id->name)) {
-                    $env->defineVar($stmt->id->name, $blockEnv->get($stmt->id->name));
-                }
-            }
-        }
-
-        return $completion;
+        return $this->executeBody($node->body, $blockEnv);
     }
 
     private function execIfStatement(IfStatement $node, Environment $env): Completion

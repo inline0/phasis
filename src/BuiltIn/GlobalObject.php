@@ -557,24 +557,10 @@ class GlobalObject
         ));
         $env->defineVar('Function', $fnConstructor);
 
-        // Set up %GeneratorFunction.prototype% and %GeneratorPrototype% intrinsics.
-        // Per spec §27.3: GeneratorFunction.prototype [[Prototype]] = Function.prototype.
-        // Per spec §27.1.2: %GeneratorPrototype% [[Prototype]] = %IteratorPrototype%.
-        //
-        // %GeneratorFunction.prototype% is itself a function (because it inherits call/apply/bind
-        // from Function.prototype). We create it as a plain JsObject with $fnProto as prototype.
-        $generatorFunctionProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
-        // Wire: GeneratorFunction.prototype -> Function.prototype
-        // (this is done via the custom prototype mechanism)
-        $generatorFunctionProto->setCustomPrototype($fnProto);
-        JsFunction::setGeneratorFunctionPrototype($generatorFunctionProto);
-
-        // %GeneratorPrototype%: the prototype of all generator instances.
-        // Its [[Prototype]] is %IteratorPrototype% (which we approximate as Object.prototype for now).
-        // Generator function .prototype inherits from this.
-        $generatorPrototype = new \PhpJs\Value\JsObject();
-        // Install Symbol.iterator on %GeneratorPrototype% — generators are iterators.
-        $generatorPrototype->definePropertyBySymbol(
+        // %IteratorPrototype%: the common prototype for all built-in iterators.
+        // Per spec 27.1.2, its [[Prototype]] is Object.prototype.
+        $iteratorPrototype = new \PhpJs\Value\JsObject();
+        $iteratorPrototype->definePropertyBySymbol(
             \PhpJs\BuiltIn\SymbolConstructor::iterator(),
             \PhpJs\Object\PropertyDescriptor::data(
                 JsFunction::fromCallable('[Symbol.iterator]', static function (JsValue $this_, array $args): JsValue {
@@ -585,6 +571,93 @@ class GlobalObject
                 true,
             ),
         );
+        $env->defineVar('__IteratorPrototype__', $iteratorPrototype);
+
+        // Set up %GeneratorFunction.prototype% and %GeneratorPrototype% intrinsics.
+        // Per spec 27.3: GeneratorFunction.prototype [[Prototype]] = Function.prototype.
+        // Per spec 27.1.2: %GeneratorPrototype% [[Prototype]] = %IteratorPrototype%.
+        $generatorFunctionProto = JsFunction::fromCallable('', fn() => JsUndefined::instance());
+        $generatorFunctionProto->setCustomPrototype($fnProto);
+        JsFunction::setGeneratorFunctionPrototype($generatorFunctionProto);
+
+        // %GeneratorPrototype%: the prototype of all generator instances.
+        // Per spec its [[Prototype]] is %IteratorPrototype%.
+        $generatorPrototype = new \PhpJs\Value\JsObject($iteratorPrototype);
+        // Symbol.toStringTag = "Generator" per spec 27.5.1.
+        $generatorPrototype->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            \PhpJs\Object\PropertyDescriptor::data(
+                new JsString('Generator'),
+                false,
+                false,
+                true,
+            ),
+        );
+        // constructor: non-writable, non-enumerable, configurable, pointing to %GeneratorFunction.prototype%.
+        $generatorPrototype->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $generatorFunctionProto,
+            false,
+            false,
+            true,
+        ));
+        // Install next/return/throw on %GeneratorPrototype% per spec 27.5.1.
+        $nextFn = JsFunction::fromCallable('next', static function (
+            JsValue $thisValue,
+            array $args,
+        ): JsValue {
+            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method Generator.prototype.next called on incompatible receiver',
+                );
+            }
+            $value = $args[0] ?? JsUndefined::instance();
+            return $thisValue->next($value);
+        }, 1);
+        $nextFn->setNonConstructable();
+        $generatorPrototype->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data(
+            $nextFn,
+            true,
+            false,
+            true,
+        ));
+        $returnFn = JsFunction::fromCallable('return', static function (
+            JsValue $thisValue,
+            array $args,
+        ): JsValue {
+            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method Generator.prototype.return called on incompatible receiver',
+                );
+            }
+            $value = $args[0] ?? JsUndefined::instance();
+            return $thisValue->returnValue($value);
+        }, 1);
+        $returnFn->setNonConstructable();
+        $generatorPrototype->defineOwnProperty('return', \PhpJs\Object\PropertyDescriptor::data(
+            $returnFn,
+            true,
+            false,
+            true,
+        ));
+        $throwFn = JsFunction::fromCallable('throw', static function (
+            JsValue $thisValue,
+            array $args,
+        ): JsValue {
+            if (!$thisValue instanceof \PhpJs\Value\JsGenerator) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method Generator.prototype.throw called on incompatible receiver',
+                );
+            }
+            $value = $args[0] ?? JsUndefined::instance();
+            return $thisValue->throwValue($value);
+        }, 1);
+        $throwFn->setNonConstructable();
+        $generatorPrototype->defineOwnProperty('throw', \PhpJs\Object\PropertyDescriptor::data(
+            $throwFn,
+            true,
+            false,
+            true,
+        ));
         // Wire: GeneratorFunction.prototype.prototype = %GeneratorPrototype%
         $generatorFunctionProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data(
             $generatorPrototype,

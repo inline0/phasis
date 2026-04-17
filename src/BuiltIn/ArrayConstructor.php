@@ -28,6 +28,15 @@ class ArrayConstructor
     {
         // Reset global prototype so a new engine instance does not inherit stale prototype.
         JsArray::resetGlobalPrototype();
+        self::resetArrayIteratorPrototype();
+
+        // Initialize %ArrayIteratorPrototype% with %IteratorPrototype% as parent.
+        $iteratorPrototype = $env->has('__IteratorPrototype__')
+            ? $env->get('__IteratorPrototype__')
+            : null;
+        self::getArrayIteratorPrototype(
+            $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
+        );
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
                 $n = $args[0]->value;
@@ -1357,17 +1366,55 @@ class ArrayConstructor
         return $result;
     }
 
-    /** Create an iterator object for keys, values, or entries. */
-    private static function createArrayIterator(JsObject $array, string $kind): JsObject
+    /** %ArrayIteratorPrototype%: shared prototype for all array iterators. */
+    private static ?JsObject $arrayIteratorPrototype = null;
+
+    /**
+     * Get or create the %ArrayIteratorPrototype% intrinsic.
+     * Its [[Prototype]] is %IteratorPrototype%.
+     */
+    public static function getArrayIteratorPrototype(?JsObject $iteratorPrototype = null): JsObject
     {
-        $index = 0;
-        $iterator = new JsObject();
-        $nextFn = function () use ($array, &$index, $kind): JsValue {
+        if (self::$arrayIteratorPrototype !== null) {
+            return self::$arrayIteratorPrototype;
+        }
+
+        $proto = new JsObject($iteratorPrototype);
+
+        // next method on the prototype. Validates internal slots via hidden property.
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method Array Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $slotDesc = $this_->getOwnPropertyDescriptor('[[ArrayIteratorData]]');
+            if ($slotDesc === null) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method Array Iterator.prototype.next called on incompatible receiver',
+                );
+            }
+            $data = $slotDesc->value;
+            if (!$data instanceof JsObject) {
+                // Iterator is exhausted (data cleared).
+                $result = new JsObject();
+                $result->set('value', JsUndefined::instance());
+                $result->set('done', new JsBoolean(true));
+                return $result;
+            }
+            $array = $data->get('array');
+            $kind = ($data->get('kind') instanceof JsString) ? $data->get('kind')->value : 'value';
+            $indexVal = $data->get('index');
+            $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
+
+            // Re-read length each time for mutable iteration.
+            $len = self::getLen($array);
+
             $result = new JsObject();
-            if ($index < self::getLen($array)) {
+            if ($index < $len) {
+                $data->set('index', new JsNumber((float) ($index + 1)));
                 $key = new JsNumber((float) $index);
                 $value = $array->get((string) $index);
-                $index++;
                 $result->set('done', new JsBoolean(false));
                 $result->set('value', match ($kind) {
                     'key' => $key,
@@ -1376,21 +1423,57 @@ class ArrayConstructor
                     default => $value,
                 });
             } else {
+                // Mark as exhausted.
+                $this_->defineOwnProperty(
+                    '[[ArrayIteratorData]]',
+                    PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+                );
                 $result->set('value', JsUndefined::instance());
                 $result->set('done', new JsBoolean(true));
             }
             return $result;
-        };
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        // Make the iterator itself iterable.
-        $iterSym = SymbolConstructor::iterator();
-        $iterFn = JsFunction::fromCallable(
-            '[Symbol.iterator]',
-            function () use ($iterator): JsValue {
-                return $iterator;
-            },
+        }, 0);
+        $nextFn->setNonConstructable();
+        $proto->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+
+        // Symbol.toStringTag = "Array Iterator" per spec 23.1.5.2.2.
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Array Iterator'), false, false, true),
         );
-        $iterator->setBySymbol($iterSym, $iterFn);
+
+        self::$arrayIteratorPrototype = $proto;
+        return $proto;
+    }
+
+    /** Reset the shared array iterator prototype (for engine reset). */
+    public static function resetArrayIteratorPrototype(): void
+    {
+        self::$arrayIteratorPrototype = null;
+    }
+
+    /** Public entry point for creating array iterators (used by JsArray Symbol.iterator). */
+    public static function createArrayIteratorFromSymbol(JsObject $array, string $kind): JsObject
+    {
+        return self::createArrayIterator($array, $kind);
+    }
+
+    /** Create an iterator object for keys, values, or entries. */
+    private static function createArrayIterator(JsObject $array, string $kind): JsObject
+    {
+        $proto = self::$arrayIteratorPrototype;
+        $iterator = new JsObject($proto);
+
+        // Store iteration state as internal data.
+        $data = new JsObject();
+        $data->set('array', $array);
+        $data->set('kind', new JsString($kind));
+        $data->set('index', new JsNumber(0.0));
+        $iterator->defineOwnProperty(
+            '[[ArrayIteratorData]]',
+            PropertyDescriptor::data($data, false, false, false),
+        );
+
         return $iterator;
     }
 

@@ -437,14 +437,7 @@ class ObjectConstructor
             // Second argument: property descriptors (ObjectDefineProperties per spec).
             if (isset($args[1]) && !($args[1] instanceof JsUndefined)) {
                 $props = TypeConversion::toObject($args[1]);
-                foreach ($props->getOwnEnumerableKeys() as $key) {
-                    $descObj = $props->get($key);
-                    if (!$descObj instanceof JsObject) {
-                        throw new TypeError('Property description must be an object: ' . $key);
-                    }
-                    $descriptor = self::toPropertyDescriptor($descObj);
-                    $obj->defineOwnProperty($key, $descriptor);
-                }
+                self::objectDefineProperties($obj, $props);
             }
 
             return $obj;
@@ -582,20 +575,69 @@ class ObjectConstructor
 
             $props = $args[1] ?? JsUndefined::instance();
             if (!$props instanceof JsObject) {
-                throw new \PhpJs\Exceptions\TypeError('Property descriptors must be an object');
+                $props = TypeConversion::toObject($props);
             }
 
-            foreach ($props->getOwnEnumerableKeys() as $key) {
-                $descObj = $props->get($key);
-                if (!$descObj instanceof JsObject) {
-                    throw new TypeError('Property description must be an object: ' . $key);
-                }
-                $descriptor = self::toPropertyDescriptor($descObj);
-                $obj->defineOwnProperty($key, $descriptor);
-            }
+            self::objectDefineProperties($obj, $props);
 
             return $obj;
         };
+    }
+
+    /**
+     * ObjectDefineProperties per spec 20.1.2.3.1.
+     *
+     * Iterates own enumerable keys of $props (string and symbol),
+     * converts each value to a property descriptor, and defines it on $obj
+     * via DefinePropertyOrThrow (throws TypeError on failure).
+     */
+    public static function objectDefineProperties(JsObject $obj, JsObject $props): void
+    {
+        // Per spec: use [[OwnPropertyKeys]] to get all keys, then filter by enumerable.
+        $allKeys = $props->ordinaryOwnPropertyKeys();
+        /** @var list<array{0: JsValue, 1: PropertyDescriptor}> $descriptors */
+        $descriptors = [];
+
+        foreach ($allKeys as $keyVal) {
+            if ($keyVal instanceof JsSymbol) {
+                $propDesc = $props->getSymbolPropertyDescriptor($keyVal);
+            } else {
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $propDesc = $props->getOwnPropertyDescriptor($keyStr);
+            }
+            if ($propDesc === null || $propDesc->enumerable !== true) {
+                continue;
+            }
+            // Get the value (which is a descriptor object).
+            if ($keyVal instanceof JsSymbol) {
+                $descObj = $props->getBySymbol($keyVal);
+            } else {
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $descObj = $props->get($keyStr);
+            }
+            if (!$descObj instanceof JsObject) {
+                throw new TypeError('Property description must be an object');
+            }
+            $descriptor = self::toPropertyDescriptor($descObj);
+            $descriptors[] = [$keyVal, $descriptor];
+        }
+
+        // Per spec, all descriptors are collected first, then applied.
+        foreach ($descriptors as [$keyVal, $descriptor]) {
+            if ($keyVal instanceof JsSymbol) {
+                $success = $obj->definePropertyBySymbol($keyVal, $descriptor);
+                if (!$success) {
+                    $keyName = $keyVal->description ?? 'Symbol()';
+                    throw new TypeError("Cannot redefine property: {$keyName}");
+                }
+            } else {
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $success = $obj->defineOwnProperty($keyStr, $descriptor);
+                if (!$success) {
+                    throw new TypeError("Cannot redefine property: {$keyStr}");
+                }
+            }
+        }
     }
 
     /**
@@ -641,12 +683,16 @@ class ObjectConstructor
                 }
             }
 
-            return PropertyDescriptor::accessor(
+            $desc = PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,
                 enumerable: $enumerable,
                 configurable: $configurable,
             );
+            // Track which fields were explicitly present in the source object.
+            $desc->hasGet = $hasGet;
+            $desc->hasSet = $hasSet;
+            return $desc;
         }
 
         $value   = $hasValue ? $obj->get('value') : null;

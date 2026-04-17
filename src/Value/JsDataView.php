@@ -281,6 +281,19 @@ class JsDataView extends JsObject
 
     // --- Internal helpers ---
 
+    /**
+     * Validate the buffer is not detached.
+     * Per spec, this check runs after ToIndex(offset) but before the bounds check.
+     */
+    public function validateNotDetached(): void
+    {
+        if ($this->buffer->isDetached()) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot perform DataView operation on a detached ArrayBuffer'
+            );
+        }
+    }
+
     private function readRaw(int $offset, int $length): string
     {
         $absOffset = $this->byteOffset + $offset;
