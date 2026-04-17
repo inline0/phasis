@@ -7338,7 +7338,7 @@ class Interpreter
             // Use byte offset for PCRE: convert character offset to byte offset.
             $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
 
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
+            if (preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
                 // For sticky regex, the match must start exactly at lastIndex.
                 if ($isSticky && $matchBytePos !== $byteOffset) {
@@ -7348,6 +7348,18 @@ class Interpreter
                 }
 
                 // Apply ES-compliant fixes for repeated groups.
+                // DEBUG: test preg_match directly here
+                // Check if $str has already been used in a preg_match
+                // and if copying it makes a difference
+                $strCopy = '' . $str . '';
+                $dbgM = [];
+                $dbgR = preg_match('/(*NOTEMPTY_ATSTART)(a?b??)/u', $strCopy, $dbgM, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, 1);
+                error_log("DEBUG exec: copy r=$dbgR match0=" . ($dbgR === 1 ? '"' . $dbgM[0][0] . '"' : 'N/A'));
+                // Try with a genuinely new string
+                $newStr = chr(ord('a')) . chr(ord('b'));
+                $dbgM2 = [];
+                $dbgR2 = preg_match('/(*NOTEMPTY_ATSTART)(a?b??)/u', $newStr, $dbgM2, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, 1);
+                error_log("DEBUG exec: newStr r=$dbgR2 match0=" . ($dbgR2 === 1 ? '"' . $dbgM2[0][0] . '"' : 'N/A'));
                 if ($hasRepeatedGroupFixes) {
                     // Fix 1: Extend match for nullable quantified groups.
                     $matches = self::fixNullableQuantifier(
@@ -9227,13 +9239,15 @@ class Interpreter
                 error_log("fixNullableQuantifier: loop iteration $iterations, currentByteEnd=$currentByteEnd");
 
                 // Try matching inner pattern at current end position (sticky).
-                $innerResult = @preg_match(
+                $innerMatches = [];
+                $innerResult = preg_match(
                     $innerPcreNormal,
                     $str,
                     $innerMatches,
                     PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
                     $currentByteEnd,
                 );
+                error_log("fixNullableQuantifier: normal match result=$innerResult, matchOffset=" . ($innerResult === 1 ? $innerMatches[0][1] : 'N/A') . ", matchStr=" . ($innerResult === 1 ? '"' . $innerMatches[0][0] . '"' : 'N/A'));
 
                 if ($innerResult === 1 && $innerMatches[0][1] === $currentByteEnd) {
                     $innerMatchStr = $innerMatches[0][0];
@@ -9248,21 +9262,27 @@ class Interpreter
 
                 // Empty match or no match at current position.
                 // Try with non-empty constraint to force backtracking.
-                $innerResult = @preg_match(
-                    $innerPcreNonEmpty,
+                // Use PCRE_NOTEMPTY_ATSTART as an integer flag.
+                // PHP's preg_match doesn't expose this constant, but the PCRE2 value is 0x10000000.
+                // However, PHP may not pass this flag through. Let's try.
+                $notemptyFlag = 0x10000000; // PCRE2_NOTEMPTY_ATSTART
+                $innerMatches2 = [];
+                $innerResult2 = preg_match(
+                    $innerPcreNormal, // Use normal pattern, not the verb version
                     $str,
-                    $innerMatches,
-                    PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL,
+                    $innerMatches2,
+                    PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL | $notemptyFlag,
                     $currentByteEnd,
                 );
+                error_log("fixNullableQuantifier: flag-based non-empty result=$innerResult2, dump=" . var_export($innerMatches2, true) . ", err=" . preg_last_error_msg());
 
                 if (
-                    $innerResult === 1
-                    && $innerMatches[0][1] === $currentByteEnd
-                    && strlen($innerMatches[0][0]) > 0
+                    $innerResult2 === 1
+                    && $innerMatches2[0][1] === $currentByteEnd
+                    && strlen($innerMatches2[0][0]) > 0
                 ) {
-                    $currentByteEnd += strlen($innerMatches[0][0]);
-                    $lastGroupCapture = [$innerMatches[1][0], $innerMatches[1][1]];
+                    $currentByteEnd += strlen($innerMatches2[0][0]);
+                    $lastGroupCapture = [$innerMatches2[1][0], $innerMatches2[1][1]];
                     $extended = true;
                     continue;
                 }
