@@ -151,8 +151,9 @@ class JsProxy extends JsObject
      */
     public function internalGet(string $name, JsObject $receiver): JsValue
     {
-        // Internal slots bypass proxy traps.
+        // Internal slots bypass proxy traps but must still check revocation.
         if (self::isInternalSlot($name)) {
+            $this->assertNotRevoked('get');
             return $this->target->internalGet($name, $this->target);
         }
         $trap = $this->getTrap('get');
@@ -372,8 +373,9 @@ class JsProxy extends JsObject
 
     public function has(string $name): bool
     {
-        // Internal slots bypass proxy traps.
+        // Internal slots bypass proxy traps but must still check revocation.
         if (self::isInternalSlot($name)) {
+            $this->assertNotRevoked('has');
             return $this->target->has($name);
         }
         $trap = $this->getTrap('has');
@@ -848,6 +850,7 @@ class JsProxy extends JsObject
         // Internal slots (e.g. [[NewTarget]], [[PrimitiveValue]]) bypass proxy traps.
         // They are engine-internal markers, not observable JS properties.
         if (self::isInternalSlot($name)) {
+            $this->assertNotRevoked('getOwnPropertyDescriptor');
             return $this->target->getOwnPropertyDescriptor($name);
         }
         $trap = $this->getTrap('getOwnPropertyDescriptor');
@@ -1120,20 +1123,35 @@ class JsProxy extends JsObject
             return $this->target->construct($args, $nt);
         }
         if ($this->target instanceof JsFunction && $this->target->isConstructable()) {
-            // Use newTarget's prototype (not target's) per spec Construct step 5.
-            $proto = ($nt instanceof JsFunction) ? $nt->get('prototype') : null;
-            $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
-            $newObj->defineOwnProperty(
-                '[[NewTarget]]',
-                \PhpJs\Object\PropertyDescriptor::data(
-                    $nt instanceof JsFunction ? $nt : $this->target,
-                    false,
-                    false,
-                    false,
-                ),
-            );
-            $result = $this->target->call($newObj, $args);
-            return $result instanceof JsObject ? $result : $newObj;
+            // When newTarget is the proxy itself, the proxy is transparent.
+            // Use the target directly as the construct target.
+            if ($nt === $this) {
+                // Simple case: `new proxy(args)`. Delegate directly to target.construct().
+                return $this->target->construct($args);
+            }
+            // Reflect.construct case with a custom newTarget.
+            // Resolve prototype from the newTarget (walking through proxy chains).
+            $protoSource = $nt;
+            if ($protoSource instanceof self) {
+                $inner = $protoSource;
+                while ($inner instanceof self && !$inner->isRevoked()) {
+                    $inner = $inner->target;
+                }
+                $protoSource = $inner;
+            }
+            $proto = ($protoSource instanceof JsFunction) ? $protoSource->get('prototype') : null;
+            if (!$proto instanceof JsObject) {
+                $proto = $this->target->get('prototype');
+            }
+            // Use the target's construct to properly handle bound functions
+            // and class constructors. Construct the object, then fix its
+            // prototype to match the newTarget.
+            $result = $this->target->construct($args);
+            // Fix prototype to match newTarget's prototype.
+            if ($proto instanceof JsObject) {
+                $result->setPrototype($proto);
+            }
+            return $result;
         }
         throw new TypeError('proxy target is not a constructor');
     }

@@ -405,18 +405,22 @@ class GlobalObject
                         $isConstructable
                         && $th instanceof \PhpJs\Value\JsObject
                         && !($th->get('[[NewTarget]]') instanceof JsUndefined)
-                        && $innerInterp !== null
                     ) {
-                        // Called via new: construct the target with merged args.
-                        $proto = $target->get('prototype');
-                        $protoObj = $proto instanceof \PhpJs\Value\JsObject ? $proto : null;
-                        $newObj = new \PhpJs\Value\JsObject($protoObj);
-                        $newObj->defineOwnProperty(
-                            '[[NewTarget]]',
-                            \PhpJs\Object\PropertyDescriptor::data($target, false, false, false),
-                        );
-                        $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
-                        return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
+                        if ($innerInterp !== null) {
+                            // Called via new with interpreter: construct the target with merged args.
+                            $proto = $target->get('prototype');
+                            $protoObj = $proto instanceof \PhpJs\Value\JsObject ? $proto : null;
+                            $newObj = new \PhpJs\Value\JsObject($protoObj);
+                            $newObj->defineOwnProperty(
+                                '[[NewTarget]]',
+                                \PhpJs\Object\PropertyDescriptor::data($target, false, false, false),
+                            );
+                            $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
+                            return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
+                        }
+                        // Called via construct path without interpreter (e.g. proxy forwarding).
+                        // Delegate to target's construct method directly.
+                        return $target->construct($mergedArgs);
                     }
                     return $target->call($boundThis, $mergedArgs);
                 },

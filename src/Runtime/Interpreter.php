@@ -5707,6 +5707,32 @@ class Interpreter
      */
     private function hoistEvalLocalDeclarations(array $statements, Environment $env): void
     {
+        // Collect declared function and var names for Annex B step a check.
+        $declaredFuncOrVarNames = [];
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof FunctionDeclaration) {
+                $declaredFuncOrVarNames[$stmt->id->name] = true;
+            } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $declaredFuncOrVarNames[$n] = true;
+                    }
+                }
+            }
+        }
+
+        // Collect top-level lexical names that block Annex B hoisting.
+        $lexicalNames = [];
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+                foreach ($stmt->declarations as $d) {
+                    foreach ($this->patternBoundNames($d->id) as $n) {
+                        $lexicalNames[$n] = true;
+                    }
+                }
+            }
+        }
+
         foreach ($statements as $stmt) {
             if ($stmt instanceof FunctionDeclaration) {
                 $fn = new JsFunction(
@@ -5735,6 +5761,41 @@ class Interpreter
                 }
             } else {
                 $this->hoistEvalLocalVarCompound($stmt, $env);
+            }
+        }
+
+        // Annex B.3.3.3: Hoist function declarations from blocks/if/switch
+        // in eval code to the variable environment.
+        if (!$this->strictMode) {
+            $annexBDecls = $this->collectEvalAnnexBFunctions(
+                $statements,
+                $declaredFuncOrVarNames,
+                $lexicalNames,
+            );
+            foreach ($annexBDecls as $decl) {
+                $name = $decl->id->name;
+                // Check if replacing with var would produce early errors.
+                if ($this->evalAnnexBWouldProduceEarlyError($statements, $name, $decl)) {
+                    continue;
+                }
+                // Mark for runtime update (step b).
+                $this->annexBEligible[spl_object_id($decl)] = true;
+                // Step a: create binding if not already in declaredFuncOrVarNames.
+                if (!isset($declaredFuncOrVarNames[$name])) {
+                    if (!$env->has($name)) {
+                        $env->defineDeletable($name, JsUndefined::instance());
+                        $env->markAnnexBHoisted($name);
+                    } else {
+                        // Binding exists (e.g. from function parameter). Still mark
+                        // as annexB hoisted so runtime update can find it.
+                        $env->markAnnexBHoisted($name);
+                    }
+                } else {
+                    // Name is in declaredFuncOrVarNames: binding already exists
+                    // from the regular hoisting above. Mark it so runtime update
+                    // can find it.
+                    $env->markAnnexBHoisted($name);
+                }
             }
         }
     }
@@ -5916,6 +5977,31 @@ class Interpreter
             }
         }
 
+        // Collect declared var names for Annex B step a check.
+        $declaredVarNames = [];
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $declaredVarNames[$n] = true;
+                    }
+                }
+            }
+        }
+        $declaredFuncOrVarNames = array_merge($declaredFuncNames, $declaredVarNames);
+
+        // Collect top-level lexical names that block Annex B hoisting.
+        $lexicalNames = [];
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+                foreach ($stmt->declarations as $d) {
+                    foreach ($this->patternBoundNames($d->id) as $n) {
+                        $lexicalNames[$n] = true;
+                    }
+                }
+            }
+        }
+
         // Per EvalDeclarationInstantiation step 10: CanDeclareGlobalVar for
         // each var name not already a declared function name.
         if ($globalObj !== null) {
@@ -5966,6 +6052,43 @@ class Interpreter
             } elseif (!($stmt instanceof FunctionDeclaration)) {
                 // Recurse into compound statements for nested var declarations.
                 $this->hoistEvalGlobalVarCompound($stmt, $env);
+            }
+        }
+
+        // Annex B.3.3.3: Hoist function declarations from blocks/if/switch
+        // in eval code to the global variable environment.
+        if (!$this->strictMode) {
+            $annexBDecls = $this->collectEvalAnnexBFunctions(
+                $statements,
+                $declaredFuncOrVarNames,
+                $lexicalNames,
+            );
+            foreach ($annexBDecls as $decl) {
+                $name = $decl->id->name;
+                // Check if replacing with var would produce early errors.
+                if ($this->evalAnnexBWouldProduceEarlyError($statements, $name, $decl)) {
+                    continue;
+                }
+                // Mark for runtime update (step b).
+                $this->annexBEligible[spl_object_id($decl)] = true;
+                // Step a: create binding if not already in declaredFuncOrVarNames.
+                if (!isset($declaredFuncOrVarNames[$name])) {
+                    // Per B.3.3.3 step i: if global, use CreateGlobalVarBinding(F, true).
+                    // This only creates the property if it does not already exist.
+                    if ($globalObj !== null) {
+                        if (!$globalObj->hasOwnProperty($name)) {
+                            if ($isExtensible) {
+                                $env->defineGlobalVar($name, JsUndefined::instance(), true);
+                            }
+                        }
+                    } elseif (!$env->has($name)) {
+                        $env->defineDeletable($name, JsUndefined::instance());
+                    }
+                    $env->markAnnexBHoisted($name);
+                } else {
+                    // Name exists from regular hoisting. Mark for runtime update.
+                    $env->markAnnexBHoisted($name);
+                }
             }
         }
     }
@@ -6299,6 +6422,427 @@ class Interpreter
                 }
             }
         }
+    }
+
+    /**
+     * Annex B.3.3.3: Collect function declarations inside blocks, if statements,
+     * and switch cases within eval code that need var-binding hoisting.
+     *
+     * Returns an array of FunctionDeclaration nodes that are eligible for
+     * Annex B hoisting. Only non-generator, non-async function declarations
+     * directly contained in blocks/if/switch are eligible.
+     *
+     * @param Node[] $statements The top-level eval code body
+     * @param array<string, bool> $declaredFuncOrVarNames Names already declared as
+     *     top-level function or var (these block binding creation but not update)
+     * @param array<string, bool> $lexicalNames Top-level lexical names (let/const)
+     *     that block hoisting entirely
+     * @return FunctionDeclaration[] Eligible function declarations
+     */
+    private function collectEvalAnnexBFunctions(
+        array $statements,
+        array $declaredFuncOrVarNames,
+        array $lexicalNames,
+    ): array {
+        $result = [];
+        $seen = [];
+        foreach ($statements as $stmt) {
+            $this->scanEvalAnnexBFunctions(
+                $stmt,
+                $declaredFuncOrVarNames,
+                $lexicalNames,
+                $result,
+                $seen,
+            );
+        }
+        return $result;
+    }
+
+    /**
+     * Recursively scan a statement for Annex B eligible function declarations
+     * inside blocks, if statements, and switch cases.
+     *
+     * @param array<string, bool> $declaredFuncOrVarNames
+     * @param array<string, bool> $lexicalNames
+     * @param FunctionDeclaration[] $result Collected eligible declarations
+     * @param array<string, bool> $seen Names already processed (first wins for init)
+     */
+    private function scanEvalAnnexBFunctions(
+        Node $stmt,
+        array $declaredFuncOrVarNames,
+        array $lexicalNames,
+        array &$result,
+        array &$seen,
+    ): void {
+        // Per B.3.3.3: only scan blocks, if statements, labeled statements,
+        // switch statements, and try statements.
+        if ($stmt instanceof BlockStatement) {
+            foreach ($stmt->body as $child) {
+                if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
+                    $this->addEvalAnnexBCandidate(
+                        $child,
+                        $declaredFuncOrVarNames,
+                        $lexicalNames,
+                        $result,
+                        $seen,
+                    );
+                }
+            }
+        } elseif ($stmt instanceof IfStatement) {
+            // Check function declarations directly as consequent or alternate.
+            if ($stmt->consequent instanceof FunctionDeclaration
+                && !$stmt->consequent->async && !$stmt->consequent->generator) {
+                $this->addEvalAnnexBCandidate(
+                    $stmt->consequent,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            } elseif ($stmt->consequent instanceof BlockStatement) {
+                $this->scanEvalAnnexBFunctions(
+                    $stmt->consequent,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            }
+            if ($stmt->alternate instanceof FunctionDeclaration
+                && !$stmt->alternate->async && !$stmt->alternate->generator) {
+                $this->addEvalAnnexBCandidate(
+                    $stmt->alternate,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            } elseif ($stmt->alternate instanceof IfStatement) {
+                $this->scanEvalAnnexBFunctions(
+                    $stmt->alternate,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            } elseif ($stmt->alternate instanceof BlockStatement) {
+                $this->scanEvalAnnexBFunctions(
+                    $stmt->alternate,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            }
+        } elseif ($stmt instanceof SwitchStatement) {
+            foreach ($stmt->cases as $case) {
+                foreach ($case->consequent as $child) {
+                    if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
+                        $this->addEvalAnnexBCandidate(
+                            $child,
+                            $declaredFuncOrVarNames,
+                            $lexicalNames,
+                            $result,
+                            $seen,
+                        );
+                    }
+                }
+            }
+        } elseif ($stmt instanceof LabeledStatement) {
+            $this->scanEvalAnnexBFunctions(
+                $stmt->body,
+                $declaredFuncOrVarNames,
+                $lexicalNames,
+                $result,
+                $seen,
+            );
+        } elseif ($stmt instanceof TryStatement) {
+            foreach ($stmt->block->body as $child) {
+                $this->scanEvalAnnexBFunctions(
+                    $child,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            }
+            if ($stmt->handler !== null) {
+                // Per B.3.5: if the catch parameter is a destructuring pattern,
+                // names bound by it block Annex B hoisting of same-named function
+                // declarations inside the catch body. A simple BindingIdentifier
+                // catch param does NOT block hoisting.
+                $catchBlockedNames = $lexicalNames;
+                $catchParam = $stmt->handler->param;
+                if ($catchParam !== null && !($catchParam instanceof Identifier)) {
+                    $catchBound = $this->collectBoundNames($catchParam);
+                    foreach ($catchBound as $bn) {
+                        $catchBlockedNames[$bn] = true;
+                    }
+                }
+                foreach ($stmt->handler->body->body as $child) {
+                    $this->scanEvalAnnexBFunctions(
+                        $child,
+                        $declaredFuncOrVarNames,
+                        $catchBlockedNames,
+                        $result,
+                        $seen,
+                    );
+                }
+            }
+            if ($stmt->finalizer !== null) {
+                foreach ($stmt->finalizer->body as $child) {
+                    $this->scanEvalAnnexBFunctions(
+                        $child,
+                        $declaredFuncOrVarNames,
+                        $lexicalNames,
+                        $result,
+                        $seen,
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if a function declaration is eligible for Annex B hoisting in eval
+     * code and add it to the result list if so.
+     *
+     * Per B.3.3.3: "If replacing the FunctionDeclaration f with a
+     * VariableStatement that has F as a BindingIdentifier would not produce
+     * any Early Errors for body, then..."
+     *
+     * @param array<string, bool> $declaredFuncOrVarNames
+     * @param array<string, bool> $lexicalNames
+     * @param FunctionDeclaration[] $result
+     * @param array<string, bool> $seen
+     */
+    private function addEvalAnnexBCandidate(
+        FunctionDeclaration $decl,
+        array $declaredFuncOrVarNames,
+        array $lexicalNames,
+        array &$result,
+        array &$seen,
+    ): void {
+        $name = $decl->id->name;
+
+        // Skip if there's a lexical binding (let/const) with the same name
+        // at the top level of the eval code. A var declaration with this name
+        // would produce an early error.
+        if (isset($lexicalNames[$name])) {
+            return;
+        }
+
+        // All eligible declarations get marked for runtime update.
+        $result[] = $decl;
+
+        // Track that we've seen this name (for init: only first wins when
+        // determining whether to create a new binding).
+        if (!isset($seen[$name])) {
+            $seen[$name] = true;
+        }
+    }
+
+    /**
+     * Check if a function declaration name would produce early errors in
+     * the eval code body when replaced with a var declaration.
+     *
+     * This checks for lexical bindings (let/const/class) in enclosing blocks
+     * within the eval code that would conflict.
+     *
+     * @param Node[] $statements The eval code body
+     * @param string $name The function name to check
+     * @param Node $target The function declaration node to find
+     * @return bool True if early errors would occur (should skip hoisting)
+     */
+    private function evalAnnexBWouldProduceEarlyError(
+        array $statements,
+        string $name,
+        Node $target,
+    ): bool {
+        // Walk up from the target to find enclosing blocks and check for
+        // lexical bindings with the same name.
+        return $this->checkEvalAnnexBEarlyError($statements, $name, $target);
+    }
+
+    /**
+     * Recursively check if a target function declaration is enclosed by a
+     * block that has a lexical binding for the given name.
+     *
+     * @param Node[] $nodes
+     */
+    private function checkEvalAnnexBEarlyError(
+        array $nodes,
+        string $name,
+        Node $target,
+    ): bool {
+        foreach ($nodes as $node) {
+            if ($node === $target) {
+                return false;
+            }
+            if ($node instanceof BlockStatement) {
+                // Check if this block contains the target and has a lexical
+                // binding for the name.
+                if ($this->blockContainsNode($node, $target)) {
+                    // Check for lexical bindings in this block scope.
+                    foreach ($node->body as $child) {
+                        if ($child instanceof VariableDeclaration
+                            && ($child->kind === 'let' || $child->kind === 'const')) {
+                            foreach ($child->declarations as $d) {
+                                foreach ($this->patternBoundNames($d->id) as $n) {
+                                    if ($n === $name) {
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return $this->checkEvalAnnexBEarlyError($node->body, $name, $target);
+                }
+            } elseif ($node instanceof ForStatement) {
+                if ($node->init instanceof VariableDeclaration
+                    && ($node->init->kind === 'let' || $node->init->kind === 'const')) {
+                    foreach ($node->init->declarations as $d) {
+                        foreach ($this->patternBoundNames($d->id) as $n) {
+                            if ($n === $name && $this->nodeContainsTarget($node, $target)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if ($this->nodeContainsTarget($node, $target)) {
+                    if ($node->body instanceof BlockStatement) {
+                        return $this->checkEvalAnnexBEarlyError($node->body->body, $name, $target);
+                    }
+                }
+            } elseif ($node instanceof ForInStatement || $node instanceof ForOfStatement) {
+                if ($node->left instanceof VariableDeclaration
+                    && ($node->left->kind === 'let' || $node->left->kind === 'const')) {
+                    foreach ($node->left->declarations as $d) {
+                        foreach ($this->patternBoundNames($d->id) as $n) {
+                            if ($n === $name && $this->nodeContainsTarget($node, $target)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if ($this->nodeContainsTarget($node, $target)) {
+                    if ($node->body instanceof BlockStatement) {
+                        return $this->checkEvalAnnexBEarlyError($node->body->body, $name, $target);
+                    }
+                }
+            } elseif ($node instanceof SwitchStatement) {
+                if ($this->nodeContainsTarget($node, $target)) {
+                    // Switch body is a single block scope containing all cases.
+                    // Check for lexical bindings across all case clauses.
+                    foreach ($node->cases as $case) {
+                        foreach ($case->consequent as $child) {
+                            if ($child instanceof VariableDeclaration
+                                && ($child->kind === 'let' || $child->kind === 'const')) {
+                                foreach ($child->declarations as $d) {
+                                    foreach ($this->patternBoundNames($d->id) as $n) {
+                                        if ($n === $name) {
+                                            return true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } elseif ($node instanceof TryStatement) {
+                if ($this->nodeContainsTarget($node, $target)) {
+                    if ($node->handler !== null
+                        && $this->nodeContainsTarget($node->handler->body, $target)) {
+                        // Check destructuring catch parameter.
+                        $catchParam = $node->handler->param;
+                        if ($catchParam !== null && !($catchParam instanceof Identifier)) {
+                            $catchBound = $this->collectBoundNames($catchParam);
+                            if (in_array($name, $catchBound, true)) {
+                                return true;
+                            }
+                        }
+                        return $this->checkEvalAnnexBEarlyError(
+                            $node->handler->body->body,
+                            $name,
+                            $target,
+                        );
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a block statement (or its descendants) contains a specific node.
+     */
+    private function blockContainsNode(BlockStatement $block, Node $target): bool
+    {
+        foreach ($block->body as $child) {
+            if ($child === $target || $this->nodeContainsTarget($child, $target)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check if a node (or any of its descendants) is or contains the target node.
+     */
+    private function nodeContainsTarget(Node $node, Node $target): bool
+    {
+        if ($node === $target) {
+            return true;
+        }
+        if ($node instanceof BlockStatement) {
+            return $this->blockContainsNode($node, $target);
+        }
+        if ($node instanceof IfStatement) {
+            if ($node->consequent === $target || $this->nodeContainsTarget($node->consequent, $target)) {
+                return true;
+            }
+            if ($node->alternate !== null
+                && ($node->alternate === $target || $this->nodeContainsTarget($node->alternate, $target))) {
+                return true;
+            }
+            return false;
+        }
+        if ($node instanceof SwitchStatement) {
+            foreach ($node->cases as $case) {
+                foreach ($case->consequent as $child) {
+                    if ($child === $target || $this->nodeContainsTarget($child, $target)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        if ($node instanceof TryStatement) {
+            if ($this->nodeContainsTarget($node->block, $target)) {
+                return true;
+            }
+            if ($node->handler !== null && $this->nodeContainsTarget($node->handler->body, $target)) {
+                return true;
+            }
+            if ($node->finalizer !== null && $this->nodeContainsTarget($node->finalizer, $target)) {
+                return true;
+            }
+            return false;
+        }
+        if ($node instanceof LabeledStatement) {
+            return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
+        }
+        if ($node instanceof ForStatement || $node instanceof WhileStatement
+            || $node instanceof DoWhileStatement) {
+            return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
+        }
+        if ($node instanceof ForInStatement || $node instanceof ForOfStatement) {
+            return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
+        }
+        if ($node instanceof WithStatement) {
+            return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
+        }
+        return false;
     }
 
     /**

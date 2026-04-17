@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-17T22:54:45+00:00",
-    "updatedAt": "2026-04-17T22:54:45+00:00",
+    "generatedAt": "2026-04-17T22:59:46+00:00",
+    "updatedAt": "2026-04-17T22:59:46+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "910bde9",
+        "commit": "7d360c5",
         "isDirty": true
     },
     "environment": {
@@ -222,16 +222,16 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 23475,
-            "fail": 1915,
-            "skip": 17758,
+            "pass": 23658,
+            "fail": 1981,
+            "skip": 17759,
             "blocked": 0,
-            "pending": 6983,
+            "pending": 6733,
             "running": 375,
-            "attempted": 25390,
-            "known": 43148,
+            "attempted": 25639,
+            "known": 43398,
             "total": 50506,
-            "passRate": 92.5
+            "passRate": 92.3
         },
         "areas": [
             {
@@ -251,14 +251,14 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 11117,
-                "fail": 557,
+                "pass": 11236,
+                "fail": 563,
                 "skip": 6789,
                 "blocked": 0,
-                "pending": 4141,
-                "running": 125,
-                "attempted": 11674,
-                "known": 18463,
+                "pending": 3766,
+                "running": 375,
+                "attempted": 11799,
+                "known": 18588,
                 "total": 22729,
                 "passRate": 95.2
             },
@@ -306,17 +306,17 @@
             },
             {
                 "name": "staging",
-                "status": "running",
-                "pass": 429,
-                "fail": 244,
-                "skip": 130,
+                "status": "incomplete",
+                "pass": 493,
+                "fail": 304,
+                "skip": 131,
                 "blocked": 0,
-                "pending": 579,
-                "running": 250,
-                "attempted": 673,
-                "known": 803,
+                "pending": 704,
+                "running": 0,
+                "attempted": 797,
+                "known": 928,
                 "total": 1632,
-                "passRate": 63.7
+                "passRate": 61.9
             }
         ],
         "groups": [
@@ -578,17 +578,17 @@
             {
                 "name": "built-ins/Array",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 1736,
-                "fail": 73,
+                "status": "running",
+                "pass": 1855,
+                "fail": 79,
                 "skip": 66,
                 "blocked": 0,
-                "pending": 1200,
-                "running": 0,
-                "attempted": 1809,
-                "known": 1875,
+                "pending": 700,
+                "running": 375,
+                "attempted": 1934,
+                "known": 2000,
                 "total": 3075,
-                "passRate": 96
+                "passRate": 95.9
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -1073,13 +1073,13 @@
             {
                 "name": "built-ins/RegExp",
                 "area": "built-ins",
-                "status": "running",
+                "status": "incomplete",
                 "pass": 322,
                 "fail": 81,
                 "skip": 847,
                 "blocked": 0,
-                "pending": 492,
-                "running": 125,
+                "pending": 617,
+                "running": 0,
                 "attempted": 403,
                 "known": 1250,
                 "total": 1867,
@@ -2333,17 +2333,17 @@
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "running",
-                "pass": 429,
-                "fail": 244,
-                "skip": 130,
+                "status": "incomplete",
+                "pass": 493,
+                "fail": 304,
+                "skip": 131,
                 "blocked": 0,
-                "pending": 375,
-                "running": 250,
-                "attempted": 673,
-                "known": 803,
+                "pending": 500,
+                "running": 0,
+                "attempted": 797,
+                "known": 928,
                 "total": 1428,
-                "passRate": 63.7
+                "passRate": 61.9
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2415,6 +2415,19 @@
                     "...",
                     "test262/test/language/literals/string/S7.8.4_A7.2_T1.js",
                     "test262/test/language/literals/string/S7.8.4_A7.2_T2.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 9.941,
+                "filesCount": 125,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Proxy/ownkeys-allowed-types.js",
+                    "test262/test/staging/sm/Proxy/ownkeys-linear.js",
+                    "...",
+                    "test262/test/staging/sm/RegExp/unicode-ignoreCase.js",
+                    "test262/test/staging/sm/RegExp/unicode-lead-trail.js"
                 ]
             },
             {
@@ -2623,19 +2636,6 @@
                     "...",
                     "test262/test/built-ins/TypedArrayConstructors/prototype/values/bigint-inherited.js",
                     "test262/test/built-ins/TypedArrayConstructors/prototype/values/inherited.js"
-                ]
-            },
-            {
-                "group": "built-ins/Array",
-                "kind": "normal",
-                "durationSec": 2.948,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/Array/prototype/flat/positive-infinity.js",
-                    "test262/test/built-ins/Array/prototype/flat/prop-desc.js",
-                    "...",
-                    "test262/test/built-ins/Array/prototype/includes/using-fromindex.js",
-                    "test262/test/built-ins/Array/prototype/includes/values-are-not-cached.js"
                 ]
             }
         ]

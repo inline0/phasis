@@ -161,6 +161,12 @@ class Environment
         return isset($this->annexBHoisted[$name]);
     }
 
+    /** Mark an existing binding as Annex B hoisted without changing its value. */
+    public function markAnnexBHoisted(string $name): void
+    {
+        $this->annexBHoisted[$name] = true;
+    }
+
     /** Define a let-declared variable (block-scoped, initialized). */
     public function defineLet(string $name, JsValue $value): void
     {

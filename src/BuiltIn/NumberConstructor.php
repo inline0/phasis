@@ -352,6 +352,14 @@ class NumberConstructor
         return function (JsValue $this_, array $args): JsValue {
             $numValue = self::extractNumberValue($this_);
 
+            // Per spec step 2: ToIntegerOrInfinity(fractionDigits) BEFORE NaN/Infinity check.
+            // This allows valueOf/toString/Symbol coercions to throw.
+            $fdArg = $args[0] ?? JsUndefined::instance();
+            $fdIsUndefined = $fdArg instanceof JsUndefined;
+            if (!$fdIsUndefined) {
+                $fdNum = TypeConversion::toIntegerOrInfinity($fdArg);
+            }
+
             if (is_nan($numValue)) {
                 return new JsString('NaN');
             }
@@ -359,9 +367,7 @@ class NumberConstructor
                 return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
             }
 
-            $fractionDigits = isset($args[0]) && !($args[0] instanceof JsUndefined)
-                ? (int) TypeConversion::toNumber($args[0])
-                : null;
+            $fractionDigits = $fdIsUndefined ? null : (int) $fdNum;
 
             if ($fractionDigits !== null && ($fractionDigits < 0 || $fractionDigits > 100)) {
                 throw new \PhpJs\Exceptions\RangeError('toExponential() argument must be between 0 and 100');
@@ -380,23 +386,14 @@ class NumberConstructor
             $numValue = abs($numValue);
 
             if ($fractionDigits !== null) {
-                $formatDigits = min($fractionDigits, 53);
-                $result = sprintf('%.' . $formatDigits . 'e', $numValue);
-
-                if ($fractionDigits > $formatDigits) {
-                    [$mantissa, $exponent] = explode('e', $result);
-                    if (!str_contains($mantissa, '.')) {
-                        $mantissa .= '.';
-                    }
-                    [$integer, $fraction] = explode('.', $mantissa, 2);
-                    $fraction = str_pad($fraction, $fractionDigits, '0');
-                    $result = $integer . '.' . $fraction . 'e' . $exponent;
-                }
+                // Use custom rounding to avoid PHP's banker's rounding.
+                // JavaScript uses round-half-away-from-zero.
+                $result = self::formatExponential($numValue, $fractionDigits);
             } else {
-                $result = sprintf('%.20e', $numValue);
-                $parts = explode('e', $result);
-                $mantissa = rtrim(rtrim($parts[0], '0'), '.');
-                $result = $mantissa . 'e' . $parts[1];
+                // Undefined fractionDigits: use the minimal representation.
+                // Find the shortest representation such that parsing it back
+                // gives the same IEEE 754 double.
+                $result = self::formatExponentialMinimal($numValue);
             }
 
             $result = preg_replace_callback('/e([+-])0*(\d+)/', function (array $m): string {
@@ -405,6 +402,65 @@ class NumberConstructor
 
             return new JsString(($negative ? '-' : '') . $result);
         };
+    }
+
+    /**
+     * Format a positive number in exponential notation with the given
+     * number of fraction digits, using round-half-away-from-zero.
+     */
+    private static function formatExponential(float $value, int $fractionDigits): string
+    {
+        // Calculate exponent.
+        $e = (int) floor(log10($value));
+        // Compute n such that value ~= n * 10^(e - fractionDigits).
+        // n should be an integer with fractionDigits+1 digits.
+        $divisor = 10.0 ** ($e - $fractionDigits);
+        $n = round($value / $divisor);
+
+        // Check if rounding pushed n to next power of 10.
+        $maxN = 10.0 ** ($fractionDigits + 1);
+        if ($n >= $maxN) {
+            $e++;
+            $divisor = 10.0 ** ($e - $fractionDigits);
+            $n = round($value / $divisor);
+        }
+
+        $nStr = number_format($n, 0, '', '');
+
+        // Pad to fractionDigits+1 digits if needed.
+        $nStr = str_pad($nStr, $fractionDigits + 1, '0');
+
+        if ($fractionDigits > 0) {
+            $mantissa = $nStr[0] . '.' . substr($nStr, 1);
+        } else {
+            $mantissa = $nStr[0];
+        }
+
+        $expSign = $e >= 0 ? '+' : '-';
+        return $mantissa . 'e' . $expSign . abs($e);
+    }
+
+    /**
+     * Format a positive number in minimal exponential notation.
+     * Uses the fewest fraction digits such that the representation
+     * is unique (parsing back gives the same double).
+     */
+    private static function formatExponentialMinimal(float $value): string
+    {
+        // Use PHP's serialize-quality formatting to get exact representation.
+        // sprintf with %.17g gives enough digits, but we need exponential form.
+        // Strategy: use sprintf to get enough precision, then strip trailing zeros.
+        $e = (int) floor(log10($value));
+        // Try increasing precision until roundtrip is exact.
+        for ($digits = 0; $digits <= 20; $digits++) {
+            $formatted = self::formatExponential($value, $digits);
+            // Parse back to verify roundtrip.
+            if ((float) $formatted === $value) {
+                return $formatted;
+            }
+        }
+        // Fallback: 20 digits should always be enough.
+        return self::formatExponential($value, 20);
     }
 
     private static function extractNumberValue(JsValue $this_): float

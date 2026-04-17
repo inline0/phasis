@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-17T22:54:45+00:00`
+- Snapshot time: `2026-04-17T22:59:46+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `137`
 - Test files: `50506`
-- Git: `main` @ `910bde9` (dirty)
+- Git: `main` @ `7d360c5` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 23475 | 1915 | 17758 | 0 | 6983 | 375 | 25390 | 43148 | 50506 | 92.5% |
+| 23658 | 1981 | 17759 | 0 | 6733 | 375 | 25639 | 43398 | 50506 | 92.3% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 591 | 190 | 0 | 0 | 298 | 0 | 75.7% |
-| built-ins | RUNNING | 11117 | 557 | 6789 | 0 | 4141 | 125 | 95.2% |
+| built-ins | RUNNING | 11236 | 563 | 6789 | 0 | 3766 | 375 | 95.2% |
 | harness | PENDING | 0 | 0 | 0 | 0 | 116 | 0 | n/a |
 | intl402 | INCOMPLETE | 0 | 567 | 268 | 0 | 731 | 0 | 0.0% |
 | language | INCOMPLETE | 11338 | 357 | 10571 | 0 | 1118 | 0 | 96.9% |
-| staging | RUNNING | 429 | 244 | 130 | 0 | 579 | 250 | 63.7% |
+| staging | INCOMPLETE | 493 | 304 | 131 | 0 | 704 | 0 | 61.9% |
 
 ## Group Coverage
 
@@ -50,7 +50,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/literals | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | annexB/language/statements | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
 | built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| built-ins/Array | INCOMPLETE | 1736 | 73 | 66 | 0 | 1200 | 0 | 96.0% |
+| built-ins/Array | RUNNING | 1855 | 79 | 66 | 0 | 700 | 375 | 95.9% |
 | built-ins/ArrayBuffer | PARTIAL | 75 | 5 | 112 | 0 | 0 | 0 | 93.8% |
 | built-ins/ArrayIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
 | built-ins/AsyncDisposableStack | PENDING | 0 | 0 | 0 | 0 | 52 | 0 | n/a |
@@ -83,7 +83,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Promise | INCOMPLETE | 51 | 18 | 62 | 0 | 500 | 0 | 73.9% |
 | built-ins/Proxy | INCOMPLETE | 210 | 5 | 35 | 0 | 61 | 0 | 97.7% |
 | built-ins/Reflect | PARTIAL | 152 | 1 | 0 | 0 | 0 | 0 | 99.3% |
-| built-ins/RegExp | RUNNING | 322 | 81 | 847 | 0 | 492 | 125 | 79.9% |
+| built-ins/RegExp | INCOMPLETE | 322 | 81 | 847 | 0 | 617 | 0 | 79.9% |
 | built-ins/RegExpStringIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
 | built-ins/Set | PARTIAL | 191 | 4 | 186 | 0 | 0 | 0 | 97.9% |
 | built-ins/SetIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
@@ -167,7 +167,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
 | staging/explicit-resource-management | PENDING | 0 | 0 | 0 | 0 | 54 | 0 | n/a |
 | staging/set-methods | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| staging/sm | RUNNING | 429 | 244 | 130 | 0 | 375 | 250 | 63.7% |
+| staging/sm | INCOMPLETE | 493 | 304 | 131 | 0 | 500 | 0 | 61.9% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PENDING | 0 | 0 | 0 | 0 | 71 | 0 | n/a |
 
@@ -178,6 +178,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/sm | NORMAL | 196.169s | 250 | `test262/test/staging/sm/TypedArray/from_basics.js`<br>`test262/test/staging/sm/TypedArray/from_constructor.js`<br>...<br>`test262/test/staging/sm/expressions/string-literal-escape-sequences.js`<br>`test262/test/staging/sm/expressions/tagged-template-constant-folding.js` |
 | language/literals | NORMAL | 56.098s | 250 | `test262/test/language/literals/bigint/binary-invalid-digit.js`<br>`test262/test/language/literals/bigint/exponent-part.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js` |
 | language/literals | NORMAL | 19.206s | 250 | `test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.3_T2.js`<br>...<br>`test262/test/language/literals/string/S7.8.4_A7.2_T1.js`<br>`test262/test/language/literals/string/S7.8.4_A7.2_T2.js` |
+| staging/sm | NORMAL | 9.941s | 125 | `test262/test/staging/sm/Proxy/ownkeys-allowed-types.js`<br>`test262/test/staging/sm/Proxy/ownkeys-linear.js`<br>...<br>`test262/test/staging/sm/RegExp/unicode-ignoreCase.js`<br>`test262/test/staging/sm/RegExp/unicode-lead-trail.js` |
 | built-ins/Function | NORMAL | 8.959s | 250 | `test262/test/built-ins/Function/prototype/apply/S15.3.4.3_A7_T10.js`<br>`test262/test/built-ins/Function/prototype/apply/S15.3.4.3_A7_T2.js`<br>...<br>`test262/test/built-ins/Function/prototype/toString/proxy-function-expression.js`<br>`test262/test/built-ins/Function/prototype/toString/proxy-generator-function.js` |
 | staging/sm | NORMAL | 8.782s | 250 | `test262/test/staging/sm/Iterator/prototype/find/descriptor.js`<br>`test262/test/staging/sm/Iterator/prototype/find/error-from-correct-realm.js`<br>...<br>`test262/test/staging/sm/Proxy/hasInstance.js`<br>`test262/test/staging/sm/Proxy/json-stringify-replacer-array-revocable-proxy.js` |
 | staging/sm | NORMAL | 5.243s | 125 | `test262/test/staging/sm/extensions/8.12.5-01.js`<br>`test262/test/staging/sm/extensions/ArrayBuffer-slice-arguments-detaching.js`<br>...<br>`test262/test/staging/sm/lexical-environment/block-scoped-functions-annex-b-notapplicable.js`<br>`test262/test/staging/sm/lexical-environment/block-scoped-functions-annex-b-parameter.js` |
@@ -194,7 +195,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Object | NORMAL | 3.121s | 250 | `test262/test/built-ins/Object/defineProperty/15.2.3.6-4-176.js`<br>`test262/test/built-ins/Object/defineProperty/15.2.3.6-4-177.js`<br>...<br>`test262/test/built-ins/Object/defineProperty/15.2.3.6-4-354-11.js`<br>`test262/test/built-ins/Object/defineProperty/15.2.3.6-4-354-12.js` |
 | built-ins/Object | NORMAL | 3.075s | 250 | `test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-133.js`<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-134.js`<br>...<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-74.js`<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-75.js` |
 | built-ins/TypedArrayConstructors | NORMAL | 2.956s | 236 | `test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-out-of-bounds-non-strict.js`<br>`test262/test/built-ins/TypedArrayConstructors/internals/Delete/key-is-out-of-bounds-strict.js`<br>...<br>`test262/test/built-ins/TypedArrayConstructors/prototype/values/bigint-inherited.js`<br>`test262/test/built-ins/TypedArrayConstructors/prototype/values/inherited.js` |
-| built-ins/Array | NORMAL | 2.948s | 250 | `test262/test/built-ins/Array/prototype/flat/positive-infinity.js`<br>`test262/test/built-ins/Array/prototype/flat/prop-desc.js`<br>...<br>`test262/test/built-ins/Array/prototype/includes/using-fromindex.js`<br>`test262/test/built-ins/Array/prototype/includes/values-are-not-cached.js` |
 
 ## Runner Caveats
 
