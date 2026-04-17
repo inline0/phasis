@@ -342,11 +342,19 @@ class JsonObject
             }
         } elseif ($value instanceof \PhpJs\Value\JsBigInt) {
             // Check BigInt.prototype.toJSON per spec 25.5.2.1 step 2.
+            // Must invoke the getter (if any) with the BigInt as receiver.
             $bigintProto = \PhpJs\Value\JsBigInt::getPrototype();
             if ($bigintProto !== null) {
-                $toJson = $bigintProto->get('toJSON');
-                if ($toJson instanceof JsFunction) {
-                    $value = $toJson->call($value, [new JsString($key)]);
+                $desc = $bigintProto->getOwnPropertyDescriptor('toJSON');
+                if ($desc !== null && $desc->get instanceof JsFunction) {
+                    // Accessor: call getter with BigInt as this
+                    $toJson = $desc->get->call($value, []);
+                    if ($toJson instanceof JsFunction) {
+                        $value = $toJson->call($value, [new JsString($key)]);
+                    }
+                } elseif ($desc !== null && $desc->value instanceof JsFunction) {
+                    // Data property
+                    $value = $desc->value->call($value, [new JsString($key)]);
                 }
             }
         }
