@@ -5242,8 +5242,8 @@ class Interpreter
     private function hoistEvalLocalVarNames(Node $pattern, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            // Only create if not already bound in any scope.
-            if (!$env->has($pattern->name)) {
+            // Create binding even if name exists in an outer scope.
+            if (!$env->hasOwnBinding($pattern->name)) {
                 $env->defineDeletable($pattern->name, JsUndefined::instance());
             }
         } elseif ($pattern instanceof ArrayPattern) {
@@ -6808,8 +6808,19 @@ class Interpreter
                         }
                         continue;
                     }
-                    // Valid backreference: pass through as-is.
-                    $result .= $ch . $numStr;
+                    // Valid backreference: check if it's a forward backreference.
+                    // In ECMAScript, a backreference to a group that appears
+                    // later in the pattern matches the empty string. PCRE does
+                    // not handle this correctly, so convert forward backrefs to (?:).
+                    $groupPositions = $this->getCapturingGroupPositions($pattern);
+                    if (
+                        isset($groupPositions[$refNum - 1])
+                        && $groupPositions[$refNum - 1] > $i
+                    ) {
+                        $result .= '(?:)';
+                    } else {
+                        $result .= $ch . $numStr;
+                    }
                     $i = $j;
                     continue;
                 }
