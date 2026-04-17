@@ -416,7 +416,12 @@ class RegExpPrototype
                     $replacement = TypeConversion::toString($replValue);
                 } else {
                     $replacement = StringPrototype::getSubstitution(
-                        $matched, $S, $position, $captures, $replaceStr, $namedCaptures
+                        $matched,
+                        $S,
+                        $position,
+                        $captures,
+                        $replaceStr,
+                        $namedCaptures
                     );
                 }
 

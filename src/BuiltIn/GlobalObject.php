@@ -245,7 +245,10 @@ class GlobalObject
         // has "caller" and "arguments" as thrower accessor pairs. Accessing them
         // on any function that inherits from Function.prototype throws TypeError.
         $thrower = JsFunction::fromCallable('', function (): never {
-            throw new \PhpJs\Exceptions\TypeError("'caller', 'callee', and 'arguments' properties may not be accessed on strict mode functions or the arguments objects for calls to them");
+            throw new \PhpJs\Exceptions\TypeError(
+                "'caller', 'callee', and 'arguments' properties may not be accessed"
+                . ' on strict mode functions or the arguments objects for calls to them'
+            );
         });
         $throwerDesc = new \PhpJs\Object\PropertyDescriptor(
             enumerable: false,

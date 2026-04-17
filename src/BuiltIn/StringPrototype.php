@@ -988,8 +988,10 @@ class StringPrototype
                         if ($next2 === ':' || $next2 === '=' || $next2 === '!') {
                             continue; // non-capturing
                         }
-                        if ($next2 === '<' && $i + 3 < $len
-                            && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')) {
+                        if (
+                            $next2 === '<' && $i + 3 < $len
+                            && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')
+                        ) {
                             continue; // lookbehind
                         }
                         if ($next2 === '<') {

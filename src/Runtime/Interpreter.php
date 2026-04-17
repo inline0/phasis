@@ -3086,7 +3086,11 @@ class Interpreter
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
                 // Function name inference: check AST node type.
-                if ($value instanceof JsFunction && $pattern->left instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($pattern->right)) {
+                if (
+                    $value instanceof JsFunction
+                    && $pattern->left instanceof Identifier
+                    && $this->isAnonymousFunctionDefinitionNode($pattern->right)
+                ) {
                     $value->setName($pattern->left->name);
                 }
             }
@@ -3675,7 +3679,9 @@ class Interpreter
                     $v = $completion->value;
                 }
 
-                if ($completion->type === CompletionType::Break && ($completion->target === null || ($label !== null && $completion->target === $label))) {
+                $isTargetedBreak = $completion->target === null
+                    || ($label !== null && $completion->target === $label);
+                if ($completion->type === CompletionType::Break && $isTargetedBreak) {
                     $closeCompletion = $closeIterator(null);
                     if ($closeCompletion !== null && $closeCompletion->isAbrupt()) {
                         return $closeCompletion;
@@ -4643,7 +4649,11 @@ class Interpreter
                     if ($elemValue instanceof JsUndefined) {
                         $elemValue = $this->evaluate($defaultNode, $env);
                         // Function name inference: check AST node type.
-                        if ($elemValue instanceof JsFunction && $elemTarget instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($defaultNode)) {
+                        if (
+                            $elemValue instanceof JsFunction
+                            && $elemTarget instanceof Identifier
+                            && $this->isAnonymousFunctionDefinitionNode($defaultNode)
+                        ) {
                             $elemValue->setName($elemTarget->name);
                         }
                     }
@@ -4717,7 +4727,11 @@ class Interpreter
                     if ($propValue instanceof JsUndefined) {
                         $propValue = $this->evaluate($defaultNode2, $env);
                         // Function name inference: check AST node type.
-                        if ($propValue instanceof JsFunction && $realTarget instanceof Identifier && $this->isAnonymousFunctionDefinitionNode($defaultNode2)) {
+                        if (
+                            $propValue instanceof JsFunction
+                            && $realTarget instanceof Identifier
+                            && $this->isAnonymousFunctionDefinitionNode($defaultNode2)
+                        ) {
                             $propValue->setName($realTarget->name);
                         }
                     }
