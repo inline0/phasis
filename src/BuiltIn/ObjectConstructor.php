@@ -218,7 +218,10 @@ class ObjectConstructor
                     $nameVal = $this_->get('name');
                     if ($nameVal instanceof JsString) {
                         $n = $nameVal->value;
-                        if (in_array($n, ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'], true)) {
+                        $errNames = ['Error', 'TypeError', 'RangeError',
+                            'ReferenceError', 'SyntaxError', 'URIError',
+                            'EvalError', 'AggregateError'];
+                        if (in_array($n, $errNames, true)) {
                             return new JsString('[object Error]');
                         }
                     }

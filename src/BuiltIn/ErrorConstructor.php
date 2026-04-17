@@ -78,7 +78,9 @@ class ErrorConstructor
                     $name = $arg->get('name');
                     if ($name instanceof JsString) {
                         $nameStr = $name->value;
-                        if (in_array($nameStr, ['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AggregateError'], true)) {
+                        $errorNames = ['Error', 'TypeError', 'RangeError', 'ReferenceError',
+                            'SyntaxError', 'URIError', 'EvalError', 'AggregateError'];
+                        if (in_array($nameStr, $errorNames, true)) {
                             // Also verify it has a message property (to distinguish from random objects)
                             if ($arg->has('message') || $arg->has('stack')) {
                                 return new \PhpJs\Value\JsBoolean(true);
