@@ -2559,8 +2559,11 @@ class Interpreter
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,
                 // or undefined otherwise. Arrow functions inherit it from the outer scope.
-                if ($thisValue instanceof JsObject && $thisValue->getOwnPropertyDescriptor('[[NewTarget]]') !== null) {
-                    $fnEnv->defineVar('[[NewTarget]]', $fn);
+                if ($thisValue instanceof JsObject && ($ntDesc = $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')) !== null) {
+                    // Use the stored newTarget. For Reflect.construct(target, args, newTarget)
+                    // this may differ from $fn (the currently executing function).
+                    $nt = $ntDesc->value;
+                    $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
                 } else {
                     $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
                 }
@@ -2598,7 +2601,7 @@ class Interpreter
             // In sloppy mode with simple parameters, arguments[i] and the
             // corresponding parameter name share a live binding.
             if (!$fn->isArrow() && isset($argsObj) && !$unmapped) {
-                $this->setupMappedArguments($argsObj, $params, $args, $fnEnv);
+                
             }
 
             // Collect parameter names for Annex B hoisting checks.
@@ -2730,7 +2733,7 @@ class Interpreter
 
         // Set up mapped arguments aliasing for generators.
         if (!$unmapped) {
-            $this->setupMappedArguments($argsObj, $fn->getParams(), $args, $fnEnv);
+            
         }
 
         $interpreter = $this;
@@ -2778,6 +2781,9 @@ class Interpreter
                 $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
                 $fnEnv->defineVar('arguments', $argsObj);
                 $this->bindParameters($fn->getParams(), $args, $fnEnv);
+                if (!$unmapped) {
+                    
+                }
             }
 
             // Execute body
@@ -2927,6 +2933,52 @@ class Interpreter
             configurable: true,
         ));
         return $argsObj;
+    }
+
+    /**
+     * Set up mapped arguments aliasing per spec 10.4.4.7.
+     *
+     * In sloppy mode with simple parameters, for each parameter index i,
+     * arguments[i] becomes an accessor that reads from and writes to the
+     * parameter binding in the function environment. This creates live aliasing
+     * so that modifying arguments[i] updates the parameter variable and vice versa.
+     *
+     * @param Node[] $params
+     * @param list<JsValue> $args
+     */
+    private function setupMappedArguments(JsObject $argsObj, array $params, array $args, Environment $env): void
+    {
+        $mappedNames = [];
+        // Only map indices up to the number of actual arguments passed.
+        $argCount = count($args);
+        // Walk parameters in reverse so that duplicate names map to the last occurrence.
+        for ($i = min(count($params) - 1, $argCount - 1); $i >= 0; $i--) {
+            $param = $params[$i];
+            if (!$param instanceof Identifier) {
+                continue;
+            }
+            $name = $param->name;
+            if (isset($mappedNames[$name])) {
+                continue;
+            }
+            $mappedNames[$name] = true;
+
+            $index = (string) $i;
+            // Replace the data property with an accessor that proxies to the env binding.
+            $getter = JsFunction::fromCallable('', function () use ($env, $name): JsValue {
+                return $env->get($name);
+            });
+            $setter = JsFunction::fromCallable('', function (JsValue $_this, array $setArgs) use ($env, $name): JsValue {
+                $env->set($name, $setArgs[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            });
+            $argsObj->defineOwnProperty($index, PropertyDescriptor::accessor(
+                get: $getter,
+                set: $setter,
+                enumerable: true,
+                configurable: true,
+            ));
+        }
     }
 
     private function bindParameters(array $params, array $args, Environment $env): void
@@ -4106,6 +4158,18 @@ class Interpreter
                             ? $prop->key->name
                             : TypeConversion::toString($this->evaluate($prop->key, $env)));
                     $usedKeysAvb[] = $key;
+
+                    // Per spec 14.3.3.3 KeyedBindingInitialization step 2:
+                    // ResolveBinding(bindingId) must happen BEFORE GetV(value, propertyName).
+                    // This triggers HasBinding on with-environments (Proxy has trap).
+                    $bindingTarget = $prop->value;
+                    if ($bindingTarget instanceof AssignmentPattern) {
+                        $bindingTarget = $bindingTarget->left;
+                    }
+                    if ($bindingTarget instanceof Identifier && !empty($this->withEnvObjects)) {
+                        $env->has($bindingTarget->name);
+                    }
+
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
                     $this->assignVarBinding($prop->value, $propValue, $env);
                 }
@@ -4220,6 +4284,18 @@ class Interpreter
             }
 
             $fn = $this->evaluate($method->value, $env);
+
+            // Per spec 15.4.4 DefineMethodProperty / 10.2.9 SetFunctionName:
+            // set the function's name from the property key. For accessors,
+            // prefix with "get " or "set ".
+            if ($fn instanceof JsFunction && $method->kind !== 'constructor' && $symbolKey === null) {
+                $methodName = $method->kind === 'get' || $method->kind === 'set'
+                    ? "{$method->kind} {$key}"
+                    : $key;
+                if (!$this->hasExplicitNameProperty($fn)) {
+                    $fn->setName($methodName);
+                }
+            }
 
             // Per spec, class methods (non-constructor) are not constructable
             // and do not have a .prototype property.

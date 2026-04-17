@@ -690,7 +690,10 @@ class Lexer
 
             if ($ch === '`') {
                 $this->advance();
-                return new Token(TokenType::NoSubstitutionTemplate, $cooked, $start, false, $raw, $cookedInvalid);
+                fwrite(STDERR, "DEBUG: returning NoSubstitutionTemplate cookedInvalid=" . var_export($cookedInvalid, true) . "\n");
+                $tok = new Token(TokenType::NoSubstitutionTemplate, $cooked, $start, false, $raw, $cookedInvalid);
+                fwrite(STDERR, "DEBUG: tok->cookedInvalid=" . var_export($tok->cookedInvalid, true) . "\n");
+                return $tok;
             }
 
             if ($ch === '$' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === '{') {
@@ -706,6 +709,7 @@ class Lexer
                     throw new SyntaxError('Unterminated template literal', $start);
                 }
                 $result = $this->readTemplateEscapeSequence($cookedInvalid);
+                fwrite(STDERR, "DEBUG readTemplate: escape result=" . var_export($result, true) . " cookedInvalid=" . var_export($cookedInvalid, true) . "\n");
                 if ($result !== null && !$cookedInvalid) {
                     $cooked .= $result;
                 }
