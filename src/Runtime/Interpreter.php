@@ -220,7 +220,7 @@ class Interpreter
                         $varNames[] = $n;
                     }
                 }
-            } elseif ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+            } elseif ($stmt instanceof FunctionDeclaration) {
                 $varNames[] = $stmt->id->name;
             }
         }
@@ -240,13 +240,13 @@ class Interpreter
 
         // Per spec step 10: CanDeclareGlobalFunction for each function declaration.
         // Per spec step 12: CanDeclareGlobalVar for each var name.
-        $isExtensible = !method_exists($globalObj, 'isExtensible') || $globalObj->isExtensible();
+        $isExtensible = $globalObj->isExtensible();
 
         // Collect function declaration names (in reverse order, last wins).
         $declaredFuncNames = [];
         for ($i = count($body) - 1; $i >= 0; $i--) {
             $stmt = $body[$i];
-            if ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+            if ($stmt instanceof FunctionDeclaration) {
                 $fn = $stmt->id->name;
                 if (!isset($declaredFuncNames[$fn])) {
                     $declaredFuncNames[$fn] = true;
@@ -3914,10 +3914,11 @@ class Interpreter
                     true,
                 ));
             } elseif ($kind === 'get' || $kind === 'set') {
-                // Class method accessors are non-enumerable per spec §15.7.1.
+                // Class method accessors are non-enumerable per spec section 15.7.1.
+                // Use defineProperty (direct set) to avoid hasGet/hasSet merge logic.
                 $existing = $proto->getOwnPropertyDescriptor($key);
                 if ($kind === 'get') {
-                    $proto->defineOwnProperty(
+                    $proto->defineProperty(
                         $key,
                         PropertyDescriptor::accessor(
                             $fn instanceof JsFunction ? $fn : null,
@@ -3927,7 +3928,7 @@ class Interpreter
                         ),
                     );
                 } else {
-                    $proto->defineOwnProperty(
+                    $proto->defineProperty(
                         $key,
                         PropertyDescriptor::accessor(
                             $existing?->get,
@@ -3969,17 +3970,18 @@ class Interpreter
                 );
             }
             // Static getters and setters are accessor properties, like non-static ones.
+            // Use defineProperty (direct set) to avoid hasGet/hasSet merge logic.
             if ($kind === 'get' || $kind === 'set') {
                 $existingSt = $constructor->getOwnPropertyDescriptor($key);
                 if ($kind === 'get') {
-                    $constructor->defineOwnProperty($key, PropertyDescriptor::accessor(
+                    $constructor->defineProperty($key, PropertyDescriptor::accessor(
                         $fn instanceof JsFunction ? $fn : null,
                         $existingSt?->set,
                         enumerable: false,
                         configurable: true,
                     ));
                 } else {
-                    $constructor->defineOwnProperty($key, PropertyDescriptor::accessor(
+                    $constructor->defineProperty($key, PropertyDescriptor::accessor(
                         $existingSt?->get,
                         $fn instanceof JsFunction ? $fn : null,
                         enumerable: false,

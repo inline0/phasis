@@ -521,7 +521,7 @@ class Environment
     public function hasLexicalBindingInScope(string $name): bool
     {
         $env = $this;
-        while ($env !== null) {
+        while (true) {
             if (isset($env->lexical[$name])) {
                 return true;
             }
@@ -531,7 +531,6 @@ class Environment
             }
             $env = $env->parent;
         }
-        return false;
     }
 
     /** Create a child environment with this environment as its parent. */
