@@ -9178,11 +9178,13 @@ class Interpreter
     ): array {
         foreach ($analysis['repeatedGroups'] as $groupIdx => $info) {
             if (!$info['nullable']) {
+                error_log("fixNullableQuantifier: group $groupIdx not nullable, skipping");
                 continue;
             }
 
             // Check if the last capture of this group was empty (PCRE stopped on empty).
             if (!isset($matches[$groupIdx])) {
+                error_log("fixNullableQuantifier: group $groupIdx not in matches, skipping");
                 continue;
             }
 
@@ -9191,18 +9193,27 @@ class Interpreter
             $overallByteStart = $matches[0][1] ?? 0;
             $overallByteEnd = $overallByteStart + strlen($overallMatch);
 
+            error_log("fixNullableQuantifier: group $groupIdx, overallByteEnd=$overallByteEnd, strlen=" . strlen($str));
+
             // If we're already at end of string, nothing to extend.
             if ($overallByteEnd >= strlen($str)) {
+                error_log("fixNullableQuantifier: at end of string, skipping");
                 continue;
             }
 
             // Build PCRE pattern for the inner body (one iteration).
             $innerEsPattern = $info['bodyPattern'];
+            error_log("fixNullableQuantifier: innerEsPattern=$innerEsPattern");
             $innerPcreBody = $transformFn($innerEsPattern);
+            error_log("fixNullableQuantifier: innerPcreBody=$innerPcreBody");
             // Normal pattern (may match empty).
             $innerPcreNormal = '/(' . $innerPcreBody . ')/' . $pcreFlags;
             // Non-empty pattern: uses PCRE2 verb to reject empty matches at start position.
             $innerPcreNonEmpty = '/(*NOTEMPTY_ATSTART)(' . $innerPcreBody . ')/' . $pcreFlags;
+
+            error_log("fixNullableQuantifier: innerPcreNormal=$innerPcreNormal");
+            error_log("fixNullableQuantifier: innerPcreNonEmpty=$innerPcreNonEmpty");
+            error_log("fixNullableQuantifier: currentByteEnd=$overallByteEnd, strLen=" . strlen($str));
 
             // Iteratively extend the match from the current end position.
             $currentByteEnd = $overallByteEnd;
@@ -9213,6 +9224,7 @@ class Interpreter
 
             while ($currentByteEnd < strlen($str) && $iterations < $maxIterations) {
                 $iterations++;
+                error_log("fixNullableQuantifier: loop iteration $iterations, currentByteEnd=$currentByteEnd");
 
                 // Try matching inner pattern at current end position (sticky).
                 $innerResult = @preg_match(
@@ -9259,9 +9271,11 @@ class Interpreter
                 break;
             }
 
+            error_log("fixNullableQuantifier: loop done, extended=" . ($extended ? 'true' : 'false') . ", currentByteEnd=$currentByteEnd");
             if ($extended) {
                 // Update the overall match to include the extended portion.
                 $newOverallMatch = substr($str, $overallByteStart, $currentByteEnd - $overallByteStart);
+                error_log("fixNullableQuantifier: newOverallMatch=$newOverallMatch");
                 $matches[0] = [$newOverallMatch, $overallByteStart];
 
                 // Update the group capture to reflect the last iteration.
