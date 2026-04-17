@@ -1112,7 +1112,12 @@ class JsProxy extends JsObject
             $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
             $newObj->defineOwnProperty(
                 '[[NewTarget]]',
-                \PhpJs\Object\PropertyDescriptor::data($nt instanceof JsFunction ? $nt : $this->target, false, false, false),
+                \PhpJs\Object\PropertyDescriptor::data(
+                    $nt instanceof JsFunction ? $nt : $this->target,
+                    false,
+                    false,
+                    false,
+                ),
             );
             $result = $this->target->call($newObj, $args);
             return $result instanceof JsObject ? $result : $newObj;

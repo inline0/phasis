@@ -68,6 +68,23 @@ class ArrayConstructor
         // Symbol.iterator on Array.prototype, not on each instance.
         JsArray::installSymbolIteratorOnPrototype($proto);
 
+        // Array.prototype[@@unscopables]: null-prototype object, non-writable, non-enumerable, configurable.
+        $unscopablesList = new JsObject();
+        $unscopablesList->setPrototype(null);
+        $trueVal = new JsBoolean(true);
+        foreach (['at', 'copyWithin', 'entries', 'fill', 'find', 'findIndex',
+            'findLast', 'findLastIndex', 'flat', 'flatMap', 'includes',
+            'keys', 'toReversed', 'toSorted', 'toSpliced', 'values'] as $name) {
+            $unscopablesList->defineOwnProperty(
+                $name,
+                PropertyDescriptor::data($trueVal, true, true, true),
+            );
+        }
+        $proto->defineOwnSymbolProperty(
+            SymbolConstructor::unscopables(),
+            PropertyDescriptor::data($unscopablesList, false, false, true),
+        );
+
         $constructor->defineOwnProperty(
             'prototype',
             \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false),

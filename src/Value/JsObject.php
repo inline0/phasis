@@ -311,6 +311,18 @@ class JsObject implements JsValue
     }
 
     /**
+     * Define a symbol property with a specific property descriptor.
+     * Analogous to defineOwnProperty but for symbol-keyed properties.
+     */
+    public function defineOwnSymbolProperty(JsSymbol $symbol, PropertyDescriptor $desc): bool
+    {
+        $id = $symbol->getId();
+        $this->symbolProperties[$id] = $desc;
+        $this->symbolOrder[$id] = $symbol;
+        return true;
+    }
+
+    /**
      * Symbol [[Set]] with explicit receiver. Used by super references
      * so that setters are invoked with the correct `this`.
      * Returns false if the set failed (non-configurable/non-writable).

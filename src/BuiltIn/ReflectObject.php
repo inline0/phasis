@@ -301,7 +301,7 @@ class ReflectObject
                 $target = $args[0] ?? JsUndefined::instance();
                 // Step 1: IsConstructor(target) -- JsFunction that is constructable, or Proxy wrapping one.
                 $isConstructor = ($target instanceof JsFunction && $target->isConstructable())
-                    || ($target instanceof JsProxy && $target->isCallable());
+                    || ($target instanceof JsProxy && $target->isConstructable());
                 if (!$isConstructor) {
                     throw new TypeError('Reflect.construct: target must be a constructor');
                 }
@@ -313,7 +313,7 @@ class ReflectObject
                 // Step 2/3: newTarget defaults to target; must be a constructor.
                 $newTarget = $args[2] ?? $target;
                 $ntIsConstructor = ($newTarget instanceof JsFunction && $newTarget->isConstructable())
-                    || ($newTarget instanceof JsProxy && $newTarget->isCallable());
+                    || ($newTarget instanceof JsProxy && $newTarget->isConstructable());
                 if (!$ntIsConstructor) {
                     throw new TypeError('Reflect.construct: newTarget must be a constructor');
                 }
