@@ -374,7 +374,8 @@ class ObjectConstructor
         $proto->defineOwnProperty('valueOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'valueOf',
             function (JsValue $this_): JsValue {
-                return $this_;
+                // Per spec 20.1.3.7: return ToObject(this value).
+                return TypeConversion::toObject($this_);
             },
             0,
         ), true, false, true));
@@ -382,16 +383,14 @@ class ObjectConstructor
         $proto->defineOwnProperty('propertyIsEnumerable', PropertyDescriptor::data(JsFunction::fromCallable(
             'propertyIsEnumerable',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    return new JsBoolean(false);
-                }
+                // Per spec: 1. Let P = ToPropertyKey(V). 2. Let O = ToObject(this).
                 $key = $args[0] ?? JsUndefined::instance();
-                // Per spec, propertyIsEnumerable accepts symbol keys.
-                if ($key instanceof \PhpJs\Value\JsSymbol) {
-                    $desc = $this_->getSymbolPropertyDescriptor($key);
+                $propKey = TypeConversion::toPropertyKey($key);
+                $obj = TypeConversion::toObject($this_);
+                if ($propKey instanceof \PhpJs\Value\JsSymbol) {
+                    $desc = $obj->getSymbolPropertyDescriptor($propKey);
                 } else {
-                    $prop = TypeConversion::toString($key);
-                    $desc = $this_->getOwnPropertyDescriptor($prop);
+                    $desc = $obj->getOwnPropertyDescriptor($propKey->toJsString());
                 }
                 if ($desc === null) {
                     return new JsBoolean(false);

@@ -1286,6 +1286,13 @@ class Interpreter
             // Validate: return, break, and continue are not allowed at the top
             // level of eval code per spec.
             $this->validateEvalBody($program->body);
+
+            // Per 18.2.1.1.1: super is a SyntaxError in eval unless the
+            // direct eval is inside a method (environment has [[HomeObject]]).
+            $inMethod = $env->has('[[HomeObject]]');
+            if (!$inMethod && $this->astContainsSuper($program->body)) {
+                throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
+            }
         } catch (\PhpJs\Exceptions\SyntaxError $e) {
             $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
