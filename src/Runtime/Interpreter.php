@@ -3532,11 +3532,19 @@ class Interpreter
                 $env->set($name, $fobj, false);
             }
             // Propagate to the variable environment (enclosing function/global
-            // scope) where the var binding was hoisted. Walk up through the
-            // parent to find the var binding.
+            // scope) where the var binding was hoisted. Only propagate if the
+            // binding was created by Annex B hoisting (not a parameter or
+            // let/const that would suppress the extension per B.3.3.1 step ii).
             $parent = $env->getParent();
-            if ($parent !== null && $parent->has($name)) {
-                $parent->set($name, $fobj, false);
+            if ($parent !== null) {
+                // Walk up to find the var scope where Annex B hoisting created the binding.
+                $varScope = $parent;
+                while ($varScope !== null && !$varScope->hasOwnBinding($name)) {
+                    $varScope = $varScope->getParent();
+                }
+                if ($varScope !== null && $varScope->isAnnexBHoisted($name)) {
+                    $varScope->set($name, $fobj, false);
+                }
             }
         }
 
