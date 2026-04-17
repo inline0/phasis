@@ -79,6 +79,19 @@ class JsTypedArray extends JsObject
     }
 
     /**
+     * Throw TypeError if the underlying buffer is detached.
+     */
+    private function validateNotDetached(): void
+    {
+        if ($this->buffer->isDetached()) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot perform %TypedArray%.prototype method'
+                . ' on a detached ArrayBuffer'
+            );
+        }
+    }
+
+    /**
      * Create a typed array from a length (allocates a new buffer).
      */
     public static function fromLength(
@@ -141,6 +154,7 @@ class JsTypedArray extends JsObject
     /** Get element at typed index. */
     public function getIndex(int $index): JsValue
     {
+        $this->validateNotDetached();
         if ($index < 0 || $index >= $this->length) {
             return JsUndefined::instance();
         }
@@ -179,6 +193,7 @@ class JsTypedArray extends JsObject
     /** Set element at typed index. */
     public function setIndex(int $index, JsValue $value): void
     {
+        $this->validateNotDetached();
         if ($index < 0 || $index >= $this->length) {
             return;
         }
