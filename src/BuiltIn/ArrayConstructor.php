@@ -133,7 +133,8 @@ class ArrayConstructor
      */
     private static function arraySpeciesCreate(JsObject $originalArray, int $length): JsObject
     {
-        if (!$originalArray instanceof JsArray) {
+        // Per spec 7.3.20 step 3: IsArray(originalArray), walks through Proxy.
+        if (!self::isArrayValue($originalArray)) {
             $arr = new JsArray();
             $arr->setLength($length);
             return $arr;
@@ -242,11 +243,8 @@ class ArrayConstructor
                 $o = self::toObject($this_);
                 $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
-                    if ($o instanceof JsArray) {
-                        $o->setLength(0);
-                    } else {
-                        $o->set('length', new JsNumber(0.0));
-                    }
+                    // Per spec, Set(O, "length", +0F, true): throws on failure.
+                    $o->set('length', new JsNumber(0.0), true);
                     return JsUndefined::instance();
                 }
                 $newLen = $len - 1;
@@ -507,7 +505,8 @@ class ArrayConstructor
                         if (!$spreadVal instanceof JsUndefined) {
                             $spreadable = TypeConversion::toBoolean($spreadVal);
                         } else {
-                            $spreadable = ($e instanceof JsArray);
+                            // Per spec: IsArray(E) walks through Proxy targets.
+                            $spreadable = self::isArrayValue($e);
                         }
                     }
                     if ($spreadable) {
@@ -520,18 +519,32 @@ class ArrayConstructor
                         for ($k = 0; $k < $intLen; $k++) {
                             $key = (string) $k;
                             if ($e->has($key)) {
-                                $result->defineOwnProperty(
-                                    (string) $n,
-                                    PropertyDescriptor::data($e->get($key), true, true, true),
-                                );
+                                // CreateDataPropertyOrThrow per spec.
+                                if (
+                                    !$result->defineOwnProperty(
+                                        (string) $n,
+                                        PropertyDescriptor::data($e->get($key), true, true, true),
+                                    )
+                                ) {
+                                    throw new TypeError(
+                                        'Cannot create property \'' . $n . '\' on result'
+                                    );
+                                }
                             }
                             $n++;
                         }
                     } else {
-                        $result->defineOwnProperty(
-                            (string) $n,
-                            PropertyDescriptor::data($e, true, true, true),
-                        );
+                        // CreateDataPropertyOrThrow per spec.
+                        if (
+                            !$result->defineOwnProperty(
+                                (string) $n,
+                                PropertyDescriptor::data($e, true, true, true),
+                            )
+                        ) {
+                            throw new TypeError(
+                                'Cannot create property \'' . $n . '\' on result'
+                            );
+                        }
                         $n++;
                     }
                 }

@@ -1025,7 +1025,13 @@ class Parser
 
     private function parseBinaryExpression(int $minPrec): Node
     {
-        $left = $this->parseUnaryExpression();
+        // Handle #name in obj (private field brand check).
+        if ($this->check(TokenType::PrivateIdentifier) && $this->peekIs(TokenType::In)) {
+            $token = $this->advance();
+            $left = new PrivateIdentifier($token->location, $token->value);
+        } else {
+            $left = $this->parseUnaryExpression();
+        }
 
         while (true) {
             $token = $this->current();

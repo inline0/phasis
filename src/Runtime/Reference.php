@@ -35,6 +35,9 @@ class Reference
      */
     public readonly ?JsObject $thisValue;
 
+    /** For private field references (#name). Null for normal references. */
+    private ?string $privateFieldName;
+
     public function __construct(
         public readonly JsValue|Environment $base,
         public readonly string $name,
@@ -42,10 +45,12 @@ class Reference
         ?JsSymbol $symbolKey = null,
         ?JsValue $rawKey = null,
         ?JsObject $thisValue = null,
+        ?string $privateFieldName = null,
     ) {
         $this->symbolKey = $symbolKey;
         $this->rawKey = $rawKey;
         $this->thisValue = $thisValue;
+        $this->privateFieldName = $privateFieldName;
     }
 
     /**
@@ -68,6 +73,16 @@ class Reference
     /** Resolve the reference to its current value. */
     public function getValue(): JsValue
     {
+        // Private field access
+        if ($this->privateFieldName !== null) {
+            if ($this->base instanceof JsObject) {
+                return $this->base->getPrivateField($this->privateFieldName);
+            }
+            throw new TypeError(
+                'Cannot read private member ' . $this->privateFieldName . ' from a non-object',
+            );
+        }
+
         if ($this->base instanceof Environment) {
             return $this->base->get($this->name);
         }
@@ -101,6 +116,17 @@ class Reference
     /** Assign a value through this reference. */
     public function setValue(JsValue $value): void
     {
+        // Private field assignment
+        if ($this->privateFieldName !== null) {
+            if ($this->base instanceof JsObject) {
+                $this->base->setPrivateFieldValue($this->privateFieldName, $value);
+                return;
+            }
+            throw new TypeError(
+                'Cannot write private member ' . $this->privateFieldName . ' to a non-object',
+            );
+        }
+
         if ($this->base instanceof Environment) {
             $this->base->set($this->name, $value, $this->strict);
             return;

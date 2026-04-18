@@ -2459,10 +2459,14 @@ class Interpreter
             }
         }
 
-        // Run field initializers in order.
+        // Run field initializers in order. Create an environment with `this`
+        // bound to the instance so initializers can reference this and
+        // previously initialized fields.
+        $fieldEnv = $env->createChild();
+        $fieldEnv->defineVar('this', $instance);
         foreach ($ctor->getInstanceFieldInitializers() as [$key, $initNode, $computed, $isPrivate]) {
             $value = $initNode !== null
-                ? $this->evaluate($initNode, $env)
+                ? $this->evaluate($initNode, $fieldEnv)
                 : JsUndefined::instance();
 
             if ($isPrivate) {
@@ -4460,10 +4464,14 @@ class Interpreter
             if ($value instanceof JsUndefined) {
                 $value = $this->evaluate($pattern->right, $env);
                 // Function name inference: check AST node type.
+                // Per spec, only apply if HasOwnProperty(value, "name") is false,
+                // i.e. the function does not have an explicitly set name property
+                // (e.g. from a static name() method on a class).
                 if (
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
                     && $this->isAnonymousFunctionDefinitionNode($pattern->right)
+                    && !$this->hasExplicitNameProperty($value)
                 ) {
                     $value->setName($pattern->left->name);
                 }
@@ -4520,6 +4528,7 @@ class Interpreter
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
                     && $this->isAnonymousFunctionDefinitionNode($pattern->right)
+                    && !$this->hasExplicitNameProperty($value)
                 ) {
                     $value->setName($pattern->left->name);
                 }
@@ -5557,6 +5566,7 @@ class Interpreter
                     $value instanceof JsFunction
                     && $pattern->left instanceof Identifier
                     && $this->isAnonymousFunctionDefinitionNode($pattern->right)
+                    && !$this->hasExplicitNameProperty($value)
                 ) {
                     $value->setName($pattern->left->name);
                 }
@@ -5954,6 +5964,8 @@ class Interpreter
                 // Recurse into for-of/for-in body for nested var hoisting only.
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif ($stmt instanceof ForStatement) {
                 // Hoist var declarations from for-statement init.
@@ -5964,6 +5976,8 @@ class Interpreter
                 }
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif (
                 $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
@@ -5971,6 +5985,14 @@ class Interpreter
             ) {
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } elseif ($stmt->body instanceof VariableDeclaration && $stmt->body->kind === 'var') {
+                    // Handle non-block body: `do var x; while(false);`
+                    foreach ($stmt->body->declarations as $decl) {
+                        $this->hoistVarNames($decl->id, $env);
+                    }
+                } else {
+                    // Handle non-block, non-var body (e.g. a single statement).
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
                 // Only hoist var declarations from if/else block bodies.
@@ -6575,6 +6597,8 @@ class Interpreter
                 }
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif ($stmt instanceof ForStatement) {
                 if ($stmt->init instanceof VariableDeclaration && $stmt->init->kind === 'var') {
@@ -6584,6 +6608,8 @@ class Interpreter
                 }
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif (
                 $stmt instanceof \PhpJs\Ast\Statement\WhileStatement
@@ -6591,14 +6617,20 @@ class Interpreter
             ) {
                 if ($stmt->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->body->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->body], $env);
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
                 if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->consequent->body, $env);
+                } else {
+                    $this->hoistVarDeclarationsOnly([$stmt->consequent], $env);
                 }
                 if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
                     $this->hoistVarDeclarationsOnly($stmt->alternate->body, $env);
                 } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\IfStatement) {
+                    $this->hoistVarDeclarationsOnly([$stmt->alternate], $env);
+                } elseif ($stmt->alternate !== null) {
                     $this->hoistVarDeclarationsOnly([$stmt->alternate], $env);
                 }
             } elseif ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
@@ -6825,8 +6857,10 @@ class Interpreter
             }
         } elseif ($stmt instanceof IfStatement) {
             // Check function declarations directly as consequent or alternate.
-            if ($stmt->consequent instanceof FunctionDeclaration
-                && !$stmt->consequent->async && !$stmt->consequent->generator) {
+            if (
+                $stmt->consequent instanceof FunctionDeclaration
+                && !$stmt->consequent->async && !$stmt->consequent->generator
+            ) {
                 $this->addEvalAnnexBCandidate(
                     $stmt->consequent,
                     $declaredFuncOrVarNames,
@@ -6843,8 +6877,10 @@ class Interpreter
                     $seen,
                 );
             }
-            if ($stmt->alternate instanceof FunctionDeclaration
-                && !$stmt->alternate->async && !$stmt->alternate->generator) {
+            if (
+                $stmt->alternate instanceof FunctionDeclaration
+                && !$stmt->alternate->async && !$stmt->alternate->generator
+            ) {
                 $this->addEvalAnnexBCandidate(
                     $stmt->alternate,
                     $declaredFuncOrVarNames,
@@ -7020,8 +7056,10 @@ class Interpreter
                 if ($this->blockContainsNode($node, $target)) {
                     // Check for lexical bindings in this block scope.
                     foreach ($node->body as $child) {
-                        if ($child instanceof VariableDeclaration
-                            && ($child->kind === 'let' || $child->kind === 'const')) {
+                        if (
+                            $child instanceof VariableDeclaration
+                            && ($child->kind === 'let' || $child->kind === 'const')
+                        ) {
                             foreach ($child->declarations as $d) {
                                 foreach ($this->patternBoundNames($d->id) as $n) {
                                     if ($n === $name) {
@@ -7034,8 +7072,10 @@ class Interpreter
                     return $this->checkEvalAnnexBEarlyError($node->body, $name, $target);
                 }
             } elseif ($node instanceof ForStatement) {
-                if ($node->init instanceof VariableDeclaration
-                    && ($node->init->kind === 'let' || $node->init->kind === 'const')) {
+                if (
+                    $node->init instanceof VariableDeclaration
+                    && ($node->init->kind === 'let' || $node->init->kind === 'const')
+                ) {
                     foreach ($node->init->declarations as $d) {
                         foreach ($this->patternBoundNames($d->id) as $n) {
                             if ($n === $name && $this->nodeContainsTarget($node, $target)) {
@@ -7050,8 +7090,10 @@ class Interpreter
                     }
                 }
             } elseif ($node instanceof ForInStatement || $node instanceof ForOfStatement) {
-                if ($node->left instanceof VariableDeclaration
-                    && ($node->left->kind === 'let' || $node->left->kind === 'const')) {
+                if (
+                    $node->left instanceof VariableDeclaration
+                    && ($node->left->kind === 'let' || $node->left->kind === 'const')
+                ) {
                     foreach ($node->left->declarations as $d) {
                         foreach ($this->patternBoundNames($d->id) as $n) {
                             if ($n === $name && $this->nodeContainsTarget($node, $target)) {
@@ -7071,8 +7113,10 @@ class Interpreter
                     // Check for lexical bindings across all case clauses.
                     foreach ($node->cases as $case) {
                         foreach ($case->consequent as $child) {
-                            if ($child instanceof VariableDeclaration
-                                && ($child->kind === 'let' || $child->kind === 'const')) {
+                            if (
+                                $child instanceof VariableDeclaration
+                                && ($child->kind === 'let' || $child->kind === 'const')
+                            ) {
                                 foreach ($child->declarations as $d) {
                                     foreach ($this->patternBoundNames($d->id) as $n) {
                                         if ($n === $name) {
@@ -7086,8 +7130,10 @@ class Interpreter
                 }
             } elseif ($node instanceof TryStatement) {
                 if ($this->nodeContainsTarget($node, $target)) {
-                    if ($node->handler !== null
-                        && $this->nodeContainsTarget($node->handler->body, $target)) {
+                    if (
+                        $node->handler !== null
+                        && $this->nodeContainsTarget($node->handler->body, $target)
+                    ) {
                         // Check destructuring catch parameter.
                         $catchParam = $node->handler->param;
                         if ($catchParam !== null && !($catchParam instanceof Identifier)) {
@@ -7136,8 +7182,10 @@ class Interpreter
             if ($node->consequent === $target || $this->nodeContainsTarget($node->consequent, $target)) {
                 return true;
             }
-            if ($node->alternate !== null
-                && ($node->alternate === $target || $this->nodeContainsTarget($node->alternate, $target))) {
+            if (
+                $node->alternate !== null
+                && ($node->alternate === $target || $this->nodeContainsTarget($node->alternate, $target))
+            ) {
                 return true;
             }
             return false;
@@ -7167,8 +7215,10 @@ class Interpreter
         if ($node instanceof LabeledStatement) {
             return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
         }
-        if ($node instanceof ForStatement || $node instanceof WhileStatement
-            || $node instanceof DoWhileStatement) {
+        if (
+            $node instanceof ForStatement || $node instanceof WhileStatement
+            || $node instanceof DoWhileStatement
+        ) {
             return $node->body === $target || $this->nodeContainsTarget($node->body, $target);
         }
         if ($node instanceof ForInStatement || $node instanceof ForOfStatement) {
@@ -7751,6 +7801,7 @@ class Interpreter
                         $elemValue instanceof JsFunction
                         && $elemTarget instanceof Identifier
                         && $this->isAnonymousFunctionDefinitionNode($defaultNode)
+                        && !$this->hasExplicitNameProperty($elemValue)
                     ) {
                         $elemValue->setName($elemTarget->name);
                     }
@@ -7841,6 +7892,7 @@ class Interpreter
                         $propValue instanceof JsFunction
                         && $realTarget instanceof Identifier
                         && $this->isAnonymousFunctionDefinitionNode($defaultNode2)
+                        && !$this->hasExplicitNameProperty($propValue)
                     ) {
                         $propValue->setName($realTarget->name);
                     }

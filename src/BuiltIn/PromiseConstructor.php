@@ -45,7 +45,15 @@ class PromiseConstructor
                     throw new TypeError('Promise resolver is not a function');
                 }
 
-                $promise = new JsPromise($proto);
+                // Per spec OrdinaryCreateFromConstructor: use NewTarget's prototype.
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ctorProto = $newTarget->get('prototype');
+                    $useProto = $ctorProto instanceof JsObject ? $ctorProto : $proto;
+                } else {
+                    $useProto = $proto;
+                }
+                $promise = new JsPromise($useProto);
 
                 $resolveHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
                     $promise->resolve($args[0] ?? JsUndefined::instance());
@@ -512,7 +520,14 @@ class PromiseConstructor
                 '[[NewTarget]]',
                 PropertyDescriptor::data($ctor, false, false, false),
             );
-            $result = $ctor->call($obj, $args);
+            // Use the interpreter's callFunction for class constructors,
+            // because their native callables expect 3 args (this, args, interp).
+            $interp = JsFunction::getInterpreterInstance();
+            if ($interp !== null) {
+                $result = $interp->callFunction($ctor, $obj, $args);
+            } else {
+                $result = $ctor->call($obj, $args);
+            }
             return $result instanceof JsObject ? $result : $obj;
         }
         throw new TypeError('not a constructor');
