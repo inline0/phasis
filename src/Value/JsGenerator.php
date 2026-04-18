@@ -61,6 +61,22 @@ class JsGenerator extends JsObject
         }
         parent::__construct($instanceProto);
 
+        // Ensure the prototype chain is properly wired to Object.prototype.
+        // %IteratorPrototype% may have been created before Object.prototype was
+        // set as the global prototype. Walk up and fix any broken link.
+        if ($instanceProto !== null) {
+            $tail = $instanceProto;
+            while ($tail->getPrototype() !== null) {
+                $tail = $tail->getPrototype();
+            }
+            // If the tail is not Object.prototype itself (Object.prototype has
+            // null [[Prototype]]), wire it up so toString, etc. are reachable.
+            $globalProto = JsObject::getGlobalPrototype();
+            if ($globalProto !== null && $tail !== $globalProto) {
+                $tail->setPrototype($globalProto);
+            }
+        }
+
         $fn = $generatorFn;
         $thisVal = $thisValue;
         $fnArgs = $args;

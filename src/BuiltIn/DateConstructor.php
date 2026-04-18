@@ -174,6 +174,9 @@ class DateConstructor
     /**
      * Compose a time value from component arguments in UTC.
      *
+     * Uses the spec's MakeDay/MakeTime/MakeDate algorithms with IEEE 754 float
+     * arithmetic to match V8's precision behavior.
+     *
      * @param list<JsValue> $args
      */
     private static function makeUtcMs(array $args): float
@@ -193,26 +196,96 @@ class DateConstructor
             return NAN;
         }
 
-        $yi = (int) $y;
+        $yi = self::toInteger($y);
         if ($yi >= 0 && $yi <= 99) {
             $yi += 1900;
         }
 
-        $mi = (int) $m;
-        $di = (int) $dt;
-        $hi = (int) $h;
-        $mini = (int) $min;
-        $si = (int) $s;
-        $msi = (int) $milli;
+        $mi = self::toInteger($m);
+        $di = self::toInteger($dt);
+        $hi = self::toInteger($h);
+        $mini = self::toInteger($min);
+        $si = self::toInteger($s);
+        $msi = self::toInteger($milli);
 
-        // Use DateTimeImmutable to correctly handle all years including < 100.
-        $ts = self::composeUtcTimestamp($yi, $mi, $di, $hi, $mini, $si);
-        if ($ts === null) {
+        // Use MakeDay/MakeTime/MakeDate per spec (IEEE 754 float arithmetic).
+        $day = self::makeDay($yi, $mi, $di);
+        if (!is_finite($day)) {
             return NAN;
         }
+        $time = self::makeTime($hi, $mini, $si, $msi);
+        $date = self::makeDate($day, $time);
+        return self::timeClip($date);
+    }
 
-        $ms = (float) $ts * 1000.0 + (float) $msi;
-        return self::timeClip($ms);
+    /**
+     * ES spec 21.4.1.11 MakeTime(hour, min, sec, ms).
+     *
+     * Computes time value in ms using IEEE 754 float arithmetic.
+     * The order of operations must match the spec exactly for precision.
+     */
+    private static function makeTime(float $hour, float $min, float $sec, float $ms): float
+    {
+        if (!is_finite($hour) || !is_finite($min) || !is_finite($sec) || !is_finite($ms)) {
+            return NAN;
+        }
+        // Per spec: ((h * msPerHour + m * msPerMinute) + s * msPerSecond) + milli
+        return (($hour * 3600000.0 + $min * 60000.0) + $sec * 1000.0) + $ms;
+    }
+
+    /**
+     * ES spec 21.4.1.12 MakeDay(year, month, date).
+     *
+     * Computes the day number from year/month/date components.
+     */
+    private static function makeDay(float $year, float $month, float $date): float
+    {
+        if (!is_finite($year) || !is_finite($month) || !is_finite($date)) {
+            return NAN;
+        }
+        $y = $year + floor($month / 12.0);
+        $m = fmod($month, 12.0);
+        if ($m < 0) {
+            $m += 12.0;
+        }
+        // Find the day number for the first day of the given year/month in UTC.
+        // Use DateTimeImmutable to correctly handle years 0-99 (gmmktime misinterprets them).
+        $yi = (int) $y;
+        $mi = (int) $m;
+        try {
+            $dt = new \DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
+            $dt = $dt->setDate($yi, $mi + 1, 1);
+            $dt = $dt->setTime(0, 0, 0);
+            $ts = (int) $dt->format('U');
+        } catch (\Throwable) {
+            return NAN;
+        }
+        $dayStart = floor($ts / 86400.0);
+        return $dayStart + $date - 1.0;
+    }
+
+    /**
+     * ES spec 21.4.1.13 MakeDate(day, time).
+     *
+     * Combines day number and time-of-day into a time value (ms since epoch).
+     */
+    private static function makeDate(float $day, float $time): float
+    {
+        if (!is_finite($day) || !is_finite($time)) {
+            return NAN;
+        }
+        return $day * 86400000.0 + $time;
+    }
+
+    /**
+     * ES spec ToInteger: truncate toward zero.
+     */
+    private static function toInteger(float $value): float
+    {
+        if (is_nan($value) || $value === 0.0) {
+            return 0.0;
+        }
+        return ($value > 0 ? 1 : -1) * floor(abs($value));
     }
 
     /** Current time in milliseconds since epoch, truncated to integer. */

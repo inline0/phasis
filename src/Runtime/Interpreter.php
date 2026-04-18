@@ -3499,12 +3499,48 @@ class Interpreter
             return $val ?? JsUndefined::instance();
         }
 
-        // Auto-boxing for primitives (number, boolean)
+        // Auto-boxing for primitives (number, boolean).
+        // In strict mode, getters on the prototype chain must receive the
+        // original primitive as `this`, not the boxed wrapper object.
         $boxed = TypeConversion::toObject($obj);
+        if ($this->strictMode) {
+            $result = $this->getPropertyWithPrimitiveReceiver($boxed, $key, $isSymbolKey, $rawKey, $obj);
+            return $result;
+        }
         if ($isSymbolKey) {
             return $boxed->getBySymbol($rawKey);
         }
         return $boxed->get($key);
+    }
+
+    /**
+     * Walk the prototype chain starting from $object, looking for property $key.
+     * If a getter is found, call it with $primitiveReceiver as `this`.
+     * Otherwise return the data value.
+     */
+    private function getPropertyWithPrimitiveReceiver(
+        JsObject $object,
+        string $key,
+        bool $isSymbolKey,
+        ?JsValue $rawKey,
+        JsValue $primitiveReceiver,
+    ): JsValue {
+        $current = $object;
+        while ($current !== null) {
+            if ($isSymbolKey && $rawKey instanceof JsSymbol) {
+                $desc = $current->getSymbolPropertyDescriptor($rawKey);
+            } else {
+                $desc = $current->getOwnPropertyDescriptor($key);
+            }
+            if ($desc !== null) {
+                if ($desc->get !== null) {
+                    return $desc->get->call($primitiveReceiver, []);
+                }
+                return $desc->value ?? JsUndefined::instance();
+            }
+            $current = $current->getPrototype();
+        }
+        return JsUndefined::instance();
     }
 
     /**
@@ -3589,16 +3625,26 @@ class Interpreter
             if ($prop instanceof SpreadElement) {
                 $source = $this->evaluate($prop->argument, $env);
                 if ($source instanceof JsObject) {
-                    // Copy own enumerable string-keyed properties (CopyDataProperties).
-                    foreach ($source->getOwnEnumerableKeys() as $key) {
-                        $obj->set($key, $source->get($key));
-                    }
-                    // Copy own enumerable symbol-keyed properties (per spec CopyDataProperties).
-                    // Use getBySymbol to invoke accessor getters, matching the
-                    // behavior of string-keyed property copying above.
-                    foreach ($source->getOwnSymbolsWithDescriptors() as [$sym, $desc]) {
-                        if ($desc->enumerable !== false) {
-                            $obj->setBySymbol($sym, $source->getBySymbol($sym));
+                    // Per spec 7.3.37 CopyDataProperties: call [[OwnPropertyKeys]]
+                    // to get all keys (strings + symbols), then for each key,
+                    // call [[GetOwnProperty]] and copy if enumerable.
+                    // Using ordinaryOwnPropertyKeys ensures Proxy ownKeys traps
+                    // return both string and symbol keys correctly.
+                    $allKeys = $source->ordinaryOwnPropertyKeys();
+                    foreach ($allKeys as $propKey) {
+                        if ($propKey instanceof JsSymbol) {
+                            $desc = $source->getSymbolPropertyDescriptor($propKey);
+                            if ($desc !== null && $desc->enumerable !== false) {
+                                $obj->setBySymbol($propKey, $source->getBySymbol($propKey));
+                            }
+                        } else {
+                            $strKey = $propKey instanceof JsString
+                                ? $propKey->value
+                                : TypeConversion::toString($propKey);
+                            $desc = $source->getOwnPropertyDescriptor($strKey);
+                            if ($desc !== null && $desc->enumerable !== false) {
+                                $obj->defineOwnProperty($strKey, PropertyDescriptor::data($source->get($strKey)));
+                            }
                         }
                     }
                 }
@@ -3635,6 +3681,15 @@ class Interpreter
                     // do not have a .prototype property.
                     $fn->setNonConstructable();
                     $fn->forceDelete('prototype');
+                    // Per spec 14.3.8/14.3.9 SetFunctionName(closure, propKey, prefix):
+                    // set the function name to "get <key>" or "set <key>".
+                    if ($isSymbolKey) {
+                        $symDesc = $rawKey->getDescription();
+                        $displayName = $symDesc !== null ? "[{$symDesc}]" : '';
+                    } else {
+                        $displayName = $key;
+                    }
+                    $fn->setName("{$prop->kind} {$displayName}");
                     // Accessors in object literals have [[HomeObject]] = the object.
                     $fn->setHomeObject($obj);
                     if ($isSymbolKey) {
@@ -3693,7 +3748,11 @@ class Interpreter
                     $value->setNonConstructable();
                     $value->forceDelete('prototype');
                 }
-                $obj->set($key, $value);
+                // Per spec 13.2.5.5 PropertyDefinitionEvaluation: call
+                // CreateDataPropertyOrThrow which uses [[DefineOwnProperty]],
+                // NOT [[Set]]. Using set() would trigger prototype accessors
+                // (e.g. __proto__ setter or non-writable prototype properties).
+                $obj->defineOwnProperty($key, PropertyDescriptor::data($value));
             }
         }
 
@@ -3961,7 +4020,23 @@ class Interpreter
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
     {
-        $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $env);
+        // Per spec 15.7.14 ClassDefinitionEvaluation step 2-4:
+        // If the class has a name, create a new lexical scope and bind the
+        // class name in it. Methods inside the class body will close over
+        // this scope, so they can reference the class by name even if the
+        // outer binding is shadowed. After evaluation, the binding is
+        // not visible outside the class.
+        $classEnv = $env;
+        if ($node->id !== null) {
+            $classEnv = $env->createChild();
+            // Pre-declare as let so TDZ applies during class evaluation.
+            $classEnv->declareLet($node->id->name);
+        }
+        $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $classEnv);
+        // Bind the class name to the constructor in the class scope.
+        if ($node->id !== null) {
+            $classEnv->initialize($node->id->name, $cls);
+        }
         // Per spec, Function.prototype.toString on a class returns the full class source text.
         if ($node->sourceText !== null) {
             $cls->setSourceText($node->sourceText);
@@ -7070,7 +7145,12 @@ class Interpreter
     private function forceDefineVarName(Node $pattern, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            $env->defineVar($pattern->name, JsUndefined::instance());
+            // Per spec 10.2.11 step 28: if there is already a binding for the
+            // name (e.g. a formal parameter), the var declaration is a no-op.
+            // Only create the binding if it does not exist yet.
+            if (!$env->hasOwnBinding($pattern->name)) {
+                $env->defineVar($pattern->name, JsUndefined::instance());
+            }
         } elseif ($pattern instanceof ArrayPattern) {
             foreach ($pattern->elements as $elem) {
                 if ($elem !== null) {
