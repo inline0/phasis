@@ -32,6 +32,21 @@ class JsObject implements JsValue
     /** @var array<string, bool> Track which private names have been defined on this object. */
     private array $privateFieldBrands = [];
 
+    /** @var array<int, bool> Track which constructors have initialized fields on this object. */
+    private array $fieldsInitialized = [];
+
+    /** Mark that a constructor has initialized its fields on this object. */
+    public function markFieldsInitialized(int $ctorId): void
+    {
+        $this->fieldsInitialized[$ctorId] = true;
+    }
+
+    /** Check if a constructor has already initialized its fields on this object. */
+    public function areFieldsInitialized(int $ctorId): bool
+    {
+        return isset($this->fieldsInitialized[$ctorId]);
+    }
+
     public static function setGlobalPrototype(JsObject $proto): void
     {
         self::$globalPrototype = $proto;
