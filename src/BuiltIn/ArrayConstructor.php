@@ -468,21 +468,24 @@ class ArrayConstructor
                     throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
 
-                $result = new JsArray();
+                // ArraySpeciesCreate(O, count) per spec.
+                $a = self::arraySpeciesCreate($this_, $count);
                 $n = 0;
                 for ($i = $start; $i < $end; $i++, $n++) {
                     $from = (string) $i;
                     if ($this_->has($from)) {
-                        // Use defineOwnProperty (CreateDataPropertyOrThrow) to bypass
-                        // non-writable inherited properties on Array.prototype.
-                        $result->defineOwnProperty(
+                        $a->defineOwnProperty(
                             (string) $n,
                             PropertyDescriptor::data($this_->get($from), true, true, true),
                         );
                     }
                 }
-                $result->setLength($count);
-                return $result;
+                if ($a instanceof JsArray) {
+                    $a->setLength($count);
+                } else {
+                    $a->set('length', new JsNumber((float) $count));
+                }
+                return $a;
             },
             2
         ), true, false, true));
@@ -491,7 +494,8 @@ class ArrayConstructor
             'concat',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $result = new JsArray();
+                // Step 2: ArraySpeciesCreate(O, 0).
+                $result = self::arraySpeciesCreate($o, 0);
                 $n = 0;
                 // Elements to process: this first, then each argument.
                 $items = array_merge([$o], $args);
@@ -531,7 +535,11 @@ class ArrayConstructor
                         $n++;
                     }
                 }
-                $result->setLength($n);
+                if ($result instanceof JsArray) {
+                    $result->setLength($n);
+                } else {
+                    $result->set('length', new JsNumber((float) $n));
+                }
                 return $result;
             },
             1
@@ -577,8 +585,7 @@ class ArrayConstructor
                     throw new TypeError('map callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $result = new JsArray();
-                $result->setLength($len);
+                $result = self::arraySpeciesCreate($o, $len);
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key)) {
@@ -595,26 +602,37 @@ class ArrayConstructor
         $proto->defineOwnProperty('filter', PropertyDescriptor::data(JsFunction::fromCallable(
             'filter',
             function (JsValue $this_, array $args): JsValue {
-                $this_ = self::toObject($this_);
+                $o = self::toObject($this_);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('filter callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $result = [];
-                $len = self::getLen($this_);
+                // ArraySpeciesCreate(O, 0) per spec.
+                $a = self::arraySpeciesCreate($o, 0);
+                $to = 0;
+                $len = self::getLen($o);
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
-                    if (!$this_->has($key)) {
+                    if (!$o->has($key)) {
                         continue;
                     }
-                    $val = $this_->get($key);
-                    $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
+                    $val = $o->get($key);
+                    $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
                     if (TypeConversion::toBoolean($keep)) {
-                        $result[] = $val;
+                        $a->defineOwnProperty(
+                            (string) $to,
+                            PropertyDescriptor::data($val, true, true, true),
+                        );
+                        $to++;
                     }
                 }
-                return JsArray::fromArray($result);
+                if ($a instanceof JsArray) {
+                    $a->setLength($to);
+                } else {
+                    $a->set('length', new JsNumber((float) $to));
+                }
+                return $a;
             },
             1
         ), true, false, true));
@@ -919,13 +937,15 @@ class ArrayConstructor
             'flatMap',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
+                $len = self::lengthOfArrayLike($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('flatMap callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $result = [];
-                $len = self::lengthOfArrayLike($o);
+                // ArraySpeciesCreate(O, 0) per spec.
+                $a = self::arraySpeciesCreate($o, 0);
+                $to = 0;
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
                     if (!$o->has($key)) {
@@ -936,13 +956,26 @@ class ArrayConstructor
                     if ($mapped instanceof JsArray) {
                         $innerLen = $mapped->getLength();
                         for ($j = 0; $j < $innerLen; $j++) {
-                            $result[] = $mapped->get((string) $j);
+                            $a->defineOwnProperty(
+                                (string) $to,
+                                PropertyDescriptor::data($mapped->get((string) $j), true, true, true),
+                            );
+                            $to++;
                         }
                     } else {
-                        $result[] = $mapped;
+                        $a->defineOwnProperty(
+                            (string) $to,
+                            PropertyDescriptor::data($mapped, true, true, true),
+                        );
+                        $to++;
                     }
                 }
-                return JsArray::fromArray($result);
+                if ($a instanceof JsArray) {
+                    $a->setLength($to);
+                } else {
+                    $a->set('length', new JsNumber((float) $to));
+                }
+                return $a;
             },
             1
         ), true, false, true));
@@ -1027,15 +1060,19 @@ class ArrayConstructor
                 $deleteCount = min($deleteCount, $len - $start);
                 $insertItems = array_slice($args, 2);
 
-                // Collect removed elements without materializing a huge PHP array.
-                $removed = new JsArray();
+                // ArraySpeciesCreate(O, actualDeleteCount) per spec.
+                $removed = self::arraySpeciesCreate($this_, $deleteCount);
                 for ($i = 0; $i < $deleteCount; $i++) {
                     $from = (string) ($start + $i);
                     if ($this_->has($from)) {
                         $removed->set((string) $i, $this_->get($from));
                     }
                 }
-                $removed->setLength($deleteCount);
+                if ($removed instanceof JsArray) {
+                    $removed->setLength($deleteCount);
+                } else {
+                    $removed->set('length', new JsNumber((float) $deleteCount));
+                }
 
                 $insertCount = count($insertItems);
                 $diff = $insertCount - $deleteCount;

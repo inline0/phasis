@@ -493,7 +493,7 @@ class JsProxy extends JsObject
         $extensibleTarget = $this->target->isExtensible();
         $targetKeys = $this->target->ownKeys();
 
-        // Find non-configurable keys on target.
+        // Find non-configurable string keys on target.
         $targetNonconfigurableKeys = [];
         $targetConfigurableKeys = [];
         foreach ($targetKeys as $key) {
@@ -502,6 +502,20 @@ class JsProxy extends JsObject
                 $targetNonconfigurableKeys[] = $key;
             } else {
                 $targetConfigurableKeys[] = $key;
+            }
+        }
+
+        // Also check symbol keys for non-configurable invariant.
+        // Per spec, non-configurable symbol keys must appear in trap result.
+        $targetSymbolPairs = $this->target->getOwnSymbolsWithDescriptors();
+        foreach ($targetSymbolPairs as [$sym, $desc]) {
+            if ($desc->configurable === false) {
+                // Non-configurable symbol key must be in trap result.
+                // Since trap result is string-only, this always fails.
+                throw new TypeError(
+                    "'ownKeys' on proxy: trap result did not include "
+                    . 'non-configurable symbol key'
+                );
             }
         }
 
@@ -517,6 +531,7 @@ class JsProxy extends JsObject
 
         // Step 23: If target is non-extensible, all target keys must be in trap result
         // and no extra keys allowed.
+        $totalTargetKeys = count($targetKeys) + count($targetSymbolPairs);
         if (!$extensibleTarget) {
             foreach ($targetConfigurableKeys as $key) {
                 if (!isset($trapSet[$key])) {
@@ -525,7 +540,7 @@ class JsProxy extends JsObject
                     );
                 }
             }
-            if (count($trapResult) !== count($targetKeys)) {
+            if (count($trapResult) !== $totalTargetKeys) {
                 throw new TypeError(
                     "'ownKeys' on proxy: trap returned extra keys for non-extensible target"
                 );
