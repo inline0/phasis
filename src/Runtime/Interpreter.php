@@ -3684,12 +3684,27 @@ class Interpreter
                 $spreadItems = [];
                 $this->spreadInto($iterable, $spreadItems);
                 foreach ($spreadItems as $item) {
-                    $arr->set((string) $index, $item);
+                    // Per spec, array literal initialization uses CreateDataProperty,
+                    // not [[Set]], so non-writable prototype properties don't block it.
+                    $arr->defineOwnProperty(
+                        (string) $index,
+                        \PhpJs\Object\PropertyDescriptor::data($item, true, true, true),
+                    );
                     $index++;
                 }
                 continue;
             }
-            $arr->set((string) $index, $this->evaluate($elem, $env));
+            // Per spec, array literal initialization uses CreateDataProperty,
+            // not [[Set]], so non-writable prototype properties don't block it.
+            $arr->defineOwnProperty(
+                (string) $index,
+                \PhpJs\Object\PropertyDescriptor::data(
+                    $this->evaluate($elem, $env),
+                    true,
+                    true,
+                    true,
+                ),
+            );
             $index++;
         }
         $arr->setLength($index);

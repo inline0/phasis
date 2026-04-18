@@ -390,7 +390,13 @@ class TypedArrayConstructor
                 return new \PhpJs\Value\JsBigInt((string) $dv->getBigInt64($offset, $le));
             }],
             'getBigUint64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new \PhpJs\Value\JsBigInt((string) $dv->getBigUint64($offset, $le));
+                $raw = $dv->getBigUint64($offset, $le);
+                if ($raw < 0) {
+                    $str = bcadd((string) $raw, '18446744073709551616');
+                } else {
+                    $str = (string) $raw;
+                }
+                return new \PhpJs\Value\JsBigInt($str);
             }],
             'setBigInt64' => [2, true, null],
             'setBigUint64' => [2, true, null],

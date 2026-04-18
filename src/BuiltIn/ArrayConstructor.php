@@ -916,17 +916,15 @@ class ArrayConstructor
                         $depth = (int) $depthNum;
                     }
                 }
-                // ArraySpeciesCreate: validates constructor/species.
+                $sourceLen = self::lengthOfArrayLike($o);
+                // ArraySpeciesCreate(O, 0) per spec.
                 $a = self::arraySpeciesCreate($o, 0);
-                $result = self::flattenArray($o, $depth);
-                // Populate the species-created array.
-                foreach ($result as $i => $val) {
-                    $a->set((string) $i, $val);
-                }
+                // FlattenIntoArray(A, O, sourceLen, 0, depthNum) per spec.
+                $finalIndex = self::specFlattenIntoArray($a, $o, $sourceLen, 0, $depth);
                 if ($a instanceof JsArray) {
-                    $a->setLength(count($result));
+                    $a->setLength($finalIndex);
                 } else {
-                    $a->set('length', new JsNumber((float) count($result)));
+                    $a->set('length', new JsNumber((float) $finalIndex));
                 }
                 return $a;
             },
@@ -1463,6 +1461,68 @@ class ArrayConstructor
             }
         }
         return $result;
+    }
+
+    /**
+     * FlattenIntoArray per spec 23.1.3.11.1.
+     *
+     * Writes directly to the target using CreateDataPropertyOrThrow,
+     * respecting extensibility and configurability of the target object.
+     */
+    private static function specFlattenIntoArray(
+        JsObject $target,
+        JsObject $source,
+        int $sourceLen,
+        int $start,
+        int $depth,
+        ?JsFunction $mapperFunction = null,
+        ?JsValue $thisArg = null,
+    ): int {
+        $targetIndex = $start;
+        for ($sourceIndex = 0; $sourceIndex < $sourceLen; $sourceIndex++) {
+            $p = (string) $sourceIndex;
+            if ($source->has($p)) {
+                $element = $source->get($p);
+                if ($mapperFunction !== null) {
+                    $element = $mapperFunction->call(
+                        $thisArg ?? JsUndefined::instance(),
+                        [$element, new JsNumber((float) $sourceIndex), $source],
+                    );
+                }
+                $shouldFlatten = false;
+                if ($depth > 0) {
+                    $shouldFlatten = self::isArrayValue($element);
+                }
+                if ($shouldFlatten) {
+                    /** @var JsObject $element */
+                    $elementLen = self::lengthOfArrayLike($element);
+                    $targetIndex = self::specFlattenIntoArray(
+                        $target,
+                        $element,
+                        $elementLen,
+                        $targetIndex,
+                        $depth - 1,
+                    );
+                } else {
+                    if ($targetIndex >= 9007199254740991) {
+                        throw new TypeError('FlattenIntoArray: target index exceeded');
+                    }
+                    // CreateDataPropertyOrThrow per spec.
+                    $success = $target->defineOwnProperty(
+                        (string) $targetIndex,
+                        PropertyDescriptor::data($element, true, true, true),
+                    );
+                    if (!$success) {
+                        throw new TypeError(
+                            'Cannot define property '
+                            . $targetIndex . ' on result object'
+                        );
+                    }
+                    $targetIndex++;
+                }
+            }
+        }
+        return $targetIndex;
     }
 
     /** %ArrayIteratorPrototype%: shared prototype for all array iterators. */

@@ -267,6 +267,36 @@ class PromiseConstructor
         }, 1);
         $constructor->defineOwnProperty('any', PropertyDescriptor::data($anyFn, true, false, true));
 
+        // Promise.withResolvers() per spec sec-promise.withResolvers.
+        $withResolversFn = JsFunction::fromCallable(
+            'withResolvers',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsFunction) {
+                    throw new TypeError('Promise.withResolvers called on non-constructor');
+                }
+                [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+                $obj = new JsObject();
+                $obj->defineOwnProperty(
+                    'promise',
+                    PropertyDescriptor::data($promise, true, true, true),
+                );
+                $obj->defineOwnProperty(
+                    'resolve',
+                    PropertyDescriptor::data($resolve, true, true, true),
+                );
+                $obj->defineOwnProperty(
+                    'reject',
+                    PropertyDescriptor::data($reject, true, true, true),
+                );
+                return $obj;
+            },
+            0,
+        );
+        $constructor->defineOwnProperty(
+            'withResolvers',
+            PropertyDescriptor::data($withResolversFn, true, false, true),
+        );
+
         // Wire constructor <-> prototype
         $constructor->set('prototype', $proto);
         $proto->defineOwnProperty(
@@ -416,8 +446,9 @@ class PromiseConstructor
     {
         $resolve = null;
         $reject = null;
+        // Per spec, GetCapabilitiesExecutor is an anonymous built-in function.
         $executor = JsFunction::fromCallable(
-            'executor',
+            '',
             function (JsValue $this_, array $args) use (&$resolve, &$reject): JsValue {
                 $r = $args[0] ?? JsUndefined::instance();
                 $j = $args[1] ?? JsUndefined::instance();

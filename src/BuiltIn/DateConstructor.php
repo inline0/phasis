@@ -328,7 +328,7 @@ class DateConstructor
             }
 
             $hasTime = isset($m[4]) && $m[4] !== '';
-            $tz = isset($m[8]) && $m[8] !== '' ? $m[8] : null;
+            $tz = ($m[8] ?? '') !== '' ? $m[8] : null;
 
             // Date-only forms are UTC; date-time without TZ is local.
             if (!$hasTime && $tz === null) {

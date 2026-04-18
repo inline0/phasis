@@ -451,10 +451,25 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $fromIndex = isset($args[1]) ? (int) TypeConversion::toNumber($args[1]) : 0;
+            $strLen = mb_strlen($str, 'UTF-8');
 
-            if ($fromIndex < 0) {
-                $fromIndex = 0;
+            // Step 4: pos = ToIntegerOrInfinity(position). NaN becomes 0.
+            $posFloat = isset($args[1])
+                ? TypeConversion::toIntegerOrInfinity($args[1])
+                : 0.0;
+
+            // Step 5: clamp to [0, len]
+            if (is_nan($posFloat)) {
+                $posFloat = 0.0;
+            }
+            $fromIndex = (int) max(0, min($posFloat === INF ? $strLen : $posFloat, $strLen));
+
+            // Guard: if fromIndex exceeds string length, only empty search can match.
+            if ($fromIndex >= $strLen) {
+                if ($search === '' && $fromIndex === $strLen) {
+                    return new JsNumber((float) $strLen);
+                }
+                return new JsNumber(-1.0);
             }
 
             $pos = mb_strpos($str, $search, $fromIndex, 'UTF-8');
@@ -1695,36 +1710,24 @@ class StringPrototype
             // Step 3: ToString(O)
             $str = self::extractString($this_);
 
-            // Step 4-5: Let rx = RegExpCreate(regexp, undefined), then Invoke(rx, @@search, [string]).
-            // Per spec, undefined → /(?:)/ which matches at position 0.
-            if ($searchArg instanceof JsUndefined) {
-                return new JsNumber(0.0);
+            // Step 6: Let rx be RegExpCreate(regexp, undefined).
+            // Step 8: Return Invoke(rx, @@search, S).
+            $patternStr = $searchArg instanceof JsUndefined
+                ? ''
+                : TypeConversion::toString($searchArg);
+            $rx = \PhpJs\Engine::createRegExp($patternStr, '');
+            if ($rx !== null) {
+                $searchSym = SymbolConstructor::search();
+                $searcher = $rx->getBySymbol($searchSym);
+                if ($searcher instanceof JsFunction) {
+                    return $searcher->call($rx, [new JsString($str)]);
+                }
             }
 
-            // For RegExp objects that already have source/flags, use them directly.
-            if ($searchArg instanceof JsObject && $searchArg->has('source')) {
-                $pattern = TypeConversion::toString($searchArg->get('source'));
-                $flags = $searchArg->has('flags') ? TypeConversion::toString($searchArg->get('flags')) : '';
-            } else {
-                // For null, numbers, strings, objects without @@search:
-                // RegExpCreate(ToString(arg), undefined) creates a regexp from the string.
-                $pattern = TypeConversion::toString($searchArg);
-                $flags = '';
-            }
-
-            $pcreFlags = '';
-            if (str_contains($flags, 'i')) {
-                $pcreFlags .= 'i';
-            }
-            if (str_contains($flags, 'm')) {
-                $pcreFlags .= 'm';
-            }
-            if (str_contains($flags, 's')) {
-                $pcreFlags .= 's';
-            }
-            $pcre = '/' . str_replace('/', '\\/', $pattern) . '/' . $pcreFlags . 'u';
+            // Fallback: manual PCRE if no RegExp engine available.
+            $pattern = $patternStr === '' ? '(?:)' : $patternStr;
+            $pcre = '/' . str_replace('/', '\\/', $pattern) . '/u';
             if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
-                // Convert byte offset to character position.
                 $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
                 return new JsNumber((float) $charPos);
             }
@@ -2159,11 +2162,18 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = '';
             foreach ($args as $arg) {
-                $code = (int) TypeConversion::toNumber($arg);
-                if ($code < 0 || $code > 0x10FFFF || floor((float) $code) !== (float) $code) {
+                $num = TypeConversion::toNumber($arg);
+                // Step 2b: If not integral, throw RangeError (NaN, Infinity, fractional).
+                if (is_nan($num) || is_infinite($num) || floor($num) !== $num) {
+                    throw new \PhpJs\Exceptions\RangeError("Invalid code point {$num}");
+                }
+                $code = (int) $num;
+                // Step 2c: If < 0 or > 0x10FFFF, throw RangeError.
+                if ($code < 0 || $code > 0x10FFFF) {
                     throw new \PhpJs\Exceptions\RangeError("Invalid code point {$code}");
                 }
-                $str .= mb_chr($code, 'UTF-8');
+                $ch = mb_chr($code, 'UTF-8');
+                $str .= $ch !== false ? $ch : '';
             }
             return new JsString($str);
         };

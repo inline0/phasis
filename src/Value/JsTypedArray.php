@@ -737,9 +737,15 @@ class JsTypedArray extends JsObject
         return false;
     }
 
-    /** SameValueZero for includes (NaN === NaN). */
+    /** SameValueZero for includes (NaN === NaN, undefined === undefined). */
     private function sameValueZero(JsValue $a, JsValue $b): bool
     {
+        if ($a instanceof JsUndefined && $b instanceof JsUndefined) {
+            return true;
+        }
+        if ($a instanceof JsNull && $b instanceof JsNull) {
+            return true;
+        }
         if ($a instanceof JsNumber && $b instanceof JsNumber) {
             if (is_nan($a->value) && is_nan($b->value)) {
                 return true;
