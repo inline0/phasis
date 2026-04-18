@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-18T06:45:18+00:00",
-    "updatedAt": "2026-04-18T06:45:18+00:00",
+    "generatedAt": "2026-04-18T06:45:50+00:00",
+    "updatedAt": "2026-04-18T06:45:50+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "d14e2b0",
+        "commit": "ae641e3",
         "isDirty": true
     },
     "environment": {
@@ -215,16 +215,16 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 8633,
-            "fail": 901,
-            "skip": 4716,
+            "pass": 11105,
+            "fail": 1134,
+            "skip": 6511,
             "blocked": 0,
-            "pending": 35506,
+            "pending": 31006,
             "running": 750,
-            "attempted": 9534,
-            "known": 14250,
+            "attempted": 12239,
+            "known": 18750,
             "total": 50506,
-            "passRate": 90.5
+            "passRate": 90.7
         },
         "areas": [
             {
@@ -244,16 +244,16 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 3464,
-                "fail": 60,
-                "skip": 1726,
+                "pass": 4527,
+                "fail": 91,
+                "skip": 2132,
                 "blocked": 0,
-                "pending": 16729,
+                "pending": 15229,
                 "running": 750,
-                "attempted": 3524,
-                "known": 5250,
+                "attempted": 4618,
+                "known": 6750,
                 "total": 22729,
-                "passRate": 98.3
+                "passRate": 98
             },
             {
                 "name": "harness",
@@ -286,14 +286,14 @@
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 4931,
-                "fail": 705,
-                "skip": 2614,
+                "pass": 6340,
+                "fail": 907,
+                "skip": 4003,
                 "blocked": 0,
-                "pending": 15134,
+                "pending": 12134,
                 "running": 0,
-                "attempted": 5636,
-                "known": 8250,
+                "attempted": 7247,
+                "known": 11250,
                 "total": 23384,
                 "passRate": 87.5
             },
@@ -572,16 +572,16 @@
                 "name": "built-ins/Array",
                 "area": "built-ins",
                 "status": "running",
-                "pass": 468,
+                "pass": 708,
                 "fail": 5,
-                "skip": 27,
+                "skip": 37,
                 "blocked": 0,
-                "pending": 1825,
+                "pending": 1575,
                 "running": 750,
-                "attempted": 473,
-                "known": 500,
+                "attempted": 713,
+                "known": 750,
                 "total": 3075,
-                "passRate": 98.9
+                "passRate": 99.3
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -751,17 +751,17 @@
             {
                 "name": "built-ins/DataView",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "incomplete",
+                "pass": 216,
                 "fail": 0,
-                "skip": 0,
+                "skip": 34,
                 "blocked": 0,
-                "pending": 550,
+                "pending": 300,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 216,
+                "known": 250,
                 "total": 550,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/Date",
@@ -1007,14 +1007,14 @@
                 "name": "built-ins/Object",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 990,
-                "fail": 6,
+                "pass": 1239,
+                "fail": 7,
                 "skip": 4,
                 "blocked": 0,
-                "pending": 2410,
+                "pending": 2160,
                 "running": 0,
-                "attempted": 996,
-                "known": 1000,
+                "attempted": 1246,
+                "known": 1250,
                 "total": 3410,
                 "passRate": 99.4
             },
@@ -1067,16 +1067,16 @@
                 "name": "built-ins/RegExp",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 162,
-                "fail": 38,
-                "skip": 300,
+                "pass": 314,
+                "fail": 68,
+                "skip": 368,
                 "blocked": 0,
-                "pending": 1367,
+                "pending": 1117,
                 "running": 0,
-                "attempted": 200,
-                "known": 500,
+                "attempted": 382,
+                "known": 750,
                 "total": 1867,
-                "passRate": 81
+                "passRate": 82.2
             },
             {
                 "name": "built-ins/RegExpStringIteratorPrototype",
@@ -1204,12 +1204,12 @@
                 "status": "incomplete",
                 "pass": 0,
                 "fail": 0,
-                "skip": 1000,
+                "skip": 1250,
                 "blocked": 0,
-                "pending": 3165,
+                "pending": 2915,
                 "running": 0,
                 "attempted": 0,
-                "known": 1000,
+                "known": 1250,
                 "total": 4165,
                 "passRate": 0
             },
@@ -1232,14 +1232,14 @@
                 "name": "built-ins/TypedArray",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 432,
+                "pass": 638,
                 "fail": 0,
-                "skip": 68,
+                "skip": 112,
                 "blocked": 0,
-                "pending": 926,
+                "pending": 676,
                 "running": 0,
-                "attempted": 432,
-                "known": 500,
+                "attempted": 638,
+                "known": 750,
                 "total": 1426,
                 "passRate": 100
             },
@@ -1922,16 +1922,16 @@
                 "name": "language/expressions",
                 "area": "language",
                 "status": "incomplete",
-                "pass": 2011,
-                "fail": 314,
-                "skip": 1175,
+                "pass": 2698,
+                "fail": 318,
+                "skip": 1734,
                 "blocked": 0,
-                "pending": 7523,
+                "pending": 6273,
                 "running": 0,
-                "attempted": 2325,
-                "known": 3500,
+                "attempted": 3016,
+                "known": 4750,
                 "total": 11023,
-                "passRate": 86.5
+                "passRate": 89.5
             },
             {
                 "name": "language/function-code",
@@ -2074,12 +2074,12 @@
                 "status": "incomplete",
                 "pass": 0,
                 "fail": 0,
-                "skip": 250,
+                "skip": 500,
                 "blocked": 0,
-                "pending": 333,
+                "pending": 83,
                 "running": 0,
                 "attempted": 0,
-                "known": 250,
+                "known": 500,
                 "total": 583,
                 "passRate": 0
             },
@@ -2162,16 +2162,16 @@
                 "name": "language/statements",
                 "area": "language",
                 "status": "incomplete",
-                "pass": 2596,
-                "fail": 298,
-                "skip": 1106,
+                "pass": 3318,
+                "fail": 496,
+                "skip": 1686,
                 "blocked": 0,
-                "pending": 5154,
+                "pending": 3654,
                 "running": 0,
-                "attempted": 2894,
-                "known": 4000,
+                "attempted": 3814,
+                "known": 5500,
                 "total": 9154,
-                "passRate": 89.7
+                "passRate": 87
             },
             {
                 "name": "language/types",
@@ -2450,6 +2450,19 @@
                 ]
             },
             {
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 4.655,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-changes-value.js",
+                    "test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-parameters.js",
+                    "...",
+                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/resizable-buffer.js",
+                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/return-abrupt-from-this-out-of-bounds.js"
+                ]
+            },
+            {
                 "group": "built-ins/Array",
                 "kind": "normal",
                 "durationSec": 4.493,
@@ -2502,6 +2515,19 @@
                 ]
             },
             {
+                "group": "built-ins/DataView",
+                "kind": "normal",
+                "durationSec": 4.065,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/built-ins/DataView/prototype/getInt8/return-values-custom-offset.js",
+                    "test262/test/built-ins/DataView/prototype/getInt8/return-values.js",
+                    "...",
+                    "test262/test/built-ins/DataView/prototype/setUint32/length.js",
+                    "test262/test/built-ins/DataView/prototype/setUint32/name.js"
+                ]
+            },
+            {
                 "group": "language/statements",
                 "kind": "normal",
                 "durationSec": 4.065,
@@ -2515,6 +2541,19 @@
                 ]
             },
             {
+                "group": "built-ins/Array",
+                "kind": "normal",
+                "durationSec": 4.047,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/built-ins/Array/prototype/indexOf/15.4.4.14-1-1.js",
+                    "test262/test/built-ins/Array/prototype/indexOf/15.4.4.14-1-10.js",
+                    "...",
+                    "test262/test/built-ins/Array/prototype/lastIndexOf/15.4.4.15-1-7.js",
+                    "test262/test/built-ins/Array/prototype/lastIndexOf/15.4.4.15-1-8.js"
+                ]
+            },
+            {
                 "group": "language/expressions",
                 "kind": "normal",
                 "durationSec": 4.003,
@@ -2525,6 +2564,19 @@
                     "...",
                     "test262/test/language/expressions/super/prop-expr-getsuperbase-before-topropertykey-putvalue-compound-assign.js",
                     "test262/test/language/expressions/super/prop-expr-getsuperbase-before-topropertykey-putvalue-increment.js"
+                ]
+            },
+            {
+                "group": "language/statements",
+                "kind": "normal",
+                "durationSec": 4,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/language/statements/class/elements/async-gen-private-method/yield-star-getiter-sync-get-abrupt.js",
+                    "test262/test/language/statements/class/elements/async-gen-private-method/yield-star-getiter-sync-not-callable-boolean-throw.js",
+                    "...",
+                    "test262/test/language/statements/class/elements/nested-literal-name-init-err-contains-super.js",
+                    "test262/test/language/statements/class/elements/nested-private-arrow-fnc-init-err-contains-arguments.js"
                 ]
             },
             {
@@ -2577,58 +2629,6 @@
                     "...",
                     "test262/test/built-ins/Array/prototype/flat/null-undefined-elements.js",
                     "test262/test/built-ins/Array/prototype/flat/null-undefined-input-throws.js"
-                ]
-            },
-            {
-                "group": "built-ins/Object",
-                "kind": "normal",
-                "durationSec": 3.863,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/Object/preventExtensions/15.2.3.10-3-1.js",
-                    "test262/test/built-ins/Object/preventExtensions/15.2.3.10-3-10.js",
-                    "...",
-                    "test262/test/built-ins/Object/prototype/toString/symbol-tag-map-builtin.js",
-                    "test262/test/built-ins/Object/prototype/toString/symbol-tag-non-str-bigint.js"
-                ]
-            },
-            {
-                "group": "language/statements",
-                "kind": "normal",
-                "durationSec": 3.6,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/statements/for-in/dstr/array-elem-nested-array-invalid.js",
-                    "test262/test/language/statements/for-in/dstr/array-elem-nested-array-yield-ident-invalid.js",
-                    "...",
-                    "test262/test/language/statements/for-of/dstr/array-rest-iter-get-err.js",
-                    "test262/test/language/statements/for-of/dstr/array-rest-iter-nrml-close-skip.js"
-                ]
-            },
-            {
-                "group": "language/statements",
-                "kind": "normal",
-                "durationSec": 3.572,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-empty-iter.js",
-                    "test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-rest-init.js",
-                    "...",
-                    "test262/test/language/statements/function/13.2-18-1.js",
-                    "test262/test/language/statements/function/13.2-18-s.js"
-                ]
-            },
-            {
-                "group": "built-ins/String",
-                "kind": "normal",
-                "durationSec": 3.512,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/String/15.5.5.5.2-1-1.js",
-                    "test262/test/built-ins/String/15.5.5.5.2-1-2.js",
-                    "...",
-                    "test262/test/built-ins/String/prototype/endsWith/return-abrupt-from-searchstring-as-symbol.js",
-                    "test262/test/built-ins/String/prototype/endsWith/return-abrupt-from-searchstring-regexp-test.js"
                 ]
             }
         ]
