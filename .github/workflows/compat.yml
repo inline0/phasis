@@ -1,0 +1,70 @@
+name: Compatibility Report
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, bcmath
+          coverage: none
+          ini-values: memory_limit=1G
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run unit tests first
+        run: vendor/bin/phpunit --testsuite=unit
+
+      - name: Run full compat report
+        run: ./bin/compat-report --jobs 4
+        timeout-minutes: 90
+
+      - name: Show summary
+        run: |
+          echo "## Compatibility Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          head -25 COMPAT.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload compat artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-report
+          path: |
+            COMPAT.md
+            compat.json
+
+      - name: Commit updated COMPAT.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add COMPAT.md compat.json
+          if git diff --cached --quiet; then
+            echo "No changes to COMPAT.md"
+          else
+            git commit -m "Update COMPAT.md from CI [skip ci]"
+            git push
+          fi
