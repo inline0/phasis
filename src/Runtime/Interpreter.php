@@ -508,6 +508,15 @@ class Interpreter
 
     private function evalBinaryExpression(BinaryExpression $node, Environment $env): JsValue
     {
+        // Private field brand check: #name in obj
+        if ($node->operator === 'in' && $node->left instanceof PrivateIdentifier) {
+            $right = $this->evaluate($node->right, $env);
+            if (!($right instanceof JsObject)) {
+                throw new TypeError('Cannot use \'in\' operator to search for a private field without an object');
+            }
+            return new JsBoolean($right->hasPrivateField($node->left->name));
+        }
+
         $left = $this->evaluate($node->left, $env);
         $right = $this->evaluate($node->right, $env);
 
@@ -1314,6 +1323,12 @@ class Interpreter
             if ($isDerived) {
                 $thisVal = $result instanceof JsObject ? $result : $currentThis;
                 $env->defineLet('this', $thisVal);
+
+                // Per spec, instance field initializers run right after super() in derived classes.
+                if ($activeFunc instanceof JsFunction && $thisVal instanceof JsObject) {
+                    $this->initializeInstanceFields($activeFunc, $thisVal, $env);
+                }
+
                 return $thisVal;
             }
 
@@ -2398,6 +2413,13 @@ class Interpreter
             \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
         );
 
+        // For base class constructors, initialize instance fields before
+        // calling the constructor body, by running them on the new object.
+        // For derived constructors, field initializers run after super().
+        if ($callee->isClassConstructor() && !$callee->isDerivedConstructor()) {
+            $this->initializeInstanceFields($callee, $newObj, $env);
+        }
+
         $result = $this->callFunction($callee, $newObj, $args);
 
         // Per spec §10.2.2 [[Construct]]:
@@ -2411,6 +2433,56 @@ class Interpreter
             throw new TypeError('Derived constructors may only return object or undefined');
         }
         return $newObj;
+    }
+
+    /**
+     * Initialize instance fields and private methods on a newly created object.
+     * Per spec, field initializers are evaluated with `this` bound to the instance.
+     */
+    public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
+    {
+        // Install private instance methods first (they are available in field initializers).
+        foreach ($ctor->getPrivateMethodEntries() as [$name, $fn, $kind]) {
+            if ($kind === 'get' || $kind === 'set') {
+                $existing = $instance->hasPrivateField($name)
+                    ? $instance->getPrivateFieldRaw($name)
+                    : null;
+                if ($kind === 'get') {
+                    $setter = is_array($existing) ? $existing[1] : null;
+                    $instance->setPrivateAccessor($name, [$fn, $setter]);
+                } else {
+                    $getter = is_array($existing) ? $existing[0] : null;
+                    $instance->setPrivateAccessor($name, [$getter, $fn]);
+                }
+            } else {
+                $instance->setPrivateMethod($name, $fn);
+            }
+        }
+
+        // Run field initializers in order.
+        foreach ($ctor->getInstanceFieldInitializers() as [$key, $initNode, $computed, $isPrivate]) {
+            $value = $initNode !== null
+                ? $this->evaluate($initNode, $env)
+                : JsUndefined::instance();
+
+            if ($isPrivate) {
+                $instance->setPrivateField($key, $value);
+            } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
+                $instance->definePropertyBySymbol($key, PropertyDescriptor::data(
+                    $value,
+                    true,
+                    true,
+                    true,
+                ));
+            } else {
+                $instance->defineOwnProperty($key, PropertyDescriptor::data(
+                    $value,
+                    true,
+                    true,
+                    true,
+                ));
+            }
+        }
     }
 
     /**
@@ -3355,6 +3427,16 @@ class Interpreter
 
         if ($node->optional && ($obj instanceof JsNull || $obj instanceof JsUndefined)) {
             return JsOptionalUndefined::instance();
+        }
+
+        // Private identifier access: obj.#name
+        if ($node->property instanceof PrivateIdentifier) {
+            if (!($obj instanceof JsObject)) {
+                throw new TypeError(
+                    'Cannot read private member ' . $node->property->name . ' from a non-object',
+                );
+            }
+            return $obj->getPrivateField($node->property->name);
         }
 
         // Evaluate the property key expression. For computed access, the key
@@ -4481,11 +4563,11 @@ class Interpreter
         return Completion::normal(JsUndefined::instance());
     }
 
-    /** @param list<ClassMethod> $methods */
+    /** @param list<Node> $elements ClassMethod, ClassProperty, or StaticBlock nodes. */
     private function buildClass(
         ?string $name,
         ?Node $superClassNode,
-        array $methods,
+        array $elements,
         Environment $env,
     ): JsFunction {
         $superClass = $superClassNode !== null
@@ -4504,15 +4586,44 @@ class Interpreter
         $constructor = null;
         $staticMethods = [];
         $instanceMethods = [];
+        $instanceFields = [];
+        $privateInstanceMethods = [];
+        $privateStaticMethods = [];
 
         // Class bodies are always strict mode per spec.
         $previousStrictMode = $this->strictMode;
         $this->strictMode = true;
 
-        foreach ($methods as $method) {
+        // Evaluate computed keys in source order at class definition time.
+        $computedKeys = [];
+        foreach ($elements as $i => $element) {
+            if (($element instanceof ClassMethod || $element instanceof ClassProperty) && $element->computed) {
+                $computedKeys[$i] = $this->evaluate($element->key, $env);
+            }
+        }
+
+        foreach ($elements as $i => $element) {
+            if ($element instanceof StaticBlock) {
+                continue; // Handled after constructor setup
+            }
+            if ($element instanceof ClassProperty) {
+                if (!$element->static) {
+                    $instanceFields[] = [$element, $i];
+                }
+                continue; // Static fields handled after constructor setup
+            }
+            if (!($element instanceof ClassMethod)) {
+                continue;
+            }
+
+            $method = $element;
+            $isPrivate = $method->key instanceof PrivateIdentifier;
             $symbolKey = null;
-            if ($method->computed) {
-                $keyVal = $this->evaluate($method->key, $env);
+
+            if ($isPrivate) {
+                $key = $method->key->name;
+            } elseif (isset($computedKeys[$i])) {
+                $keyVal = $computedKeys[$i];
                 if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                     $symbolKey = $keyVal;
                     $key = '';
@@ -4527,9 +4638,6 @@ class Interpreter
 
             $fn = $this->evaluate($method->value, $env);
 
-            // Per spec 15.4.4 DefineMethodProperty / 10.2.9 SetFunctionName:
-            // set the function's name from the property key. For accessors,
-            // prefix with "get " or "set ".
             if ($fn instanceof JsFunction && $method->kind !== 'constructor' && $symbolKey === null) {
                 $methodName = $method->kind === 'get' || $method->kind === 'set'
                     ? "{$method->kind} {$key}"
@@ -4539,8 +4647,6 @@ class Interpreter
                 }
             }
 
-            // Per spec, class methods (non-constructor) are not constructable
-            // and do not have a .prototype property.
             if ($method->kind !== 'constructor' && $fn instanceof JsFunction) {
                 $fn->setNonConstructable();
                 $fn->forceDelete('prototype');
@@ -4548,6 +4654,12 @@ class Interpreter
 
             if ($method->kind === 'constructor') {
                 $constructor = $fn;
+            } elseif ($isPrivate) {
+                if ($method->static) {
+                    $privateStaticMethods[] = [$key, $fn, $method->kind];
+                } else {
+                    $privateInstanceMethods[] = [$key, $fn, $method->kind];
+                }
             } elseif ($method->static) {
                 $staticMethods[] = [$key, $fn, $method->kind, $symbolKey];
             } else {
@@ -4699,16 +4811,124 @@ class Interpreter
             }
         }
 
+        // Register instance field initializers on the constructor.
+        foreach ($instanceFields as [$field, $idx]) {
+            $isPrivate = $field->key instanceof PrivateIdentifier;
+            if ($isPrivate) {
+                $constructor->addInstanceFieldInitializer(
+                    $field->key->name,
+                    $field->value,
+                    false,
+                    true,
+                );
+            } elseif (isset($computedKeys[$idx])) {
+                $keyVal = $computedKeys[$idx];
+                if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                    $constructor->addInstanceFieldInitializer($keyVal, $field->value, true, false);
+                } else {
+                    $constructor->addInstanceFieldInitializer(
+                        TypeConversion::toString($keyVal),
+                        $field->value,
+                        false,
+                        false,
+                    );
+                }
+            } else {
+                $keyStr = $field->key instanceof Identifier
+                    ? $field->key->name
+                    : TypeConversion::toString($this->evaluate($field->key, $env));
+                $constructor->addInstanceFieldInitializer($keyStr, $field->value, false, false);
+            }
+        }
+
+        // Register private instance methods on the constructor.
+        foreach ($privateInstanceMethods as [$key, $fn, $kind]) {
+            if ($fn instanceof JsFunction) {
+                $fn->setHomeObject($proto);
+            }
+            $constructor->addPrivateMethodEntry($key, $fn, $kind);
+        }
+
         // Inheritance: set [[Prototype]] of constructor to super class.
-        // Per spec, DogCtor.__proto__ === AnimalCtor so that super() can resolve
-        // the super constructor via [[GetPrototypeOf]](activeFunction).
-        // Must use setCustomPrototype so JsFunction::getPrototype() returns this
-        // value instead of Function.prototype.
         if ($superClass instanceof JsFunction) {
             $constructor->setCustomPrototype($superClass);
-            // Also set [[HomeObject]] on the constructor itself so super() inside
-            // it can find the super constructor via getPrototype().
             $constructor->setHomeObject($proto);
+        }
+
+        // Evaluate static fields and static blocks at class definition time.
+        foreach ($elements as $i => $element) {
+            if ($element instanceof ClassProperty && $element->static) {
+                $isPrivate = $element->key instanceof PrivateIdentifier;
+                if ($isPrivate) {
+                    $fieldKey = $element->key->name;
+                } elseif (isset($computedKeys[$i])) {
+                    $keyVal = $computedKeys[$i];
+                    if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                        $constructor->definePropertyBySymbol($keyVal, PropertyDescriptor::data(
+                            $element->value !== null
+                                ? $this->evaluate($element->value, $env)
+                                : JsUndefined::instance(),
+                            true,
+                            true,
+                            true,
+                        ));
+                        continue;
+                    }
+                    $fieldKey = TypeConversion::toString($keyVal);
+                } else {
+                    $fieldKey = $element->key instanceof Identifier
+                        ? $element->key->name
+                        : TypeConversion::toString($this->evaluate($element->key, $env));
+                }
+
+                $fieldValue = $element->value !== null
+                    ? $this->evaluate($element->value, $env)
+                    : JsUndefined::instance();
+
+                if ($isPrivate) {
+                    $constructor->setPrivateField($fieldKey, $fieldValue);
+                } else {
+                    if ($fieldKey === 'prototype') {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Classes may not have a static property named 'prototype'",
+                        );
+                    }
+                    $constructor->defineOwnProperty($fieldKey, PropertyDescriptor::data(
+                        $fieldValue,
+                        true,
+                        true,
+                        true,
+                    ));
+                }
+            } elseif ($element instanceof StaticBlock) {
+                $blockEnv = $env->createChild();
+                $blockEnv->defineVar('this', $constructor);
+                $this->execBlockStatement($element->body, $blockEnv);
+            }
+        }
+
+        // Install private static methods on the constructor itself.
+        foreach ($privateStaticMethods as [$key, $fn, $kind]) {
+            if ($fn instanceof JsFunction) {
+                $fn->setHomeObject($constructor);
+            }
+            if ($kind === 'get' || $kind === 'set') {
+                if ($kind === 'get') {
+                    $existingAccessor = $constructor->hasPrivateField($key)
+                        ? $constructor->getPrivateFieldRaw($key)
+                        : null;
+                    $setter = is_array($existingAccessor) ? $existingAccessor[1] : null;
+                    $constructor->setPrivateAccessor($key, [$fn, $setter]);
+                } else {
+                    $existingAccessor = $constructor->hasPrivateField($key)
+                        ? $constructor->getPrivateFieldRaw($key)
+                        : null;
+                    $getter = is_array($existingAccessor) ? $existingAccessor[0] : null;
+                    $constructor->setPrivateAccessor($key, [$getter, $fn]);
+                }
+            } else {
+                $constructor->setPrivateMethod($key, $fn);
+            }
         }
 
         $this->strictMode = $previousStrictMode;
@@ -7283,6 +7503,17 @@ class Interpreter
             }
 
             $obj = $this->evaluate($node->object, $env);
+
+            // Private identifier: obj.#name
+            if ($node->property instanceof PrivateIdentifier) {
+                return new Reference(
+                    $obj,
+                    $node->property->name,
+                    $this->strictMode,
+                    privateFieldName: $node->property->name,
+                );
+            }
+
             // Per spec 6.2.4.5 PutValue, the reference records the raw base value.
             // ToObject() is deferred until PutValue (setValue). For primitives,
             // keeping the raw value here lets setValue correctly throw TypeError
