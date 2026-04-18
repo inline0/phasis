@@ -1038,6 +1038,12 @@ class RegExpPrototype
                 'Method RegExp.prototype.exec called on incompatible receiver'
             );
         }
+        // Step 7: Return RegExpBuiltinExec(R, S).
+        $builtinExec = self::execMethod();
+        $result = $builtinExec($rx, [new JsString($S)]);
+        if ($result instanceof JsNull || $result instanceof JsObject) {
+            return $result;
+        }
         return JsNull::instance();
     }
 

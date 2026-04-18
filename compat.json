@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-18T06:45:50+00:00",
-    "updatedAt": "2026-04-18T06:45:50+00:00",
+    "generatedAt": "2026-04-18T06:47:12+00:00",
+    "updatedAt": "2026-04-18T06:47:12+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "ae641e3",
+        "commit": "aa658e3",
         "isDirty": true
     },
     "environment": {
@@ -215,16 +215,16 @@
             "String.prototype.toWellFormed"
         ],
         "totals": {
-            "pass": 11105,
-            "fail": 1134,
-            "skip": 6511,
+            "pass": 11354,
+            "fail": 1135,
+            "skip": 6761,
             "blocked": 0,
-            "pending": 31006,
+            "pending": 30506,
             "running": 750,
-            "attempted": 12239,
-            "known": 18750,
+            "attempted": 12489,
+            "known": 19250,
             "total": 50506,
-            "passRate": 90.7
+            "passRate": 90.9
         },
         "areas": [
             {
@@ -246,12 +246,12 @@
                 "status": "running",
                 "pass": 4527,
                 "fail": 91,
-                "skip": 2132,
+                "skip": 2382,
                 "blocked": 0,
-                "pending": 15229,
+                "pending": 14979,
                 "running": 750,
                 "attempted": 4618,
-                "known": 6750,
+                "known": 7000,
                 "total": 22729,
                 "passRate": 98
             },
@@ -286,16 +286,16 @@
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 6340,
-                "fail": 907,
+                "pass": 6589,
+                "fail": 908,
                 "skip": 4003,
                 "blocked": 0,
-                "pending": 12134,
+                "pending": 11884,
                 "running": 0,
-                "attempted": 7247,
-                "known": 11250,
+                "attempted": 7497,
+                "known": 11500,
                 "total": 23384,
-                "passRate": 87.5
+                "passRate": 87.9
             },
             {
                 "name": "staging",
@@ -1204,12 +1204,12 @@
                 "status": "incomplete",
                 "pass": 0,
                 "fail": 0,
-                "skip": 1250,
+                "skip": 1500,
                 "blocked": 0,
-                "pending": 2915,
+                "pending": 2665,
                 "running": 0,
                 "attempted": 0,
-                "known": 1250,
+                "known": 1500,
                 "total": 4165,
                 "passRate": 0
             },
@@ -2057,16 +2057,16 @@
                 "name": "language/literals",
                 "area": "language",
                 "status": "incomplete",
-                "pass": 164,
-                "fail": 3,
+                "pass": 413,
+                "fail": 4,
                 "skip": 83,
                 "blocked": 0,
-                "pending": 284,
+                "pending": 34,
                 "running": 0,
-                "attempted": 167,
-                "known": 250,
+                "attempted": 417,
+                "known": 500,
                 "total": 534,
-                "passRate": 98.2
+                "passRate": 99
             },
             {
                 "name": "language/module-code",
@@ -2387,6 +2387,19 @@
             {
                 "group": "language/literals",
                 "kind": "normal",
+                "durationSec": 81.126,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/language/literals/bigint/binary-invalid-digit.js",
+                    "test262/test/language/literals/bigint/exponent-part.js",
+                    "...",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js"
+                ]
+            },
+            {
+                "group": "language/literals",
+                "kind": "normal",
                 "durationSec": 31.986,
                 "filesCount": 250,
                 "sampleFiles": [
@@ -2616,19 +2629,6 @@
                     "...",
                     "test262/test/built-ins/TypedArrayConstructors/ctors/buffer-arg/byteoffset-to-number-throws.js",
                     "test262/test/built-ins/TypedArrayConstructors/ctors/buffer-arg/custom-proto-access-throws-sab.js"
-                ]
-            },
-            {
-                "group": "built-ins/Array",
-                "kind": "normal",
-                "durationSec": 3.882,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/Array/prototype/filter/15.4.4.20-5-7.js",
-                    "test262/test/built-ins/Array/prototype/filter/15.4.4.20-5-9.js",
-                    "...",
-                    "test262/test/built-ins/Array/prototype/flat/null-undefined-elements.js",
-                    "test262/test/built-ins/Array/prototype/flat/null-undefined-input-throws.js"
                 ]
             }
         ]

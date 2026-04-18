@@ -216,59 +216,73 @@ class JsArray extends JsObject
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
         if ($name === 'length') {
-            // Array length is always non-configurable, non-enumerable.
-            // Attempting to change these attributes must fail (step 3.a.i of 15.4.5.1).
-            if ($desc->configurable === true || $desc->enumerable === true) {
-                return false;
-            }
             // Cannot convert length to an accessor property.
             if ($desc->get !== null || $desc->set !== null) {
                 return false;
             }
-            // Handle value change.
-            if ($desc->value !== null) {
-                $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
-                $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
-                if ((float) $uint32 !== $num) {
-                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
-                }
-                if (!$this->lengthWritable && $uint32 !== $this->length) {
+            // Per spec ArraySetLength: when no [[Value]] field, just validate attributes.
+            if ($desc->value === null) {
+                if ($desc->configurable === true || $desc->enumerable === true) {
                     return false;
                 }
-                $newLen = $uint32;
-                // Delete elements above new length (per ArraySetLength step 3.l).
-                // Must delete in descending order, stopping if a non-configurable
-                // element is encountered.
-                $deleteSucceeded = true;
-                for ($i = $this->length - 1; $i >= $newLen; $i--) {
-                    $key = (string) $i;
-                    if ($this->hasOwnProperty($key)) {
-                        $elemDesc = parent::getOwnPropertyDescriptor($key);
-                        if ($elemDesc !== null && $elemDesc->configurable === false) {
-                            // Non-configurable element blocks deletion.
-                            $newLen = $i + 1;
-                            $deleteSucceeded = false;
-                            break;
-                        }
-                        $this->delete($key);
+                if ($desc->writable !== null) {
+                    if (!$this->lengthWritable && $desc->writable === true) {
+                        return false;
                     }
+                    $this->lengthWritable = $desc->writable;
                 }
-                $this->length = $newLen;
-                if (!$deleteSucceeded) {
-                    // Handle writable change even on failure.
-                    if ($desc->writable === false) {
-                        $this->lengthWritable = false;
-                    }
+                return true;
+            }
+            // Per spec: coerce value FIRST (steps 3-4), before attribute checks.
+            // Coercion may have observable side effects (valueOf, Symbol.toPrimitive).
+            $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+            $uint32 = (int) ($num >= 0
+                ? fmod($num, 4294967296)
+                : fmod($num, 4294967296) + 4294967296);
+            // Step 5: RangeError before any configurable/enumerable validation.
+            if ((float) $uint32 !== $num) {
+                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+            }
+            // Now check configurable/enumerable (after coercion per spec).
+            if ($desc->configurable === true || $desc->enumerable === true) {
+                return false;
+            }
+            // Step 12: writable check after coercion.
+            if (!$this->lengthWritable) {
+                if ($uint32 !== $this->length) {
                     return false;
+                }
+                if ($desc->writable === true) {
+                    return false;
+                }
+                return true;
+            }
+            // Determine deferred writable change per spec step 14.
+            $newWritable = $desc->writable !== false;
+            $newLen = $uint32;
+            // Delete elements above new length in descending order (step 15).
+            $deleteSucceeded = true;
+            for ($i = $this->length - 1; $i >= $newLen; $i--) {
+                $key = (string) $i;
+                if ($this->hasOwnProperty($key)) {
+                    $elemDesc = parent::getOwnPropertyDescriptor($key);
+                    if ($elemDesc !== null && $elemDesc->configurable === false) {
+                        $newLen = $i + 1;
+                        $deleteSucceeded = false;
+                        break;
+                    }
+                    $this->delete($key);
                 }
             }
-            // Handle writable change (e.g. Object.freeze sets writable to false).
-            if ($desc->writable !== null) {
-                // Cannot go from non-writable to writable.
-                if (!$this->lengthWritable && $desc->writable === true) {
-                    return false;
+            $this->length = $newLen;
+            if (!$deleteSucceeded) {
+                if (!$newWritable) {
+                    $this->lengthWritable = false;
                 }
-                $this->lengthWritable = $desc->writable;
+                return false;
+            }
+            if (!$newWritable) {
+                $this->lengthWritable = false;
             }
             return true;
         }

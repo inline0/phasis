@@ -237,14 +237,13 @@ class JsObject implements JsValue
                     return false;
                 }
                 // Update value on the receiver's existing descriptor.
-                $valueDesc = new PropertyDescriptor(value: $value);
-                $receiver->defineOwnProperty($name, new PropertyDescriptor(
+                // Per spec step 2.d: return the result of [[DefineOwnProperty]].
+                return $receiver->defineOwnProperty($name, new PropertyDescriptor(
                     value: $value,
                     writable: $existingDesc->writable,
                     enumerable: $existingDesc->enumerable,
                     configurable: $existingDesc->configurable,
                 ));
-                return true;
             }
             // Receiver does not have property P. Create it if extensible.
             if (!$receiver->isExtensible()) {

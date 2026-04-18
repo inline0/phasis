@@ -124,6 +124,9 @@ class Interpreter
     /** Whether this interpreter is executing indirect eval code. */
     private bool $isEvalContext = false;
 
+    /** Monotonically increasing counter for unique private name brands. */
+    private int $nextPrivateBrandId = 0;
+
     public function __construct(
         private Environment $globalEnv,
         ?CallStack $callStack = null,
@@ -514,7 +517,8 @@ class Interpreter
             if (!($right instanceof JsObject)) {
                 throw new TypeError('Cannot use \'in\' operator to search for a private field without an object');
             }
-            return new JsBoolean($right->hasPrivateField($node->left->name));
+            $brandedName = $env->resolvePrivateName($node->left->name);
+            return new JsBoolean($right->hasPrivateField($brandedName));
         }
 
         $left = $this->evaluate($node->left, $env);
@@ -2459,10 +2463,10 @@ class Interpreter
             }
         }
 
-        // Run field initializers in order. Create an environment with `this`
-        // bound to the instance so initializers can reference this and
-        // previously initialized fields.
-        $fieldEnv = $env->createChild();
+        // Run field initializers in order. Use the constructor's private
+        // environment if available so branded private names resolve correctly.
+        $baseEnv = $ctor->getPrivateEnv() ?? $env;
+        $fieldEnv = $baseEnv->createChild();
         $fieldEnv->defineVar('this', $instance);
         foreach ($ctor->getInstanceFieldInitializers() as [$key, $initNode, $computed, $isPrivate]) {
             $value = $initNode !== null
@@ -3440,7 +3444,8 @@ class Interpreter
                     'Cannot read private member ' . $node->property->name . ' from a non-object',
                 );
             }
-            return $obj->getPrivateField($node->property->name);
+            $brandedName = $env->resolvePrivateName($node->property->name);
+            return $obj->getPrivateField($brandedName);
         }
 
         // Evaluate the property key expression. For computed access, the key
@@ -4618,11 +4623,32 @@ class Interpreter
         $previousStrictMode = $this->strictMode;
         $this->strictMode = true;
 
+        // Per spec ClassDefinitionEvaluation: create a new PrivateEnvironment.
+        // Each evaluation of a class body generates unique branded private names
+        // so that instances from different evaluations of the same class expression
+        // have distinct private fields (PrivateBrandCheck).
+        $brandId = $this->nextPrivateBrandId++;
+        $privateNames = [];
+        foreach ($elements as $element) {
+            if (($element instanceof ClassMethod || $element instanceof ClassProperty)
+                && $element->key instanceof PrivateIdentifier
+            ) {
+                $privateNames[$element->key->name] = true;
+            }
+        }
+        $privateNameMap = [];
+        foreach ($privateNames as $pname => $_) {
+            $privateNameMap[$pname] = $pname . '@' . $brandId;
+        }
+        // Create a private environment that maps source-level private names to branded names.
+        $privateEnv = $env->createChild();
+        $privateEnv->setPrivateNameMap($privateNameMap);
+
         // Evaluate computed keys in source order at class definition time.
         $computedKeys = [];
         foreach ($elements as $i => $element) {
             if (($element instanceof ClassMethod || $element instanceof ClassProperty) && $element->computed) {
-                $computedKeys[$i] = $this->evaluate($element->key, $env);
+                $computedKeys[$i] = $this->evaluate($element->key, $privateEnv);
             }
         }
 
@@ -4645,7 +4671,7 @@ class Interpreter
             $symbolKey = null;
 
             if ($isPrivate) {
-                $key = $method->key->name;
+                $key = $privateNameMap[$method->key->name] ?? $method->key->name;
             } elseif (isset($computedKeys[$i])) {
                 $keyVal = $computedKeys[$i];
                 if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
@@ -4657,10 +4683,10 @@ class Interpreter
             } else {
                 $key = $method->key instanceof Identifier
                     ? $method->key->name
-                    : TypeConversion::toString($this->evaluate($method->key, $env));
+                    : TypeConversion::toString($this->evaluate($method->key, $privateEnv));
             }
 
-            $fn = $this->evaluate($method->value, $env);
+            $fn = $this->evaluate($method->value, $privateEnv);
 
             if ($fn instanceof JsFunction && $method->kind !== 'constructor' && $symbolKey === null) {
                 $methodName = $method->kind === 'get' || $method->kind === 'set'
@@ -4840,7 +4866,7 @@ class Interpreter
             $isPrivate = $field->key instanceof PrivateIdentifier;
             if ($isPrivate) {
                 $constructor->addInstanceFieldInitializer(
-                    $field->key->name,
+                    $privateNameMap[$field->key->name] ?? $field->key->name,
                     $field->value,
                     false,
                     true,
@@ -4860,7 +4886,7 @@ class Interpreter
             } else {
                 $keyStr = $field->key instanceof Identifier
                     ? $field->key->name
-                    : TypeConversion::toString($this->evaluate($field->key, $env));
+                    : TypeConversion::toString($this->evaluate($field->key, $privateEnv));
                 $constructor->addInstanceFieldInitializer($keyStr, $field->value, false, false);
             }
         }
@@ -4871,6 +4897,13 @@ class Interpreter
                 $fn->setHomeObject($proto);
             }
             $constructor->addPrivateMethodEntry($key, $fn, $kind);
+        }
+
+        // Store the private name environment on the constructor so that
+        // field initializers (which run at construction time) can resolve
+        // branded private names.
+        if (!empty($privateNameMap)) {
+            $constructor->setPrivateEnv($privateEnv);
         }
 
         // Inheritance: set [[Prototype]] of constructor to super class.
@@ -4884,13 +4917,13 @@ class Interpreter
             if ($element instanceof ClassProperty && $element->static) {
                 $isPrivate = $element->key instanceof PrivateIdentifier;
                 if ($isPrivate) {
-                    $fieldKey = $element->key->name;
+                    $fieldKey = $privateNameMap[$element->key->name] ?? $element->key->name;
                 } elseif (isset($computedKeys[$i])) {
                     $keyVal = $computedKeys[$i];
                     if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                         $constructor->definePropertyBySymbol($keyVal, PropertyDescriptor::data(
                             $element->value !== null
-                                ? $this->evaluate($element->value, $env)
+                                ? $this->evaluate($element->value, $privateEnv)
                                 : JsUndefined::instance(),
                             true,
                             true,
@@ -4902,11 +4935,11 @@ class Interpreter
                 } else {
                     $fieldKey = $element->key instanceof Identifier
                         ? $element->key->name
-                        : TypeConversion::toString($this->evaluate($element->key, $env));
+                        : TypeConversion::toString($this->evaluate($element->key, $privateEnv));
                 }
 
                 $fieldValue = $element->value !== null
-                    ? $this->evaluate($element->value, $env)
+                    ? $this->evaluate($element->value, $privateEnv)
                     : JsUndefined::instance();
 
                 if ($isPrivate) {
@@ -4925,7 +4958,7 @@ class Interpreter
                     ));
                 }
             } elseif ($element instanceof StaticBlock) {
-                $blockEnv = $env->createChild();
+                $blockEnv = $privateEnv->createChild();
                 $blockEnv->defineVar('this', $constructor);
                 $this->execBlockStatement($element->body, $blockEnv);
             }
@@ -7571,11 +7604,12 @@ class Interpreter
 
             // Private identifier: obj.#name
             if ($node->property instanceof PrivateIdentifier) {
+                $brandedName = $env->resolvePrivateName($node->property->name);
                 return new Reference(
                     $obj,
-                    $node->property->name,
+                    $brandedName,
                     $this->strictMode,
-                    privateFieldName: $node->property->name,
+                    privateFieldName: $brandedName,
                 );
             }
 

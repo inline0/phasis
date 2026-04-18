@@ -4,29 +4,29 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-18T06:45:50+00:00`
+- Snapshot time: `2026-04-18T06:47:12+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `137`
 - Test files: `50506`
-- Git: `main` @ `ae641e3` (dirty)
+- Git: `main` @ `aa658e3` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 11105 | 1134 | 6511 | 0 | 31006 | 750 | 12239 | 18750 | 50506 | 90.7% |
+| 11354 | 1135 | 6761 | 0 | 30506 | 750 | 12489 | 19250 | 50506 | 90.9% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | PENDING | 0 | 0 | 0 | 0 | 1079 | 0 | n/a |
-| built-ins | RUNNING | 4527 | 91 | 2132 | 0 | 15229 | 750 | 98.0% |
+| built-ins | RUNNING | 4527 | 91 | 2382 | 0 | 14979 | 750 | 98.0% |
 | harness | PENDING | 0 | 0 | 0 | 0 | 116 | 0 | n/a |
 | intl402 | INCOMPLETE | 0 | 0 | 250 | 0 | 1316 | 0 | n/a |
-| language | INCOMPLETE | 6340 | 907 | 4003 | 0 | 12134 | 0 | 87.5% |
+| language | INCOMPLETE | 6589 | 908 | 4003 | 0 | 11884 | 0 | 87.9% |
 | staging | INCOMPLETE | 238 | 136 | 126 | 0 | 1132 | 0 | 63.6% |
 
 ## Group Coverage
@@ -92,7 +92,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/String | INCOMPLETE | 489 | 1 | 10 | 0 | 712 | 0 | 99.8% |
 | built-ins/StringIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 7 | 0 | n/a |
 | built-ins/Symbol | PENDING | 0 | 0 | 0 | 0 | 94 | 0 | n/a |
-| built-ins/Temporal | INCOMPLETE | 0 | 0 | 1250 | 0 | 2915 | 0 | n/a |
+| built-ins/Temporal | INCOMPLETE | 0 | 0 | 1500 | 0 | 2665 | 0 | n/a |
 | built-ins/ThrowTypeError | PENDING | 0 | 0 | 0 | 0 | 14 | 0 | n/a |
 | built-ins/TypedArray | INCOMPLETE | 638 | 0 | 112 | 0 | 676 | 0 | 100.0% |
 | built-ins/TypedArrayConstructors | INCOMPLETE | 209 | 4 | 37 | 0 | 486 | 0 | 98.1% |
@@ -149,7 +149,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/import | PENDING | 0 | 0 | 0 | 0 | 85 | 0 | n/a |
 | language/keywords | PENDING | 0 | 0 | 0 | 0 | 25 | 0 | n/a |
 | language/line-terminators | PENDING | 0 | 0 | 0 | 0 | 41 | 0 | n/a |
-| language/literals | INCOMPLETE | 164 | 3 | 83 | 0 | 284 | 0 | 98.2% |
+| language/literals | INCOMPLETE | 413 | 4 | 83 | 0 | 34 | 0 | 99.0% |
 | language/module-code | INCOMPLETE | 0 | 0 | 500 | 0 | 83 | 0 | n/a |
 | language/punctuators | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
 | language/reserved-words | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
@@ -176,6 +176,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
 | staging/sm | NORMAL | 234.163s | 250 | `test262/test/staging/sm/TypedArray/from_basics.js`<br>`test262/test/staging/sm/TypedArray/from_constructor.js`<br>...<br>`test262/test/staging/sm/expressions/string-literal-escape-sequences.js`<br>`test262/test/staging/sm/expressions/tagged-template-constant-folding.js` |
+| language/literals | NORMAL | 81.126s | 250 | `test262/test/language/literals/bigint/binary-invalid-digit.js`<br>`test262/test/language/literals/bigint/exponent-part.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js` |
 | language/literals | NORMAL | 31.986s | 250 | `test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.3_T2.js`<br>...<br>`test262/test/language/literals/string/S7.8.4_A7.2_T1.js`<br>`test262/test/language/literals/string/S7.8.4_A7.2_T2.js` |
 | staging/sm | NORMAL | 17.649s | 250 | `test262/test/staging/sm/Iterator/prototype/find/descriptor.js`<br>`test262/test/staging/sm/Iterator/prototype/find/error-from-correct-realm.js`<br>...<br>`test262/test/staging/sm/Proxy/hasInstance.js`<br>`test262/test/staging/sm/Proxy/json-stringify-replacer-array-revocable-proxy.js` |
 | built-ins/Object | NORMAL | 6.003s | 250 | `test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-133.js`<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-134.js`<br>...<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-74.js`<br>`test262/test/built-ins/Object/defineProperties/15.2.3.7-6-a-75.js` |
@@ -194,7 +195,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/statements | NORMAL | 3.983s | 250 | `test262/test/language/statements/class/dstr/private-meth-static-ary-ptrn-elem-obj-id-init.js`<br>`test262/test/language/statements/class/dstr/private-meth-static-ary-ptrn-elem-obj-id.js`<br>...<br>`test262/test/language/statements/class/elements/after-same-line-static-async-method-rs-privatename-identifier-alt.js`<br>`test262/test/language/statements/class/elements/after-same-line-static-async-method-rs-privatename-identifier-initializer-alt.js` |
 | built-ins/Date | NORMAL | 3.911s | 250 | `test262/test/built-ins/Date/prototype/getUTCDay/this-value-non-date.js`<br>`test262/test/built-ins/Date/prototype/getUTCDay/this-value-non-object.js`<br>...<br>`test262/test/built-ins/Date/prototype/toDateString/name.js`<br>`test262/test/built-ins/Date/prototype/toDateString/negative-year.js` |
 | built-ins/TypedArrayConstructors | NORMAL | 3.905s | 250 | `test262/test/built-ins/TypedArrayConstructors/BigInt64Array/BYTES_PER_ELEMENT.js`<br>`test262/test/built-ins/TypedArrayConstructors/BigInt64Array/constructor.js`<br>...<br>`test262/test/built-ins/TypedArrayConstructors/ctors/buffer-arg/byteoffset-to-number-throws.js`<br>`test262/test/built-ins/TypedArrayConstructors/ctors/buffer-arg/custom-proto-access-throws-sab.js` |
-| built-ins/Array | NORMAL | 3.882s | 250 | `test262/test/built-ins/Array/prototype/filter/15.4.4.20-5-7.js`<br>`test262/test/built-ins/Array/prototype/filter/15.4.4.20-5-9.js`<br>...<br>`test262/test/built-ins/Array/prototype/flat/null-undefined-elements.js`<br>`test262/test/built-ins/Array/prototype/flat/null-undefined-input-throws.js` |
 
 ## Runner Caveats
 

@@ -51,6 +51,15 @@ class Environment
      */
     private ?string $functionKind = null;
 
+    /**
+     * Maps source-level private names (#name) to branded private names (#name@{brandId}).
+     * Each evaluation of a class body creates a unique brand, so that private fields
+     * from different evaluations of the same class expression are distinct.
+     *
+     * @var array<string, string>
+     */
+    private array $privateNameMap = [];
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
@@ -666,5 +675,34 @@ class Environment
         $child = new self($this);
         $child->withObject = $obj;
         return $child;
+    }
+
+    /**
+     * Define private name mappings for a class body. Maps source-level
+     * private names to branded names (e.g., #m -> #m@42).
+     *
+     * @param array<string, string> $map
+     */
+    public function setPrivateNameMap(array $map): void
+    {
+        $this->privateNameMap = $map;
+    }
+
+    /**
+     * Resolve a source-level private name to its branded name.
+     * Walks up the scope chain to find the closest class body
+     * that defined this private name.
+     */
+    public function resolvePrivateName(string $sourceName): string
+    {
+        $env = $this;
+        while ($env !== null) {
+            if (isset($env->privateNameMap[$sourceName])) {
+                return $env->privateNameMap[$sourceName];
+            }
+            $env = $env->parent;
+        }
+        // Fallback: no brand found, return the source name as-is.
+        return $sourceName;
     }
 }

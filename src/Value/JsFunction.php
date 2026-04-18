@@ -123,6 +123,13 @@ class JsFunction extends JsObject
     private array $privateMethodEntries = [];
 
     /**
+     * The private name environment for this class constructor. Used when
+     * initializing instance fields so that field initializer expressions
+     * can resolve branded private names.
+     */
+    private ?Environment $privateEnv = null;
+
+    /**
      * When true, this function uses the prototype set via JsObject::setPrototype()
      * instead of the global Function.prototype. Used for intrinsic constructors
      * like %TypedArray% subtypes whose [[Prototype]] is %TypedArray% per spec.
@@ -280,6 +287,18 @@ class JsFunction extends JsObject
     public function getPrivateMethodEntries(): array
     {
         return $this->privateMethodEntries;
+    }
+
+    /** Store the private name environment for this class constructor. */
+    public function setPrivateEnv(Environment $env): void
+    {
+        $this->privateEnv = $env;
+    }
+
+    /** Get the private name environment for this class constructor. */
+    public function getPrivateEnv(): ?Environment
+    {
+        return $this->privateEnv;
     }
 
     /**
