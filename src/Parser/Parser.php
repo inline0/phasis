@@ -1912,8 +1912,13 @@ class Parser
             throw new ParseError('Expected =>', $this->current());
         }
 
-        // async ident => body: source starts at 'async', pass async location
-        if ($next->type === TokenType::Identifier && !$next->lineTerminatorBefore) {
+        // async ident => body: source starts at 'async', pass async location.
+        // Contextual keywords like `of`, `let`, `yield` are valid parameter names here.
+        $isAsyncArrowParam = $next->type === TokenType::Identifier
+            || $next->type === TokenType::Of
+            || $next->type === TokenType::Let
+            || $next->type === TokenType::Yield;
+        if ($isAsyncArrowParam && !$next->lineTerminatorBefore) {
             $asyncLocation = $token->location;
             $this->advance(); // consume 'async'
             $id = $this->parseIdentifier();
