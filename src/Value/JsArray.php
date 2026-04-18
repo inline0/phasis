@@ -281,6 +281,14 @@ class JsArray extends JsObject
             }
             return true;
         }
+        // Per spec 15.4.5.1 step 4.b: if P is an array index >= oldLen and
+        // the length property is not writable, reject.
+        if (self::isArrayIndex($name)) {
+            $index = (int) $name;
+            if ($index >= $this->length && !$this->lengthWritable) {
+                return false;
+            }
+        }
         $result = parent::defineOwnProperty($name, $desc);
         // Only update length for valid array indices (0 to 2^32-2).
         if ($result && self::isArrayIndex($name)) {
@@ -326,7 +334,17 @@ class JsArray extends JsObject
     {
         $keys = parent::getOwnPropertyNames();
         if (!in_array('length', $keys, true)) {
-            $keys[] = 'length';
+            // Insert 'length' after array indices but before non-index string keys,
+            // matching OrdinaryOwnPropertyKeys ordering.
+            $insertPos = 0;
+            foreach ($keys as $i => $key) {
+                if (self::isArrayIndex($key)) {
+                    $insertPos = $i + 1;
+                } else {
+                    break;
+                }
+            }
+            array_splice($keys, $insertPos, 0, ['length']);
         }
         return $keys;
     }

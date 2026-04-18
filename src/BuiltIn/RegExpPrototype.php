@@ -227,20 +227,23 @@ class RegExpPrototype
             }
             $pcrePattern = $pcrePatternDesc->value->value;
 
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            // Per spec: if no argument, convert undefined to "undefined".
+            $str = isset($args[0]) ? TypeConversion::toString($args[0])
+                : TypeConversion::toString(\PhpJs\Value\JsUndefined::instance());
             $strLen = mb_strlen($str, 'UTF-8');
 
             $isGlobal  = TypeConversion::toBoolean($this_->get('global'));
             $isSticky  = TypeConversion::toBoolean($this_->get('sticky'));
 
-            if ($isGlobal || $isSticky) {
-                $lastIndexVal = $this_->get('lastIndex');
-                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
-            } else {
+            // Per spec step 4: always read lastIndex for observable side effects.
+            $lastIndexVal = $this_->get('lastIndex');
+            $lastIndex = TypeConversion::toLength($lastIndexVal);
+
+            if (!$isGlobal && !$isSticky) {
                 $lastIndex = 0;
             }
 
-            if ($lastIndex < 0 || $lastIndex > $strLen) {
+            if ($lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
                     $this_->set('lastIndex', new JsNumber(0.0), true);
                 }

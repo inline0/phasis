@@ -7902,17 +7902,21 @@ class Interpreter
             $innerPcreFlags,
             $transformFn,
         ): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            // Per spec: if no argument, convert undefined to "undefined".
+            $str = isset($args[0]) ? TypeConversion::toString($args[0])
+                : TypeConversion::toString(JsUndefined::instance());
             $strLen = mb_strlen($str, 'UTF-8');
 
-            if ($isGlobal || $isSticky) {
-                $lastIndexVal = $obj->get('lastIndex');
-                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
-            } else {
+            // Per spec step 4: always read lastIndex (for observable side effects
+            // like valueOf calls), even when global/sticky are unset.
+            $lastIndexVal = $obj->get('lastIndex');
+            $lastIndex = TypeConversion::toLength($lastIndexVal);
+
+            if (!$isGlobal && !$isSticky) {
                 $lastIndex = 0;
             }
 
-            if ($lastIndex < 0 || $lastIndex > $strLen) {
+            if ($lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
                     // Per spec: Set(R, "lastIndex", 0, Throw=true).
                     $obj->set('lastIndex', new JsNumber(0.0), true);
@@ -8013,19 +8017,21 @@ class Interpreter
 
         // test(): uses lastIndex for global/sticky regexes per spec 22.2.5.3.
         $testFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $str = isset($args[0]) ? TypeConversion::toString($args[0])
+                : TypeConversion::toString(JsUndefined::instance());
             $strLen = mb_strlen($str, 'UTF-8');
 
-            if ($isGlobal || $isSticky) {
-                $lastIndexVal = $obj->get('lastIndex');
-                $lastIndex = (int) TypeConversion::toNumber($lastIndexVal);
-            } else {
+            // Per spec: always read lastIndex for observable side effects.
+            $lastIndexVal = $obj->get('lastIndex');
+            $lastIndex = TypeConversion::toLength($lastIndexVal);
+
+            if (!$isGlobal && !$isSticky) {
                 $lastIndex = 0;
             }
 
-            if ($lastIndex < 0 || $lastIndex > $strLen) {
+            if ($lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
-                    $obj->set('lastIndex', new JsNumber(0.0));
+                    $obj->set('lastIndex', new JsNumber(0.0), true);
                 }
                 return new JsBoolean(false);
             }
@@ -8036,19 +8042,19 @@ class Interpreter
             if ($result === 1) {
                 $matchBytePos = $matches[0][1];
                 if ($isSticky && $matchBytePos !== $byteOffset) {
-                    $obj->set('lastIndex', new JsNumber(0.0));
+                    $obj->set('lastIndex', new JsNumber(0.0), true);
                     return new JsBoolean(false);
                 }
                 if ($isGlobal || $isSticky) {
                     $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
                     $matchCharLen = mb_strlen($matches[0][0], 'UTF-8');
-                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)));
+                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
                 }
                 return new JsBoolean(true);
             }
 
             if ($isGlobal || $isSticky) {
-                $obj->set('lastIndex', new JsNumber(0.0));
+                $obj->set('lastIndex', new JsNumber(0.0), true);
             }
             return new JsBoolean(false);
         };

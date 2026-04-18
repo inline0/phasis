@@ -154,15 +154,14 @@ class ArrayConstructor
             }
             $c = $species;
         }
-        if ($c instanceof JsUndefined) {
-            $arr = new JsArray();
-            $arr->setLength($length);
-            return $arr;
-        }
         if (!$c instanceof JsFunction || !$c->isConstructable()) {
             throw new TypeError('Species constructor is not a valid constructor');
         }
-        return $c->construct([new JsNumber((float) $length)]);
+        $result = $c->construct([new JsNumber((float) $length)]);
+        if (!$result instanceof JsObject) {
+            throw new TypeError('Species constructor did not return an object');
+        }
+        return $result;
     }
 
     private static function getLen(JsValue $obj): int
@@ -1680,7 +1679,23 @@ class ArrayConstructor
                             }
                             $val = $result->get('value');
                             if ($mapFn !== null) {
-                                $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
+                                try {
+                                    $val = $mapFn->call(
+                                        $mapThisArg,
+                                        [$val, new JsNumber((float) $index)]
+                                    );
+                                } catch (\Throwable $mapErr) {
+                                    // Per spec: IteratorClose(iterator, mappedValue).
+                                    $returnMethod = $iterator->get('return');
+                                    if ($returnMethod instanceof JsFunction) {
+                                        try {
+                                            $returnMethod->call($iterator, []);
+                                        } catch (\Throwable $e) {
+                                            // Ignore close errors, re-throw original.
+                                        }
+                                    }
+                                    throw $mapErr;
+                                }
                             }
                             // CreateDataPropertyOrThrow per spec.
                             $success = $a->defineOwnProperty(

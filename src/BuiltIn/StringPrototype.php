@@ -1654,8 +1654,10 @@ class StringPrototype
         switch ($unit) {
             case 'g':
                 $bytes *= 1024;
+                // fall through
             case 'm':
                 $bytes *= 1024;
+                // fall through
             case 'k':
                 $bytes *= 1024;
                 break;
@@ -2117,7 +2119,16 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $that = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $cmp = strcmp($str, $that);
+            // Use ICU Collator for locale-aware comparison when available.
+            if (class_exists(\Collator::class)) {
+                $collator = new \Collator('');
+                $cmp = $collator->compare($str, $that);
+                if ($cmp === false) {
+                    $cmp = strcmp($str, $that);
+                }
+            } else {
+                $cmp = strcmp($str, $that);
+            }
             if ($cmp < 0) {
                 return new JsNumber(-1.0);
             }

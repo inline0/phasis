@@ -187,7 +187,10 @@ class ObjectConstructor
             $obj->setPrototype(null);
             // Get iterator.
             if ($items instanceof JsUndefined || $items instanceof JsNull) {
-                throw new TypeError('Cannot read properties of ' . TypeConversion::toString($items) . " (reading 'Symbol(Symbol.iterator)')");
+                $val = TypeConversion::toString($items);
+                throw new TypeError(
+                    "Cannot read properties of {$val} (reading 'Symbol(Symbol.iterator)')"
+                );
             }
             $iterSym = SymbolConstructor::iterator();
             if (!$items instanceof JsObject) {
@@ -390,15 +393,16 @@ class ObjectConstructor
             'isPrototypeOf',
             function (JsValue $this_, array $args): JsValue {
                 $v = $args[0] ?? JsUndefined::instance();
+                // Step 1: If V is not an Object, return false.
                 if (!$v instanceof JsObject) {
                     return new JsBoolean(false);
                 }
-                if (!$this_ instanceof JsObject) {
-                    return new JsBoolean(false);
-                }
+                // Step 2: Let O = ToObject(this value). Throws for undefined/null.
+                $o = TypeConversion::toObject($this_);
+                // Step 3: Walk V's prototype chain, compare to O.
                 $current = $v->getPrototype();
                 while ($current !== null) {
-                    if ($current === $this_) {
+                    if ($current === $o) {
                         return new JsBoolean(true);
                     }
                     $current = $current->getPrototype();
@@ -1188,7 +1192,10 @@ class ObjectConstructor
         return function (JsValue $this_, array $args) use ($proto): JsValue {
             $iterable = $args[0] ?? JsUndefined::instance();
             if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-                throw new TypeError('Cannot read properties of ' . TypeConversion::toString($iterable) . " (reading 'Symbol(Symbol.iterator)')");
+                $val = TypeConversion::toString($iterable);
+                throw new TypeError(
+                    "Cannot read properties of {$val} (reading 'Symbol(Symbol.iterator)')"
+                );
             }
             $obj = new JsObject($proto);
 
@@ -1230,7 +1237,8 @@ class ObjectConstructor
                             // Ignore
                         }
                     }
-                    throw new TypeError('Iterator value ' . TypeConversion::toString($value) . ' is not an entry object');
+                    $val = TypeConversion::toString($value);
+                    throw new TypeError("Iterator value {$val} is not an entry object");
                 }
                 try {
                     $entryKey = $value->get('0');

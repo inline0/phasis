@@ -645,6 +645,24 @@ class Engine
         $regExpCtor = $this->globalEnv->get('RegExp');
         if ($regExpCtor instanceof JsFunction) {
             $this->installLegacyRegExpStatics($regExpCtor);
+
+            // RegExp[@@species] per spec: accessor property, getter returns `this`.
+            $speciesGetter = JsFunction::fromCallable(
+                'get [Symbol.species]',
+                function (\PhpJs\Value\JsValue $this_): \PhpJs\Value\JsValue {
+                    return $this_;
+                },
+                0,
+            );
+            $regExpCtor->definePropertyBySymbol(
+                \PhpJs\BuiltIn\SymbolConstructor::species(),
+                \PhpJs\Object\PropertyDescriptor::accessor(
+                    get: $speciesGetter,
+                    set: null,
+                    enumerable: false,
+                    configurable: true,
+                ),
+            );
         }
 
         // %AsyncFunction% intrinsic: the constructor for async functions.
