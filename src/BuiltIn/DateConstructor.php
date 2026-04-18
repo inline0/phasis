@@ -297,7 +297,16 @@ class DateConstructor
 
             if (!$hasTime && !$hasTimezone) {
                 // Date-only ISO: treat as UTC.
-                $str .= 'T00:00:00Z';
+                // Expand partial ISO forms: YYYY -> YYYY-01-01, YYYY-MM -> YYYY-MM-01
+                if (preg_match('/^\d{4}$/', $str)) {
+                    // Year only: YYYY -> YYYY-01-01T00:00:00Z
+                    $str .= '-01-01T00:00:00Z';
+                } elseif (preg_match('/^\d{4}-\d{2}$/', $str)) {
+                    // Year-month: YYYY-MM -> YYYY-MM-01T00:00:00Z
+                    $str .= '-01T00:00:00Z';
+                } else {
+                    $str .= 'T00:00:00Z';
+                }
             } elseif ($hasTime && !$hasTimezone) {
                 // Date-time without timezone: treat as local time per spec.
                 // strtotime handles this correctly by default.
@@ -829,29 +838,48 @@ class DateConstructor
             return new JsNumber(self::getTimeValue($this_));
         });
 
-        // Symbol.toPrimitive for Date: default hint maps to "string", not "number".
+        // Symbol.toPrimitive for Date: implements ES spec 21.4.4.45.
+        // The hint argument must be a string primitive with value "string", "number", or "default".
+        // "default" maps to "string" for Date. Then OrdinaryToPrimitive is called.
         $toPrimSym = SymbolConstructor::toPrimitive();
         $toPrimFn = JsFunction::fromCallable('[Symbol.toPrimitive]', function (JsValue $this_, array $args): JsValue {
+            // Step 1: Let O be the this value.
+            // Step 2: If Type(O) is not Object, throw a TypeError.
             if (!$this_ instanceof JsObject) {
                 throw new TypeError('Date.prototype[Symbol.toPrimitive] requires an object');
             }
-            $hint = isset($args[0]) ? TypeConversion::toString($args[0]) : 'default';
-            if ($hint === 'default') {
-                $hint = 'string';
+            // The hint must be a JS string primitive. Do not coerce.
+            $hintVal = $args[0] ?? JsUndefined::instance();
+            if (!$hintVal instanceof JsString) {
+                throw new TypeError('Invalid hint');
             }
-            if ($hint === 'string') {
-                $toStr = $this_->get('toString');
-                if ($toStr instanceof JsFunction) {
-                    return $toStr->call($this_, []);
+            $hint = $hintVal->value;
+            // Step 3: If hint is "string" or "default", let tryFirst be "string".
+            if ($hint === 'string' || $hint === 'default') {
+                $tryFirst = 'string';
+            } elseif ($hint === 'number') {
+                // Step 4: If hint is "number", let tryFirst be "number".
+                $tryFirst = 'number';
+            } else {
+                // Step 5: Else, throw a TypeError.
+                throw new TypeError('Invalid hint');
+            }
+            // Step 6: Return OrdinaryToPrimitive(O, tryFirst).
+            $methodNames = $tryFirst === 'string'
+                ? ['toString', 'valueOf']
+                : ['valueOf', 'toString'];
+            foreach ($methodNames as $methodName) {
+                $method = $this_->get($methodName);
+                if ($method instanceof JsFunction) {
+                    $result = $method->call($this_, []);
+                    if (!$result instanceof JsObject) {
+                        return $result;
+                    }
                 }
-                return new JsString(self::toDateString(self::getTimeValue($this_)));
             }
-            if ($hint === 'number') {
-                return new JsNumber(self::getTimeValue($this_));
-            }
-            throw new TypeError('Invalid hint: ' . $hint);
+            throw new TypeError('Cannot convert object to primitive value');
         }, 1);
-        $proto->definePropertyBySymbol($toPrimSym, PropertyDescriptor::data($toPrimFn, true, false, true));
+        $proto->definePropertyBySymbol($toPrimSym, PropertyDescriptor::data($toPrimFn, false, false, true));
 
         // Set Symbol.toStringTag so Object.prototype.toString returns "[object Date]".
         $toStringTagSym = SymbolConstructor::toStringTag();

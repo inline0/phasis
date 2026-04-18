@@ -122,6 +122,9 @@ enum TokenType: string
     case Arrow = '=>';
     case OptionalChaining = '?.';
 
+    // Private identifier (#name)
+    case PrivateIdentifier = 'PrivateIdentifier';
+
     // Special
     case EOF = 'EOF';
 

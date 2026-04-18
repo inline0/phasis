@@ -154,6 +154,11 @@ class Lexer
             return $this->readRegExp($start);
         }
 
+        // Private identifier (#name) for class private fields/methods
+        if ($ch === '#' && $this->pos + 1 < $this->length && $this->isIdentifierStart($this->source[$this->pos + 1])) {
+            return $this->readPrivateIdentifier($start);
+        }
+
         // Punctuators
         return $this->readPunctuator($start);
     }
@@ -184,6 +189,17 @@ class Lexer
         }
 
         return new Token(TokenType::Identifier, $result, $start);
+    }
+
+    private function readPrivateIdentifier(SourceLocation $start): Token
+    {
+        $this->advance(); // skip '#'
+        $name = '';
+        while ($this->pos < $this->length && $this->isIdentifierPart($this->source[$this->pos])) {
+            $name .= $this->source[$this->pos];
+            $this->advance();
+        }
+        return new Token(TokenType::PrivateIdentifier, '#' . $name, $start);
     }
 
     private function readIdentifierWithEscapes(SourceLocation $start): Token
