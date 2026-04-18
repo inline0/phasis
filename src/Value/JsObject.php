@@ -21,6 +21,17 @@ class JsObject implements JsValue
     /** @var array<int, JsSymbol> Tracks JsSymbol instances by id, in insertion order. */
     protected array $symbolOrder = [];
 
+    /**
+     * Private fields and methods storage. Keyed by "#name" strings.
+     * Each value is a JsValue for fields, or an array [get, set] for private accessors.
+     *
+     * @var array<string, JsValue|array{0: ?JsFunction, 1: ?JsFunction}>
+     */
+    private array $privateFields = [];
+
+    /** @var array<string, bool> Track which private names have been defined on this object. */
+    private array $privateFieldBrands = [];
+
     public static function setGlobalPrototype(JsObject $proto): void
     {
         self::$globalPrototype = $proto;
@@ -473,6 +484,92 @@ class JsObject implements JsValue
     public function getSymbolPropertyDescriptor(JsSymbol $symbol): ?PropertyDescriptor
     {
         return $this->symbolProperties[$symbol->getId()] ?? null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Private fields and methods
+    // -------------------------------------------------------------------------
+
+    /** Set a private field value on this object. */
+    public function setPrivateField(string $name, JsValue $value): void
+    {
+        $this->privateFields[$name] = $value;
+        $this->privateFieldBrands[$name] = true;
+    }
+
+    /** Get a private field value from this object. */
+    public function getPrivateField(string $name): JsValue
+    {
+        if (!isset($this->privateFieldBrands[$name])) {
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot read private member {$name} from an object whose class did not declare it",
+            );
+        }
+        $val = $this->privateFields[$name] ?? null;
+        if (is_array($val)) {
+            // Accessor: $val = [getter, setter]
+            if ($val[0] instanceof JsFunction) {
+                $interp = JsFunction::getInterpreterInstance();
+                if ($interp !== null) {
+                    return $interp->callFunction($val[0], $this, []);
+                }
+            }
+            throw new \PhpJs\Exceptions\TypeError(
+                "'{$name}' was defined without a getter",
+            );
+        }
+        return $val ?? JsUndefined::instance();
+    }
+
+    /**
+     * Set a private field value, throwing if it does not exist (write to private field).
+     */
+    public function setPrivateFieldValue(string $name, JsValue $value): void
+    {
+        if (!isset($this->privateFieldBrands[$name])) {
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot write private member {$name} to an object whose class did not declare it",
+            );
+        }
+        $existing = $this->privateFields[$name] ?? null;
+        if (is_array($existing)) {
+            // Accessor: $existing = [getter, setter]
+            if ($existing[1] instanceof JsFunction) {
+                $interp = JsFunction::getInterpreterInstance();
+                if ($interp !== null) {
+                    $interp->callFunction($existing[1], $this, [$value]);
+                    return;
+                }
+            }
+            throw new \PhpJs\Exceptions\TypeError(
+                "'{$name}' was defined without a setter",
+            );
+        }
+        $this->privateFields[$name] = $value;
+    }
+
+    /** Check if this object has a specific private field. */
+    public function hasPrivateField(string $name): bool
+    {
+        return isset($this->privateFieldBrands[$name]);
+    }
+
+    /**
+     * Install a private accessor (getter/setter pair).
+     *
+     * @param array{0: ?JsFunction, 1: ?JsFunction} $accessor [getter, setter]
+     */
+    public function setPrivateAccessor(string $name, array $accessor): void
+    {
+        $this->privateFields[$name] = $accessor;
+        $this->privateFieldBrands[$name] = true;
+    }
+
+    /** Install a private method (read-only, no setter). */
+    public function setPrivateMethod(string $name, JsFunction $method): void
+    {
+        $this->privateFields[$name] = $method;
+        $this->privateFieldBrands[$name] = true;
     }
 
     public function has(string $name): bool

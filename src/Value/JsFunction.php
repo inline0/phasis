@@ -11,6 +11,19 @@ class JsFunction extends JsObject
     /** @var null|\Closure(JsFunction, JsValue, list<JsValue>): JsValue */
     private static ?\Closure $interpreterCallback = null;
 
+    /** Static reference to the interpreter, used for private accessor invocation. */
+    private static ?\PhpJs\Runtime\Interpreter $interpreterInstance = null;
+
+    public static function setInterpreterInstance(\PhpJs\Runtime\Interpreter $interp): void
+    {
+        self::$interpreterInstance = $interp;
+    }
+
+    public static function getInterpreterInstance(): ?\PhpJs\Runtime\Interpreter
+    {
+        return self::$interpreterInstance;
+    }
+
     /** Function.prototype: the [[Prototype]] for all function instances. */
     private static ?JsObject $functionPrototype = null;
 
@@ -92,6 +105,22 @@ class JsFunction extends JsObject
 
     /** Original source text for Function.prototype.toString(). Null for native functions. */
     private ?string $sourceText = null;
+
+    /**
+     * Instance field initializers for class constructors.
+     * Each entry is [key (string|JsSymbol), initNode (Node|null), computed (bool), isPrivate (bool)].
+     *
+     * @var list<array{0: string|\PhpJs\Ast\Node, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}>
+     */
+    private array $instanceFieldInitializers = [];
+
+    /**
+     * Private method/accessor entries for class constructors.
+     * Each entry is [name (string), value (JsFunction), kind ('method'|'get'|'set')].
+     *
+     * @var list<array{0: string, 1: JsFunction, 2: string}>
+     */
+    private array $privateMethodEntries = [];
 
     /**
      * When true, this function uses the prototype set via JsObject::setPrototype()
@@ -221,6 +250,36 @@ class JsFunction extends JsObject
     public function getHomeObject(): ?JsObject
     {
         return $this->homeObject;
+    }
+
+    /**
+     * Add an instance field initializer for this class constructor.
+     *
+     * @param string|\PhpJs\Ast\Node $key
+     */
+    public function addInstanceFieldInitializer(mixed $key, ?\PhpJs\Ast\Node $initNode, bool $computed, bool $isPrivate): void
+    {
+        $this->instanceFieldInitializers[] = [$key, $initNode, $computed, $isPrivate];
+    }
+
+    /** @return list<array{0: string|\PhpJs\Ast\Node, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}> */
+    public function getInstanceFieldInitializers(): array
+    {
+        return $this->instanceFieldInitializers;
+    }
+
+    /**
+     * Add a private method/accessor entry for this class constructor.
+     */
+    public function addPrivateMethodEntry(string $name, JsFunction $value, string $kind): void
+    {
+        $this->privateMethodEntries[] = [$name, $value, $kind];
+    }
+
+    /** @return list<array{0: string, 1: JsFunction, 2: string}> */
+    public function getPrivateMethodEntries(): array
+    {
+        return $this->privateMethodEntries;
     }
 
     /**

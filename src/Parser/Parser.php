@@ -377,39 +377,53 @@ class Parser
         return new ClassDeclaration($location, $id, $superClass, $body, $this->extractSource($startOffset));
     }
 
-    /** @return ClassMethod[] */
+    /** @return Node[] Returns ClassMethod, ClassProperty, or StaticBlock nodes. */
     private function parseClassBody(): array
     {
         $this->expect(TokenType::LeftBrace);
-        $methods = [];
+        $elements = [];
 
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
             if ($this->eat(TokenType::Semicolon)) {
                 continue;
             }
-            $methods[] = $this->parseClassMethod();
+            $elements[] = $this->parseClassElement();
         }
 
         $this->expect(TokenType::RightBrace);
-        return $methods;
+        return $elements;
     }
 
-    private function parseClassMethod(): ClassMethod
+    /** Parse a single class element: method, field, or static block. */
+    private function parseClassElement(): Node
     {
         $location = $this->current()->location;
         $isStatic = false;
-        $kind = 'method';
-        $computed = false;
-        $isAsync = false;
-        $isGenerator = false;
 
+        // Check for 'static' keyword
         if ($this->check(TokenType::Static_)) {
             $next = $this->peek();
+
+            // static { ... } is a static block
+            if ($next->type === TokenType::LeftBrace) {
+                $this->advance(); // consume 'static'
+                $body = $this->parseBlockStatement();
+                $this->consumeSemicolon();
+                return new StaticBlock($location, $body);
+            }
+
+            // 'static' used as a modifier (not as a property name)
+            // It's a modifier if the next token is NOT '(' (method named static),
+            // '=' (field named static), ';' (field named static with no initializer)
             if (
                 $next->type !== TokenType::LeftParen
                 && $next->type !== TokenType::Equal
                 && $next->type !== TokenType::Semicolon
+                && !($next->type === TokenType::RightBrace)
             ) {
+                // Check also for ASI: if next token has lineTerminatorBefore and
+                // could be the start of the next element, then 'static' is a field name.
+                // But in most cases, 'static' is a modifier.
                 $this->advance();
                 $isStatic = true;
             }
@@ -418,9 +432,24 @@ class Parser
         // Method source starts AFTER 'static' (if present), at the first substantive token.
         $methodStartOffset = $this->current()->location->offset;
 
+        $isAsync = false;
+        $isGenerator = false;
+        $kind = 'method';
+        $computed = false;
+
+        // Try to parse modifiers (async, *, get, set) but we may need to backtrack
+        // if they turn out to be field names.
+        $savedPos = $this->pos;
+
         if ($this->check(TokenType::Async)) {
             $next = $this->peek();
-            if (!$next->lineTerminatorBefore && $next->type !== TokenType::LeftParen) {
+            if (
+                !$next->lineTerminatorBefore
+                && $next->type !== TokenType::LeftParen
+                && $next->type !== TokenType::Equal
+                && $next->type !== TokenType::Semicolon
+                && $next->type !== TokenType::RightBrace
+            ) {
                 $this->advance();
                 $isAsync = true;
             }
@@ -430,29 +459,76 @@ class Parser
             $isGenerator = true;
         }
 
-        if ($this->checkContextual('get') && !$this->peekIs(TokenType::LeftParen)) {
-            $this->advance();
-            $kind = 'get';
-        } elseif ($this->checkContextual('set') && !$this->peekIs(TokenType::LeftParen)) {
-            $this->advance();
-            $kind = 'set';
+        if ($this->checkContextual('get')) {
+            $next = $this->peek();
+            if (
+                $next->type !== TokenType::LeftParen
+                && $next->type !== TokenType::Equal
+                && $next->type !== TokenType::Semicolon
+                && $next->type !== TokenType::RightBrace
+            ) {
+                $this->advance();
+                $kind = 'get';
+            }
+        } elseif ($this->checkContextual('set')) {
+            $next = $this->peek();
+            if (
+                $next->type !== TokenType::LeftParen
+                && $next->type !== TokenType::Equal
+                && $next->type !== TokenType::Semicolon
+                && $next->type !== TokenType::RightBrace
+            ) {
+                $this->advance();
+                $kind = 'set';
+            }
         }
 
+        // Parse the key
         if ($this->check(TokenType::LeftBracket)) {
             $computed = true;
             $this->advance();
-            // Per spec: ComputedPropertyName uses AssignmentExpression[+In].
             $savedNoIn = $this->noIn;
             $this->noIn = false;
             $key = $this->parseAssignmentExpression();
             $this->noIn = $savedNoIn;
             $this->expect(TokenType::RightBracket);
+        } elseif ($this->check(TokenType::PrivateIdentifier)) {
+            $token = $this->advance();
+            $key = new PrivateIdentifier($token->location, $token->value);
         } else {
             $key = $this->parsePropertyName();
         }
 
+        // Determine if this is a field or a method: if the next token is '(', it's a method.
+        if (!$this->check(TokenType::LeftParen)) {
+            // This is a field declaration (not a method).
+            // If we consumed async/get/set/*, those were actually the field name.
+            // We need to handle this: if isAsync/isGenerator/kind!=method was set but
+            // now we see it's a field, the key we parsed IS the field key.
+            $value = null;
+            if ($this->eat(TokenType::Equal)) {
+                $value = $this->parseAssignmentExpression();
+            }
+            $this->consumeSemicolon();
+
+            if ($key instanceof Identifier && $key->name === 'constructor' && !$isStatic) {
+                throw new ParseError(
+                    'Classes may not have a field named \'constructor\'',
+                    $this->current(),
+                );
+            }
+
+            return new ClassProperty($location, $key, $value, $isStatic, $computed);
+        }
+
+        // It's a method.
         if ($key instanceof Identifier && $key->name === 'constructor' && !$isStatic) {
             $kind = 'constructor';
+        }
+
+        // Private identifiers cannot be constructors
+        if ($key instanceof PrivateIdentifier && $kind === 'constructor') {
+            $kind = 'method';
         }
 
         $params = $this->parseFormalParameters();
@@ -1318,9 +1394,14 @@ class Parser
         return new Identifier($token->location, $token->value);
     }
 
-    private function parseIdentifierOrKeyword(): Identifier
+    private function parseIdentifierOrKeyword(): Node
     {
         $token = $this->current();
+        // Private identifier (#name) for private field/method access
+        if ($token->type === TokenType::PrivateIdentifier) {
+            $this->advance();
+            return new PrivateIdentifier($token->location, $token->value);
+        }
         // Accept identifiers and most keywords as property names
         if ($token->type === TokenType::Identifier || $token->type->isKeyword()) {
             $this->advance();

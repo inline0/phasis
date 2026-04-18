@@ -143,7 +143,13 @@ class NumberConstructor
         // toLocaleString: defaults to toString behavior
         $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             $numValue = self::extractNumberValue($this_);
-            return new JsString((new JsNumber($numValue))->toJsString());
+            if (is_nan($numValue)) {
+                return new JsString('NaN');
+            }
+            if (is_infinite($numValue)) {
+                return new JsString($numValue > 0 ? 'Infinity' : '-Infinity');
+            }
+            return new JsString(self::numberToDecimalString($numValue));
         }, 0);
 
         return $proto;
@@ -215,7 +221,7 @@ class NumberConstructor
 
             // Per spec step 9: if abs(x) >= 10^21, return ToString(x).
             if (abs($numValue) >= 1e21) {
-                return new JsString((new \PhpJs\Value\JsNumber($numValue))->toJsString());
+                return new JsString(self::numberToDecimalString($numValue));
             }
 
             return new JsString(number_format($numValue, $digits, '.', ''));
@@ -241,30 +247,135 @@ class NumberConstructor
             }
 
             if ($radix === 10) {
-                return new JsString((new JsNumber($numValue))->toJsString());
+                return new JsString(self::numberToDecimalString($numValue));
             }
 
-            // For integer values, use base conversion.
-            if (floor($numValue) === $numValue) {
-                $negative = $numValue < 0;
-                $absVal = abs($numValue);
-                $result = '';
-                $chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-                if ($absVal === 0.0) {
-                    $result = '0';
-                } else {
-                    $intVal = (int) $absVal;
-                    while ($intVal > 0) {
-                        $result = $chars[$intVal % $radix] . $result;
-                        $intVal = intdiv($intVal, $radix);
-                    }
-                }
-                return new JsString($negative ? '-' . $result : $result);
-            }
-
-            // For non-integer values with non-decimal radix, fall back to decimal representation.
-            return new JsString((new JsNumber($numValue))->toJsString());
+            // For non-decimal radix: use base conversion for the integer part,
+            // then fractional expansion for the fractional part.
+            return new JsString(self::numberToRadixString($numValue, $radix));
         };
+    }
+
+    /**
+     * ES spec Number::toString for radix 10 (7.1.12.1).
+     *
+     * Uses json_encode for the shortest decimal representation (Grisu3/Ryu),
+     * then formats according to ECMAScript rules.
+     */
+    private static function numberToDecimalString(float $value): string
+    {
+        if ($value === 0.0) {
+            return '0';
+        }
+
+        $negative = $value < 0;
+        $abs = abs($value);
+
+        // Get shortest decimal representation via json_encode (implements Grisu3/Ryu).
+        $json = json_encode($abs, JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            $json = sprintf('%.17g', $abs);
+        }
+
+        $json = strtolower($json);
+        if (str_contains($json, 'e')) {
+            [$mantissa, $exp] = explode('e', $json, 2);
+            $phpExp = (int) $exp;
+        } else {
+            $mantissa = $json;
+            $phpExp = 0;
+        }
+
+        if (str_contains($mantissa, '.')) {
+            $dotPos = strpos($mantissa, '.');
+            $digits = str_replace('.', '', $mantissa);
+            $decimalPlaces = strlen($mantissa) - $dotPos - 1;
+            $actualExp = $phpExp - $decimalPlaces;
+        } else {
+            $digits = $mantissa;
+            $actualExp = $phpExp;
+        }
+
+        $digits = ltrim($digits, '0');
+        if ($digits === '') {
+            $digits = '0';
+        }
+
+        $trailingZeros = strlen($digits) - strlen(rtrim($digits, '0'));
+        if ($trailingZeros > 0) {
+            $digits = rtrim($digits, '0');
+            $actualExp += $trailingZeros;
+        }
+        if ($digits === '') {
+            $digits = '0';
+        }
+
+        $k = strlen($digits);
+        $n = $actualExp + $k;
+
+        if ($k <= $n && $n <= 21) {
+            $result = $digits . str_repeat('0', $n - $k);
+        } elseif (0 < $n && $n <= 21) {
+            $result = substr($digits, 0, $n) . '.' . substr($digits, $n);
+        } elseif (-6 < $n && $n <= 0) {
+            $result = '0.' . str_repeat('0', -$n) . $digits;
+        } elseif ($k === 1) {
+            $e = $n - 1;
+            $result = $digits . 'e' . ($e >= 0 ? '+' : '') . $e;
+        } else {
+            $e = $n - 1;
+            $result = $digits[0] . '.' . substr($digits, 1) . 'e' . ($e >= 0 ? '+' : '') . $e;
+        }
+
+        return $negative ? '-' . $result : $result;
+    }
+
+    /**
+     * Number::toString for non-decimal radix.
+     *
+     * Handles integer and fractional parts separately.
+     */
+    private static function numberToRadixString(float $value, int $radix): string
+    {
+        if ($value === 0.0) {
+            return '0';
+        }
+
+        $negative = $value < 0;
+        $abs = abs($value);
+        $chars = '0123456789abcdefghijklmnopqrstuvwxyz';
+
+        // Integer part.
+        $intPart = floor($abs);
+        $fracPart = $abs - $intPart;
+
+        $intStr = '';
+        if ($intPart === 0.0) {
+            $intStr = '0';
+        } else {
+            while ($intPart > 0) {
+                $digit = (int) fmod($intPart, $radix);
+                $intStr = $chars[$digit] . $intStr;
+                $intPart = floor($intPart / $radix);
+            }
+        }
+
+        $result = $intStr;
+
+        // Fractional part: expand by multiplying by radix repeatedly.
+        if ($fracPart > 0) {
+            $result .= '.';
+            // Limit to ~64 digits to match V8 behavior and avoid infinite loops.
+            $maxDigits = 64;
+            for ($i = 0; $i < $maxDigits && $fracPart > 0; $i++) {
+                $fracPart *= $radix;
+                $digit = (int) $fracPart;
+                $result .= $chars[$digit];
+                $fracPart -= $digit;
+            }
+        }
+
+        return $negative ? '-' . $result : $result;
     }
 
     private static function valueOf(): \Closure

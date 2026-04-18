@@ -16,6 +16,9 @@ use PhpJs\Ast\Expression\BinaryExpression;
 use PhpJs\Ast\Expression\CallExpression;
 use PhpJs\Ast\Expression\ClassExpression;
 use PhpJs\Ast\Expression\ClassMethod;
+use PhpJs\Ast\Expression\ClassProperty;
+use PhpJs\Ast\Expression\PrivateIdentifier;
+use PhpJs\Ast\Expression\StaticBlock;
 use PhpJs\Ast\Expression\ConditionalExpression;
 use PhpJs\Ast\Expression\FunctionExpression;
 use PhpJs\Ast\Expression\Identifier;
@@ -133,6 +136,9 @@ class Interpreter
         JsFunction::setInterpreterCallback(function (JsFunction $fn, JsValue $thisValue, array $args): JsValue {
             return $this->callFunction($fn, $thisValue, $args);
         });
+
+        // Store interpreter reference for private accessor invocation in JsObject.
+        JsFunction::setInterpreterInstance($this);
     }
 
     public function setMaxLoopIterations(int $limit): void
