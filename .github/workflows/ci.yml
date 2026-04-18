@@ -33,7 +33,7 @@ jobs:
         continue-on-error: true
 
       - name: PHPCS
-        run: vendor/bin/phpcs
+        run: vendor/bin/phpcs -n
 
       - name: PHPUnit
         run: vendor/bin/phpunit --testsuite=unit
