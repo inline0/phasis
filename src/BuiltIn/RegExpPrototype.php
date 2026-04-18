@@ -45,14 +45,16 @@ class RegExpPrototype
         // Per spec §22.2.6.2: RegExp.prototype.exec reads [[PCREPattern]] from this.
         $addMethod('exec', self::execMethod(), 1);
 
-        // Per spec §22.2.6.14: RegExp.prototype.test calls exec.
+        // Per spec 22.2.6.14: RegExp.prototype.test calls RegExpExec.
         $addMethod('test', static function (JsValue $this_, array $args): JsValue {
-            $execMethod = $this_ instanceof JsObject ? $this_->get('exec') : null;
-            if ($execMethod instanceof JsFunction) {
-                $result = $execMethod->call($this_, $args);
-                return new JsBoolean(!$result instanceof JsNull);
+            if (!$this_ instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Method RegExp.prototype.test called on incompatible receiver'
+                );
             }
-            return new JsBoolean(false);
+            $str = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+            $result = self::regExpExec($this_, $str);
+            return new JsBoolean(!$result instanceof JsNull);
         }, 1);
 
         // Per spec §22.2.6.15: RegExp.prototype.toString returns /source/flags.
@@ -65,27 +67,52 @@ class RegExpPrototype
             return new JsString("/{$source}/{$flags}");
         }, 0);
 
-        // Accessor properties on RegExp.prototype for source, flags, global, etc.
-        // These read own data properties from each RegExp instance.
-        // Instances have their own shadow data properties, so the accessor is only
-        // invoked when querying RegExp.prototype itself (not instances).
-        $flagAccessor = static function (string $propName) use ($proto): void {
+        // Per spec, source/global/ignoreCase/multiline/dotAll/unicode/unicodeSets/
+        // sticky/hasIndices are accessor properties on RegExp.prototype that read
+        // from internal slots on the receiver.
+
+        // Map of flag property names to their flag character in [[OriginalFlags]].
+        $flagCharMap = [
+            'global' => 'g',
+            'ignoreCase' => 'i',
+            'multiline' => 'm',
+            'dotAll' => 's',
+            'unicode' => 'u',
+            'unicodeSets' => 'v',
+            'sticky' => 'y',
+            'hasIndices' => 'd',
+        ];
+
+        $flagAccessor = static function (string $propName) use ($proto, $flagCharMap): void {
+            $flagChar = $flagCharMap[$propName] ?? null;
             $getter = JsFunction::fromCallable(
                 'get ' . $propName,
-                static function (JsValue $this_, array $args) use ($propName): JsValue {
+                static function (JsValue $this_, array $args) use ($propName, $flagChar): JsValue {
                     if (!$this_ instanceof JsObject) {
                         throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
                     }
-                // For RegExp.prototype itself, return undefined per spec.
+                    // For RegExp.prototype itself, return undefined per spec.
                     $pcrePattern = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
                     if ($pcrePattern === null) {
                         return JsUndefined::instance();
                     }
-                    return $this_->get($propName);
+                    if ($flagChar !== null) {
+                        $flagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                        $origFlags = ($flagsDesc && $flagsDesc->value instanceof JsString)
+                            ? $flagsDesc->value->value : '';
+                        return new JsBoolean(str_contains($origFlags, $flagChar));
+                    }
+                    // source
+                    $srcDesc = $this_->getOwnPropertyDescriptor('[[OriginalSource]]');
+                    if ($srcDesc && $srcDesc->value instanceof JsString) {
+                        $src = $srcDesc->value->value;
+                        return new JsString($src === '' ? '(?:)' : $src);
+                    }
+                    return new JsString('(?:)');
                 },
                 0,
             );
-            $proto->defineOwnProperty($propName, \PhpJs\Object\PropertyDescriptor::accessor(
+            $proto->defineOwnProperty($propName, PropertyDescriptor::accessor(
                 get: $getter,
                 set: null,
                 enumerable: false,
@@ -94,7 +121,52 @@ class RegExpPrototype
         };
 
         $flagAccessor('source');
-        $flagAccessor('flags');
+
+        // RegExp.prototype.flags is a special getter per spec 22.2.6.7.
+        // It builds the flags string by reading individual flag properties,
+        // not from an internal slot.  This allows it to work with plain objects.
+        $flagsGetter = JsFunction::fromCallable(
+            'get flags',
+            static function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new \PhpJs\Exceptions\TypeError('get flags called on non-object');
+                }
+                $result = '';
+                if (TypeConversion::toBoolean($this_->get('hasIndices'))) {
+                    $result .= 'd';
+                }
+                if (TypeConversion::toBoolean($this_->get('global'))) {
+                    $result .= 'g';
+                }
+                if (TypeConversion::toBoolean($this_->get('ignoreCase'))) {
+                    $result .= 'i';
+                }
+                if (TypeConversion::toBoolean($this_->get('multiline'))) {
+                    $result .= 'm';
+                }
+                if (TypeConversion::toBoolean($this_->get('dotAll'))) {
+                    $result .= 's';
+                }
+                if (TypeConversion::toBoolean($this_->get('unicode'))) {
+                    $result .= 'u';
+                }
+                if (TypeConversion::toBoolean($this_->get('unicodeSets'))) {
+                    $result .= 'v';
+                }
+                if (TypeConversion::toBoolean($this_->get('sticky'))) {
+                    $result .= 'y';
+                }
+                return new JsString($result);
+            },
+            0,
+        );
+        $proto->defineOwnProperty('flags', PropertyDescriptor::accessor(
+            get: $flagsGetter,
+            set: null,
+            enumerable: false,
+            configurable: true,
+        ));
+
         $flagAccessor('global');
         $flagAccessor('ignoreCase');
         $flagAccessor('multiline');
@@ -426,7 +498,10 @@ class RegExpPrototype
             }
 
             $S = TypeConversion::toString($args[0] ?? JsUndefined::instance());
-            $global = TypeConversion::toBoolean($this_->get('global'));
+
+            // Per spec step 4: Let flags be ? ToString(? Get(rx, "flags")).
+            $flags = TypeConversion::toString($this_->get('flags'));
+            $global = str_contains($flags, 'g');
 
             if (!$global) {
                 // Non-global: single RegExpExec call.
@@ -434,8 +509,8 @@ class RegExpPrototype
             }
 
             // Global: iterate all matches.
-            $fullUnicode = TypeConversion::toBoolean($this_->get('unicode'))
-                || TypeConversion::toBoolean($this_->get('unicodeSets'));
+            $fullUnicode = str_contains($flags, 'u')
+                || str_contains($flags, 'v');
 
             // Per spec: Set(rx, "lastIndex", +0, Throw=true).
             $this_->set('lastIndex', new JsNumber(0.0), true);
@@ -954,6 +1029,13 @@ class RegExpPrototype
             }
             throw new \PhpJs\Exceptions\TypeError(
                 'RegExp exec must return an Object or null'
+            );
+        }
+        // Per spec 22.2.5.2.1 step 6: throw TypeError if R lacks [[RegExpMatcher]].
+        $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
+        if ($pcreDesc === null) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Method RegExp.prototype.exec called on incompatible receiver'
             );
         }
         return JsNull::instance();

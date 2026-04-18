@@ -176,23 +176,19 @@ class JsArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        if ($name === 'length') {
-            if (!$this->lengthWritable) {
-                if ($strict) {
-                    throw new \PhpJs\Exceptions\TypeError(
-                        "Cannot assign to read only property 'length' of object '[object Array]'"
-                    );
-                }
-                return;
-            }
-            $this->setLengthFromValue($value);
-            return;
+        // All properties including "length" go through the standard set path,
+        // which calls internalSet -> ordinarySetWithOwnDescriptor ->
+        // defineOwnProperty -> arraySetLength. This ensures value coercion
+        // happens before writable checks per ES spec.
+        $success = $this->internalSet($name, $value, $this);
+        if (!$success && $strict) {
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot assign to read only property '{$name}' of object '[object Array]'"
+            );
         }
 
-        parent::set($name, $value, $strict);
-
         // Only update length for valid array indices (0 to 2^32-2).
-        if (self::isArrayIndex($name)) {
+        if ($success && $name !== 'length' && self::isArrayIndex($name)) {
             $index = (int) $name;
             if ($index >= $this->length) {
                 $this->length = $index + 1;
@@ -202,14 +198,8 @@ class JsArray extends JsObject
 
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
-        // When the receiver is this array itself, handle length and index tracking.
-        if ($receiver === $this) {
-            if ($name === 'length') {
-                $this->setLengthFromValue($value);
-                return true;
-            }
+        if ($receiver === $this && $name !== 'length') {
             $result = parent::internalSet($name, $value, $receiver);
-            // Only update length for valid array indices (0 to 2^32-2).
             if ($result && self::isArrayIndex($name)) {
                 $index = (int) $name;
                 if ($index >= $this->length) {
@@ -218,7 +208,8 @@ class JsArray extends JsObject
             }
             return $result;
         }
-        // When receiver differs (e.g. inherited set through prototype), use standard behavior.
+        // Length and non-self receiver use standard OrdinarySet which
+        // calls defineOwnProperty -> arraySetLength for length.
         return parent::internalSet($name, $value, $receiver);
     }
 

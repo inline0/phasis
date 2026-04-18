@@ -8192,10 +8192,8 @@ class Interpreter
         // source and flags are configurable (per modern ES), others are non-configurable.
         // Making all configurable to allow Object.defineProperty overrides in tests.
         $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, true);
-        $obj->defineOwnProperty('source', $noenum(new JsString($pattern === '' ? '(?:)' : $pattern)));
-        $obj->defineOwnProperty('flags', $noenum(new JsString($sortedFlags)));
-        // Internal slots for compile() per Annex B: these are not affected by
-        // user-visible property overrides on the instance.
+        // Internal slots for compile() and prototype getters.
+        // These are not affected by user-visible property overrides.
         $obj->defineOwnProperty(
             '[[OriginalSource]]',
             PropertyDescriptor::data(new JsString($pattern), false, false, false),
@@ -8204,14 +8202,10 @@ class Interpreter
             '[[OriginalFlags]]',
             PropertyDescriptor::data(new JsString($sortedFlags), false, false, false),
         );
-        $obj->defineOwnProperty('global', $noenum(new JsBoolean(str_contains($flags, 'g'))));
-        $obj->defineOwnProperty('ignoreCase', $noenum(new JsBoolean(str_contains($flags, 'i'))));
-        $obj->defineOwnProperty('multiline', $noenum(new JsBoolean(str_contains($flags, 'm'))));
-        $obj->defineOwnProperty('dotAll', $noenum(new JsBoolean(str_contains($flags, 's'))));
-        $obj->defineOwnProperty('unicode', $noenum(new JsBoolean(str_contains($flags, 'u'))));
-        $obj->defineOwnProperty('unicodeSets', $noenum(new JsBoolean(str_contains($flags, 'v'))));
-        $obj->defineOwnProperty('sticky', $noenum(new JsBoolean(str_contains($flags, 'y'))));
-        $obj->defineOwnProperty('hasIndices', $noenum(new JsBoolean(str_contains($flags, 'd'))));
+        // Per spec, source/flags/global/ignoreCase/multiline/dotAll/unicode/
+        // unicodeSets/sticky/hasIndices are prototype accessor properties, not
+        // own data properties. Do not install them as own properties so that
+        // Object.defineProperty overrides and the prototype getters work correctly.
         // lastIndex is writable but not enumerable, not configurable per spec.
         $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(new JsNumber(0.0), true, false, false));
 
