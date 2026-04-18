@@ -125,7 +125,7 @@ class Interpreter
     private bool $isEvalContext = false;
 
     /** Monotonically increasing counter for unique private name brands. */
-    private int $nextPrivateBrandId = 0;
+    private static int $nextPrivateBrandId = 0;
 
     public function __construct(
         private Environment $globalEnv,
@@ -1421,6 +1421,24 @@ class Interpreter
             // Optional call: obj?.method() where obj evaluates to null/undefined
             if ($node->callee->optional && ($rawObj instanceof JsNull || $rawObj instanceof JsUndefined)) {
                 return JsOptionalUndefined::instance();
+            }
+
+            // Private method call: obj.#method(args)
+            if ($node->callee->property instanceof PrivateIdentifier) {
+                if (!($rawObj instanceof JsObject)) {
+                    throw new TypeError(
+                        'Cannot read private member ' . $node->callee->property->name . ' from a non-object',
+                    );
+                }
+                $brandedName = $env->resolvePrivateName($node->callee->property->name);
+                $callee = $rawObj->getPrivateField($brandedName);
+                $args = $this->evaluateArguments($node->arguments, $env);
+                if (!($callee instanceof JsFunction)) {
+                    throw new TypeError(
+                        TypeConversion::toString($callee) . ' is not a function',
+                    );
+                }
+                return $this->callFunction($callee, $rawObj, $args);
             }
 
             $rawCallKey = null;
@@ -4627,7 +4645,7 @@ class Interpreter
         // Each evaluation of a class body generates unique branded private names
         // so that instances from different evaluations of the same class expression
         // have distinct private fields (PrivateBrandCheck).
-        $brandId = $this->nextPrivateBrandId++;
+        $brandId = self::$nextPrivateBrandId++;
         $privateNames = [];
         foreach ($elements as $element) {
             if (($element instanceof ClassMethod || $element instanceof ClassProperty)
@@ -5444,12 +5462,29 @@ class Interpreter
      */
     private function getIterator(JsValue $iterable): ?JsObject
     {
-        // String iteration: produce a character iterator.
+        // String iteration: produce a code-point iterator that correctly
+        // handles surrogate pairs and lone surrogates per spec 22.1.5.2.1.
         if ($iterable instanceof JsString) {
             $chars = [];
-            $len = mb_strlen($iterable->value, 'UTF-8');
-            for ($i = 0; $i < $len; $i++) {
-                $chars[] = mb_substr($iterable->value, $i, 1, 'UTF-8');
+            $u16 = JsString::utf8ToUtf16LE($iterable->value);
+            $u16Len = (int) (strlen($u16) / 2);
+            $si = 0;
+            while ($si < $u16Len) {
+                $cu = ord($u16[$si * 2]) | (ord($u16[$si * 2 + 1]) << 8);
+                if ($cu >= 0xD800 && $cu <= 0xDBFF && $si + 1 < $u16Len) {
+                    $next = ord($u16[($si + 1) * 2]) | (ord($u16[($si + 1) * 2 + 1]) << 8);
+                    if ($next >= 0xDC00 && $next <= 0xDFFF) {
+                        // Valid surrogate pair: combine into a single code point.
+                        $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
+                        $ch = mb_chr($cp, 'UTF-8');
+                        $chars[] = $ch !== false ? $ch : '?';
+                        $si += 2;
+                        continue;
+                    }
+                }
+                // Lone surrogate or BMP character.
+                $chars[] = JsString::utf16CodeUnitToUtf8($cu);
+                $si++;
             }
             $index = 0;
             $total = count($chars);

@@ -569,6 +569,18 @@ class JsObject implements JsValue
     }
 
     /**
+     * Get the raw private field storage without invoking accessors.
+     * Returns the stored value directly: a JsValue for fields/methods,
+     * or an array [getter, setter] for accessors.
+     *
+     * @return JsValue|array{0: ?JsFunction, 1: ?JsFunction}|null
+     */
+    public function getPrivateFieldRaw(string $name): mixed
+    {
+        return $this->privateFields[$name] ?? null;
+    }
+
+    /**
      * Install a private accessor (getter/setter pair).
      *
      * @param array{0: ?JsFunction, 1: ?JsFunction} $accessor [getter, setter]
