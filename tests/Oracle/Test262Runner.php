@@ -97,6 +97,8 @@ class Test262Runner
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
+        // Hard time limit per test: 30 seconds. Prevents infinite loops.
+        set_time_limit(30);
 
         // Install $262 host object for test262 harness.
         $this->install262HostObject($engine);

@@ -234,14 +234,16 @@ class ReflectObject
                     );
                 }
 
-                // Regular object: use spec-compliant OrdinaryDefineOwnProperty with bool return.
+                // Call the target's own [[DefineOwnProperty]] internal method.
+                // This is important: exotic objects (e.g., JsArray) override
+                // defineOwnProperty for special handling (e.g., ArraySetLength).
                 if ($propKey instanceof JsSymbol) {
                     return new JsBoolean(
                         self::ordinaryDefineOwnPropertySymbol($target, $propKey, $descriptor)
                     );
                 }
                 return new JsBoolean(
-                    self::ordinaryDefineOwnProperty($target, $propKey->toJsString(), $descriptor)
+                    $target->defineOwnProperty($propKey->toJsString(), $descriptor)
                 );
             }, 3),
             true,
