@@ -32,6 +32,9 @@ class JsObject implements JsValue
     /** @var array<string, bool> Track which private names have been defined on this object. */
     private array $privateFieldBrands = [];
 
+    /** @var array<string, bool> Track which private names are methods (read-only, no set). */
+    private array $privateMethods = [];
+
     /** @var array<int, bool> Track which constructors have initialized fields on this object. */
     private array $fieldsInitialized = [];
 
@@ -596,6 +599,14 @@ class JsObject implements JsValue
                 "Cannot write private member {$name} to an object whose class did not declare it",
             );
         }
+        // Per spec PrivateFieldSet step 4: writing to a private method throws TypeError.
+        if (isset($this->privateMethods[$name])) {
+            // Strip the internal brand suffix (@N) from the name for the error message.
+            $displayName = preg_replace('/@\d+$/', '', $name);
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot assign to private method {$displayName}",
+            );
+        }
         $existing = $this->privateFields[$name] ?? null;
         if (is_array($existing)) {
             // Accessor: $existing = [getter, setter]
@@ -647,6 +658,7 @@ class JsObject implements JsValue
     {
         $this->privateFields[$name] = $method;
         $this->privateFieldBrands[$name] = true;
+        $this->privateMethods[$name] = true;
     }
 
     public function has(string $name): bool

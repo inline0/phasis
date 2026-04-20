@@ -52,6 +52,14 @@ class Environment
     private ?string $functionKind = null;
 
     /**
+     * Whether the enclosing function has non-simple parameters (defaults,
+     * rest, destructuring). Per EvalDeclarationInstantiation, eval("var
+     * arguments") is a SyntaxError inside such functions because
+     * arguments is treated as an immutable binding.
+     */
+    private bool $hasNonSimpleParams = false;
+
+    /**
      * Maps source-level private names (#name) to branded private names (#name@{brandId}).
      * Each evaluation of a class body creates a unique brand, so that private fields
      * from different evaluations of the same class expression are distinct.
@@ -562,6 +570,29 @@ class Environment
     public function getFunctionKind(): ?string
     {
         return $this->functionKind;
+    }
+
+    /** Mark this function environment as having non-simple parameters. */
+    public function setHasNonSimpleParams(bool $value): void
+    {
+        $this->hasNonSimpleParams = $value;
+    }
+
+    /**
+     * Walk the scope chain to check if the enclosing function has non-simple params.
+     * Per EvalDeclarationInstantiation, eval("var arguments") in such functions
+     * is a SyntaxError.
+     */
+    public function getEnclosingHasNonSimpleParams(): bool
+    {
+        $env = $this;
+        while ($env !== null) {
+            if ($env->functionKind !== null) {
+                return $env->hasNonSimpleParams;
+            }
+            $env = $env->parent;
+        }
+        return false;
     }
 
     /**

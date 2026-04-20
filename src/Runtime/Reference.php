@@ -9,6 +9,7 @@ use PhpJs\Exceptions\TypeError;
 use PhpJs\Spec\TypeConversion;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsObject;
+use PhpJs\Value\JsProxy;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
@@ -73,10 +74,15 @@ class Reference
     /** Resolve the reference to its current value. */
     public function getValue(): JsValue
     {
-        // Private field access
+        // Private field access. Per spec, private field operations bypass
+        // Proxy traps and operate on the underlying target object.
         if ($this->privateFieldName !== null) {
-            if ($this->base instanceof JsObject) {
-                return $this->base->getPrivateField($this->privateFieldName);
+            $target = $this->base;
+            if ($target instanceof JsProxy) {
+                $target = $target->getTarget();
+            }
+            if ($target instanceof JsObject) {
+                return $target->getPrivateField($this->privateFieldName);
             }
             throw new TypeError(
                 'Cannot read private member ' . $this->privateFieldName . ' from a non-object',
@@ -116,10 +122,15 @@ class Reference
     /** Assign a value through this reference. */
     public function setValue(JsValue $value): void
     {
-        // Private field assignment
+        // Private field assignment. Per spec, private field operations bypass
+        // Proxy traps and operate on the underlying target object.
         if ($this->privateFieldName !== null) {
-            if ($this->base instanceof JsObject) {
-                $this->base->setPrivateFieldValue($this->privateFieldName, $value);
+            $target = $this->base;
+            if ($target instanceof JsProxy) {
+                $target = $target->getTarget();
+            }
+            if ($target instanceof JsObject) {
+                $target->setPrivateFieldValue($this->privateFieldName, $value);
                 return;
             }
             throw new TypeError(

@@ -80,6 +80,7 @@ use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsArgumentsObject;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsOptionalUndefined;
+use PhpJs\Value\JsProxy;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
@@ -512,13 +513,18 @@ class Interpreter
     private function evalBinaryExpression(BinaryExpression $node, Environment $env): JsValue
     {
         // Private field brand check: #name in obj
+        // Per spec, private field access bypasses Proxy traps.
         if ($node->operator === 'in' && $node->left instanceof PrivateIdentifier) {
             $right = $this->evaluate($node->right, $env);
             if (!($right instanceof JsObject)) {
                 throw new TypeError('Cannot use \'in\' operator to search for a private field without an object');
             }
+            $target = $right;
+            if ($target instanceof JsProxy) {
+                $target = $target->getTarget();
+            }
             $brandedName = $env->resolvePrivateName($node->left->name);
-            return new JsBoolean($right->hasPrivateField($brandedName));
+            return new JsBoolean($target->hasPrivateField($brandedName));
         }
 
         $left = $this->evaluate($node->left, $env);
@@ -1451,14 +1457,20 @@ class Interpreter
             }
 
             // Private method call: obj.#method(args)
+            // Per spec, private field lookup bypasses Proxy traps, but the
+            // call receiver remains the original object (including the Proxy).
             if ($node->callee->property instanceof PrivateIdentifier) {
-                if (!($rawObj instanceof JsObject)) {
+                $target = $rawObj;
+                if ($target instanceof JsProxy) {
+                    $target = $target->getTarget();
+                }
+                if (!($target instanceof JsObject)) {
                     throw new TypeError(
                         'Cannot read private member ' . $node->callee->property->name . ' from a non-object',
                     );
                 }
                 $brandedName = $env->resolvePrivateName($node->callee->property->name);
-                $callee = $rawObj->getPrivateField($brandedName);
+                $callee = $target->getPrivateField($brandedName);
                 $args = $this->evaluateArguments($node->arguments, $env);
                 if (!($callee instanceof JsFunction)) {
                     throw new TypeError(
@@ -1693,10 +1705,15 @@ class Interpreter
                                 "Identifier 'arguments' has already been declared",
                             );
                         }
-                        // Per spec, var arguments is only a conflict when
-                        // arguments is a LEXICAL binding (non-simple params)
-                        // in the enclosing scope.
-                        if ($env->hasLexicalBinding('arguments')) {
+                        // Per spec, var arguments is a conflict when:
+                        // 1. arguments is a lexical binding in the enclosing scope, OR
+                        // 2. the enclosing function has non-simple parameters
+                        //    (defaults, rest, destructuring), because arguments
+                        //    is treated as an immutable binding in that case.
+                        if (
+                            $env->hasLexicalBinding('arguments')
+                            || $env->getEnclosingHasNonSimpleParams()
+                        ) {
                             throw new \PhpJs\Exceptions\SyntaxError(
                                 "Identifier 'arguments' has already been declared",
                             );
@@ -2863,6 +2880,13 @@ class Interpreter
             $params = $fn->getParams();
             $hasDefaultParams = $this->hasParameterExpressions($params);
 
+            // Per EvalDeclarationInstantiation, eval("var arguments") inside
+            // a function with non-simple parameters is a SyntaxError. Tag the
+            // environment so the eval check can detect this.
+            if ($this->isNonSimpleParameterList($params)) {
+                $fnEnv->setHasNonSimpleParams(true);
+            }
+
             $unmapped = true;
             $argsObj = null;
             if (!$fn->isArrow()) {
@@ -3078,6 +3102,9 @@ class Interpreter
         // object is returned. Only the body execution is deferred to the Fiber.
         $fnEnv = $fn->getClosure()->createChild();
         $fnEnv->setFunctionKind($fn->isAsync() ? 'async-generator' : 'generator');
+        if ($this->isNonSimpleParameterList($fn->getParams())) {
+            $fnEnv->setHasNonSimpleParams(true);
+        }
         $fnEnv->defineVar('this', $thisValue);
         $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
@@ -3651,14 +3678,19 @@ class Interpreter
         }
 
         // Private identifier access: obj.#name
+        // Per spec, private field access bypasses Proxy traps.
         if ($node->property instanceof PrivateIdentifier) {
-            if (!($obj instanceof JsObject)) {
+            $target = $obj;
+            if ($target instanceof JsProxy) {
+                $target = $target->getTarget();
+            }
+            if (!($target instanceof JsObject)) {
                 throw new TypeError(
                     'Cannot read private member ' . $node->property->name . ' from a non-object',
                 );
             }
             $brandedName = $env->resolvePrivateName($node->property->name);
-            return $obj->getPrivateField($brandedName);
+            return $target->getPrivateField($brandedName);
         }
 
         // Evaluate the property key expression. For computed access, the key
@@ -4953,9 +4985,12 @@ class Interpreter
                         ? "{$method->kind} {$symName}"
                         : $symName;
                 } else {
+                    // For private methods, use the source-level name (e.g. "#m")
+                    // rather than the branded internal key (e.g. "#m@0").
+                    $displayKey = $isPrivate ? $method->key->name : $key;
                     $methodName = $method->kind === 'get' || $method->kind === 'set'
-                        ? "{$method->kind} {$key}"
-                        : $key;
+                        ? "{$method->kind} {$displayKey}"
+                        : $displayKey;
                 }
                 if (!$this->hasExplicitNameProperty($fn)) {
                     $fn->setName($methodName);

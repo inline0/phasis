@@ -258,19 +258,25 @@ class RegExpPrototype
             // This propagates SyntaxError for invalid patterns/flags.
             $temp = \PhpJs\Engine::createRegExpOrThrow($p, $f);
 
-            // Copy properties from temp to this in-place.
-            $propsToUpdate = [
-                'source', 'flags', 'global', 'ignoreCase', 'multiline',
-                'dotAll', 'unicode', 'unicodeSets', 'sticky', 'hasIndices',
-                '[[PCREPattern]]', '[[OriginalSource]]', '[[OriginalFlags]]',
-                'exec', 'test', 'toString',
-            ];
-            foreach ($propsToUpdate as $prop) {
-                $desc = $temp->getOwnPropertyDescriptor($prop);
+            // Force-update internal slots. These are non-writable, non-configurable
+            // data properties, so defineOwnProperty would silently reject the change.
+            // Use defineProperty (direct map set) to bypass validation since these
+            // are engine-internal slots, not user-visible properties.
+            $internalSlots = ['[[OriginalSource]]', '[[OriginalFlags]]', '[[PCREPattern]]'];
+            foreach ($internalSlots as $slot) {
+                $desc = $temp->getOwnPropertyDescriptor($slot);
                 if ($desc !== null) {
-                    $this_->defineOwnProperty($prop, $desc);
+                    $this_->defineProperty($slot, $desc);
                 }
             }
+
+            // Remove own exec/test/toString so the dynamic prototype versions are
+            // used. The per-instance closures from createRegExpObject capture stale
+            // state (the old pattern, flags, global/sticky booleans). The prototype
+            // methods read everything from the receiver at call time.
+            $this_->forceDelete('exec');
+            $this_->forceDelete('test');
+            $this_->forceDelete('toString');
 
             // Set lastIndex to 0 per spec. This may throw if lastIndex is non-writable.
             $this_->set('lastIndex', new JsNumber(0.0), true);
