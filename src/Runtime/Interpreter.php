@@ -3397,25 +3397,29 @@ class Interpreter
         }
         [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
         $done = false;
-        foreach ($pattern->elements as $element) {
-            if ($element instanceof RestElement) {
-                $this->bindPattern($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
-                $done = true; // rest consumes remaining elements
-                break;
+        try {
+            foreach ($pattern->elements as $element) {
+                if ($element instanceof RestElement) {
+                    $this->bindPattern($element->argument, $this->iteratorRest($iterator, $nextMethod, $done), $env);
+                    $done = true; // rest consumes remaining elements
+                    break;
+                }
+                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                if ($element === null) {
+                    // Elision: advance iterator but discard value.
+                    continue;
+                }
+                $this->bindPattern($element, $elemValue, $env);
             }
-            $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
-            if ($element === null) {
-                // Elision: advance iterator but discard value.
-                continue;
+        } catch (\Throwable $e) {
+            if (!$done) {
+                $this->iteratorClose($iterator, $e);
             }
-            $this->bindPattern($element, $elemValue, $env);
+            throw $e;
         }
         // Per spec 13.3.3.5: if iterator is not exhausted, close it via return().
-        if (!$done && $iterator instanceof JsObject) {
-            $returnMethod = $iterator->get('return');
-            if ($returnMethod instanceof JsFunction) {
-                $this->callFunction($returnMethod, $iterator, []);
-            }
+        if (!$done) {
+            $this->iteratorClose($iterator);
         }
     }
 
@@ -4681,9 +4685,19 @@ class Interpreter
 
         // Per spec §15.7.14: if ClassHeritage is present and not null, it must be a constructor.
         if ($superClass !== null && !($superClass instanceof \PhpJs\Value\JsNull)) {
-            if (!($superClass instanceof JsFunction) || !$superClass->isConstructable()) {
+            $isConstructor = false;
+            if ($superClass instanceof JsFunction && $superClass->isConstructable()) {
+                $isConstructor = true;
+            } elseif ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+                $isConstructor = true;
+            }
+            if (!$isConstructor) {
+                // Avoid triggering proxy traps when constructing the error message.
+                $superStr = $superClass instanceof \PhpJs\Value\JsProxy
+                    ? 'function () { [native code] }'
+                    : TypeConversion::toString($superClass);
                 throw new TypeError(
-                    'Class extends value ' . TypeConversion::toString($superClass) . ' is not a constructor or null',
+                    'Class extends value ' . $superStr . ' is not a constructor or null',
                 );
             }
         }
@@ -4794,15 +4808,24 @@ class Interpreter
             }
         }
 
-        $isDerived = $superClass instanceof JsFunction;
+        // Per spec 15.7.14 step 15: if ClassHeritage is present (even if null),
+        // set [[ConstructorKind]] to "derived". This means `this` starts uninitialized.
+        $isDerived = $superClassNode !== null;
 
         if ($constructor === null) {
             // Default constructor
-            if ($isDerived) {
+            if ($isDerived && $superClass instanceof JsFunction) {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
                     function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
                         return $interp->callFunction($superClass, $thisVal, $args);
+                    },
+                )->setConstructable();
+            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+                $constructor = JsFunction::fromCallable(
+                    $name ?? '(anonymous)',
+                    function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
+                        return $superClass->construct($args, $superClass);
                     },
                 )->setConstructable();
             } else {
@@ -7890,56 +7913,72 @@ class Interpreter
             [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
             $done = false;
             $elements = $target instanceof ArrayPattern ? $target->elements : $target->elements;
-            foreach ($elements as $elem) {
-                if ($elem instanceof RestElement || $elem instanceof SpreadElement) {
-                    $restValue = $this->iteratorRest($iterator, $nextMethod, $done);
-                    $restArg = $elem->argument;
-                    if ($this->isDestructuringTarget($restArg)) {
-                        $this->destructureAssign($restArg, $restValue, $env);
+            try {
+                foreach ($elements as $elem) {
+                    if ($elem instanceof RestElement || $elem instanceof SpreadElement) {
+                        $restArg = $elem->argument;
+                        // Per spec: evaluate DestructuringAssignmentTarget BEFORE consuming iterator.
+                        $restRef = null;
+                        if (!$this->isDestructuringTarget($restArg)) {
+                            $restRef = $this->resolveReference($restArg, $env);
+                        }
+                        $restValue = $this->iteratorRest($iterator, $nextMethod, $done);
+                        if ($restRef !== null) {
+                            $restRef->setValue($restValue);
+                        } else {
+                            $this->destructureAssign($restArg, $restValue, $env);
+                        }
+                        break;
+                    }
+                    if ($elem === null) {
+                        // Elision: advance iterator but discard value.
+                        $this->iteratorNext($iterator, $nextMethod, $done);
+                        continue;
+                    }
+                    // Per spec 13.15.5.3 IteratorDestructuringAssignmentEvaluation:
+                    // Step 1: evaluate DestructuringAssignmentTarget to get lref
+                    // BEFORE stepping the iterator (step 2).
+                    $elemTarget = $elem;
+                    $defaultNode = null;
+                    $ref = null;
+                    if ($elem instanceof AssignmentPattern || $elem instanceof AssignmentExpression) {
+                        $elemTarget = $elem instanceof AssignmentPattern ? $elem->left : $elem->left;
+                        $defaultNode = $elem instanceof AssignmentPattern ? $elem->right : $elem->right;
+                    }
+                    if (!$this->isDestructuringTarget($elemTarget)) {
+                        $ref = $this->resolveReference($elemTarget, $env);
+                    }
+                    // Step 2: advance the iterator.
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    // Steps 3-5: apply default value if present and value is undefined.
+                    if ($defaultNode !== null && $elemValue instanceof JsUndefined) {
+                        $elemValue = $this->evaluate($defaultNode, $env);
+                        if (
+                            $elemValue instanceof JsFunction
+                            && $elemTarget instanceof Identifier
+                            && $this->isAnonymousFunctionDefinitionNode($defaultNode)
+                            && !$this->hasExplicitNameProperty($elemValue)
+                        ) {
+                            $elemValue->setName($elemTarget->name);
+                        }
+                    }
+                    // Steps 6-8: assign the value.
+                    if ($ref !== null) {
+                        $ref->setValue($elemValue);
                     } else {
-                        $ref = $this->resolveReference($restArg, $env);
-                        $ref->setValue($restValue);
-                    }
-                    break;
-                }
-                if ($elem === null) {
-                    // Elision: advance iterator but discard value.
-                    $this->iteratorNext($iterator, $nextMethod, $done);
-                    continue;
-                }
-                // Per spec 13.15.5.3 IteratorDestructuringAssignmentEvaluation:
-                // Step 1: evaluate DestructuringAssignmentTarget to get lref
-                // BEFORE stepping the iterator (step 2).
-                $elemTarget = $elem;
-                $defaultNode = null;
-                $ref = null;
-                if ($elem instanceof AssignmentPattern || $elem instanceof AssignmentExpression) {
-                    $elemTarget = $elem instanceof AssignmentPattern ? $elem->left : $elem->left;
-                    $defaultNode = $elem instanceof AssignmentPattern ? $elem->right : $elem->right;
-                }
-                if (!$this->isDestructuringTarget($elemTarget)) {
-                    $ref = $this->resolveReference($elemTarget, $env);
-                }
-                // Step 2: advance the iterator.
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
-                // Steps 3-5: apply default value if present and value is undefined.
-                if ($defaultNode !== null && $elemValue instanceof JsUndefined) {
-                    $elemValue = $this->evaluate($defaultNode, $env);
-                    if (
-                        $elemValue instanceof JsFunction
-                        && $elemTarget instanceof Identifier
-                        && $this->isAnonymousFunctionDefinitionNode($defaultNode)
-                        && !$this->hasExplicitNameProperty($elemValue)
-                    ) {
-                        $elemValue->setName($elemTarget->name);
+                        $this->destructureAssign($elemTarget, $elemValue, $env);
                     }
                 }
-                // Steps 6-8: assign the value.
-                if ($ref !== null) {
-                    $ref->setValue($elemValue);
-                } else {
-                    $this->destructureAssign($elemTarget, $elemValue, $env);
+            } catch (\Throwable $e) {
+                // Per spec: if destructuring aborts, close the iterator.
+                if (!$done) {
+                    $this->iteratorClose($iterator, $e);
                 }
+                throw $e;
+            }
+            // Per spec: if iterator is not exhausted after processing all elements, close it.
+            if (!$done) {
+                $this->iteratorClose($iterator);
             }
             return;
         }
@@ -8068,8 +8107,15 @@ class Interpreter
         if ($done) {
             return JsUndefined::instance();
         }
-        $result = $this->callFunction($nextMethod, $iterator, []);
+        try {
+            $result = $this->callFunction($nextMethod, $iterator, []);
+        } catch (\Throwable $e) {
+            // Per spec 7.4.2 IteratorStep: if next() throws, iteratorRecord.[[done]] = true.
+            $done = true;
+            throw $e;
+        }
         if (!$result instanceof JsObject) {
+            $done = true;
             throw new \PhpJs\Exceptions\TypeError('Iterator result is not an object');
         }
         if (TypeConversion::toBoolean($result->get('done'))) {
@@ -8092,6 +8138,55 @@ class Interpreter
             }
         }
         return JsArray::fromArray($rest);
+    }
+
+    /**
+     * IteratorClose per spec 7.4.6.
+     * Calls iterator.return() and validates the result.
+     *
+     * @param JsObject $iterator The iterator object.
+     * @param \Throwable|null $completion The abrupt completion that triggered the close (null for normal).
+     * @throws \Throwable Re-throws appropriate error per spec steps 7-9.
+     */
+    private function iteratorClose(JsObject $iterator, ?\Throwable $completion = null): void
+    {
+        $returnMethod = $iterator->get('return');
+        // Per spec: if return is undefined/null, just return completion.
+        if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
+            if ($completion !== null) {
+                throw $completion;
+            }
+            return;
+        }
+        if (!$returnMethod instanceof JsFunction) {
+            if ($completion !== null) {
+                throw $completion;
+            }
+            throw new TypeError('Iterator return is not callable');
+        }
+
+        $innerException = null;
+        $innerResult = null;
+        try {
+            $innerResult = $this->callFunction($returnMethod, $iterator, []);
+        } catch (\Throwable $e) {
+            $innerException = $e;
+        }
+
+        // Step 7: if completion.[[type]] is throw, return Completion(completion).
+        if ($completion !== null) {
+            throw $completion;
+        }
+
+        // Step 8: if innerResult.[[type]] is throw, return Completion(innerResult).
+        if ($innerException !== null) {
+            throw $innerException;
+        }
+
+        // Step 9: if Type(innerResult.[[value]]) is not Object, throw TypeError.
+        if (!$innerResult instanceof JsObject) {
+            throw new TypeError('Iterator return result is not an object');
+        }
     }
 
     /**
