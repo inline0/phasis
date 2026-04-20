@@ -129,7 +129,7 @@ class WeakMapConstructor
             try {
                 $key = $entry->get('0');
                 $value = $entry->get('1');
-                $map->weakMapSet($key, $value);
+                $adder->call($map, [$key, $value]);
             } catch (\Throwable $e) {
                 // Per spec: if getting key/value or set throws, close the iterator.
                 if ($returnMethod instanceof JsFunction) {
