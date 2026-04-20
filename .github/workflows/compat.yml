@@ -1,13 +1,11 @@
 name: Compatibility Report
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: compat-${{ github.ref }}
-  cancel-in-progress: true
+  group: compat
+  cancel-in-progress: false
 
 jobs:
   compat:
