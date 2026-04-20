@@ -65,6 +65,18 @@ class JsObject implements JsValue
         self::$globalPrototype = null;
     }
 
+    /**
+     * Create an object with an explicitly null prototype (no Object.prototype).
+     * Needed because the constructor's `null ?? $globalPrototype` falls back to
+     * the global prototype when null is passed.
+     */
+    public static function createNullPrototype(): static
+    {
+        $obj = new static();
+        $obj->prototype = null;
+        return $obj;
+    }
+
     public function __construct(?JsObject $prototype = null)
     {
         $this->properties = new PropertyMap();

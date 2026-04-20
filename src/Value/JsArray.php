@@ -233,12 +233,17 @@ class JsArray extends JsObject
                 }
                 return true;
             }
-            // Per spec: coerce value FIRST (steps 3-4), before attribute checks.
+            // Per spec ArraySetLength steps 3-5: coerce value FIRST.
             // Coercion may have observable side effects (valueOf, Symbol.toPrimitive).
+            // Step 3: Let newLen be ToUint32(Desc.[[Value]]). This calls ToNumber internally.
+            $numForUint32 = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
+            $uint32 = (int) ($numForUint32 >= 0
+                ? fmod($numForUint32, 4294967296)
+                : fmod($numForUint32, 4294967296) + 4294967296);
+            // Step 4: Let numberLen be ToNumber(Desc.[[Value]]).
+            // Per spec, this is a second, separate coercion that may trigger
+            // valueOf/toPrimitive again with observable side effects.
             $num = \PhpJs\Spec\TypeConversion::toNumber($desc->value);
-            $uint32 = (int) ($num >= 0
-                ? fmod($num, 4294967296)
-                : fmod($num, 4294967296) + 4294967296);
             // Step 5: RangeError before any configurable/enumerable validation.
             if ((float) $uint32 !== $num) {
                 throw new \PhpJs\Exceptions\RangeError('Invalid array length');

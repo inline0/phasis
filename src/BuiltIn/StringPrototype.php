@@ -1820,15 +1820,18 @@ class StringPrototype
                     $result->set('index', new JsNumber((float) $charPos));
                     $result->set('input', new JsString($str));
 
-                    // Named capture groups.
-                    $groups = new JsObject(null);
+                    // Named capture groups with null prototype per spec.
+                    $groups = JsObject::createNullPrototype();
                     $hasGroups = false;
                     foreach ($matches as $key => $match) {
                         if (is_string($key)) {
                             $hasGroups = true;
-                            $groups->set($key, ($match[1] === -1 || $match[0] === null)
-                                ? JsUndefined::instance()
-                                : new JsString($match[0]));
+                            // Per spec: CreateDataProperty(groups, s, capturedValue).
+                            $groups->defineOwnProperty($key, PropertyDescriptor::data(
+                                ($match[1] === -1 || $match[0] === null)
+                                    ? JsUndefined::instance()
+                                    : new JsString($match[0]),
+                            ));
                         }
                     }
                     $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());

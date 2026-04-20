@@ -1666,7 +1666,8 @@ class Interpreter
 
             // Per spec: eval inside a class field initializer must not
             // contain `arguments` (ContainsArguments early error).
-            if ($env->has('[[ClassFieldInitializer]]')
+            if (
+                $env->has('[[ClassFieldInitializer]]')
                 && $this->astContainsIdentifier($program->body, 'arguments')
             ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
@@ -1931,7 +1932,8 @@ class Interpreter
             return;
         }
         // Do not recurse into class bodies: they create their own private scope.
-        if ($node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        if (
+            $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
             || $node instanceof \PhpJs\Ast\Expression\ClassExpression
         ) {
             return;
@@ -1977,7 +1979,8 @@ class Interpreter
         // Do not recurse into non-arrow function bodies or class bodies.
         // Arrow functions are recursed into because they do not create
         // their own `arguments` binding (per spec ContainsArguments).
-        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
             || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
             || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
             || $node instanceof \PhpJs\Ast\Expression\ClassExpression
@@ -2082,6 +2085,27 @@ class Interpreter
         }
         if ($node instanceof BinaryExpression) {
             return $this->nodeContainsSuperCall($node->left) || $this->nodeContainsSuperCall($node->right);
+        }
+        if ($node instanceof MemberExpression) {
+            if ($this->nodeContainsSuperCall($node->object)) {
+                return true;
+            }
+            if ($node->computed) {
+                return $this->nodeContainsSuperCall($node->property);
+            }
+            return false;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+            foreach ($node->expressions as $expr) {
+                if ($this->nodeContainsSuperCall($expr)) {
+                    return true;
+                }
+            }
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ConditionalExpression) {
+            return $this->nodeContainsSuperCall($node->test)
+                || $this->nodeContainsSuperCall($node->consequent)
+                || $this->nodeContainsSuperCall($node->alternate);
         }
 
         return false;
@@ -2710,7 +2734,8 @@ class Interpreter
             // For derived class constructors whose default constructor is a native
             // callable (bypasses the AST-level super() path), instance fields and
             // private methods may not have been initialized yet. Do so now.
-            if ($callee->isDerivedConstructor()
+            if (
+                $callee->isDerivedConstructor()
                 && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
             ) {
                 $this->initializeInstanceFields($callee, $result, $env);
@@ -2723,7 +2748,8 @@ class Interpreter
         }
         // For derived class constructors that returned undefined (falling through
         // to use $newObj), also ensure fields are initialized.
-        if ($callee->isDerivedConstructor()
+        if (
+            $callee->isDerivedConstructor()
             && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
         ) {
             $this->initializeInstanceFields($callee, $newObj, $env);

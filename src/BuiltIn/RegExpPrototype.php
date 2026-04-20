@@ -366,14 +366,17 @@ class RegExpPrototype
                 $result->set('index', new JsNumber((float) $matchCharPos));
                 $result->set('input', new JsString($str));
 
-                $groups = new JsObject(null);
+                $groups = JsObject::createNullPrototype();
                 $hasGroups = false;
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
-                        $groups->set($key, ($match[1] === -1 || $match[0] === null)
-                            ? JsUndefined::instance()
-                            : new JsString($match[0]));
+                        // Per spec: CreateDataProperty(groups, s, capturedValue).
+                        $groups->defineOwnProperty($key, PropertyDescriptor::data(
+                            ($match[1] === -1 || $match[0] === null)
+                                ? JsUndefined::instance()
+                                : new JsString($match[0]),
+                        ));
                     }
                 }
                 $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
