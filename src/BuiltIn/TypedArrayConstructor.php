@@ -65,6 +65,10 @@ class TypedArrayConstructor
         $constructor = JsFunction::fromCallable(
             'ArrayBuffer',
             function (JsValue $this_, array $args) use ($proto): JsValue {
+                // Step 1: If NewTarget is undefined, throw a TypeError.
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Constructor ArrayBuffer requires \'new\'');
+                }
                 $arg0 = $args[0] ?? new JsNumber(0.0);
                 // Step 2: ToIndex(length).
                 $length = TypeConversion::toIndex($arg0);
@@ -132,6 +136,13 @@ class TypedArrayConstructor
                     if ($species instanceof JsUndefined || $species instanceof JsNull) {
                         $ctor = $constructor;
                     } else {
+                        // Per spec 7.3.20 step 9: If IsConstructor(S) is true, return S.
+                        // Step 10: Throw a TypeError exception.
+                        if (!($species instanceof JsFunction && $species->isConstructable())) {
+                            throw new TypeError(
+                                'ArrayBuffer.prototype.slice: species constructor is not a constructor'
+                            );
+                        }
                         $ctor = $species;
                     }
                 }
@@ -151,8 +162,19 @@ class TypedArrayConstructor
                     );
                 }
 
+                // Step 19: If SameValue(new, O) is true, throw a TypeError.
+                if ($newBuf === $this_) {
+                    throw new TypeError(
+                        'ArrayBuffer.prototype.slice: species constructor returned same buffer'
+                    );
+                }
+
                 // Step 20: If new.byteLength < newLen, throw TypeError.
-                // (species may return a larger buffer, which is OK).
+                if ($newBuf->getByteLength() < $newLen) {
+                    throw new TypeError(
+                        'ArrayBuffer.prototype.slice: species constructor returned too small buffer'
+                    );
+                }
 
                 // Step 24-25: Copy data.
                 if ($newLen > 0 && $newBuf->getByteLength() >= $newLen) {

@@ -109,7 +109,23 @@ class WeakSetConstructor
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
             }
-            $set->weakSetAdd($result->get('value'));
+            $nextValue = $result->get('value');
+            // Per spec step 9f: Let status be Call(adder, set, nextValue).
+            // Step 9g: If status is an abrupt completion, return IteratorClose(iter, status).
+            try {
+                $adder->call($set, [$nextValue]);
+            } catch (\Throwable $e) {
+                // IteratorClose: call return method if it exists.
+                $returnMethod = $iterator->get('return');
+                if ($returnMethod instanceof JsFunction) {
+                    try {
+                        $returnMethod->call($iterator, []);
+                    } catch (\Throwable $ignored) {
+                        // Per spec: ignore errors from the return method; re-throw original.
+                    }
+                }
+                throw $e;
+            }
         }
     }
 

@@ -323,14 +323,18 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec, built-in constructors call OrdinaryCreateFromConstructor
-                // (which accesses newTarget.prototype) at a specific step, often after
-                // argument validation. Defer prototype resolution: create the this
-                // object with target's prototype initially and store newTarget. If the
-                // constructor returns its own object the prototype is irrelevant. If
-                // the constructor falls through, resolve newTarget's prototype then.
-                $targetProto = $target->get('prototype');
-                $newObj = new JsObject($targetProto instanceof JsObject ? $targetProto : null);
+                // Per spec 9.1.13 OrdinaryCreateFromConstructor: Get newTarget.prototype
+                // and use it as the prototype for the new object. This must happen
+                // BEFORE the constructor runs so that Object.getPrototypeOf(this)
+                // inside the constructor body sees the correct prototype.
+                $ntProto = $newTarget->get('prototype');
+                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                if ($useProto === null) {
+                    // Fall back to target's prototype when newTarget.prototype is not an object.
+                    $targetProto = $target->get('prototype');
+                    $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                }
+                $newObj = new JsObject($useProto);
                 $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
                 $newObj->defineOwnProperty(
                     '[[NewTarget]]',
@@ -339,12 +343,6 @@ class ReflectObject
                 $result = $target->call($newObj, $callArgs);
                 if ($result instanceof JsObject && $result !== $newObj) {
                     return $result;
-                }
-                // Constructor did not return a new object; resolve newTarget's
-                // prototype now and apply it to newObj.
-                $proto = $newTarget->get('prototype');
-                if ($proto instanceof JsObject) {
-                    $newObj->setPrototype($proto);
                 }
                 return $result instanceof JsObject ? $result : $newObj;
             }, 2),

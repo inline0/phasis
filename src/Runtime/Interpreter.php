@@ -513,18 +513,13 @@ class Interpreter
     private function evalBinaryExpression(BinaryExpression $node, Environment $env): JsValue
     {
         // Private field brand check: #name in obj
-        // Per spec, private field access bypasses Proxy traps.
         if ($node->operator === 'in' && $node->left instanceof PrivateIdentifier) {
             $right = $this->evaluate($node->right, $env);
             if (!($right instanceof JsObject)) {
                 throw new TypeError('Cannot use \'in\' operator to search for a private field without an object');
             }
-            $target = $right;
-            if ($target instanceof JsProxy) {
-                $target = $target->getTarget();
-            }
             $brandedName = $env->resolvePrivateName($node->left->name);
-            return new JsBoolean($target->hasPrivateField($brandedName));
+            return new JsBoolean($right->hasPrivateField($brandedName));
         }
 
         $left = $this->evaluate($node->left, $env);
@@ -1457,20 +1452,14 @@ class Interpreter
             }
 
             // Private method call: obj.#method(args)
-            // Per spec, private field lookup bypasses Proxy traps, but the
-            // call receiver remains the original object (including the Proxy).
             if ($node->callee->property instanceof PrivateIdentifier) {
-                $target = $rawObj;
-                if ($target instanceof JsProxy) {
-                    $target = $target->getTarget();
-                }
-                if (!($target instanceof JsObject)) {
+                if (!($rawObj instanceof JsObject)) {
                     throw new TypeError(
                         'Cannot read private member ' . $node->callee->property->name . ' from a non-object',
                     );
                 }
                 $brandedName = $env->resolvePrivateName($node->callee->property->name);
-                $callee = $target->getPrivateField($brandedName);
+                $callee = $rawObj->getPrivateField($brandedName);
                 $args = $this->evaluateArguments($node->arguments, $env);
                 if (!($callee instanceof JsFunction)) {
                     throw new TypeError(
@@ -1668,6 +1657,12 @@ class Interpreter
                     throw new \PhpJs\Exceptions\SyntaxError("new.target expression is not allowed here");
                 }
             }
+
+            // Per spec AllPrivateNamesValid: every PrivateName reference in
+            // eval code must correspond to a private name declared in the
+            // enclosing class body. References to undeclared private names
+            // are a SyntaxError.
+            $this->validateEvalPrivateNames($program->body, $env);
 
             // Detect if the eval code itself enables strict mode. This must
             // happen before the var/lex conflict check because strict eval
@@ -1873,6 +1868,77 @@ class Interpreter
         if ($node instanceof LabeledStatement) {
             $labels[] = $node->label;
             $this->validateEvalNoFreeJumps($node->body, $labels);
+        }
+    }
+
+    /**
+     * Validate that every PrivateIdentifier reference in eval code is
+     * declared in the enclosing class body (per spec AllPrivateNamesValid).
+     *
+     * @param Node[] $statements
+     */
+    private function validateEvalPrivateNames(array $statements, Environment $env): void
+    {
+        $privateNames = $this->collectPrivateNameReferences($statements);
+        foreach ($privateNames as $name) {
+            $resolved = $env->resolvePrivateName($name);
+            // If resolvePrivateName returns the source name unchanged, it was not
+            // found in any enclosing class body's private name map.
+            if ($resolved === $name) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Private field '{$name}' must be declared in an enclosing class",
+                );
+            }
+        }
+    }
+
+    /**
+     * Collect all PrivateIdentifier name references from AST nodes.
+     * Does not recurse into class bodies (they have their own scope).
+     *
+     * @param Node[] $nodes
+     * @return string[]
+     */
+    private function collectPrivateNameReferences(array $nodes): array
+    {
+        $names = [];
+        foreach ($nodes as $node) {
+            $this->walkForPrivateNames($node, $names);
+        }
+        return array_unique($names);
+    }
+
+    /**
+     * Walk an AST node tree collecting PrivateIdentifier references.
+     * Stops at class boundaries (class bodies declare their own private scope).
+     *
+     * @param string[] &$names
+     */
+    private function walkForPrivateNames(Node $node, array &$names): void
+    {
+        if ($node instanceof PrivateIdentifier) {
+            $names[] = $node->name;
+            return;
+        }
+        // Do not recurse into class bodies: they create their own private scope.
+        if ($node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+        ) {
+            return;
+        }
+        // Walk children generically by inspecting public properties.
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                $this->walkForPrivateNames($value, $names);
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node) {
+                        $this->walkForPrivateNames($item, $names);
+                    }
+                }
+            }
         }
     }
 
@@ -2581,11 +2647,26 @@ class Interpreter
         // - Otherwise return newObj.
         // Clean up [[NewTarget]] internal marker so it does not leak to user code.
         if ($result instanceof JsObject) {
+            // For derived class constructors whose default constructor is a native
+            // callable (bypasses the AST-level super() path), instance fields and
+            // private methods may not have been initialized yet. Do so now.
+            if ($callee->isDerivedConstructor()
+                && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+            ) {
+                $this->initializeInstanceFields($callee, $result, $env);
+            }
             $result->forceDelete('[[NewTarget]]');
             return $result;
         }
         if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
             throw new TypeError('Derived constructors may only return object or undefined');
+        }
+        // For derived class constructors that returned undefined (falling through
+        // to use $newObj), also ensure fields are initialized.
+        if ($callee->isDerivedConstructor()
+            && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+        ) {
+            $this->initializeInstanceFields($callee, $newObj, $env);
         }
         $newObj->forceDelete('[[NewTarget]]');
         return $newObj;
@@ -2597,6 +2678,13 @@ class Interpreter
      */
     public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
     {
+        // Prevent double initialization (e.g. explicit super() already ran).
+        $ctorId = spl_object_id($ctor);
+        if ($instance->areFieldsInitialized($ctorId)) {
+            return;
+        }
+        $instance->markFieldsInitialized($ctorId);
+
         // Install private instance methods first (they are available in field initializers).
         foreach ($ctor->getPrivateMethodEntries() as [$name, $fn, $kind]) {
             if ($kind === 'get' || $kind === 'set') {
@@ -3678,19 +3766,14 @@ class Interpreter
         }
 
         // Private identifier access: obj.#name
-        // Per spec, private field access bypasses Proxy traps.
         if ($node->property instanceof PrivateIdentifier) {
-            $target = $obj;
-            if ($target instanceof JsProxy) {
-                $target = $target->getTarget();
-            }
-            if (!($target instanceof JsObject)) {
+            if (!($obj instanceof JsObject)) {
                 throw new TypeError(
                     'Cannot read private member ' . $node->property->name . ' from a non-object',
                 );
             }
             $brandedName = $env->resolvePrivateName($node->property->name);
-            return $target->getPrivateField($brandedName);
+            return $obj->getPrivateField($brandedName);
         }
 
         // Evaluate the property key expression. For computed access, the key
@@ -5026,6 +5109,7 @@ class Interpreter
             // (JsFunction::call passes only thisVal and args) OR 3 (Interpreter::callFunction
             // passes thisVal, args, and interp). Use optional third param for safety.
             $self = $this;
+            $needsFieldInit = true;
             if ($isDerived && $superClass instanceof JsFunction) {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
