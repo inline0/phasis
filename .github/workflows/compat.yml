@@ -12,7 +12,7 @@ concurrency:
 jobs:
   compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           php-version: '8.4'
           extensions: mbstring, bcmath
           coverage: none
-          ini-values: memory_limit=1G
+          ini-values: memory_limit=2G
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,24 +40,30 @@ jobs:
         run: vendor/bin/phpunit --testsuite=unit
 
       - name: Run full compat report
-        run: ./bin/compat-report --jobs 4
-        timeout-minutes: 90
+        run: ./bin/compat-report --jobs 2 --timeout 600
+        timeout-minutes: 150
 
       - name: Show summary
+        if: always()
         run: |
-          echo "## Compatibility Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          head -25 COMPAT.md >> $GITHUB_STEP_SUMMARY
+          if [ -f COMPAT.md ]; then
+            echo "## Compatibility Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            head -30 COMPAT.md >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload compat artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: compat-report
           path: |
             COMPAT.md
             compat.json
+          if-no-files-found: ignore
 
       - name: Commit updated COMPAT.md
+        if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
