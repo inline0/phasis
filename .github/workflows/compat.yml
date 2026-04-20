@@ -10,7 +10,7 @@ concurrency:
 jobs:
   compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
 
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +38,8 @@ jobs:
         run: vendor/bin/phpunit --testsuite=unit
 
       - name: Run full compat report
-        run: ./bin/compat-report --jobs 2 --timeout 600
-        timeout-minutes: 150
+        run: ./bin/compat-report --jobs 4 --timeout 300
+        timeout-minutes: 240
 
       - name: Show summary
         if: always()
