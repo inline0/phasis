@@ -4648,7 +4648,8 @@ class Interpreter
         $brandId = self::$nextPrivateBrandId++;
         $privateNames = [];
         foreach ($elements as $element) {
-            if (($element instanceof ClassMethod || $element instanceof ClassProperty)
+            if (
+                ($element instanceof ClassMethod || $element instanceof ClassProperty)
                 && $element->key instanceof PrivateIdentifier
             ) {
                 $privateNames[$element->key->name] = true;
