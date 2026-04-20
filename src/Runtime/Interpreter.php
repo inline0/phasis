@@ -1326,7 +1326,10 @@ class Interpreter
             // Bind this: for derived constructors, initialize the TDZ binding.
             if ($isDerived) {
                 $thisVal = $result instanceof JsObject ? $result : $currentThis;
-                $env->defineLet('this', $thisVal);
+                // Walk the scope chain to find the environment where 'this' is in TDZ
+                // (the constructor's function scope), so that super() called from arrow
+                // functions or nested blocks still initializes the correct binding.
+                $this->initializeThisBinding($env, $thisVal);
 
                 // Per spec, instance field initializers run right after super() in derived classes.
                 if ($activeFunc instanceof JsFunction && $thisVal instanceof JsObject) {
@@ -1525,6 +1528,24 @@ class Interpreter
             $isMethodCall = true;
         } else {
             $callee = $this->evaluate($node->callee, $env);
+            // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
+            // via an Object Environment Record (with statement), thisValue =
+            // envRec.WithBaseObject(). Walk the scope chain to find the with-object.
+            if ($node->callee instanceof Identifier && !empty($this->withEnvObjects)) {
+                $name = $node->callee->name;
+                $walkEnv = $env;
+                while ($walkEnv !== null) {
+                    $envId = spl_object_id($walkEnv);
+                    if (isset($this->withEnvObjects[$envId])) {
+                        $withObj = $this->withEnvObjects[$envId];
+                        if ($withObj->has($name)) {
+                            $thisValue = $withObj;
+                            break;
+                        }
+                    }
+                    $walkEnv = $walkEnv->getParent();
+                }
+            }
         }
 
         // Optional chain short-circuit: callee resolved to short-circuit sentinel.
@@ -2055,6 +2076,20 @@ class Interpreter
         // Expression statements may contain assignments to reserved words.
         if ($node instanceof ExpressionStatement) {
             $this->checkStrictExpressionNode($node->expression);
+            // Recurse into function expressions within the expression.
+            $this->validateStrictExpressions($node->expression);
+        }
+
+        // Function declarations: validate body (functions inherit strict mode).
+        if ($node instanceof FunctionDeclaration) {
+            if ($node->body instanceof BlockStatement) {
+                foreach ($node->body->body as $child) {
+                    $this->validateStrictModeNode($child);
+                }
+            }
+            foreach ($node->params as $param) {
+                $this->checkStrictBindingNames($param);
+            }
         }
 
         if ($node instanceof TryStatement) {
@@ -2162,6 +2197,63 @@ class Interpreter
                     "Unexpected strict mode reserved word '{$node->left->name}'",
                 );
             }
+        }
+    }
+
+    /**
+     * Validate strict-mode restrictions in expressions (function expressions, arrow funcs, etc.)
+     * that are nested inside strict code and therefore also strict.
+     */
+    private function validateStrictExpressions(Node $node): void
+    {
+        if ($node instanceof FunctionExpression || $node instanceof ArrowFunction) {
+            // Function params must not use restricted names.
+            $params = $node instanceof FunctionExpression ? $node->params : $node->params;
+            foreach ($params as $param) {
+                $this->checkStrictBindingNames($param);
+            }
+            // Validate body statements.
+            if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
+                $body = $node->body->body;
+            } elseif ($node instanceof ArrowFunction && $node->body instanceof BlockStatement) {
+                $body = $node->body->body;
+            } else {
+                $body = [];
+            }
+            foreach ($body as $child) {
+                $this->validateStrictModeNode($child);
+            }
+            // Check function name.
+            if ($node instanceof FunctionExpression && $node->name !== null) {
+                if (
+                    $this->isStrictReservedWord($node->name)
+                    || $node->name === 'eval'
+                    || $node->name === 'arguments'
+                ) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Unexpected eval or arguments in strict mode",
+                    );
+                }
+            }
+            return;
+        }
+        // Recurse into sub-expressions to find nested function expressions.
+        if ($node instanceof CallExpression) {
+            $this->validateStrictExpressions($node->callee);
+            foreach ($node->arguments as $arg) {
+                if ($arg instanceof Node) {
+                    $this->validateStrictExpressions($arg);
+                }
+            }
+        } elseif ($node instanceof SequenceExpression) {
+            foreach ($node->expressions as $expr) {
+                $this->validateStrictExpressions($expr);
+            }
+        } elseif ($node instanceof AssignmentExpression) {
+            $this->validateStrictExpressions($node->right);
+        } elseif ($node instanceof BinaryExpression) {
+            $this->validateStrictExpressions($node->left);
+            $this->validateStrictExpressions($node->right);
         }
     }
 
@@ -2837,6 +2929,33 @@ class Interpreter
             $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
         }
+    }
+
+    /**
+     * Initialize the 'this' binding in the correct environment for derived constructors.
+     * Walks the scope chain to find where 'this' is declared (in TDZ) and initializes it there.
+     * This handles super() being called from arrow functions or nested blocks.
+     */
+    private function initializeThisBinding(Environment $env, JsValue $thisVal): void
+    {
+        // Walk up the scope chain to find the environment that has 'this' in TDZ.
+        $current = $env;
+        while ($current !== null) {
+            if ($current->hasOwnBinding('this') || $current->hasLexicalBinding('this')) {
+                // Found the environment with the 'this' binding.
+                // Try to initialize it (if in TDZ) or set it (if already a var).
+                try {
+                    $current->initialize('this', $thisVal);
+                } catch (\Throwable) {
+                    // Not in TDZ, set it directly.
+                    $current->set('this', $thisVal, false);
+                }
+                return;
+            }
+            $current = $current->getParent();
+        }
+        // Fallback: define in the current env.
+        $env->defineLet('this', $thisVal);
     }
 
     /**
@@ -4813,18 +4932,21 @@ class Interpreter
         $isDerived = $superClassNode !== null;
 
         if ($constructor === null) {
-            // Default constructor
+            // Default constructor. The native callable signature must accept 2 args
+            // (JsFunction::call passes only thisVal and args) OR 3 (Interpreter::callFunction
+            // passes thisVal, args, and interp). Use optional third param for safety.
+            $self = $this;
             if ($isDerived && $superClass instanceof JsFunction) {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
-                        return $interp->callFunction($superClass, $thisVal, $args);
+                    function (JsValue $thisVal, array $args) use ($superClass, $self) {
+                        return $self->callFunction($superClass, $thisVal, $args);
                     },
                 )->setConstructable();
             } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args, Interpreter $interp) use ($superClass) {
+                    function (JsValue $thisVal, array $args) use ($superClass) {
                         return $superClass->construct($args, $superClass);
                     },
                 )->setConstructable();
