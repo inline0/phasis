@@ -380,6 +380,9 @@ PHP;
 
         // $262.gc() - no-op (PHP has no manual GC trigger useful here)
         $engine->eval('$262.gc = function() {};');
+
+        // test262 host function: print (used by some tests as a no-op or to store output).
+        $engine->eval('function print() {}');
     }
 
     /**

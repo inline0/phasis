@@ -367,7 +367,31 @@ class JsObject implements JsValue
             if ($desc->writable === false) {
                 return false;
             }
-            $desc->value = $value;
+            // Per OrdinarySet: if the property is found on the receiver itself,
+            // update it in place. If found on a prototype, create a new own
+            // property on the receiver (do not mutate the prototype descriptor).
+            if ($this === $receiver) {
+                $desc->value = $value;
+                return true;
+            }
+            // Found writable data on prototype: create own property on receiver.
+            if (!$receiver->extensible) {
+                return false;
+            }
+            // Check if receiver already has its own symbol property.
+            if (isset($receiver->symbolProperties[$id])) {
+                $receiverDesc = $receiver->symbolProperties[$id];
+                if ($receiverDesc->isAccessorDescriptor()) {
+                    return false;
+                }
+                if ($receiverDesc->writable === false) {
+                    return false;
+                }
+                $receiverDesc->value = $value;
+                return true;
+            }
+            $receiver->symbolProperties[$id] = PropertyDescriptor::data($value);
+            $receiver->symbolOrder[$id] = $symbol;
             return true;
         }
         $proto = $this->getPrototype();
@@ -395,6 +419,12 @@ class JsObject implements JsValue
         }
 
         return false;
+    }
+
+    /** Get the property descriptor for a symbol key, or null if not found. */
+    public function getPropertyDescriptorBySymbol(JsSymbol $symbol): ?PropertyDescriptor
+    {
+        return $this->symbolProperties[$symbol->getId()] ?? null;
     }
 
     /** Define a property descriptor by symbol key, merging with existing descriptor. */
@@ -455,6 +485,17 @@ class JsObject implements JsValue
                     }
                 }
             }
+            // Per spec: if current is data and new is accessor, convert to accessor
+            // (only allowed when current is configurable).
+            if ($desc->isAccessorDescriptor()) {
+                $this->symbolProperties[$id] = PropertyDescriptor::accessor(
+                    get: $desc->get,
+                    set: $desc->set,
+                    enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                    configurable: $desc->configurable ?? $current->configurable ?? true,
+                );
+                return true;
+            }
             $this->symbolProperties[$id] = new PropertyDescriptor(
                 value: $desc->value ?? $current->value,
                 writable: $desc->writable ?? $current->writable,
@@ -472,6 +513,16 @@ class JsObject implements JsValue
                 if ($desc->hasGet && $desc->get !== $current->get) {
                     return false;
                 }
+            }
+            // Per spec: if current is accessor and new is data, convert to data.
+            if ($desc->isDataDescriptor()) {
+                $this->symbolProperties[$id] = new PropertyDescriptor(
+                    value: $desc->value ?? JsUndefined::instance(),
+                    writable: $desc->writable ?? false,
+                    enumerable: $desc->enumerable ?? $current->enumerable ?? true,
+                    configurable: $desc->configurable ?? $current->configurable ?? true,
+                );
+                return true;
             }
             $this->symbolProperties[$id] = PropertyDescriptor::accessor(
                 get: $desc->hasGet ? $desc->get : $current->get,

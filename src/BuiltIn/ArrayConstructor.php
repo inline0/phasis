@@ -96,6 +96,20 @@ class ArrayConstructor
             PropertyDescriptor::data($unscopablesList, false, false, true),
         );
 
+        // Array[@@species] per spec: accessor property, getter returns `this`.
+        $speciesGetter = JsFunction::fromCallable('get [Symbol.species]', function (JsValue $this_): JsValue {
+            return $this_;
+        }, 0);
+        $constructor->definePropertyBySymbol(
+            SymbolConstructor::species(),
+            PropertyDescriptor::accessor(
+                get: $speciesGetter,
+                set: null,
+                enumerable: false,
+                configurable: true,
+            ),
+        );
+
         $constructor->defineOwnProperty(
             'prototype',
             \PhpJs\Object\PropertyDescriptor::data($proto, false, false, false),

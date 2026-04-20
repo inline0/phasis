@@ -466,13 +466,11 @@ class GlobalObject
                 $boundFn->setConstructable();
             }
 
-            // Per spec, bound functions don't have their own prototype
-            // property. The [[HasInstance]] check walks to the target.
-            // Copy the target's prototype so instanceof works.
-            $targetProto = $target->get('prototype');
-            if ($targetProto instanceof \PhpJs\Value\JsObject) {
-                $boundFn->set('prototype', $targetProto);
-            }
+            // Per spec 20.2.3.2, bound functions do NOT have an own "prototype"
+            // property. Store the [[BoundTargetFunction]] so OrdinaryHasInstance
+            // can walk through to the target's prototype.
+            $boundFn->forceDelete('prototype');
+            $boundFn->setBoundTarget($target);
             return $boundFn;
         };
         $bindFn = JsFunction::fromCallable('bind', $bindCb, 1);
@@ -514,13 +512,19 @@ class GlobalObject
                 if (!$value instanceof \PhpJs\Value\JsObject) {
                     return new JsBoolean(false);
                 }
-                $proto = $this_->get('prototype');
+                // Per spec 7.3.22 OrdinaryHasInstance step 2: if F has a
+                // [[BoundTargetFunction]], resolve through to the original target.
+                $target = $this_;
+                while ($target->getBoundTarget() !== null) {
+                    $target = $target->getBoundTarget();
+                }
+                $proto = $target->get('prototype');
                 if (!$proto instanceof \PhpJs\Value\JsObject) {
                     throw new \PhpJs\Exceptions\TypeError(
                         'Function has non-object prototype in instanceof check',
                     );
                 }
-            // Walk the prototype chain of value.
+                // Walk the prototype chain of value.
                 $current = $value->getPrototype();
                 while ($current !== null) {
                     if ($current === $proto) {
@@ -790,11 +794,13 @@ class GlobalObject
                 . '\x{00A0}\x{FEFF}\x{1680}'
                 . '\x{2000}-\x{200A}'
                 . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]';
-            $string = preg_replace(
+            $replaced = preg_replace(
                 '/^' . $ws . '+|' . $ws . '+$/u',
                 '',
                 $string,
             );
+            // preg_replace returns null on invalid UTF-8; fall back to ASCII trim.
+            $string = $replaced ?? trim($string, " \t\n\r\x0B\x0C");
             if ($string === '') {
                 return new JsNumber(NAN);
             }
@@ -862,11 +868,13 @@ class GlobalObject
                 . '\x{00A0}\x{FEFF}\x{1680}'
                 . '\x{2000}-\x{200A}'
                 . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]';
-            $string = preg_replace(
+            $replaced = preg_replace(
                 '/^' . $ws . '+/u',
                 '',
                 $string,
             );
+            // preg_replace returns null on invalid UTF-8; fall back to ASCII ltrim.
+            $string = $replaced ?? ltrim($string, " \t\n\r\x0B\x0C");
 
             if ($string === '') {
                 return new JsNumber(NAN);

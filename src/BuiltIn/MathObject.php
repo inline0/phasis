@@ -136,10 +136,16 @@ class MathObject
             // The difference: Math.round(-0.5) === -0, Math.round(0.5) === 1.
             // For the general case, the JS spec says: if fractional part is exactly 0.5,
             // round toward positive infinity.
+            // Per spec: if x is between -0.5 (inclusive) and +0 (exclusive), return -0.
+            if ($x > -0.5 && $x < 0.0) {
+                return new JsNumber(-0.0);
+            }
             $floored = floor($x);
             $frac = $x - $floored;
             if ($frac === 0.5) {
-                return new JsNumber($floored + 1);
+                $result = $floored + 1;
+                // Preserve -0 for the case where x === -0.5.
+                return new JsNumber($result == 0 && $x < 0 ? -0.0 : $result);
             }
             return new JsNumber(round($x));
         };
@@ -302,20 +308,29 @@ class MathObject
             if (empty($args)) {
                 return new JsNumber(0.0);
             }
-            $hasInf = false;
-            $sum = 0.0;
+            // Per spec: coerce ALL arguments to numbers first (for error propagation),
+            // then check for Infinity (takes precedence over NaN).
+            $numbers = [];
             foreach ($args as $arg) {
-                $n = TypeConversion::toNumber($arg);
-                if (is_nan($n)) {
-                    return new JsNumber(NAN);
-                }
+                $numbers[] = TypeConversion::toNumber($arg);
+            }
+            $hasInf = false;
+            $hasNaN = false;
+            $sum = 0.0;
+            foreach ($numbers as $n) {
                 if (is_infinite($n)) {
                     $hasInf = true;
+                } elseif (is_nan($n)) {
+                    $hasNaN = true;
+                } else {
+                    $sum += $n * $n;
                 }
-                $sum += $n * $n;
             }
             if ($hasInf) {
                 return new JsNumber(INF);
+            }
+            if ($hasNaN) {
+                return new JsNumber(NAN);
             }
             return new JsNumber(sqrt($sum));
         };

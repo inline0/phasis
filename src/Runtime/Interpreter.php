@@ -1166,6 +1166,17 @@ class Interpreter
 
         $ref = $this->resolveReference($node->left, $env);
 
+        // Per spec 13.15.2 step 1.c: if lref is a strict unresolvable reference,
+        // throw ReferenceError BEFORE evaluating the RHS.
+        if (
+            $this->strictMode
+            && $node->left instanceof Identifier
+            && $ref->base instanceof Environment
+            && !$ref->base->has($ref->name)
+        ) {
+            throw new ReferenceError("{$ref->name} is not defined");
+        }
+
         if ($node->operator === '=') {
             $right = $this->evaluate($node->right, $env);
             // Function name inference per spec 13.15.2 step 1.e:
@@ -1292,20 +1303,7 @@ class Interpreter
             }
 
             // For derived constructors, this is in TDZ until super() initializes it.
-            // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
-            // calling super() again throws ReferenceError.
             if ($isDerived) {
-                // Check if this is already initialized (double super() call).
-                $thisInitialized = false;
-                try {
-                    $env->get('this');
-                    $thisInitialized = true;
-                } catch (\Throwable) {
-                    // this is in TDZ, which is expected for the first super() call.
-                }
-                if ($thisInitialized) {
-                    throw new ReferenceError('Super constructor may only be called once');
-                }
                 // Get the pending this object created by new.
                 try {
                     $currentThis = $env->get('[[PendingThis]]');
@@ -1323,9 +1321,36 @@ class Interpreter
             // Call the super constructor. It may return a new object (factory pattern).
             $result = $this->callFunction($superCtor, $currentThis, $args);
 
-            // Bind this: for derived constructors, initialize the TDZ binding.
+            // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
+            // calling super() again throws ReferenceError. The check happens AFTER
+            // the super constructor call (arguments already evaluated, constructor
+            // already executed), matching the spec's BindThisValue ordering.
             if ($isDerived) {
                 $thisVal = $result instanceof JsObject ? $result : $currentThis;
+                // Check if this is already initialized (double super() call).
+                // Walk up to find the env with the 'this' TDZ binding.
+                $thisEnv = $env;
+                while ($thisEnv !== null) {
+                    if ($thisEnv->hasOwnBinding('this')) {
+                        break;
+                    }
+                    $thisEnv = $thisEnv->getParent();
+                }
+                if ($thisEnv === null) {
+                    $thisEnv = $env;
+                }
+                // If 'this' is no longer in TDZ, it was already initialized.
+                $alreadyInitialized = false;
+                try {
+                    $thisEnv->get('this');
+                    // Did not throw, so 'this' is already initialized.
+                    $alreadyInitialized = true;
+                } catch (\Throwable) {
+                    // In TDZ, expected for first super() call.
+                }
+                if ($alreadyInitialized) {
+                    throw new ReferenceError('Super constructor may only be called once');
+                }
                 // Walk the scope chain to find the environment where 'this' is in TDZ
                 // (the constructor's function scope), so that super() called from arrow
                 // functions or nested blocks still initializes the correct binding.
@@ -1362,6 +1387,9 @@ class Interpreter
             if ($superBase === null) {
                 throw new TypeError('Cannot read properties of undefined (super)');
             }
+            // Per spec 12.3.5.1: evaluating super.property requires GetThisBinding().
+            // In a derived constructor before super(), this throws ReferenceError.
+            $thisValue = $env->get('this');
             // Resolve the property key.
             if ($node->callee->computed) {
                 $rawKey = $this->evaluate($node->callee->property, $env);
@@ -1378,10 +1406,6 @@ class Interpreter
             if (!$callee instanceof JsFunction) {
                 throw new TypeError("{$key} is not a function");
             }
-            // Use current this, not the super object. Per spec, if this is
-            // uninitialized (derived constructor before super()), this throws
-            // ReferenceError via GetThisBinding().
-            $thisValue = $env->get('this');
             $args = $this->evaluateArguments($node->arguments, $env);
             return $this->callFunction($callee, $thisValue, $args);
         }
@@ -2241,9 +2265,7 @@ class Interpreter
         if ($node instanceof CallExpression) {
             $this->validateStrictExpressions($node->callee);
             foreach ($node->arguments as $arg) {
-                if ($arg instanceof Node) {
-                    $this->validateStrictExpressions($arg);
-                }
+                $this->validateStrictExpressions($arg);
             }
         } elseif ($node instanceof SequenceExpression) {
             foreach ($node->expressions as $expr) {
@@ -2540,12 +2562,15 @@ class Interpreter
         // - If the constructor returned an Object, use that.
         // - If derived class constructor returned a non-Object non-undefined value, throw TypeError.
         // - Otherwise return newObj.
+        // Clean up [[NewTarget]] internal marker so it does not leak to user code.
         if ($result instanceof JsObject) {
+            $result->forceDelete('[[NewTarget]]');
             return $result;
         }
         if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
             throw new TypeError('Derived constructors may only return object or undefined');
         }
+        $newObj->forceDelete('[[NewTarget]]');
         return $newObj;
     }
 
@@ -4010,8 +4035,13 @@ class Interpreter
 
             $value = $this->evaluate($prop->value, $env);
             if ($isSymbolKey) {
-                // Name inference: use Symbol description in brackets.
-                if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
+                // Name inference: per spec, only if IsAnonymousFunctionDefinition(AssignmentExpression).
+                if (
+                    $value instanceof JsFunction
+                    && $value->getName() === '(anonymous)'
+                    && $this->isAnonymousFunctionDefinitionNode($prop->value)
+                    && !$this->hasExplicitNameProperty($value)
+                ) {
                     $desc = $rawKey->description;
                     $value->setName($desc !== null ? "[{$desc}]" : '');
                 }
@@ -4030,8 +4060,13 @@ class Interpreter
                     }
                     continue;
                 }
-                // Name inference for property functions
-                if ($value instanceof JsFunction && $value->getName() === '(anonymous)') {
+                // Name inference: per spec, only if IsAnonymousFunctionDefinition(AssignmentExpression).
+                if (
+                    $value instanceof JsFunction
+                    && $value->getName() === '(anonymous)'
+                    && $this->isAnonymousFunctionDefinitionNode($prop->value)
+                    && !$this->hasExplicitNameProperty($value)
+                ) {
                     $value->setName($key);
                 }
                 // Method shorthand: set [[HomeObject]] for super references.
@@ -4328,7 +4363,7 @@ class Interpreter
         }
         $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $classEnv);
         // Bind the class name to the constructor in the class scope.
-        if ($node->id !== null) {
+        if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
             $classEnv->initialize($node->id->name, $cls);
         }
         // Per spec, Function.prototype.toString on a class returns the full class source text.
@@ -4582,17 +4617,28 @@ class Interpreter
         if ($pattern instanceof ArrayPattern) {
             [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
             $done = false;
-            foreach ($pattern->elements as $element) {
-                if ($element instanceof RestElement) {
-                    $rest = $this->iteratorRest($iterator, $nextMethod, $done);
-                    $this->assignVarBinding($element->argument, $rest, $env);
-                    break;
+            try {
+                foreach ($pattern->elements as $element) {
+                    if ($element instanceof RestElement) {
+                        $rest = $this->iteratorRest($iterator, $nextMethod, $done);
+                        $this->assignVarBinding($element->argument, $rest, $env);
+                        $done = true;
+                        break;
+                    }
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    if ($element === null) {
+                        continue;
+                    }
+                    $this->assignVarBinding($element, $elemValue, $env);
                 }
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
-                if ($element === null) {
-                    continue;
+            } catch (\Throwable $e) {
+                if (!$done) {
+                    $this->iteratorClose($iterator, $e);
                 }
-                $this->assignVarBinding($element, $elemValue, $env);
+                throw $e;
+            }
+            if (!$done) {
+                $this->iteratorClose($iterator);
             }
             return;
         }
@@ -4776,7 +4822,7 @@ class Interpreter
             $classEnv->declareLet($node->id->name);
         }
         $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $classEnv);
-        if ($node->id !== null) {
+        if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
             $classEnv->initialize($node->id->name, $cls);
         }
         // Per spec, Function.prototype.toString on a class returns the full class source text.
@@ -4898,10 +4944,19 @@ class Interpreter
 
             $fn = $this->evaluate($method->value, $privateEnv);
 
-            if ($fn instanceof JsFunction && $method->kind !== 'constructor' && $symbolKey === null) {
-                $methodName = $method->kind === 'get' || $method->kind === 'set'
-                    ? "{$method->kind} {$key}"
-                    : $key;
+            if ($fn instanceof JsFunction && $method->kind !== 'constructor') {
+                if ($symbolKey !== null) {
+                    // Per spec, symbol-keyed method name is [description] or empty string.
+                    $desc = $symbolKey->getDescription();
+                    $symName = $desc !== null ? "[{$desc}]" : '';
+                    $methodName = $method->kind === 'get' || $method->kind === 'set'
+                        ? "{$method->kind} {$symName}"
+                        : $symName;
+                } else {
+                    $methodName = $method->kind === 'get' || $method->kind === 'set'
+                        ? "{$method->kind} {$key}"
+                        : $key;
+                }
                 if (!$this->hasExplicitNameProperty($fn)) {
                     $fn->setName($methodName);
                 }
@@ -4965,13 +5020,27 @@ class Interpreter
         // Mark as class constructor so calling without new throws TypeError.
         $constructor->setClassConstructor($isDerived);
 
+        // Per spec, the class constructor's name is the class name.
+        if ($name !== null) {
+            $constructor->setName($name);
+        }
+
         // Set up prototype chain.
         // `class C extends null` must produce C.prototype with null [[Prototype]].
         // `new JsObject(null)` would fall back to globalPrototype due to `??`, so we
         // use setPrototype() explicitly for the null-heritage case.
-        if ($superClass instanceof JsFunction) {
+        if ($superClass instanceof JsFunction || ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable())) {
             $superProto = $superClass->get('prototype');
+            // Per spec 15.7.14 step 6.g.iv: if protoParent is neither Object nor Null, throw TypeError.
+            if (!($superProto instanceof JsObject) && !($superProto instanceof \PhpJs\Value\JsNull)) {
+                throw new TypeError(
+                    'Class extends value does not have valid prototype property',
+                );
+            }
             $proto = new JsObject($superProto instanceof JsObject ? $superProto : null);
+            if ($superProto instanceof \PhpJs\Value\JsNull) {
+                $proto->setPrototype(null);
+            }
         } elseif ($superClassNode !== null && $superClass instanceof \PhpJs\Value\JsNull) {
             // extends null: prototype has no [[Prototype]]
             $proto = new JsObject();
@@ -4990,7 +5059,25 @@ class Interpreter
             if ($fn instanceof JsFunction) {
                 $fn->setHomeObject($proto);
             }
-            if ($symbolKey !== null) {
+            if ($symbolKey !== null && ($kind === 'get' || $kind === 'set')) {
+                // Symbol-keyed accessor (e.g. get [Symbol.toStringTag]() {})
+                $existing = $proto->getPropertyDescriptorBySymbol($symbolKey);
+                if ($kind === 'get') {
+                    $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::accessor(
+                        $fn instanceof JsFunction ? $fn : null,
+                        $existing?->set,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                } else {
+                    $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::accessor(
+                        $existing?->get,
+                        $fn instanceof JsFunction ? $fn : null,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                }
+            } elseif ($symbolKey !== null) {
                 // Symbol-keyed method (e.g. [Symbol.replace], [Symbol.iterator])
                 $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
                     $fn instanceof JsValue ? $fn : JsUndefined::instance(),
@@ -5039,7 +5126,26 @@ class Interpreter
             if ($fn instanceof JsFunction) {
                 $fn->setHomeObject($constructor);
             }
-            if ($symbolKey !== null) {
+            if ($symbolKey !== null && ($kind === 'get' || $kind === 'set')) {
+                // Symbol-keyed static accessor
+                $existing = $constructor->getPropertyDescriptorBySymbol($symbolKey);
+                if ($kind === 'get') {
+                    $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::accessor(
+                        $fn instanceof JsFunction ? $fn : null,
+                        $existing?->set,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                } else {
+                    $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::accessor(
+                        $existing?->get,
+                        $fn instanceof JsFunction ? $fn : null,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                }
+                continue;
+            } elseif ($symbolKey !== null) {
                 $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
                     $fn instanceof JsValue ? $fn : JsUndefined::instance(),
                     true,
@@ -5134,6 +5240,13 @@ class Interpreter
             $constructor->setHomeObject($proto);
         }
 
+        // Per spec ClassDefinitionEvaluation step 16: bind the class name in the
+        // class scope BEFORE evaluating static fields and static blocks, so they
+        // can reference the class by name.
+        if ($name !== null && $env->hasOwnBinding($name) && $env->isInTdz($name)) {
+            $env->initialize($name, $constructor);
+        }
+
         // Evaluate static fields and static blocks at class definition time.
         foreach ($elements as $i => $element) {
             if ($element instanceof ClassProperty && $element->static) {
@@ -5181,8 +5294,13 @@ class Interpreter
                 }
             } elseif ($element instanceof StaticBlock) {
                 $blockEnv = $privateEnv->createChild();
+                // Per spec, static blocks have their own var scope (like function bodies).
+                $blockEnv->setFunctionKind('static-block');
                 $blockEnv->defineVar('this', $constructor);
-                $this->execBlockStatement($element->body, $blockEnv);
+                // Per spec, new.target is undefined inside static blocks.
+                $blockEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
+                $this->hoistDeclarations($element->body->body, $blockEnv);
+                $this->executeBody($element->body->body, $blockEnv);
             }
         }
 
@@ -5774,17 +5892,28 @@ class Interpreter
         if ($pattern instanceof ArrayPattern) {
             [$iterator, $nextMethod] = $this->getIteratorOrThrow($value);
             $done = false;
-            foreach ($pattern->elements as $element) {
-                if ($element instanceof RestElement) {
-                    $rest = $this->iteratorRest($iterator, $nextMethod, $done);
-                    $this->assignPatternToEnv($element->argument, $rest, $env);
-                    break;
+            try {
+                foreach ($pattern->elements as $element) {
+                    if ($element instanceof RestElement) {
+                        $rest = $this->iteratorRest($iterator, $nextMethod, $done);
+                        $this->assignPatternToEnv($element->argument, $rest, $env);
+                        $done = true;
+                        break;
+                    }
+                    $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
+                    if ($element === null) {
+                        continue;
+                    }
+                    $this->assignPatternToEnv($element, $elemValue, $env);
                 }
-                $elemValue = $this->iteratorNext($iterator, $nextMethod, $done);
-                if ($element === null) {
-                    continue;
+            } catch (\Throwable $e) {
+                if (!$done) {
+                    $this->iteratorClose($iterator, $e);
                 }
-                $this->assignPatternToEnv($element, $elemValue, $env);
+                throw $e;
+            }
+            if (!$done) {
+                $this->iteratorClose($iterator);
             }
             return;
         }
@@ -7572,7 +7701,13 @@ class Interpreter
             }
         }
         if ($pattern instanceof Identifier) {
-            if (!$hoistEnv->has($pattern->name)) {
+            // For function/module/static-block scopes, only check if the binding
+            // already exists in THIS scope (not up the chain) to allow var
+            // declarations to shadow outer bindings.
+            $alreadyDeclared = $hoistEnv->getFunctionKind() !== null
+                ? $hoistEnv->hasOwnBinding($pattern->name)
+                : $hoistEnv->has($pattern->name);
+            if (!$alreadyDeclared) {
                 // At global scope use the correct user-var descriptor; in nested
                 // scopes use defineVar (no linked object).
                 if ($hoistEnv->getLinkedObject() !== null) {
@@ -8112,18 +8247,19 @@ class Interpreter
                     "Cannot destructure property of " . TypeConversion::toString($value),
                 );
             }
+            // Per spec: object destructuring calls ToObject on the value so that
+            // primitives (strings, numbers, etc.) are wrapped.
+            $objValue = $value instanceof JsObject ? $value : TypeConversion::toObject($value);
             $props = $target instanceof ObjectPattern ? $target->properties : $target->properties;
             $usedKeys = [];
             foreach ($props as $prop) {
                 if ($prop instanceof RestElement || $prop instanceof SpreadElement) {
                     // Collect all own enumerable properties not already consumed.
                     $restObj = new JsObject();
-                    if ($value instanceof JsObject) {
-                        // Per spec: object rest only includes own enumerable properties.
-                        foreach ($value->getOwnEnumerableKeys() as $rk) {
-                            if (!in_array($rk, $usedKeys, true)) {
-                                $restObj->set($rk, $value->get($rk));
-                            }
+                    // Per spec: object rest only includes own enumerable properties.
+                    foreach ($objValue->getOwnEnumerableKeys() as $rk) {
+                        if (!in_array($rk, $usedKeys, true)) {
+                            $restObj->set($rk, $objValue->get($rk));
                         }
                     }
                     $restArg = $prop instanceof RestElement ? $prop->argument : $prop->argument;
@@ -8170,9 +8306,7 @@ class Interpreter
                 }
 
                 // Step 2: GetV(value, propertyName).
-                $propValue = ($value instanceof JsObject)
-                    ? $value->get($key)
-                    : JsUndefined::instance();
+                $propValue = $objValue->get($key);
 
                 // Step 3: apply default if present and value is undefined.
                 if ($defaultNode2 !== null && $propValue instanceof JsUndefined) {

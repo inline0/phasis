@@ -103,6 +103,9 @@ class JsFunction extends JsObject
      */
     private ?JsObject $homeObject = null;
 
+    /** [[BoundTargetFunction]]: the original target for bound functions. */
+    private ?JsFunction $boundTarget = null;
+
     /** Original source text for Function.prototype.toString(). Null for native functions. */
     private ?string $sourceText = null;
 
@@ -470,6 +473,17 @@ class JsFunction extends JsObject
      */
     public function call(JsValue $thisValue, array $args): JsValue
     {
+        // Per spec: class constructors cannot be called without `new`.
+        if ($this->isClassConstructor) {
+            $calledAsNew = $thisValue instanceof JsObject
+                && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
+            if (!$calledAsNew) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    "Class constructor {$this->name} cannot be invoked without 'new'"
+                );
+            }
+        }
+
         if ($this->nativeCallable !== null) {
             $result = ($this->nativeCallable)($thisValue, $args);
             if ($result instanceof JsValue) {
@@ -506,10 +520,13 @@ class JsFunction extends JsObject
 
         $result = $this->call($newObj, $args);
 
+        // Clean up [[NewTarget]] so it does not leak to user code.
         if ($result instanceof JsObject) {
+            $result->forceDelete('[[NewTarget]]');
             return $result;
         }
 
+        $newObj->forceDelete('[[NewTarget]]');
         return $newObj;
     }
 
@@ -565,6 +582,18 @@ class JsFunction extends JsObject
                 },
             );
         });
+    }
+
+    /** Set the [[BoundTargetFunction]] for bound functions. */
+    public function setBoundTarget(JsFunction $target): void
+    {
+        $this->boundTarget = $target;
+    }
+
+    /** Get the [[BoundTargetFunction]], or null if not a bound function. */
+    public function getBoundTarget(): ?JsFunction
+    {
+        return $this->boundTarget;
     }
 
     /**

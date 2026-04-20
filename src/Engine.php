@@ -604,11 +604,13 @@ class Engine
 
             // Detect subclass: if [[NewTarget]] is not the base RegExp constructor.
             $isSubclass = false;
+            $newTarget = null;
             if ($calledAsNew && $this_ instanceof \PhpJs\Value\JsObject) {
                 $ntd = $this_->getOwnPropertyDescriptor("[[NewTarget]]");
                 $baseRegExp = $globalEnv->has("RegExp") ? $globalEnv->get("RegExp") : null;
                 if ($ntd !== null && $ntd->value !== null && $ntd->value !== $baseRegExp) {
                     $isSubclass = true;
+                    $newTarget = $ntd->value;
                 }
             }
 
@@ -623,7 +625,15 @@ class Engine
                 $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
                     ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
                     : \PhpJs\Spec\TypeConversion::toString($arg1);
-                return $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
+                $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
+                // Per spec: use NewTarget.prototype for subclass instances.
+                if ($isSubclass && $newTarget instanceof JsFunction) {
+                    $subProto = $newTarget->get('prototype');
+                    if ($subProto instanceof \PhpJs\Value\JsObject) {
+                        $result->setPrototype($subProto);
+                    }
+                }
+                return $result;
             }
 
             $pattern = $arg0 instanceof \PhpJs\Value\JsUndefined
@@ -632,7 +642,15 @@ class Engine
             $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
                 ? ''
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
-            return $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
+            $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
+            // Per spec: use NewTarget.prototype for subclass instances.
+            if ($isSubclass && $newTarget instanceof JsFunction) {
+                $subProto = $newTarget->get('prototype');
+                if ($subProto instanceof \PhpJs\Value\JsObject) {
+                    $result->setPrototype($subProto);
+                }
+            }
+            return $result;
         };
         $this->installStubConstructor('RegExp', $regExpCb, 2);
 

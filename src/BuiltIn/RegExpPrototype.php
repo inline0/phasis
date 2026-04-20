@@ -87,19 +87,25 @@ class RegExpPrototype
             $flagChar = $flagCharMap[$propName] ?? null;
             $getter = JsFunction::fromCallable(
                 'get ' . $propName,
-                static function (JsValue $this_, array $args) use ($propName, $flagChar): JsValue {
+                static function (JsValue $this_, array $args) use ($proto, $propName, $flagChar): JsValue {
                     if (!$this_ instanceof JsObject) {
                         throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
                     }
-                    // For RegExp.prototype itself, return undefined per spec.
-                    $pcrePattern = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
-                    if ($pcrePattern === null) {
-                        return JsUndefined::instance();
+                    // Per spec: if R does not have [[OriginalFlags]], then:
+                    //   - If R is RegExp.prototype, return undefined.
+                    //   - Otherwise throw TypeError.
+                    $origFlagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                    if ($origFlagsDesc === null) {
+                        if ($this_ === $proto) {
+                            return JsUndefined::instance();
+                        }
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "get {$propName} requires that 'this' be a RegExp object"
+                        );
                     }
                     if ($flagChar !== null) {
-                        $flagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
-                        $origFlags = ($flagsDesc && $flagsDesc->value instanceof JsString)
-                            ? $flagsDesc->value->value : '';
+                        $origFlags = ($origFlagsDesc->value instanceof JsString)
+                            ? $origFlagsDesc->value->value : '';
                         return new JsBoolean(str_contains($origFlags, $flagChar));
                     }
                     // source
@@ -571,12 +577,15 @@ class RegExpPrototype
                 $replaceStr = '';
             }
 
-            $global = TypeConversion::toBoolean($this_->get('global'));
+            // Per spec step 7: Let flags be ? ToString(? Get(rx, "flags")).
+            $flags = TypeConversion::toString($this_->get('flags'));
+            // Per spec step 8: If flags contains "g", let global be true.
+            $global = str_contains($flags, 'g');
             $fullUnicode = false;
 
             if ($global) {
-                $fullUnicode = TypeConversion::toBoolean($this_->get('unicode'))
-                    || TypeConversion::toBoolean($this_->get('unicodeSets'));
+                // Per spec step 9a: fullUnicode if flags contain "u" or "v".
+                $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
                 // Per spec step 10.c: Set(rx, "lastIndex", +0, Throw=true).
                 $this_->set('lastIndex', new JsNumber(0.0), true);
             }
@@ -631,19 +640,7 @@ class RegExpPrototype
                 }
 
                 // Named capture groups.
-                // Per spec: if namedCaptures is not undefined, Set namedCaptures to ToObject(namedCaptures).
-                // Note: ToObject(null) throws TypeError - do NOT skip null.
-                $namedCaptures = null;
                 $groupsVal = $result->get('groups');
-                if (!$groupsVal instanceof JsUndefined) {
-                    // ToObject throws for null - spec §14.l.i.1
-                    $groupsObj = TypeConversion::toObject($groupsVal);
-                    $namedCaptures = [];
-                    foreach ($groupsObj->getOwnPropertyNames() as $key) {
-                        $val = $groupsObj->get($key);
-                        $namedCaptures[$key] = $val instanceof JsUndefined ? null : TypeConversion::toString($val);
-                    }
-                }
 
                 if ($functionalReplace) {
                     // Build args: matched, ...captures, position, S[, namedCaptures]
@@ -653,16 +650,25 @@ class RegExpPrototype
                     }
                     $callArgs[] = new JsNumber((float) $position);
                     $callArgs[] = new JsString($S);
-                    if ($namedCaptures !== null) {
-                        $groupsObj = new JsObject(null);
-                        foreach ($namedCaptures as $k => $v) {
-                            $groupsObj->set($k, $v === null ? JsUndefined::instance() : new JsString($v));
-                        }
-                        $callArgs[] = $groupsObj;
+                    // Per spec step 14.k.iv: if namedCaptures is not undefined,
+                    // append it directly (no ToObject for functional replace).
+                    if (!$groupsVal instanceof JsUndefined) {
+                        $callArgs[] = $groupsVal;
                     }
                     $replValue = $replaceValue->call(JsUndefined::instance(), $callArgs);
                     $replacement = TypeConversion::toString($replValue);
                 } else {
+                    // Per spec step 14.l.i: if namedCaptures is not undefined,
+                    // Set namedCaptures to ToObject(namedCaptures).
+                    $namedCaptures = null;
+                    if (!$groupsVal instanceof JsUndefined) {
+                        $groupsObj = TypeConversion::toObject($groupsVal);
+                        $namedCaptures = [];
+                        foreach ($groupsObj->getOwnPropertyNames() as $key) {
+                            $val = $groupsObj->get($key);
+                            $namedCaptures[$key] = $val instanceof JsUndefined ? null : TypeConversion::toString($val);
+                        }
+                    }
                     $replacement = StringPrototype::getSubstitution(
                         $matched,
                         $S,

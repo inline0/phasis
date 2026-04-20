@@ -112,7 +112,9 @@ class ErrorConstructor
 
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 // Called via new: populate the already-created object.
-                $this_->setPrototype($proto);
+                // Do NOT override the prototype: evalNewExpression already sets
+                // the correct prototype based on new.target's .prototype property.
+                // This ensures subclasses (class Err extends Error {}) keep their prototype chain.
                 // Mark as real error with [[ErrorData]] internal slot.
                 $this_->defineOwnProperty(
                     '[[ErrorData]]',

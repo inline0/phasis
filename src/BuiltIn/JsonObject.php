@@ -313,7 +313,12 @@ class JsonObject
             }
             $obj = new JsObject();
             foreach ($value as $key => $val) {
-                $obj->set((string) $key, self::phpToJsValue($val));
+                // Use defineOwnProperty to avoid triggering inherited setters
+                // (e.g., __proto__ accessor on Object.prototype).
+                $obj->defineOwnProperty(
+                    (string) $key,
+                    PropertyDescriptor::data(self::phpToJsValue($val), true, true, true),
+                );
             }
             return $obj;
         }

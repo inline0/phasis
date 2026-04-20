@@ -396,13 +396,19 @@ final class AbstractOperations
             throw new TypeError('Right-hand side of instanceof is not callable');
         }
 
+        // Per spec 7.3.22 step 2: resolve [[BoundTargetFunction]] recursively.
+        $target = $right;
+        while ($target->getBoundTarget() !== null) {
+            $target = $target->getBoundTarget();
+        }
+
         // Left must be an object for prototype chain walking.
         if (!$left instanceof JsObject) {
             return false;
         }
 
-        // Get the prototype property of the constructor.
-        $proto = $right->get('prototype');
+        // Get the prototype property of the resolved target.
+        $proto = $target->get('prototype');
         if (!$proto instanceof JsObject) {
             throw new TypeError('Function has non-object prototype in instanceof check');
         }

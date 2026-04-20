@@ -85,6 +85,12 @@ class Environment
         return array_key_exists($name, $this->bindings);
     }
 
+    /** Check whether a binding is currently in the temporal dead zone. */
+    public function isInTdz(string $name): bool
+    {
+        return isset($this->tdz[$name]);
+    }
+
     /** Check whether a lexical (let/const/class) binding exists in this scope only. */
     public function hasLexicalBinding(string $name): bool
     {

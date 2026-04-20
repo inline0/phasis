@@ -1210,14 +1210,18 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $len = mb_strlen($str, 'UTF-8');
+            // Use UTF-16 code unit length, same as String.length.
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $len = (int) (strlen($u16) / 2);
             if ($index < 0) {
                 $index = $len + $index;
             }
             if ($index < 0 || $index >= $len) {
                 return JsUndefined::instance();
             }
-            return new JsString(mb_substr($str, $index, 1, 'UTF-8'));
+            // Get the UTF-16 code unit at the index and convert back to UTF-8.
+            $codeUnit = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
+            return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
         };
     }
 
@@ -1947,8 +1951,18 @@ class StringPrototype
             // Step 3: Let S be ? ToString(O).
             $str = self::extractString($this_);
 
-            // Step 4: Let R be ? ToString(regexp).
-            $R = TypeConversion::toString($searchArg);
+            // Step 4: Let rx be ? RegExpCreate(regexp, "g").
+            // Per spec, RegExpCreate passes regexp to the RegExp constructor.
+            // If searchArg is undefined, the pattern is "" (empty).
+            // If searchArg is a RegExp object, extract its source pattern.
+            if ($searchArg instanceof JsUndefined) {
+                $R = '(?:)';
+            } elseif ($searchArg instanceof JsObject && $searchArg->has('[[OriginalSource]]')) {
+                $sourceVal = $searchArg->get('[[OriginalSource]]');
+                $R = $sourceVal instanceof JsString ? $sourceVal->value : TypeConversion::toString($searchArg);
+            } else {
+                $R = TypeConversion::toString($searchArg);
+            }
 
             // Step 5: Let rx be ? RegExpCreate(R, "g").
             // Step 6: Return ? Invoke(rx, @@matchAll, S).
@@ -2065,10 +2079,10 @@ class StringPrototype
             if (function_exists('normalizer_normalize')) {
                 /** @var int $formConst */
                 $formConst = match (strtoupper($form)) {
-                    'NFC' => 4, // Normalizer::FORM_C
-                    'NFD' => 2, // Normalizer::FORM_D
-                    'NFKC' => 5, // Normalizer::FORM_KC
-                    'NFKD' => 3, // Normalizer::FORM_KD
+                    'NFC' => 16, // Normalizer::FORM_C
+                    'NFD' => 4, // Normalizer::FORM_D
+                    'NFKC' => 32, // Normalizer::FORM_KC
+                    'NFKD' => 8, // Normalizer::FORM_KD
                     default => throw new \PhpJs\Exceptions\RangeError(
                         'The normalization form should be one of NFC, NFD, NFKC, NFKD',
                     ),
@@ -2089,6 +2103,8 @@ class StringPrototype
             // Use ICU Collator for locale-aware comparison when available.
             if (class_exists(\Collator::class)) {
                 $collator = new \Collator('');
+                // Enable normalization so canonically equivalent strings compare equal.
+                $collator->setAttribute(\Collator::NORMALIZATION_MODE, \Collator::ON);
                 $cmp = $collator->compare($str, $that);
                 if ($cmp === false) {
                     $cmp = strcmp($str, $that);
