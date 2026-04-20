@@ -2803,12 +2803,12 @@ class Interpreter
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeBody($body->body, $bodyEnv);
                 if ($completion->type === CompletionType::Return) {
-                    return $completion->value;
+                    return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
                 if ($completion->type === CompletionType::Throw) {
                     $this->throwJsValue($completion->value);
                 }
-                return JsUndefined::instance();
+                return $this->derivedConstructorImplicitReturn($fn, $fnEnv);
             }
 
             // Execute body
@@ -2823,12 +2823,12 @@ class Interpreter
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
                 if ($completion->type === CompletionType::Return) {
-                    return $completion->value;
+                    return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
                 if ($completion->type === CompletionType::Throw) {
                     $this->throwJsValue($completion->value);
                 }
-                return JsUndefined::instance();
+                return $this->derivedConstructorImplicitReturn($fn, $fnEnv);
             }
 
             // Arrow with expression body
@@ -2836,6 +2836,53 @@ class Interpreter
         } finally {
             $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
+        }
+    }
+
+    /**
+     * Handle implicit return (no return statement) for derived constructors.
+     * Per spec 10.2.2 [[Construct]] step 13: if the derived constructor
+     * completes without returning, GetThisBinding is called. If this was
+     * never initialized (super() was never called), throw ReferenceError.
+     */
+    private function derivedConstructorImplicitReturn(JsFunction $fn, Environment $fnEnv): JsValue
+    {
+        if (!$fn->isDerivedConstructor()) {
+            return JsUndefined::instance();
+        }
+        // Try to get the this binding. If it is still in TDZ, throw ReferenceError.
+        try {
+            return $fnEnv->get('this');
+        } catch (\Throwable) {
+            throw new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
+        }
+    }
+
+    /**
+     * Handle explicit return value for derived constructors.
+     * Per spec 10.2.2 [[Construct]]:
+     * - If result is an Object, return it (both base and derived).
+     * - If derived and result is not undefined, throw TypeError.
+     * - If derived and result is undefined, return GetThisBinding() (which may throw ReferenceError).
+     */
+    private function derivedConstructorReturn(JsFunction $fn, Environment $fnEnv, JsValue $value): JsValue
+    {
+        if (!$fn->isDerivedConstructor()) {
+            return $value;
+        }
+        // If the constructor explicitly returned an object, use it.
+        if ($value instanceof JsObject) {
+            return $value;
+        }
+        // If the constructor explicitly returned a non-object, non-undefined value, throw TypeError.
+        if (!$value instanceof JsUndefined) {
+            throw new TypeError('Derived constructors may only return object or undefined');
+        }
+        // Returning undefined (or bare return): same as implicit return, check this binding.
+        try {
+            return $fnEnv->get('this');
+        } catch (\Throwable) {
+            throw new ReferenceError('Must call super constructor in derived class before returning from derived constructor');
         }
     }
 
@@ -4597,7 +4644,18 @@ class Interpreter
     {
         /** @var list<ClassMethod> $body */
         $body = $node->body;
-        $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $env);
+        // Per spec ClassDefinitionEvaluation: create an inner scope for the class name
+        // so that methods close over an immutable binding of the class name. The outer
+        // scope gets a separate mutable let binding.
+        $classEnv = $env;
+        if ($node->id !== null) {
+            $classEnv = $env->createChild();
+            $classEnv->declareLet($node->id->name);
+        }
+        $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $classEnv);
+        if ($node->id !== null) {
+            $classEnv->initialize($node->id->name, $cls);
+        }
         // Per spec, Function.prototype.toString on a class returns the full class source text.
         if ($node->sourceText !== null) {
             $cls->setSourceText($node->sourceText);
