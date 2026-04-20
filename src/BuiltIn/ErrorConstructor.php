@@ -6,7 +6,9 @@ namespace PhpJs\BuiltIn;
 
 use PhpJs\Runtime\Environment;
 use PhpJs\Spec\TypeConversion;
+use PhpJs\Value\JsArray;
 use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNull;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
 use PhpJs\Value\JsUndefined;
@@ -58,7 +60,15 @@ class ErrorConstructor
                 0,
             ), true, false, true));
 
-            $constructor = JsFunction::fromCallable($name, self::makeConstructor($name, $proto), 1);
+            if ($name === 'AggregateError') {
+                $constructor = JsFunction::fromCallable(
+                    $name,
+                    self::makeAggregateErrorConstructor($name, $proto),
+                    2,
+                );
+            } else {
+                $constructor = JsFunction::fromCallable($name, self::makeConstructor($name, $proto), 1);
+            }
             $constructor->setConstructable();
 
             // constructor <-> prototype wiring
@@ -100,6 +110,152 @@ class ErrorConstructor
 
             $env->defineVar($name, $constructor);
         }
+    }
+
+    /**
+     * AggregateError constructor per spec sec-aggregate-error.
+     *
+     * Signature: AggregateError(errors, message [, options])
+     * 1. Process message (ToString if not undefined).
+     * 2. Iterate errors (IterableToList).
+     * 3. Install cause from options.
+     */
+    private static function makeAggregateErrorConstructor(string $name, JsObject $proto): \Closure
+    {
+        return function (JsValue $this_, array $args) use ($name, $proto): JsValue {
+            $errorsArg = $args[0] ?? JsUndefined::instance();
+            $messageArg = $args[1] ?? JsUndefined::instance();
+            $options = $args[2] ?? JsUndefined::instance();
+
+            // Determine target object.
+            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                $obj = $this_;
+            } else {
+                $obj = new JsObject($proto);
+            }
+
+            // Mark as real error with [[ErrorData]] internal slot.
+            $obj->defineOwnProperty(
+                '[[ErrorData]]',
+                PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+            );
+
+            // Step 5: If message is not undefined, let msg = ToString(message),
+            // then CreateMethodProperty(O, "message", msg).
+            // Per spec, this happens BEFORE iterating errors.
+            if (!$messageArg instanceof JsUndefined) {
+                $msgStr = TypeConversion::toString($messageArg);
+                $obj->defineOwnProperty('message', PropertyDescriptor::data(
+                    new JsString($msgStr),
+                    true,
+                    false,
+                    true,
+                ));
+            }
+
+            // Step 3: Let errorsList be IterableToList(errors).
+            $errorsList = self::iterableToList($errorsArg);
+
+            // Step 4: Set O.[[AggregateErrors]] to errorsList.
+            // The errors property is a frozen array stored as own "errors" property.
+            $errorsArray = JsArray::fromArray($errorsList);
+            $obj->defineOwnProperty('errors', PropertyDescriptor::data(
+                $errorsArray,
+                true,
+                false,
+                true,
+            ));
+
+            // Stack trace.
+            $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
+            $obj->defineOwnProperty('stack', PropertyDescriptor::data(
+                new JsString("{$name}: {$message}"),
+                true,
+                false,
+                true,
+            ));
+
+            // Step 4: Perform ? InstallErrorCause(O, options).
+            if ($options instanceof JsObject && $options->has('cause')) {
+                $obj->defineOwnProperty('cause', PropertyDescriptor::data(
+                    $options->get('cause'),
+                    true,
+                    false,
+                    true,
+                ));
+            }
+
+            return $obj;
+        };
+    }
+
+    /**
+     * IterableToList per spec 7.4.9.
+     *
+     * Iterates the given value and returns a list of values.
+     * Throws TypeError if the value is not iterable.
+     *
+     * @return list<JsValue>
+     */
+    private static function iterableToList(JsValue $items): array
+    {
+        if ($items instanceof JsUndefined || $items instanceof JsNull) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'undefined is not iterable (cannot read property Symbol(Symbol.iterator))'
+            );
+        }
+
+        if (!$items instanceof JsObject) {
+            throw new \PhpJs\Exceptions\TypeError(
+                TypeConversion::toString($items) . ' is not iterable'
+            );
+        }
+
+        // Get the iterator method.
+        $iterSym = SymbolConstructor::iterator();
+        $iteratorMethod = $items->getBySymbol($iterSym);
+        if ($iteratorMethod instanceof JsUndefined || $iteratorMethod instanceof JsNull) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'object is not iterable (cannot read property Symbol(Symbol.iterator))'
+            );
+        }
+        if (!$iteratorMethod instanceof JsFunction) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Result of the Symbol.iterator method is not an object'
+            );
+        }
+
+        // Call the iterator method.
+        $iterator = $iteratorMethod->call($items, []);
+        if (!$iterator instanceof JsObject) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Result of the Symbol.iterator method is not an object'
+            );
+        }
+
+        // Get the next method.
+        $nextMethod = $iterator->get('next');
+        if (!$nextMethod instanceof JsFunction) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'iterator.next is not a function'
+            );
+        }
+
+        $values = [];
+        while (true) {
+            $result = $nextMethod->call($iterator, []);
+            if (!$result instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Iterator result is not an object'
+                );
+            }
+            if (TypeConversion::toBoolean($result->get('done'))) {
+                break;
+            }
+            $values[] = $result->get('value');
+        }
+
+        return $values;
     }
 
     private static function makeConstructor(string $name, JsObject $proto): \Closure

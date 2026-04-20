@@ -1664,6 +1664,16 @@ class Interpreter
             // are a SyntaxError.
             $this->validateEvalPrivateNames($program->body, $env);
 
+            // Per spec: eval inside a class field initializer must not
+            // contain `arguments` (ContainsArguments early error).
+            if ($env->has('[[ClassFieldInitializer]]')
+                && $this->astContainsIdentifier($program->body, 'arguments')
+            ) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "'arguments' is not allowed in class field initializer or static initialization block",
+                );
+            }
+
             // Detect if the eval code itself enables strict mode. This must
             // happen before the var/lex conflict check because strict eval
             // isolates its var declarations in a separate scope.
@@ -1940,6 +1950,56 @@ class Interpreter
                 }
             }
         }
+    }
+
+    /**
+     * Check whether an AST contains a specific identifier reference.
+     * Does not recurse into function bodies or class bodies (they create
+     * their own scope for the identifier).
+     *
+     * @param Node[] $statements
+     */
+    private function astContainsIdentifier(array $statements, string $name): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsIdentifier($stmt, $name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsIdentifier(Node $node, string $name): bool
+    {
+        if ($node instanceof Identifier && $node->name === $name) {
+            return true;
+        }
+        // Do not recurse into non-arrow function bodies or class bodies.
+        // Arrow functions are recursed into because they do not create
+        // their own `arguments` binding (per spec ContainsArguments).
+        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+        ) {
+            return false;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeContainsIdentifier($value, $name)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsIdentifier($item, $name)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -2708,6 +2768,14 @@ class Interpreter
         $baseEnv = $ctor->getPrivateEnv() ?? $env;
         $fieldEnv = $baseEnv->createChild();
         $fieldEnv->defineVar('this', $instance);
+        // Per spec, class field initializers have an implicit [[HomeObject]]
+        // so super.x property access works (resolves to the prototype).
+        $proto = $ctor->get('prototype');
+        if ($proto instanceof JsObject) {
+            $fieldEnv->defineVar('[[HomeObject]]', $proto);
+        }
+        // Mark as field initializer context so eval knows to restrict `arguments`.
+        $fieldEnv->defineVar('[[ClassFieldInitializer]]', new JsBoolean(true));
         foreach ($ctor->getInstanceFieldInitializers() as [$key, $initNode, $computed, $isPrivate]) {
             $value = $initNode !== null
                 ? $this->evaluate($initNode, $fieldEnv)

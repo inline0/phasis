@@ -61,6 +61,7 @@ class TypedArrayConstructor
     private static function installArrayBuffer(Environment $env): void
     {
         $proto = new JsObject();
+        JsArrayBuffer::setDefaultPrototype($proto);
 
         $constructor = JsFunction::fromCallable(
             'ArrayBuffer',
@@ -929,16 +930,9 @@ class TypedArrayConstructor
         }
 
         // new TypedArray(arrayLike or iterable).
-        if ($arg0 instanceof JsArray) {
-            $srcLen = $arg0->getLength();
-            $result = JsTypedArray::fromLength($typeName, $srcLen, $proto);
-            for ($i = 0; $i < $srcLen; $i++) {
-                $result->setIndex($i, $arg0->get((string) $i));
-            }
-            return $result;
-        }
-
-        // Generic object with length property or iterable.
+        // JsArray goes through the same path as any object: check @@iterator first,
+        // then fall back to array-like. This ensures modifications to
+        // ArrayIteratorPrototype.next are respected per spec.
         if ($arg0 instanceof JsObject) {
             // Try iterator protocol first.
             $iterSym = SymbolConstructor::iterator();

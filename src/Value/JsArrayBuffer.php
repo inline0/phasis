@@ -15,13 +15,26 @@ class JsArrayBuffer extends JsObject
     private const FALLBACK_MAX_BYTE_LENGTH = 268435456; // 256 MiB
     private const MIN_SAFE_BYTE_LENGTH = 16777216; // 16 MiB
 
+    /** ArrayBuffer.prototype set during installArrayBuffer(). */
+    private static ?JsObject $defaultPrototype = null;
+
+    public static function setDefaultPrototype(JsObject $proto): void
+    {
+        self::$defaultPrototype = $proto;
+    }
+
+    public static function getDefaultPrototype(): ?JsObject
+    {
+        return self::$defaultPrototype;
+    }
+
     private string $data;
     private int $byteLength;
     private bool $detached = false;
 
     public function __construct(int $byteLength, ?JsObject $prototype = null)
     {
-        parent::__construct($prototype);
+        parent::__construct($prototype ?? self::$defaultPrototype);
 
         if ($byteLength < 0 || $byteLength > self::maxAllocatableByteLength()) {
             throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
