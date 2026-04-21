@@ -3504,6 +3504,15 @@ class TemporalObject
                 return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
             }
         }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to Temporal.PlainTime');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to Temporal.PlainTime');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to Temporal.PlainTime');
+        }
         $str = TypeConversion::toString($item);
         return self::parsePlainTimeString($str);
     }
@@ -3574,6 +3583,15 @@ class TemporalObject
                 self::validateISOTime($h, $min, $s, $ms, $us, $ns);
                 return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
             }
+        }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to Temporal.PlainDateTime');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to Temporal.PlainDateTime');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to Temporal.PlainDateTime');
         }
         $str = TypeConversion::toString($item);
         return self::parsePlainDateTimeString($str);
