@@ -968,12 +968,32 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
+            // Reject calendar/timeZone properties.
+            if (!($item->get('calendar') instanceof JsUndefined)) {
+                throw new TypeError('calendar not allowed in with()');
+            }
+            if (!($item->get('timeZone') instanceof JsUndefined)) {
+                throw new TypeError('timeZone not allowed in with()');
+            }
+            // Check at least one time property.
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
+            }
             $h = self::getSlotInt($this_, '[[ISOHour]]');
             $min = self::getSlotInt($this_, '[[ISOMinute]]');
             $s = self::getSlotInt($this_, '[[ISOSecond]]');
             $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
+            $any = false;
             $mapping = [
                 'hour' => &$h, 'minute' => &$min,
                 'second' => &$s, 'millisecond' => &$ms,
@@ -982,11 +1002,28 @@ class TemporalObject
             foreach ($mapping as $name => &$ref) {
                 $v = $item->get($name);
                 if (!($v instanceof JsUndefined)) {
-                    $ref = (int) TypeConversion::toNumber($v);
+                    $n = TypeConversion::toNumber($v);
+                    if (!is_finite($n)) {
+                        throw new RangeError("{$name} must be finite");
+                    }
+                    $ref = (int) $n;
+                    $any = true;
                 }
             }
             unset($ref);
-            self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            if (!$any) {
+                throw new TypeError('at least one time property required');
+            }
+            if ($overflow === 'constrain') {
+                $h = max(0, min(23, $h));
+                $min = max(0, min(59, $min));
+                $s = max(0, min(59, $s));
+                $ms = max(0, min(999, $ms));
+                $us = max(0, min(999, $us));
+                $ns = max(0, min(999, $ns));
+            } else {
+                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            }
             return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
         }, 1);
 
