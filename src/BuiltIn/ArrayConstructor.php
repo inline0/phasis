@@ -2115,13 +2115,7 @@ class ArrayConstructor
         if ($value instanceof JsPromise) {
             if ($value->getState() === JsPromise::STATE_REJECTED) {
                 $reason = $value->getResolvedValue();
-                if ($reason instanceof JsObject) {
-                    throw new \PhpJs\Exceptions\RuntimeError(
-                        TypeConversion::toString($reason),
-                        $reason,
-                    );
-                }
-                throw new \PhpJs\Exceptions\RuntimeError(TypeConversion::toString($reason));
+                throw new \PhpJs\Exceptions\JsThrowable($reason);
             }
             return $value->getResolvedValue();
         }
@@ -2146,13 +2140,7 @@ class ArrayConstructor
                 );
                 $thenMethod->call($value, [$resolveHandler, $rejectHandler]);
                 if ($rejected !== null) {
-                    if ($rejected instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\RuntimeError(
-                            TypeConversion::toString($rejected),
-                            $rejected,
-                        );
-                    }
-                    throw new \PhpJs\Exceptions\RuntimeError(TypeConversion::toString($rejected));
+                    throw new \PhpJs\Exceptions\JsThrowable($rejected);
                 }
                 return $resolved;
             }

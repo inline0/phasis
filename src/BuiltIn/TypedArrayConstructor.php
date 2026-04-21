@@ -417,7 +417,11 @@ class TypedArrayConstructor
                 // Step 8-9: byteLength.
                 $lenArg = $args[2] ?? JsUndefined::instance();
                 if ($lenArg instanceof JsUndefined) {
-                    $byteLength = $bufLen - $byteOffset;
+                    if ($buffer->isResizable()) {
+                        $byteLength = null;
+                    } else {
+                        $byteLength = $bufLen - $byteOffset;
+                    }
                 } else {
                     $byteLength = TypeConversion::toIndex($lenArg);
                     if (($byteOffset + $byteLength) > $bufLen) {
@@ -1030,8 +1034,10 @@ class TypedArrayConstructor
             }
 
             $bufLen = $arg0->getByteLength();
+            $isResizable = $arg0->isResizable();
+            $lengthExplicit = isset($args[2]) && !$args[2] instanceof JsUndefined;
 
-            if (isset($args[2]) && !$args[2] instanceof JsUndefined) {
+            if ($lengthExplicit) {
                 // Per spec step 13a: newLength = ToIndex(length).
                 // The valueOf() during ToIndex may detach the buffer.
                 $length = TypeConversion::toIndex($args[2]);
@@ -1058,7 +1064,11 @@ class TypedArrayConstructor
                 $length = (int) ($remaining / $bpe);
             }
 
-            return new JsTypedArray($typeName, $arg0, $byteOffset, $length, $proto);
+            $ta = new JsTypedArray($typeName, $arg0, $byteOffset, $length, $proto);
+            if ($isResizable && !$lengthExplicit) {
+                $ta->setAutoLength(true);
+            }
+            return $ta;
         }
 
         // new TypedArray(typedArray): copy elements.

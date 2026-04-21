@@ -3351,7 +3351,11 @@ class Interpreter
                 if ($savedCaller !== null) {
                     $fn->defineOwnProperty("caller", $savedCaller);
                 } else {
-                    $fn->forceDelete("caller");
+                    // Restore to null so .caller does not fall through to the
+                    // inherited thrower accessor on Function.prototype.
+                    $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                        JsNull::instance(), true, false, true,
+                    ));
                 }
             }
             $this->strictMode = $previousStrictMode;
