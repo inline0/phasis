@@ -2051,13 +2051,25 @@ class TemporalObject
                 }
                 $m = (int) $mcm[1];
             } elseif (!($month instanceof JsUndefined)) {
-                $m = (int) TypeConversion::toNumber($month);
+                $n = TypeConversion::toNumber($month);
+                if (!is_finite($n)) {
+                    throw new RangeError('month must be finite');
+                }
+                $m = (int) $n;
             }
             if (!($day instanceof JsUndefined)) {
-                $dd = (int) TypeConversion::toNumber($day);
+                $n = TypeConversion::toNumber($day);
+                if (!is_finite($n)) {
+                    throw new RangeError('day must be finite');
+                }
+                $dd = (int) $n;
             }
             if (!($year instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($year);
+                $n = TypeConversion::toNumber($year);
+                if (!is_finite($n)) {
+                    throw new RangeError('year must be finite');
+                }
+                $y = (int) $n;
             }
             if ($overflow === 'constrain') {
                 $m = max(1, min(12, $m));
