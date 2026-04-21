@@ -3929,7 +3929,19 @@ class TemporalObject
     private static function toPlainDateTime(JsValue $item, string $overflow = 'constrain'): JsObject
     {
         if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
-            return $item;
+            // Return a copy per spec.
+            return self::createPlainDateTimeObject(
+                self::getSlotInt($item, '[[ISOYear]]'),
+                self::getSlotInt($item, '[[ISOMonth]]'),
+                self::getSlotInt($item, '[[ISODay]]'),
+                self::getSlotInt($item, '[[ISOHour]]'),
+                self::getSlotInt($item, '[[ISOMinute]]'),
+                self::getSlotInt($item, '[[ISOSecond]]'),
+                self::getSlotInt($item, '[[ISOMillisecond]]'),
+                self::getSlotInt($item, '[[ISOMicrosecond]]'),
+                self::getSlotInt($item, '[[ISONanosecond]]'),
+                self::getSlotString($item, '[[Calendar]]'),
+            );
         }
         if ($item instanceof JsObject && $item->has('[[IsPlainDate]]')) {
             return self::createPlainDateTimeObject(
