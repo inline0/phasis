@@ -4220,6 +4220,19 @@ class TemporalObject
                 "reject more than one calendar annotation if any critical: {$str}"
             );
         }
+        // Count timezone annotations (non-key-value: no '=').
+        $tzCount = 0;
+        foreach ($anns as $ann) {
+            $content = $ann[2];
+            if (!str_contains($content, '=')) {
+                $tzCount++;
+            }
+        }
+        if ($tzCount > 1) {
+            throw new RangeError(
+                "reject more than one time zone annotation: {$str}"
+            );
+        }
         return [$str, $cal];
     }
 
