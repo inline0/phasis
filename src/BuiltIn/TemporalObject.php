@@ -3335,11 +3335,25 @@ class TemporalObject
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
-        // Reject multiple calendar annotations if any is critical.
-        preg_match_all('/\[(!?)u-ca=([^\]]+)\]/', $str, $calMatches, PREG_SET_ORDER);
+        // Reject critical unknown annotations (non-calendar with !).
+        preg_match_all('/\[(!?)([^\]]+)\]/', $str, $allAnnotations, PREG_SET_ORDER);
+        $calMatches = [];
+        foreach ($allAnnotations as $ann) {
+            $critical = $ann[1] === '!';
+            $content = $ann[2];
+            if (str_starts_with($content, 'u-ca=')) {
+                $calMatches[] = ['critical' => $critical, 'value' => substr($content, 5)];
+            } elseif ($critical && str_contains($content, '=')) {
+                // Critical unknown annotation: reject per spec.
+                throw new RangeError(
+                    "reject unknown annotation with critical flag: {$str}"
+                );
+            }
+            // Non-critical unknown annotations are silently ignored.
+        }
         if (count($calMatches) > 1) {
             foreach ($calMatches as $cm) {
-                if ($cm[1] === '!') {
+                if ($cm['critical']) {
                     throw new RangeError(
                         "reject more than one calendar annotation if any critical: {$str}"
                     );
@@ -3356,7 +3370,7 @@ class TemporalObject
         $d = (int) $m[3];
         $cal = 'iso8601';
         if (!empty($calMatches)) {
-            $cal = strtolower($calMatches[0][2]);
+            $cal = strtolower($calMatches[0]['value']);
         }
         self::validateISODate($y, $m2, $d);
         return self::createPlainDateObject($y, $m2, $d, $cal);
