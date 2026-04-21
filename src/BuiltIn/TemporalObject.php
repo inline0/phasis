@@ -3618,7 +3618,7 @@ class TemporalObject
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
-        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Tt ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?(?:\[.*?\])*$/';
+        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
             // Fallback: date only (with or without dashes).
             $dateOnly = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:\[.*?\])*$/';
@@ -3637,7 +3637,7 @@ class TemporalObject
         $mo = (int) $m[2];
         $dd = (int) $m[3];
         $h = (int) $m[4];
-        $min = (int) $m[5];
+        $min = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
         $s = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
         $frac = isset($m[7]) && $m[7] !== '' ? str_pad(substr($m[7], 0, 9), 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
