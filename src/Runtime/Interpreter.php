@@ -372,25 +372,26 @@ class Interpreter
     public function executeBody(array $statements, Environment $env): Completion
     {
         $result = JsUndefined::instance();
-        $hasValue = false;
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
+                // UpdateEmpty: if the abrupt completion has an empty value
+                // (its value slot was never explicitly set), replace it with
+                // the last non-empty statement value V. This implements the
+                // spec's UpdateEmpty(completion, V) for break/continue.
+                // Completions that already had their value filled (e.g. by
+                // a try/finally UpdateEmpty) have empty=false and are kept.
                 if ($completion->empty && !$result instanceof JsUndefined) {
                     return new Completion($completion->type, $result, $completion->target);
                 }
                 return $completion;
             }
+            // Empty completions don't override the accumulated value
             if (!$completion->empty) {
                 $result = $completion->value;
-                $hasValue = true;
             }
         }
-        // When no statement produced a non-empty completion (e.g. empty block,
-        // or all statements were empty like EmptyStatement), propagate
-        // empty: true so that callers implementing UpdateEmpty (like eval)
-        // can preserve the previous accumulated value.
-        return new Completion(CompletionType::Normal, $result, empty: !$hasValue);
+        return Completion::normal($result);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -2442,6 +2443,128 @@ class Interpreter
         } elseif ($node instanceof BinaryExpression) {
             $this->validateStrictExpressions($node->left);
             $this->validateStrictExpressions($node->right);
+        }
+    }
+
+    /** @param Node[] $params */
+    private function checkDuplicateParams(array $params): void
+    {
+        $names = [];
+        foreach ($params as $param) {
+            $this->collectParamNames($param, $names);
+        }
+        $seen = [];
+        foreach ($names as $name) {
+            if (isset($seen[$name])) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Duplicate parameter name not allowed in this context",
+                );
+            }
+            $seen[$name] = true;
+        }
+    }
+
+    /** @param string[] &$names */
+    private function collectParamNames(Node $node, array &$names): void
+    {
+        if ($node instanceof Identifier) {
+            $names[] = $node->name;
+        } elseif ($node instanceof AssignmentPattern) {
+            $this->collectParamNames($node->left, $names);
+        } elseif ($node instanceof RestElement) {
+            $this->collectParamNames($node->argument, $names);
+        } elseif ($node instanceof ArrayPattern) {
+            foreach ($node->elements as $el) {
+                if ($el !== null) {
+                    $this->collectParamNames($el, $names);
+                }
+            }
+        } elseif ($node instanceof ObjectPattern) {
+            foreach ($node->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->collectParamNames($prop->value, $names);
+                } elseif ($prop instanceof RestElement) {
+                    $this->collectParamNames($prop->argument, $names);
+                }
+            }
+        }
+    }
+
+    /** @param Node[] $statements */
+    private function validateSelfStrictFunctions(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            $this->findAndValidateSelfStrictFunction($stmt);
+        }
+    }
+
+    private function findAndValidateSelfStrictFunction(Node $node): void
+    {
+        if ($node instanceof FunctionDeclaration && $node->body instanceof BlockStatement) {
+            if ($this->hasUseStrictDirective($node->body->body)) {
+                foreach ($node->params as $param) {
+                    $this->checkStrictBindingNames($param);
+                }
+                $this->checkDuplicateParams($node->params);
+                if (
+                    $this->isStrictReservedWord($node->id->name)
+                    || $node->id->name === 'eval'
+                    || $node->id->name === 'arguments'
+                ) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Unexpected eval or arguments in strict mode",
+                    );
+                }
+                $this->validateStrictModeRestrictions($node->body->body);
+            }
+            foreach ($node->body->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+            return;
+        }
+        if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
+            if ($this->hasUseStrictDirective($node->body->body)) {
+                foreach ($node->params as $param) {
+                    $this->checkStrictBindingNames($param);
+                }
+                $this->checkDuplicateParams($node->params);
+                if ($node->name !== null) {
+                    if (
+                        $this->isStrictReservedWord($node->name)
+                        || $node->name === 'eval'
+                        || $node->name === 'arguments'
+                    ) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Unexpected eval or arguments in strict mode",
+                        );
+                    }
+                }
+                $this->validateStrictModeRestrictions($node->body->body);
+            }
+            foreach ($node->body->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+            return;
+        }
+        if ($node instanceof ExpressionStatement) {
+            $this->findAndValidateSelfStrictFunction($node->expression);
+        } elseif ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null) {
+                    $this->findAndValidateSelfStrictFunction($decl->init);
+                }
+            }
+        } elseif ($node instanceof BlockStatement) {
+            foreach ($node->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+        } elseif ($node instanceof IfStatement) {
+            $this->findAndValidateSelfStrictFunction($node->consequent);
+            if ($node->alternate !== null) {
+                $this->findAndValidateSelfStrictFunction($node->alternate);
+            }
+        } elseif ($node instanceof AssignmentExpression) {
+            $this->findAndValidateSelfStrictFunction($node->right);
         }
     }
 
@@ -5852,8 +5975,12 @@ class Interpreter
         $iterations = 0;
         $v = JsUndefined::instance();
 
-        // Try the iterator protocol first.
-        $iterator = $this->getIterator($iterable);
+        // For for-await-of, try Symbol.asyncIterator first, then fall back to Symbol.iterator.
+        if ($node->await) {
+            $iterator = $this->getAsyncIterator($iterable);
+        } else {
+            $iterator = $this->getIterator($iterable);
+        }
 
         if ($iterator !== null) {
             $nextMethod = $iterator->get('next');
@@ -5932,6 +6059,10 @@ class Interpreter
                 }
 
                 $result = $this->callFunction($nextMethod, $iterator, []);
+                // For for-await-of, unwrap the promise returned by the async iterator.
+                if ($node->await) {
+                    $result = $this->awaitValue($result);
+                }
                 if (!$result instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
@@ -5942,6 +6073,10 @@ class Interpreter
                 }
 
                 $value = $result->get('value');
+                // For for-await-of, await the value too.
+                if ($node->await) {
+                    $value = $this->awaitValue($value);
+                }
                 $iterEnv = $env->createChild();
                 // Per spec ForIn/OfBodyEvaluation: if LHS assignment/destructuring is abrupt,
                 // close the iterator before propagating the error.
@@ -5994,6 +6129,79 @@ class Interpreter
      * Returns the iterator object, or null if the value does not implement
      * the iterator protocol.
      */
+    /**
+     * Get an async iterator from a value using the Symbol.asyncIterator protocol.
+     * Falls back to Symbol.iterator if Symbol.asyncIterator is not present.
+     */
+    private function getAsyncIterator(JsValue $iterable): ?JsObject
+    {
+        if (!$iterable instanceof JsObject) {
+            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                return null;
+            }
+            $iterable = TypeConversion::toObject($iterable);
+        }
+
+        // Try Symbol.asyncIterator first.
+        $asyncIterSym = \PhpJs\BuiltIn\SymbolConstructor::asyncIterator();
+        $asyncIterMethod = $iterable->getBySymbol($asyncIterSym);
+
+        if ($asyncIterMethod instanceof JsFunction) {
+            $iterator = $this->callFunction($asyncIterMethod, $iterable, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
+            }
+            return $iterator;
+        }
+
+        // Fall back to Symbol.iterator (creates a sync-to-async wrapper).
+        return $this->getIterator($iterable);
+    }
+
+    /**
+     * Await a JS value: if it is a Promise, extract the resolved value.
+     * If it is a thenable, resolve it. Otherwise return as-is.
+     */
+    private function awaitValue(JsValue $value): JsValue
+    {
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                $this->throwJsValue($value->getResolvedValue());
+            }
+            return $value->getResolvedValue();
+        }
+        if ($value instanceof JsObject) {
+            $thenMethod = $value->get('then');
+            if ($thenMethod instanceof JsFunction) {
+                $resolved = JsUndefined::instance();
+                $rejected = null;
+                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                    $resolved = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                };
+                $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                    $rejected = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                };
+                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                try {
+                    $thenMethod->call($value, [$resolveFn, $rejectFn]);
+                } catch (\Throwable $e) {
+                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                        $this->throwJsValue($e->jsValue);
+                    }
+                    throw $e;
+                }
+                if ($rejected !== null) {
+                    $this->throwJsValue($rejected);
+                }
+                return $resolved;
+            }
+        }
+        return $value;
+    }
+
     private function getIterator(JsValue $iterable): ?JsObject
     {
         // String iteration: produce a code-point iterator that correctly
@@ -8918,12 +9126,6 @@ class Interpreter
 
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
-
-        // Detect duplicate named groups in the pattern and enable PCRE's J
-        // modifier to allow duplicate subpattern names (ES2025 feature).
-        if (self::hasDuplicateNamedGroups($pattern)) {
-            $pcreFlags .= 'J';
-        }
 
         // Escape unescaped forward slashes for the PCRE delimiter.
         // Already-escaped slashes (\/) must not be double-escaped.

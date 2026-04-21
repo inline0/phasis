@@ -66,6 +66,7 @@ return [
         'source-phase-imports',
         'Symbol.asyncIterator',
         'regexp-unicode-property-escapes',
+        'regexp-match-indices',
         'regexp-v-flag',
         'regexp-modifiers',
         'regexp-duplicate-named-groups',
@@ -79,10 +80,14 @@ return [
         'decorators',
         'explicit-resource-management',
         'IsHTMLDDA',
+        'iterator-helpers',
         'iterator-sequencing',
-
+        'set-methods',
         'Array.fromAsync',
         'Math.sumPrecise',
+        'well-formed-json-stringify',
         'json-parse-with-source',
+        'String.prototype.isWellFormed',
+        'String.prototype.toWellFormed',
     ],
 ];

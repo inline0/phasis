@@ -390,7 +390,8 @@ class JsonObject
             return $value->value ? 'true' : 'false';
         }
         if ($value instanceof JsString) {
-            return self::quoteJsonString($value->value);
+            $encoded = json_encode($value->value, JSON_UNESCAPED_UNICODE);
+            return $encoded !== false ? $encoded : '"' . $value->value . '"';
         }
         if ($value instanceof JsNumber) {
             if (is_nan($value->value) || is_infinite($value->value)) {
@@ -501,58 +502,5 @@ class JsonObject
         $separator = ",\n" . $indent;
         $properties = implode($separator, $partial);
         return "[\n" . $indent . $properties . "\n" . $stepback . ']';
-    }
-
-    /**
-     * QuoteJSONString per spec with well-formed JSON stringify.
-     *
-     * Lone surrogates are escaped as \uXXXX instead of raw bytes.
-     * Valid surrogate pairs are emitted as UTF-8 code points.
-     */
-    private static function quoteJsonString(string $str): string
-    {
-        $u16 = \PhpJs\Value\JsString::utf8ToUtf16LE($str);
-        $u16Len = (int) (strlen($u16) / 2);
-        $result = '"';
-        $i = 0;
-        while ($i < $u16Len) {
-            $cu = ord($u16[$i * 2])
-                | (ord($u16[$i * 2 + 1]) << 8);
-            if ($cu >= 0xD800 && $cu <= 0xDBFF) {
-                if ($i + 1 < $u16Len) {
-                    $next = ord($u16[($i + 1) * 2])
-                        | (ord($u16[($i + 1) * 2 + 1]) << 8);
-                    if ($next >= 0xDC00 && $next <= 0xDFFF) {
-                        $cp = ($cu - 0xD800) * 0x400
-                            + ($next - 0xDC00) + 0x10000;
-                        $ch = mb_chr($cp, 'UTF-8');
-                        $result .= $ch !== false ? $ch : '?';
-                        $i += 2;
-                        continue;
-                    }
-                }
-                $result .= sprintf('\\u%04x', $cu);
-                $i++;
-            } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
-                $result .= sprintf('\\u%04x', $cu);
-                $i++;
-            } else {
-                $result .= match ($cu) {
-                    0x08 => '\\b',
-                    0x09 => '\\t',
-                    0x0A => '\\n',
-                    0x0C => '\\f',
-                    0x0D => '\\r',
-                    0x22 => '\\"',
-                    0x5C => '\\\\',
-                    default => $cu < 0x20
-                        ? sprintf('\\u%04x', $cu)
-                        : mb_chr($cu, 'UTF-8'),
-                };
-                $i++;
-            }
-        }
-        $result .= '"';
-        return $result;
     }
 }
