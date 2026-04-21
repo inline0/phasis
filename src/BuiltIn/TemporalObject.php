@@ -4685,9 +4685,17 @@ class TemporalObject
 
         // Full ISO date with optional time and offset.
         // First check for date-only with offset (no time): reject.
+        // Use greedy year match (\d{4,6}) to avoid backtracking into date.
         if (
-            preg_match('/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Zz+\-]/', $cleanStr)
-            && !preg_match('/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Tt ]/', $cleanStr)
+            preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Zz+\-]/', $cleanStr)
+            && !preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Tt ]/', $cleanStr)
+        ) {
+            throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
+        }
+        // Same for compact format YYYYMMDD.
+        if (
+            preg_match('/^([+-]?\d{4,6})(\d{2})(\d{2})[Zz+\-]/', $cleanStr)
+            && !preg_match('/^([+-]?\d{4,6})(\d{2})(\d{2})[Tt ]/', $cleanStr)
         ) {
             throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
         }
