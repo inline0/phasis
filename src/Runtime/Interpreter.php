@@ -225,7 +225,10 @@ class Interpreter
         // Collect lexical names (let/const/class declarations).
         $lexNames = [];
         foreach ($body as $stmt) {
-            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+            if ($stmt instanceof VariableDeclaration && (
+                $stmt->kind === 'let' || $stmt->kind === 'const'
+                || $stmt->kind === 'using' || $stmt->kind === 'await using'
+            )) {
                 foreach ($stmt->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
                         $lexNames[] = $n;
@@ -7166,7 +7169,10 @@ class Interpreter
         // Collect top-level lexical names that block Annex B hoisting.
         $lexicalNames = [];
         foreach ($statements as $stmt) {
-            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+            if ($stmt instanceof VariableDeclaration && (
+                $stmt->kind === 'let' || $stmt->kind === 'const'
+                || $stmt->kind === 'using' || $stmt->kind === 'await using'
+            )) {
                 foreach ($stmt->declarations as $d) {
                     foreach ($this->patternBoundNames($d->id) as $n) {
                         $lexicalNames[$n] = true;
@@ -7435,7 +7441,10 @@ class Interpreter
         // Collect top-level lexical names that block Annex B hoisting.
         $lexicalNames = [];
         foreach ($statements as $stmt) {
-            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+            if ($stmt instanceof VariableDeclaration && (
+                $stmt->kind === 'let' || $stmt->kind === 'const'
+                || $stmt->kind === 'using' || $stmt->kind === 'await using'
+            )) {
                 foreach ($stmt->declarations as $d) {
                     foreach ($this->patternBoundNames($d->id) as $n) {
                         $lexicalNames[$n] = true;
@@ -10114,6 +10123,56 @@ class Interpreter
         }
 
         return $result;
+    }
+
+
+    /**
+     * Map ECMAScript Unicode property escape expressions to PCRE2 equivalents.
+     * Returns null if the property expression is invalid.
+     */
+    private static function mapEsPropertyToPcre(string $propExpr, bool $negated): ?string
+    {
+        $prefix = $negated ? '\\P' : '\\p';
+
+        if (str_contains($propExpr, '=')) {
+            $parts = explode('=', $propExpr, 2);
+            $propName = $parts[0];
+            $propValue = $parts[1];
+            $normalizedName = self::normalizeEsPropertyName($propName);
+            if ($normalizedName === null) {
+                return null;
+            }
+            if ($normalizedName === 'General_Category') {
+                $shortValue = self::mapGeneralCategoryValue($propValue);
+                if ($shortValue === null) {
+                    return null;
+                }
+                return $prefix . '{' . $shortValue . '}';
+            }
+            if ($normalizedName === 'Script' || $normalizedName === 'Script_Extensions') {
+                $normalizedScript = self::normalizeScriptName($propValue);
+                if ($normalizedScript === null) {
+                    return null;
+                }
+                return $prefix . '{' . $normalizedName . '=' . $normalizedScript . '}';
+            }
+            return null;
+        }
+
+        $gcShort = self::mapGeneralCategoryValue($propExpr);
+        if ($gcShort !== null) {
+            return $prefix . '{' . $gcShort . '}';
+        }
+
+        $binaryPcre = self::mapBinaryProperty($propExpr);
+        if ($binaryPcre !== null) {
+            if ($binaryPcre === '!Assigned') {
+                return ($negated ? '\\p' : '\\P') . '{Cn}';
+            }
+            return $prefix . '{' . $binaryPcre . '}';
+        }
+
+        return null;
     }
 
     /**

@@ -37,6 +37,9 @@ class JsTypedArray extends JsObject
     /** Whether values should be clamped (Uint8ClampedArray). */
     private bool $clamped;
 
+    /** Whether this TypedArray auto-tracks the buffer's byte length. */
+    private bool $autoLength = false;
+
     /**
      * Type configuration table: name => [bytesPerElement, packFormat, isBigInt, isClamped].
      *
@@ -137,11 +140,29 @@ class JsTypedArray extends JsObject
         return $this->byteOffset;
     }
 
+    /** Mark this TypedArray as auto-tracking the buffer's byte length. */
+    public function setAutoLength(bool $auto): void
+    {
+        $this->autoLength = $auto;
+    }
+
+    public function isAutoLength(): bool
+    {
+        return $this->autoLength;
+    }
+
     public function getLength(): int
     {
-        // Per spec: if the viewed ArrayBuffer is detached, length is 0.
         if ($this->buffer->isDetached()) {
             return 0;
+        }
+        if ($this->autoLength) {
+            $bufLen = $this->buffer->getByteLength();
+            if ($this->byteOffset > $bufLen) {
+                return 0;
+            }
+            $remaining = $bufLen - $this->byteOffset;
+            return intdiv($remaining, $this->bytesPerElement);
         }
         return $this->length;
     }
@@ -163,7 +184,7 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return JsUndefined::instance();
         }
-        if ($index < 0 || $index >= $this->length) {
+        if ($index < 0 || $index >= $this->getLength()) {
             return JsUndefined::instance();
         }
 
@@ -205,7 +226,7 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return;
         }
-        if ($index < 0 || $index >= $this->length) {
+        if ($index < 0 || $index >= $this->getLength()) {
             return;
         }
 
@@ -355,7 +376,7 @@ class JsTypedArray extends JsObject
     {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->length) {
+            if ($index >= 0 && $index < $this->getLength()) {
                 $this->setIndex($index, $value);
                 return true;
             }
@@ -384,7 +405,7 @@ class JsTypedArray extends JsObject
     ): ?\PhpJs\Object\PropertyDescriptor {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->length) {
+            if ($index >= 0 && $index < $this->getLength()) {
                 return \PhpJs\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
                     true,
@@ -416,7 +437,7 @@ class JsTypedArray extends JsObject
     ): bool {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index < 0 || $index >= $this->length) {
+            if ($index < 0 || $index >= $this->getLength()) {
                 return false;
             }
             if ($desc->isAccessorDescriptor()) {
@@ -452,7 +473,7 @@ class JsTypedArray extends JsObject
             return true;
         }
 
-        if (ctype_digit($name) && (int) $name < $this->length) {
+        if (ctype_digit($name) && (int) $name < $this->getLength()) {
             return true;
         }
 
@@ -469,7 +490,8 @@ class JsTypedArray extends JsObject
     public function ownKeys(): array
     {
         $keys = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $keys[] = (string) $i;
         }
         return array_merge($keys, parent::ownKeys());
@@ -479,7 +501,8 @@ class JsTypedArray extends JsObject
     public function getOwnEnumerableKeys(): array
     {
         $keys = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $keys[] = (string) $i;
         }
         return $keys;
@@ -508,16 +531,16 @@ class JsTypedArray extends JsObject
     public function subarray(int $begin, ?int $end = null): self
     {
         if ($begin < 0) {
-            $begin = max(0, $this->length + $begin);
+            $begin = max(0, $len + $begin);
         }
-        $begin = min($begin, $this->length);
+        $begin = min($begin, $len);
 
         if ($end === null) {
-            $end = $this->length;
+            $end = $len;
         } elseif ($end < 0) {
-            $end = max(0, $this->length + $end);
+            $end = max(0, $len + $end);
         }
-        $end = min($end, $this->length);
+        $end = min($end, $len);
 
         $newLen = max(0, $end - $begin);
         $newByteOffset = $this->byteOffset + $begin * $this->bytesPerElement;
