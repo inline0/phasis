@@ -10,7 +10,7 @@ concurrency:
 jobs:
   compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
 
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
 
       - name: Run full compat report
         run: ./bin/compat-report --jobs 4 --timeout 30 --chunk-size 100
-        timeout-minutes: 150
+        timeout-minutes: 240
 
       - name: Show summary
         if: always()
