@@ -3617,6 +3617,10 @@ class TemporalObject
                 "String with UTC designator should not be valid as PlainTime"
             );
         }
+        // Reject -000000 (minus zero year).
+        if (preg_match('/^-0{4,6}[-\d]/', $str)) {
+            throw new RangeError("reject minus zero as extended year: {$str}");
+        }
         // Strip offset and annotations for time-only parsing.
         $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
         $cleanStr = preg_replace('/[Zz+\-]\d{2}(?::?\d{2})?$/', '', $cleanStr);
