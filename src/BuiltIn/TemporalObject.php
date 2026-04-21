@@ -335,10 +335,11 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
-            $fields = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
+            // Read in alphabetical order per spec.
+            $readOrder = ['days', 'hours', 'microseconds', 'milliseconds', 'minutes', 'months', 'nanoseconds', 'seconds', 'weeks', 'years'];
             $any = false;
             $vals = [];
-            foreach ($fields as $f) {
+            foreach ($readOrder as $f) {
                 $v = $item->get($f);
                 if ($v instanceof JsUndefined) {
                     $vals[$f] = self::getDurationField($this_, $f);
