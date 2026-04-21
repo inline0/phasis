@@ -1511,7 +1511,16 @@ class TemporalObject
                 self::validateISOTime($h, $min, $s, $ms, $us, $ns);
             }
             return self::createPlainDateTimeObject(
-                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal,
+                $y,
+                $m,
+                $dd,
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $ns,
+                $cal,
             );
         }, 1);
 
@@ -3270,9 +3279,16 @@ class TemporalObject
         }
         // createDurationObject expects: years, months, weeks, days, hours, minutes, seconds, ms, us, ns
         return self::createDurationObject(
-            $read['years'], $read['months'], $read['weeks'], $read['days'],
-            $read['hours'], $read['minutes'], $read['seconds'],
-            $read['milliseconds'], $read['microseconds'], $read['nanoseconds'],
+            $read['years'],
+            $read['months'],
+            $read['weeks'],
+            $read['days'],
+            $read['hours'],
+            $read['minutes'],
+            $read['seconds'],
+            $read['milliseconds'],
+            $read['microseconds'],
+            $read['nanoseconds'],
         );
     }
 
@@ -5069,7 +5085,14 @@ class TemporalObject
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
-            // Validate roundingMode if present.
+            // Validate smallestUnit.
+            $smallestUnit = 'nanosecond';
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            }
+            // Validate roundingMode.
             $rm = $opts->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
                 $rmStr = TypeConversion::toString($rm);
@@ -5081,6 +5104,21 @@ class TemporalObject
                 if (!in_array($rmStr, $validRM, true)) {
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
+            }
+            // Validate roundingIncrement.
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+            }
+            // Validate largestUnit >= smallestUnit.
+            $unitOrder = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            $liIdx = array_search($largestUnit, $unitOrder);
+            $siIdx = array_search($smallestUnit, $unitOrder);
+            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                throw new RangeError("largestUnit must be >= smallestUnit");
             }
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
