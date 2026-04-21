@@ -1680,11 +1680,29 @@ class TemporalObject
 
         $d = self::protoHelper($proto);
 
-        $d('toString', function (JsValue $this_): JsValue {
+        $d('toString', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
+            $calendarName = 'auto';
+            if ($options instanceof JsObject && $options->has('calendarName')) {
+                $cn = $options->get('calendarName');
+                if (!($cn instanceof JsUndefined)) {
+                    $calendarName = TypeConversion::toString($cn);
+                }
+            }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
-            return new JsString(self::padISOYear($y) . '-' . self::pad2($m));
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $showCal = $calendarName === 'always' || $calendarName === 'critical'
+                || ($calendarName !== 'never' && $cal !== 'iso8601');
+            $base = self::padISOYear($y) . '-' . self::pad2($m);
+            if ($showCal) {
+                $base .= '-' . self::pad2($dd);
+                $prefix = $calendarName === 'critical' ? '!' : '';
+                $base .= "[{$prefix}u-ca={$cal}]";
+            }
+            return new JsString($base);
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
