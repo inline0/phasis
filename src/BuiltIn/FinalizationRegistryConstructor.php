@@ -38,8 +38,19 @@ class FinalizationRegistryConstructor
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('FinalizationRegistry requires a callable argument');
                 }
-                return new JsFinalizationRegistry($callback, $proto);
+
+                // Per spec OrdinaryCreateFromConstructor: use NewTarget's prototype.
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ctorProto = $newTarget->get('prototype');
+                    $useProto = $ctorProto instanceof JsObject ? $ctorProto : $proto;
+                } else {
+                    $useProto = $proto;
+                }
+
+                return new JsFinalizationRegistry($callback, $useProto);
             },
+            1,
         );
         $constructor->setConstructable();
 

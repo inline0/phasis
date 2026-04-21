@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\Value;
 
+use PhpJs\BuiltIn\SymbolConstructor;
 use PhpJs\Spec\AbstractOperations;
 
 /**
@@ -35,7 +36,11 @@ class JsWeakMap extends JsObject
 
     public function weakMapSet(JsValue $key, JsValue $value): void
     {
-        if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
+        // Per spec: CanBeHeldWeakly: objects, or non-registered symbols.
+        if (
+            !$key instanceof JsObject
+            && !($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key))
+        ) {
             throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
         }
         $index = $this->findIndex($key);

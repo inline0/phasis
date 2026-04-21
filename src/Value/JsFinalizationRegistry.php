@@ -51,7 +51,7 @@ class JsFinalizationRegistry extends JsObject
         }
 
         // Per spec: unregisterToken must be an object, non-registered symbol, or undefined.
-        if ($unregisterToken !== null && !$unregisterToken instanceof JsUndefined) {
+        if ($unregisterToken !== null && !($unregisterToken instanceof JsUndefined)) {
             $validToken = $unregisterToken instanceof JsObject
                 || ($unregisterToken instanceof JsSymbol
                     && !SymbolConstructor::isRegisteredSymbol($unregisterToken));

@@ -25,6 +25,46 @@ class DisposableStackConstructor
 {
     private static ?Environment $globalEnv = null;
 
+    /**
+     * PHP-level tracking of real DisposableStack instances.
+     * Ensures that JS objects with a string property named '[[DisposableState]]'
+     * do not pass the RequireInternalSlot check.
+     *
+     * @var \SplObjectStorage<JsObject, true>
+     */
+    private static ?\SplObjectStorage $disposableInstances = null;
+
+    /**
+     * @var \SplObjectStorage<JsObject, true>
+     */
+    private static ?\SplObjectStorage $asyncDisposableInstances = null;
+
+    private static function getDisposableInstances(): \SplObjectStorage
+    {
+        return self::$disposableInstances ??= new \SplObjectStorage();
+    }
+
+    private static function getAsyncDisposableInstances(): \SplObjectStorage
+    {
+        return self::$asyncDisposableInstances ??= new \SplObjectStorage();
+    }
+
+    /**
+     * Check whether a JsObject is a real DisposableStack instance.
+     */
+    private static function isDisposableStack(JsValue $value): bool
+    {
+        return $value instanceof JsObject && self::getDisposableInstances()->contains($value);
+    }
+
+    /**
+     * Check whether a JsObject is a real AsyncDisposableStack instance.
+     */
+    private static function isAsyncDisposableStack(JsValue $value): bool
+    {
+        return $value instanceof JsObject && self::getAsyncDisposableInstances()->contains($value);
+    }
+
     public static function install(Environment $env): void
     {
         self::$globalEnv = $env;
@@ -52,6 +92,7 @@ class DisposableStackConstructor
                 false,
                 false,
             ));
+            self::getDisposableInstances()->attach($this_);
             return $this_;
         }, 0);
         $ctor->setConstructable();
@@ -135,8 +176,8 @@ class DisposableStackConstructor
         // DisposableStack.prototype.dispose()
         $proto->defineOwnProperty('dispose', PropertyDescriptor::data(
             JsFunction::fromCallable('dispose', function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not a DisposableStack');
+                if (!$this_ instanceof JsObject || !self::isDisposableStack($this_)) {
+                    throw new TypeError('Method DisposableStack.prototype.dispose requires a valid DisposableStack receiver');
                 }
                 $state = $this_->get('[[DisposableState]]');
                 if ($state instanceof JsString && $state->value === 'disposed') {
@@ -169,6 +210,8 @@ class DisposableStackConstructor
                     false,
                     false,
                 ));
+                // Register the new stack as a real DisposableStack instance.
+                self::getDisposableInstances()->attach($newStack);
                 // Mark old stack as disposed with empty stack.
                 $this_->set('[[DisposableState]]', new JsString('disposed'));
                 $this_->set('[[DisposableStack]]', new JsObject());
@@ -182,8 +225,8 @@ class DisposableStackConstructor
         // DisposableStack.prototype.disposed (getter)
         $proto->defineOwnProperty('disposed', PropertyDescriptor::accessor(
             JsFunction::fromCallable('get disposed', function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not a DisposableStack');
+                if (!$this_ instanceof JsObject || !self::isDisposableStack($this_)) {
+                    throw new TypeError('Method DisposableStack.prototype.disposed requires a valid DisposableStack receiver');
                 }
                 $state = $this_->get('[[DisposableState]]');
                 return new JsBoolean($state instanceof JsString && $state->value === 'disposed');
@@ -234,6 +277,7 @@ class DisposableStackConstructor
                 false,
                 false,
             ));
+            self::getAsyncDisposableInstances()->attach($this_);
             return $this_;
         }, 0);
         $ctor->setConstructable();
@@ -241,7 +285,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.use(value)
         $proto->defineOwnProperty('use', PropertyDescriptor::data(
             JsFunction::fromCallable('use', function (JsValue $this_, array $args): JsValue {
-                $this_ = self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_, async: true);
                 $value = $args[0] ?? JsUndefined::instance();
                 if ($value instanceof JsNull || $value instanceof JsUndefined) {
                     return $value;
@@ -274,7 +318,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.adopt(value, onDispose)
         $proto->defineOwnProperty('adopt', PropertyDescriptor::data(
             JsFunction::fromCallable('adopt', function (JsValue $this_, array $args): JsValue {
-                $this_ = self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_, async: true);
                 $value = $args[0] ?? JsUndefined::instance();
                 $onDispose = $args[1] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
@@ -299,7 +343,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.defer(onDispose)
         $proto->defineOwnProperty('defer', PropertyDescriptor::data(
             JsFunction::fromCallable('defer', function (JsValue $this_, array $args): JsValue {
-                $this_ = self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_, async: true);
                 $onDispose = $args[0] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
                     throw new TypeError('onDispose must be a function.');
@@ -323,8 +367,8 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.disposeAsync()
         $proto->defineOwnProperty('disposeAsync', PropertyDescriptor::data(
             JsFunction::fromCallable('disposeAsync', function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not an AsyncDisposableStack');
+                if (!$this_ instanceof JsObject || !self::isAsyncDisposableStack($this_)) {
+                    throw new TypeError('Method AsyncDisposableStack.prototype.disposeAsync requires a valid AsyncDisposableStack receiver');
                 }
                 $state = $this_->get('[[DisposableState]]');
                 if ($state instanceof JsString && $state->value === 'disposed') {
@@ -342,7 +386,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.move()
         $proto->defineOwnProperty('move', PropertyDescriptor::data(
             JsFunction::fromCallable('move', function (JsValue $this_): JsValue {
-                $this_ = self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_, async: true);
                 $newStack = new JsObject($this_->getPrototype());
                 $newStack->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                     new JsString('pending'),
@@ -357,6 +401,8 @@ class DisposableStackConstructor
                     false,
                     false,
                 ));
+                // Register the new stack as a real AsyncDisposableStack instance.
+                self::getAsyncDisposableInstances()->attach($newStack);
                 $this_->set('[[DisposableState]]', new JsString('disposed'));
                 $this_->set('[[DisposableStack]]', new JsObject());
                 return $newStack;
@@ -369,8 +415,8 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.disposed (getter)
         $proto->defineOwnProperty('disposed', PropertyDescriptor::accessor(
             JsFunction::fromCallable('get disposed', function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not an AsyncDisposableStack');
+                if (!$this_ instanceof JsObject || !self::isAsyncDisposableStack($this_)) {
+                    throw new TypeError('Method AsyncDisposableStack.prototype.disposed requires a valid AsyncDisposableStack receiver');
                 }
                 $state = $this_->get('[[DisposableState]]');
                 return new JsBoolean($state instanceof JsString && $state->value === 'disposed');
@@ -402,13 +448,25 @@ class DisposableStackConstructor
     }
 
     /**
-     * Throw ReferenceError if the stack is already disposed.
+     * Throw TypeError if the receiver is not a real DisposableStack/AsyncDisposableStack
+     * with the [[DisposableState]] internal slot. Throw ReferenceError if already disposed.
      * Returns the validated JsObject for PHPStan type narrowing.
      */
-    private static function assertNotDisposed(JsValue $this_): JsObject
+    private static function assertNotDisposed(JsValue $this_, bool $async = false): JsObject
     {
         if (!$this_ instanceof JsObject) {
             throw new TypeError('this is not a DisposableStack');
+        }
+        // RequireInternalSlot: real instances are tracked in PHP SplObjectStorage.
+        $isReal = $async
+            ? self::isAsyncDisposableStack($this_)
+            : self::isDisposableStack($this_);
+        if (!$isReal) {
+            throw new TypeError(
+                $async
+                    ? 'Method AsyncDisposableStack.prototype requires a valid AsyncDisposableStack receiver'
+                    : 'Method DisposableStack.prototype requires a valid DisposableStack receiver',
+            );
         }
         $state = $this_->get('[[DisposableState]]');
         if ($state instanceof JsString && $state->value === 'disposed') {

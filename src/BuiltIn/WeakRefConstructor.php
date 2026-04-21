@@ -42,10 +42,20 @@ class WeakRefConstructor
                     throw new TypeError('Invalid WeakRef target');
                 }
 
-                $ref = new JsWeakRef($proto);
+                // Per spec OrdinaryCreateFromConstructor: use NewTarget's prototype.
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ctorProto = $newTarget->get('prototype');
+                    $useProto = $ctorProto instanceof JsObject ? $ctorProto : $proto;
+                } else {
+                    $useProto = $proto;
+                }
+
+                $ref = new JsWeakRef($useProto);
                 $ref->setTarget($target);
                 return $ref;
             },
+            1,
         );
         $constructor->setConstructable();
 

@@ -68,6 +68,7 @@ class AtomicsObject
         $m('notify', self::notifyFn(...), 3);
         $m('waitAsync', self::waitAsyncFn(...), 4);
         $m('isLockFree', self::isLockFreeFn(...), 1);
+        $m('pause', self::pauseFn(...), 0);
 
         $env->defineVar('Atomics', $atomics);
     }
@@ -254,9 +255,9 @@ class AtomicsObject
     /**
      * Atomics.wait(int32Array, index, value, timeout?).
      *
-     * Single-threaded: the main agent has [[CanBlock]] = false,
-     * so per spec step 6-7 this always throws TypeError after
-     * validating all arguments.
+     * Single-threaded: no real blocking is possible.
+     * If the current value does not match the expected value, return "not-equal".
+     * If it matches, return "timed-out" (we cannot actually suspend).
      */
     private static function waitFn(JsValue $this_, array $args): JsValue
     {
@@ -281,9 +282,9 @@ class AtomicsObject
         $valueArg = $args[2] ?? JsUndefined::instance();
         $isBigInt = $ta->getTypeName() === 'BigInt64Array';
         if ($isBigInt) {
-            TypeConversion::toBigInt($valueArg);
+            $expected = TypeConversion::toBigInt($valueArg);
         } else {
-            TypeConversion::toNumber($valueArg);
+            $expectedNum = TypeConversion::toNumber($valueArg);
         }
 
         // Per spec step 4: ToNumber(timeout) must be evaluated
@@ -293,11 +294,26 @@ class AtomicsObject
             TypeConversion::toNumber($timeoutArg);
         }
 
-        // Per spec step 6-7: AgentCanSuspend() is false in
-        // single-threaded PHP, so throw TypeError.
-        throw new TypeError(
-            'Atomics.wait cannot be called in this context'
-        );
+        // Compare current value with expected. Single-threaded: no real blocking.
+        $current = $ta->getIndex($index);
+        if ($isBigInt) {
+            /** @var \PhpJs\Value\JsBigInt $expected */
+            $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
+                ? $current
+                : TypeConversion::toBigInt($current);
+            if ($currentBig->value !== $expected->value) {
+                return new JsString('not-equal');
+            }
+        } else {
+            $curNum = TypeConversion::toNumber($current);
+            /** @var float $expectedNum */
+            if ($curNum !== $expectedNum) {
+                return new JsString('not-equal');
+            }
+        }
+
+        // Value matches but we cannot actually suspend, so return "timed-out".
+        return new JsString('timed-out');
     }
 
     /**
@@ -376,6 +392,28 @@ class AtomicsObject
         $result->set('value', new JsString($resultStr));
 
         return $result;
+    }
+
+    /**
+     * Atomics.pause(iterationNumber?).
+     *
+     * Per spec: a hint to the implementation that the caller is in a spin-wait loop.
+     * Single-threaded: this is a no-op. Always returns undefined.
+     */
+    private static function pauseFn(JsValue $this_, array $args): JsValue
+    {
+        $iterationNumber = $args[0] ?? JsUndefined::instance();
+
+        // Per spec step 1: if iterationNumber is not undefined, convert to number.
+        if (!$iterationNumber instanceof JsUndefined) {
+            $n = TypeConversion::toNumber($iterationNumber);
+            // Per spec step 2: if n is not an integral Number, throw RangeError.
+            if (is_nan($n) || is_infinite($n) || $n < 0 || floor($n) !== $n) {
+                throw new RangeError('Invalid iteration count for Atomics.pause');
+            }
+        }
+
+        return JsUndefined::instance();
     }
 
     /**

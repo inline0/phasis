@@ -309,6 +309,20 @@ class SymbolConstructor
         };
     }
 
+    /**
+     * Check whether a symbol was created via Symbol.for() (i.e. is in the global registry).
+     * Per spec, registered symbols cannot be held weakly.
+     */
+    public static function isRegisteredSymbol(JsSymbol $sym): bool
+    {
+        foreach (self::$registry as $registered) {
+            if ($registered === $sym) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static function symbolKeyFor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {

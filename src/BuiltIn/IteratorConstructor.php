@@ -109,6 +109,25 @@ class IteratorConstructor
         $fromFn = JsFunction::fromCallable('from', self::fromMethod($iteratorPrototype), 1);
         $fromFn->setNonConstructable();
         $iteratorCtor->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
+
+        $concatFn = JsFunction::fromCallable('concat', self::concatMethod(), 0);
+        $concatFn->setNonConstructable();
+        $iteratorCtor->defineOwnProperty('concat', PropertyDescriptor::data($concatFn, true, false, true));
+
+        // %IteratorPrototype% [@@dispose] per spec sec-%iteratorprototype%-@@dispose.
+        $disposeFn = JsFunction::fromCallable('[Symbol.dispose]', function (JsValue $this_, array $args): JsValue {
+            $returnMethod = ($this_ instanceof JsObject) ? $this_->get('return') : JsUndefined::instance();
+            if ($returnMethod instanceof JsFunction) {
+                $returnMethod->call($this_, []);
+            }
+            return JsUndefined::instance();
+        }, 0);
+        $disposeFn->setNonConstructable();
+        $iteratorPrototype->definePropertyBySymbol(
+            SymbolConstructor::dispose(),
+            PropertyDescriptor::data($disposeFn, true, false, true),
+        );
+
         $env->defineVar('Iterator', $iteratorCtor);
     }
 
@@ -697,6 +716,155 @@ class IteratorConstructor
             }
 
             return self::createWrapForValidIterator($obj);
+        };
+    }
+
+    // Iterator.concat
+
+    private static function concatMethod(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            // Step 1-2: Validate all items eagerly and collect {openMethod, iterable} records.
+            $iterables = [];
+            foreach ($args as $item) {
+                if (!$item instanceof JsObject) {
+                    throw new TypeError('Iterator.concat requires object arguments');
+                }
+                $iterSym = SymbolConstructor::iterator();
+                $method = $item->getBySymbol($iterSym);
+                if ($method instanceof JsUndefined || $method instanceof JsNull) {
+                    throw new TypeError('Iterator.concat requires iterable arguments');
+                }
+                if (!$method instanceof JsFunction) {
+                    throw new TypeError('Symbol.iterator is not a function');
+                }
+                $iterables[] = ['openMethod' => $method, 'iterable' => $item];
+            }
+
+            // Step 3-6: Create an IteratorHelper that lazily iterates through each iterable.
+            $helper = new JsObject(self::$iteratorHelperPrototype);
+            $done = false;
+            $started = false;
+            $running = false;
+            $iterableIndex = 0;
+            $innerIt = null;
+
+            $nextFn = JsFunction::fromCallable(
+                'next',
+                function (
+                    JsValue $thisVal,
+                    array $nextArgs
+                ) use (
+                    &$done,
+                    &$started,
+                    &$running,
+                    &$iterables,
+                    &$iterableIndex,
+                    &$innerIt,
+                ): JsValue {
+                    if ($running) {
+                        throw new TypeError('Cannot call next on a running iterator helper');
+                    }
+                    if ($done) {
+                        return self::iterResult(JsUndefined::instance(), true);
+                    }
+                    $running = true;
+                    $started = true;
+                    try {
+                        while (true) {
+                            // If we have an active inner iterator, try to get next value from it.
+                            if ($innerIt !== null) {
+                                $nextMethod = $innerIt->get('next');
+                                if (!$nextMethod instanceof JsFunction) {
+                                    $done = true;
+                                    throw new TypeError('Iterator next is not a function');
+                                }
+                                $result = $nextMethod->call($innerIt, []);
+                                if (!$result instanceof JsObject) {
+                                    $done = true;
+                                    throw new TypeError('Iterator result is not an object');
+                                }
+                                // Check done. If the done getter throws, that propagates.
+                                if (!TypeConversion::toBoolean($result->get('done'))) {
+                                    // Not done: yield the raw result object from the inner iterator.
+                                    // Per spec, GeneratorYield passes the iterator result directly.
+                                    $running = false;
+                                    return $result;
+                                }
+                                // Inner iterator exhausted. Move to next iterable.
+                                $innerIt = null;
+                            }
+
+                            // Move to next iterable in the list.
+                            if ($iterableIndex >= count($iterables)) {
+                                $done = true;
+                                $running = false;
+                                return self::iterResult(JsUndefined::instance(), true);
+                            }
+
+                            $record = $iterables[$iterableIndex];
+                            $iterableIndex++;
+
+                            // Call the open method to get an iterator.
+                            $iter = $record['openMethod']->call($record['iterable'], []);
+                            if (!$iter instanceof JsObject) {
+                                $done = true;
+                                throw new TypeError('Symbol.iterator result is not an object');
+                            }
+                            $innerIt = $iter;
+                        }
+                    } catch (\Throwable $e) {
+                        $done = true;
+                        $innerIt = null;
+                        $running = false;
+                        throw $e;
+                    }
+                },
+                0,
+            );
+
+            $returnFn = JsFunction::fromCallable(
+                'return',
+                function (
+                    JsValue $thisVal,
+                    array $returnArgs
+                ) use (
+                    &$done,
+                    &$started,
+                    &$running,
+                    &$innerIt,
+                ): JsValue {
+                    if ($running) {
+                        throw new TypeError('Cannot call return on a running iterator helper');
+                    }
+                    if (!$started || $done) {
+                        $done = true;
+                        return self::iterResult(JsUndefined::instance(), true);
+                    }
+                    $done = true;
+                    if ($innerIt !== null) {
+                        $currentInner = $innerIt;
+                        $innerIt = null;
+                        $returnMethod = $currentInner->get('return');
+                        if ($returnMethod instanceof JsFunction) {
+                            $running = true;
+                            try {
+                                $returnMethod->call($currentInner, []);
+                            } catch (\Throwable $e) {
+                                $running = false;
+                                throw $e;
+                            }
+                            $running = false;
+                        }
+                    }
+                    return self::iterResult(JsUndefined::instance(), true);
+                },
+                0,
+            );
+
+            $helper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
+            $helper->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
+            return $helper;
         };
     }
 

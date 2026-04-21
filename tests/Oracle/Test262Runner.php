@@ -435,6 +435,23 @@ PHP;
         $engine->setGlobalJsValue('__262_IsHTMLDDA', new \PhpJs\Value\JsHTMLDDA());
         $engine->eval('$262.IsHTMLDDA = __262_IsHTMLDDA;');
 
+        // $262.agent: stub for multi-agent tests. Single-threaded PHP cannot
+        // run real agent threads, but providing the API prevents crashes when
+        // atomicsHelper.js or tests reference $262.agent properties.
+        $engine->eval(<<<'JS'
+        $262.agent = {
+            _reports: [],
+            start: function(src) {},
+            broadcast: function(sab) {},
+            getReport: function() { return null; },
+            sleep: function(ms) {},
+            leaving: function() {},
+            receiveBroadcast: function(cb) {},
+            report: function(msg) { $262.agent._reports.push(String(msg)); },
+            monotonicNow: function() { return Date.now(); },
+        };
+        JS);
+
         // test262 host function: print (used by some tests as a no-op or to store output).
         $engine->eval('function print() {}');
     }
