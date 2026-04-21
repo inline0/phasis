@@ -2581,7 +2581,7 @@ class TemporalObject
         // Supports date with hyphens (YYYY-MM-DD) or without (YYYYMMDD).
         // Supports sub-minute offsets (+HH:MM:SS.fractional).
         $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
-        $timePart = '(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?' ;
+        $timePart = '(\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?' ;
         $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)';
         $pattern = "/^{$datePart}[T ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
