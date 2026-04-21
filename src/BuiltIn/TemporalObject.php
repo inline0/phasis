@@ -4204,8 +4204,10 @@ class TemporalObject
      */
     private static function normalizeTemporalString(string $str): array
     {
-        // Normalize Unicode minus sign (U+2212).
-        $str = str_replace("\xE2\x88\x92", '-', $str);
+        // Reject Unicode minus sign (U+2212) per spec.
+        if (str_contains($str, "\xE2\x88\x92")) {
+            throw new RangeError("Non-ASCII minus sign is not acceptable: {$str}");
+        }
         // Parse annotations.
         $cal = 'iso8601';
         $calCount = 0;
