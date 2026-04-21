@@ -1930,10 +1930,14 @@ class TemporalObject
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $calendarName = 'auto';
-            if ($options instanceof JsObject && $options->has('calendarName')) {
+            if ($options instanceof JsObject) {
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
                     $calendarName = TypeConversion::toString($cn);
+                    $validCN = ['auto', 'always', 'never', 'critical'];
+                    if (!in_array($calendarName, $validCN, true)) {
+                        throw new RangeError("Invalid calendarName: {$calendarName}");
+                    }
                 }
             }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
