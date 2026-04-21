@@ -3060,6 +3060,16 @@ class TemporalObject
 
     private static function createPlainDateObject(int $y, int $m, int $d, string $cal): JsObject
     {
+        // Validate range.
+        if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+            throw new RangeError("Year out of range: {$y}");
+        }
+        if ($y === self::ISO_YEAR_MIN && ($m < 4 || ($m === 4 && $d < 19))) {
+            throw new RangeError("Date outside representable range");
+        }
+        if ($y === self::ISO_YEAR_MAX && ($m > 9 || ($m === 9 && $d > 13))) {
+            throw new RangeError("Date outside representable range");
+        }
         $obj = new JsObject(self::$plainDateProto);
         self::setDateSlots($obj, $y, $m, $d, $cal);
         return $obj;
