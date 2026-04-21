@@ -1066,17 +1066,17 @@ class TemporalObject
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                // Validate overflow if present.
+                $overflow = 'constrain';
                 if ($options instanceof JsObject && $options->has('overflow')) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
-                        $ovStr = TypeConversion::toString($ov);
-                        if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$ovStr}");
+                        $overflow = TypeConversion::toString($ov);
+                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                            throw new RangeError("Invalid overflow: {$overflow}");
                         }
                     }
                 }
-                return self::toPlainTime($args[0] ?? JsUndefined::instance());
+                return self::toPlainTime($args[0] ?? JsUndefined::instance(), $overflow);
             }, 1),
             true,
             false,
@@ -3523,8 +3523,10 @@ class TemporalObject
         return self::createPlainDateObject($y, $m2, $d, $cal);
     }
 
-    private static function toPlainTime(JsValue $item): JsObject
-    {
+    private static function toPlainTime(
+        JsValue $item,
+        string $overflow = 'constrain',
+    ): JsObject {
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainTime');
         }
@@ -3565,10 +3567,19 @@ class TemporalObject
             unset($ref);
             if (!$any) {
                 throw new TypeError(
-                    'missing required time property (at least one of hour, minute, second, etc.)'
+                    'missing required time property'
                 );
             }
-            self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            if ($overflow === 'constrain') {
+                $h = max(0, min(23, $h));
+                $min = max(0, min(59, $min));
+                $s = max(0, min(59, $s));
+                $ms = max(0, min(999, $ms));
+                $us = max(0, min(999, $us));
+                $ns = max(0, min(999, $ns));
+            } else {
+                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            }
             return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
         }
         if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
