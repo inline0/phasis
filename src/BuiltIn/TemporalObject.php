@@ -3325,6 +3325,16 @@ class TemporalObject
                 return self::createPlainDateObject($y, $m, $d, $cal);
             }
         }
+        // Per spec: reject Symbol, Number, BigInt, Boolean directly.
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert a Symbol to a Temporal.PlainDate');
+        }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert a number/BigInt to a Temporal.PlainDate');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert a boolean to a Temporal.PlainDate');
+        }
         $str = TypeConversion::toString($item);
         return self::parsePlainDateString($str);
     }
