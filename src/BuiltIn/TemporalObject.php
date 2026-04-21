@@ -5683,15 +5683,31 @@ class TemporalObject
 
     private static function plainTimeDifference(JsValue $time1, JsValue $time2, JsValue $options): JsObject
     {
+        $opts = self::getOptionsObject($options);
         $ns1 = self::timeToNs($time1);
         $ns2 = self::timeToNs($time2);
         $diffNs = (string) ($ns2 - $ns1);
         $largestUnit = 'hour';
-        if ($options instanceof JsObject && $options->has('largestUnit')) {
-            $lu = $options->get('largestUnit');
+        if ($opts instanceof JsObject) {
+            $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+            }
+            $rm = $opts->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
+            }
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
             }
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
