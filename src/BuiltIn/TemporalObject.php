@@ -5040,9 +5040,10 @@ class TemporalObject
         // Instant only supports time components.
         $hasCalUnit = self::getDurationField($dur, 'years') !== 0
             || self::getDurationField($dur, 'months') !== 0
-            || self::getDurationField($dur, 'weeks') !== 0;
+            || self::getDurationField($dur, 'weeks') !== 0
+            || self::getDurationField($dur, 'days') !== 0;
         if ($hasCalUnit) {
-            throw new RangeError('Instant arithmetic does not support years, months, or weeks');
+            throw new RangeError('Instant arithmetic does not support years, months, weeks, or days');
         }
         $totalNs = self::durationToTotalNs($dur);
         if ($sign < 0) {
