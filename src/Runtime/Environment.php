@@ -68,6 +68,14 @@ class Environment
      */
     private array $privateNameMap = [];
 
+    /**
+     * Disposal stack for `using` and `await using` declarations.
+     * Entries are [JsValue resource, bool isAsync]. Disposed in reverse order at block exit.
+     *
+     * @var list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     */
+    private array $disposables = [];
+
     public function __construct(
         private readonly ?Environment $parent = null,
     ) {
@@ -712,6 +720,46 @@ class Environment
         $child = new self($this);
         $child->withObject = $obj;
         return $child;
+    }
+
+    /**
+     * Register a disposable resource for this environment.
+     * Called when processing `using` or `await using` declarations.
+     */
+    public function addDisposable(\PhpJs\Value\JsValue $resource, bool $isAsync): void
+    {
+        $this->disposables[] = [$resource, $isAsync];
+    }
+
+    /**
+     * Get the disposal stack for this environment (in registration order).
+     * Caller should iterate in reverse for disposal.
+     *
+     * @return list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     */
+    public function getDisposables(): array
+    {
+        return $this->disposables;
+    }
+
+    /**
+     * Check if this environment has any disposable resources registered.
+     */
+    public function hasDisposables(): bool
+    {
+        return !empty($this->disposables);
+    }
+
+    /**
+     * Transfer all disposables out of this environment (used by move()).
+     *
+     * @return list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     */
+    public function takeDisposables(): array
+    {
+        $result = $this->disposables;
+        $this->disposables = [];
+        return $result;
     }
 
     /**

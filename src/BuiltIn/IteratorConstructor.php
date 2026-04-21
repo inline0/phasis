@@ -424,7 +424,12 @@ class IteratorConstructor
                 throw new TypeError('Iterator.prototype.drop called on non-object');
             }
             $limitArg = $args[0] ?? JsUndefined::instance();
-            $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            try {
+                $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            } catch (\Throwable $e) {
+                self::closeIterator($this_, true);
+                throw $e;
+            }
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $toDrop = $numLimit;
             $dropped = false;
@@ -809,20 +814,31 @@ class IteratorConstructor
             $iterSym = SymbolConstructor::iterator();
             $iterMethod = $obj->getBySymbol($iterSym);
 
-            if ($iterMethod instanceof JsFunction) {
-                $iterator = $iterMethod->call($obj, []);
-                if (!$iterator instanceof JsObject) {
-                    throw new TypeError('Result of the Symbol.iterator method is not an object');
+            // Per spec GetMethod: if iterMethod is null or undefined, treat as absent
+            // and fall through to iterator-like handling. If it's a non-callable truthy
+            // value (e.g. 0 is falsy so ignored, but a non-zero number is truthy),
+            // throw TypeError per GetMethod step.
+            if (
+                !($iterMethod instanceof JsUndefined)
+                && !($iterMethod instanceof JsNull)
+            ) {
+                if ($iterMethod instanceof JsFunction) {
+                    $iterator = $iterMethod->call($obj, []);
+                    if (!$iterator instanceof JsObject) {
+                        throw new TypeError(
+                            'Result of the Symbol.iterator method is not an object',
+                        );
+                    }
+                    if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
+                        return $iterator;
+                    }
+                    return self::createWrapForValidIterator($iterator);
                 }
-                // If the iterator already inherits from Iterator.prototype, return it as-is.
-                if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
-                    return $iterator;
-                }
-                return self::createWrapForValidIterator($iterator);
+                // Non-callable, non-null/undefined: throw TypeError per GetMethod.
+                throw new TypeError('Symbol.iterator is not a function');
             }
 
             // Iterator-like: wrap it regardless of whether it has a next method.
-            // The wrapper's next() will throw if next is not callable.
             return self::createWrapForValidIterator($obj);
         };
     }

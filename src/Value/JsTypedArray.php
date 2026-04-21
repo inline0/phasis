@@ -534,17 +534,18 @@ class JsTypedArray extends JsObject
      */
     public function subarray(int $begin, ?int $end = null): self
     {
+        $len = $this->getLength();
         if ($begin < 0) {
-            $begin = max(0, $this->length + $begin);
+            $begin = max(0, $len + $begin);
         }
-        $begin = min($begin, $this->length);
+        $begin = min($begin, $len);
 
         if ($end === null) {
-            $end = $this->length;
+            $end = $len;
         } elseif ($end < 0) {
-            $end = max(0, $this->length + $end);
+            $end = max(0, $len + $end);
         }
-        $end = min($end, $this->length);
+        $end = min($end, $len);
 
         $newLen = max(0, $end - $begin);
         $newByteOffset = $this->byteOffset + $begin * $this->bytesPerElement;
@@ -566,17 +567,18 @@ class JsTypedArray extends JsObject
      */
     public function sliceTyped(int $begin, ?int $end = null): self
     {
+        $len = $this->getLength();
         if ($begin < 0) {
-            $begin = max(0, $this->length + $begin);
+            $begin = max(0, $len + $begin);
         }
-        $begin = min($begin, $this->length);
+        $begin = min($begin, $len);
 
         if ($end === null) {
-            $end = $this->length;
+            $end = $len;
         } elseif ($end < 0) {
-            $end = max(0, $this->length + $end);
+            $end = max(0, $len + $end);
         }
-        $end = min($end, $this->length);
+        $end = min($end, $len);
 
         $newLen = max(0, $end - $begin);
         $result = self::fromLength($this->typeName, $newLen, $this->getPrototype());
@@ -593,7 +595,7 @@ class JsTypedArray extends JsObject
      */
     public function copyWithinTyped(int $target, int $start, ?int $end = null): self
     {
-        $len = $this->length;
+        $len = $this->getLength();
         if ($target < 0) {
             $target = max(0, $len + $target);
         }
@@ -628,15 +630,16 @@ class JsTypedArray extends JsObject
      */
     public function fillTyped(JsValue $value, int $start = 0, ?int $end = null): self
     {
+        $len = $this->getLength();
         if ($start < 0) {
-            $start = max(0, $this->length + $start);
+            $start = max(0, $len + $start);
         }
         if ($end === null) {
-            $end = $this->length;
+            $end = $len;
         } elseif ($end < 0) {
-            $end = max(0, $this->length + $end);
+            $end = max(0, $len + $end);
         }
-        $end = min($end, $this->length);
+        $end = min($end, $len);
 
         for ($i = $start; $i < $end; $i++) {
             $this->setIndex($i, $value);
@@ -650,9 +653,10 @@ class JsTypedArray extends JsObject
      */
     public function reverseTyped(): self
     {
-        $mid = (int) ($this->length / 2);
+        $len = $this->getLength();
+        $mid = (int) ($len / 2);
         for ($i = 0; $i < $mid; $i++) {
-            $j = $this->length - 1 - $i;
+            $j = $len - 1 - $i;
             $a = $this->getIndex($i);
             $b = $this->getIndex($j);
             $this->setIndex($i, $b);

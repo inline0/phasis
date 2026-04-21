@@ -2412,9 +2412,13 @@ class Interpreter
     private function checkStrictExpressionNode(Node $node): void
     {
         if ($node instanceof AssignmentExpression && $node->left instanceof Identifier) {
-            if ($this->isStrictReservedWord($node->left->name)) {
+            if (
+                $this->isStrictReservedWord($node->left->name)
+                || $node->left->name === 'eval'
+                || $node->left->name === 'arguments'
+            ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
-                    "Unexpected strict mode reserved word '{$node->left->name}'",
+                    "Assignment to eval or arguments is not allowed in strict mode",
                 );
             }
         }
@@ -9227,6 +9231,11 @@ class Interpreter
 
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
+
+        // Detect duplicate named groups and enable PCRE's J modifier (ES2025).
+        if (self::hasDuplicateNamedGroups($pattern)) {
+            $pcreFlags .= 'J';
+        }
 
         // Escape unescaped forward slashes for the PCRE delimiter.
         // Already-escaped slashes (\/) must not be double-escaped.
