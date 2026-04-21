@@ -5701,7 +5701,7 @@ class TemporalObject
      * Resolve a calendar identifier string. Accepts IANA calendar names or ISO datetime strings
      * (from which the calendar defaults to 'iso8601'). Returns the resolved calendar ID.
      */
-    private static function resolveCalendarId(string $cal): string
+    private static function resolveCalendarId(string $cal, bool $allowAnnotations = false): string
     {
         if ($cal === '') {
             throw new RangeError('empty string is not a valid calendar ID');
@@ -5722,11 +5722,23 @@ class TemporalObject
             if (preg_match('/^-0{4,6}-/', $cal)) {
                 throw new RangeError("reject minus zero as extended year: {$cal}");
             }
-            // Per spec: ISO strings with calendar annotations are NOT valid calendar IDs.
+            // Per spec: ISO strings with annotations are NOT valid as direct calendar IDs
+            // (constructor args), but are valid in property bags.
             if (preg_match('/\[/', $cal)) {
-                throw new RangeError(
-                    "ISO string with annotations is not a valid calendar: {$cal}"
-                );
+                if (!$allowAnnotations) {
+                    throw new RangeError(
+                        "ISO string with annotations is not a valid calendar: {$cal}"
+                    );
+                }
+                // Extract calendar from annotation.
+                if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
+                    $extracted = strtolower($cm[1]);
+                    if (in_array($extracted, $known, true)) {
+                        return $extracted;
+                    }
+                    throw new RangeError("Invalid calendar: {$extracted}");
+                }
+                return 'iso8601';
             }
             // Default to iso8601 for valid-looking date strings without annotations.
             if (preg_match('/^\d{4}-\d{2}-\d{2}/', $cal) || preg_match('/^[+-]\d{4,6}-\d{2}-\d{2}/', $cal)) {
@@ -5766,7 +5778,7 @@ class TemporalObject
         if ($cal === '') {
             throw new RangeError('empty string is not a valid calendar ID');
         }
-        return self::resolveCalendarId($cal);
+        return self::resolveCalendarId($cal, true);
     }
 
     private static function constrainISODate(int $y, int $m, int $d): array
