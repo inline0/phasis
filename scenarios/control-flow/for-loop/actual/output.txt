@@ -1,5 +1,3 @@
-55
-8
-5
-128
-5
+PHP Fatal error:  Cannot redeclare PhpJs\Runtime\Interpreter::getAsyncIterator() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 6281
+
+Fatal error: Cannot redeclare PhpJs\Runtime\Interpreter::getAsyncIterator() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 6281

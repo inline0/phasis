@@ -639,6 +639,14 @@ class Parser
     private function parseForStatement(): Node
     {
         $location = $this->expect(TokenType::For)->location;
+
+        // for await (... of ...) -- only valid inside async functions/generators.
+        $isAwait = false;
+        if ($this->check(TokenType::Await)) {
+            $isAwait = true;
+            $this->advance();
+        }
+
         $this->expect(TokenType::LeftParen);
 
         // Per spec: `let` is a declaration keyword in for-headers only when
@@ -663,8 +671,8 @@ class Parser
             $id = $this->parseBindingPattern();
             $init = null;
 
-            // for (var x in ...)
-            if ($this->check(TokenType::In)) {
+            // for (var x in ...) -- not valid with await
+            if ($this->check(TokenType::In) && !$isAwait) {
                 $this->advance();
                 $right = $this->parseExpression();
                 $this->expect(TokenType::RightParen);
@@ -688,7 +696,7 @@ class Parser
                     $kind,
                     [new VariableDeclarator($id->location, $id, null)],
                 );
-                return new ForOfStatement($location, $left, $right, $body, false);
+                return new ForOfStatement($location, $left, $right, $body, $isAwait);
             }
 
             // Regular for with var declaration
@@ -745,7 +753,7 @@ class Parser
         $init = $this->parseExpression();
         $this->noIn = false;
 
-        if ($this->check(TokenType::In)) {
+        if ($this->check(TokenType::In) && !$isAwait) {
             $this->advance();
             $right = $this->parseExpression();
             $this->expect(TokenType::RightParen);
@@ -758,7 +766,7 @@ class Parser
             $right = $this->parseAssignmentExpression();
             $this->expect(TokenType::RightParen);
             $body = $this->parseStatement();
-            return new ForOfStatement($location, $init, $right, $body, false);
+            return new ForOfStatement($location, $init, $right, $body, $isAwait);
         }
 
         // Regular for

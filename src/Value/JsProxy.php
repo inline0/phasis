@@ -470,9 +470,23 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('ownKeys');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target]);
-            $trapResult = $this->trapResultToStringArray($result);
-            $this->validateOwnKeysInvariants($trapResult);
-            return $trapResult;
+            $trapResult = $this->trapResultToPropertyKeys($result);
+            // Build stringified list for invariant validation.
+            $stringified = [];
+            foreach ($trapResult as $k) {
+                $stringified[] = ($k instanceof JsSymbol)
+                    ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
+                    : ($k instanceof JsString ? $k->value : (string) $k);
+            }
+            $this->validateOwnKeysInvariants($stringified);
+            // Return string keys only (symbols handled via ordinaryOwnPropertyKeys).
+            $stringKeys = [];
+            foreach ($trapResult as $k) {
+                if ($k instanceof JsString) {
+                    $stringKeys[] = $k->value;
+                }
+            }
+            return $stringKeys;
         }
         // Forward to target's [[OwnPropertyKeys]] in spec order.
         return $this->target->getOwnPropertyNames();

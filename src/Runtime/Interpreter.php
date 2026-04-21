@@ -73,6 +73,7 @@ use PhpJs\Value\JsBigInt;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\GeneratorReturnSignal;
 use PhpJs\Value\GeneratorThrowSignal;
+use PhpJs\Value\JsAsyncGenerator;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsGenerator;
 use PhpJs\Value\JsNull;
@@ -372,26 +373,21 @@ class Interpreter
     public function executeBody(array $statements, Environment $env): Completion
     {
         $result = JsUndefined::instance();
+        $anyNonEmpty = false;
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
-                // UpdateEmpty: if the abrupt completion has an empty value
-                // (its value slot was never explicitly set), replace it with
-                // the last non-empty statement value V. This implements the
-                // spec's UpdateEmpty(completion, V) for break/continue.
-                // Completions that already had their value filled (e.g. by
-                // a try/finally UpdateEmpty) have empty=false and are kept.
                 if ($completion->empty && !$result instanceof JsUndefined) {
                     return new Completion($completion->type, $result, $completion->target);
                 }
                 return $completion;
             }
-            // Empty completions don't override the accumulated value
             if (!$completion->empty) {
                 $result = $completion->value;
+                $anyNonEmpty = true;
             }
         }
-        return Completion::normal($result);
+        return new Completion(CompletionType::Normal, $result, empty: !$anyNonEmpty);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -1319,8 +1315,32 @@ class Interpreter
                 }
             }
 
-            // Call the super constructor. It may return a new object (factory pattern).
-            $result = $this->callFunction($superCtor, $currentThis, $args);
+            // Temporarily set [[NewTarget]] on currentThis for construct semantics.
+            $superNewTarget = null;
+            try {
+                $snt = $env->get('[[NewTarget]]');
+                if (!$snt instanceof JsUndefined) {
+                    $superNewTarget = $snt;
+                }
+            } catch (\Throwable) {
+            }
+            $superHadNT = false;
+            if ($currentThis instanceof JsObject) {
+                $superHadNT = !($currentThis->get('[[NewTarget]]') instanceof JsUndefined);
+                if (!$superHadNT && $superNewTarget instanceof JsFunction) {
+                    $currentThis->defineOwnProperty(
+                        '[[NewTarget]]',
+                        \PhpJs\Object\PropertyDescriptor::data($superNewTarget, false, false, false),
+                    );
+                }
+            }
+            try {
+                $result = $this->callFunction($superCtor, $currentThis, $args);
+            } finally {
+                if ($currentThis instanceof JsObject && !$superHadNT) {
+                    $currentThis->forceDelete('[[NewTarget]]');
+                }
+            }
 
             // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
             // calling super() again throws ReferenceError. The check happens AFTER
@@ -3028,6 +3048,11 @@ class Interpreter
             return $nativeFn($thisValue, $args, $this);
         }
 
+        // Async generator function: return a JsAsyncGenerator.
+        if ($fn->isGenerator() && $fn->isAsync()) {
+            return $this->createAsyncGenerator($fn, $thisValue, $args);
+        }
+
         // Generator function: return a JsGenerator instead of executing.
         if ($fn->isGenerator()) {
             return $this->createGenerator($fn, $thisValue, $args);
@@ -3059,11 +3084,11 @@ class Interpreter
         }
 
         if ($isGenerator) {
-            // Per spec §27.3.4.3: generator function's .prototype is a plain object
-            // whose [[Prototype]] is %GeneratorPrototype%. No own properties.
+            // Async generators use %AsyncGeneratorPrototype%, sync use %GeneratorPrototype%.
+            $protoKey = ($isAsync) ? '__AsyncGeneratorPrototype__' : '__GeneratorPrototype__';
             $generatorProto = null;
-            if ($this->globalEnv->has('__GeneratorPrototype__')) {
-                $gp = $this->globalEnv->get('__GeneratorPrototype__');
+            if ($this->globalEnv->has($protoKey)) {
+                $gp = $this->globalEnv->get($protoKey);
                 if ($gp instanceof JsObject) {
                     $generatorProto = $gp;
                 }
@@ -3441,6 +3466,33 @@ class Interpreter
         };
 
         return new JsGenerator($fn, $thisValue, $args, $executor);
+    }
+
+    /**
+     * Create a JsAsyncGenerator for an async generator function call.
+     *
+     * @param list<JsValue> $args
+     */
+    private function createAsyncGenerator(JsFunction $fn, JsValue $thisValue, array $args): JsAsyncGenerator
+    {
+        $fnEnv = $fn->getClosure()->createChild();
+        $fnEnv->setFunctionKind('async-generator');
+        if ($this->isNonSimpleParameterList($fn->getParams())) {
+            $fnEnv->setHasNonSimpleParams(true);
+        }
+        $fnEnv->defineVar('this', $thisValue);
+        $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
+        $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
+        $fnEnv->defineVar('arguments', $argsObj);
+        $this->bindParameters($fn->getParams(), $args, $fnEnv);
+        if (!$unmapped) {
+            $this->setupMappedArguments($argsObj, $fn->getParams(), $args, $fnEnv);
+        }
+        $interpreter = $this;
+        $executor = function (JsFunction $fn, JsValue $thisValue, array $args) use ($interpreter, $fnEnv): JsValue {
+            return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
+        };
+        return new JsAsyncGenerator($fn, $thisValue, $args, $executor);
     }
 
     /**
@@ -4590,6 +4642,9 @@ class Interpreter
                     throw new TypeError('The iterator does not provide a throw method');
                 }
                 $innerResult = $this->callFunction($throwMethod, $iterator, [$receivedValue]);
+                if ($isAsyncGen) {
+                    $innerResult = $this->awaitValue($innerResult);
+                }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
@@ -4604,6 +4659,9 @@ class Interpreter
                     throw new GeneratorReturnSignal($receivedValue);
                 }
                 $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
+                if ($isAsyncGen) {
+                    $innerResult = $this->awaitValue($innerResult);
+                }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
@@ -6176,6 +6234,72 @@ class Interpreter
     /**
      * Await a JS value: if it is a Promise, extract the resolved value.
      * If it is a thenable, resolve it. Otherwise return as-is.
+     */
+    private function awaitValue(JsValue $value): JsValue
+    {
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                $this->throwJsValue($value->getResolvedValue());
+            }
+            return $value->getResolvedValue();
+        }
+        if ($value instanceof JsObject) {
+            $thenMethod = $value->get('then');
+            if ($thenMethod instanceof JsFunction) {
+                $resolved = JsUndefined::instance();
+                $rejected = null;
+                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                    $resolved = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                };
+                $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                    $rejected = $args[0] ?? JsUndefined::instance();
+                    return JsUndefined::instance();
+                };
+                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                try {
+                    $thenMethod->call($value, [$resolveFn, $rejectFn]);
+                } catch (\Throwable $e) {
+                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                        $this->throwJsValue($e->jsValue);
+                    }
+                    throw $e;
+                }
+                if ($rejected !== null) {
+                    $this->throwJsValue($rejected);
+                }
+                return $resolved;
+            }
+        }
+        return $value;
+    }
+
+    /**
+     * Get an async iterator using Symbol.asyncIterator, falling back to Symbol.iterator.
+     */
+    private function getAsyncIterator(JsValue $iterable): ?JsObject
+    {
+        if (!$iterable instanceof JsObject) {
+            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                return null;
+            }
+            $iterable = TypeConversion::toObject($iterable);
+        }
+        $asyncIterSym = \PhpJs\BuiltIn\SymbolConstructor::asyncIterator();
+        $asyncIterMethod = $iterable->getBySymbol($asyncIterSym);
+        if ($asyncIterMethod instanceof JsFunction) {
+            $iterator = $this->callFunction($asyncIterMethod, $iterable, []);
+            if (!$iterator instanceof JsObject) {
+                throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
+            }
+            return $iterator;
+        }
+        return $this->getIterator($iterable);
+    }
+
+    /**
+     * Await a JS value: extract resolved value from Promise, resolve thenables, or return as-is.
      */
     private function awaitValue(JsValue $value): JsValue
     {
@@ -9156,6 +9280,7 @@ class Interpreter
 
         $isGlobal = str_contains($flags, 'g');
         $isSticky = str_contains($flags, 'y');
+        $hasIndices = str_contains($flags, 'd');
 
         // Analyze the original ES pattern for repeated groups that need
         // ES-compliant capture reset and nullable quantifier handling.
