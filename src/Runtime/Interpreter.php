@@ -9664,8 +9664,17 @@ class Interpreter
      * This transforms \s and \S outside character classes to include FEFF.
      * Inside character classes, \s is replaced with \s\x{FEFF}.
      */
-    public function transformEsPatternForPcre(string $pattern): string
+    public function transformEsPatternForPcre(string $pattern, string $flags = ''): string
     {
+        $isUnicodeMode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $isVFlag = str_contains($flags, 'v');
+
+        // In v-flag mode, handle set operations (&&, --) and nested character
+        // classes by pre-transforming before the main character-level pass.
+        if ($isVFlag) {
+            $pattern = $this->transformVFlagPattern($pattern);
+        }
+
         // Count capturing groups for backreference validation (Annex B).
         $numGroups = $this->countCapturingGroups($pattern);
         $result = '';

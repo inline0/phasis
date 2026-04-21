@@ -1894,6 +1894,272 @@ class ArrayConstructor
         };
     }
 
+    /**
+     * Array.fromAsync(asyncItems, mapFn?, thisArg?).
+     *
+     * Per spec, returns a Promise that resolves to an Array.
+     * Since php-js is synchronous, thenables and promises are resolved eagerly.
+     */
+    private static function fromAsync(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $c = $this_;
+            $asyncItems = $args[0] ?? JsUndefined::instance();
+            $mapFnRaw = $args[1] ?? JsUndefined::instance();
+            $thisArg = $args[2] ?? JsUndefined::instance();
+
+            // Step 3: validate mapFn early.
+            $mapFn = null;
+            if (!$mapFnRaw instanceof JsUndefined) {
+                if (!$mapFnRaw instanceof JsFunction) {
+                    $promise = new JsPromise();
+                    $promise->reject(
+                        TypeConversion::createTypeError(
+                            TypeConversion::toString($mapFnRaw) . ' is not a function'
+                        )
+                    );
+                    return $promise;
+                }
+                $mapFn = $mapFnRaw;
+            }
+
+            $promise = new JsPromise();
+            try {
+                $isConstructor = ($c instanceof JsFunction && $c->isConstructable());
+
+                // Per spec: check Symbol.asyncIterator first, then Symbol.iterator.
+                $usingAsyncIterator = null;
+                $usingSyncIterator = null;
+                if ($asyncItems instanceof JsObject) {
+                    $asyncIterSym = SymbolConstructor::asyncIterator();
+                    $asyncIterMethod = $asyncItems->getBySymbol($asyncIterSym);
+                    if ($asyncIterMethod instanceof JsFunction) {
+                        $usingAsyncIterator = $asyncIterMethod;
+                    } elseif (
+                        !$asyncIterMethod instanceof JsUndefined
+                        && !$asyncIterMethod instanceof JsNull
+                    ) {
+                        throw new TypeError('object is not iterable');
+                    }
+                }
+                if ($usingAsyncIterator === null) {
+                    if ($asyncItems instanceof JsObject || $asyncItems instanceof JsString) {
+                        $iterSym = SymbolConstructor::iterator();
+                        if ($asyncItems instanceof JsObject) {
+                            $syncIterMethod = $asyncItems->getBySymbol($iterSym);
+                            if ($syncIterMethod instanceof JsFunction) {
+                                $usingSyncIterator = $syncIterMethod;
+                            } elseif (
+                                !$syncIterMethod instanceof JsUndefined
+                                && !$syncIterMethod instanceof JsNull
+                            ) {
+                                throw new TypeError('object is not iterable');
+                            }
+                        }
+                        if ($usingSyncIterator === null && $asyncItems instanceof JsString) {
+                            $usingSyncIterator = true;
+                        }
+                    }
+                }
+
+                if ($usingAsyncIterator !== null || $usingSyncIterator !== null) {
+                    if ($isConstructor) {
+                        /** @var JsFunction $c */
+                        $a = self::constructWith($c, []);
+                    } else {
+                        $a = new JsArray();
+                    }
+                    $index = 0;
+
+                    if ($usingSyncIterator === true && $asyncItems instanceof JsString) {
+                        $str = $asyncItems->value;
+                        $len = mb_strlen($str, 'UTF-8');
+                        for ($i = 0; $i < $len; $i++) {
+                            $val = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
+                            $val = self::awaitValue($val);
+                            if ($mapFn !== null) {
+                                $val = $mapFn->call($thisArg, [$val, new JsNumber((float) $index)]);
+                                $val = self::awaitValue($val);
+                            }
+                            $a->defineOwnProperty(
+                                (string) $index,
+                                PropertyDescriptor::data($val, true, true, true),
+                            );
+                            $index++;
+                        }
+                    } else {
+                        $iteratorMethod = $usingAsyncIterator ?? $usingSyncIterator;
+                        /** @var JsFunction $iteratorMethod */
+                        $iterator = $iteratorMethod->call($asyncItems, []);
+                        if (!$iterator instanceof JsObject) {
+                            throw new TypeError('Result of the Symbol.iterator method is not an object');
+                        }
+                        while (true) {
+                            $nextMethod = $iterator->get('next');
+                            if (!$nextMethod instanceof JsFunction) {
+                                break;
+                            }
+                            $result = $nextMethod->call($iterator, []);
+                            $result = self::awaitValue($result);
+                            if (!$result instanceof JsObject) {
+                                throw new TypeError('Iterator result is not an object');
+                            }
+                            $done = TypeConversion::toBoolean($result->get('done'));
+                            if ($done) {
+                                break;
+                            }
+                            $val = $result->get('value');
+                            $val = self::awaitValue($val);
+                            if ($mapFn !== null) {
+                                try {
+                                    $val = $mapFn->call(
+                                        $thisArg,
+                                        [$val, new JsNumber((float) $index)],
+                                    );
+                                    $val = self::awaitValue($val);
+                                } catch (\Throwable $mapErr) {
+                                    $returnMethod = $iterator->get('return');
+                                    if ($returnMethod instanceof JsFunction) {
+                                        try {
+                                            $returnMethod->call($iterator, []);
+                                        } catch (\Throwable) {
+                                        }
+                                    }
+                                    throw $mapErr;
+                                }
+                            }
+                            $success = $a->defineOwnProperty(
+                                (string) $index,
+                                PropertyDescriptor::data($val, true, true, true),
+                            );
+                            if (!$success) {
+                                $returnMethod = $iterator->get('return');
+                                if ($returnMethod instanceof JsFunction) {
+                                    try {
+                                        $returnMethod->call($iterator, []);
+                                    } catch (\Throwable) {
+                                    }
+                                }
+                                throw new TypeError(
+                                    'Cannot define property ' . $index . ' on result object'
+                                );
+                            }
+                            $index++;
+                        }
+                    }
+                    $a->set('length', new JsNumber((float) $index));
+                    if ($a instanceof JsArray) {
+                        $a->setLength($index);
+                    }
+                    $promise->resolve($a);
+                    return $promise;
+                }
+
+                // Non-iterable: array-like path.
+                if ($asyncItems instanceof JsNull || $asyncItems instanceof JsUndefined) {
+                    throw new TypeError('Cannot read properties of '
+                        . ($asyncItems instanceof JsNull ? 'null' : 'undefined'));
+                }
+
+                $arrayLike = ($asyncItems instanceof JsObject)
+                    ? $asyncItems
+                    : TypeConversion::toObject($asyncItems);
+
+                $lenVal = $arrayLike->get('length');
+                $lenNum = TypeConversion::toLength(TypeConversion::toNumber($lenVal));
+
+                if ($isConstructor) {
+                    /** @var JsFunction $c */
+                    $a = self::constructWith($c, [new JsNumber((float) $lenNum)]);
+                } else {
+                    $a = new JsArray();
+                }
+
+                for ($i = 0; $i < $lenNum; $i++) {
+                    $val = $arrayLike->get((string) $i);
+                    $val = self::awaitValue($val);
+                    if ($mapFn !== null) {
+                        $val = $mapFn->call($thisArg, [$val, new JsNumber((float) $i)]);
+                        $val = self::awaitValue($val);
+                    }
+                    $a->defineOwnProperty(
+                        (string) $i,
+                        PropertyDescriptor::data($val, true, true, true),
+                    );
+                }
+                $a->set('length', new JsNumber((float) $lenNum));
+                if ($a instanceof JsArray) {
+                    $a->setLength($lenNum);
+                }
+                $promise->resolve($a);
+            } catch (\Throwable $e) {
+                if ($e instanceof \PhpJs\Exceptions\RuntimeError) {
+                    $errVal = $e->getJsValue();
+                    $promise->reject($errVal ?? new JsString($e->getMessage()));
+                } elseif ($e instanceof TypeError) {
+                    $promise->reject(TypeConversion::createTypeError($e->getMessage()));
+                } else {
+                    $promise->reject(new JsString($e->getMessage()));
+                }
+            }
+            return $promise;
+        };
+    }
+
+    /**
+     * Synchronously resolve a value that may be a Promise or thenable.
+     * Since php-js is synchronous, Promises are eagerly resolved.
+     */
+    private static function awaitValue(JsValue $value): JsValue
+    {
+        if ($value instanceof JsPromise) {
+            if ($value->getState() === JsPromise::STATE_REJECTED) {
+                $reason = $value->getResolvedValue();
+                if ($reason instanceof JsObject) {
+                    throw new \PhpJs\Exceptions\RuntimeError(
+                        TypeConversion::toString($reason),
+                        $reason,
+                    );
+                }
+                throw new \PhpJs\Exceptions\RuntimeError(TypeConversion::toString($reason));
+            }
+            return $value->getResolvedValue();
+        }
+        if ($value instanceof JsObject) {
+            $thenMethod = $value->get('then');
+            if ($thenMethod instanceof JsFunction) {
+                $resolved = JsUndefined::instance();
+                $rejected = null;
+                $resolveHandler = JsFunction::fromCallable(
+                    '',
+                    function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                        $resolved = $args[0] ?? JsUndefined::instance();
+                        return JsUndefined::instance();
+                    },
+                );
+                $rejectHandler = JsFunction::fromCallable(
+                    '',
+                    function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                        $rejected = $args[0] ?? JsUndefined::instance();
+                        return JsUndefined::instance();
+                    },
+                );
+                $thenMethod->call($value, [$resolveHandler, $rejectHandler]);
+                if ($rejected !== null) {
+                    if ($rejected instanceof JsObject) {
+                        throw new \PhpJs\Exceptions\RuntimeError(
+                            TypeConversion::toString($rejected),
+                            $rejected,
+                        );
+                    }
+                    throw new \PhpJs\Exceptions\RuntimeError(TypeConversion::toString($rejected));
+                }
+                return $resolved;
+            }
+        }
+        return $value;
+    }
+
     private static function of(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
