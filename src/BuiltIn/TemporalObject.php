@@ -5056,13 +5056,27 @@ class TemporalObject
 
     private static function instantDifference(string $ns1, string $ns2, JsValue $options): JsObject
     {
+        $opts = self::getOptionsObject($options);
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'second';
-        if ($options instanceof JsObject && $options->has('largestUnit')) {
-            $lu = $options->get('largestUnit');
+        if ($opts instanceof JsObject) {
+            $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+            }
+            // Validate roundingMode if present.
+            $rm = $opts->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = [
+                    'ceil', 'floor', 'expand', 'trunc',
+                    'halfCeil', 'halfFloor', 'halfExpand',
+                    'halfTrunc', 'halfEven',
+                ];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
             }
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
