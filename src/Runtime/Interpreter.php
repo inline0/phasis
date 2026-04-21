@@ -372,6 +372,7 @@ class Interpreter
     public function executeBody(array $statements, Environment $env): Completion
     {
         $result = JsUndefined::instance();
+        $hasValue = false;
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
@@ -389,9 +390,14 @@ class Interpreter
             // Empty completions don't override the accumulated value
             if (!$completion->empty) {
                 $result = $completion->value;
+                $hasValue = true;
             }
         }
-        return Completion::normal($result);
+        // When no statement produced a non-empty completion (e.g. empty block,
+        // or all statements were empty like EmptyStatement), propagate
+        // empty: true so that callers implementing UpdateEmpty (like eval)
+        // can preserve the previous accumulated value.
+        return new Completion(CompletionType::Normal, $result, empty: !$hasValue);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -1319,8 +1325,37 @@ class Interpreter
                 }
             }
 
-            // Call the super constructor. It may return a new object (factory pattern).
-            $result = $this->callFunction($superCtor, $currentThis, $args);
+            // Per spec SuperCall step 6: Construct(func, argList, newTarget).
+            // The super constructor must be invoked with [[Construct]] semantics.
+            // Temporarily set [[NewTarget]] on currentThis so that callFunction's
+            // class-constructor guard recognizes this as a construct call.
+            // Retrieve newTarget from the current environment.
+            $newTarget = null;
+            try {
+                $nt = $env->get('[[NewTarget]]');
+                if (!$nt instanceof JsUndefined) {
+                    $newTarget = $nt;
+                }
+            } catch (\Throwable) {
+            }
+            $hadNewTarget = false;
+            if ($currentThis instanceof JsObject) {
+                $hadNewTarget = !($currentThis->get('[[NewTarget]]') instanceof JsUndefined);
+                if (!$hadNewTarget && $newTarget instanceof JsFunction) {
+                    $currentThis->defineOwnProperty(
+                        '[[NewTarget]]',
+                        \PhpJs\Object\PropertyDescriptor::data($newTarget, false, false, false),
+                    );
+                }
+            }
+            try {
+                $result = $this->callFunction($superCtor, $currentThis, $args);
+            } finally {
+                // Clean up the temporary [[NewTarget]] marker.
+                if ($currentThis instanceof JsObject && !$hadNewTarget) {
+                    $currentThis->forceDelete('[[NewTarget]]');
+                }
+            }
 
             // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
             // calling super() again throws ReferenceError. The check happens AFTER
@@ -3025,6 +3060,18 @@ class Interpreter
                 $fnEnv->declareLet('this');
                 // Store the newObj so super() can pass it to the parent constructor.
                 $fnEnv->defineVar('[[PendingThis]]', $thisValue);
+                // Per spec: [[NewTarget]] must be available in derived constructors
+                // for super() calls and new.target access. Arrow functions inside
+                // the constructor inherit it from this scope.
+                $ntDesc = $thisValue instanceof JsObject
+                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                    : null;
+                if ($ntDesc !== null) {
+                    $nt = $ntDesc->value;
+                    $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
+                } else {
+                    $fnEnv->defineVar('[[NewTarget]]', $fn);
+                }
             } else {
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,

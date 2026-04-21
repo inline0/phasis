@@ -2835,8 +2835,7 @@ class TypedArrayConstructor
                         'toBase64 requires a Uint8Array'
                     );
                 }
-                $this_->validateNotDetached();
-
+                // Read options FIRST (side effects), then check detachment.
                 $opts = $args[0] ?? JsUndefined::instance();
                 $alph = 'base64';
                 $omit = false;
@@ -2865,6 +2864,9 @@ class TypedArrayConstructor
                         $omit = TypeConversion::toBoolean($ov);
                     }
                 }
+
+                // Check detachment AFTER option side effects
+                $this_->validateNotDetached();
 
                 $len = $this_->getLength();
                 $data = '';
@@ -2942,8 +2944,6 @@ class TypedArrayConstructor
                         'setFromBase64 requires a Uint8Array'
                     );
                 }
-                $this_->validateNotDetached();
-
                 $input = $args[0] ?? JsUndefined::instance();
                 if (!$input instanceof JsString) {
                     throw new TypeError(
@@ -2952,6 +2952,9 @@ class TypedArrayConstructor
                 }
                 $opts = $args[1] ?? JsUndefined::instance();
                 [$alph, $lch] = self::readBase64Options($opts);
+
+                // Check detachment AFTER option side effects
+                $this_->validateNotDetached();
 
                 $max = $this_->getLength();
                 $partial = [];
