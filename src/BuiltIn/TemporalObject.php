@@ -5550,6 +5550,7 @@ class TemporalObject
 
     private static function plainDateDifference(JsValue $date1, JsValue $date2, JsValue $options, int $sign): JsObject
     {
+        $opts = self::getOptionsObject($options);
         $y1 = self::getSlotInt($date1, '[[ISOYear]]');
         $m1 = self::getSlotInt($date1, '[[ISOMonth]]');
         $d1 = self::getSlotInt($date1, '[[ISODay]]');
@@ -5558,11 +5559,31 @@ class TemporalObject
         $d2 = self::getSlotInt($date2, '[[ISODay]]');
 
         $largestUnit = 'day';
-        if ($options instanceof JsObject && $options->has('largestUnit')) {
-            $lu = $options->get('largestUnit');
+        if ($opts instanceof JsObject) {
+            $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+            }
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                self::canonicalTemporalUnit($smallestUnit);
+            }
+            $rm = $opts->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
+            }
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
             }
         }
 
