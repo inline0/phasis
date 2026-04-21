@@ -38,6 +38,9 @@ class JsObject implements JsValue
     /** @var array<int, bool> Track which constructors have initialized fields on this object. */
     private array $fieldsInitialized = [];
 
+    /** @var array<string, mixed> Internal properties not visible to JS. */
+    private array $internalSlots = [];
+
     /** Mark that a constructor has initialized its fields on this object. */
     public function markFieldsInitialized(int $ctorId): void
     {
@@ -48,6 +51,18 @@ class JsObject implements JsValue
     public function areFieldsInitialized(int $ctorId): bool
     {
         return isset($this->fieldsInitialized[$ctorId]);
+    }
+
+    /** Set an internal property (not visible to JS code). */
+    public function setInternalProperty(string $name, mixed $value): void
+    {
+        $this->internalSlots[$name] = $value;
+    }
+
+    /** Get an internal property. Returns null if not set. */
+    public function getInternalProperty(string $name): mixed
+    {
+        return $this->internalSlots[$name] ?? null;
     }
 
     public static function setGlobalPrototype(JsObject $proto): void

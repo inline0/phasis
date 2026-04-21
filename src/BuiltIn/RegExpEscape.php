@@ -66,7 +66,8 @@ class RegExpEscape
                 // Step 4a: first character that is a digit or ASCII letter -> \xHH.
                 if ($isFirst) {
                     $isFirst = false;
-                    if (($cp >= 0x30 && $cp <= 0x39)
+                    if (
+                        ($cp >= 0x30 && $cp <= 0x39)
                         || ($cp >= 0x41 && $cp <= 0x5A)
                         || ($cp >= 0x61 && $cp <= 0x7A)
                     ) {
@@ -92,9 +93,11 @@ class RegExpEscape
                 if ($cp < 0x80 && strpos($otherPunctuators, $char) !== false) {
                     $needsEscape = true;
                 }
-                if (!$needsEscape && ($cp === 0x20 || $cp === 0xA0 || $cp === 0xFEFF
+                if (
+                    !$needsEscape && ($cp === 0x20 || $cp === 0xA0 || $cp === 0xFEFF
                     || $cp === 0x1680 || ($cp >= 0x2000 && $cp <= 0x200A)
-                    || $cp === 0x202F || $cp === 0x205F || $cp === 0x3000)) {
+                    || $cp === 0x202F || $cp === 0x205F || $cp === 0x3000)
+                ) {
                     $needsEscape = true;
                 }
                 if (!$needsEscape && ($cp === 0x2028 || $cp === 0x2029)) {

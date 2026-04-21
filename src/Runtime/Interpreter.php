@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace PhpJs\Runtime;
 
 use PhpJs\Ast\Declaration\ClassDeclaration;
+use PhpJs\Ast\Declaration\ExportDeclaration;
 use PhpJs\Ast\Declaration\FunctionDeclaration;
+use PhpJs\Ast\Declaration\ImportDeclaration;
 use PhpJs\Ast\Declaration\VariableDeclaration;
 use PhpJs\Ast\Declaration\VariableDeclarator;
 use PhpJs\Ast\Expression\ArrayExpression;
@@ -21,6 +23,8 @@ use PhpJs\Ast\Expression\PrivateIdentifier;
 use PhpJs\Ast\Expression\StaticBlock;
 use PhpJs\Ast\Expression\ConditionalExpression;
 use PhpJs\Ast\Expression\FunctionExpression;
+use PhpJs\Ast\Expression\ImportExpression;
+use PhpJs\Ast\Expression\MetaProperty;
 use PhpJs\Ast\Expression\Identifier;
 use PhpJs\Ast\Expression\Literal;
 use PhpJs\Ast\Expression\LogicalExpression;
@@ -132,6 +136,35 @@ class Interpreter
     /** Monotonically increasing counter for unique private name brands. */
     private static int $nextPrivateBrandId = 0;
 
+    /** Module loader for dynamic import() and static import/export. */
+    private ?\PhpJs\Module\ModuleLoader $moduleLoader = null;
+
+    /** Current module path for resolving relative import specifiers. */
+    private ?string $currentModulePath = null;
+
+    public function getModuleLoader(): \PhpJs\Module\ModuleLoader
+    {
+        if ($this->moduleLoader === null) {
+            $this->moduleLoader = new \PhpJs\Module\ModuleLoader($this, $this->globalEnv);
+        }
+        return $this->moduleLoader;
+    }
+
+    public function setModuleLoader(\PhpJs\Module\ModuleLoader $loader): void
+    {
+        $this->moduleLoader = $loader;
+    }
+
+    public function setCurrentModulePath(?string $path): void
+    {
+        $this->currentModulePath = $path;
+    }
+
+    public function getCurrentModulePath(): ?string
+    {
+        return $this->currentModulePath;
+    }
+
     public function __construct(
         private Environment $globalEnv,
         ?CallStack $callStack = null,
@@ -225,10 +258,12 @@ class Interpreter
         // Collect lexical names (let/const/class declarations).
         $lexNames = [];
         foreach ($body as $stmt) {
-            if ($stmt instanceof VariableDeclaration && (
+            if (
+                $stmt instanceof VariableDeclaration && (
                 $stmt->kind === 'let' || $stmt->kind === 'const'
                 || $stmt->kind === 'using' || $stmt->kind === 'await using'
-            )) {
+                )
+            ) {
                 foreach ($stmt->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
                         $lexNames[] = $n;
@@ -424,6 +459,8 @@ class Interpreter
                 JsUndefined::instance(), empty: true,
             ),
             $node instanceof DebuggerStatement => Completion::normal(JsUndefined::instance()),
+            $node instanceof ImportDeclaration => Completion::normal(JsUndefined::instance()),
+            $node instanceof ExportDeclaration => $this->execExportDeclaration($node, $env),
             default => throw new InternalError('Unknown statement type: ' . $node->type()),
         };
     }
@@ -458,6 +495,8 @@ class Interpreter
             $node instanceof SpreadElement => $this->evaluate($node->argument, $env),
             $node instanceof YieldExpression => $this->evalYieldExpression($node, $env),
             $node instanceof AwaitExpression => $this->evalAwaitExpression($node, $env),
+            $node instanceof ImportExpression => $this->evalImportExpression($node, $env),
+            $node instanceof MetaProperty => $this->evalMetaProperty($node, $env),
             default => throw new InternalError('Unknown expression type: ' . $node->type()),
         };
 
@@ -2813,10 +2852,12 @@ class Interpreter
             if ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
                 $env->declareLet($stmt->id->name);
             }
-            if ($stmt instanceof VariableDeclaration && (
+            if (
+                $stmt instanceof VariableDeclaration && (
                 $stmt->kind === 'let' || $stmt->kind === 'const'
                 || $stmt->kind === 'using' || $stmt->kind === 'await using'
-            )) {
+                )
+            ) {
                 $isConst = $stmt->kind !== 'let';
                 foreach ($stmt->declarations as $decl) {
                     $this->declarePatternTdz($decl->id, $env, $isConst);
@@ -3357,7 +3398,10 @@ class Interpreter
                     // Restore to null so .caller does not fall through to the
                     // inherited thrower accessor on Function.prototype.
                     $fn->defineOwnProperty("caller", PropertyDescriptor::data(
-                        JsNull::instance(), true, false, true,
+                        JsNull::instance(),
+                        true,
+                        false,
+                        true,
                     ));
                 }
             }
@@ -7076,10 +7120,12 @@ class Interpreter
         $lexicalNames = [];
         if (!$this->strictMode) {
             foreach ($statements as $s) {
-                if ($s instanceof VariableDeclaration && (
+                if (
+                    $s instanceof VariableDeclaration && (
                     $s->kind === 'let' || $s->kind === 'const'
                     || $s->kind === 'using' || $s->kind === 'await using'
-                )) {
+                    )
+                ) {
                     foreach ($s->declarations as $d) {
                         foreach ($this->patternBoundNames($d->id) as $n) {
                             $lexicalNames[$n] = true;
@@ -7242,10 +7288,12 @@ class Interpreter
         // Collect top-level lexical names that block Annex B hoisting.
         $lexicalNames = [];
         foreach ($statements as $stmt) {
-            if ($stmt instanceof VariableDeclaration && (
+            if (
+                $stmt instanceof VariableDeclaration && (
                 $stmt->kind === 'let' || $stmt->kind === 'const'
                 || $stmt->kind === 'using' || $stmt->kind === 'await using'
-            )) {
+                )
+            ) {
                 foreach ($stmt->declarations as $d) {
                     foreach ($this->patternBoundNames($d->id) as $n) {
                         $lexicalNames[$n] = true;
@@ -7514,10 +7562,12 @@ class Interpreter
         // Collect top-level lexical names that block Annex B hoisting.
         $lexicalNames = [];
         foreach ($statements as $stmt) {
-            if ($stmt instanceof VariableDeclaration && (
+            if (
+                $stmt instanceof VariableDeclaration && (
                 $stmt->kind === 'let' || $stmt->kind === 'const'
                 || $stmt->kind === 'using' || $stmt->kind === 'await using'
-            )) {
+                )
+            ) {
                 foreach ($stmt->declarations as $d) {
                     foreach ($this->patternBoundNames($d->id) as $n) {
                         $lexicalNames[$n] = true;
@@ -7921,10 +7971,12 @@ class Interpreter
             if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
                 $blockLexNames[$child->id->name] = true;
             }
-            if ($child instanceof VariableDeclaration && (
+            if (
+                $child instanceof VariableDeclaration && (
                 $child->kind === 'let' || $child->kind === 'const'
                 || $child->kind === 'using' || $child->kind === 'await using'
-            )) {
+                )
+            ) {
                 foreach ($child->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
                         $blockLexNames[$n] = true;

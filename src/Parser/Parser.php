@@ -651,7 +651,16 @@ class Parser
         $startOffset = $location->offset;
         $generator = $this->eat(TokenType::Star);
         $id = null;
-        if (!$optionalName || $this->check(TokenType::Identifier) || $this->check(TokenType::Yield) || $this->check(TokenType::Await) || $this->check(TokenType::Let) || $this->check(TokenType::Static_) || $this->check(TokenType::Of) || $this->check(TokenType::Async)) {
+        if (
+            !$optionalName
+            || $this->check(TokenType::Identifier)
+            || $this->check(TokenType::Yield)
+            || $this->check(TokenType::Await)
+            || $this->check(TokenType::Let)
+            || $this->check(TokenType::Static_)
+            || $this->check(TokenType::Of)
+            || $this->check(TokenType::Async)
+        ) {
             $id = $this->parseIdentifier();
         }
         // Set inGenerator/inAsync BEFORE parsing parameters so that default

@@ -865,18 +865,30 @@ class GlobalObject
         );
         $asyncGenFnConstructor->setConstructable();
         $asyncGenFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsNumber(1.0), writable: false, enumerable: false, configurable: true,
+            value: new JsNumber(1.0),
+            writable: false,
+            enumerable: false,
+            configurable: true,
         ));
         $asyncGenFnConstructor->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsString('AsyncGeneratorFunction'), writable: false, enumerable: false, configurable: true,
+            value: new JsString('AsyncGeneratorFunction'),
+            writable: false,
+            enumerable: false,
+            configurable: true,
         ));
         $asyncGenFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
-            value: $asyncGenFnProto, writable: false, enumerable: false, configurable: false,
+            value: $asyncGenFnProto,
+            writable: false,
+            enumerable: false,
+            configurable: false,
         ));
         $asyncGenFnConstructor->setCustomPrototype($fnConstructor);
         // %AsyncGeneratorFunction.prototype%.constructor = %AsyncGeneratorFunction%
         $asyncGenFnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
-            $asyncGenFnConstructor, false, false, true,
+            $asyncGenFnConstructor,
+            false,
+            false,
+            true,
         ));
 
         \PhpJs\Value\JsAsyncGenerator::setAsyncGeneratorPrototype($asyncGenProto);

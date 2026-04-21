@@ -59,7 +59,6 @@ return [
         'json-modules',
         'source-phase-imports',
         // Massive APIs
-        'Intl',
         'Temporal',
         'ShadowRealm',
         // Architectural limitations

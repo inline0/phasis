@@ -931,7 +931,10 @@ class JsTypedArray extends JsObject
         }
 
         $sign = 0;
-        if ($value < 0.0 || ($value === 0.0 && 1.0 / $value === -INF)) {
+        // Detect negative zero via bit pattern (avoids division by zero in PHP 8.4).
+        $isNegZero = $value === 0.0
+            && (unpack('J', pack('E', $value))[1] & (1 << 63)) !== 0;
+        if ($value < 0.0 || $isNegZero) {
             $sign = 1;
             $value = -$value;
         }
