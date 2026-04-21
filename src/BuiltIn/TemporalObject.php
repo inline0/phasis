@@ -1859,16 +1859,17 @@ class TemporalObject
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                $overflow = 'constrain';
                 if ($options instanceof JsObject && $options->has('overflow')) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
-                        $ovStr = TypeConversion::toString($ov);
-                        if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$ovStr}");
+                        $overflow = TypeConversion::toString($ov);
+                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                            throw new RangeError("Invalid overflow: {$overflow}");
                         }
                     }
                 }
-                return self::toPlainYearMonth($item);
+                return self::toPlainYearMonth($item, $overflow);
             }, 1),
             true,
             false,
@@ -4084,7 +4085,7 @@ class TemporalObject
         );
     }
 
-    private static function toPlainYearMonth(JsValue $item): JsObject
+    private static function toPlainYearMonth(JsValue $item, string $overflow = 'constrain'): JsObject
     {
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainYearMonth');
@@ -4132,9 +4133,12 @@ class TemporalObject
             if (!($calVal instanceof JsUndefined)) {
                 $cal = self::toCalendarSlotValue($calVal);
             }
-            if (true) {
-                return self::createPlainYearMonthObject($y, $m, 1, $cal);
+            if ($overflow === 'constrain') {
+                $m = max(1, min(12, $m));
+            } elseif ($m < 1 || $m > 12) {
+                throw new RangeError("month {$m} out of range");
             }
+            return self::createPlainYearMonthObject($y, $m, 1, $cal);
         }
         // Reject primitives per spec.
         if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
