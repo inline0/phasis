@@ -161,6 +161,7 @@ class Engine
         \PhpJs\BuiltIn\MathObject::install($this->globalEnv);
         \PhpJs\BuiltIn\JsonObject::install($this->globalEnv);
         \PhpJs\BuiltIn\SymbolConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\IteratorConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
@@ -681,6 +682,14 @@ class Engine
                     configurable: true,
                 ),
             );
+
+            // RegExp.escape(string) per spec proposal.
+            $escapeFn = JsFunction::fromCallable('escape', self::regExpEscapeImpl(), 1);
+            $escapeFn->setNonConstructable();
+            $regExpCtor->defineOwnProperty(
+                'escape',
+                \PhpJs\Object\PropertyDescriptor::data($escapeFn, true, false, true),
+            );
         }
 
         // %AsyncFunction% intrinsic: the constructor for async functions.
@@ -1000,6 +1009,97 @@ class Engine
         if ($name === 'maxLoopIterations') {
             $this->interpreter->setMaxLoopIterations($value);
         }
+    }
+
+    /**
+     * RegExp.escape(string) implementation per ES spec proposal.
+     */
+    private static function regExpEscapeImpl(): \Closure
+    {
+        return static function (JsValue $this_, array $args): JsValue {
+            $arg = $args[0] ?? JsUndefined::instance();
+            if (!$arg instanceof \PhpJs\Value\JsString) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    \PhpJs\Spec\TypeConversion::toString($arg) . ' is not a string',
+                );
+            }
+            $str = $arg->value;
+            if ($str === '') {
+                return new \PhpJs\Value\JsString('');
+            }
+
+            $controlEscapes = [
+                "\x09" => '\\t', "\x0A" => '\\n', "\x0B" => '\\v',
+                "\x0C" => '\\f', "\x0D" => '\\r',
+            ];
+            $otherPunctuators = ",-=<>#&!%:;@~'`\"";
+
+            $result = '';
+            $isFirst = true;
+            $len = mb_strlen($str, 'UTF-8');
+            for ($i = 0; $i < $len; $i++) {
+                $char = mb_substr($str, $i, 1, 'UTF-8');
+                $cp = mb_ord($char, 'UTF-8');
+
+                if ($isFirst) {
+                    $isFirst = false;
+                    if (($cp >= 0x30 && $cp <= 0x39)
+                        || ($cp >= 0x41 && $cp <= 0x5A)
+                        || ($cp >= 0x61 && $cp <= 0x7A)
+                    ) {
+                        $result .= '\\x' . str_pad(dechex($cp), 2, '0', STR_PAD_LEFT);
+                        continue;
+                    }
+                }
+
+                // SyntaxCharacter or SOLIDUS.
+                if ($cp < 0x80 && strpos('^$\\.*+?()[]{}|/', $char) !== false) {
+                    $result .= '\\' . $char;
+                    continue;
+                }
+
+                // Control escapes.
+                if (isset($controlEscapes[$char])) {
+                    $result .= $controlEscapes[$char];
+                    continue;
+                }
+
+                $needsEscape = false;
+                if ($cp < 0x80 && strpos($otherPunctuators, $char) !== false) {
+                    $needsEscape = true;
+                }
+                if (!$needsEscape && ($cp === 0x20 || $cp === 0xA0 || $cp === 0xFEFF
+                    || $cp === 0x1680 || ($cp >= 0x2000 && $cp <= 0x200A)
+                    || $cp === 0x202F || $cp === 0x205F || $cp === 0x3000)) {
+                    $needsEscape = true;
+                }
+                if (!$needsEscape && ($cp === 0x2028 || $cp === 0x2029)) {
+                    $needsEscape = true;
+                }
+                if (!$needsEscape && $cp >= 0xD800 && $cp <= 0xDFFF) {
+                    $needsEscape = true;
+                }
+
+                if ($needsEscape) {
+                    if ($cp <= 0xFF) {
+                        $result .= '\\x' . str_pad(dechex($cp), 2, '0', STR_PAD_LEFT);
+                    } elseif ($cp <= 0xFFFF) {
+                        $result .= '\\u' . str_pad(dechex($cp), 4, '0', STR_PAD_LEFT);
+                    } else {
+                        $cp2 = $cp - 0x10000;
+                        $high = 0xD800 + (($cp2 >> 10) & 0x3FF);
+                        $low = 0xDC00 + ($cp2 & 0x3FF);
+                        $result .= '\\u' . str_pad(dechex($high), 4, '0', STR_PAD_LEFT);
+                        $result .= '\\u' . str_pad(dechex($low), 4, '0', STR_PAD_LEFT);
+                    }
+                    continue;
+                }
+
+                $result .= $char;
+            }
+
+            return new \PhpJs\Value\JsString($result);
+        };
     }
 
     private function toPhp(JsValue $value): mixed
