@@ -30,10 +30,7 @@ use PhpJs\Value\JsValue;
  */
 class IteratorConstructor
 {
-    /** %IteratorHelperPrototype%: prototype for lazy wrapper iterators. */
     private static ?JsObject $iteratorHelperPrototype = null;
-
-    /** %WrapForValidIteratorPrototype%: prototype for Iterator.from wrappers. */
     private static ?JsObject $wrapForValidIteratorPrototype = null;
 
     public static function install(Environment $env): void
@@ -45,30 +42,21 @@ class IteratorConstructor
             return;
         }
 
-        // The Iterator constructor function.
-        // Per spec: if NewTarget is undefined or the active function object, throw TypeError.
-        // This means: Iterator() throws, new Iterator() throws, but class Sub extends Iterator {}
-        // followed by new Sub() works.
         $iteratorCtor = JsFunction::fromCallable(
             'Iterator',
             function (JsValue $this_, array $args) use (&$iteratorCtor): JsValue {
-                // Called without new: throw.
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Iterator is not callable');
                 }
-                // Called with new Iterator() directly: throw.
                 $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
                 if ($ntDesc !== null && $ntDesc->value === $iteratorCtor) {
                     throw new TypeError('Abstract class Iterator not directly constructable');
                 }
-                // Subclass: return the this object.
                 return $this_;
             },
         );
         $iteratorCtor->setConstructable();
 
-        // Iterator.prototype is the existing %IteratorPrototype%.
-        // Per spec: non-writable, non-enumerable, non-configurable.
         $iteratorCtor->defineOwnProperty('prototype', PropertyDescriptor::data(
             $iteratorPrototype,
             false,
@@ -76,8 +64,6 @@ class IteratorConstructor
             false,
         ));
 
-        // Iterator.prototype.constructor = Iterator
-        // Per spec: writable true, enumerable false, configurable true.
         $iteratorPrototype->defineOwnProperty('constructor', PropertyDescriptor::data(
             $iteratorCtor,
             true,
@@ -85,33 +71,25 @@ class IteratorConstructor
             true,
         ));
 
-        // Iterator.prototype[Symbol.toStringTag] = "Iterator"
-        // Per spec: writable true, enumerable false, configurable true.
         $iteratorPrototype->definePropertyBySymbol(
             SymbolConstructor::toStringTag(),
             PropertyDescriptor::data(new JsString('Iterator'), true, false, true),
         );
 
-        // Create %IteratorHelperPrototype%.
-        // Its [[Prototype]] is Iterator.prototype (%IteratorPrototype%).
         self::$iteratorHelperPrototype = new JsObject($iteratorPrototype);
         self::$iteratorHelperPrototype->definePropertyBySymbol(
             SymbolConstructor::toStringTag(),
             PropertyDescriptor::data(new JsString('Iterator Helper'), false, false, true),
         );
 
-        // Create %WrapForValidIteratorPrototype%.
-        // Its [[Prototype]] is Iterator.prototype (%IteratorPrototype%).
         self::$wrapForValidIteratorPrototype = new JsObject($iteratorPrototype);
 
-        // Install lazy prototype methods.
         self::installMethod($iteratorPrototype, 'map', self::mapMethod(), 1);
         self::installMethod($iteratorPrototype, 'filter', self::filterMethod(), 1);
         self::installMethod($iteratorPrototype, 'take', self::takeMethod(), 1);
         self::installMethod($iteratorPrototype, 'drop', self::dropMethod(), 1);
         self::installMethod($iteratorPrototype, 'flatMap', self::flatMapMethod(), 1);
 
-        // Install eager prototype methods.
         self::installMethod($iteratorPrototype, 'reduce', self::reduceMethod(), 1);
         self::installMethod($iteratorPrototype, 'toArray', self::toArrayMethod(), 0);
         self::installMethod($iteratorPrototype, 'forEach', self::forEachMethod(), 1);
@@ -119,7 +97,6 @@ class IteratorConstructor
         self::installMethod($iteratorPrototype, 'every', self::everyMethod(), 1);
         self::installMethod($iteratorPrototype, 'find', self::findMethod(), 1);
 
-        // Iterator.from static method.
         $fromFn = JsFunction::fromCallable('from', self::fromMethod($iteratorPrototype), 1);
         $fromFn->setNonConstructable();
         $iteratorCtor->defineOwnProperty('from', PropertyDescriptor::data(
@@ -132,39 +109,38 @@ class IteratorConstructor
         $env->defineVar('Iterator', $iteratorCtor);
     }
 
-    /**
-     * Install a method on the given prototype with correct property attributes.
-     * Per spec: writable true, enumerable false, configurable true.
-     * The function is non-constructable.
-     */
-    private static function installMethod(JsObject $proto, string $name, \Closure $cb, int $length): void
-    {
+    private static function installMethod(
+        JsObject $proto,
+        string $name,
+        \Closure $cb,
+        int $length,
+    ): void {
         $fn = JsFunction::fromCallable($name, $cb, $length);
         $fn->setNonConstructable();
         $proto->defineOwnProperty($name, PropertyDescriptor::data($fn, true, false, true));
     }
 
     /**
-     * Create an IteratorHelper object (lazy wrapper).
+     * GetIteratorDirect(O): per spec, gets O.next and returns the iterator record.
+     * Does NOT validate that next is callable here; that is deferred for lazy methods.
      *
-     * The returned object has:
-     * - [[Prototype]] = %IteratorHelperPrototype%
-     * - next() that advances the underlying iterator through the given step closure
-     * - return() that closes the underlying iterator
-     *
-     * @param JsObject $underlyingIterator The source iterator object.
-     * @param JsFunction $underlyingNext The next method of the source iterator.
-     * @param \Closure $step Called on each next(); receives (&$counter, &$done, &$alive) and returns {value, done} object.
+     * @return array{JsObject, JsValue} [iterator, nextMethod]
      */
+    private static function getIteratorDirect(JsObject $obj): array
+    {
+        $nextMethod = $obj->get('next');
+        return [$obj, $nextMethod];
+    }
+
     private static function createIteratorHelper(
         JsObject $underlyingIterator,
-        JsFunction $underlyingNext,
+        JsValue $underlyingNext,
         \Closure $step,
     ): JsObject {
         $helper = new JsObject(self::$iteratorHelperPrototype);
         $done = false;
-        $alive = true; // Tracks whether return() has been called.
-        $running = false; // Prevents re-entrancy.
+        $alive = true;
+        $running = false;
 
         $nextFn = JsFunction::fromCallable('next', function (
             JsValue $this_,
@@ -179,10 +155,7 @@ class IteratorConstructor
                 throw new TypeError('Cannot call next on a running iterator helper');
             }
             if (!$alive || $done) {
-                $result = new JsObject();
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-                return $result;
+                return self::iterResult(JsUndefined::instance(), true);
             }
             $running = true;
             try {
@@ -210,18 +183,14 @@ class IteratorConstructor
                 throw new TypeError('Cannot call return on a running iterator helper');
             }
             $alive = false;
-            $result = new JsObject();
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
             if (!$done) {
                 $done = true;
-                // Call return on underlying iterator if it exists.
                 $returnMethod = $underlyingIterator->get('return');
                 if ($returnMethod instanceof JsFunction) {
                     return $returnMethod->call($underlyingIterator, []);
                 }
             }
-            return $result;
+            return self::iterResult(JsUndefined::instance(), true);
         }, 0);
 
         $helper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
@@ -230,17 +199,17 @@ class IteratorConstructor
         return $helper;
     }
 
-    /**
-     * Advance the underlying iterator by one step.
-     * Returns [value, isDone]. If done, value is undefined.
-     */
     private static function iteratorStep(
         JsObject $iterator,
-        JsFunction $nextMethod,
+        JsValue $nextMethod,
         bool &$done,
     ): array {
         if ($done) {
             return [JsUndefined::instance(), true];
+        }
+        if (!$nextMethod instanceof JsFunction) {
+            $done = true;
+            throw new TypeError('Iterator next is not a function');
         }
         $result = $nextMethod->call($iterator, []);
         if (!$result instanceof JsObject) {
@@ -254,9 +223,6 @@ class IteratorConstructor
         return [$result->get('value'), false];
     }
 
-    /**
-     * Create a {value, done} result object.
-     */
     private static function iterResult(JsValue $value, bool $done): JsObject
     {
         $result = new JsObject();
@@ -265,41 +231,54 @@ class IteratorConstructor
         return $result;
     }
 
-    /**
-     * Validate that the `this` value is an object and get its `next` method.
-     * Per spec step 1-2 of each method: Let O = this. If O is not an Object, throw TypeError.
-     * Step 3: Let nextMethod = ? GetMethod(O, "next").
-     *
-     * @return array{JsObject, JsFunction}
-     */
-    private static function validateThis(JsValue $this_, string $methodName): array
+    private static function closeIterator(JsObject $iterator): void
     {
-        if (!$this_ instanceof JsObject) {
-            throw new TypeError(
-                "Iterator.prototype.{$methodName} called on non-object",
-            );
+        $returnMethod = $iterator->get('return');
+        if ($returnMethod instanceof JsFunction) {
+            $returnMethod->call($iterator, []);
         }
-        $nextMethod = $this_->get('next');
-        if (!$nextMethod instanceof JsFunction) {
-            throw new TypeError(
-                "{$methodName} requires that this has a callable next method",
-            );
+    }
+
+    /**
+     * Per spec, converts limit to a non-negative integer or +Infinity.
+     * Throws RangeError for NaN or negative values.
+     */
+    private static function toIntegerOrInfinityNonNegative(JsValue $limitArg): float
+    {
+        $numLimit = TypeConversion::toNumber($limitArg);
+        if (is_nan($numLimit)) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid limit');
         }
-        return [$this_, $nextMethod];
+        if ($numLimit === INF) {
+            return INF;
+        }
+        $intLimit = $numLimit >= 0 ? floor($numLimit) : ceil($numLimit);
+        if ($intLimit < 0) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid limit');
+        }
+        return $intLimit;
     }
 
     // -------------------------------------------------------------------------
-    // Lazy methods (return IteratorHelper objects)
+    // Lazy methods: per spec, argument validation happens BEFORE GetIteratorDirect.
+    // The next method is obtained lazily; its callability is checked on first use.
     // -------------------------------------------------------------------------
 
     private static function mapMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'map');
+            // 1. Let O be the this value.
+            // 2. If O is not an Object, throw TypeError.
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.map called on non-object');
+            }
             $mapper = $args[0] ?? JsUndefined::instance();
+            // 3. If IsCallable(mapper) is false, throw TypeError.
             if (!$mapper instanceof JsFunction) {
                 throw new TypeError('Iterator.prototype.map callback is not a function');
             }
+            // 4. Let iterated be ? GetIteratorDirect(O).
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
 
@@ -308,7 +287,7 @@ class IteratorConstructor
                 bool &$alive,
             ) use (
                 $itObj,
-                $nextMethod,
+                &$nextMethod,
                 $mapper,
                 &$counter,
             ): JsObject {
@@ -317,7 +296,16 @@ class IteratorConstructor
                     $alive = false;
                     return self::iterResult(JsUndefined::instance(), true);
                 }
-                $mapped = $mapper->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                try {
+                    $mapped = $mapper->call(
+                        JsUndefined::instance(),
+                        [$value, new JsNumber((float) $counter)],
+                    );
+                } catch (\Throwable $e) {
+                    // Close the underlying iterator on mapper throw.
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
                 return self::iterResult($mapped, false);
             });
@@ -327,11 +315,14 @@ class IteratorConstructor
     private static function filterMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'filter');
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.filter called on non-object');
+            }
             $predicate = $args[0] ?? JsUndefined::instance();
             if (!$predicate instanceof JsFunction) {
                 throw new TypeError('Iterator.prototype.filter callback is not a function');
             }
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
 
@@ -340,7 +331,7 @@ class IteratorConstructor
                 bool &$alive,
             ) use (
                 $itObj,
-                $nextMethod,
+                &$nextMethod,
                 $predicate,
                 &$counter,
             ): JsObject {
@@ -350,10 +341,15 @@ class IteratorConstructor
                         $alive = false;
                         return self::iterResult(JsUndefined::instance(), true);
                     }
-                    $selected = $predicate->call(
-                        JsUndefined::instance(),
-                        [$value, new JsNumber((float) $counter)],
-                    );
+                    try {
+                        $selected = $predicate->call(
+                            JsUndefined::instance(),
+                            [$value, new JsNumber((float) $counter)],
+                        );
+                    } catch (\Throwable $e) {
+                        self::closeIterator($itObj);
+                        throw $e;
+                    }
                     $counter++;
                     if (TypeConversion::toBoolean($selected)) {
                         return self::iterResult($value, false);
@@ -366,17 +362,14 @@ class IteratorConstructor
     private static function takeMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'take');
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.take called on non-object');
+            }
+            // Per spec: ToNumber(limit) happens before GetIteratorDirect.
             $limitArg = $args[0] ?? JsUndefined::instance();
-            $numLimit = TypeConversion::toNumber($limitArg);
-            if (is_nan($numLimit)) {
-                throw new \PhpJs\Exceptions\RangeError('take argument must be a number');
-            }
-            $intLimit = (int) $numLimit;
-            if ($intLimit < 0) {
-                throw new \PhpJs\Exceptions\RangeError('take argument must be >= 0');
-            }
-            $remaining = $intLimit;
+            $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
+            $remaining = $numLimit;
             $done = false;
 
             return self::createIteratorHelper($itObj, $nextMethod, function (
@@ -384,17 +377,13 @@ class IteratorConstructor
                 bool &$alive,
             ) use (
                 $itObj,
-                $nextMethod,
+                &$nextMethod,
                 &$remaining,
             ): JsObject {
                 if ($remaining <= 0) {
                     $done = true;
                     $alive = false;
-                    // Close the underlying iterator.
-                    $returnMethod = $itObj->get('return');
-                    if ($returnMethod instanceof JsFunction) {
-                        $returnMethod->call($itObj, []);
-                    }
+                    self::closeIterator($itObj);
                     return self::iterResult(JsUndefined::instance(), true);
                 }
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
@@ -411,17 +400,13 @@ class IteratorConstructor
     private static function dropMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'drop');
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.drop called on non-object');
+            }
             $limitArg = $args[0] ?? JsUndefined::instance();
-            $numLimit = TypeConversion::toNumber($limitArg);
-            if (is_nan($numLimit)) {
-                throw new \PhpJs\Exceptions\RangeError('drop argument must be a number');
-            }
-            $intLimit = (int) $numLimit;
-            if ($intLimit < 0) {
-                throw new \PhpJs\Exceptions\RangeError('drop argument must be >= 0');
-            }
-            $toDrop = $intLimit;
+            $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
+            $toDrop = $numLimit;
             $dropped = false;
             $done = false;
 
@@ -430,11 +415,10 @@ class IteratorConstructor
                 bool &$alive,
             ) use (
                 $itObj,
-                $nextMethod,
+                &$nextMethod,
                 &$toDrop,
                 &$dropped,
             ): JsObject {
-                // Drop the first N elements.
                 while (!$dropped) {
                     if ($toDrop <= 0) {
                         $dropped = true;
@@ -460,15 +444,16 @@ class IteratorConstructor
     private static function flatMapMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'flatMap');
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.flatMap called on non-object');
+            }
             $mapper = $args[0] ?? JsUndefined::instance();
             if (!$mapper instanceof JsFunction) {
                 throw new TypeError('Iterator.prototype.flatMap callback is not a function');
             }
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
-
-            // State for the inner iterator of the current mapped value.
             $innerIterator = null;
             $innerNext = null;
             $innerDone = true;
@@ -478,7 +463,7 @@ class IteratorConstructor
                 bool &$alive,
             ) use (
                 $itObj,
-                $nextMethod,
+                &$nextMethod,
                 $mapper,
                 &$counter,
                 &$innerIterator,
@@ -486,7 +471,6 @@ class IteratorConstructor
                 &$innerDone,
             ): JsObject {
                 while (true) {
-                    // If we have an active inner iterator, drain it.
                     if ($innerIterator !== null && !$innerDone) {
                         $innerResult = $innerNext->call($innerIterator, []);
                         if (!$innerResult instanceof JsObject) {
@@ -496,52 +480,52 @@ class IteratorConstructor
                         if (!TypeConversion::toBoolean($innerResult->get('done'))) {
                             return self::iterResult($innerResult->get('value'), false);
                         }
-                        // Inner iterator exhausted, move to next outer value.
                         $innerIterator = null;
                         $innerNext = null;
                         $innerDone = true;
                     }
 
-                    // Get next value from the outer iterator.
                     [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
                     if ($isDone) {
                         $alive = false;
                         return self::iterResult(JsUndefined::instance(), true);
                     }
 
-                    // Call the mapper.
-                    $mapped = $mapper->call(
-                        JsUndefined::instance(),
-                        [$value, new JsNumber((float) $counter)],
-                    );
+                    try {
+                        $mapped = $mapper->call(
+                            JsUndefined::instance(),
+                            [$value, new JsNumber((float) $counter)],
+                        );
+                    } catch (\Throwable $e) {
+                        self::closeIterator($itObj);
+                        throw $e;
+                    }
                     $counter++;
 
-                    // GetIteratorFlattenable(mapped): strings are not flattened.
-                    // If mapped is an object with Symbol.iterator, use that.
-                    // If mapped is an object with next, use it as iterator-like.
-                    // If mapped is not an object, throw TypeError.
+                    // GetIteratorFlattenable: strings are not flattenable.
                     if ($mapped instanceof JsString) {
                         throw new TypeError(
-                            'Iterator.prototype.flatMap mapper returned a string (not flattenable)',
+                            'Iterator.prototype.flatMap mapper returned a string',
                         );
                     }
                     if (!$mapped instanceof JsObject) {
                         throw new TypeError(
-                            'Iterator.prototype.flatMap mapper must return an object or iterable',
+                            'Iterator.prototype.flatMap mapper must return an object',
                         );
                     }
 
-                    // Try Symbol.iterator first (iterable protocol).
+                    // Check for Symbol.iterator (iterable protocol) first.
                     $iterSym = SymbolConstructor::iterator();
                     $iterMethod = $mapped->getBySymbol($iterSym);
                     if ($iterMethod instanceof JsFunction) {
                         $innerObj = $iterMethod->call($mapped, []);
                         if (!$innerObj instanceof JsObject) {
-                            throw new TypeError('Result of the Symbol.iterator method is not an object');
+                            throw new TypeError(
+                                'Result of the Symbol.iterator method is not an object',
+                            );
                         }
                         $innerIterator = $innerObj;
                     } else {
-                        // Fallback: treat as iterator-like (has next method).
                         $innerIterator = $mapped;
                     }
 
@@ -557,24 +541,55 @@ class IteratorConstructor
     }
 
     // -------------------------------------------------------------------------
-    // Eager methods (consume the iterator and return a value)
+    // Eager methods: per spec order is:
+    // 1. Let O be the this value. If not Object, throw TypeError.
+    // 2. If IsCallable(fn) is false, throw TypeError (close O first).
+    // 3. Let iterated be ? GetIteratorDirect(O).
+    //
+    // When callback throws during iteration, close the underlying iterator.
     // -------------------------------------------------------------------------
+
+    /**
+     * Validate args for eager methods. Per spec:
+     * 1. Check O is object.
+     * 2. Check callback is callable; if not, close O and throw.
+     * 3. GetIteratorDirect(O).
+     *
+     * @return array{JsObject, JsFunction, JsFunction} [itObj, nextMethod, callback]
+     */
+    private static function validateEager(
+        JsValue $this_,
+        string $methodName,
+        JsValue $fn,
+        bool $requireCallable = true,
+    ): array {
+        if (!$this_ instanceof JsObject) {
+            throw new TypeError("Iterator.prototype.{$methodName} called on non-object");
+        }
+        if ($requireCallable && !$fn instanceof JsFunction) {
+            // Per spec: close the iterator before throwing.
+            self::closeIterator($this_);
+            throw new TypeError("Iterator.prototype.{$methodName} callback is not a function");
+        }
+        [$itObj, $nextMethod] = self::getIteratorDirect($this_);
+        if (!$nextMethod instanceof JsFunction) {
+            throw new TypeError("Iterator next is not a function");
+        }
+        return [$itObj, $nextMethod, $fn instanceof JsFunction ? $fn : null];
+    }
 
     private static function reduceMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'reduce');
             $reducer = $args[0] ?? JsUndefined::instance();
-            if (!$reducer instanceof JsFunction) {
-                throw new TypeError('Iterator.prototype.reduce callback is not a function');
-            }
+            [$itObj, $nextMethod] = self::validateEager($this_, 'reduce', $reducer);
+            /** @var JsFunction $reducer */
             $hasInitial = count($args) >= 2;
             $accumulator = $hasInitial ? $args[1] : null;
             $done = false;
             $counter = 0;
 
             if (!$hasInitial) {
-                // Use the first element as the initial value.
                 [$first, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
                 if ($isDone) {
                     throw new TypeError('Reduce of empty iterator with no initial value');
@@ -588,10 +603,15 @@ class IteratorConstructor
                 if ($isDone) {
                     break;
                 }
-                $accumulator = $reducer->call(
-                    JsUndefined::instance(),
-                    [$accumulator, $value, new JsNumber((float) $counter)],
-                );
+                try {
+                    $accumulator = $reducer->call(
+                        JsUndefined::instance(),
+                        [$accumulator, $value, new JsNumber((float) $counter)],
+                    );
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
             }
 
@@ -602,7 +622,13 @@ class IteratorConstructor
     private static function toArrayMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'toArray');
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.toArray called on non-object');
+            }
+            [$itObj, $nextMethod] = self::getIteratorDirect($this_);
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('Iterator next is not a function');
+            }
             $done = false;
             $items = [];
 
@@ -621,11 +647,9 @@ class IteratorConstructor
     private static function forEachMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'forEach');
             $fn = $args[0] ?? JsUndefined::instance();
-            if (!$fn instanceof JsFunction) {
-                throw new TypeError('Iterator.prototype.forEach callback is not a function');
-            }
+            [$itObj, $nextMethod] = self::validateEager($this_, 'forEach', $fn);
+            /** @var JsFunction $fn */
             $done = false;
             $counter = 0;
 
@@ -634,7 +658,12 @@ class IteratorConstructor
                 if ($isDone) {
                     break;
                 }
-                $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                try {
+                    $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
             }
 
@@ -645,11 +674,9 @@ class IteratorConstructor
     private static function someMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'some');
             $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('Iterator.prototype.some callback is not a function');
-            }
+            [$itObj, $nextMethod] = self::validateEager($this_, 'some', $predicate);
+            /** @var JsFunction $predicate */
             $done = false;
             $counter = 0;
 
@@ -658,13 +685,17 @@ class IteratorConstructor
                 if ($isDone) {
                     return new JsBoolean(false);
                 }
-                $result = $predicate->call(
-                    JsUndefined::instance(),
-                    [$value, new JsNumber((float) $counter)],
-                );
+                try {
+                    $result = $predicate->call(
+                        JsUndefined::instance(),
+                        [$value, new JsNumber((float) $counter)],
+                    );
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
                 if (TypeConversion::toBoolean($result)) {
-                    // Close the underlying iterator.
                     self::closeIterator($itObj);
                     return new JsBoolean(true);
                 }
@@ -675,11 +706,9 @@ class IteratorConstructor
     private static function everyMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'every');
             $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('Iterator.prototype.every callback is not a function');
-            }
+            [$itObj, $nextMethod] = self::validateEager($this_, 'every', $predicate);
+            /** @var JsFunction $predicate */
             $done = false;
             $counter = 0;
 
@@ -688,13 +717,17 @@ class IteratorConstructor
                 if ($isDone) {
                     return new JsBoolean(true);
                 }
-                $result = $predicate->call(
-                    JsUndefined::instance(),
-                    [$value, new JsNumber((float) $counter)],
-                );
+                try {
+                    $result = $predicate->call(
+                        JsUndefined::instance(),
+                        [$value, new JsNumber((float) $counter)],
+                    );
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
                 if (!TypeConversion::toBoolean($result)) {
-                    // Close the underlying iterator.
                     self::closeIterator($itObj);
                     return new JsBoolean(false);
                 }
@@ -705,11 +738,9 @@ class IteratorConstructor
     private static function findMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            [$itObj, $nextMethod] = self::validateThis($this_, 'find');
             $predicate = $args[0] ?? JsUndefined::instance();
-            if (!$predicate instanceof JsFunction) {
-                throw new TypeError('Iterator.prototype.find callback is not a function');
-            }
+            [$itObj, $nextMethod] = self::validateEager($this_, 'find', $predicate);
+            /** @var JsFunction $predicate */
             $done = false;
             $counter = 0;
 
@@ -718,13 +749,17 @@ class IteratorConstructor
                 if ($isDone) {
                     return JsUndefined::instance();
                 }
-                $result = $predicate->call(
-                    JsUndefined::instance(),
-                    [$value, new JsNumber((float) $counter)],
-                );
+                try {
+                    $result = $predicate->call(
+                        JsUndefined::instance(),
+                        [$value, new JsNumber((float) $counter)],
+                    );
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj);
+                    throw $e;
+                }
                 $counter++;
                 if (TypeConversion::toBoolean($result)) {
-                    // Close the underlying iterator.
                     self::closeIterator($itObj);
                     return $value;
                 }
@@ -733,40 +768,28 @@ class IteratorConstructor
     }
 
     // -------------------------------------------------------------------------
-    // Iterator.from static method
+    // Iterator.from
     // -------------------------------------------------------------------------
 
-    /**
-     * Iterator.from(obj):
-     * - If obj is already an Iterator (instanceof Iterator), return it.
-     * - If obj is iterable (has Symbol.iterator), get iterator, if it's already an Iterator return it,
-     *   otherwise wrap it.
-     * - If obj is iterator-like (has next), wrap it.
-     * - Otherwise throw TypeError.
-     */
     private static function fromMethod(JsObject $iteratorPrototype): \Closure
     {
         return function (JsValue $this_, array $args) use ($iteratorPrototype): JsValue {
             $obj = $args[0] ?? JsUndefined::instance();
 
-            // Step 1: If Type(O) is not Object, throw a TypeError.
-            // Per spec: "Let O be ? GetIteratorDirect(obj)" but that includes
-            // checking for primitive iterables by wrapping via ToObject.
-            // Actually the spec says:
-            //   1. If O is a String, let O = ? ToObject(O).
-            // Let's handle strings and other primitives.
+            // Per spec: If O is a String, set O to ! ToObject(O).
+            // Other primitives are NOT auto-boxed; they throw TypeError.
             if ($obj instanceof JsString) {
                 $obj = TypeConversion::toObject($obj);
             } elseif (!$obj instanceof JsObject) {
-                throw new TypeError('Iterator.from requires an object or iterable');
+                throw new TypeError('Iterator.from requires an object argument');
             }
 
-            // Check if obj has Symbol.iterator (iterable protocol).
+            // GetIteratorFlattenable(O, iterate-strings).
+            // Check for Symbol.iterator (iterable protocol).
             $iterSym = SymbolConstructor::iterator();
             $iterMethod = $obj->getBySymbol($iterSym);
 
             if ($iterMethod instanceof JsFunction) {
-                // Get the iterator.
                 $iterator = $iterMethod->call($obj, []);
                 if (!$iterator instanceof JsObject) {
                     throw new TypeError('Result of the Symbol.iterator method is not an object');
@@ -775,23 +798,15 @@ class IteratorConstructor
                 if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
                     return $iterator;
                 }
-                // Wrap it.
                 return self::createWrapForValidIterator($iterator);
             }
 
-            // Iterator-like: has a next method.
-            $nextMethod = $obj->get('next');
-            if ($nextMethod instanceof JsFunction) {
-                return self::createWrapForValidIterator($obj);
-            }
-
-            throw new TypeError('Iterator.from requires an iterable or iterator-like object');
+            // Iterator-like: wrap it regardless of whether it has a next method.
+            // The wrapper's next() will throw if next is not callable.
+            return self::createWrapForValidIterator($obj);
         };
     }
 
-    /**
-     * Check if an object inherits from %IteratorPrototype% (Iterator.prototype).
-     */
     private static function isIteratorInstance(JsObject $obj, JsObject $iteratorPrototype): bool
     {
         $proto = $obj->getPrototype();
@@ -804,16 +819,9 @@ class IteratorConstructor
         return false;
     }
 
-    /**
-     * Create a WrapForValidIterator object.
-     * Its [[Prototype]] is %WrapForValidIteratorPrototype%.
-     * It delegates next() and return() to the underlying iterator.
-     */
     private static function createWrapForValidIterator(JsObject $iterator): JsObject
     {
         $wrapper = new JsObject(self::$wrapForValidIteratorPrototype);
-
-        // Get the next method once, per spec.
         $nextMethod = $iterator->get('next');
 
         $nextFn = JsFunction::fromCallable('next', function (
@@ -843,27 +851,12 @@ class IteratorConstructor
             if ($returnMethod instanceof JsFunction) {
                 return $returnMethod->call($iterator, []);
             }
-            $result = new JsObject();
-            $result->set('value', JsUndefined::instance());
-            $result->set('done', new JsBoolean(true));
-            return $result;
+            return self::iterResult(JsUndefined::instance(), true);
         }, 0);
 
         $wrapper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
         $wrapper->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
 
         return $wrapper;
-    }
-
-    /**
-     * Close an iterator by calling its return() method if it exists.
-     * Used by eager methods (some, every, find) when short-circuiting.
-     */
-    private static function closeIterator(JsObject $iterator): void
-    {
-        $returnMethod = $iterator->get('return');
-        if ($returnMethod instanceof JsFunction) {
-            $returnMethod->call($iterator, []);
-        }
     }
 }

@@ -49,6 +49,8 @@ class SymbolConstructor
     private static ?JsSymbol $unscopables = null;
     private static ?JsSymbol $matchAll = null;
     private static ?JsSymbol $asyncIterator = null;
+    private static ?JsSymbol $dispose = null;
+    private static ?JsSymbol $asyncDispose = null;
 
     public static function iterator(): JsSymbol
     {
@@ -113,6 +115,16 @@ class SymbolConstructor
     public static function asyncIterator(): JsSymbol
     {
         return self::$asyncIterator ??= new JsSymbol('Symbol.asyncIterator');
+    }
+
+    public static function dispose(): JsSymbol
+    {
+        return self::$dispose ??= new JsSymbol('Symbol.dispose');
+    }
+
+    public static function asyncDispose(): JsSymbol
+    {
+        return self::$asyncDispose ??= new JsSymbol('Symbol.asyncDispose');
     }
 
     /**
@@ -208,6 +220,8 @@ class SymbolConstructor
         $wks('toPrimitive', self::toPrimitive());
         $wks('toStringTag', self::toStringTag());
         $wks('unscopables', self::unscopables());
+        $wks('dispose', self::dispose());
+        $wks('asyncDispose', self::asyncDispose());
 
         // Symbol.prototype
         $proto = new JsObject();

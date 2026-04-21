@@ -126,6 +126,9 @@ class Interpreter
     /** Whether this interpreter is executing indirect eval code. */
     private bool $isEvalContext = false;
 
+    /** @var list<\PhpJs\Value\JsFunction|null> Stack of currently executing functions for Annex B caller. */
+    private array $callerStack = [];
+
     /** Monotonically increasing counter for unique private name brands. */
     private static int $nextPrivateBrandId = 0;
 
@@ -3118,6 +3121,17 @@ class Interpreter
     ): JsValue {
         $this->callStack->push($fn->getName(), 0);
 
+        // Annex B Function.caller: track caller for non-strict functions.
+        $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
+        $this->callerStack[] = $fn;
+        $setCallerProp = !$fn->isStrict() && !$fn->isArrow() && !$fn->isNative();
+        $savedCaller = null;
+        if ($setCallerProp) {
+            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
+            $callerVal = $callerFn instanceof JsFunction ? $callerFn : JsNull::instance();
+            $fn->defineOwnProperty("caller", PropertyDescriptor::data($callerVal, true, false, true));
+        }
+
         // Save and potentially update strict mode for this function body.
         $previousStrictMode = $this->strictMode;
 
@@ -3311,6 +3325,14 @@ class Interpreter
             // Arrow with expression body
             return $this->evaluate($body, $fnEnv);
         } finally {
+            array_pop($this->callerStack);
+            if ($setCallerProp) {
+                if ($savedCaller !== null) {
+                    $fn->defineOwnProperty("caller", $savedCaller);
+                } else {
+                    $fn->forceDelete("caller");
+                }
+            }
             $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
         }
@@ -6234,72 +6256,6 @@ class Interpreter
     /**
      * Await a JS value: if it is a Promise, extract the resolved value.
      * If it is a thenable, resolve it. Otherwise return as-is.
-     */
-    private function awaitValue(JsValue $value): JsValue
-    {
-        if ($value instanceof \PhpJs\Value\JsPromise) {
-            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                $this->throwJsValue($value->getResolvedValue());
-            }
-            return $value->getResolvedValue();
-        }
-        if ($value instanceof JsObject) {
-            $thenMethod = $value->get('then');
-            if ($thenMethod instanceof JsFunction) {
-                $resolved = JsUndefined::instance();
-                $rejected = null;
-                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
-                    $resolved = $args[0] ?? JsUndefined::instance();
-                    return JsUndefined::instance();
-                };
-                $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
-                    $rejected = $args[0] ?? JsUndefined::instance();
-                    return JsUndefined::instance();
-                };
-                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
-                try {
-                    $thenMethod->call($value, [$resolveFn, $rejectFn]);
-                } catch (\Throwable $e) {
-                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
-                        $this->throwJsValue($e->jsValue);
-                    }
-                    throw $e;
-                }
-                if ($rejected !== null) {
-                    $this->throwJsValue($rejected);
-                }
-                return $resolved;
-            }
-        }
-        return $value;
-    }
-
-    /**
-     * Get an async iterator using Symbol.asyncIterator, falling back to Symbol.iterator.
-     */
-    private function getAsyncIterator(JsValue $iterable): ?JsObject
-    {
-        if (!$iterable instanceof JsObject) {
-            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-                return null;
-            }
-            $iterable = TypeConversion::toObject($iterable);
-        }
-        $asyncIterSym = \PhpJs\BuiltIn\SymbolConstructor::asyncIterator();
-        $asyncIterMethod = $iterable->getBySymbol($asyncIterSym);
-        if ($asyncIterMethod instanceof JsFunction) {
-            $iterator = $this->callFunction($asyncIterMethod, $iterable, []);
-            if (!$iterator instanceof JsObject) {
-                throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
-            }
-            return $iterator;
-        }
-        return $this->getIterator($iterable);
-    }
-
-    /**
-     * Await a JS value: extract resolved value from Promise, resolve thenables, or return as-is.
      */
     private function awaitValue(JsValue $value): JsValue
     {
@@ -9314,6 +9270,7 @@ class Interpreter
             $obj,
             $isGlobal,
             $isSticky,
+            $hasIndices,
             $hasRepeatedGroupFixes,
             $repeatedGroupAnalysis,
             $innerPcreFlags,

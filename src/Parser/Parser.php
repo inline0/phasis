@@ -77,6 +77,7 @@ class Parser
     private bool $noIn = false;
     private bool $inGenerator = false;
     private bool $inAsync = false;
+    private bool $topLevel = true;
     private string $source = '';
 
     /** Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks. */
@@ -344,12 +345,15 @@ class Parser
         // parameter expressions use the function's own context.
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
         $this->inGenerator = $generator;
         $this->inAsync = false;
+        $this->topLevel = false;
         $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $this->topLevel = $prevTopLevel;
 
         return new FunctionDeclaration(
             $location,
@@ -1158,8 +1162,8 @@ class Parser
             return new UnaryExpression($token->location, $token->value, $argument, true);
         }
 
-        // await (only inside async functions)
-        if ($token->type === TokenType::Await && $this->inAsync) {
+        // await (inside async functions or at the top level per top-level-await)
+        if ($token->type === TokenType::Await && ($this->inAsync || $this->topLevel)) {
             $this->advance();
             $argument = $this->parseUnaryExpression();
             return new AwaitExpression($token->location, $argument);
@@ -1885,12 +1889,15 @@ class Parser
         // parameter expressions use the function's own context.
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
         $this->inGenerator = $generator;
         $this->inAsync = false;
+        $this->topLevel = false;
         $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $this->topLevel = $prevTopLevel;
 
         return new FunctionExpression(
             $location,

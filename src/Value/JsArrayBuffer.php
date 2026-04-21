@@ -32,7 +32,10 @@ class JsArrayBuffer extends JsObject
     private int $byteLength;
     private bool $detached = false;
 
-    public function __construct(int $byteLength, ?JsObject $prototype = null)
+    /** Maximum byte length for resizable buffers. null means fixed-length. */
+    private ?int $maxByteLength = null;
+
+    public function __construct(int $byteLength, ?JsObject $prototype = null, ?int $maxByteLength = null)
     {
         parent::__construct($prototype ?? self::$defaultPrototype);
 
@@ -40,8 +43,21 @@ class JsArrayBuffer extends JsObject
             throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
         }
 
+        if ($maxByteLength !== null) {
+            if ($maxByteLength < 0 || $maxByteLength > self::maxAllocatableByteLength()) {
+                throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+            }
+            if ($byteLength > $maxByteLength) {
+                throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+            }
+            $this->maxByteLength = $maxByteLength;
+            // Allocate maxByteLength capacity but only expose byteLength.
+            $this->data = $maxByteLength === 0 ? '' : str_repeat("\0", $maxByteLength);
+        } else {
+            $this->data = $byteLength === 0 ? '' : str_repeat("\0", $byteLength);
+        }
+
         $this->byteLength = $byteLength;
-        $this->data = $byteLength === 0 ? '' : str_repeat("\0", $byteLength);
     }
 
     public function getByteLength(): int
@@ -64,11 +80,140 @@ class JsArrayBuffer extends JsObject
         return $this->detached;
     }
 
+    /** Whether this is a resizable ArrayBuffer. */
+    public function isResizable(): bool
+    {
+        return $this->maxByteLength !== null;
+    }
+
+    /** Return the max byte length, or the current byteLength for fixed buffers. */
+    public function getMaxByteLength(): int
+    {
+        return $this->maxByteLength ?? $this->byteLength;
+    }
+
+    /**
+     * Resize a resizable ArrayBuffer.
+     *
+     * Per spec: throws TypeError if not resizable, RangeError if newByteLength > maxByteLength.
+     */
+    public function resize(int $newByteLength): void
+    {
+        if ($this->detached) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot resize a detached ArrayBuffer'
+            );
+        }
+        if ($this->maxByteLength === null) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'ArrayBuffer is not resizable'
+            );
+        }
+        if ($newByteLength < 0 || $newByteLength > $this->maxByteLength) {
+            throw new \PhpJs\Exceptions\RangeError(
+                'Invalid array buffer length'
+            );
+        }
+        // Zero-fill new bytes if growing, truncate tracking if shrinking.
+        // The backing store is always maxByteLength; we only change the exposed length.
+        // Zero out bytes beyond newByteLength when shrinking so re-grow gives zeros.
+        if ($newByteLength < $this->byteLength) {
+            for ($i = $newByteLength; $i < $this->byteLength; $i++) {
+                $this->data[$i] = "\0";
+            }
+        }
+        $this->byteLength = $newByteLength;
+    }
+
+    /**
+     * ArrayBuffer.prototype.transfer(newLength?).
+     *
+     * Creates a new ArrayBuffer with the data from this buffer, detaches this buffer.
+     * If no newLength, uses the current byteLength.
+     * The new buffer is always resizable if this buffer was resizable (with same maxByteLength),
+     * unless newLength > maxByteLength, in which case the new buffer is fixed.
+     */
+    public function transfer(?int $newLength = null): self
+    {
+        if ($this->detached) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot transfer a detached ArrayBuffer'
+            );
+        }
+
+        $newLen = $newLength ?? $this->byteLength;
+        if ($newLen < 0) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+        }
+
+        // Determine if the new buffer should be resizable.
+        $newMax = null;
+        if ($this->maxByteLength !== null) {
+            if ($newLen <= $this->maxByteLength) {
+                $newMax = $this->maxByteLength;
+            }
+            // If newLen > maxByteLength, the new buffer is fixed-length.
+        }
+
+        $newBuffer = new self($newLen, $this->getPrototype(), $newMax);
+
+        // Copy data.
+        $copyLen = min($newLen, $this->byteLength);
+        if ($copyLen > 0) {
+            $newData = $newBuffer->data;
+            for ($i = 0; $i < $copyLen; $i++) {
+                $newData[$i] = $this->data[$i];
+            }
+            $newBuffer->data = $newData;
+        }
+
+        $this->detach();
+
+        return $newBuffer;
+    }
+
+    /**
+     * ArrayBuffer.prototype.transferToFixedLength(newLength?).
+     *
+     * Like transfer, but the new buffer is always fixed-length.
+     */
+    public function transferToFixedLength(?int $newLength = null): self
+    {
+        if ($this->detached) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot transfer a detached ArrayBuffer'
+            );
+        }
+
+        $newLen = $newLength ?? $this->byteLength;
+        if ($newLen < 0) {
+            throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
+        }
+
+        // Always fixed-length (no maxByteLength).
+        $newBuffer = new self($newLen, $this->getPrototype(), null);
+
+        // Copy data.
+        $copyLen = min($newLen, $this->byteLength);
+        if ($copyLen > 0) {
+            $newData = $newBuffer->data;
+            for ($i = 0; $i < $copyLen; $i++) {
+                $newData[$i] = $this->data[$i];
+            }
+            $newBuffer->data = $newData;
+        }
+
+        $this->detach();
+
+        return $newBuffer;
+    }
+
     public function detach(): void
     {
         $this->detached = true;
         $this->data = '';
         $this->byteLength = 0;
+        $this->maxByteLength = null;
     }
 
     /** Read a single byte at the given offset. */
@@ -140,6 +285,15 @@ class JsArrayBuffer extends JsObject
     {
         if ($name === 'byteLength') {
             return new JsNumber((float) $this->byteLength);
+        }
+        if ($name === 'maxByteLength') {
+            return new JsNumber((float) $this->getMaxByteLength());
+        }
+        if ($name === 'resizable') {
+            return new JsBoolean($this->isResizable());
+        }
+        if ($name === 'detached') {
+            return new JsBoolean($this->detached);
         }
 
         return parent::get($name);

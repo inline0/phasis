@@ -15,7 +15,10 @@ class JsDataView extends JsObject
 {
     private JsArrayBuffer $buffer;
     private int $byteOffset;
-    private int $byteLength;
+    private ?int $byteLength;
+
+    /** Whether this DataView auto-tracks the buffer's byte length. */
+    private bool $autoLength;
 
     public function __construct(
         JsArrayBuffer $buffer,
@@ -26,7 +29,15 @@ class JsDataView extends JsObject
         parent::__construct($prototype);
         $this->buffer = $buffer;
         $this->byteOffset = $byteOffset;
-        $this->byteLength = $byteLength ?? ($buffer->getByteLength() - $byteOffset);
+        // When constructed on a resizable buffer without explicit length,
+        // the DataView auto-tracks the buffer's current byte length.
+        if ($byteLength === null && $buffer->isResizable()) {
+            $this->byteLength = null;
+            $this->autoLength = true;
+        } else {
+            $this->byteLength = $byteLength ?? ($buffer->getByteLength() - $byteOffset);
+            $this->autoLength = false;
+        }
     }
 
     public function getBuffer(): JsArrayBuffer
@@ -41,7 +52,20 @@ class JsDataView extends JsObject
 
     public function getByteLength(): int
     {
-        return $this->byteLength;
+        if ($this->autoLength) {
+            $bufLen = $this->buffer->getByteLength();
+            if ($this->byteOffset > $bufLen) {
+                return 0;
+            }
+            return $bufLen - $this->byteOffset;
+        }
+        return $this->byteLength ?? 0;
+    }
+
+    /** Whether this DataView auto-tracks the buffer's byte length. */
+    public function isAutoLength(): bool
+    {
+        return $this->autoLength;
     }
 
     public function get(string $name): JsValue
@@ -309,7 +333,8 @@ class JsDataView extends JsObject
 
     private function checkBounds(int $offset, int $size): void
     {
-        if ($offset < 0 || $offset + $size > $this->byteLength) {
+        $len = $this->getByteLength();
+        if ($offset < 0 || $offset + $size > $len) {
             throw new \PhpJs\Exceptions\RangeError(
                 'Offset is outside the bounds of the DataView'
             );
