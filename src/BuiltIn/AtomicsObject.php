@@ -403,6 +403,7 @@ class AtomicsObject
             'and' => $a & $b,
             'or' => $a | $b,
             'xor' => $a ^ $b,
+            default => $a,
         };
     }
 
@@ -417,6 +418,7 @@ class AtomicsObject
             'and' => self::bigIntBitwise('&', $a, $b),
             'or' => self::bigIntBitwise('|', $a, $b),
             'xor' => self::bigIntBitwise('^', $a, $b),
+            default => $a,
         };
     }
 
@@ -459,6 +461,7 @@ class AtomicsObject
                 '&' => $aBit & $bBit,
                 '|' => $aBit | $bBit,
                 '^' => $aBit ^ $bBit,
+                default => $aBit,
             };
         }
 
@@ -510,7 +513,7 @@ class AtomicsObject
                 $out = ($carry % 10) . $out;
                 $carry = intdiv($carry, 10);
             }
-            $dec = $out !== '' ? $out : '0';
+            $dec = $out ?: '0';
         }
         return $dec;
     }

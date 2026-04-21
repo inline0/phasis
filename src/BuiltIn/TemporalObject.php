@@ -1343,7 +1343,9 @@ class TemporalObject
         $ctor->setConstructable();
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
-            JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainDateTime($args[0] ?? JsUndefined::instance()), 1),
+            JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+                return self::toPlainDateTime($args[0] ?? JsUndefined::instance());
+            }, 1),
             true,
             false,
             true,
@@ -1523,7 +1525,9 @@ class TemporalObject
         $ctor->setConstructable();
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
-            JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainYearMonth($args[0] ?? JsUndefined::instance()), 1),
+            JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+                return self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
+            }, 1),
             true,
             false,
             true,
@@ -1656,7 +1660,9 @@ class TemporalObject
         $ctor->setConstructable();
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
-            JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainMonthDay($args[0] ?? JsUndefined::instance()), 1),
+            JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+                return self::toPlainMonthDay($args[0] ?? JsUndefined::instance());
+            }, 1),
             true,
             false,
             true,
@@ -1752,8 +1758,14 @@ class TemporalObject
             $parts = self::epochNsToISOParts($ns, $tz);
             return new JsBoolean(self::isoIsLeapYear($parts['year']));
         });
-        self::defineGetter($proto, 'era', fn (JsValue $this_): JsValue => (self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime') ? JsUndefined::instance() : JsUndefined::instance()) ?: JsUndefined::instance());
-        self::defineGetter($proto, 'eraYear', fn (JsValue $this_): JsValue => (self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime') ? JsUndefined::instance() : JsUndefined::instance()) ?: JsUndefined::instance());
+        self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            return JsUndefined::instance();
+        });
+        self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            return JsUndefined::instance();
+        });
 
         $d = self::protoHelper($proto);
 
@@ -2093,7 +2105,16 @@ class TemporalObject
 
     private static function requirePlainDate(JsValue $this_): void
     {
-        if (!$this_ instanceof JsObject || !$this_->has('[[ISOYear]]') || $this_->has('[[IsPlainTime]]') || $this_->has('[[IsPlainDateTime]]') || $this_->has('[[IsPlainYearMonth]]') || $this_->has('[[IsPlainMonthDay]]') || $this_->has('[[IsZonedDateTime]]') || $this_->has('[[IsDuration]]') || $this_->has('[[EpochNanoseconds]]')) {
+        $isPlainDate = $this_ instanceof JsObject
+            && $this_->has('[[ISOYear]]')
+            && !$this_->has('[[IsPlainTime]]')
+            && !$this_->has('[[IsPlainDateTime]]')
+            && !$this_->has('[[IsPlainYearMonth]]')
+            && !$this_->has('[[IsPlainMonthDay]]')
+            && !$this_->has('[[IsZonedDateTime]]')
+            && !$this_->has('[[IsDuration]]')
+            && !$this_->has('[[EpochNanoseconds]]');
+        if (!$isPlainDate) {
             throw new TypeError('this is not a Temporal.PlainDate');
         }
     }

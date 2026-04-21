@@ -47,12 +47,5 @@ return [
         'annexB/built-ins/unescape',
     ],
     'test262_skipped_features' => [
-        // Module features not yet implemented
-        'arbitrary-module-namespace-names',
-        'json-modules',
-        'source-phase-imports',
-        'import-defer',
-        'source-phase-imports-module-source',
-        // Temporal is now implemented (TemporalObject.php).
     ],
 ];
