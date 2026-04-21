@@ -9971,68 +9971,9 @@ class Interpreter
             }
             return JsNull::instance();
         };
-        $obj->defineOwnProperty(
-            'exec',
-            PropertyDescriptor::data(JsFunction::fromCallable('exec', $execFn, 1), true, false, true),
-        );
-
-        // test(): uses lastIndex for global/sticky regexes per spec 22.2.5.3.
-        $testFn = function (JsValue $this_, array $args) use ($pcrePattern, $obj, $isGlobal, $isSticky): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0])
-                : TypeConversion::toString(JsUndefined::instance());
-            $strLen = mb_strlen($str, 'UTF-8');
-
-            // Per spec: always read lastIndex for observable side effects.
-            $lastIndexVal = $obj->get('lastIndex');
-            $lastIndex = TypeConversion::toLength($lastIndexVal);
-
-            if (!$isGlobal && !$isSticky) {
-                $lastIndex = 0;
-            }
-
-            if ($lastIndex > $strLen) {
-                if ($isGlobal || $isSticky) {
-                    $obj->set('lastIndex', new JsNumber(0.0), true);
-                }
-                return new JsBoolean(false);
-            }
-
-            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
-
-            $result = @preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE, $byteOffset);
-            if ($result === 1) {
-                $matchBytePos = $matches[0][1];
-                if ($isSticky && $matchBytePos !== $byteOffset) {
-                    $obj->set('lastIndex', new JsNumber(0.0), true);
-                    return new JsBoolean(false);
-                }
-                if ($isGlobal || $isSticky) {
-                    $matchCharPos = mb_strlen(substr($str, 0, $matchBytePos), 'UTF-8');
-                    $matchCharLen = mb_strlen($matches[0][0], 'UTF-8');
-                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
-                }
-                return new JsBoolean(true);
-            }
-
-            if ($isGlobal || $isSticky) {
-                $obj->set('lastIndex', new JsNumber(0.0), true);
-            }
-            return new JsBoolean(false);
-        };
-        $obj->defineOwnProperty(
-            'test',
-            PropertyDescriptor::data(JsFunction::fromCallable('test', $testFn, 1), true, false, true),
-        );
-
-        // toString(): returns /pattern/flags per spec 22.2.5.14.
-        $displayPattern = $pattern === '' ? '(?:)' : $pattern;
-        $toStringFn = function () use ($displayPattern, $sortedFlags): JsValue {
-            return new JsString("/{$displayPattern}/{$sortedFlags}");
-        };
-        $obj->defineOwnProperty(
-            'toString',
-            PropertyDescriptor::data(JsFunction::fromCallable('toString', $toStringFn, 0), true, false, true),
-        );
+        // exec, test, toString are inherited from RegExp.prototype.
+        // Do NOT install own properties here; the prototype methods read
+        // [[PCREPattern]] and flags from the instance via 'this'.
 
         return $obj;
     }
