@@ -3176,7 +3176,16 @@ class TemporalObject
             return self::durationFromObject($item);
         }
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
-            throw new TypeError('Cannot convert undefined or null to a Temporal.Duration');
+            throw new TypeError('Cannot convert undefined or null to Duration');
+        }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to Duration');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to Duration');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to Duration');
         }
         // Try as string.
         $str = TypeConversion::toString($item);
