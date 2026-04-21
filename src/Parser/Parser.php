@@ -754,7 +754,14 @@ class Parser
         }
 
         // Member expression: @foo.bar.baz or @foo
-        $expr = $this->parseIdentifier();
+        // The initial identifier can be a keyword used as identifier (e.g. await, yield).
+        $token = $this->current();
+        if ($token->type === TokenType::Identifier || $token->type->isKeyword()) {
+            $this->advance();
+            $expr = new Identifier($token->location, $token->value);
+        } else {
+            throw new ParseError('Expected decorator expression', $token);
+        }
 
         while ($this->check(TokenType::Dot)) {
             $this->advance();
@@ -762,13 +769,14 @@ class Parser
                 $token = $this->advance();
                 $prop = new PrivateIdentifier($token->location, $token->value);
             } else {
-                $prop = $this->parseIdentifierName();
+                $prop = $this->parsePropertyName();
             }
             $expr = new MemberExpression($location, $expr, $prop, false);
         }
 
         // Optional call: @foo(args) or @foo.bar(args)
         if ($this->check(TokenType::LeftParen)) {
+            $this->advance(); // consume '('
             $args = $this->parseArguments();
             $expr = new CallExpression($location, $expr, $args);
         }

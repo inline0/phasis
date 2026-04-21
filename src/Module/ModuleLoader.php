@@ -119,6 +119,9 @@ class ModuleLoader
                     PropertyDescriptor::data(new JsString('Module'), false, false, false),
                 );
             }
+
+            // Module namespace objects are not extensible per spec.
+            $namespace->preventExtensions();
         } finally {
             unset($this->evaluating[$absolutePath]);
         }
@@ -239,10 +242,20 @@ class ModuleLoader
         if ($node->isDefault) {
             if ($node->declaration !== null) {
                 $value = $this->getDeclarationValue($node->declaration, $moduleEnv);
-                $namespace->defineOwnProperty(
-                    'default',
-                    PropertyDescriptor::data($value, true, true, false),
-                );
+                // Default exports use a snapshot value per spec (not a live binding),
+                // unless the declaration is a named function/class (which uses the name binding).
+                if ($node->declaration instanceof FunctionDeclaration && $node->declaration->id !== null) {
+                    $bindingName = $node->declaration->id->name;
+                    $this->installLiveBinding($namespace, 'default', $moduleEnv, $bindingName);
+                } elseif ($node->declaration instanceof ClassDeclaration && $node->declaration->id !== null) {
+                    $bindingName = $node->declaration->id->name;
+                    $this->installLiveBinding($namespace, 'default', $moduleEnv, $bindingName);
+                } else {
+                    $namespace->defineOwnProperty(
+                        'default',
+                        PropertyDescriptor::data($value, true, true, false),
+                    );
+                }
             }
             return;
         }
@@ -256,15 +269,12 @@ class ModuleLoader
                     PropertyDescriptor::data($reExportNs, true, true, false),
                 );
             } else {
-                // Re-export all named exports (except default).
+                // Re-export all named exports (except default) as live bindings.
                 foreach ($reExportNs->getOwnPropertyNames() as $name) {
                     if ($name === 'default') {
                         continue;
                     }
-                    $namespace->defineOwnProperty(
-                        $name,
-                        PropertyDescriptor::data($reExportNs->get($name), true, true, false),
-                    );
+                    $this->installIndirectBinding($namespace, $name, $reExportNs, $name);
                 }
             }
             return;
@@ -274,10 +284,7 @@ class ModuleLoader
         if ($node->source !== null && $node->specifiers !== []) {
             $reExportNs = $this->loadModule($node->source, $modulePath);
             foreach ($node->specifiers as $spec) {
-                $namespace->defineOwnProperty(
-                    $spec->exported,
-                    PropertyDescriptor::data($reExportNs->get($spec->local), true, true, false),
-                );
+                $this->installIndirectBinding($namespace, $spec->exported, $reExportNs, $spec->local);
             }
             return;
         }
@@ -285,13 +292,7 @@ class ModuleLoader
         // export { a, b as c }
         if ($node->specifiers !== []) {
             foreach ($node->specifiers as $spec) {
-                $value = $moduleEnv->has($spec->local)
-                    ? $moduleEnv->get($spec->local)
-                    : JsUndefined::instance();
-                $namespace->defineOwnProperty(
-                    $spec->exported,
-                    PropertyDescriptor::data($value, true, true, false),
-                );
+                $this->installLiveBinding($namespace, $spec->exported, $moduleEnv, $spec->local);
             }
             return;
         }
@@ -300,15 +301,67 @@ class ModuleLoader
         if ($node->declaration !== null) {
             $names = $this->getDeclarationNames($node->declaration);
             foreach ($names as $name) {
-                $value = $moduleEnv->has($name)
-                    ? $moduleEnv->get($name)
-                    : JsUndefined::instance();
-                $namespace->defineOwnProperty(
-                    $name,
-                    PropertyDescriptor::data($value, true, true, false),
-                );
+                $this->installLiveBinding($namespace, $name, $moduleEnv, $name);
             }
         }
+    }
+
+    /**
+     * Install a live binding on a namespace object that reads from the module environment.
+     * This allows mutations to the binding in the module to be reflected when accessed.
+     */
+    private function installLiveBinding(
+        JsObject $namespace,
+        string $exportName,
+        Environment $env,
+        string $bindingName,
+    ): void {
+        $getter = JsFunction::fromCallable(
+            'get ' . $exportName,
+            static function (JsValue $this_, array $args) use ($env, $bindingName): JsValue {
+                return $env->has($bindingName)
+                    ? $env->get($bindingName)
+                    : JsUndefined::instance();
+            },
+            0,
+        );
+        $namespace->defineOwnProperty(
+            $exportName,
+            PropertyDescriptor::accessor(
+                get: $getter,
+                set: null,
+                enumerable: true,
+                configurable: false,
+            ),
+        );
+    }
+
+    /**
+     * Install an indirect binding that reads from another namespace object.
+     * Used for re-exports (export { x } from 'other').
+     */
+    private function installIndirectBinding(
+        JsObject $namespace,
+        string $exportName,
+        JsObject $sourceNamespace,
+        string $sourceName,
+    ): void {
+        $getter = JsFunction::fromCallable(
+            'get ' . $exportName,
+            static function (JsValue $this_, array $args) use ($sourceNamespace, $sourceName): JsValue {
+                return $sourceNamespace->get($sourceName);
+            },
+            0,
+        );
+        $namespace->defineOwnProperty(
+            $exportName,
+            PropertyDescriptor::accessor(
+                get: $getter,
+                set: null,
+                enumerable: true,
+                configurable: false,
+            ),
+        );
     }
 
     /**

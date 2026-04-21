@@ -4943,7 +4943,9 @@ class Interpreter
     {
         if ($node->declaration !== null) {
             // For export default with expressions (not declarations), evaluate the expression.
-            if ($node->isDefault && !($node->declaration instanceof VariableDeclaration)
+            if (
+                $node->isDefault
+                && !($node->declaration instanceof VariableDeclaration)
                 && !($node->declaration instanceof FunctionDeclaration)
                 && !($node->declaration instanceof ClassDeclaration)
                 && !($node->declaration instanceof ExpressionStatement)
@@ -10673,19 +10675,187 @@ class Interpreter
      */
     private function transformVFlagPattern(string $pattern): string
     {
-        $pattern = preg_replace_callback(
-            '/\\\\q\\{([^}]*)\\}/',
-            static function (array $m): string {
-                $alternatives = explode('|', $m[1]);
-                if (count($alternatives) === 1 && $alternatives[0] === '') {
-                    return '(?:)';
+        $result = '';
+        $len = strlen($pattern);
+        $i = 0;
+
+        while ($i < $len) {
+            if ($pattern[$i] === '\\' && $i + 1 < $len) {
+                $result .= $pattern[$i] . $pattern[$i + 1];
+                $next = $pattern[$i + 1];
+                if (($next === 'p' || $next === 'P' || $next === 'q' || $next === 'u') && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $j = $i + 2;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $result .= $pattern[$j];
+                        $j++;
+                    }
+                    if ($j < $len) {
+                        $result .= '}';
+                        $j++;
+                    }
+                    $i = $j;
+                } else {
+                    $i += 2;
                 }
-                usort($alternatives, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
-                return '(?:' . implode('|', $alternatives) . ')';
+                continue;
+            }
+            if ($pattern[$i] === '[') {
+                $classResult = $this->parseVFlagCharClass($pattern, $i, $len);
+                $result .= $classResult['output'];
+                $i = $classResult['pos'];
+                continue;
+            }
+            $result .= $pattern[$i];
+            $i++;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Parse a v-flag character class starting at position $pos (on the opening [).
+     *
+     * @return array{output: string, pos: int}
+     */
+    private function parseVFlagCharClass(string $pattern, int $pos, int $len): array
+    {
+        $pos++;
+        $negated = false;
+        if ($pos < $len && $pattern[$pos] === '^') {
+            $negated = true;
+            $pos++;
+        }
+
+        $operands = [];
+        $operators = [];
+        $current = '';
+
+        while ($pos < $len && $pattern[$pos] !== ']') {
+            if ($pos + 1 < $len && $pattern[$pos] === '&' && $pattern[$pos + 1] === '&') {
+                $operands[] = $current;
+                $operators[] = '&&';
+                $current = '';
+                $pos += 2;
+                continue;
+            }
+            if ($pos + 1 < $len && $pattern[$pos] === '-' && $pattern[$pos + 1] === '-') {
+                $operands[] = $current;
+                $operators[] = '--';
+                $current = '';
+                $pos += 2;
+                continue;
+            }
+            if ($pattern[$pos] === '[') {
+                $inner = $this->parseVFlagCharClass($pattern, $pos, $len);
+                $innerOut = $inner['output'];
+                if (strlen($innerOut) >= 2 && $innerOut[0] === '[' && $innerOut[strlen($innerOut) - 1] === ']') {
+                    $current .= substr($innerOut, 1, -1);
+                } else {
+                    $current .= $innerOut;
+                }
+                $pos = $inner['pos'];
+                continue;
+            }
+            if ($pattern[$pos] === '\\' && $pos + 1 < $len) {
+                $esc = $pattern[$pos] . $pattern[$pos + 1];
+                $escNext = $pattern[$pos + 1];
+                if (($escNext === 'p' || $escNext === 'P') && $pos + 2 < $len && $pattern[$pos + 2] === '{') {
+                    $j = $pos + 3;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    $esc = substr($pattern, $pos, $j + 1 - $pos);
+                    $current .= $esc;
+                    $pos = $j + 1;
+                } elseif ($escNext === 'q' && $pos + 2 < $len && $pattern[$pos + 2] === '{') {
+                    $j = $pos + 3;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    $qContent = substr($pattern, $pos + 3, $j - ($pos + 3));
+                    $current .= '\\q{' . $qContent . '}';
+                    $pos = $j + 1;
+                } elseif ($escNext === 'u' && $pos + 2 < $len && $pattern[$pos + 2] === '{') {
+                    $j = $pos + 3;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    $esc = substr($pattern, $pos, $j + 1 - $pos);
+                    $current .= $esc;
+                    $pos = $j + 1;
+                } else {
+                    $current .= $esc;
+                    $pos += 2;
+                }
+                continue;
+            }
+            $current .= $pattern[$pos];
+            $pos++;
+        }
+
+        if ($pos < $len) {
+            $pos++;
+        }
+
+        $operands[] = $current;
+
+        // No set operators: emit simple character class.
+        if (empty($operators)) {
+            $classContent = $operands[0];
+            if (str_contains($classContent, '\\q{')) {
+                return $this->transformClassWithStringLiterals($classContent, $negated, $pos);
+            }
+            return ['output' => '[' . ($negated ? '^' : '') . $classContent . ']', 'pos' => $pos];
+        }
+
+        // Apply set operators left-to-right using lookahead patterns.
+        $base = $operands[0];
+        for ($oi = 0; $oi < count($operators); $oi++) {
+            $op = $operators[$oi];
+            $rhs = $operands[$oi + 1];
+            if ($op === '&&') {
+                $base = '(?=[' . $base . '])[' . $rhs . ']';
+            } elseif ($op === '--') {
+                $base = '(?=[' . $base . '])(?![' . $rhs . ']).';
+            }
+        }
+
+        if ($negated) {
+            $base = '(?!' . $base . ').';
+        }
+
+        return ['output' => '(?:' . $base . ')', 'pos' => $pos];
+    }
+
+    /**
+     * Transform a character class containing \q{...} string literals into an alternation.
+     *
+     * @return array{output: string, pos: int}
+     */
+    private function transformClassWithStringLiterals(string $classContent, bool $negated, int $pos): array
+    {
+        $stringAlts = [];
+        $remaining = preg_replace_callback(
+            '/\\\\q\\{([^}]*)\\}/',
+            function (array $m) use (&$stringAlts): string {
+                foreach (explode('|', $m[1]) as $alt) {
+                    if ($alt !== '') {
+                        $stringAlts[] = $alt;
+                    }
+                }
+                return '';
             },
-            $pattern,
+            $classContent,
         );
-        return $pattern;
+        usort($stringAlts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+        $parts = $stringAlts;
+        if ($remaining !== '') {
+            $parts[] = '[' . ($negated ? '^' : '') . $remaining . ']';
+        }
+        if (empty($parts)) {
+            return ['output' => '[^\\s\\S]', 'pos' => $pos];
+        }
+        return ['output' => '(?:' . implode('|', $parts) . ')', 'pos' => $pos];
     }
 
     /**
@@ -10807,8 +10977,8 @@ class Interpreter
                         if ($pattern[$i] === '\\' && $i + 1 < $len) {
                             // Validate escapes inside character classes too.
                             $next = $pattern[$i + 1];
-                            if (($next === 'p' || $next === 'P') && $i + 2 < $len && $pattern[$i + 2] === '{') {
-                                // \p{...} / \P{...}: skip to closing brace.
+                            if (($next === 'p' || $next === 'P' || $next === 'q') && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                                // \p{...} / \P{...} / \q{...}: skip to closing brace.
                                 $j = $i + 3;
                                 while ($j < $len && $pattern[$j] !== '}') {
                                     $j++;
@@ -10890,8 +11060,8 @@ class Interpreter
             } elseif ($next === 'c') {
                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
                 $i += 2; // skip \cX
-            } elseif ($next === 'p' || $next === 'P') {
-                // \p{...} and \P{...} Unicode property escapes: skip to closing }.
+            } elseif ($next === 'p' || $next === 'P' || $next === 'q') {
+                // \p{...}, \P{...}, \q{...}: skip to closing }.
                 if ($i + 2 < $len && $pattern[$i + 2] === '{') {
                     $j = $i + 3;
                     while ($j < $len && $pattern[$j] !== '}') {

@@ -270,6 +270,20 @@ class IntlObject
         throw new TypeError('Options must be an object');
     }
 
+    /**
+     * Validate the localeMatcher option. Per spec, must be "lookup" or "best fit".
+     */
+    private static function validateLocaleMatcher(JsObject $options): void
+    {
+        $lmVal = $options->get('localeMatcher');
+        if (!$lmVal instanceof JsUndefined) {
+            $lm = TypeConversion::toString($lmVal);
+            if ($lm !== 'lookup' && $lm !== 'best fit') {
+                throw new RangeError("Invalid localeMatcher: {$lm}");
+            }
+        }
+    }
+
     // ---------------------------------------------------------------
     // Intl.getCanonicalLocales
     // ---------------------------------------------------------------
@@ -362,9 +376,10 @@ class IntlObject
     private static function getSupportedCollations(): array
     {
         // Common collation types per CLDR/BCP 47.
+        // Per spec, 'standard' and 'search' are excluded from supportedValuesOf.
         return ['big5han', 'compat', 'dict', 'direct', 'ducet', 'emoji', 'eor',
-            'gb2312', 'phonebk', 'phonetic', 'pinyin', 'reformed', 'search',
-            'searchjl', 'standard', 'stroke', 'trad', 'unihan', 'zhuyin'];
+            'gb2312', 'phonebk', 'phonetic', 'pinyin', 'reformed',
+            'searchjl', 'stroke', 'trad', 'unihan', 'zhuyin'];
     }
 
     /** @return list<string> */
@@ -2613,7 +2628,7 @@ class IntlObject
             'numberingSystem' => 'nu',
         ];
         foreach ($extMap as $key => $uKey) {
-            if (isset($parsed[$key]) && $parsed[$key] !== null) {
+            if (isset($parsed[$key])) {
                 $val = $parsed[$key];
                 if (is_bool($val)) {
                     $extensions[] = $uKey;
