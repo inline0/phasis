@@ -3560,7 +3560,11 @@ class TemporalObject
             foreach ($tBag as $name => &$ref) {
                 $v = $item->get($name);
                 if (!($v instanceof JsUndefined)) {
-                    $ref = (int) TypeConversion::toNumber($v);
+                    $n = TypeConversion::toNumber($v);
+                    if (!is_finite($n)) {
+                        throw new RangeError("{$name} must be finite");
+                    }
+                    $ref = (int) $n;
                     $any = true;
                 }
             }
@@ -3623,6 +3627,10 @@ class TemporalObject
         $h = (int) $m[1];
         $min = (int) $m[2];
         $s = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 0;
+        // Handle leap second: clamp 60 to 59 per spec.
+        if ($s === 60) {
+            $s = 59;
+        }
         $frac = isset($m[4]) && $m[4] !== '' ? str_pad(substr($m[4], 0, 9), 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
