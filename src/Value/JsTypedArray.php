@@ -53,6 +53,7 @@ class JsTypedArray extends JsObject
         'Uint16Array' => [2, 'v', false, false],
         'Int32Array' => [4, 'l', false, false],
         'Uint32Array' => [4, 'V', false, false],
+        'Float16Array' => [2, 'H', false, false],
         'Float32Array' => [4, 'g', false, false],
         'Float64Array' => [8, 'e', false, false],
         'BigInt64Array' => [8, 'q', true, false],

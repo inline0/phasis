@@ -26,7 +26,7 @@ class JsWeakSet extends JsObject
 
     public function weakSetAdd(JsValue $value): void
     {
-        if (!$value instanceof JsObject) {
+        if (!$value instanceof JsObject && !$value instanceof JsSymbol) {
             throw new \PhpJs\Exceptions\TypeError('Invalid value used in weak set');
         }
         if (!$this->weakSetHas($value)) {

@@ -2440,6 +2440,7 @@ class Interpreter
             foreach ($params as $param) {
                 $this->checkStrictBindingNames($param);
             }
+            $this->checkDuplicateParams($params);
             // Validate body statements.
             if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
                 $body = $node->body->body;
@@ -9236,7 +9237,7 @@ class Interpreter
 
         // Transform ECMAScript-specific character class escapes for PCRE compatibility.
         // PCRE's \s does not include U+FEFF; ECMAScript's does.
-        $transformedPattern = $this->transformEsPatternForPcre($pattern);
+        $transformedPattern = $this->transformEsPatternForPcre($pattern, $flags);
 
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
@@ -9273,8 +9274,8 @@ class Interpreter
 
         // Transform function for building PCRE patterns from ES sub-patterns.
         $self = $this;
-        $transformFn = static function (string $esSubPattern) use ($self): string {
-            $transformed = $self->transformEsPatternForPcre($esSubPattern);
+        $transformFn = static function (string $esSubPattern) use ($self, $flags): string {
+            $transformed = $self->transformEsPatternForPcre($esSubPattern, $flags);
             return $self->escapeForPcreDelimiter($transformed);
         };
 
