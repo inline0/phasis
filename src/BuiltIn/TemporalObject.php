@@ -3570,14 +3570,40 @@ class TemporalObject
         if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
             return $item;
         }
+        if ($item instanceof JsObject && $item->has('[[IsPlainDate]]')) {
+            return self::createPlainDateTimeObject(
+                self::getSlotInt($item, '[[ISOYear]]'),
+                self::getSlotInt($item, '[[ISOMonth]]'),
+                self::getSlotInt($item, '[[ISODay]]'),
+                0, 0, 0, 0, 0, 0,
+                self::getSlotString($item, '[[Calendar]]'),
+            );
+        }
         if ($item instanceof JsObject) {
             // Property bag.
             $year = $item->get('year');
             $month = $item->get('month');
             $day = $item->get('day');
             // Per spec: object must have required temporal properties.
-            if ($year instanceof JsUndefined && $month instanceof JsUndefined && $day instanceof JsUndefined) {
-                // Check if it has any temporal-like property at all.
+            if ($year instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            if ($month instanceof JsUndefined) {
+                $monthCode = $item->get('monthCode');
+                if ($monthCode instanceof JsUndefined) {
+                    throw new TypeError('missing required property: month');
+                }
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
+                }
+                $month = new JsNumber((float) (int) $mcm[1]);
+            }
+            if ($day instanceof JsUndefined) {
+                throw new TypeError('missing required property: day');
+            }
+            // Now we know year, month, day are present.
+            if (false) { // Dead code after required-property checks above.
                 $hasAnything = false;
                 foreach (['hour', 'minute', 'second', 'monthCode', 'era', 'eraYear'] as $k) {
                     if (!($item->get($k) instanceof JsUndefined)) {
