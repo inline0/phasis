@@ -35,6 +35,9 @@ class JsArrayBuffer extends JsObject
     /** Maximum byte length for resizable buffers. null means fixed-length. */
     private ?int $maxByteLength = null;
 
+    /** Whether this buffer was created as resizable (preserved across detach). */
+    private bool $wasResizable = false;
+
     public function __construct(int $byteLength, ?JsObject $prototype = null, ?int $maxByteLength = null)
     {
         parent::__construct($prototype ?? self::$defaultPrototype);
@@ -51,6 +54,7 @@ class JsArrayBuffer extends JsObject
                 throw new \PhpJs\Exceptions\RangeError('Invalid array buffer length');
             }
             $this->maxByteLength = $maxByteLength;
+            $this->wasResizable = true;
             // Allocate maxByteLength capacity but only expose byteLength.
             $this->data = $maxByteLength === 0 ? '' : str_repeat("\0", $maxByteLength);
         } else {
@@ -80,9 +84,12 @@ class JsArrayBuffer extends JsObject
         return $this->detached;
     }
 
-    /** Whether this is a resizable ArrayBuffer. */
+    /** Whether this is a resizable ArrayBuffer (preserved across detach). */
     public function isResizable(): bool
     {
+        if ($this->detached) {
+            return $this->wasResizable;
+        }
         return $this->maxByteLength !== null;
     }
 
