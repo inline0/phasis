@@ -454,10 +454,12 @@ class SetConstructor
                 return new JsBoolean(false);
             }
             $isSuperset = true;
-            self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$isSuperset): void {
+            self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$isSuperset): bool {
                 if (!$this_->setHas($value)) {
                     $isSuperset = false;
+                    return false; // Stop iteration.
                 }
+                return true;
             });
             return new JsBoolean($isSuperset);
         }, 1);
@@ -481,10 +483,12 @@ class SetConstructor
                 }
             } else {
                 $found = false;
-                self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$found): void {
+                self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$found): bool {
                     if ($this_->setHas($value)) {
                         $found = true;
+                        return false; // Stop iteration.
                     }
+                    return true;
                 });
                 if ($found) {
                     return new JsBoolean(false);
@@ -595,7 +599,15 @@ class SetConstructor
             if ($value instanceof JsNumber && $value->value === 0.0) {
                 $value = new JsNumber(0.0);
             }
-            $callback($value);
+            $ret = $callback($value);
+            // If callback returns false, close iterator and stop.
+            if ($ret === false) {
+                $returnMethod = $keysIter->get('return');
+                if ($returnMethod instanceof JsFunction) {
+                    $returnMethod->call($keysIter, []);
+                }
+                break;
+            }
         }
     }
 }
