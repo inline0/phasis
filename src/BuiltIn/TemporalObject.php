@@ -4167,7 +4167,7 @@ class TemporalObject
         if (preg_match('/^\d{5,}/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
         }
-        $timePart = '(?:[Tt ]\d(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?(?:[+-]\d{2}(?::?\d{2})?)?)?';
+        $timePart = '(?:[Tt ]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?(?:[+-]\\d{2}(?::?\\d{2})?)?)?';
         $pattern = "/^([+-]?\\d{4,6})-?(\\d{2})(?:-?\\d{2})?{$timePart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainYearMonth string: {$str}");
