@@ -1339,15 +1339,22 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainDateTime must be called with new');
             }
-            $y = (int) TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
-            $m = (int) TypeConversion::toNumber($args[1] ?? JsUndefined::instance());
-            $dd = (int) TypeConversion::toNumber($args[2] ?? JsUndefined::instance());
-            $h = isset($args[3]) && !($args[3] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[3]) : 0;
-            $min = isset($args[4]) && !($args[4] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[4]) : 0;
-            $s = isset($args[5]) && !($args[5] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[5]) : 0;
-            $ms = isset($args[6]) && !($args[6] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[6]) : 0;
-            $us = isset($args[7]) && !($args[7] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[7]) : 0;
-            $ns = isset($args[8]) && !($args[8] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[8]) : 0;
+            $toInt = static function (JsValue $v, string $name): int {
+                $n = TypeConversion::toNumber($v);
+                if (!is_finite($n)) {
+                    throw new RangeError("{$name} must be finite");
+                }
+                return (int) $n;
+            };
+            $y = $toInt($args[0] ?? JsUndefined::instance(), 'year');
+            $m = $toInt($args[1] ?? JsUndefined::instance(), 'month');
+            $dd = $toInt($args[2] ?? JsUndefined::instance(), 'day');
+            $h = isset($args[3]) && !($args[3] instanceof JsUndefined) ? $toInt($args[3], 'hour') : 0;
+            $min = isset($args[4]) && !($args[4] instanceof JsUndefined) ? $toInt($args[4], 'minute') : 0;
+            $s = isset($args[5]) && !($args[5] instanceof JsUndefined) ? $toInt($args[5], 'second') : 0;
+            $ms = isset($args[6]) && !($args[6] instanceof JsUndefined) ? $toInt($args[6], 'millisecond') : 0;
+            $us = isset($args[7]) && !($args[7] instanceof JsUndefined) ? $toInt($args[7], 'microsecond') : 0;
+            $ns = isset($args[8]) && !($args[8] instanceof JsUndefined) ? $toInt($args[8], 'nanosecond') : 0;
             $cal = 'iso8601';
             if (isset($args[9]) && !($args[9] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[9]));
