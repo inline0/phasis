@@ -3705,6 +3705,10 @@ class TemporalObject
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
+        // Reject extended year without sign prefix (e.g., 02020 instead of +002020).
+        if (preg_match('/^\d{5,}/', $str)) {
+            throw new RangeError("Extended year requires + or - prefix: {$str}");
+        }
         // YYYY-MM-DD or YYYYMMDD with optional time and annotations.
         $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ]\d[^[]*)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
@@ -3713,6 +3717,15 @@ class TemporalObject
         $y = (int) $m[1];
         $m2 = (int) $m[2];
         $d = (int) $m[3];
+        // Validate time part if present.
+        if (preg_match('/[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2}))?)?/', $str, $tm)) {
+            $th = (int) $tm[1];
+            $tmin = isset($tm[2]) && $tm[2] !== '' ? (int) $tm[2] : 0;
+            $ts = isset($tm[3]) && $tm[3] !== '' ? (int) $tm[3] : 0;
+            if ($th > 23 || $tmin > 59 || ($ts > 60)) {
+                throw new RangeError("Invalid time in PlainDate string: {$str}");
+            }
+        }
         self::validateISODate($y, $m2, $d);
         return self::createPlainDateObject($y, $m2, $d, $cal);
     }
