@@ -1523,6 +1523,77 @@ class TemporalObject
             );
         }, 1);
 
+        $d('with', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $item = $args[0] ?? JsUndefined::instance();
+            if (!$item instanceof JsObject) {
+                throw new TypeError('argument must be an object');
+            }
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $refDay = self::getSlotInt($this_, '[[ISODay]]');
+            $yearVal = $item->get('year');
+            $monthVal = $item->get('month');
+            $monthCodeVal = $item->get('monthCode');
+            if (
+                $yearVal instanceof JsUndefined
+                && $monthVal instanceof JsUndefined
+                && $monthCodeVal instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'At least one temporal property must be provided'
+                );
+            }
+            if (!($yearVal instanceof JsUndefined)) {
+                $y = (int) TypeConversion::toNumber($yearVal);
+            }
+            if (!($monthCodeVal instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($monthCodeVal);
+                if (preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    $m = (int) $mcm[1];
+                }
+            } elseif (!($monthVal instanceof JsUndefined)) {
+                $m = (int) TypeConversion::toNumber($monthVal);
+            }
+            $m = max(1, min(12, $m));
+            return self::createPlainYearMonthObject($y, $m, $refDay, $cal);
+        }, 1);
+
+        $d('add', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $months = self::getSlotInt($dur, '[[Months]]') + self::getSlotInt($dur, '[[Years]]') * 12;
+            $totalMonths = ($y * 12 + ($m - 1)) + $months;
+            $newY = intdiv($totalMonths, 12);
+            $newM = ($totalMonths % 12) + 1;
+            if ($newM <= 0) {
+                $newM += 12;
+                $newY--;
+            }
+            return self::createPlainYearMonthObject($newY, $newM, 1, $cal);
+        }, 1);
+
+        $d('subtract', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $months = self::getSlotInt($dur, '[[Months]]') + self::getSlotInt($dur, '[[Years]]') * 12;
+            $totalMonths = ($y * 12 + ($m - 1)) - $months;
+            $newY = intdiv($totalMonths, 12);
+            $newM = ($totalMonths % 12) + 1;
+            if ($newM <= 0) {
+                $newM += 12;
+                $newY--;
+            }
+            return self::createPlainYearMonthObject($newY, $newM, 1, $cal);
+        }, 1);
+
         self::setToStringTag($proto, 'Temporal.PlainYearMonth');
 
         $ctor = JsFunction::fromCallable('PlainYearMonth', function (JsValue $this_, array $args) use ($proto): JsValue {
@@ -3527,19 +3598,37 @@ class TemporalObject
                 $cal = 'iso8601';
                 $calVal = $item->get('calendar');
                 if (!($calVal instanceof JsUndefined)) {
-                    $cal = strtolower(TypeConversion::toString($calVal));
+                    $cal = self::toCalendarSlotValue($calVal);
                 }
                 return self::createPlainYearMonthObject($y, $m, 1, $cal);
             }
         }
+        // Reject primitives per spec.
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to Temporal.PlainYearMonth');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to Temporal.PlainYearMonth');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to Temporal.PlainYearMonth');
+        }
         $str = TypeConversion::toString($item);
-        $pattern = '/^([+-]?\d{4,6})-(\d{2})(?:-\d{2})?(?:T.*)?(?:\[.*?\])*$/';
+        [$str, $cal] = self::normalizeTemporalString($str);
+        // Reject -000000.
+        if (preg_match('/^-0{4,6}/', $str)) {
+            throw new RangeError("reject minus zero as extended year: {$str}");
+        }
+        $pattern = '/^([+-]?\d{4,6})-?(\d{2})(?:-?\d{2})?(?:[Tt ][^[]*)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainYearMonth string: {$str}");
         }
         $y = (int) $m[1];
         $mo = (int) $m[2];
-        return self::createPlainYearMonthObject($y, $mo, 1, 'iso8601');
+        if ($mo < 1 || $mo > 12) {
+            throw new RangeError("month {$mo} out of range");
+        }
+        return self::createPlainYearMonthObject($y, $mo, 1, $cal);
     }
 
     private static function toPlainMonthDay(JsValue $item, string $overflow = 'constrain'): JsObject
