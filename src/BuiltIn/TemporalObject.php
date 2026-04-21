@@ -3726,15 +3726,19 @@ class TemporalObject
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
-            // Property bag with year, month, day.
-            $year = $item->get('year');
-            $month = $item->get('month');
+            // Property bag: read in ALPHABETICAL order per spec.
+            $calVal = $item->get('calendar');
             $day = $item->get('day');
-            // Required properties: year, month (or monthCode), day.
+            $month = $item->get('month');
+            $monthCode = $item->get('monthCode');
+            $year = $item->get('year');
+            // Required: year, month (or monthCode), day.
             if ($year instanceof JsUndefined) {
                 throw new TypeError('missing required property: year');
             }
-            $monthCode = $item->get('monthCode');
+            if ($day instanceof JsUndefined) {
+                throw new TypeError('missing required property: day');
+            }
             if ($month instanceof JsUndefined) {
                 if ($monthCode instanceof JsUndefined) {
                     throw new TypeError('missing required property: month');
@@ -3758,9 +3762,6 @@ class TemporalObject
                     );
                 }
             }
-            if ($day instanceof JsUndefined) {
-                throw new TypeError('missing required property: day');
-            }
             if (true) {
                 $yNum = TypeConversion::toNumber($year);
                 if (!is_finite($yNum)) {
@@ -3778,7 +3779,6 @@ class TemporalObject
                 }
                 $d = (int) $dNum;
                 $cal = 'iso8601';
-                $calVal = $item->get('calendar');
                 if (!($calVal instanceof JsUndefined)) {
                     $cal = self::toCalendarSlotValue($calVal);
                 }
