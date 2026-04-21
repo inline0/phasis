@@ -413,16 +413,18 @@ class ObjectConstructor
         ), true, false, true));
 
         // toLocaleString delegates to toString per ES spec 20.1.3.5.
+        // Implements Invoke(O, "toString") via GetV(O, "toString") then Call.
         $proto->defineOwnProperty('toLocaleString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toLocaleString',
             function (JsValue $this_): JsValue {
                 if (!$this_ instanceof JsObject) {
-                    // Auto-box primitive to object for method dispatch.
+                    // Per GetV(V, P): Let O = ToObject(V), return O.[[Get]](P, V).
+                    // The receiver for getter evaluation must be the original primitive.
                     $obj = TypeConversion::toObject($this_);
+                    $toStringFn = $obj->getWithValueReceiver('toString', $this_);
                 } else {
-                    $obj = $this_;
+                    $toStringFn = $this_->get('toString');
                 }
-                $toStringFn = $obj->get('toString');
                 if (!$toStringFn instanceof JsFunction) {
                     throw new TypeError('toLocaleString: toString is not a function');
                 }

@@ -198,6 +198,9 @@ class Interpreter
             $this->validateStrictModeRestrictions($program->body);
         }
 
+        // Validate functions that enable strict mode via their own "use strict" directive.
+        $this->validateSelfStrictFunctions($program->body);
+
         $this->validateGlobalLexDecls($program->body);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
@@ -1773,6 +1776,15 @@ class Interpreter
             }
         }
 
+        // Per spec: functions that contain a "use strict" directive in their body
+        // are strict even when the enclosing code is sloppy. Validate parameters
+        // of such functions as early errors.
+        try {
+            $this->validateSelfStrictFunctions($program->body);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            $this->throwJsValue($this->phpExceptionToJsValue($e));
+        }
+
         if ($evalStrict && !$this->strictMode) {
             $this->strictMode = true;
         }
@@ -2277,9 +2289,13 @@ class Interpreter
         }
 
         // Variable declarations must not use strict-mode reserved words as binding names.
+        // Also validate function expressions nested in initializers.
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
                 $this->checkStrictBindingNames($decl->id);
+                if ($decl->init !== null) {
+                    $this->validateStrictExpressions($decl->init);
+                }
             }
         }
 
@@ -2313,6 +2329,7 @@ class Interpreter
             foreach ($node->params as $param) {
                 $this->checkStrictBindingNames($param);
             }
+            $this->checkDuplicateParams($node->params);
         }
 
         if ($node instanceof TryStatement) {
@@ -2415,9 +2432,13 @@ class Interpreter
     private function checkStrictExpressionNode(Node $node): void
     {
         if ($node instanceof AssignmentExpression && $node->left instanceof Identifier) {
-            if ($this->isStrictReservedWord($node->left->name)) {
+            if (
+                $this->isStrictReservedWord($node->left->name)
+                || $node->left->name === 'eval'
+                || $node->left->name === 'arguments'
+            ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
-                    "Unexpected strict mode reserved word '{$node->left->name}'",
+                    "Assignment to eval or arguments is not allowed in strict mode",
                 );
             }
         }
@@ -2435,6 +2456,7 @@ class Interpreter
             foreach ($params as $param) {
                 $this->checkStrictBindingNames($param);
             }
+            $this->checkDuplicateParams($params);
             // Validate body statements.
             if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
                 $body = $node->body->body;
@@ -2475,6 +2497,151 @@ class Interpreter
         } elseif ($node instanceof BinaryExpression) {
             $this->validateStrictExpressions($node->left);
             $this->validateStrictExpressions($node->right);
+        }
+    }
+
+    /**
+     * Check for duplicate parameter names in strict mode functions.
+     *
+     * @param Node[] $params
+     */
+    private function checkDuplicateParams(array $params): void
+    {
+        $names = [];
+        foreach ($params as $param) {
+            $this->collectParamNames($param, $names);
+        }
+        $seen = [];
+        foreach ($names as $name) {
+            if (isset($seen[$name])) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Duplicate parameter name not allowed in this context",
+                );
+            }
+            $seen[$name] = true;
+        }
+    }
+
+    /**
+     * Collect binding names from a parameter pattern.
+     *
+     * @param string[] &$names
+     */
+    private function collectParamNames(Node $node, array &$names): void
+    {
+        if ($node instanceof Identifier) {
+            $names[] = $node->name;
+        } elseif ($node instanceof AssignmentPattern) {
+            $this->collectParamNames($node->left, $names);
+        } elseif ($node instanceof RestElement) {
+            $this->collectParamNames($node->argument, $names);
+        } elseif ($node instanceof ArrayPattern) {
+            foreach ($node->elements as $el) {
+                if ($el !== null) {
+                    $this->collectParamNames($el, $names);
+                }
+            }
+        } elseif ($node instanceof ObjectPattern) {
+            foreach ($node->properties as $prop) {
+                if ($prop instanceof AssignmentProperty) {
+                    $this->collectParamNames($prop->value, $names);
+                } elseif ($prop instanceof RestElement) {
+                    $this->collectParamNames($prop->argument, $names);
+                }
+            }
+        }
+    }
+
+    /**
+     * Find function declarations/expressions that have "use strict" in their own
+     * body, and validate their parameters as strict mode early errors.
+     * This catches cases like: function f(eval) { "use strict"; }
+     *
+     * @param Node[] $statements
+     */
+    private function validateSelfStrictFunctions(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            $this->findAndValidateSelfStrictFunction($stmt);
+        }
+    }
+
+    private function findAndValidateSelfStrictFunction(Node $node): void
+    {
+        // Function declaration with "use strict" in body.
+        if ($node instanceof FunctionDeclaration && $node->body instanceof BlockStatement) {
+            if ($this->hasUseStrictDirective($node->body->body)) {
+                foreach ($node->params as $param) {
+                    $this->checkStrictBindingNames($param);
+                }
+                $this->checkDuplicateParams($node->params);
+                if ($node->id !== null) {
+                    if (
+                        $this->isStrictReservedWord($node->id->name)
+                        || $node->id->name === 'eval'
+                        || $node->id->name === 'arguments'
+                    ) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Unexpected eval or arguments in strict mode",
+                        );
+                    }
+                }
+                // Also validate body.
+                $this->validateStrictModeRestrictions($node->body->body);
+            }
+            // Recurse into the body for nested functions.
+            foreach ($node->body->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+            return;
+        }
+
+        // Function expression with "use strict" in body.
+        if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
+            if ($this->hasUseStrictDirective($node->body->body)) {
+                foreach ($node->params as $param) {
+                    $this->checkStrictBindingNames($param);
+                }
+                $this->checkDuplicateParams($node->params);
+                if ($node->name !== null) {
+                    if (
+                        $this->isStrictReservedWord($node->name)
+                        || $node->name === 'eval'
+                        || $node->name === 'arguments'
+                    ) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Unexpected eval or arguments in strict mode",
+                        );
+                    }
+                }
+                $this->validateStrictModeRestrictions($node->body->body);
+            }
+            foreach ($node->body->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+            return;
+        }
+
+        // Recurse into statement structures.
+        if ($node instanceof ExpressionStatement) {
+            $this->findAndValidateSelfStrictFunction($node->expression);
+        } elseif ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null) {
+                    $this->findAndValidateSelfStrictFunction($decl->init);
+                }
+            }
+        } elseif ($node instanceof BlockStatement) {
+            foreach ($node->body as $child) {
+                $this->findAndValidateSelfStrictFunction($child);
+            }
+        } elseif ($node instanceof IfStatement) {
+            $this->findAndValidateSelfStrictFunction($node->consequent);
+            if ($node->alternate !== null) {
+                $this->findAndValidateSelfStrictFunction($node->alternate);
+            }
+        } elseif ($node instanceof AssignmentExpression) {
+            $this->findAndValidateSelfStrictFunction($node->right);
         }
     }
 
@@ -3076,7 +3243,11 @@ class Interpreter
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,
                 // or undefined otherwise. Arrow functions inherit it from the outer scope.
-                $ntDesc = $thisValue instanceof JsObject
+                // Only constructable functions should pick up [[NewTarget]] from the
+                // thisValue. Regular methods, getters, and setters called during
+                // construction must NOT inherit [[NewTarget]] even though their
+                // thisValue may carry the [[NewTarget]] marker from the new expression.
+                $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
                     ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
                     : null;
                 if ($ntDesc !== null) {
