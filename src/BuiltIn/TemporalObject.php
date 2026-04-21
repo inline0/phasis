@@ -1824,6 +1824,9 @@ class TemporalObject
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[2]));
+                if (!self::isValidCalendar($cal)) {
+                    throw new RangeError("Invalid calendar: {$cal}");
+                }
             }
             $refDay = isset($args[3]) && !($args[3] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[3]) : 1;
             self::validateISODate($y, $m, $refDay);
@@ -4511,6 +4514,25 @@ class TemporalObject
         }
         $sign = $year >= 0 ? '+' : '-';
         return $sign . str_pad((string) abs($year), 6, '0', STR_PAD_LEFT);
+    }
+
+    /** Check if a calendar identifier is valid for our implementation. */
+    private static function isValidCalendar(string $cal): bool
+    {
+        // We only support iso8601 and IANA calendar names.
+        // Per spec, calendar identifiers must be ASCII lowercase
+        // and match the syntax of Unicode BCP 47 type subtags.
+        if ($cal === 'iso8601') {
+            return true;
+        }
+        // Allow known IANA calendar names.
+        $known = [
+            'buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
+            'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic',
+            'islamic-umalqura', 'islamic-tbla', 'islamic-civil',
+            'islamic-rgsa', 'islamicc', 'japanese', 'persian', 'roc',
+        ];
+        return in_array($cal, $known, true);
     }
 
     private static function pad2(int $n): string
