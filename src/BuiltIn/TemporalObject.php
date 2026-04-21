@@ -3480,7 +3480,10 @@ class TemporalObject
                 return self::createPlainDateObject($y, $m, $d, $cal);
             }
         }
-        // Per spec: reject Symbol, Number, BigInt, Boolean directly.
+        // Per spec: reject non-string, non-object types directly.
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to a Temporal.PlainDate');
+        }
         if ($item instanceof \PhpJs\Value\JsSymbol) {
             throw new TypeError('Cannot convert a Symbol to a Temporal.PlainDate');
         }
