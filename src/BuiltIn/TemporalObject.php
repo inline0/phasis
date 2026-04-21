@@ -1389,6 +1389,16 @@ class TemporalObject
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                if ($options instanceof JsObject && $options->has('overflow')) {
+                    $ov = $options->get('overflow');
+                    if (!($ov instanceof JsUndefined)) {
+                        $ovStr = TypeConversion::toString($ov);
+                        if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
+                            throw new RangeError("Invalid overflow: {$ovStr}");
+                        }
+                    }
+                }
                 return self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             }, 1),
             true,
