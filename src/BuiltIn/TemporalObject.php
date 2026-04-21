@@ -3793,8 +3793,8 @@ class TemporalObject
         // Remove annotations for structural matching (already collected above).
         $cleanStr = preg_replace('/\[.*?\]/', '', $str);
 
-        // MM-DD or --MM-DD format (with optional annotations).
-        $pattern = '/^(?:--)?(\d{2})-(\d{2})$/';
+        // MM-DD, --MM-DD, or MMDD format (with optional annotations).
+        $pattern = '/^(?:--)?(\d{2})-?(\d{2})$/';
         if (preg_match($pattern, $cleanStr, $m)) {
             $mo = (int) $m[1];
             $dd = (int) $m[2];
