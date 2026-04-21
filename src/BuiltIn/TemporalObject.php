@@ -2477,12 +2477,16 @@ class TemporalObject
         if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
             throw new RangeError("Invalid year: {$y}");
         }
-        // Precise range limits per Temporal spec.
-        if ($y === self::ISO_YEAR_MIN && ($m < 4 || ($m === 4 && $d < 19))) {
-            throw new RangeError("Date is outside the representable range");
+        // Precise range: -271821-04-19 to +275760-09-13 inclusive.
+        if ($y === self::ISO_YEAR_MIN) {
+            if ($m < 4 || ($m === 4 && $d < 19)) {
+                throw new RangeError("Date is outside the representable range");
+            }
         }
-        if ($y === self::ISO_YEAR_MAX && ($m > 9 || ($m === 9 && $d > 13))) {
-            throw new RangeError("Date is outside the representable range");
+        if ($y === self::ISO_YEAR_MAX) {
+            if ($m > 9 || ($m === 9 && $d > 13)) {
+                throw new RangeError("Date is outside the representable range");
+            }
         }
     }
 
