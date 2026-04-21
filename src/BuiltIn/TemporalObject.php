@@ -3512,7 +3512,7 @@ class TemporalObject
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
         // YYYY-MM-DD or YYYYMMDD with optional time and annotations.
-        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ][^[]*)?(?:\[.*?\])*$/';
+        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ]\d[^[]*)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainDate string: {$str}");
         }
