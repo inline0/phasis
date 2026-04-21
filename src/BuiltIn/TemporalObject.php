@@ -3302,10 +3302,13 @@ class TemporalObject
     private static function parseDurationString(string $str): JsObject
     {
         // ISO 8601 duration: [+-]P[nY][nM][nW][nD][T[nH][nM][n[.frac]S]]
-        $num = '(\d+(?:[.,]\d+)?)';
-        $pattern = "/^([+-])?P(?:{$num}Y)?(?:{$num}M)?"
-            . "(?:{$num}W)?(?:{$num}D)?"
-            . "(?:T(?:{$num}H)?(?:{$num}M)?(?:{$num}S)?)?\$/i";
+        // Date components (Y/M/W/D) must be integers.
+        // Only time components (H/M/S) can have fractions.
+        $intNum = '(\d+)';
+        $fracNum = '(\d+(?:[.,]\d{1,9})?)';
+        $pattern = "/^([+-])?P(?:{$intNum}Y)?(?:{$intNum}M)?"
+            . "(?:{$intNum}W)?(?:{$intNum}D)?"
+            . "(?:T(?:{$fracNum}H)?(?:{$fracNum}M)?(?:{$fracNum}S)?)?\$/i";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid Duration string: {$str}");
         }
