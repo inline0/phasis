@@ -2590,9 +2590,10 @@ class Interpreter
                 }
                 $this->checkDuplicateParams($node->params);
                 if (
+                    $node->id !== null && (
                     $this->isStrictReservedWord($node->id->name)
                     || $node->id->name === 'eval'
-                    || $node->id->name === 'arguments'
+                    || $node->id->name === 'arguments')
                 ) {
                     throw new \PhpJs\Exceptions\SyntaxError(
                         "Unexpected eval or arguments in strict mode",
@@ -4941,6 +4942,15 @@ class Interpreter
     private function execExportDeclaration(ExportDeclaration $node, Environment $env): Completion
     {
         if ($node->declaration !== null) {
+            // For export default with expressions (not declarations), evaluate the expression.
+            if ($node->isDefault && !($node->declaration instanceof VariableDeclaration)
+                && !($node->declaration instanceof FunctionDeclaration)
+                && !($node->declaration instanceof ClassDeclaration)
+                && !($node->declaration instanceof ExpressionStatement)
+            ) {
+                $value = $this->evaluate($node->declaration, $env);
+                return Completion::normal($value);
+            }
             return $this->executeStatement($node->declaration, $env);
         }
         return Completion::normal(JsUndefined::instance());
@@ -6194,6 +6204,11 @@ class Interpreter
      */
     private function execFunctionDeclaration(FunctionDeclaration $node, Environment $env): Completion
     {
+        // Anonymous function declarations (from export default function() {}) do nothing at execution.
+        if ($node->id === null) {
+            return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+        }
+
         if (!$this->strictMode) {
             $name = $node->id->name;
             // Per B.3.3.1 step 3: instantiate the function in the current
@@ -7335,7 +7350,11 @@ class Interpreter
         }
 
         foreach ($statements as $stmt) {
-            if ($stmt instanceof FunctionDeclaration) {
+            // Unwrap export declarations to hoist their inner declaration.
+            if ($stmt instanceof ExportDeclaration && $stmt->declaration !== null) {
+                $stmt = $stmt->declaration;
+            }
+            if ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
                 $fn = new JsFunction(
                     $stmt->id->name,
                     $stmt->params,

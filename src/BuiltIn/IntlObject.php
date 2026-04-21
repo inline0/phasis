@@ -146,7 +146,7 @@ class IntlObject
             // Use ICU to canonicalize. \Locale::canonicalize handles
             // grandfathered tags, script/region casing, and alias replacement.
             $canon = \Locale::canonicalize($tag);
-            if ($canon === '' || $canon === null) {
+            if ($canon === null) {
                 return null;
             }
             // ICU uses underscores; BCP 47 uses hyphens.
@@ -182,10 +182,8 @@ class IntlObject
         $i = 0;
 
         // Language subtag (always lowercase).
-        if (isset($parts[$i])) {
-            $result[] = strtolower($parts[$i]);
-            $i++;
-        }
+        $result[] = strtolower($parts[$i]);
+        $i++;
 
         // Script subtag: 4 letters, titlecase.
         if (isset($parts[$i]) && strlen($parts[$i]) === 4 && ctype_alpha($parts[$i])) {
@@ -235,34 +233,6 @@ class IntlObject
     }
 
     /**
-     * Get an option value from a JS options object.
-     * Per spec: GetOption(options, property, type, values, default).
-     */
-    private static function getOption(
-        JsObject $options,
-        string $property,
-        string $type,
-        ?array $values,
-        JsValue|string|null $fallback,
-    ): JsValue|string|null {
-        $value = $options->get($property);
-        if ($value instanceof JsUndefined) {
-            return $fallback;
-        }
-        if ($type === 'boolean') {
-            return TypeConversion::toBoolean($value) ? 'true' : 'false';
-        }
-        if ($type === 'string') {
-            $str = TypeConversion::toString($value);
-            if ($values !== null && !in_array($str, $values, true)) {
-                throw new RangeError("Value {$str} out of range for option {$property}");
-            }
-            return $str;
-        }
-        return TypeConversion::toString($value);
-    }
-
-    /**
      * Convert a JS locales argument (string or array) to a PHP array of locale strings.
      *
      * @return list<string>
@@ -298,17 +268,6 @@ class IntlObject
             return $arg;
         }
         throw new TypeError('Options must be an object');
-    }
-
-    /**
-     * Get the first locale string for ICU, converting to underscore format.
-     */
-    private static function icuLocale(array $locales): string
-    {
-        if (empty($locales)) {
-            return extension_loaded('intl') ? \Locale::getDefault() : 'en_US';
-        }
-        return str_replace('-', '_', $locales[0]);
     }
 
     // ---------------------------------------------------------------
@@ -378,17 +337,15 @@ class IntlObject
         if (extension_loaded('intl')) {
             $iter = \IntlCalendar::getKeywordValuesForLocale('calendar', 'und', true);
             $result = [];
-            if ($iter !== false) {
-                foreach ($iter as $cal) {
-                    // Map ICU calendar names to BCP 47 / CLDR names.
-                    $mapped = match ($cal) {
-                        'gregorian' => 'gregory',
-                        'ethiopic-amete-alem' => 'ethioaa',
-                        'islamic-civil' => 'islamic-civil',
-                        default => $cal,
-                    };
-                    $result[] = $mapped;
-                }
+            foreach ($iter as $cal) {
+                // Map ICU calendar names to BCP 47 / CLDR names.
+                $mapped = match ($cal) {
+                    'gregorian' => 'gregory',
+                    'ethiopic-amete-alem' => 'ethioaa',
+                    'islamic-civil' => 'islamic-civil',
+                    default => $cal,
+                };
+                $result[] = $mapped;
             }
             return $result ?: ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
                 'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic', 'islamic-civil',
@@ -427,7 +384,7 @@ class IntlObject
                             foreach ($data as $entry) {
                                 if ($entry !== null) {
                                     $id = $entry->get('id');
-                                    if ($id !== null && is_string($id) && strlen($id) === 3 && $id !== 'XXX') {
+                                    if (is_string($id) && strlen($id) === 3 && $id !== 'XXX') {
                                         $codes[$id] = true;
                                     }
                                 }
@@ -458,7 +415,9 @@ class IntlObject
                 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XCD', 'XOF', 'XPF', 'YER',
                 'ZAR', 'ZMW', 'ZWL'];
         }
-        return array_values(array_keys($codes));
+        $keys = array_keys($codes);
+        sort($keys, SORT_STRING);
+        return $keys;
     }
 
     /** @return list<string> */
@@ -481,12 +440,10 @@ class IntlObject
         if (extension_loaded('intl')) {
             $iter = \IntlTimeZone::createEnumeration();
             $result = [];
-            if ($iter !== false) {
-                foreach ($iter as $tz) {
-                    // Filter to IANA time zone names (contain '/').
-                    if (str_contains($tz, '/') || $tz === 'UTC') {
-                        $result[] = $tz;
-                    }
+            foreach ($iter as $tz) {
+                // Filter to IANA time zone names (contain '/').
+                if (str_contains($tz, '/') || $tz === 'UTC') {
+                    $result[] = $tz;
                 }
             }
             if (!empty($result)) {
@@ -2162,7 +2119,7 @@ class IntlObject
                 if ($mod100 >= 3 && $mod100 <= 10) {
                     return 'few';
                 }
-                if ($mod100 >= 11 && $mod100 <= 99) {
+                if ($mod100 >= 11) {
                     return 'many';
                 }
                 return 'other';
@@ -2192,7 +2149,7 @@ class IntlObject
                     if ($mod10 >= 2 && $mod10 <= 4 && !($mod100 >= 12 && $mod100 <= 14)) {
                         return 'few';
                     }
-                    if ($mod10 === 0 || ($mod10 >= 5 && $mod10 <= 9) || ($mod100 >= 11 && $mod100 <= 14)) {
+                    if ($mod10 === 0 || $mod10 >= 5 || ($mod100 >= 11 && $mod100 <= 14)) {
                         return 'many';
                     }
                 }
@@ -2441,19 +2398,11 @@ class IntlObject
             } else {
                 $maximized = $tag;
             }
-            $interp = \PhpJs\Engine::getCurrentInterpreter();
-            if ($interp !== null) {
-                return $interp->callFunction($constructor, JsUndefined::instance(), [new JsString($maximized)], true);
-            }
-            // If no interpreter, create a basic object.
-            $obj = new JsObject($this_->getPrototype());
-            $obj->defineOwnProperty('[[LocaleTag]]', PropertyDescriptor::data(
-                new JsString($maximized),
-                false,
-                false,
-                false,
-            ));
-            return $obj;
+            // Construct a new Locale object by calling the constructor directly.
+            $newObj = new JsObject($this_->getPrototype());
+            $newObj->set('[[NewTarget]]', $constructor);
+            $result = ($constructor->getNativeCallable())($newObj, [new JsString($maximized)]);
+            return $result;
         }, 0);
         $proto->defineOwnProperty('maximize', PropertyDescriptor::data($maximize, true, false, true));
 
@@ -2467,18 +2416,11 @@ class IntlObject
             } else {
                 $minimized = $tag;
             }
-            $interp = \PhpJs\Engine::getCurrentInterpreter();
-            if ($interp !== null) {
-                return $interp->callFunction($constructor, JsUndefined::instance(), [new JsString($minimized)], true);
-            }
-            $obj = new JsObject($this_->getPrototype());
-            $obj->defineOwnProperty('[[LocaleTag]]', PropertyDescriptor::data(
-                new JsString($minimized),
-                false,
-                false,
-                false,
-            ));
-            return $obj;
+            // Construct a new Locale object by calling the constructor directly.
+            $newObj = new JsObject($this_->getPrototype());
+            $newObj->set('[[NewTarget]]', $constructor);
+            $result = ($constructor->getNativeCallable())($newObj, [new JsString($minimized)]);
+            return $result;
         }, 0);
         $proto->defineOwnProperty('minimize', PropertyDescriptor::data($minimize, true, false, true));
 
@@ -2561,7 +2503,7 @@ class IntlObject
         if (extension_loaded('intl')) {
             $icuTag = str_replace('-', '_', $tag);
             $parsed = \Locale::parseLocale($icuTag);
-            if ($parsed === null || $parsed === false) {
+            if ($parsed === null) {
                 // Try to at least extract the language.
                 if (preg_match('/^([a-zA-Z]{2,8})/', $tag, $m)) {
                     $parsed = ['language' => strtolower($m[1])];
@@ -2600,7 +2542,7 @@ class IntlObject
                         };
                         if ($mapped !== null) {
                             if ($mapped === 'numeric') {
-                                $result[$mapped] = ($val === 'true' || $val === '');
+                                $result[$mapped] = ($val === 'true');
                             } else {
                                 $result[$mapped] = $val;
                             }
@@ -2617,7 +2559,7 @@ class IntlObject
 
         // Basic parsing without ICU.
         $parts = explode('-', $tag);
-        if (empty($parts) || !preg_match('/^[a-zA-Z]{2,8}$/', $parts[0])) {
+        if (!preg_match('/^[a-zA-Z]{2,8}$/', $parts[0])) {
             return null;
         }
 
@@ -2686,7 +2628,7 @@ class IntlObject
                 }
             }
         }
-        if (!empty($extensions)) {
+        if (count($extensions) > 0) {
             $parts[] = 'u';
             array_push($parts, ...$extensions);
         }
@@ -2853,7 +2795,7 @@ class IntlObject
                     'script' => \Locale::getDisplayScript('und_' . ucfirst(strtolower($code)), $icuLocale),
                     default => $code,
                 };
-                if ($displayName !== '' && $displayName !== null) {
+                if ($displayName !== '' && $displayName !== false) {
                     return new JsString($displayName);
                 }
             }

@@ -220,10 +220,52 @@ class ShadowRealmConstructor
             return self::createWrappedFunction($value);
         }
 
+        // Callable Proxy objects are also callable.
+        if ($value instanceof \PhpJs\Value\JsProxy && $value->isCallable()) {
+            return self::createWrappedCallable($value);
+        }
+
         // Non-callable objects throw TypeError.
         throw new TypeError(
             'ShadowRealm evaluate result is not a primitive or callable object',
         );
+    }
+
+    /**
+     * Wrap arguments crossing the realm boundary. Primitives pass through,
+     * callable objects become wrapped functions, non-callable objects throw TypeError.
+     *
+     * @param list<JsValue> $args
+     * @return list<JsValue>
+     */
+    private static function wrapArguments(array $args): array
+    {
+        $wrappedArgs = [];
+        foreach ($args as $arg) {
+            if (self::isPrimitive($arg)) {
+                $wrappedArgs[] = $arg;
+            } elseif ($arg instanceof JsFunction) {
+                $wrappedArgs[] = self::createWrappedFunction($arg);
+            } elseif ($arg instanceof \PhpJs\Value\JsProxy && $arg->isCallable()) {
+                $wrappedArgs[] = self::createWrappedCallable($arg);
+            } else {
+                throw new TypeError(
+                    'Arguments of a wrapped function must be primitives or callable objects',
+                );
+            }
+        }
+        return $wrappedArgs;
+    }
+
+    private static function isPrimitive(JsValue $value): bool
+    {
+        return $value instanceof JsUndefined
+            || $value instanceof JsNull
+            || $value instanceof JsBoolean
+            || $value instanceof JsNumber
+            || $value instanceof JsString
+            || $value instanceof JsSymbol
+            || $value instanceof \PhpJs\Value\JsBigInt;
     }
 
     /**
@@ -235,34 +277,11 @@ class ShadowRealmConstructor
         $wrapped = JsFunction::fromCallable(
             '',
             function (JsValue $this_, array $args) use ($targetFn): JsValue {
-                // Wrap arguments: primitives pass through, callables become wrapped functions.
-                $wrappedArgs = [];
-                foreach ($args as $arg) {
-                    if (
-                        $arg instanceof JsUndefined
-                        || $arg instanceof JsNull
-                        || $arg instanceof JsBoolean
-                        || $arg instanceof JsNumber
-                        || $arg instanceof JsString
-                        || $arg instanceof JsSymbol
-                        || $arg instanceof \PhpJs\Value\JsBigInt
-                    ) {
-                        $wrappedArgs[] = $arg;
-                    } elseif ($arg instanceof JsFunction) {
-                        // Wrap callable into inner realm.
-                        $wrappedArgs[] = self::createWrappedFunction($arg);
-                    } else {
-                        throw new TypeError(
-                            'Arguments of a wrapped function must be primitives or callable objects',
-                        );
-                    }
-                }
-
+                $wrappedArgs = self::wrapArguments($args);
                 $interp = Engine::getCurrentInterpreter();
                 if ($interp === null) {
                     throw new TypeError('No interpreter available');
                 }
-
                 try {
                     $result = $interp->callFunction(
                         $targetFn,
@@ -270,35 +289,72 @@ class ShadowRealmConstructor
                         $wrappedArgs,
                     );
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    // Per spec: errors from wrapped function are converted to TypeError.
                     throw new TypeError($e->getMessage());
                 }
-
-                // Wrap return value.
                 return self::getWrappedValue($result);
             },
         );
 
-        // Per spec, wrapped function gets length and name from the target.
-        $targetLength = $targetFn->get('length');
-        if ($targetLength instanceof JsNumber) {
-            $wrapped->defineOwnProperty('length', PropertyDescriptor::data(
-                $targetLength,
-                false,
-                false,
-                true,
-            ));
-        }
-        $targetName = $targetFn->get('name');
-        if ($targetName instanceof JsString) {
-            $wrapped->defineOwnProperty('name', PropertyDescriptor::data(
-                $targetName,
-                false,
-                false,
-                true,
-            ));
-        }
+        // Per spec WrappedFunctionCreate: copy length and name from target.
+        // Length defaults to 0, name defaults to "".
+        self::copyWrappedProperties($wrapped, $targetFn);
 
         return $wrapped;
+    }
+
+    /**
+     * Create a wrapped function for a callable Proxy.
+     */
+    private static function createWrappedCallable(\PhpJs\Value\JsProxy $target): JsFunction
+    {
+        $wrapped = JsFunction::fromCallable(
+            '',
+            function (JsValue $this_, array $args) use ($target): JsValue {
+                $wrappedArgs = self::wrapArguments($args);
+                try {
+                    $result = $target->apply(JsUndefined::instance(), $wrappedArgs);
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    throw new TypeError($e->getMessage());
+                }
+                return self::getWrappedValue($result);
+            },
+        );
+
+        self::copyWrappedProperties($wrapped, $target);
+
+        return $wrapped;
+    }
+
+    /**
+     * Copy length and name from target to the wrapped function per spec.
+     */
+    private static function copyWrappedProperties(JsFunction $wrapped, JsObject $target): void
+    {
+        // Per spec: length = target.[[GetOwnProperty]]("length").
+        // If Get throws, use 0. Value must be a non-negative integer.
+        try {
+            $targetLength = $target->get('length');
+            if ($targetLength instanceof JsNumber && is_finite($targetLength->value) && $targetLength->value >= 0) {
+                $len = new JsNumber(floor($targetLength->value));
+            } else {
+                $len = new JsNumber(0.0);
+            }
+        } catch (\Throwable) {
+            $len = new JsNumber(0.0);
+        }
+        $wrapped->defineOwnProperty('length', PropertyDescriptor::data($len, false, false, true));
+
+        // Per spec: name = target.[[GetOwnProperty]]("name").
+        // If Get throws, use "". Value must be a string.
+        try {
+            $targetName = $target->get('name');
+            $name = $targetName instanceof JsString ? $targetName : new JsString('');
+        } catch (\Throwable) {
+            $name = new JsString('');
+        }
+        $wrapped->defineOwnProperty('name', PropertyDescriptor::data($name, false, false, true));
+
+        // Wrapped functions should not have a .prototype property.
+        $wrapped->setNonConstructable();
     }
 }

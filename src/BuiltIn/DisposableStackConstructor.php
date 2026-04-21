@@ -59,7 +59,7 @@ class DisposableStackConstructor
         // DisposableStack.prototype.use(value)
         $proto->defineOwnProperty('use', PropertyDescriptor::data(
             JsFunction::fromCallable('use', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $value = $args[0] ?? JsUndefined::instance();
                 if ($value instanceof JsNull || $value instanceof JsUndefined) {
                     return $value;
@@ -85,7 +85,7 @@ class DisposableStackConstructor
         // DisposableStack.prototype.adopt(value, onDispose)
         $proto->defineOwnProperty('adopt', PropertyDescriptor::data(
             JsFunction::fromCallable('adopt', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $value = $args[0] ?? JsUndefined::instance();
                 $onDispose = $args[1] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
@@ -111,7 +111,7 @@ class DisposableStackConstructor
         // DisposableStack.prototype.defer(onDispose)
         $proto->defineOwnProperty('defer', PropertyDescriptor::data(
             JsFunction::fromCallable('defer', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $onDispose = $args[0] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
                     throw new TypeError('onDispose must be a function.');
@@ -154,10 +154,7 @@ class DisposableStackConstructor
         // DisposableStack.prototype.move()
         $proto->defineOwnProperty('move', PropertyDescriptor::data(
             JsFunction::fromCallable('move', function (JsValue $this_): JsValue {
-                self::assertNotDisposed($this_);
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not a DisposableStack');
-                }
+                $this_ = self::assertNotDisposed($this_);
                 $newStack = new JsObject($this_->getPrototype());
                 $newStack->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                     new JsString('pending'),
@@ -165,7 +162,6 @@ class DisposableStackConstructor
                     false,
                     false,
                 ));
-                // Transfer the internal stack.
                 $internalStack = $this_->get('[[DisposableStack]]');
                 $newStack->defineOwnProperty('[[DisposableStack]]', PropertyDescriptor::data(
                     $internalStack,
@@ -245,7 +241,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.use(value)
         $proto->defineOwnProperty('use', PropertyDescriptor::data(
             JsFunction::fromCallable('use', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $value = $args[0] ?? JsUndefined::instance();
                 if ($value instanceof JsNull || $value instanceof JsUndefined) {
                     return $value;
@@ -278,7 +274,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.adopt(value, onDispose)
         $proto->defineOwnProperty('adopt', PropertyDescriptor::data(
             JsFunction::fromCallable('adopt', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $value = $args[0] ?? JsUndefined::instance();
                 $onDispose = $args[1] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
@@ -303,7 +299,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.defer(onDispose)
         $proto->defineOwnProperty('defer', PropertyDescriptor::data(
             JsFunction::fromCallable('defer', function (JsValue $this_, array $args): JsValue {
-                self::assertNotDisposed($this_);
+                $this_ = self::assertNotDisposed($this_);
                 $onDispose = $args[0] ?? JsUndefined::instance();
                 if (!$onDispose instanceof JsFunction) {
                     throw new TypeError('onDispose must be a function.');
@@ -346,10 +342,7 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.move()
         $proto->defineOwnProperty('move', PropertyDescriptor::data(
             JsFunction::fromCallable('move', function (JsValue $this_): JsValue {
-                self::assertNotDisposed($this_);
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('this is not an AsyncDisposableStack');
-                }
+                $this_ = self::assertNotDisposed($this_);
                 $newStack = new JsObject($this_->getPrototype());
                 $newStack->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                     new JsString('pending'),
@@ -408,8 +401,11 @@ class DisposableStackConstructor
         $env->defineVar('AsyncDisposableStack', $ctor);
     }
 
-    /** Throw ReferenceError if the stack is already disposed. */
-    private static function assertNotDisposed(JsValue $this_): void
+    /**
+     * Throw ReferenceError if the stack is already disposed.
+     * Returns the validated JsObject for PHPStan type narrowing.
+     */
+    private static function assertNotDisposed(JsValue $this_): JsObject
     {
         if (!$this_ instanceof JsObject) {
             throw new TypeError('this is not a DisposableStack');
@@ -420,6 +416,7 @@ class DisposableStackConstructor
                 'Cannot add resource to a disposed stack.'
             );
         }
+        return $this_;
     }
 
     /**
