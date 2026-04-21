@@ -2145,7 +2145,14 @@ class TemporalObject
             $dd = (int) $dNum;
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
-                $cal = strtolower(TypeConversion::toString($args[2]));
+                $calArg = $args[2];
+                if ($calArg instanceof JsNull) {
+                    throw new TypeError('null is not a valid calendar');
+                }
+                if ($calArg instanceof \PhpJs\Value\JsSymbol) {
+                    throw new TypeError('Symbol is not a valid calendar');
+                }
+                $cal = strtolower(TypeConversion::toString($calArg));
                 $cal = self::resolveCalendarId($cal);
             }
             $refYear = 1972;
