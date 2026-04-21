@@ -2561,6 +2561,15 @@ class TemporalObject
         if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
             return self::getSlotString($item, '[[EpochNanoseconds]]');
         }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to Temporal.Instant');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to Temporal.Instant');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to Temporal.Instant');
+        }
         $str = TypeConversion::toString($item);
         return self::parseInstantString($str);
     }
