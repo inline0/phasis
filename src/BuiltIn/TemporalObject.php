@@ -3163,13 +3163,14 @@ class TemporalObject
 
     private static function durationFromObject(JsObject $obj): JsObject
     {
-        $fields = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
-        $vals = [];
+        // Per spec: read properties in ALPHABETICAL order.
+        $readOrder = ['days', 'hours', 'microseconds', 'milliseconds', 'minutes', 'months', 'nanoseconds', 'seconds', 'weeks', 'years'];
+        $read = [];
         $any = false;
-        foreach ($fields as $f) {
+        foreach ($readOrder as $f) {
             $v = $obj->get($f);
             if ($v instanceof JsUndefined) {
-                $vals[] = 0;
+                $read[$f] = 0;
             } else {
                 $n = TypeConversion::toNumber($v);
                 if (!is_finite($n)) {
@@ -3178,14 +3179,19 @@ class TemporalObject
                 if (floor($n) !== $n) {
                     throw new RangeError("fractional Duration field: {$f}");
                 }
-                $vals[] = (int) $n;
+                $read[$f] = (int) $n;
                 $any = true;
             }
         }
         if (!$any) {
             throw new TypeError('at least one recognized property must be provided');
         }
-        return self::createDurationObject(...$vals);
+        // createDurationObject expects: years, months, weeks, days, hours, minutes, seconds, ms, us, ns
+        return self::createDurationObject(
+            $read['years'], $read['months'], $read['weeks'], $read['days'],
+            $read['hours'], $read['minutes'], $read['seconds'],
+            $read['milliseconds'], $read['microseconds'], $read['nanoseconds'],
+        );
     }
 
     private static function parseDurationString(string $str): JsObject
