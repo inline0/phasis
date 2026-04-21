@@ -49,19 +49,26 @@ class JsAsyncGenerator extends JsObject
      */
     private bool $queuePendingDrain = false;
 
+    /** Optional closure to convert PHP exceptions to proper JS error objects. */
+    private ?\Closure $errorConverter = null;
+
     /**
      * @param JsFunction $generatorFn The async generator function that created this generator.
      * @param JsValue $thisValue The this-value for the generator function call.
      * @param list<JsValue> $args Arguments passed to the generator function.
      * @param \Closure(JsFunction, JsValue, list<JsValue>): JsValue $executor
      *   Closure that executes the generator function body. Provided by the interpreter.
+     * @param ?\Closure(\Throwable): JsValue $errorConverter
+     *   Optional closure to convert PHP exceptions to JS error objects with proper prototypes.
      */
     public function __construct(
         JsFunction $generatorFn,
         JsValue $thisValue,
         array $args,
         \Closure $executor,
+        ?\Closure $errorConverter = null,
     ) {
+        $this->errorConverter = $errorConverter;
         // Per spec: the [[Prototype]] is generatorFn.prototype if it's an Object,
         // otherwise falls back to the intrinsic %AsyncGeneratorPrototype%.
         $instanceProto = null;
@@ -157,14 +164,14 @@ class JsAsyncGenerator extends JsObject
             }
             return $e instanceof JsThrowable
                 ? JsPromise::rejected($e->jsValue)
-                : JsPromise::rejected(self::errorToJsValue($e));
+                : JsPromise::rejected($this->convertError($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return JsPromise::rejected($this->convertError($e));
         }
 
         if ($this->fiber->isTerminated()) {
@@ -250,14 +257,14 @@ class JsAsyncGenerator extends JsObject
             }
             return $e instanceof JsThrowable
                 ? JsPromise::rejected($e->jsValue)
-                : JsPromise::rejected(self::errorToJsValue($e));
+                : JsPromise::rejected($this->convertError($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return JsPromise::rejected($this->convertError($e));
         }
 
         if ($this->fiber->isTerminated()) {
@@ -303,7 +310,7 @@ class JsAsyncGenerator extends JsObject
                 if ($e instanceof JsThrowable) {
                     return JsPromise::rejected($e->jsValue);
                 }
-                return JsPromise::rejected(self::errorToJsValue($e));
+                return JsPromise::rejected($this->convertError($e));
             }
         }
 
@@ -386,14 +393,14 @@ class JsAsyncGenerator extends JsObject
             }
             return $e instanceof JsThrowable
                 ? JsPromise::rejected($e->jsValue)
-                : JsPromise::rejected(self::errorToJsValue($e));
+                : JsPromise::rejected($this->convertError($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return JsPromise::rejected($this->convertError($e));
         }
 
         if ($this->fiber->isTerminated()) {
@@ -514,13 +521,13 @@ class JsAsyncGenerator extends JsObject
             } catch (RuntimeError $e) {
                 $this->executing = false;
                 $this->done = true;
-                $jsErr = $e instanceof JsThrowable ? $e->jsValue : self::errorToJsValue($e);
+                $jsErr = $e instanceof JsThrowable ? $e->jsValue : $this->convertError($e);
                 $queued->reject($jsErr);
                 continue;
             } catch (\Throwable $e) {
                 $this->executing = false;
                 $this->done = true;
-                $queued->reject(self::errorToJsValue($e));
+                $queued->reject($this->convertError($e));
                 continue;
             }
 
@@ -597,8 +604,11 @@ class JsAsyncGenerator extends JsObject
         return $error;
     }
 
-    private static function errorToJsValue(\Throwable $e): JsValue
+    private function convertError(\Throwable $e): JsValue
     {
+        if ($this->errorConverter !== null) {
+            return ($this->errorConverter)($e);
+        }
         $error = new JsObject();
         $error->set('message', new JsString($e->getMessage()));
         $error->set('name', new JsString('Error'));

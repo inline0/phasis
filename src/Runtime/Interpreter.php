@@ -3639,7 +3639,10 @@ class Interpreter
         $executor = function (JsFunction $fn, JsValue $thisValue, array $args) use ($interpreter, $fnEnv): JsValue {
             return $interpreter->executeGeneratorBody($fn, $thisValue, $args, $fnEnv);
         };
-        return new JsAsyncGenerator($fn, $thisValue, $args, $executor);
+        $errorConverter = function (\Throwable $e) use ($interpreter): JsValue {
+            return $interpreter->phpExceptionToJsValue($e);
+        };
+        return new JsAsyncGenerator($fn, $thisValue, $args, $executor, $errorConverter);
     }
 
     /**
@@ -5247,7 +5250,7 @@ class Interpreter
     }
 
     /** Convert a PHP exception into a JS value for SuppressedError chaining. */
-    private function phpExceptionToJsValue(\Throwable $e): JsValue
+    public function phpExceptionToJsValue(\Throwable $e): JsValue
     {
         if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
             return $e->jsValue;
