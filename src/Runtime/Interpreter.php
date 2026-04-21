@@ -5229,7 +5229,7 @@ class Interpreter
                 if ($method instanceof JsFunction) {
                     $result = $method->call($resource, []);
                     if ($isAsync && $result instanceof \PhpJs\Value\JsPromise) {
-                        $result->drainQueue();
+                        \PhpJs\Value\JsPromise::drainMicrotasks();
                     }
                 } else {
                     throw new TypeError('Property [Symbol.dispose] is not a function.');
@@ -6704,9 +6704,142 @@ class Interpreter
             return $iterator;
         }
 
-        // Fall back to Symbol.iterator (creates a sync-to-async wrapper).
-        return $this->getIterator($iterable);
+        // Fall back to Symbol.iterator: wrap in AsyncFromSyncIterator.
+        $syncIterator = $this->getIterator($iterable);
+        if ($syncIterator === null) {
+            return null;
+        }
+        return $this->createAsyncFromSyncIterator($syncIterator);
     }
+
+    /**
+     * Create an AsyncFromSyncIterator wrapper per spec 27.1.4.1.
+     * Wraps a sync iterator so that yielded values are awaited.
+     */
+    private function createAsyncFromSyncIterator(JsObject $syncIterator): JsObject
+    {
+        $interpreter = $this;
+        $wrapper = new JsObject();
+
+        $syncNext = $syncIterator->get('next');
+
+        $wrapper->set('next', JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($syncIterator, $syncNext, $interpreter): JsValue {
+            $value = $args[0] ?? JsUndefined::instance();
+            return $interpreter->asyncFromSyncNext($syncIterator, $syncNext, $value);
+        }, 1));
+
+        $wrapper->set('return', JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
+            $value = $args[0] ?? JsUndefined::instance();
+            $returnMethod = $syncIterator->get('return');
+            if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
+                $result = new JsObject();
+                $result->set('value', $value);
+                $result->set('done', new JsBoolean(true));
+                return \PhpJs\Value\JsPromise::resolved($result);
+            }
+            if (!$returnMethod instanceof JsFunction) {
+                throw new TypeError('return is not a function');
+            }
+            return $interpreter->asyncFromSyncMethod($syncIterator, $returnMethod, $value);
+        }, 1));
+
+        $wrapper->set('throw', JsFunction::fromCallable('throw', function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
+            $value = $args[0] ?? JsUndefined::instance();
+            $throwMethod = $syncIterator->get('throw');
+            if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
+                return \PhpJs\Value\JsPromise::rejected($value);
+            }
+            if (!$throwMethod instanceof JsFunction) {
+                throw new TypeError('throw is not a function');
+            }
+            return $interpreter->asyncFromSyncMethod($syncIterator, $throwMethod, $value);
+        }, 1));
+
+        return $wrapper;
+    }
+
+    /** AsyncFromSyncIterator next: call sync next, unwrap value. */
+    private function asyncFromSyncNext(
+        JsObject $syncIterator,
+        JsValue $syncNext,
+        JsValue $value,
+    ): JsValue {
+        if (!$syncNext instanceof JsFunction) {
+            throw new TypeError('Iterator next is not a function');
+        }
+        try {
+            $syncResult = $this->callFunction($syncNext, $syncIterator, [$value]);
+        } catch (\Throwable $e) {
+            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        }
+        if (!$syncResult instanceof JsObject) {
+            throw new TypeError('Iterator result is not an object');
+        }
+        return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
+    }
+
+    /** AsyncFromSyncIterator method: call sync method, unwrap value. */
+    private function asyncFromSyncMethod(
+        JsObject $syncIterator,
+        JsFunction $method,
+        JsValue $value,
+    ): JsValue {
+        try {
+            $syncResult = $this->callFunction($method, $syncIterator, [$value]);
+        } catch (\Throwable $e) {
+            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        }
+        if (!$syncResult instanceof JsObject) {
+            throw new TypeError('Iterator result is not an object');
+        }
+        return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
+    }
+
+    /** Unwrap a sync iterator result: await the value property. */
+    private function asyncFromSyncUnwrapResult(
+        JsObject $syncResult,
+        ?JsObject $syncIterator = null,
+    ): JsValue {
+        try {
+            $done = TypeConversion::toBoolean($syncResult->get('done'));
+        } catch (\Throwable $e) {
+            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        }
+        try {
+            $value = $syncResult->get('value');
+        } catch (\Throwable $e) {
+            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            // Close iterator if not done.
+            if (!$done && $syncIterator !== null) {
+                $this->iteratorClose($syncIterator);
+            }
+            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        }
+        // Unwrap: if value is a Promise/thenable, await it.
+        try {
+            $unwrapped = $this->awaitValue($value);
+        } catch (\Throwable $e) {
+            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                ? $e->jsValue : $this->phpExceptionToJsValue($e);
+            // Per spec: close iterator when value promise rejects and !done.
+            if (!$done && $syncIterator !== null) {
+                $this->iteratorClose($syncIterator);
+            }
+            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        }
+        $result = new JsObject();
+        $result->set('value', $unwrapped);
+        $result->set('done', new JsBoolean($done));
+        return \PhpJs\Value\JsPromise::resolved($result);
+    }
+
+    // iteratorClose is defined below at line ~9621.
 
     /**
      * Await a JS value: if it is a Promise, extract the resolved value.
