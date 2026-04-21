@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\BuiltIn;
 
+use PhpJs\Exceptions\RangeError;
 use PhpJs\Exceptions\TypeError;
 use PhpJs\Object\PropertyDescriptor;
 use PhpJs\Runtime\Environment;
@@ -328,6 +329,172 @@ class SetConstructor
             PropertyDescriptor::accessor($sizeGetter, null, false, true),
         );
 
+
+        // Set.prototype.union(other)
+        $unionFn = JsFunction::fromCallable('union', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.union called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $result = $this_->copy();
+            self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
+                $result->setAdd($value);
+            });
+            return $result;
+        }, 1);
+        $unionFn->setNonConstructable();
+        $proto->defineOwnProperty('union', PropertyDescriptor::data($unionFn, true, false, true));
+
+        // Set.prototype.intersection(other)
+        $intersectionFn = JsFunction::fromCallable('intersection', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.intersection called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $result = new JsSet($this_->getPrototype());
+            $thisSize = $this_->setSize();
+            if ($thisSize <= $rec['size']) {
+                foreach ($this_->setValues() as $value) {
+                    $inOther = $rec['has']->call($rec['obj'], [$value]);
+                    if (TypeConversion::toBoolean($inOther)) {
+                        $result->setAdd($value);
+                    }
+                }
+            } else {
+                self::iterateSetRecord($rec, function (JsValue $value) use ($this_, $result): void {
+                    if ($this_->setHas($value)) {
+                        $result->setAdd($value);
+                    }
+                });
+            }
+            return $result;
+        }, 1);
+        $intersectionFn->setNonConstructable();
+        $proto->defineOwnProperty('intersection', PropertyDescriptor::data($intersectionFn, true, false, true));
+
+        // Set.prototype.difference(other)
+        $differenceFn = JsFunction::fromCallable('difference', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.difference called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $result = $this_->copy();
+            $thisSize = $this_->setSize();
+            if ($thisSize <= $rec['size']) {
+                foreach ($result->setValues() as $value) {
+                    $inOther = $rec['has']->call($rec['obj'], [$value]);
+                    if (TypeConversion::toBoolean($inOther)) {
+                        $result->setDelete($value);
+                    }
+                }
+            } else {
+                self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
+                    $result->setDelete($value);
+                });
+            }
+            return $result;
+        }, 1);
+        $differenceFn->setNonConstructable();
+        $proto->defineOwnProperty('difference', PropertyDescriptor::data($differenceFn, true, false, true));
+
+        // Set.prototype.symmetricDifference(other)
+        $symmetricDifferenceFn = JsFunction::fromCallable('symmetricDifference', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.symmetricDifference called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $result = $this_->copy();
+            self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
+                if ($result->setHas($value)) {
+                    $result->setDelete($value);
+                } else {
+                    $result->setAdd($value);
+                }
+            });
+            return $result;
+        }, 1);
+        $symmetricDifferenceFn->setNonConstructable();
+        $proto->defineOwnProperty('symmetricDifference', PropertyDescriptor::data($symmetricDifferenceFn, true, false, true));
+
+        // Set.prototype.isSubsetOf(other)
+        $isSubsetOfFn = JsFunction::fromCallable('isSubsetOf', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.isSubsetOf called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $thisSize = $this_->setSize();
+            if ($thisSize > $rec['size']) {
+                return new JsBoolean(false);
+            }
+            foreach ($this_->setValues() as $value) {
+                $inOther = $rec['has']->call($rec['obj'], [$value]);
+                if (!TypeConversion::toBoolean($inOther)) {
+                    return new JsBoolean(false);
+                }
+            }
+            return new JsBoolean(true);
+        }, 1);
+        $isSubsetOfFn->setNonConstructable();
+        $proto->defineOwnProperty('isSubsetOf', PropertyDescriptor::data($isSubsetOfFn, true, false, true));
+
+        // Set.prototype.isSupersetOf(other)
+        $isSupersetOfFn = JsFunction::fromCallable('isSupersetOf', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.isSupersetOf called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $thisSize = $this_->setSize();
+            if ($thisSize < $rec['size']) {
+                return new JsBoolean(false);
+            }
+            $isSuperset = true;
+            self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$isSuperset): void {
+                if (!$this_->setHas($value)) {
+                    $isSuperset = false;
+                }
+            });
+            return new JsBoolean($isSuperset);
+        }, 1);
+        $isSupersetOfFn->setNonConstructable();
+        $proto->defineOwnProperty('isSupersetOf', PropertyDescriptor::data($isSupersetOfFn, true, false, true));
+
+        // Set.prototype.isDisjointFrom(other)
+        $isDisjointFromFn = JsFunction::fromCallable('isDisjointFrom', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsSet) {
+                throw new TypeError('Method Set.prototype.isDisjointFrom called on incompatible receiver');
+            }
+            $other = $args[0] ?? JsUndefined::instance();
+            $rec = self::getSetRecord($other);
+            $thisSize = $this_->setSize();
+            if ($thisSize <= $rec['size']) {
+                foreach ($this_->setValues() as $value) {
+                    $inOther = $rec['has']->call($rec['obj'], [$value]);
+                    if (TypeConversion::toBoolean($inOther)) {
+                        return new JsBoolean(false);
+                    }
+                }
+            } else {
+                $found = false;
+                self::iterateSetRecord($rec, function (JsValue $value) use ($this_, &$found): void {
+                    if ($this_->setHas($value)) {
+                        $found = true;
+                    }
+                });
+                if ($found) {
+                    return new JsBoolean(false);
+                }
+            }
+            return new JsBoolean(true);
+        }, 1);
+        $isDisjointFromFn->setNonConstructable();
+        $proto->defineOwnProperty('isDisjointFrom', PropertyDescriptor::data($isDisjointFromFn, true, false, true));
+
         // Symbol.toStringTag = "Set".
         $toStringTagSym = SymbolConstructor::toStringTag();
         $proto->definePropertyBySymbol(
@@ -363,5 +530,72 @@ class SetConstructor
         );
 
         return $iterator;
+    }
+
+    /**
+     * GetSetRecord(obj) per TC39 set-methods proposal.
+     *
+     * Validates that obj is set-like: an object with a numeric .size property,
+     * a callable .has() method, and a callable .keys() method.
+     *
+     * @return array{obj: JsObject, size: int, has: JsFunction, keys: JsFunction}
+     */
+    private static function getSetRecord(JsValue $obj): array
+    {
+        if (!$obj instanceof JsObject) {
+            throw new TypeError('The .size property is NaN');
+        }
+
+        $rawSize = $obj->get('size');
+        $numSize = TypeConversion::toNumber($rawSize);
+        if (is_nan($numSize)) {
+            throw new TypeError('The .size property is NaN');
+        }
+        if ($numSize < 0) {
+            throw new RangeError('The .size property is negative');
+        }
+        $intSize = (int) $numSize;
+
+        $has = $obj->get('has');
+        if (!$has instanceof JsFunction) {
+            throw new TypeError('The .has property is not a function');
+        }
+
+        $keys = $obj->get('keys');
+        if (!$keys instanceof JsFunction) {
+            throw new TypeError('The .keys property is not a function');
+        }
+
+        return ['obj' => $obj, 'size' => $intSize, 'has' => $has, 'keys' => $keys];
+    }
+
+    /**
+     * Iterate the keys of a set-record by calling its .keys() method
+     * and consuming the resulting iterator.
+     */
+    private static function iterateSetRecord(array $rec, callable $callback): void
+    {
+        $keysIter = $rec['keys']->call($rec['obj'], []);
+        if (!$keysIter instanceof JsObject) {
+            throw new TypeError('The .keys() method must return an object');
+        }
+        $nextMethod = $keysIter->get('next');
+        if (!$nextMethod instanceof JsFunction) {
+            throw new TypeError('The iterator does not have a next method');
+        }
+        while (true) {
+            $result = $nextMethod->call($keysIter, []);
+            if (!$result instanceof JsObject) {
+                break;
+            }
+            if (TypeConversion::toBoolean($result->get('done'))) {
+                break;
+            }
+            $value = $result->get('value');
+            if ($value instanceof JsNumber && $value->value === 0.0) {
+                $value = new JsNumber(0.0);
+            }
+            $callback($value);
+        }
     }
 }

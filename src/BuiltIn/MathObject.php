@@ -335,4 +335,116 @@ class MathObject
             return new JsNumber(sqrt($sum));
         };
     }
+
+    private static function sumPreciseFn(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $iterable = $args[0] ?? JsUndefined::instance();
+            if ($iterable instanceof JsUndefined || $iterable instanceof \PhpJs\Value\JsNull) {
+                throw new \PhpJs\Exceptions\TypeError('Math.sumPrecise requires an iterable argument');
+            }
+            if (!$iterable instanceof \PhpJs\Value\JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    TypeConversion::toString($iterable) . ' is not iterable',
+                );
+            }
+
+            $values = [];
+            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+            if (!$iteratorMethod instanceof \PhpJs\Value\JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            }
+
+            $iterator = $iteratorMethod->call($iterable, []);
+            if (!$iterator instanceof \PhpJs\Value\JsObject) {
+                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            }
+
+            $nextMethod = $iterator->get('next');
+            if (!$nextMethod instanceof \PhpJs\Value\JsFunction) {
+                throw new \PhpJs\Exceptions\TypeError('object is not iterable');
+            }
+
+            while (true) {
+                $result = $nextMethod->call($iterator, []);
+                if (!$result instanceof \PhpJs\Value\JsObject) {
+                    break;
+                }
+                if (TypeConversion::toBoolean($result->get('done'))) {
+                    break;
+                }
+                $val = $result->get('value');
+                $n = TypeConversion::toNumber($val);
+                $values[] = (float) $n;
+            }
+
+            if (empty($values)) {
+                return new JsNumber(-0.0);
+            }
+
+            $hasNaN = false;
+            $hasPosInf = false;
+            $hasNegInf = false;
+            $allNegZero = true;
+
+            foreach ($values as $n) {
+                if (is_nan($n)) {
+                    $hasNaN = true;
+                } elseif ($n === INF) {
+                    $hasPosInf = true;
+                } elseif ($n === -INF) {
+                    $hasNegInf = true;
+                }
+                if (!($n === 0.0 && JsNumber::isNegativeZero($n))) {
+                    $allNegZero = false;
+                }
+            }
+
+            if ($hasNaN) {
+                return new JsNumber(NAN);
+            }
+            if ($hasPosInf && $hasNegInf) {
+                return new JsNumber(NAN);
+            }
+            if ($hasPosInf) {
+                return new JsNumber(INF);
+            }
+            if ($hasNegInf) {
+                return new JsNumber(-INF);
+            }
+            if ($allNegZero) {
+                return new JsNumber(-0.0);
+            }
+
+            // Compensated summation (Neumaier variant).
+            $sum = 0.0;
+            $compensation = 0.0;
+            foreach ($values as $n) {
+                $t = $sum + $n;
+                if (abs($sum) >= abs($n)) {
+                    $compensation += ($sum - $t) + $n;
+                } else {
+                    $compensation += ($n - $t) + $sum;
+                }
+                $sum = $t;
+            }
+            $finalResult = $sum + $compensation;
+
+            if ($finalResult === 0.0) {
+                $hasPositive = false;
+                foreach ($values as $n) {
+                    if ($n > 0.0 || ($n === 0.0 && !JsNumber::isNegativeZero($n))) {
+                        $hasPositive = true;
+                        break;
+                    }
+                }
+                if (!$hasPositive) {
+                    return new JsNumber(-0.0);
+                }
+            }
+
+            return new JsNumber($finalResult);
+        };
+    }
 }

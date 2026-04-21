@@ -4528,8 +4528,13 @@ class Interpreter
             ? $this->evaluate($node->argument, $env)
             : JsUndefined::instance();
 
-        // Step 3: Let iterator be ? GetIterator(value).
-        $iterator = $this->getIterator($iterable);
+        // For async generators, use async iteration protocol.
+        $isAsyncGen = $env->getEnclosingFunctionKind() === 'async-generator';
+        if ($isAsyncGen) {
+            $iterator = $this->getAsyncIterator($iterable);
+        } else {
+            $iterator = $this->getIterator($iterable);
+        }
         if ($iterator === null) {
             throw new TypeError(
                 TypeConversion::toString($iterable) . ' is not iterable'
@@ -4552,6 +4557,9 @@ class Interpreter
             // Step 5a: received is normal.
             if ($receivedType === 'normal') {
                 $innerResult = $this->callFunction($nextMethod, $iterator, [$receivedValue]);
+                if ($isAsyncGen) {
+                    $innerResult = $this->awaitValue($innerResult);
+                }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
                 }
@@ -11487,5 +11495,63 @@ class Interpreter
         }
 
         return $matches;
+    }
+
+    /**
+     * Detect duplicate named capture groups in an ES pattern.
+     */
+    private static function hasDuplicateNamedGroups(
+        string $pattern
+    ): bool {
+        $seen = [];
+        $len = strlen($pattern);
+        $i = 0;
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if ($ch === '[') {
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                $i++;
+                continue;
+            }
+            if (
+                $ch === '('
+                && $i + 3 < $len
+                && $pattern[$i + 1] === '?'
+                && $pattern[$i + 2] === '<'
+                && $pattern[$i + 3] !== '='
+                && $pattern[$i + 3] !== '!'
+            ) {
+                $nameStart = $i + 3;
+                $nameEnd = $nameStart;
+                while ($nameEnd < $len && $pattern[$nameEnd] !== '>') {
+                    $nameEnd++;
+                }
+                if ($nameEnd < $len) {
+                    $name = substr(
+                        $pattern,
+                        $nameStart,
+                        $nameEnd - $nameStart,
+                    );
+                    if (isset($seen[$name])) {
+                        return true;
+                    }
+                    $seen[$name] = true;
+                }
+                $i = $nameEnd + 1;
+                continue;
+            }
+            $i++;
+        }
+        return false;
     }
 }

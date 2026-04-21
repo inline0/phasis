@@ -42,6 +42,9 @@ class JsFunction extends JsObject
      */
     private static ?JsObject $asyncFunctionPrototype = null;
 
+    /** %AsyncGeneratorFunction.prototype% intrinsic. */
+    private static ?JsObject $asyncGeneratorFunctionPrototype = null;
+
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
@@ -71,6 +74,17 @@ class JsFunction extends JsObject
     public static function getAsyncFunctionPrototype(): ?JsObject
     {
         return self::$asyncFunctionPrototype;
+    }
+
+    public static function setAsyncGeneratorFunctionPrototype(
+        JsObject $proto
+    ): void {
+        self::$asyncGeneratorFunctionPrototype = $proto;
+    }
+
+    public static function getAsyncGeneratorFunctionPrototype(): ?JsObject
+    {
+        return self::$asyncGeneratorFunctionPrototype;
     }
 
     public static function setInterpreterCallback(callable $callback): void

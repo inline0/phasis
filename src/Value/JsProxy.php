@@ -1224,20 +1224,20 @@ class JsProxy extends JsObject
             throw new TypeError('\'ownKeys\' on proxy: trap returned non-object');
         }
         $keys = [];
-        if ($result instanceof JsArray) {
-            $len = $result->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $elem = $result->get((string) $i);
-                if ($elem instanceof JsSymbol) {
-                    $keys[] = $elem;
-                } elseif ($elem instanceof JsString) {
-                    $keys[] = $elem;
-                } else {
-                    throw new TypeError(
-                        \PhpJs\Spec\TypeConversion::toString($elem)
-                        . ' is not a valid property name'
-                    );
-                }
+        // Per CreateListFromArrayLike: read "length" and iterate indexed elements.
+        $lenVal = $result->get('length');
+        $len = (int) \PhpJs\Spec\TypeConversion::toLength($lenVal);
+        for ($i = 0; $i < $len; $i++) {
+            $elem = $result->get((string) $i);
+            if ($elem instanceof JsSymbol) {
+                $keys[] = $elem;
+            } elseif ($elem instanceof JsString) {
+                $keys[] = $elem;
+            } else {
+                throw new TypeError(
+                    \PhpJs\Spec\TypeConversion::toString($elem)
+                    . ' is not a valid property name'
+                );
             }
         }
         return $keys;

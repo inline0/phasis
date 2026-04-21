@@ -390,8 +390,7 @@ class JsonObject
             return $value->value ? 'true' : 'false';
         }
         if ($value instanceof JsString) {
-            $encoded = json_encode($value->value, JSON_UNESCAPED_UNICODE);
-            return $encoded !== false ? $encoded : '"' . $value->value . '"';
+            return self::quoteJsonString($value->value);
         }
         if ($value instanceof JsNumber) {
             if (is_nan($value->value) || is_infinite($value->value)) {

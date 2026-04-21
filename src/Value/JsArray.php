@@ -266,18 +266,28 @@ class JsArray extends JsObject
             $newWritable = $desc->writable !== false;
             $newLen = $uint32;
             // Delete elements above new length in descending order (step 15).
-            $deleteSucceeded = true;
-            for ($i = $this->length - 1; $i >= $newLen; $i--) {
-                $key = (string) $i;
-                if ($this->hasOwnProperty($key)) {
-                    $elemDesc = parent::getOwnPropertyDescriptor($key);
-                    if ($elemDesc !== null && $elemDesc->configurable === false) {
-                        $newLen = $i + 1;
-                        $deleteSucceeded = false;
-                        break;
+            // Collect only actually-existing array-index properties >= newLen
+            // to avoid iterating billions of empty slots on sparse arrays.
+            $indicesToDelete = [];
+            foreach ($this->properties->keys() as $key) {
+                if (self::isArrayIndex($key)) {
+                    $idx = (int) $key;
+                    if ($idx >= $newLen) {
+                        $indicesToDelete[] = $idx;
                     }
-                    $this->delete($key);
                 }
+            }
+            rsort($indicesToDelete, SORT_NUMERIC);
+            $deleteSucceeded = true;
+            foreach ($indicesToDelete as $i) {
+                $key = (string) $i;
+                $elemDesc = parent::getOwnPropertyDescriptor($key);
+                if ($elemDesc !== null && $elemDesc->configurable === false) {
+                    $newLen = $i + 1;
+                    $deleteSucceeded = false;
+                    break;
+                }
+                $this->delete($key);
             }
             $this->length = $newLen;
             if (!$deleteSucceeded) {

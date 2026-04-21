@@ -131,7 +131,9 @@ class Parser
                 || $next->type === TokenType::Yield
                 || $next->type === TokenType::Await
                 || $next->type === TokenType::Let
-                || $next->type === TokenType::Async;
+                || $next->type === TokenType::Async
+                || $next->type === TokenType::Static_
+                || $next->type === TokenType::Of;
             if ($isDeclaration) {
                 return $this->parseVariableDeclaration();
             }
@@ -1275,6 +1277,11 @@ class Parser
     {
         $token = $this->current();
 
+        if ($token->type === TokenType::Slash || $token->type === TokenType::SlashEqual) {
+            $this->rescanSlashAsRegExp();
+            $token = $this->current();
+        }
+
         return match ($token->type) {
             TokenType::Number => $this->parseNumericLiteral(),
             TokenType::String => $this->parseStringLiteral(),
@@ -2243,5 +2250,77 @@ class Parser
         }
 
         throw new ParseError('Expected semicolon', $this->current());
+    }
+
+    private function rescanSlashAsRegExp(): void
+    {
+        $token = $this->tokens[$this->pos];
+        $offset = $token->location->offset;
+        $src = $this->source;
+        $len = strlen($src);
+        if ($offset >= $len || $src[$offset] !== '/') {
+            return;
+        }
+        $i = $offset + 1;
+        $pattern = '';
+        $inCharClass = false;
+        while ($i < $len) {
+            $ch = $src[$i];
+            if ($ch === '\\') {
+                $pattern .= $ch;
+                $i++;
+                if ($i < $len) {
+                    if ($src[$i] === "\n" || $src[$i] === "\r") {
+                        return;
+                    }
+                    $pattern .= $src[$i];
+                    $i++;
+                }
+                continue;
+            }
+            if ($ch === '[') {
+                $inCharClass = true;
+                $pattern .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === ']' && $inCharClass) {
+                $inCharClass = false;
+                $pattern .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === '/' && !$inCharClass) {
+                $i++;
+                break;
+            }
+            if ($ch === "\n" || $ch === "\r") {
+                return;
+            }
+            $pattern .= $ch;
+            $i++;
+        }
+        $flags = '';
+        while ($i < $len && preg_match('/[a-zA-Z]/', $src[$i])) {
+            $flags .= $src[$i];
+            $i++;
+        }
+        $regExpToken = new Token(
+            TokenType::RegExp,
+            '/' . $pattern . '/' . $flags,
+            $token->location,
+            $token->lineTerminatorBefore,
+        );
+        $removeCount = 0;
+        for ($j = $this->pos; $j < count($this->tokens); $j++) {
+            if ($this->tokens[$j]->location->offset >= $i) {
+                break;
+            }
+            $removeCount++;
+        }
+        if ($removeCount < 1) {
+            $removeCount = 1;
+        }
+        array_splice($this->tokens, $this->pos, $removeCount, [$regExpToken]);
     }
 }
