@@ -2581,9 +2581,9 @@ class TemporalObject
         // Supports date with hyphens (YYYY-MM-DD) or without (YYYYMMDD).
         // Supports sub-minute offsets (+HH:MM:SS.fractional).
         $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
-        $timePart = '(\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?' ;
+        $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?' ;
         $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)';
-        $pattern = "/^{$datePart}[T ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid Instant string: {$str}");
         }
@@ -2598,7 +2598,7 @@ class TemporalObject
             $day = (int) $m[5];
         }
         $hour = (int) $m[6];
-        $min = (int) $m[7];
+        $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
         $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
         // Handle leap second: clamp to 59.
         if ($sec === 60) {
