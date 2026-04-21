@@ -2892,6 +2892,10 @@ class TemporalObject
         $hour = (int) $m[6];
         $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
         $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
+        // Validate time.
+        if ($hour > 23 || $min > 59 || $sec > 60) {
+            throw new RangeError("Invalid Instant time: {$str}");
+        }
         // Handle leap second: clamp to 59.
         if ($sec === 60) {
             $sec = 59;
