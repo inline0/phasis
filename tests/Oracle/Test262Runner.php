@@ -87,6 +87,7 @@ class Test262Runner
         array $includes,
         ?array $negative,
         bool $isRaw,
+        bool $isAsync = false,
     ): TestResult {
         // Run in-process for speed (~100x faster than subprocess per test)
         $engine = new Engine();
@@ -96,8 +97,30 @@ class Test262Runner
         // Hard time limit per test: 30 seconds. Prevents infinite loops.
         set_time_limit(30);
 
+        // Set the module path so that import() can resolve relative specifiers.
+        $realTestPath = realpath($testPath);
+        if ($realTestPath !== false) {
+            $engine->setCurrentModulePath($realTestPath);
+        }
+
         // Install $262 host object for test262 harness.
         $this->install262HostObject($engine);
+
+        // For async tests, install $DONE and track completion.
+        $asyncResult = null;
+        $asyncError = null;
+        if ($isAsync) {
+            $engine->setGlobal('__asyncDone', false);
+            $engine->setGlobal('__asyncError', null);
+            $engine->eval(<<<'JS'
+            function $DONE(error) {
+                __asyncDone = true;
+                if (error) {
+                    __asyncError = error;
+                }
+            }
+            JS);
+        }
 
         try {
             if (!$isRaw) {
@@ -114,6 +137,22 @@ class Test262Runner
             }
 
             $engine->eval($testSource);
+
+            // For async tests, check if $DONE was called with an error.
+            if ($isAsync) {
+                $asyncErrorVal = $engine->eval('__asyncError');
+                if ($asyncErrorVal !== null) {
+                    $errMsg = is_string($asyncErrorVal)
+                        ? $asyncErrorVal
+                        : (is_array($asyncErrorVal)
+                            ? ($asyncErrorVal['message'] ?? 'Async test failed')
+                            : 'Async test failed');
+                    if ($negative !== null) {
+                        return new TestResult($testPath, TestStatus::Pass);
+                    }
+                    return new TestResult($testPath, TestStatus::Fail, 'Async: ' . $errMsg);
+                }
+            }
 
             if ($negative !== null) {
                 return new TestResult(

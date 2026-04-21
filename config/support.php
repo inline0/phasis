@@ -51,10 +51,7 @@ return [
         'Atomics',
         'Atomics.pause',
         'SharedArrayBuffer',
-        // ES modules (in progress)
-        'import-assertions',
-        'import-attributes',
-        'dynamic-import',
+        // Module features not yet implemented
         'arbitrary-module-namespace-names',
         'json-modules',
         'source-phase-imports',

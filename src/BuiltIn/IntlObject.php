@@ -3374,9 +3374,13 @@ class IntlObject
                 $idx = 0;
                 $total = count($chars);
                 $iter = new JsObject();
-                $nextFn = JsFunction::fromCallable(
-                    'next',
-                    function () use (&$idx, $total, &$chars, $str, $granularity): JsValue {
+                $nextCb = function () use (
+                    &$idx,
+                    $total,
+                    &$chars,
+                    $str,
+                    $granularity,
+                ): JsValue {
                     if ($idx >= $total) {
                         $result = new JsObject();
                         $result->set('done', new JsBoolean(true));
@@ -3398,7 +3402,8 @@ class IntlObject
                     $result->set('done', new JsBoolean(false));
                     $result->set('value', $segObj);
                     return $result;
-                }, 0);
+                };
+                $nextFn = JsFunction::fromCallable('next', $nextCb, 0);
                 $iter->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
 
                 // The iterator itself is iterable.

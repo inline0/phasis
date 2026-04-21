@@ -103,6 +103,9 @@ class Interpreter
     /** When true, hoistDeclarations skips Annex B block-function hoisting. */
     private bool $skipAnnexBHoisting = false;
 
+    /** When true, return statements with call expressions can produce TailCallThunks. */
+    private bool $inTailPosition = false;
+
     /**
      * Track which FunctionDeclaration AST nodes are eligible for Annex B
      * propagation. Only function declarations identified during hoisting
@@ -3198,11 +3201,12 @@ class Interpreter
      *
      * @param list<JsValue> $args
      */
+    /** @return JsValue|TailCallThunk */
     private function executeFunction(
         JsFunction $fn,
         JsValue $thisValue,
         array $args,
-    ): JsValue {
+    ): JsValue|TailCallThunk {
         $this->callStack->push($fn->getName(), 0);
 
         // Annex B Function.caller: track caller for non-strict functions.
@@ -3376,9 +3380,15 @@ class Interpreter
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
+                $savedTailPos = $this->inTailPosition;
+                $this->inTailPosition = $this->strictMode;
                 $completion = $this->executeBody($body->body, $bodyEnv);
+                $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($bodyEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
+                    if ($completion->value instanceof TailCallThunk) {
+                        return $completion->value;
+                    }
                     return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
                 if ($completion->type === CompletionType::Throw) {
@@ -3397,9 +3407,15 @@ class Interpreter
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                $savedTailPos = $this->inTailPosition;
+                $this->inTailPosition = $this->strictMode;
                 $completion = $this->executeBody($body->body, $fnEnv);
+                $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($fnEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
+                    if ($completion->value instanceof TailCallThunk) {
+                        return $completion->value;
+                    }
                     return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
                 if ($completion->type === CompletionType::Throw) {
@@ -7074,10 +7090,73 @@ class Interpreter
 
     private function execReturnStatement(ReturnStatement $node, Environment $env): Completion
     {
+        // Tail call optimization: in strict mode, if the return argument is a
+        // direct function call (not new, not part of a larger expression),
+        // create a TailCallThunk instead of evaluating the call immediately.
+        if ($this->strictMode && $node->argument instanceof CallExpression && $this->inTailPosition) {
+            $thunk = $this->evalTailCall($node->argument, $env);
+            if ($thunk !== null) {
+                return Completion::return($thunk);
+            }
+        }
+
         $value = $node->argument !== null
             ? $this->evaluate($node->argument, $env)
             : JsUndefined::instance();
         return Completion::return($value);
+    }
+
+    /**
+     * Try to create a TailCallThunk for a call expression in tail position.
+     * Returns null if the call cannot be optimized (e.g., super call, eval).
+     */
+    private function evalTailCall(CallExpression $node, Environment $env): ?TailCallThunk
+    {
+        // Resolve the callee and its this-binding.
+        $callee = null;
+        $thisValue = JsUndefined::instance();
+
+        if ($node->callee instanceof MemberExpression) {
+            $obj = $this->evaluate($node->callee->object, $env);
+            $propName = $node->callee->computed
+                ? TypeConversion::toString($this->evaluate($node->callee->property, $env))
+                : ($node->callee->property instanceof Identifier
+                    ? $node->callee->property->name
+                    : TypeConversion::toString($this->evaluate($node->callee->property, $env)));
+            $callee = $obj instanceof JsObject ? $obj->get($propName) : null;
+            $thisValue = $obj;
+        } elseif ($node->callee instanceof Identifier) {
+            if ($node->callee->name === 'eval') {
+                return null; // eval is not eligible for TCO
+            }
+            if ($env->has($node->callee->name)) {
+                $callee = $env->get($node->callee->name);
+            }
+        } else {
+            $callee = $this->evaluate($node->callee, $env);
+        }
+
+        if (!$callee instanceof JsFunction) {
+            return null; // Not a function, fall back to normal evaluation
+        }
+
+        // Cannot TCO native functions, generators, async functions, or constructors
+        if ($callee->getNativeCallable() !== null || $callee->isGenerator() || $callee->isAsync()) {
+            return null;
+        }
+
+        // Evaluate arguments
+        $args = [];
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof SpreadElement) {
+                $spread = $this->evaluate($arg->argument, $env);
+                $this->spreadInto($spread, $args);
+            } else {
+                $args[] = $this->evaluate($arg, $env);
+            }
+        }
+
+        return new TailCallThunk($callee, $thisValue, $args);
     }
 
     private function execThrowStatement(ThrowStatement $node, Environment $env): Completion

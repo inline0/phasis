@@ -15,7 +15,7 @@ readonly class FunctionDeclaration extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public Identifier $id,
+        public ?Identifier $id,
         public array $params,
         public Node $body,
         public bool $generator,
