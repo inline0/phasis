@@ -1655,6 +1655,73 @@ class TemporalObject
             );
         }, 1);
 
+        $d('with', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
+            $item = $args[0] ?? JsUndefined::instance();
+            if (!$item instanceof JsObject) {
+                throw new TypeError('argument must be an object');
+            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
+            }
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // Read partial fields from the item.
+            $monthCode = $item->get('monthCode');
+            $month = $item->get('month');
+            $day = $item->get('day');
+            $year = $item->get('year');
+            if (
+                $monthCode instanceof JsUndefined
+                && $month instanceof JsUndefined
+                && $day instanceof JsUndefined
+                && $year instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'At least one property must be provided'
+                );
+            }
+            if (!($monthCode instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
+                }
+                $m = (int) $mcm[1];
+            } elseif (!($month instanceof JsUndefined)) {
+                $m = (int) TypeConversion::toNumber($month);
+            }
+            if (!($day instanceof JsUndefined)) {
+                $dd = (int) TypeConversion::toNumber($day);
+            }
+            if (!($year instanceof JsUndefined)) {
+                $y = (int) TypeConversion::toNumber($year);
+            }
+            if ($overflow === 'constrain') {
+                $m = max(1, min(12, $m));
+                $dim = self::isoDaysInMonth($y, $m);
+                $dd = max(1, min($dim, $dd));
+            } else {
+                if ($m < 1 || $m > 12) {
+                    throw new RangeError("month {$m} out of range");
+                }
+                $dim = self::isoDaysInMonth($y, $m);
+                if ($dd < 1 || $dd > $dim) {
+                    throw new RangeError("day {$dd} out of range");
+                }
+            }
+            return self::createPlainMonthDayObject($m, $dd, $y, $cal);
+        }, 1);
+
         $d('toPlainDate', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
             $item = $args[0] ?? JsUndefined::instance();
