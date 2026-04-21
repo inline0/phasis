@@ -777,6 +777,72 @@ class GlobalObject
         $env->defineVar('__GeneratorPrototype__', $generatorPrototype);
         $env->defineVar('__GeneratorFunctionPrototype__', $generatorFunctionProto);
         $env->defineVar('GeneratorFunction', $genFnConstructor);
+
+        // Set up %AsyncIteratorPrototype%, %AsyncGeneratorPrototype%, %AsyncGeneratorFunction%.
+        $asyncIteratorPrototype = new \PhpJs\Value\JsObject();
+        $asyncIteratorPrototype->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::asyncIterator(),
+            \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable('[Symbol.asyncIterator]', static function (JsValue $this_, array $args): JsValue {
+                    return $this_;
+                }, 0),
+                true,
+                false,
+                true,
+            ),
+        );
+        $env->defineVar('__AsyncIteratorPrototype__', $asyncIteratorPrototype);
+
+        $asyncGenFnProto = new \PhpJs\Value\JsObject($fnProto);
+        JsFunction::setAsyncGeneratorFunctionPrototype($asyncGenFnProto);
+
+        $asyncGenProto = new \PhpJs\Value\JsObject($asyncIteratorPrototype);
+        $asyncGenProto->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGenerator'), false, false, true),
+        );
+        $asyncGenProto->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('next', static function (JsValue $thisValue, array $args): JsValue {
+                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
+                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.next called on incompatible receiver');
+                }
+                return $thisValue->next($args[0] ?? JsUndefined::instance());
+            }, 1),
+            true,
+            false,
+            true,
+        ));
+        $asyncGenProto->defineOwnProperty('return', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('return', static function (JsValue $thisValue, array $args): JsValue {
+                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
+                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.return called on incompatible receiver');
+                }
+                return $thisValue->returnValue($args[0] ?? JsUndefined::instance());
+            }, 1),
+            true,
+            false,
+            true,
+        ));
+        $asyncGenProto->defineOwnProperty('throw', \PhpJs\Object\PropertyDescriptor::data(
+            JsFunction::fromCallable('throw', static function (JsValue $thisValue, array $args): JsValue {
+                if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
+                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.throw called on incompatible receiver');
+                }
+                return $thisValue->throwValue($args[0] ?? JsUndefined::instance());
+            }, 1),
+            true,
+            false,
+            true,
+        ));
+        $asyncGenFnProto->defineOwnProperty('prototype', \PhpJs\Object\PropertyDescriptor::data($asyncGenProto, false, false, true));
+        $asyncGenProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data($asyncGenFnProto, false, false, true));
+        $asyncGenFnProto->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGeneratorFunction'), false, false, true),
+        );
+        \PhpJs\Value\JsAsyncGenerator::setAsyncGeneratorPrototype($asyncGenProto);
+        $env->defineVar('__AsyncGeneratorPrototype__', $asyncGenProto);
+        $env->defineVar('__AsyncGeneratorFunctionPrototype__', $asyncGenFnProto);
     }
 
     private static function parseInt(): \Closure

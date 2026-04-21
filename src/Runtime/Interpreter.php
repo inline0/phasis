@@ -372,26 +372,25 @@ class Interpreter
     public function executeBody(array $statements, Environment $env): Completion
     {
         $result = JsUndefined::instance();
+        $hasValue = false;
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
-                // UpdateEmpty: if the abrupt completion has an empty value
-                // (its value slot was never explicitly set), replace it with
-                // the last non-empty statement value V. This implements the
-                // spec's UpdateEmpty(completion, V) for break/continue.
-                // Completions that already had their value filled (e.g. by
-                // a try/finally UpdateEmpty) have empty=false and are kept.
                 if ($completion->empty && !$result instanceof JsUndefined) {
                     return new Completion($completion->type, $result, $completion->target);
                 }
                 return $completion;
             }
-            // Empty completions don't override the accumulated value
             if (!$completion->empty) {
                 $result = $completion->value;
+                $hasValue = true;
             }
         }
-        return Completion::normal($result);
+        // When no statement produced a non-empty completion (e.g. empty block,
+        // or all statements were empty like EmptyStatement), propagate
+        // empty: true so that callers implementing UpdateEmpty (like eval)
+        // can preserve the previous accumulated value.
+        return new Completion(CompletionType::Normal, $result, empty: !$hasValue);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -8919,6 +8918,12 @@ class Interpreter
 
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
+
+        // Detect duplicate named groups in the pattern and enable PCRE's J
+        // modifier to allow duplicate subpattern names (ES2025 feature).
+        if (self::hasDuplicateNamedGroups($pattern)) {
+            $pcreFlags .= 'J';
+        }
 
         // Escape unescaped forward slashes for the PCRE delimiter.
         // Already-escaped slashes (\/) must not be double-escaped.
