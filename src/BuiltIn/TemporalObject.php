@@ -954,7 +954,12 @@ class TemporalObject
             $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
-            foreach (['hour' => &$h, 'minute' => &$min, 'second' => &$s, 'millisecond' => &$ms, 'microsecond' => &$us, 'nanosecond' => &$ns] as $name => &$ref) {
+            $mapping = [
+                'hour' => &$h, 'minute' => &$min,
+                'second' => &$s, 'millisecond' => &$ms,
+                'microsecond' => &$us, 'nanosecond' => &$ns,
+            ];
+            foreach ($mapping as $name => &$ref) {
                 $v = $item->get($name);
                 if (!($v instanceof JsUndefined)) {
                     $ref = (int) TypeConversion::toNumber($v);
@@ -1142,16 +1147,27 @@ class TemporalObject
             );
             return $yearOfWeek === null ? JsUndefined::instance() : new JsNumber((float) $yearOfWeek);
         });
-        self::defineGetter($proto, 'daysInWeek', fn (JsValue $this_): JsValue => (self::requirePlainDateTime($this_) ? new JsNumber(7.0) : new JsNumber(7.0)) ?: new JsNumber(7.0));
+        self::defineGetter($proto, 'daysInWeek', function (JsValue $this_): JsValue {
+            self::requirePlainDateTime($this_);
+            return new JsNumber(7.0);
+        });
         self::defineGetter($proto, 'daysInMonth', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber((float) self::isoDaysInMonth(self::getSlotInt($this_, '[[ISOYear]]'), self::getSlotInt($this_, '[[ISOMonth]]')));
+            return new JsNumber((float) self::isoDaysInMonth(
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+            ));
         });
         self::defineGetter($proto, 'daysInYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber((float) self::isoDaysInYear(self::getSlotInt($this_, '[[ISOYear]]')));
+            return new JsNumber(
+                (float) self::isoDaysInYear(self::getSlotInt($this_, '[[ISOYear]]')),
+            );
         });
-        self::defineGetter($proto, 'monthsInYear', fn (JsValue $this_): JsValue => (self::requirePlainDateTime($this_) ? new JsNumber(12.0) : new JsNumber(12.0)) ?: new JsNumber(12.0));
+        self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
+            self::requirePlainDateTime($this_);
+            return new JsNumber(12.0);
+        });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
             return new JsBoolean(self::isoIsLeapYear(self::getSlotInt($this_, '[[ISOYear]]')));
@@ -1199,7 +1215,12 @@ class TemporalObject
         $d('equals', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
-            $slots = ['[[ISOYear]]', '[[ISOMonth]]', '[[ISODay]]', '[[ISOHour]]', '[[ISOMinute]]', '[[ISOSecond]]', '[[ISOMillisecond]]', '[[ISOMicrosecond]]', '[[ISONanosecond]]'];
+            $slots = [
+                '[[ISOYear]]', '[[ISOMonth]]', '[[ISODay]]',
+                '[[ISOHour]]', '[[ISOMinute]]', '[[ISOSecond]]',
+                '[[ISOMillisecond]]', '[[ISOMicrosecond]]',
+                '[[ISONanosecond]]',
+            ];
             foreach ($slots as $s) {
                 if (self::getSlotInt($this_, $s) !== self::getSlotInt($other, $s)) {
                     return new JsBoolean(false);

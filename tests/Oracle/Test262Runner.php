@@ -43,24 +43,24 @@ class Test262Runner
             }
         }
 
-        // Skip module tests (static import/export in the test itself).
         $flags = $meta['flags'] ?? [];
-        if (in_array('module', $flags, true)) {
-            return new TestResult($testPath, TestStatus::Skip, 'Module test');
-        }
 
         // Skip raw tests (no harness)
         $isRaw = in_array('raw', $flags, true);
         $isAsync = in_array('async', $flags, true);
+        $isModule = in_array('module', $flags, true);
 
         $negative = $meta['negative'] ?? null;
         $includes = $meta['includes'] ?? [];
         $onlyStrict = in_array('onlyStrict', $flags, true);
         $noStrict = in_array('noStrict', $flags, true);
 
-        // Determine which modes to run
+        // Determine which modes to run.
+        // Module tests always run in strict mode (single pass).
         $modes = [];
-        if ($onlyStrict) {
+        if ($isModule) {
+            $modes[] = 'module';
+        } elseif ($onlyStrict) {
             $modes[] = 'strict';
         } elseif ($noStrict) {
             $modes[] = 'sloppy';
@@ -136,7 +136,14 @@ class Test262Runner
                 $testSource = '"use strict";' . "\n" . $testSource;
             }
 
-            $engine->eval($testSource);
+            if ($mode === 'module') {
+                // Module tests are executed as ES modules (always strict,
+                // import/export declarations are processed).
+                $modulePath = ($realTestPath !== false) ? $realTestPath : $testPath;
+                $engine->evalAsModule($testSource, $modulePath);
+            } else {
+                $engine->eval($testSource);
+            }
 
             // For async tests, check if $DONE was called with an error.
             if ($isAsync) {
