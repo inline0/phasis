@@ -4127,7 +4127,12 @@ class TemporalObject
             throw new TypeError('Cannot convert undefined/null to PlainYearMonth');
         }
         if ($item instanceof JsObject && $item->has('[[IsPlainYearMonth]]')) {
-            return $item;
+            return self::createPlainYearMonthObject(
+                self::getSlotInt($item, '[[ISOYear]]'),
+                self::getSlotInt($item, '[[ISOMonth]]'),
+                self::getSlotInt($item, '[[ISODay]]'),
+                self::getSlotString($item, '[[Calendar]]'),
+            );
         }
         if ($item instanceof JsObject) {
             $year = $item->get('year');
