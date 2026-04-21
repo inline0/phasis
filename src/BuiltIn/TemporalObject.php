@@ -344,7 +344,14 @@ class TemporalObject
                 if ($v instanceof JsUndefined) {
                     $vals[$f] = self::getDurationField($this_, $f);
                 } else {
-                    $vals[$f] = (int) TypeConversion::toNumber($v);
+                    $n = TypeConversion::toNumber($v);
+                    if (!is_finite($n)) {
+                        throw new RangeError("{$f} must be finite");
+                    }
+                    if (floor($n) !== $n) {
+                        throw new RangeError("{$f} must be integer");
+                    }
+                    $vals[$f] = (int) $n;
                     $any = true;
                 }
             }
