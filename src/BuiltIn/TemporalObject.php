@@ -1928,6 +1928,32 @@ class TemporalObject
             return self::createPlainYearMonthObject($newY, $newM, 1, $cal);
         }, 1);
 
+        $d('until', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $other = self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
+            $y1 = self::getSlotInt($this_, '[[ISOYear]]');
+            $m1 = self::getSlotInt($this_, '[[ISOMonth]]');
+            $y2 = self::getSlotInt($other, '[[ISOYear]]');
+            $m2 = self::getSlotInt($other, '[[ISOMonth]]');
+            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+            $years = intdiv($totalMonths, 12);
+            $months = $totalMonths % 12;
+            return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
+        }, 1);
+
+        $d('since', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $other = self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
+            $y1 = self::getSlotInt($other, '[[ISOYear]]');
+            $m1 = self::getSlotInt($other, '[[ISOMonth]]');
+            $y2 = self::getSlotInt($this_, '[[ISOYear]]');
+            $m2 = self::getSlotInt($this_, '[[ISOMonth]]');
+            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+            $years = intdiv($totalMonths, 12);
+            $months = $totalMonths % 12;
+            return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
+        }, 1);
+
         self::setToStringTag($proto, 'Temporal.PlainYearMonth');
 
         $ctor = JsFunction::fromCallable('PlainYearMonth', function (JsValue $this_, array $args) use ($proto): JsValue {
