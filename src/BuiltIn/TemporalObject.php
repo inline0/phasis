@@ -3332,11 +3332,22 @@ class TemporalObject
     private static function parsePlainDateString(string $str): JsObject
     {
         // Reject -000000 (minus zero year).
-        if (preg_match('/^-0{4,6}-/', $str)) {
+        if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
-        // YYYY-MM-DD with optional calendar annotation.
-        $pattern = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:T.*)?(?:\[.*?\])*$/';
+        // Reject multiple calendar annotations if any is critical.
+        preg_match_all('/\[(!?)u-ca=([^\]]+)\]/', $str, $calMatches, PREG_SET_ORDER);
+        if (count($calMatches) > 1) {
+            foreach ($calMatches as $cm) {
+                if ($cm[1] === '!') {
+                    throw new RangeError(
+                        "reject more than one calendar annotation if any critical: {$str}"
+                    );
+                }
+            }
+        }
+        // YYYY-MM-DD or YYYYMMDD with optional time and annotations.
+        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ][^[]*)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainDate string: {$str}");
         }
@@ -3344,9 +3355,8 @@ class TemporalObject
         $m2 = (int) $m[2];
         $d = (int) $m[3];
         $cal = 'iso8601';
-        // Extract calendar annotation.
-        if (preg_match('/\[u-ca=([^\]]+)\]/', $str, $cm)) {
-            $cal = strtolower($cm[1]);
+        if (!empty($calMatches)) {
+            $cal = strtolower($calMatches[0][2]);
         }
         self::validateISODate($y, $m2, $d);
         return self::createPlainDateObject($y, $m2, $d, $cal);
