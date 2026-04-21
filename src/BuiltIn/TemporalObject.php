@@ -2477,6 +2477,13 @@ class TemporalObject
         if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
             throw new RangeError("Invalid year: {$y}");
         }
+        // Precise range limits per Temporal spec.
+        if ($y === self::ISO_YEAR_MIN && ($m < 4 || ($m === 4 && $d < 19))) {
+            throw new RangeError("Date is outside the representable range");
+        }
+        if ($y === self::ISO_YEAR_MAX && ($m > 9 || ($m === 9 && $d > 13))) {
+            throw new RangeError("Date is outside the representable range");
+        }
     }
 
     private static function validateISOTime(int $h, int $m, int $s, int $ms, int $us, int $ns): void
