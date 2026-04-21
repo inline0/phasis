@@ -3616,16 +3616,16 @@ class TemporalObject
         if (preg_match('/^[Tt]/', $cleanStr)) {
             $cleanStr = substr($cleanStr, 1);
         }
-        $pattern = '/^(\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?$/';
+        $pattern = '/^(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?$/';
         if (!preg_match($pattern, $cleanStr, $m)) {
             // Also try datetime string and extract time.
-            $pattern2 = '/[Tt ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?/';
+            $pattern2 = '/[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?/';
             if (!preg_match($pattern2, $cleanStr, $m)) {
                 throw new RangeError("Invalid PlainTime string: {$str}");
             }
         }
         $h = (int) $m[1];
-        $min = (int) $m[2];
+        $min = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
         $s = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 0;
         // Handle leap second: clamp 60 to 59 per spec.
         if ($s === 60) {
