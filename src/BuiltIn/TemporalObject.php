@@ -5703,19 +5703,21 @@ class TemporalObject
         $ns2 = self::timeToNs($time2);
         $diffNs = (string) ($ns2 - $ns1);
         $largestUnit = 'hour';
+        $validTimeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                if (!in_array($largestUnit, $validTimeUnits, true)) {
+                    throw new RangeError("Invalid largest unit for time: {$largestUnit}");
+                }
             }
             $su = $opts->get('smallestUnit');
             if (!($su instanceof JsUndefined)) {
                 $suStr = TypeConversion::toString($su);
                 $suCanon = self::canonicalTemporalUnit($suStr);
-                // PlainTime only supports time units.
-                $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                if (!in_array($suCanon, $timeUnits, true)) {
+                if (!in_array($suCanon, $validTimeUnits, true)) {
                     throw new RangeError("Invalid smallest unit for time: {$suStr}");
                 }
             }
