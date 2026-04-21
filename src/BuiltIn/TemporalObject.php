@@ -4167,6 +4167,9 @@ class TemporalObject
         $ns = (int) substr($frac, 6, 3);
         self::validateISODate($y, $mo, $dd);
         self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+        if ($calFromAnnotation !== 'iso8601' && !self::isValidCalendar($calFromAnnotation)) {
+            throw new RangeError("Invalid calendar: {$calFromAnnotation}");
+        }
         return self::createPlainDateTimeObject(
             $y,
             $mo,
