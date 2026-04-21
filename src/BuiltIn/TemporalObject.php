@@ -3323,7 +3323,7 @@ class TemporalObject
         int $nanoseconds,
     ): JsObject {
         $fields = [$years, $months, $weeks, $days, $hours, $minutes, $seconds, $milliseconds, $microseconds, $nanoseconds];
-        self::validateDurationFields($fields);
+        self::validateDurationFields($fields, true);
         $obj = new JsObject(self::$durationProto);
         $names = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
         foreach ($names as $i => $name) {
