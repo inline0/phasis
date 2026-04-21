@@ -1,17 +1,4 @@
-PHP Fatal error:  Uncaught Error: Call to undefined method PhpJs\BuiltIn\TypedArrayConstructor::installSharedArrayBuffer() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php:58
-Stack trace:
-#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(167): PhpJs\BuiltIn\TypedArrayConstructor::install(Object(PhpJs\Runtime\Environment))
-#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
-#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
-#3 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('class Animal {\n...')
-#4 {main}
-  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 58
-
-Fatal error: Uncaught Error: Call to undefined method PhpJs\BuiltIn\TypedArrayConstructor::installSharedArrayBuffer() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php:58
-Stack trace:
-#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(167): PhpJs\BuiltIn\TypedArrayConstructor::install(Object(PhpJs\Runtime\Environment))
-#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
-#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
-#3 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('class Animal {\n...')
-#4 {main}
-  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/TypedArrayConstructor.php on line 58
+Cat makes a sound
+Rex barks
+Rex
+3

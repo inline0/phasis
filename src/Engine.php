@@ -165,6 +165,7 @@ class Engine
         \PhpJs\BuiltIn\MapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\SetConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\TypedArrayConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\AtomicsObject::install($this->globalEnv);
         \PhpJs\BuiltIn\PromiseConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ProxyConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ReflectObject::install($this->globalEnv);
@@ -914,6 +915,24 @@ class Engine
         $program = $parser->parse();
         $result = $this->interpreter->execute($program);
         return $this->toPhp($result);
+    }
+
+    /**
+     * Evaluate source text as an ES module.
+     *
+     * Modules are always strict. Import/export declarations are processed.
+     * For file-based imports, the current module path must be set beforehand
+     * so that relative specifiers resolve correctly.
+     *
+     * @param string $source The module source text.
+     * @param string|null $path Optional absolute path for this module (used for import resolution).
+     */
+    public function evalAsModule(string $source, ?string $path = null): mixed
+    {
+        $modulePath = $path ?? $this->interpreter->getCurrentModulePath() ?? '/virtual-module.mjs';
+        $loader = $this->interpreter->getModuleLoader();
+        $namespace = $loader->evaluateModule($modulePath, $source);
+        return $this->toPhp($namespace);
     }
 
     public function execFile(string $path): mixed

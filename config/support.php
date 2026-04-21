@@ -47,10 +47,6 @@ return [
         'annexB/built-ins/unescape',
     ],
     'test262_skipped_features' => [
-        // Threading (PHP is single-threaded)
-        'Atomics',
-        'Atomics.pause',
-        'SharedArrayBuffer',
         // Module features not yet implemented
         'arbitrary-module-namespace-names',
         'json-modules',

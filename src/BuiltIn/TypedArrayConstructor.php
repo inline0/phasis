@@ -386,6 +386,186 @@ class TypedArrayConstructor
         $env->defineVar('ArrayBuffer', $constructor);
     }
 
+    private static function installSharedArrayBuffer(Environment $env): void
+    {
+        $proto = new JsObject();
+        JsSharedArrayBuffer::setSharedDefaultPrototype($proto);
+
+        $constructor = JsFunction::fromCallable(
+            'SharedArrayBuffer',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
+                    throw new TypeError('Constructor SharedArrayBuffer requires \'new\'');
+                }
+                $arg0 = $args[0] ?? new JsNumber(0.0);
+                $length = TypeConversion::toIndex($arg0);
+
+                // Handle options argument for growable SharedArrayBuffer.
+                $maxByteLength = null;
+                $optionsArg = $args[1] ?? JsUndefined::instance();
+                if ($optionsArg instanceof JsObject) {
+                    $maxByteLengthVal = $optionsArg->get('maxByteLength');
+                    if (!$maxByteLengthVal instanceof JsUndefined) {
+                        $maxByteLength = TypeConversion::toIndex($maxByteLengthVal);
+                        if ($length > $maxByteLength) {
+                            throw new RangeError('Invalid array buffer length');
+                        }
+                    }
+                }
+
+                $useProto = $proto;
+                if ($this_ instanceof JsObject) {
+                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                    if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                        $ntProto = $ntDesc->value->get('prototype');
+                        if ($ntProto instanceof JsObject) {
+                            $useProto = $ntProto;
+                        }
+                    }
+                }
+
+                return new JsSharedArrayBuffer($length, $useProto, $maxByteLength);
+            },
+            1,
+        );
+        $constructor->setConstructable();
+
+        // SharedArrayBuffer.prototype.byteLength getter.
+        $byteLengthGetter = JsFunction::fromCallable(
+            'get byteLength',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'Method get SharedArrayBuffer.prototype.byteLength called on incompatible receiver'
+                    );
+                }
+                return new JsNumber((float) $this_->getByteLength());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'byteLength',
+            PropertyDescriptor::accessor($byteLengthGetter, null, false, true),
+        );
+
+        // SharedArrayBuffer.prototype.maxByteLength getter.
+        $maxByteLengthGetter = JsFunction::fromCallable(
+            'get maxByteLength',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'Method get SharedArrayBuffer.prototype.maxByteLength'
+                        . ' called on incompatible receiver'
+                    );
+                }
+                return new JsNumber((float) $this_->getMaxByteLength());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'maxByteLength',
+            PropertyDescriptor::accessor($maxByteLengthGetter, null, false, true),
+        );
+
+        // SharedArrayBuffer.prototype.growable getter.
+        $growableGetter = JsFunction::fromCallable(
+            'get growable',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'Method get SharedArrayBuffer.prototype.growable called on incompatible receiver'
+                    );
+                }
+                return new JsBoolean($this_->isResizable());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'growable',
+            PropertyDescriptor::accessor($growableGetter, null, false, true),
+        );
+
+        // SharedArrayBuffer.prototype.grow(newByteLength).
+        $growFn = JsFunction::fromCallable(
+            'grow',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'Method SharedArrayBuffer.prototype.grow called on incompatible receiver'
+                    );
+                }
+                if (!$this_->isResizable()) {
+                    throw new TypeError('SharedArrayBuffer is not growable');
+                }
+                $newLenArg = $args[0] ?? JsUndefined::instance();
+                $newByteLength = TypeConversion::toIndex($newLenArg);
+                $this_->resize($newByteLength);
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $proto->defineOwnProperty('grow', PropertyDescriptor::data($growFn, true, false, true));
+
+        // SharedArrayBuffer.prototype.slice(begin, end).
+        $sliceFn = JsFunction::fromCallable(
+            'slice',
+            function (JsValue $this_, array $args) use ($constructor): JsValue {
+                if (!$this_ instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'Method SharedArrayBuffer.prototype.slice called on incompatible receiver'
+                    );
+                }
+                $len = $this_->getByteLength();
+                $startArg = $args[0] ?? JsUndefined::instance();
+                $begin = TypeConversion::toIntegerOrInfinity($startArg);
+                $endArg = $args[1] ?? JsUndefined::instance();
+                $end = $endArg instanceof JsUndefined
+                    ? (float) $len
+                    : TypeConversion::toIntegerOrInfinity($endArg);
+
+                [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
+                $newBuf = new JsSharedArrayBuffer($newLen, $this_->getPrototype());
+                if ($newLen > 0) {
+                    $existingData = $newBuf->getData();
+                    $newData = substr_replace($existingData, $slicedData, 0, $newLen);
+                    $newBuf->setData($newData);
+                }
+                return $newBuf;
+            },
+            2,
+        );
+        $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
+
+        // Symbol.toStringTag.
+        $toStringTagSym = SymbolConstructor::toStringTag();
+        $proto->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::data(new JsString('SharedArrayBuffer'), false, false, true),
+        );
+
+        $proto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($constructor, true, false, true),
+        );
+        $constructor->set('prototype', $proto);
+
+        // Per spec: get SharedArrayBuffer[@@species] returns `this`.
+        $speciesSym = SymbolConstructor::species();
+        $speciesGetter = JsFunction::fromCallable(
+            'get [Symbol.species]',
+            function (JsValue $this_): JsValue {
+                return $this_;
+            },
+            0,
+        );
+        $constructor->definePropertyBySymbol(
+            $speciesSym,
+            PropertyDescriptor::accessor($speciesGetter, null, false, true),
+        );
+
+        $env->defineVar('SharedArrayBuffer', $constructor);
+    }
+
     private static function installDataView(Environment $env): void
     {
         $proto = new JsObject();

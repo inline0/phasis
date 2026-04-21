@@ -654,7 +654,10 @@ class TemporalObject
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $result = self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd);
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            if ($calendarName === 'always' || ($calendarName === 'critical' && $cal !== 'iso8601') || ($calendarName !== 'never' && $cal !== 'iso8601')) {
+            $showCal = $calendarName === 'always'
+                || ($calendarName === 'critical' && $cal !== 'iso8601')
+                || ($calendarName !== 'never' && $cal !== 'iso8601');
+            if ($showCal) {
                 $prefix = $calendarName === 'critical' ? '!' : '';
                 $result .= "[{$prefix}u-ca={$cal}]";
             }
@@ -887,16 +890,14 @@ class TemporalObject
     {
         $proto = new JsObject();
 
-        self::defineGetter($proto, 'hour', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISOHour]]')));
-        self::defineGetter($proto, 'minute', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISOMinute]]')));
-        self::defineGetter($proto, 'second', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISOSecond]]')));
-        self::defineGetter($proto, 'millisecond', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISOMillisecond]]')));
-        self::defineGetter($proto, 'microsecond', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISOMicrosecond]]')));
-        self::defineGetter($proto, 'nanosecond', fn (JsValue $this_): JsValue => (self::requirePlainTime($this_) ? new JsNumber(0.0) : new JsNumber(0.0)) ?: new JsNumber((float) self::getSlotInt($this_, '[[ISONanosecond]]')));
-
-        // Rewrite the time getters cleanly.
-        $timeGetters = ['hour' => '[[ISOHour]]', 'minute' => '[[ISOMinute]]', 'second' => '[[ISOSecond]]',
-            'millisecond' => '[[ISOMillisecond]]', 'microsecond' => '[[ISOMicrosecond]]', 'nanosecond' => '[[ISONanosecond]]'];
+        $timeGetters = [
+            'hour' => '[[ISOHour]]',
+            'minute' => '[[ISOMinute]]',
+            'second' => '[[ISOSecond]]',
+            'millisecond' => '[[ISOMillisecond]]',
+            'microsecond' => '[[ISOMicrosecond]]',
+            'nanosecond' => '[[ISONanosecond]]',
+        ];
         foreach ($timeGetters as $name => $slot) {
             self::defineGetter($proto, $name, function (JsValue $this_) use ($slot): JsValue {
                 self::requirePlainTime($this_);
