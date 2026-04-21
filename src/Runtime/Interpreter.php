@@ -2277,6 +2277,9 @@ class Interpreter
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
                 $this->checkStrictBindingNames($decl->id);
+                if ($decl->init !== null) {
+                    $this->validateStrictExpressions($decl->init);
+                }
             }
         }
 
@@ -2310,6 +2313,7 @@ class Interpreter
             foreach ($node->params as $param) {
                 $this->checkStrictBindingNames($param);
             }
+            $this->checkDuplicateParams($node->params);
         }
 
         if ($node instanceof TryStatement) {
@@ -5218,12 +5222,17 @@ class Interpreter
     private function declareBinding(string $kind, Node $pattern, JsValue $value, Environment $env): void
     {
         if ($pattern instanceof Identifier) {
-            match ($kind) {
-                'var' => $env->defineVar($pattern->name, $value),
-                'let' => $env->defineLet($pattern->name, $value),
-                'const' => $env->defineConst($pattern->name, $value),
-                default => $env->defineVar($pattern->name, $value),
-            };
+            if ($kind === 'using' || $kind === 'await using') {
+                $env->defineConst($pattern->name, $value);
+                $this->registerDisposable($value, $kind === 'await using', $env);
+            } else {
+                match ($kind) {
+                    'var' => $env->defineVar($pattern->name, $value),
+                    'let' => $env->defineLet($pattern->name, $value),
+                    'const' => $env->defineConst($pattern->name, $value),
+                    default => $env->defineVar($pattern->name, $value),
+                };
+            }
             return;
         }
 

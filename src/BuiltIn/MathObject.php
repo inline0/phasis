@@ -105,6 +105,7 @@ class MathObject
         $m('min', self::minFn(), 2);
         $m('random', self::randomFn(), 0);
         $m('hypot', self::hypotFn(), 2);
+        $m('sumPrecise', self::sumPreciseFn(), 1);
 
         // Symbol.toStringTag = "Math" (non-writable, non-enumerable, configurable)
         $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();

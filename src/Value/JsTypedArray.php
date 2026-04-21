@@ -670,10 +670,11 @@ class JsTypedArray extends JsObject
      */
     public function indexOfTyped(JsValue $search, int $fromIndex = 0): int
     {
+        $len = $this->getLength();
         if ($fromIndex < 0) {
-            $fromIndex = max(0, $this->length + $fromIndex);
+            $fromIndex = max(0, $len + $fromIndex);
         }
-        for ($i = $fromIndex; $i < $this->length; $i++) {
+        for ($i = $fromIndex; $i < $len; $i++) {
             $el = $this->getIndex($i);
             if ($this->strictEquals($el, $search)) {
                 return $i;
@@ -687,10 +688,11 @@ class JsTypedArray extends JsObject
      */
     public function includesTyped(JsValue $search, int $fromIndex = 0): bool
     {
+        $len = $this->getLength();
         if ($fromIndex < 0) {
-            $fromIndex = max(0, $this->length + $fromIndex);
+            $fromIndex = max(0, $len + $fromIndex);
         }
-        for ($i = $fromIndex; $i < $this->length; $i++) {
+        for ($i = $fromIndex; $i < $len; $i++) {
             $el = $this->getIndex($i);
             if ($this->sameValueZero($el, $search)) {
                 return true;
@@ -705,7 +707,8 @@ class JsTypedArray extends JsObject
     public function joinTyped(string $separator = ','): string
     {
         $parts = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $el = $this->getIndex($i);
             $parts[] = $el->toJsString();
         }
@@ -716,7 +719,8 @@ class JsTypedArray extends JsObject
     public function toList(): array
     {
         $result = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $result[] = $this->getIndex($i);
         }
         return $result;
@@ -830,12 +834,13 @@ class JsTypedArray extends JsObject
     public function display(): string
     {
         $parts = [];
-        $max = min($this->length, 10);
+        $len = $this->getLength();
+        $max = min($len, 10);
         for ($i = 0; $i < $max; $i++) {
             $el = $this->getIndex($i);
             $parts[] = $el->display();
         }
-        $suffix = $this->length > 10 ? ', ...' : '';
-        return $this->typeName . '(' . $this->length . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
+        $suffix = $len > 10 ? ', ...' : '';
+        return $this->typeName . '(' . $len . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
     }
 }

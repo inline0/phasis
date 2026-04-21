@@ -35,7 +35,7 @@ class JsWeakMap extends JsObject
 
     public function weakMapSet(JsValue $key, JsValue $value): void
     {
-        if (!$key instanceof JsObject) {
+        if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
             throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
         }
         $index = $this->findIndex($key);

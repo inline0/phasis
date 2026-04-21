@@ -1798,11 +1798,14 @@ class Parser
             $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
             $prevAsync = $this->inAsync;
+            $prevTopLevel = $this->topLevel;
             $this->inGenerator = $isGenerator;
             $this->inAsync = $isAsync;
+            $this->topLevel = false;
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
+            $this->topLevel = $prevTopLevel;
             $value = new FunctionExpression(
                 $body->location,
                 null,
@@ -1822,11 +1825,14 @@ class Parser
             $params = $this->parseFormalParameters();
             $prevGenerator = $this->inGenerator;
             $prevAsync = $this->inAsync;
+            $prevTopLevel = $this->topLevel;
             $this->inGenerator = $isGenerator;
             $this->inAsync = $isAsync;
+            $this->topLevel = false;
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
+            $this->topLevel = $prevTopLevel;
             $value = new FunctionExpression(
                 $body->location,
                 null,
@@ -1844,7 +1850,10 @@ class Parser
             $method = true;
             $methodStartOffset = $location->offset;
             $params = $this->parseFormalParameters();
+            $prevTopLevel = $this->topLevel;
+            $this->topLevel = false;
             $body = $this->parseBlockStatement();
+            $this->topLevel = $prevTopLevel;
             $value = new FunctionExpression(
                 $body->location,
                 null,
