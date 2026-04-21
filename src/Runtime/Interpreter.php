@@ -6004,14 +6004,13 @@ class Interpreter
     private function execBlockStatement(BlockStatement $node, Environment $env): Completion
     {
         $blockEnv = $env->createChild();
-        // Block-level hoisting should not do Annex B function hoisting.
-        // Annex B hoisting is only done at the function scope level.
         $savedSkip = $this->skipAnnexBHoisting;
         $this->skipAnnexBHoisting = true;
         $this->hoistDeclarations($node->body, $blockEnv);
         $this->skipAnnexBHoisting = $savedSkip;
         $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
-        return $this->executeBody($node->body, $blockEnv);
+        $completion = $this->executeBody($node->body, $blockEnv);
+        return $this->applyDisposals($blockEnv, $completion);
     }
 
     private function execIfStatement(IfStatement $node, Environment $env): Completion

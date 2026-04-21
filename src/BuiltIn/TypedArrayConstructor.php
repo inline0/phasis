@@ -122,6 +122,9 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsArrayBuffer) {
                     throw new TypeError('Method ArrayBuffer.prototype.slice called on incompatible receiver');
                 }
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer');
+                }
                 $len = $this_->getByteLength();
 
                 // Step 4-5: RelativeStart = ToIntegerOrInfinity(start).
@@ -212,6 +215,11 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsArrayBuffer) {
                     throw new TypeError(
                         'Method get ArrayBuffer.prototype.byteLength called on incompatible receiver'
+                    );
+                }
+                if ($this_->isDetached()) {
+                    throw new TypeError(
+                        'Cannot read byteLength of a detached ArrayBuffer'
                     );
                 }
                 return new JsNumber((float) $this_->getByteLength());

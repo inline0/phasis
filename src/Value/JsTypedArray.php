@@ -288,7 +288,7 @@ class JsTypedArray extends JsObject
         }
 
         // For float arrays, preserve NaN and Infinity.
-        if ($this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
+        if ($this->typeName === 'Float16Array' || $this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
             return $num;
         }
 
