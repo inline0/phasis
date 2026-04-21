@@ -43,19 +43,15 @@ class Test262Runner
             }
         }
 
-        // Skip module tests
+        // Skip module tests (static import/export in the test itself).
         $flags = $meta['flags'] ?? [];
         if (in_array('module', $flags, true)) {
             return new TestResult($testPath, TestStatus::Skip, 'Module test');
         }
 
-        // Skip async tests for now
-        if (in_array('async', $flags, true)) {
-            return new TestResult($testPath, TestStatus::Skip, 'Async test');
-        }
-
         // Skip raw tests (no harness)
         $isRaw = in_array('raw', $flags, true);
+        $isAsync = in_array('async', $flags, true);
 
         $negative = $meta['negative'] ?? null;
         $includes = $meta['includes'] ?? [];
@@ -74,7 +70,7 @@ class Test262Runner
         }
 
         foreach ($modes as $mode) {
-            $result = $this->executeTest($testPath, $source, $meta, $mode, $includes, $negative, $isRaw);
+            $result = $this->executeTest($testPath, $source, $meta, $mode, $includes, $negative, $isRaw, $isAsync);
             if ($result->status !== TestStatus::Pass) {
                 return $result;
             }

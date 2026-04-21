@@ -3099,6 +3099,27 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): JsValue {
+        // Trampoline loop for proper tail call optimization.
+        // When a strict-mode function returns a TailCallThunk, we retry
+        // with the thunk's function/args instead of recursing.
+        while (true) {
+            $result = $this->callFunctionInner($fn, $thisValue, $args);
+            if ($result instanceof TailCallThunk) {
+                $fn = $result->function;
+                $thisValue = $result->thisValue;
+                $args = $result->args;
+                continue;
+            }
+            return $result;
+        }
+    }
+
+    /** @return JsValue|TailCallThunk */
+    private function callFunctionInner(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): JsValue|TailCallThunk {
         // Per spec: class constructors cannot be called without `new`.
         if ($fn->isClassConstructor()) {
             $calledAsNew = $thisValue instanceof JsObject
@@ -4845,6 +4866,105 @@ class Interpreter
         }
 
         return $value;
+    }
+
+    /**
+     * Evaluate import(source) expression. Returns a Promise.
+     *
+     * Per spec, import() always returns a new Promise. The specifier is
+     * evaluated, converted to string, and the module is loaded. On success
+     * the promise is resolved with the module namespace object. On failure
+     * the promise is rejected with the error.
+     */
+    private function evalImportExpression(ImportExpression $node, Environment $env): JsValue
+    {
+        $promise = new \PhpJs\Value\JsPromise();
+
+        try {
+            $sourceValue = $this->evaluate($node->source, $env);
+            $specifier = TypeConversion::toString($sourceValue);
+
+            $loader = $this->getModuleLoader();
+            $namespace = $loader->loadModule($specifier, $this->currentModulePath);
+
+            $promise->resolve($namespace);
+        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            $promise->reject($e->jsValue);
+        } catch (\Throwable $e) {
+            // Convert PHP exceptions to JS error values for rejection.
+            $errorObj = $this->phpExceptionToJsValue($e);
+            $promise->reject($errorObj);
+        }
+
+        return $promise;
+    }
+
+    /**
+     * Evaluate import.meta or new.target meta-property.
+     */
+    private function evalMetaProperty(MetaProperty $node, Environment $env): JsValue
+    {
+        if ($node->meta === 'import' && $node->property === 'meta') {
+            $meta = new JsObject(null);
+            if ($this->currentModulePath !== null) {
+                $meta->set('url', new JsString('file://' . $this->currentModulePath));
+            }
+            return $meta;
+        }
+
+        // new.target is handled elsewhere as an Identifier '[[NewTarget]]'.
+        return JsUndefined::instance();
+    }
+
+    /**
+     * Execute an export declaration in module context.
+     * The actual export bookkeeping is handled by the ModuleLoader; here we
+     * only need to execute the declaration (if any) so its side effects and
+     * bindings are established.
+     */
+    private function execExportDeclaration(ExportDeclaration $node, Environment $env): Completion
+    {
+        if ($node->declaration !== null) {
+            return $this->executeStatement($node->declaration, $env);
+        }
+        return Completion::normal(JsUndefined::instance());
+    }
+
+    /**
+     * Execute module body statements. Used by the ModuleLoader during module evaluation.
+     * Unlike execute(), this does not set global scope or handle directives at the top level.
+     *
+     * @param Node[] $body
+     */
+    public function executeModuleBody(array $body, Environment $moduleEnv): JsValue
+    {
+        $prevStrict = $this->strictMode;
+        // Modules are always strict per spec.
+        $this->strictMode = true;
+
+        $this->hoistDeclarations($body, $moduleEnv);
+
+        $result = JsUndefined::instance();
+        foreach ($body as $stmt) {
+            // Import declarations are already processed by the module loader.
+            if ($stmt instanceof ImportDeclaration) {
+                continue;
+            }
+            $completion = $this->executeStatement($stmt, $moduleEnv);
+            if ($completion->type !== CompletionType::Normal) {
+                $this->strictMode = $prevStrict;
+                if ($completion->type === CompletionType::Throw) {
+                    $this->throwJsValue($completion->value);
+                }
+                return $completion->value;
+            }
+            if (!$completion->empty) {
+                $result = $completion->value;
+            }
+        }
+
+        $this->strictMode = $prevStrict;
+        return $result;
     }
 
     private function evalClassExpression(ClassExpression $node, Environment $env): JsValue

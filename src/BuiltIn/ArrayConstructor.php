@@ -2069,7 +2069,7 @@ class ArrayConstructor
                     : TypeConversion::toObject($asyncItems);
 
                 $lenVal = $arrayLike->get('length');
-                $lenNum = TypeConversion::toLength(TypeConversion::toNumber($lenVal));
+                $lenNum = TypeConversion::toLength($lenVal);
 
                 if ($isConstructor) {
                     /** @var JsFunction $c */

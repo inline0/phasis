@@ -921,7 +921,20 @@ class Engine
         if ($source === false) {
             throw new \RuntimeException("Cannot read file: {$path}");
         }
+        $realPath = realpath($path);
+        if ($realPath !== false) {
+            $this->interpreter->setCurrentModulePath($realPath);
+        }
         return $this->eval($source);
+    }
+
+    /**
+     * Set the current module path for resolving relative import specifiers.
+     * Used by the test262 runner to make import() resolve relative to the test file.
+     */
+    public function setCurrentModulePath(string $path): void
+    {
+        $this->interpreter->setCurrentModulePath($path);
     }
 
     public function setGlobal(string $name, mixed $value): void

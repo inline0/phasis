@@ -47,24 +47,18 @@ return [
         'annexB/built-ins/unescape',
     ],
     'test262_skipped_features' => [
-        // Threading (requires PHP threading support)
+        // Threading (PHP is single-threaded)
         'Atomics',
         'Atomics.pause',
         'SharedArrayBuffer',
-        // ES modules (requires module loader)
+        // ES modules (in progress)
         'import-assertions',
         'import-attributes',
         'dynamic-import',
         'arbitrary-module-namespace-names',
         'json-modules',
         'source-phase-imports',
-        // Massive APIs
+        // Massive API (in progress)
         'Temporal',
-        'ShadowRealm',
-        // Architectural limitations
-        'tail-call-optimization',
-        'IsHTMLDDA',
-        'cross-realm',
-        'decorators',
     ],
 ];

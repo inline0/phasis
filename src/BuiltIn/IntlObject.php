@@ -1046,8 +1046,10 @@ class IntlObject
                 } else {
                     $defaultMinFrac = $style === 'currency' ? 2 : 0;
                     $defaultMaxFrac = $style === 'currency' ? 2 : ($style === 'percent' ? 0 : 3);
-                    $minFrac = !$mfdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($mfdVal) : $defaultMinFrac;
-                    $maxFrac = !$xfdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($xfdVal) : max($defaultMaxFrac, $minFrac);
+                    $minFrac = !$mfdVal instanceof JsUndefined
+                        ? (int) TypeConversion::toNumber($mfdVal) : $defaultMinFrac;
+                    $maxFrac = !$xfdVal instanceof JsUndefined
+                        ? (int) TypeConversion::toNumber($xfdVal) : max($defaultMaxFrac, $minFrac);
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
                         new JsNumber((float) $minFrac),
                         false,
@@ -1921,8 +1923,10 @@ class IntlObject
                         false,
                     ));
                 } else {
-                    $minFrac = !$mfdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($mfdVal) : 0;
-                    $maxFrac = !$xfdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($xfdVal) : max(3, $minFrac);
+                    $minFrac = !$mfdVal instanceof JsUndefined
+                        ? (int) TypeConversion::toNumber($mfdVal) : 0;
+                    $maxFrac = !$xfdVal instanceof JsUndefined
+                        ? (int) TypeConversion::toNumber($xfdVal) : max(3, $minFrac);
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
                         new JsNumber((float) $minFrac),
                         false,
@@ -3370,7 +3374,9 @@ class IntlObject
                 $idx = 0;
                 $total = count($chars);
                 $iter = new JsObject();
-                $nextFn = JsFunction::fromCallable('next', function () use (&$idx, $total, &$chars, $str, $granularity): JsValue {
+                $nextFn = JsFunction::fromCallable(
+                    'next',
+                    function () use (&$idx, $total, &$chars, $str, $granularity): JsValue {
                     if ($idx >= $total) {
                         $result = new JsObject();
                         $result->set('done', new JsBoolean(true));
