@@ -3407,11 +3407,15 @@ class TemporalObject
 
     private static function parsePlainTimeString(string $str): JsObject
     {
-        $pattern = '/^(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?$/';
-        if (!preg_match($pattern, $str, $m)) {
+        [$str, ] = self::normalizeTemporalString($str);
+        // Strip offset and annotations for time-only parsing.
+        $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
+        $cleanStr = preg_replace('/[Zz+\-]\d{2}(?::?\d{2})?$/', '', $cleanStr);
+        $pattern = '/^(\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?$/';
+        if (!preg_match($pattern, $cleanStr, $m)) {
             // Also try datetime string and extract time.
-            $pattern2 = '/T(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?/';
-            if (!preg_match($pattern2, $str, $m)) {
+            $pattern2 = '/[T ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?/';
+            if (!preg_match($pattern2, $cleanStr, $m)) {
                 throw new RangeError("Invalid PlainTime string: {$str}");
             }
         }
