@@ -3851,6 +3851,10 @@ class TemporalObject
             }
         }
         self::validateISODate($y, $m2, $d);
+        // Validate calendar if not default.
+        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
+            throw new RangeError("Invalid calendar: {$cal}");
+        }
         return self::createPlainDateObject($y, $m2, $d, $cal);
     }
 
