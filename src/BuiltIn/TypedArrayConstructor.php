@@ -12,6 +12,7 @@ use PhpJs\Value\JsArray;
 use PhpJs\Value\JsArrayBuffer;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsDataView;
+use PhpJs\Value\JsSharedArrayBuffer;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
@@ -54,6 +55,7 @@ class TypedArrayConstructor
     public static function install(Environment $env): void
     {
         self::installArrayBuffer($env);
+        self::installSharedArrayBuffer($env);
         self::installDataView($env);
         self::installTypedArrays($env);
     }

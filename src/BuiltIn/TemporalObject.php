@@ -1098,8 +1098,10 @@ class TemporalObject
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             return new JsString('M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT));
         });
-        foreach (['hour' => '[[ISOHour]]', 'minute' => '[[ISOMinute]]', 'second' => '[[ISOSecond]]',
-            'millisecond' => '[[ISOMillisecond]]', 'microsecond' => '[[ISOMicrosecond]]', 'nanosecond' => '[[ISONanosecond]]'] as $name => $slot) {
+        foreach (
+            ['hour' => '[[ISOHour]]', 'minute' => '[[ISOMinute]]', 'second' => '[[ISOSecond]]',
+            'millisecond' => '[[ISOMillisecond]]', 'microsecond' => '[[ISOMicrosecond]]', 'nanosecond' => '[[ISONanosecond]]'] as $name => $slot
+        ) {
             self::defineGetter($proto, $name, function (JsValue $this_) use ($slot): JsValue {
                 self::requirePlainDateTime($this_);
                 return new JsNumber((float) self::getSlotInt($this_, $slot));
@@ -1247,7 +1249,12 @@ class TemporalObject
                     self::getSlotInt($this_, '[[ISOYear]]'),
                     self::getSlotInt($this_, '[[ISOMonth]]'),
                     self::getSlotInt($this_, '[[ISODay]]'),
-                    0, 0, 0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                     self::getSlotString($this_, '[[Calendar]]'),
                 );
             }
@@ -1315,7 +1322,9 @@ class TemporalObject
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainDateTime($args[0] ?? JsUndefined::instance()), 1),
-            true, false, true,
+            true,
+            false,
+            true,
         ));
 
         $ctor->defineOwnProperty('compare', PropertyDescriptor::data(
@@ -1323,20 +1332,34 @@ class TemporalObject
                 $one = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
                 $two = self::toPlainDateTime($args[1] ?? JsUndefined::instance());
                 $cmpDate = self::compareISODate(
-                    self::getSlotInt($one, '[[ISOYear]]'), self::getSlotInt($one, '[[ISOMonth]]'), self::getSlotInt($one, '[[ISODay]]'),
-                    self::getSlotInt($two, '[[ISOYear]]'), self::getSlotInt($two, '[[ISOMonth]]'), self::getSlotInt($two, '[[ISODay]]'),
+                    self::getSlotInt($one, '[[ISOYear]]'),
+                    self::getSlotInt($one, '[[ISOMonth]]'),
+                    self::getSlotInt($one, '[[ISODay]]'),
+                    self::getSlotInt($two, '[[ISOYear]]'),
+                    self::getSlotInt($two, '[[ISOMonth]]'),
+                    self::getSlotInt($two, '[[ISODay]]'),
                 );
                 if ($cmpDate !== 0) {
                     return new JsNumber((float) $cmpDate);
                 }
                 return new JsNumber((float) self::compareISOTime(
-                    self::getSlotInt($one, '[[ISOHour]]'), self::getSlotInt($one, '[[ISOMinute]]'), self::getSlotInt($one, '[[ISOSecond]]'),
-                    self::getSlotInt($one, '[[ISOMillisecond]]'), self::getSlotInt($one, '[[ISOMicrosecond]]'), self::getSlotInt($one, '[[ISONanosecond]]'),
-                    self::getSlotInt($two, '[[ISOHour]]'), self::getSlotInt($two, '[[ISOMinute]]'), self::getSlotInt($two, '[[ISOSecond]]'),
-                    self::getSlotInt($two, '[[ISOMillisecond]]'), self::getSlotInt($two, '[[ISOMicrosecond]]'), self::getSlotInt($two, '[[ISONanosecond]]'),
+                    self::getSlotInt($one, '[[ISOHour]]'),
+                    self::getSlotInt($one, '[[ISOMinute]]'),
+                    self::getSlotInt($one, '[[ISOSecond]]'),
+                    self::getSlotInt($one, '[[ISOMillisecond]]'),
+                    self::getSlotInt($one, '[[ISOMicrosecond]]'),
+                    self::getSlotInt($one, '[[ISONanosecond]]'),
+                    self::getSlotInt($two, '[[ISOHour]]'),
+                    self::getSlotInt($two, '[[ISOMinute]]'),
+                    self::getSlotInt($two, '[[ISOSecond]]'),
+                    self::getSlotInt($two, '[[ISOMillisecond]]'),
+                    self::getSlotInt($two, '[[ISOMicrosecond]]'),
+                    self::getSlotInt($two, '[[ISONanosecond]]'),
                 ));
             }, 2),
-            true, false, true,
+            true,
+            false,
+            true,
         ));
 
         $ctor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
@@ -1479,7 +1502,9 @@ class TemporalObject
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainYearMonth($args[0] ?? JsUndefined::instance()), 1),
-            true, false, true,
+            true,
+            false,
+            true,
         ));
 
         $ctor->defineOwnProperty('compare', PropertyDescriptor::data(
@@ -1492,7 +1517,9 @@ class TemporalObject
                 }
                 return new JsNumber((float) (self::getSlotInt($one, '[[ISOMonth]]') <=> self::getSlotInt($two, '[[ISOMonth]]')));
             }, 2),
-            true, false, true,
+            true,
+            false,
+            true,
         ));
 
         $ctor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
@@ -1608,7 +1635,9 @@ class TemporalObject
 
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', fn (JsValue $this_, array $args): JsValue => self::toPlainMonthDay($args[0] ?? JsUndefined::instance()), 1),
-            true, false, true,
+            true,
+            false,
+            true,
         ));
 
         $ctor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
@@ -1716,8 +1745,16 @@ class TemporalObject
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
 
-            $timeStr = self::formatISOTime($parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'], $fractionalSecondDigits, $roundingMode);
+            $timeStr = self::formatISOTime(
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                $fractionalSecondDigits,
+                $roundingMode
+            );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
 
             // Compute offset string.
@@ -1736,8 +1773,16 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $timeStr = self::formatISOTime($parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'], 'auto', 'trunc');
+            $timeStr = self::formatISOTime(
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                'auto',
+                'trunc'
+            );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
             $offsetStr = self::timeZoneOffsetString($ns, $tz);
             $result = "{$dateStr}T{$timeStr}{$offsetStr}[{$tz}]";
@@ -1754,8 +1799,16 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $timeStr = self::formatISOTime($parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'], 'auto', 'trunc');
+            $timeStr = self::formatISOTime(
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                'auto',
+                'trunc'
+            );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
             $offsetStr = self::timeZoneOffsetString($ns, $tz);
             $result = "{$dateStr}T{$timeStr}{$offsetStr}[{$tz}]";
@@ -1788,8 +1841,14 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            return self::createPlainTimeObject($parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond']);
+            return self::createPlainTimeObject(
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond']
+            );
         }, 0);
 
         $d('toPlainDateTime', function (JsValue $this_): JsValue {
@@ -1798,9 +1857,18 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            return self::createPlainDateTimeObject($parts['year'], $parts['month'], $parts['day'],
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'], $cal);
+            return self::createPlainDateTimeObject(
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                $cal
+            );
         }, 0);
 
         self::setToStringTag($proto, 'Temporal.ZonedDateTime');
@@ -2134,8 +2202,10 @@ class TemporalObject
 
     private static function validateISOTime(int $h, int $m, int $s, int $ms, int $us, int $ns): void
     {
-        if ($h < 0 || $h > 23 || $m < 0 || $m > 59 || $s < 0 || $s > 59
-            || $ms < 0 || $ms > 999 || $us < 0 || $us > 999 || $ns < 0 || $ns > 999) {
+        if (
+            $h < 0 || $h > 23 || $m < 0 || $m > 59 || $s < 0 || $s > 59
+            || $ms < 0 || $ms > 999 || $us < 0 || $us > 999 || $ns < 0 || $ns > 999
+        ) {
             throw new RangeError('Invalid time');
         }
     }
@@ -2322,8 +2392,16 @@ class TemporalObject
     {
         $parts = self::epochNsToISOParts($ns, $timeZone);
         $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
-        $timeStr = self::formatISOTime($parts['hour'], $parts['minute'], $parts['second'],
-            $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'], $fractionalSecondDigits, $roundingMode);
+        $timeStr = self::formatISOTime(
+            $parts['hour'],
+            $parts['minute'],
+            $parts['second'],
+            $parts['millisecond'],
+            $parts['microsecond'],
+            $parts['nanosecond'],
+            $fractionalSecondDigits,
+            $roundingMode
+        );
         $offsetStr = self::timeZoneOffsetString($ns, $timeZone);
         return "{$dateStr}T{$timeStr}{$offsetStr}";
     }
@@ -2855,9 +2933,11 @@ class TemporalObject
     private static function toPlainDate(JsValue $item): JsObject
     {
         if ($item instanceof JsObject) {
-            if ($item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
+            if (
+                $item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
                 && !$item->has('[[IsPlainYearMonth]]') && !$item->has('[[IsPlainMonthDay]]')
-                && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]')) {
+                && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]')
+            ) {
                 return $item;
             }
             if ($item->has('[[IsPlainDateTime]]')) {
@@ -3564,14 +3644,22 @@ class TemporalObject
             self::getDurationField($dur, 'months'),
             self::getDurationField($dur, 'weeks'),
             self::getDurationField($dur, 'days'),
-            0, 0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         );
         $newDate = self::plainDateAdd($dateObj, $dateDur, $sign);
 
         // Add time part.
         $timeObj = self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
         $timeDur = self::createDurationObject(
-            0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
             self::getDurationField($dur, 'hours'),
             self::getDurationField($dur, 'minutes'),
             self::getDurationField($dur, 'seconds'),
