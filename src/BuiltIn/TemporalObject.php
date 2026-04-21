@@ -3331,6 +3331,8 @@ class TemporalObject
 
     private static function parsePlainDateString(string $str): JsObject
     {
+        // Normalize Unicode minus sign (U+2212) to ASCII minus.
+        $str = str_replace("\xE2\x88\x92", '-', $str);
         // Reject -000000 (minus zero year).
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
@@ -3820,9 +3822,9 @@ class TemporalObject
 
     private static function parsePlainMonthDayString(string $str): JsObject
     {
-        // Reject Unicode minus sign (U+2212) which is not valid in ISO 8601.
-        if (str_contains($str, "\u{2212}")) {
-            throw new RangeError("variant minus sign is not valid: {$str}");
+        // Normalize Unicode minus sign (U+2212) to ASCII minus.
+        $str = str_replace("\xE2\x88\x92", '-', $str);
+        if (false) { // @phpstan-ignore-line
         }
 
         // Reject UTC designator (Z) for PlainMonthDay.
