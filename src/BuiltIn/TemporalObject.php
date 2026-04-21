@@ -1531,6 +1531,76 @@ class TemporalObject
             );
         }, 1);
 
+        $d('until', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDateTime($this_);
+            $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            return self::plainDateTimeDifference($this_, $other, $opts);
+        }, 1);
+
+        $d('since', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDateTime($this_);
+            $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            return self::plainDateTimeDifference($other, $this_, $opts);
+        }, 1);
+
+        $d('round', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDateTime($this_);
+            $roundTo = $args[0] ?? JsUndefined::instance();
+            if ($roundTo instanceof JsString) {
+                $smallestUnit = self::canonicalTemporalUnit($roundTo->value);
+            } elseif ($roundTo instanceof JsObject) {
+                $su = $roundTo->get('smallestUnit');
+                if ($su instanceof JsUndefined) {
+                    throw new RangeError('smallestUnit is required');
+                }
+                $smallestUnit = self::canonicalTemporalUnit(
+                    TypeConversion::toString($su)
+                );
+            } else {
+                throw new TypeError('options must be string or object');
+            }
+            // For now, just return the same DateTime (rounding not implemented).
+            return self::createPlainDateTimeObject(
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+                self::getSlotInt($this_, '[[ISOHour]]'),
+                self::getSlotInt($this_, '[[ISOMinute]]'),
+                self::getSlotInt($this_, '[[ISOSecond]]'),
+                self::getSlotInt($this_, '[[ISOMillisecond]]'),
+                self::getSlotInt($this_, '[[ISOMicrosecond]]'),
+                self::getSlotInt($this_, '[[ISONanosecond]]'),
+                self::getSlotString($this_, '[[Calendar]]'),
+            );
+        }, 1);
+
+        $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDateTime($this_);
+            $tz = $args[0] ?? JsUndefined::instance();
+            if ($tz instanceof JsString) {
+                $tzName = $tz->value;
+            } elseif ($tz instanceof JsObject && $tz->has('timeZone')) {
+                $tzName = TypeConversion::toString($tz->get('timeZone'));
+            } else {
+                $tzName = TypeConversion::toString($tz);
+            }
+            // Convert to epoch nanoseconds using the timezone offset.
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $h = self::getSlotInt($this_, '[[ISOHour]]');
+            $min = self::getSlotInt($this_, '[[ISOMinute]]');
+            $s = self::getSlotInt($this_, '[[ISOSecond]]');
+            $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
+            $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
+            $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $epochNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $tzName);
+            return self::createZonedDateTimeObject($epochNs, $tzName, $cal);
+        }, 1);
+
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $cal = TypeConversion::toString($args[0] ?? JsUndefined::instance());
@@ -5128,6 +5198,96 @@ class TemporalObject
             'microsecond' => (int) substr($subNsPadded, 3, 3),
             'nanosecond' => (int) substr($subNsPadded, 6, 3),
         ];
+    }
+
+    /** Compute difference between two PlainDateTimes as a Duration. */
+    private static function plainDateTimeDifference(
+        JsValue $dt1,
+        JsValue $dt2,
+        JsValue $options,
+    ): JsObject {
+        $ns1 = self::isoDateTimeToEpochNs(
+            self::getSlotInt($dt1, '[[ISOYear]]'),
+            self::getSlotInt($dt1, '[[ISOMonth]]'),
+            self::getSlotInt($dt1, '[[ISODay]]'),
+            self::getSlotInt($dt1, '[[ISOHour]]'),
+            self::getSlotInt($dt1, '[[ISOMinute]]'),
+            self::getSlotInt($dt1, '[[ISOSecond]]'),
+            self::getSlotInt($dt1, '[[ISOMillisecond]]'),
+            self::getSlotInt($dt1, '[[ISOMicrosecond]]'),
+            self::getSlotInt($dt1, '[[ISONanosecond]]'),
+            'UTC',
+        );
+        $ns2 = self::isoDateTimeToEpochNs(
+            self::getSlotInt($dt2, '[[ISOYear]]'),
+            self::getSlotInt($dt2, '[[ISOMonth]]'),
+            self::getSlotInt($dt2, '[[ISODay]]'),
+            self::getSlotInt($dt2, '[[ISOHour]]'),
+            self::getSlotInt($dt2, '[[ISOMinute]]'),
+            self::getSlotInt($dt2, '[[ISOSecond]]'),
+            self::getSlotInt($dt2, '[[ISOMillisecond]]'),
+            self::getSlotInt($dt2, '[[ISOMicrosecond]]'),
+            self::getSlotInt($dt2, '[[ISONanosecond]]'),
+            'UTC',
+        );
+        $diffNs = bcsub($ns2, $ns1, 0);
+        $largestUnit = 'day';
+        if ($options instanceof JsObject) {
+            $lu = $options->get('largestUnit');
+            if (!($lu instanceof JsUndefined)) {
+                $largestUnit = TypeConversion::toString($lu);
+                $largestUnit = self::canonicalTemporalUnit($largestUnit);
+            }
+        }
+        return self::nsToDateTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Convert nanosecond diff to Duration with date+time units. */
+    private static function nsToDateTimeDuration(string $ns, string $largestUnit): JsObject
+    {
+        $sign = bccomp($ns, '0', 0) < 0 ? -1 : 1;
+        $abs = $sign < 0 ? bcsub('0', $ns, 0) : $ns;
+        $days = 0;
+        $hours = 0;
+        $minutes = 0;
+        $seconds = 0;
+        $milliseconds = 0;
+        $microseconds = 0;
+        $nanoseconds = 0;
+        $nsPerDay = '86400000000000';
+        $nsPerHour = '3600000000000';
+        $nsPerMin = '60000000000';
+        $nsPerSec = '1000000000';
+        $nsPerMs = '1000000';
+        $nsPerUs = '1000';
+        if ($largestUnit === 'day') {
+            $days = (int) bcdiv($abs, $nsPerDay, 0);
+            $abs = bcmod($abs, $nsPerDay);
+        }
+        if ($largestUnit === 'day' || $largestUnit === 'hour') {
+            $hours = (int) bcdiv($abs, $nsPerHour, 0);
+            $abs = bcmod($abs, $nsPerHour);
+        }
+        if (in_array($largestUnit, ['day', 'hour', 'minute'])) {
+            $minutes = (int) bcdiv($abs, $nsPerMin, 0);
+            $abs = bcmod($abs, $nsPerMin);
+        }
+        $seconds = (int) bcdiv($abs, $nsPerSec, 0);
+        $abs = bcmod($abs, $nsPerSec);
+        $milliseconds = (int) bcdiv($abs, $nsPerMs, 0);
+        $abs = bcmod($abs, $nsPerMs);
+        $microseconds = (int) bcdiv($abs, $nsPerUs, 0);
+        $nanoseconds = (int) bcmod($abs, $nsPerUs);
+        return self::createDurationObject(
+            0, 0, 0,
+            $sign * $days,
+            $sign * $hours,
+            $sign * $minutes,
+            $sign * $seconds,
+            $sign * $milliseconds,
+            $sign * $microseconds,
+            $sign * $nanoseconds,
+        );
     }
 
     private static function isoDateTimeToEpochNs(
