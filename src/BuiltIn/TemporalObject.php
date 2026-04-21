@@ -4140,10 +4140,20 @@ class TemporalObject
                 if ($critical) {
                     $hasCriticalCal = true;
                 }
-            } elseif ($critical && str_contains($content, '=')) {
-                throw new RangeError(
-                    "reject unknown annotation with critical flag: {$str}"
-                );
+            } elseif (str_contains($content, '=')) {
+                // Per spec: annotation keys must be lowercase ASCII.
+                $key = substr($content, 0, (int) strpos($content, '='));
+                if ($key !== strtolower($key)) {
+                    throw new RangeError(
+                        "annotation keys must be lowercase: {$str}"
+                        . " - invalid capitalized key"
+                    );
+                }
+                if ($critical) {
+                    throw new RangeError(
+                        "reject unknown annotation with critical flag: {$str}"
+                    );
+                }
             }
         }
         if ($calCount > 1 && $hasCriticalCal) {
