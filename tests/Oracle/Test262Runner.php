@@ -45,6 +45,11 @@ class Test262Runner
 
         $flags = $meta['flags'] ?? [];
 
+        // Skip CanBlockIsTrue tests: our single-threaded agent cannot block.
+        if (in_array('CanBlockIsTrue', $flags, true)) {
+            return new TestResult($testPath, TestStatus::Skip, 'CanBlockIsTrue');
+        }
+
         // Skip raw tests (no harness)
         $isRaw = in_array('raw', $flags, true);
         $isAsync = in_array('async', $flags, true);
