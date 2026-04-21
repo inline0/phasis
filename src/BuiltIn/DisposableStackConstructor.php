@@ -367,16 +367,27 @@ class DisposableStackConstructor
         // AsyncDisposableStack.prototype.disposeAsync()
         $proto->defineOwnProperty('disposeAsync', PropertyDescriptor::data(
             JsFunction::fromCallable('disposeAsync', function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsObject || !self::isAsyncDisposableStack($this_)) {
-                    throw new TypeError('Method AsyncDisposableStack.prototype.disposeAsync requires a valid AsyncDisposableStack receiver');
+                // Per spec: disposeAsync returns a Promise. Type errors reject.
+                try {
+                    if (!$this_ instanceof JsObject || !self::isAsyncDisposableStack($this_)) {
+                        throw new TypeError(
+                            'disposeAsync requires a valid AsyncDisposableStack'
+                        );
+                    }
+                    $state = $this_->get('[[DisposableState]]');
+                    if ($state instanceof JsString && $state->value === 'disposed') {
+                        return \PhpJs\Value\JsPromise::resolved(JsUndefined::instance());
+                    }
+                    $this_->set('[[DisposableState]]', new JsString('disposed'));
+                    self::disposeStack($this_, true);
+                    return \PhpJs\Value\JsPromise::resolved(JsUndefined::instance());
+                } catch (\Throwable $e) {
+                    $interp = \PhpJs\Value\JsFunction::getInterpreterInstance();
+                    $jsErr = $interp !== null
+                        ? $interp->phpExceptionToJsValue($e)
+                        : JsUndefined::instance();
+                    return \PhpJs\Value\JsPromise::rejected($jsErr);
                 }
-                $state = $this_->get('[[DisposableState]]');
-                if ($state instanceof JsString && $state->value === 'disposed') {
-                    return JsUndefined::instance();
-                }
-                $this_->set('[[DisposableState]]', new JsString('disposed'));
-                self::disposeStack($this_, true);
-                return JsUndefined::instance();
             }, 0),
             true,
             false,
