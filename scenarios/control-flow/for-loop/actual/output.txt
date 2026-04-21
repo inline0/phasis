@@ -1,15 +1,3 @@
-PHP Fatal error:  Uncaught Error: Class "PhpJs\BuiltIn\IteratorConstructor" not found in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php:164
-Stack trace:
-#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
-#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
-#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('// Basic for\nle...')
-#3 {main}
-  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php on line 164
+PHP Fatal error:  Cannot redeclare PhpJs\Runtime\Interpreter::phpExceptionToJsValue() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 9162
 
-Fatal error: Uncaught Error: Class "PhpJs\BuiltIn\IteratorConstructor" not found in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php:164
-Stack trace:
-#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
-#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
-#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('// Basic for\nle...')
-#3 {main}
-  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php on line 164
+Fatal error: Cannot redeclare PhpJs\Runtime\Interpreter::phpExceptionToJsValue() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 9162
