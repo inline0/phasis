@@ -650,10 +650,13 @@ class TemporalObject
             self::requirePlainDate($this_);
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $calendarName = 'auto';
-            if ($options instanceof JsObject && $options->has('calendarName')) {
+            if ($options instanceof JsObject) {
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
                     $calendarName = TypeConversion::toString($cn);
+                    if (!in_array($calendarName, ['auto', 'always', 'never', 'critical'], true)) {
+                        throw new RangeError("Invalid calendarName: {$calendarName}");
+                    }
                 }
             }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
@@ -1323,10 +1326,13 @@ class TemporalObject
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
             $calendarName = 'auto';
-            if ($options instanceof JsObject && $options->has('calendarName')) {
+            if ($options instanceof JsObject) {
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
                     $calendarName = TypeConversion::toString($cn);
+                    if (!in_array($calendarName, ['auto', 'always', 'never', 'critical'], true)) {
+                        throw new RangeError("Invalid calendarName: {$calendarName}");
+                    }
                 }
             }
             return new JsString(self::plainDateTimeToString($this_, $fractionalSecondDigits, $roundingMode, $calendarName));
@@ -1684,10 +1690,13 @@ class TemporalObject
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $calendarName = 'auto';
-            if ($options instanceof JsObject && $options->has('calendarName')) {
+            if ($options instanceof JsObject) {
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
                     $calendarName = TypeConversion::toString($cn);
+                    if (!in_array($calendarName, ['auto', 'always', 'never', 'critical'], true)) {
+                        throw new RangeError("Invalid calendarName: {$calendarName}");
+                    }
                 }
             }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
