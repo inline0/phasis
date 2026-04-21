@@ -1042,12 +1042,19 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainTime must be called with new');
             }
-            $h = isset($args[0]) && !($args[0] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            $min = isset($args[1]) && !($args[1] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[1]) : 0;
-            $s = isset($args[2]) && !($args[2] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[2]) : 0;
-            $ms = isset($args[3]) && !($args[3] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[3]) : 0;
-            $us = isset($args[4]) && !($args[4] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[4]) : 0;
-            $ns = isset($args[5]) && !($args[5] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[5]) : 0;
+            $toInt = static function (JsValue $v, string $name): int {
+                $n = TypeConversion::toNumber($v);
+                if (!is_finite($n)) {
+                    throw new RangeError("{$name} must be finite");
+                }
+                return (int) $n;
+            };
+            $h = isset($args[0]) && !($args[0] instanceof JsUndefined) ? $toInt($args[0], 'hour') : 0;
+            $min = isset($args[1]) && !($args[1] instanceof JsUndefined) ? $toInt($args[1], 'minute') : 0;
+            $s = isset($args[2]) && !($args[2] instanceof JsUndefined) ? $toInt($args[2], 'second') : 0;
+            $ms = isset($args[3]) && !($args[3] instanceof JsUndefined) ? $toInt($args[3], 'millisecond') : 0;
+            $us = isset($args[4]) && !($args[4] instanceof JsUndefined) ? $toInt($args[4], 'microsecond') : 0;
+            $ns = isset($args[5]) && !($args[5] instanceof JsUndefined) ? $toInt($args[5], 'nanosecond') : 0;
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
             $this_->setPrototype($proto);
             self::setTimeSlots($this_, $h, $min, $s, $ms, $us, $ns);
@@ -1607,8 +1614,16 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainYearMonth must be called with new');
             }
-            $y = (int) TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
-            $m = (int) TypeConversion::toNumber($args[1] ?? JsUndefined::instance());
+            $yNum = TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $y = (int) $yNum;
+            $mNum = TypeConversion::toNumber($args[1] ?? JsUndefined::instance());
+            if (!is_finite($mNum)) {
+                throw new RangeError('month must be finite');
+            }
+            $m = (int) $mNum;
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[2]));
