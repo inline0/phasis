@@ -5359,7 +5359,9 @@ class TemporalObject
         $microseconds = (int) bcdiv($abs, $nsPerUs, 0);
         $nanoseconds = (int) bcmod($abs, $nsPerUs);
         return self::createDurationObject(
-            0, 0, 0,
+            0,
+            0,
+            0,
             $sign * $days,
             $sign * $hours,
             $sign * $minutes,
