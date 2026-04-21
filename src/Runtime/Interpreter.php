@@ -6842,8 +6842,13 @@ class Interpreter
             $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
                 ? $e->jsValue : $this->phpExceptionToJsValue($e);
             // Per spec: close iterator when value promise rejects and !done.
+            // Suppress close errors; the original rejection takes priority.
             if (!$done && $syncIterator !== null) {
-                $this->iteratorClose($syncIterator);
+                try {
+                    $this->iteratorClose($syncIterator);
+                } catch (\Throwable) {
+                    // Suppressed per spec.
+                }
             }
             return \PhpJs\Value\JsPromise::rejected($jsErr);
         }
