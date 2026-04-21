@@ -426,8 +426,11 @@ class RegExpPrototype
         if ($interp === null) {
             return $matches;
         }
-        $transformFn = static function (string $esSubPattern) use ($interp): string {
-            $transformed = $interp->transformEsPatternForPcre($esSubPattern);
+        $flagsDesc = $regexp->getOwnPropertyDescriptor("[[OriginalFlags]]");
+        $esFlags = ($flagsDesc !== null && $flagsDesc->value instanceof JsString)
+            ? $flagsDesc->value->value : "";
+        $transformFn = static function (string $esSubPattern) use ($interp, $esFlags): string {
+            $transformed = $interp->transformEsPatternForPcre($esSubPattern, $esFlags);
             return $interp->escapeForPcreDelimiter($transformed);
         };
 

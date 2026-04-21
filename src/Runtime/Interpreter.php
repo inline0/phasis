@@ -5038,12 +5038,37 @@ class Interpreter
     /** Convert a PHP exception into a JS value for SuppressedError chaining. */
     private function phpExceptionToJsValue(\Throwable $e): JsValue
     {
-        if ($e instanceof \PhpJs\Exceptions\JsException) {
+        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
             return $e->jsValue;
+        }
+        $ctorName = match (true) {
+            $e instanceof TypeError,
+            $e instanceof \PhpJs\Exceptions\TypeError => 'TypeError',
+            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
+            $e instanceof \PhpJs\Exceptions\ReferenceError => 'ReferenceError',
+            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
+            default => 'Error',
+        };
+        try {
+            $ctor = $this->globalEnv->get($ctorName);
+        } catch (\Throwable) {
+            $ctor = null;
+        }
+        if ($ctor instanceof JsFunction) {
+            $obj = new JsObject();
+            $obj->set('[[NewTarget]]', $ctor);
+            $proto = $ctor->get('prototype');
+            if ($proto instanceof JsObject) {
+                $obj->setPrototype($proto);
+            }
+            $result = $ctor->call($obj, [new JsString($e->getMessage())]);
+            if ($result instanceof JsObject) {
+                return $result;
+            }
         }
         $errObj = new JsObject();
         $errObj->set('message', new JsString($e->getMessage()));
-        $errObj->set('name', new JsString((new \ReflectionClass($e))->getShortName()));
+        $errObj->set('name', new JsString($ctorName));
         $errObj->defineOwnProperty(
             '[[ErrorData]]',
             \PhpJs\Object\PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
@@ -7848,7 +7873,10 @@ class Interpreter
             if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
                 $blockLexNames[$child->id->name] = true;
             }
-            if ($child instanceof VariableDeclaration && ($child->kind === 'let' || $child->kind === 'const')) {
+            if ($child instanceof VariableDeclaration && (
+                $child->kind === 'let' || $child->kind === 'const'
+                || $child->kind === 'using' || $child->kind === 'await using'
+            )) {
                 foreach ($child->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
                         $blockLexNames[$n] = true;
@@ -8152,7 +8180,8 @@ class Interpreter
                     foreach ($node->body as $child) {
                         if (
                             $child instanceof VariableDeclaration
-                            && ($child->kind === 'let' || $child->kind === 'const')
+                            && ($child->kind === 'let' || $child->kind === 'const'
+                                || $child->kind === 'using' || $child->kind === 'await using')
                         ) {
                             foreach ($child->declarations as $d) {
                                 foreach ($this->patternBoundNames($d->id) as $n) {
@@ -8209,7 +8238,8 @@ class Interpreter
                         foreach ($case->consequent as $child) {
                             if (
                                 $child instanceof VariableDeclaration
-                                && ($child->kind === 'let' || $child->kind === 'const')
+                                && ($child->kind === 'let' || $child->kind === 'const'
+                                    || $child->kind === 'using' || $child->kind === 'await using')
                             ) {
                                 foreach ($child->declarations as $d) {
                                     foreach ($this->patternBoundNames($d->id) as $n) {
@@ -10175,6 +10205,171 @@ class Interpreter
         return null;
     }
 
+    private static function normalizeEsPropertyName(string $name): ?string
+    {
+        static $aliases = [
+            'General_Category' => 'General_Category', 'gc' => 'General_Category',
+            'Script' => 'Script', 'sc' => 'Script',
+            'Script_Extensions' => 'Script_Extensions', 'scx' => 'Script_Extensions',
+        ];
+        return $aliases[$name] ?? null;
+    }
+
+    private static function mapGeneralCategoryValue(string $value): ?string
+    {
+        static $map = [
+            'Letter' => 'L', 'Cased_Letter' => 'L&',
+            'Uppercase_Letter' => 'Lu', 'Lowercase_Letter' => 'Ll',
+            'Titlecase_Letter' => 'Lt', 'Modifier_Letter' => 'Lm',
+            'Other_Letter' => 'Lo',
+            'Mark' => 'M', 'Nonspacing_Mark' => 'Mn',
+            'Spacing_Mark' => 'Mc', 'Enclosing_Mark' => 'Me',
+            'Number' => 'N', 'Decimal_Number' => 'Nd',
+            'Letter_Number' => 'Nl', 'Other_Number' => 'No',
+            'Punctuation' => 'P', 'Connector_Punctuation' => 'Pc',
+            'Dash_Punctuation' => 'Pd', 'Open_Punctuation' => 'Ps',
+            'Close_Punctuation' => 'Pe', 'Initial_Punctuation' => 'Pi',
+            'Final_Punctuation' => 'Pf', 'Other_Punctuation' => 'Po',
+            'Symbol' => 'S', 'Math_Symbol' => 'Sm',
+            'Currency_Symbol' => 'Sc', 'Modifier_Symbol' => 'Sk',
+            'Other_Symbol' => 'So',
+            'Separator' => 'Z', 'Space_Separator' => 'Zs',
+            'Line_Separator' => 'Zl', 'Paragraph_Separator' => 'Zp',
+            'Other' => 'C', 'Control' => 'Cc', 'Format' => 'Cf',
+            'Surrogate' => 'Cs', 'Private_Use' => 'Co', 'Unassigned' => 'Cn',
+            'L' => 'L', 'L&' => 'L&', 'LC' => 'L&',
+            'Lu' => 'Lu', 'Ll' => 'Ll', 'Lt' => 'Lt',
+            'Lm' => 'Lm', 'Lo' => 'Lo',
+            'M' => 'M', 'Mn' => 'Mn', 'Mc' => 'Mc', 'Me' => 'Me',
+            'N' => 'N', 'Nd' => 'Nd', 'Nl' => 'Nl', 'No' => 'No',
+            'P' => 'P', 'Pc' => 'Pc', 'Pd' => 'Pd', 'Ps' => 'Ps',
+            'Pe' => 'Pe', 'Pi' => 'Pi', 'Pf' => 'Pf', 'Po' => 'Po',
+            'S' => 'S', 'Sm' => 'Sm', 'Sc' => 'Sc', 'Sk' => 'Sk', 'So' => 'So',
+            'Z' => 'Z', 'Zs' => 'Zs', 'Zl' => 'Zl', 'Zp' => 'Zp',
+            'C' => 'C', 'Cc' => 'Cc', 'Cf' => 'Cf', 'Cs' => 'Cs',
+            'Co' => 'Co', 'Cn' => 'Cn',
+            'cntrl' => 'Cc', 'digit' => 'Nd', 'punct' => 'P',
+        ];
+        return $map[$value] ?? null;
+    }
+
+    private static function mapBinaryProperty(string $name): ?string
+    {
+        static $supported = [
+            'ASCII' => 'ASCII', 'ASCII_Hex_Digit' => 'ASCII_Hex_Digit',
+            'AHex' => 'ASCII_Hex_Digit', 'Alphabetic' => 'Alphabetic',
+            'Alpha' => 'Alphabetic', 'Any' => 'Any',
+            'Bidi_Control' => 'Bidi_Control', 'Bidi_C' => 'Bidi_Control',
+            'Bidi_Mirrored' => 'Bidi_Mirrored', 'Bidi_M' => 'Bidi_Mirrored',
+            'Case_Ignorable' => 'Case_Ignorable', 'CI' => 'Case_Ignorable',
+            'Cased' => 'Cased',
+            'Changes_When_Casefolded' => 'Changes_When_Casefolded',
+            'CWCF' => 'Changes_When_Casefolded',
+            'Changes_When_Casemapped' => 'Changes_When_Casemapped',
+            'CWCM' => 'Changes_When_Casemapped',
+            'Changes_When_Lowercased' => 'Changes_When_Lowercased',
+            'CWL' => 'Changes_When_Lowercased',
+            'Changes_When_NFKC_Casefolded' => 'Changes_When_NFKC_Casefolded',
+            'CWKCF' => 'Changes_When_NFKC_Casefolded',
+            'Changes_When_Titlecased' => 'Changes_When_Titlecased',
+            'CWT' => 'Changes_When_Titlecased',
+            'Changes_When_Uppercased' => 'Changes_When_Uppercased',
+            'CWU' => 'Changes_When_Uppercased',
+            'Dash' => 'Dash',
+            'Default_Ignorable_Code_Point' => 'Default_Ignorable_Code_Point',
+            'DI' => 'Default_Ignorable_Code_Point',
+            'Deprecated' => 'Deprecated', 'Dep' => 'Deprecated',
+            'Diacritic' => 'Diacritic', 'Dia' => 'Diacritic',
+            'Emoji' => 'Emoji', 'Emoji_Component' => 'Emoji_Component',
+            'EComp' => 'Emoji_Component',
+            'Emoji_Modifier' => 'Emoji_Modifier', 'EMod' => 'Emoji_Modifier',
+            'Emoji_Modifier_Base' => 'Emoji_Modifier_Base',
+            'EBase' => 'Emoji_Modifier_Base',
+            'Emoji_Presentation' => 'Emoji_Presentation',
+            'EPres' => 'Emoji_Presentation',
+            'Extended_Pictographic' => 'Extended_Pictographic',
+            'ExtPict' => 'Extended_Pictographic',
+            'Extender' => 'Extender', 'Ext' => 'Extender',
+            'Grapheme_Base' => 'Grapheme_Base', 'Gr_Base' => 'Grapheme_Base',
+            'Grapheme_Extend' => 'Grapheme_Extend', 'Gr_Ext' => 'Grapheme_Extend',
+            'Hex_Digit' => 'Hex_Digit', 'Hex' => 'Hex_Digit',
+            'IDS_Binary_Operator' => 'IDS_Binary_Operator',
+            'IDSB' => 'IDS_Binary_Operator',
+            'IDS_Trinary_Operator' => 'IDS_Trinary_Operator',
+            'IDST' => 'IDS_Trinary_Operator',
+            'ID_Continue' => 'ID_Continue', 'IDC' => 'ID_Continue',
+            'ID_Start' => 'ID_Start', 'IDS' => 'ID_Start',
+            'Ideographic' => 'Ideographic', 'Ideo' => 'Ideographic',
+            'Join_Control' => 'Join_Control', 'Join_C' => 'Join_Control',
+            'Logical_Order_Exception' => 'Logical_Order_Exception',
+            'LOE' => 'Logical_Order_Exception',
+            'Lowercase' => 'Lowercase', 'Lower' => 'Lowercase',
+            'Math' => 'Math',
+            'Noncharacter_Code_Point' => 'Noncharacter_Code_Point',
+            'NChar' => 'Noncharacter_Code_Point',
+            'Pattern_Syntax' => 'Pattern_Syntax', 'Pat_Syn' => 'Pattern_Syntax',
+            'Pattern_White_Space' => 'Pattern_White_Space',
+            'Pat_WS' => 'Pattern_White_Space',
+            'Quotation_Mark' => 'Quotation_Mark', 'QMark' => 'Quotation_Mark',
+            'Radical' => 'Radical',
+            'Regional_Indicator' => 'Regional_Indicator', 'RI' => 'Regional_Indicator',
+            'Sentence_Terminal' => 'Sentence_Terminal', 'STerm' => 'Sentence_Terminal',
+            'Soft_Dotted' => 'Soft_Dotted', 'SD' => 'Soft_Dotted',
+            'Terminal_Punctuation' => 'Terminal_Punctuation',
+            'Term' => 'Terminal_Punctuation',
+            'Unified_Ideograph' => 'Unified_Ideograph', 'UIdeo' => 'Unified_Ideograph',
+            'Uppercase' => 'Uppercase', 'Upper' => 'Uppercase',
+            'Variation_Selector' => 'Variation_Selector', 'VS' => 'Variation_Selector',
+            'White_Space' => 'White_Space', 'space' => 'White_Space',
+            'WSpace' => 'White_Space',
+            'XID_Continue' => 'XID_Continue', 'XIDC' => 'XID_Continue',
+            'XID_Start' => 'XID_Start', 'XIDS' => 'XID_Start',
+            'Assigned' => '!Assigned',
+        ];
+        $pcre = $supported[$name] ?? null;
+        if ($pcre === null) {
+            return null;
+        }
+        if ($pcre === '!Assigned') {
+            return '!Assigned';
+        }
+        if (@preg_match('/\\p{' . $pcre . '}/u', '') === false) {
+            return 'Any';
+        }
+        return $pcre;
+    }
+
+    private static function normalizeScriptName(string $name): ?string
+    {
+        if (@preg_match('/\\p{Script=' . preg_quote($name, '/') . '}/u', '') !== false) {
+            return $name;
+        }
+        if (@preg_match('/\\p{Script_Extensions=' . preg_quote($name, '/') . '}/u', '') !== false) {
+            return $name;
+        }
+        return null;
+    }
+
+    /**
+     * Transform v-flag (unicodeSets) pattern features into PCRE2-compatible syntax.
+     */
+    private function transformVFlagPattern(string $pattern): string
+    {
+        $pattern = preg_replace_callback(
+            '/\\\\q\\{([^}]*)\\}/',
+            static function (array $m): string {
+                $alternatives = explode('|', $m[1]);
+                if (count($alternatives) === 1 && $alternatives[0] === '') {
+                    return '(?:)';
+                }
+                usort($alternatives, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+                return '(?:' . implode('|', $alternatives) . ')';
+            },
+            $pattern,
+        );
+        return $pattern;
+    }
+
     /**
      * Transform quantifiers with counts exceeding PCRE2's 65535 limit.
      *
@@ -10294,12 +10489,28 @@ class Interpreter
                         if ($pattern[$i] === '\\' && $i + 1 < $len) {
                             // Validate escapes inside character classes too.
                             $next = $pattern[$i + 1];
-                            if ($next >= '0' && $next <= '9') {
+                            if (($next === 'p' || $next === 'P') && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                                // \p{...} / \P{...}: skip to closing brace.
+                                $j = $i + 3;
+                                while ($j < $len && $pattern[$j] !== '}') {
+                                    $j++;
+                                }
+                                $i = $j < $len ? $j : $i + 1;
+                            } elseif ($next >= '0' && $next <= '9') {
                                 $this->validateUnicodeDecimalEscape($pattern, $i + 1, $len, 0, true);
+                                $i++;
                             } elseif ($next === 'c') {
                                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
+                                $i++;
+                            } elseif ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                                $j = $i + 3;
+                                while ($j < $len && $pattern[$j] !== '}') {
+                                    $j++;
+                                }
+                                $i = $j < $len ? $j : $i + 1;
+                            } else {
+                                $i++; // skip the escaped char
                             }
-                            $i++; // skip the escaped char
                         }
                         $i++;
                     }
@@ -10361,6 +10572,21 @@ class Interpreter
             } elseif ($next === 'c') {
                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
                 $i += 2; // skip \cX
+            } elseif ($next === 'p' || $next === 'P') {
+                // \p{...} and \P{...} Unicode property escapes: skip to closing }.
+                if ($i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $j = $i + 3;
+                    while ($j < $len && $pattern[$j] !== '}') {
+                        $j++;
+                    }
+                    if ($j < $len) {
+                        $i = $j;
+                    } else {
+                        $i++;
+                    }
+                } else {
+                    $i++;
+                }
             } elseif ($next === 'u') {
                 // \u{HHHH} braced Unicode escape: skip past the closing }.
                 if ($i + 2 < $len && $pattern[$i + 2] === '{') {

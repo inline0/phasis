@@ -49,7 +49,10 @@ class IteratorConstructor
         $iteratorCtor->setConstructable();
 
         $iteratorCtor->defineOwnProperty('prototype', PropertyDescriptor::data(
-            $iteratorPrototype, false, false, false,
+            $iteratorPrototype,
+            false,
+            false,
+            false,
         ));
 
         // constructor: accessor with SetterThatIgnoresPrototypeProperties.
@@ -62,7 +65,10 @@ class IteratorConstructor
             return JsUndefined::instance();
         }, 1);
         $iteratorPrototype->defineOwnProperty('constructor', PropertyDescriptor::accessor(
-            get: $ctorGetter, set: $ctorSetter, enumerable: false, configurable: true,
+            get: $ctorGetter,
+            set: $ctorSetter,
+            enumerable: false,
+            configurable: true,
         ));
 
         // Symbol.toStringTag: accessor with SetterThatIgnoresPrototypeProperties.
@@ -75,7 +81,10 @@ class IteratorConstructor
             return JsUndefined::instance();
         }, 1);
         $iteratorPrototype->definePropertyBySymbol(SymbolConstructor::toStringTag(), PropertyDescriptor::accessor(
-            get: $tagGetter, set: $tagSetter, enumerable: false, configurable: true,
+            get: $tagGetter,
+            set: $tagSetter,
+            enumerable: false,
+            configurable: true,
         ));
 
         self::$iteratorHelperPrototype = new JsObject($iteratorPrototype);
@@ -221,7 +230,10 @@ class IteratorConstructor
         $rm = $it->get('return');
         if ($rm instanceof JsFunction) {
             if ($suppress) {
-                try { $rm->call($it, []); } catch (\Throwable) {}
+                try {
+                    $rm->call($it, []);
+                } catch (\Throwable) {
+                }
             } else {
                 $rm->call($it, []);
             }
@@ -262,7 +274,10 @@ class IteratorConstructor
             $done = false;
             return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter): JsObject {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                if ($isDone) {
+                    $alive = false;
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
                 try {
                     $mapped = $mapper->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
                 } catch (\Throwable $e) {
@@ -292,7 +307,10 @@ class IteratorConstructor
             return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $predicate, &$counter): JsObject {
                 while (true) {
                     [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                    if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                    if ($isDone) {
+                        $alive = false;
+                        return self::iterResult(JsUndefined::instance(), true);
+                    }
                     try {
                         $selected = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
                     } catch (\Throwable $e) {
@@ -315,14 +333,27 @@ class IteratorConstructor
                 throw new TypeError('Iterator.prototype.take called on non-object');
             }
             $limitArg = $args[0] ?? JsUndefined::instance();
-            try { $numLimit = self::toNonNegInt($limitArg); } catch (\Throwable $e) { self::closeIterator($this_, true); throw $e; }
+            try {
+                $numLimit = self::toNonNegInt($limitArg);
+            } catch (\Throwable $e) {
+                self::closeIterator($this_, true);
+                throw $e;
+            }
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $remaining = $numLimit;
             $done = false;
             return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$remaining): JsObject {
-                if ($remaining <= 0) { $done = true; $alive = false; self::closeIterator($itObj); return self::iterResult(JsUndefined::instance(), true); }
+                if ($remaining <= 0) {
+                    $done = true;
+                    $alive = false;
+                    self::closeIterator($itObj);
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                if ($isDone) {
+                    $alive = false;
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
                 $remaining--;
                 return self::iterResult($value, false);
             });
@@ -336,20 +367,34 @@ class IteratorConstructor
                 throw new TypeError('Iterator.prototype.drop called on non-object');
             }
             $limitArg = $args[0] ?? JsUndefined::instance();
-            try { $numLimit = self::toNonNegInt($limitArg); } catch (\Throwable $e) { self::closeIterator($this_, true); throw $e; }
+            try {
+                $numLimit = self::toNonNegInt($limitArg);
+            } catch (\Throwable $e) {
+                self::closeIterator($this_, true);
+                throw $e;
+            }
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $toDrop = $numLimit;
             $dropped = false;
             $done = false;
             return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$toDrop, &$dropped): JsObject {
                 while (!$dropped) {
-                    if ($toDrop <= 0) { $dropped = true; break; }
+                    if ($toDrop <= 0) {
+                        $dropped = true;
+                        break;
+                    }
                     [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                    if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                    if ($isDone) {
+                        $alive = false;
+                        return self::iterResult(JsUndefined::instance(), true);
+                    }
                     $toDrop--;
                 }
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                if ($isDone) {
+                    $alive = false;
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
                 return self::iterResult($value, false);
             });
         };
@@ -377,7 +422,10 @@ class IteratorConstructor
                 while (true) {
                     if ($innerIt !== null && !$innerDone) {
                         $innerResult = $innerNx->call($innerIt, []);
-                        if (!$innerResult instanceof JsObject) { $innerDone = true; throw new TypeError('Iterator result is not an object'); }
+                        if (!$innerResult instanceof JsObject) {
+                            $innerDone = true;
+                            throw new TypeError('Iterator result is not an object');
+                        }
                         if (!TypeConversion::toBoolean($innerResult->get('done'))) {
                             return self::iterResult($innerResult->get('value'), false);
                         }
@@ -387,7 +435,10 @@ class IteratorConstructor
                     }
 
                     [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                    if ($isDone) { $alive = false; return self::iterResult(JsUndefined::instance(), true); }
+                    if ($isDone) {
+                        $alive = false;
+                        return self::iterResult(JsUndefined::instance(), true);
+                    }
 
                     try {
                         $mapped = $mapper->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
@@ -397,23 +448,38 @@ class IteratorConstructor
                     }
                     $counter++;
 
-                    if ($mapped instanceof JsString) { self::closeIterator($itObj, true); throw new TypeError('flatMap: strings are not flattenable'); }
-                    if (!$mapped instanceof JsObject) { self::closeIterator($itObj, true); throw new TypeError('flatMap: mapper must return an object'); }
+                    if ($mapped instanceof JsString) {
+                        self::closeIterator($itObj, true);
+                        throw new TypeError('flatMap: strings are not flattenable');
+                    }
+                    if (!$mapped instanceof JsObject) {
+                        self::closeIterator($itObj, true);
+                        throw new TypeError('flatMap: mapper must return an object');
+                    }
 
                     $iterSym = SymbolConstructor::iterator();
                     $iterMethod = $mapped->getBySymbol($iterSym);
 
                     if (!($iterMethod instanceof JsUndefined) && !($iterMethod instanceof JsNull)) {
-                        if (!$iterMethod instanceof JsFunction) { self::closeIterator($itObj, true); throw new TypeError('Symbol.iterator is not a function'); }
+                        if (!$iterMethod instanceof JsFunction) {
+                            self::closeIterator($itObj, true);
+                            throw new TypeError('Symbol.iterator is not a function');
+                        }
                         $innerObj = $iterMethod->call($mapped, []);
-                        if (!$innerObj instanceof JsObject) { self::closeIterator($itObj, true); throw new TypeError('Symbol.iterator result is not an object'); }
+                        if (!$innerObj instanceof JsObject) {
+                            self::closeIterator($itObj, true);
+                            throw new TypeError('Symbol.iterator result is not an object');
+                        }
                         $innerIt = $innerObj;
                     } else {
                         $innerIt = $mapped;
                     }
 
                     $nxMethod = $innerIt->get('next');
-                    if (!$nxMethod instanceof JsFunction) { self::closeIterator($itObj, true); throw new TypeError('flatMap inner has no next method'); }
+                    if (!$nxMethod instanceof JsFunction) {
+                        self::closeIterator($itObj, true);
+                        throw new TypeError('flatMap inner has no next method');
+                    }
                     $innerNx = $nxMethod;
                     $innerDone = false;
                 }
@@ -450,16 +516,23 @@ class IteratorConstructor
             $counter = 0;
             if (!$hasInit) {
                 [$first, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { throw new TypeError('Reduce of empty iterator with no initial value'); }
+                if ($isDone) {
+                    throw new TypeError('Reduce of empty iterator with no initial value');
+                }
                 $acc = $first;
                 $counter = 1;
             }
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { break; }
+                if ($isDone) {
+                    break;
+                }
                 try {
                     $acc = $reducer->call(JsUndefined::instance(), [$acc, $value, new JsNumber((float) $counter)]);
-                } catch (\Throwable $e) { self::closeIterator($itObj, true); throw $e; }
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj, true);
+                    throw $e;
+                }
                 $counter++;
             }
             return $acc;
@@ -469,14 +542,20 @@ class IteratorConstructor
     private static function toArrayMethod(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsObject) { throw new TypeError('Iterator.prototype.toArray called on non-object'); }
+            if (!$this_ instanceof JsObject) {
+                throw new TypeError('Iterator.prototype.toArray called on non-object');
+            }
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
-            if (!$nextMethod instanceof JsFunction) { throw new TypeError('Iterator next is not a function'); }
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('Iterator next is not a function');
+            }
             $done = false;
             $items = [];
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { break; }
+                if ($isDone) {
+                    break;
+                }
                 $items[] = $value;
             }
             return JsArray::fromArray($items);
@@ -492,8 +571,15 @@ class IteratorConstructor
             $counter = 0;
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { break; }
-                try { $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]); } catch (\Throwable $e) { self::closeIterator($itObj, true); throw $e; }
+                if ($isDone) {
+                    break;
+                }
+                try {
+                    $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj, true);
+                    throw $e;
+                }
                 $counter++;
             }
             return JsUndefined::instance();
@@ -509,10 +595,20 @@ class IteratorConstructor
             $counter = 0;
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { return new JsBoolean(false); }
-                try { $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]); } catch (\Throwable $e) { self::closeIterator($itObj, true); throw $e; }
+                if ($isDone) {
+                    return new JsBoolean(false);
+                }
+                try {
+                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj, true);
+                    throw $e;
+                }
                 $counter++;
-                if (TypeConversion::toBoolean($result)) { self::closeIterator($itObj); return new JsBoolean(true); }
+                if (TypeConversion::toBoolean($result)) {
+                    self::closeIterator($itObj);
+                    return new JsBoolean(true);
+                }
             }
         };
     }
@@ -526,10 +622,20 @@ class IteratorConstructor
             $counter = 0;
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { return new JsBoolean(true); }
-                try { $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]); } catch (\Throwable $e) { self::closeIterator($itObj, true); throw $e; }
+                if ($isDone) {
+                    return new JsBoolean(true);
+                }
+                try {
+                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj, true);
+                    throw $e;
+                }
                 $counter++;
-                if (!TypeConversion::toBoolean($result)) { self::closeIterator($itObj); return new JsBoolean(false); }
+                if (!TypeConversion::toBoolean($result)) {
+                    self::closeIterator($itObj);
+                    return new JsBoolean(false);
+                }
             }
         };
     }
@@ -543,10 +649,20 @@ class IteratorConstructor
             $counter = 0;
             while (true) {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
-                if ($isDone) { return JsUndefined::instance(); }
-                try { $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]); } catch (\Throwable $e) { self::closeIterator($itObj, true); throw $e; }
+                if ($isDone) {
+                    return JsUndefined::instance();
+                }
+                try {
+                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                } catch (\Throwable $e) {
+                    self::closeIterator($itObj, true);
+                    throw $e;
+                }
                 $counter++;
-                if (TypeConversion::toBoolean($result)) { self::closeIterator($itObj); return $value; }
+                if (TypeConversion::toBoolean($result)) {
+                    self::closeIterator($itObj);
+                    return $value;
+                }
             }
         };
     }
@@ -569,8 +685,12 @@ class IteratorConstructor
             if (!($iterMethod instanceof JsUndefined) && !($iterMethod instanceof JsNull)) {
                 if ($iterMethod instanceof JsFunction) {
                     $iterator = $iterMethod->call($obj, []);
-                    if (!$iterator instanceof JsObject) { throw new TypeError('Symbol.iterator result is not an object'); }
-                    if (self::isIteratorInstance($iterator, $iteratorPrototype)) { return $iterator; }
+                    if (!$iterator instanceof JsObject) {
+                        throw new TypeError('Symbol.iterator result is not an object');
+                    }
+                    if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
+                        return $iterator;
+                    }
                     return self::createWrapForValidIterator($iterator);
                 }
                 throw new TypeError('Symbol.iterator is not a function');
@@ -584,7 +704,9 @@ class IteratorConstructor
     {
         $proto = $obj->getPrototype();
         while ($proto !== null) {
-            if ($proto === $iteratorPrototype) { return true; }
+            if ($proto === $iteratorPrototype) {
+                return true;
+            }
             $proto = $proto->getPrototype();
         }
         return false;
@@ -596,15 +718,21 @@ class IteratorConstructor
         $nextMethod = $iterator->get('next');
 
         $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($iterator, $nextMethod): JsValue {
-            if (!$nextMethod instanceof JsFunction) { throw new TypeError('Iterator next is not a function'); }
+            if (!$nextMethod instanceof JsFunction) {
+                throw new TypeError('Iterator next is not a function');
+            }
             $result = $nextMethod->call($iterator, $args);
-            if (!$result instanceof JsObject) { throw new TypeError('Iterator result is not an object'); }
+            if (!$result instanceof JsObject) {
+                throw new TypeError('Iterator result is not an object');
+            }
             return $result;
         }, 0);
 
         $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($iterator): JsValue {
             $returnMethod = $iterator->get('return');
-            if ($returnMethod instanceof JsFunction) { return $returnMethod->call($iterator, []); }
+            if ($returnMethod instanceof JsFunction) {
+                return $returnMethod->call($iterator, []);
+            }
             return self::iterResult(JsUndefined::instance(), true);
         }, 0);
 
