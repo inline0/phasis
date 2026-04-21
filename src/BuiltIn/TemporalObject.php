@@ -3518,10 +3518,13 @@ class TemporalObject
                 }
             }
             unset($ref);
-            if ($any) {
-                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-                return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
+            if (!$any) {
+                throw new TypeError(
+                    'missing required time property (at least one of hour, minute, second, etc.)'
+                );
             }
+            self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
         }
         if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.PlainTime');
