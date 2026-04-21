@@ -3652,23 +3652,22 @@ class TemporalObject
             if ($day instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
-            // Now we know year, month, day are present.
-            if (false) { // Dead code after required-property checks above.
-                $hasAnything = false;
-                foreach (['hour', 'minute', 'second', 'monthCode', 'era', 'eraYear'] as $k) {
-                    if (!($item->get($k) instanceof JsUndefined)) {
-                        $hasAnything = true;
-                        break;
-                    }
+            if (true) {
+                $yNum = TypeConversion::toNumber($year);
+                if (!is_finite($yNum)) {
+                    throw new RangeError('year must be finite');
                 }
-                if (!$hasAnything) {
-                    throw new TypeError('missing required property: year');
+                $y = (int) $yNum;
+                $mNum = TypeConversion::toNumber($month);
+                if (!is_finite($mNum)) {
+                    throw new RangeError('month must be finite');
                 }
-            }
-            if (!($year instanceof JsUndefined) && !($month instanceof JsUndefined) && !($day instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($year);
-                $m = (int) TypeConversion::toNumber($month);
-                $d = (int) TypeConversion::toNumber($day);
+                $m = (int) $mNum;
+                $dNum = TypeConversion::toNumber($day);
+                if (!is_finite($dNum)) {
+                    throw new RangeError('day must be finite');
+                }
+                $d = (int) $dNum;
                 $h = 0;
                 $min = 0;
                 $s = 0;
@@ -3697,6 +3696,9 @@ class TemporalObject
                 return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
             }
         }
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to PlainDateTime');
+        }
         if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
             throw new TypeError('Cannot convert number to Temporal.PlainDateTime');
         }
@@ -3719,6 +3721,10 @@ class TemporalObject
             throw new RangeError(
                 "String with UTC designator should not be valid as PlainDateTime"
             );
+        }
+        // Reject -000000 (minus zero year).
+        if (preg_match('/^-0{4,6}[-\d]/', $str)) {
+            throw new RangeError("reject minus zero as extended year: {$str}");
         }
         $datePart = '([+-]?\d{4,6})-?(\d{2})-?(\d{2})';
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
