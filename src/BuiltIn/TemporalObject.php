@@ -2097,7 +2097,11 @@ class TemporalObject
             if ($yearVal instanceof JsUndefined) {
                 throw new TypeError('year is required');
             }
-            $y = (int) TypeConversion::toNumber($yearVal);
+            $yNum = TypeConversion::toNumber($yearVal);
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $y = (int) $yNum;
             return self::createPlainDateObject(
                 $y,
                 self::getSlotInt($this_, '[[ISOMonth]]'),
