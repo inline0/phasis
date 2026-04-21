@@ -3525,6 +3525,9 @@ class TemporalObject
 
     private static function toPlainTime(JsValue $item): JsObject
     {
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to PlainTime');
+        }
         if ($item instanceof JsObject && $item->has('[[IsPlainTime]]')) {
             return $item;
         }
@@ -3781,6 +3784,9 @@ class TemporalObject
 
     private static function toPlainYearMonth(JsValue $item): JsObject
     {
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to PlainYearMonth');
+        }
         if ($item instanceof JsObject && $item->has('[[IsPlainYearMonth]]')) {
             return $item;
         }
@@ -3810,6 +3816,13 @@ class TemporalObject
         }
         $str = TypeConversion::toString($item);
         [$str, $cal] = self::normalizeTemporalString($str);
+        // Reject UTC designator (Z) for PlainYearMonth.
+        $noAnnot = preg_replace('/\[.*?\]/', '', $str);
+        if (preg_match('/[Zz]/', $noAnnot)) {
+            throw new RangeError(
+                "String with UTC designator should not be valid as PlainYearMonth"
+            );
+        }
         // Reject -000000.
         if (preg_match('/^-0{4,6}/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
