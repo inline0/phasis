@@ -3604,17 +3604,29 @@ class TemporalObject
             if ($year instanceof JsUndefined) {
                 throw new TypeError('missing required property: year');
             }
+            $monthCode = $item->get('monthCode');
             if ($month instanceof JsUndefined) {
-                $monthCode = $item->get('monthCode');
                 if ($monthCode instanceof JsUndefined) {
                     throw new TypeError('missing required property: month');
                 }
-                // Convert monthCode to month number.
                 $mc = TypeConversion::toString($monthCode);
                 if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
                     throw new RangeError("Invalid monthCode: {$mc}");
                 }
                 $month = new JsNumber((float) (int) $mcm[1]);
+            } elseif (!($monthCode instanceof JsUndefined)) {
+                // Both month and monthCode present: must agree.
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
+                }
+                $mcMonth = (int) $mcm[1];
+                $mVal = (int) TypeConversion::toNumber($month);
+                if ($mcMonth !== $mVal) {
+                    throw new RangeError(
+                        "month and monthCode must agree"
+                    );
+                }
             }
             if ($day instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
