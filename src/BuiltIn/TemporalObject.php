@@ -4092,8 +4092,8 @@ class TemporalObject
             if ($year instanceof JsUndefined) {
                 throw new TypeError('missing required property: year');
             }
+            $monthCode = $item->get('monthCode');
             if ($month instanceof JsUndefined) {
-                $monthCode = $item->get('monthCode');
                 if ($monthCode instanceof JsUndefined) {
                     throw new TypeError('missing required property: month');
                 }
@@ -4102,6 +4102,16 @@ class TemporalObject
                     throw new RangeError("Invalid monthCode: {$mc}");
                 }
                 $month = new JsNumber((float) (int) $mcm[1]);
+            } elseif (!($monthCode instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
+                }
+                $mcMonth = (int) $mcm[1];
+                $mVal = (int) TypeConversion::toNumber($month);
+                if ($mcMonth !== $mVal) {
+                    throw new RangeError('month and monthCode must agree');
+                }
             }
             if ($day instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
@@ -4143,7 +4153,7 @@ class TemporalObject
                 $cal = 'iso8601';
                 $calVal = $item->get('calendar');
                 if (!($calVal instanceof JsUndefined)) {
-                    $cal = strtolower(TypeConversion::toString($calVal));
+                    $cal = self::toCalendarSlotValue($calVal);
                 }
                 if ($overflow === 'constrain') {
                     [$y, $m, $d] = self::constrainISODate($y, $m, $d);
