@@ -3717,21 +3717,25 @@ class TemporalObject
         if (preg_match('/^\d{5,}/', $str)) {
             throw new RangeError("Extended year requires + or - prefix: {$str}");
         }
-        // YYYY-MM-DD or YYYYMMDD with optional time and annotations.
-        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ]\d[^[]*)?(?:\[.*?\])*$/';
+        // YYYY-MM-DD or YYYYMMDD with optional time, offset, and annotations.
+        $timeOpt = '(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?(?:[+-]\d{2}(?::?\d{2})?)?)?';
+        $pattern = "/^([+-]?\\d{4,6})-?(\\d{2})-?(\\d{2}){$timeOpt}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainDate string: {$str}");
         }
         $y = (int) $m[1];
         $m2 = (int) $m[2];
         $d = (int) $m[3];
-        // Validate time part if present.
-        if (preg_match('/[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2}))?)?/', $str, $tm)) {
-            $th = (int) $tm[1];
-            $tmin = isset($tm[2]) && $tm[2] !== '' ? (int) $tm[2] : 0;
-            $ts = isset($tm[3]) && $tm[3] !== '' ? (int) $tm[3] : 0;
-            if ($th > 23 || $tmin > 59 || ($ts > 60)) {
-                throw new RangeError("Invalid time in PlainDate string: {$str}");
+        // Validate time part if captured.
+        if (isset($m[4]) && $m[4] !== '') {
+            $th = (int) $m[4];
+            $tmin = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+            $ts = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+            if ($ts === 60) {
+                $ts = 59;
+            } // leap second
+            if ($th > 23 || $tmin > 59 || $ts > 59) {
+                throw new RangeError("Invalid time in string: {$str}");
             }
         }
         self::validateISODate($y, $m2, $d);
