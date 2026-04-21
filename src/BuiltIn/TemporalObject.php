@@ -2496,6 +2496,7 @@ class TemporalObject
 
     private static function parseInstantString(string $str): string
     {
+        [$str, ] = self::normalizeTemporalString($str);
         // ISO 8601 with required timezone offset.
         // Supports date with hyphens (YYYY-MM-DD) or without (YYYYMMDD).
         // Supports sub-minute offsets (+HH:MM:SS.fractional).
@@ -3473,7 +3474,8 @@ class TemporalObject
 
     private static function parsePlainDateTimeString(string $str): JsObject
     {
-        $pattern = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?(?:\[.*?\])*$/';
+        [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
+        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[T ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?(?:\[.*?\])*$/';
         if (!preg_match($pattern, $str, $m)) {
             // Fallback: date only.
             $dateOnly = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:\[.*?\])*$/';
@@ -3500,13 +3502,11 @@ class TemporalObject
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
         $ns = (int) substr($frac, 6, 3);
-        $cal = 'iso8601';
-        if (preg_match('/\[u-ca=([^\]]+)\]/', $str, $cm)) {
-            $cal = strtolower($cm[1]);
-        }
         self::validateISODate($y, $mo, $dd);
         self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-        return self::createPlainDateTimeObject($y, $mo, $dd, $h, $min, $s, $ms, $us, $ns, $cal);
+        return self::createPlainDateTimeObject(
+            $y, $mo, $dd, $h, $min, $s, $ms, $us, $ns, $calFromAnnotation,
+        );
     }
 
     private static function toPlainYearMonth(JsValue $item): JsObject
