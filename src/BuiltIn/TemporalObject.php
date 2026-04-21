@@ -3587,6 +3587,13 @@ class TemporalObject
     private static function parsePlainTimeString(string $str): JsObject
     {
         [$str, ] = self::normalizeTemporalString($str);
+        // Reject UTC designator (Z) for PlainTime.
+        $noAnnot = preg_replace('/\[.*?\]/', '', $str);
+        if (preg_match('/[Zz]/', $noAnnot)) {
+            throw new RangeError(
+                "String with UTC designator should not be valid as PlainTime"
+            );
+        }
         // Strip offset and annotations for time-only parsing.
         $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
         $cleanStr = preg_replace('/[Zz+\-]\d{2}(?::?\d{2})?$/', '', $cleanStr);
