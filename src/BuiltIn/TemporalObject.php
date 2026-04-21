@@ -3523,10 +3523,14 @@ class TemporalObject
         // Strip offset and annotations for time-only parsing.
         $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
         $cleanStr = preg_replace('/[Zz+\-]\d{2}(?::?\d{2})?$/', '', $cleanStr);
+        // Strip leading T/t designator for time-only strings.
+        if (preg_match('/^[Tt]/', $cleanStr)) {
+            $cleanStr = substr($cleanStr, 1);
+        }
         $pattern = '/^(\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?$/';
         if (!preg_match($pattern, $cleanStr, $m)) {
             // Also try datetime string and extract time.
-            $pattern2 = '/[T ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?/';
+            $pattern2 = '/[Tt ](\d{2}):?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?/';
             if (!preg_match($pattern2, $cleanStr, $m)) {
                 throw new RangeError("Invalid PlainTime string: {$str}");
             }
@@ -3945,10 +3949,7 @@ class TemporalObject
 
     private static function parsePlainMonthDayString(string $str): JsObject
     {
-        // Normalize Unicode minus sign (U+2212) to ASCII minus.
-        $str = str_replace("\xE2\x88\x92", '-', $str);
-        if (false) { // @phpstan-ignore-line
-        }
+        [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
 
         // Reject UTC designator (Z) for PlainMonthDay.
         // Check after date/time portion, not inside annotations.
