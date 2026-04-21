@@ -112,6 +112,14 @@ class Engine
         $globalObj->defineOwnProperty('NaN', $ro(new \PhpJs\Value\JsNumber(NAN)));
         $globalObj->defineOwnProperty('Infinity', $ro(new \PhpJs\Value\JsNumber(INF)));
         $globalObj->defineOwnProperty('undefined', $ro(\PhpJs\Value\JsUndefined::instance()));
+
+        // globalThis: writable, non-enumerable, configurable per spec.
+        // Set directly on the global object since the Environment filter
+        // skips 'globalThis' for the linked object sync.
+        $globalObj->defineOwnProperty(
+            'globalThis',
+            \PhpJs\Object\PropertyDescriptor::data($globalObj, true, false, true),
+        );
     }
 
     private function installBuiltins(): void

@@ -3215,10 +3215,26 @@ class Interpreter
         $this->callerStack[] = $fn;
         $setCallerProp = !$fn->isStrict() && !$fn->isArrow() && !$fn->isNative();
         $savedCaller = null;
+        $callerIsStrict = false;
         if ($setCallerProp) {
             $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            $callerVal = $callerFn instanceof JsFunction ? $callerFn : JsNull::instance();
-            $fn->defineOwnProperty("caller", PropertyDescriptor::data($callerVal, true, false, true));
+            // Per Annex B: if the caller is strict, accessing .caller must
+            // throw TypeError. Delete own .caller so Function.prototype thrower
+            // accessor takes effect.
+            $callerIsStrictMode = $this->strictMode
+                || ($callerFn instanceof JsFunction && $callerFn->isStrict());
+            if ($callerIsStrictMode) {
+                $callerIsStrict = true;
+                $fn->forceDelete('caller');
+            } else {
+                $callerVal = $callerFn instanceof JsFunction ? $callerFn : JsNull::instance();
+                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                    $callerVal,
+                    true,
+                    false,
+                    true,
+                ));
+            }
         }
 
         // Save and potentially update strict mode for this function body.
@@ -3433,8 +3449,7 @@ class Interpreter
                 if ($savedCaller !== null) {
                     $fn->defineOwnProperty("caller", $savedCaller);
                 } else {
-                    // Restore to null so .caller does not fall through to the
-                    // inherited thrower accessor on Function.prototype.
+                    // Restore to null after call completes.
                     $fn->defineOwnProperty("caller", PropertyDescriptor::data(
                         JsNull::instance(),
                         true,

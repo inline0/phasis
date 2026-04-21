@@ -35,6 +35,18 @@ class JsonObject
             false,
             true,
         ));
+        $json->defineOwnProperty('rawJSON', PropertyDescriptor::data(
+            JsFunction::fromCallable('rawJSON', self::rawJSON(), 1),
+            true,
+            false,
+            true,
+        ));
+        $json->defineOwnProperty('isRawJSON', PropertyDescriptor::data(
+            JsFunction::fromCallable('isRawJSON', self::isRawJSON(), 1),
+            true,
+            false,
+            true,
+        ));
 
         // Symbol.toStringTag = "JSON" per spec 25.5.3.
         $toStringTagSym = SymbolConstructor::toStringTag();
@@ -44,6 +56,68 @@ class JsonObject
         );
 
         $env->defineDeletable('JSON', $json);
+    }
+
+    private static function rawJSON(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $input = $args[0] ?? JsUndefined::instance();
+            $jsonString = TypeConversion::toString($input);
+
+            if ($jsonString === '' || self::hasIllegalEndChars($jsonString)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'JSON.rawJSON: invalid raw JSON text'
+                );
+            }
+
+            $decoded = json_decode($jsonString, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'JSON.rawJSON: invalid JSON text'
+                );
+            }
+            if (is_array($decoded)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'JSON.rawJSON: raw JSON value must be a primitive, not an object or array'
+                );
+            }
+
+            $obj = JsObject::createNullPrototype();
+            $obj->defineOwnProperty('rawJSON', PropertyDescriptor::data(
+                new JsString($jsonString),
+                false,
+                true,
+                false,
+            ));
+            $obj->setInternalProperty('[[IsRawJSON]]', true);
+            $obj->preventExtensions();
+            return $obj;
+        };
+    }
+
+    private static function isRawJSON(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $value = $args[0] ?? JsUndefined::instance();
+            if (!$value instanceof JsObject) {
+                return new JsBoolean(false);
+            }
+            return new JsBoolean($value->getInternalProperty('[[IsRawJSON]]') === true);
+        };
+    }
+
+    private static function hasIllegalEndChars(string $s): bool
+    {
+        $illegal = ["\t", "\n", "\r", " "];
+        $first = mb_substr($s, 0, 1, 'UTF-8');
+        $last = mb_substr($s, -1, 1, 'UTF-8');
+        return in_array($first, $illegal, true) || in_array($last, $illegal, true);
+    }
+
+    private static function isRawJsonObject(JsValue $value): bool
+    {
+        return $value instanceof JsObject
+            && $value->getInternalProperty('[[IsRawJSON]]') === true;
     }
 
     private static function jsIsArray(JsValue $value): bool
@@ -158,23 +232,284 @@ class JsonObject
                 }
             }
 
-            $result = self::phpToJsValue($decoded);
             $reviver = ($args[1] ?? null) instanceof JsFunction ? $args[1] : null;
 
             if ($reviver !== null) {
-                $root = new JsObject();
-                $root->defineOwnProperty('', PropertyDescriptor::data($result, true, true, true));
-                $result = self::internalizeJSONProperty($root, '', $reviver);
+                $parsed = self::parseWithSources($text);
+                $result = $parsed['value'];
+                $root = $parsed['root'];
+                $sourceMap = $parsed['sourceMap'];
+                $result = self::internalizeJSONProperty($root, '', $reviver, $sourceMap);
+            } else {
+                $result = self::phpToJsValue($decoded);
             }
 
             return $result;
         };
     }
 
+    /**
+     * @return array{value: JsValue, root: JsObject, sourceMap: array<string, array{0: string, 1: JsValue}>}
+     */
+    private static function parseWithSources(string $text): array
+    {
+        /** @var array<string, array{0: string, 1: JsValue}> $sourceMap */
+        $sourceMap = [];
+        $pos = 0;
+        $root = new JsObject();
+        $value = self::parseJsonValue($text, $pos, $sourceMap, $root, '');
+        $root->defineOwnProperty('', PropertyDescriptor::data($value, true, true, true));
+        return ['value' => $value, 'root' => $root, 'sourceMap' => $sourceMap];
+    }
+
+    /**
+     * @param array<string, array{0: string, 1: JsValue}> $sourceMap
+     */
+    private static function parseJsonValue(
+        string $text,
+        int &$pos,
+        array &$sourceMap,
+        JsObject $holder,
+        string $key,
+    ): JsValue {
+        self::skipWhitespace($text, $pos);
+        $len = strlen($text);
+
+        if ($pos >= $len) {
+            throw new \PhpJs\Exceptions\SyntaxError('Unexpected end of JSON input');
+        }
+
+        $ch = $text[$pos];
+
+        if ($ch === '{') {
+            return self::parseJsonObjectWithSources($text, $pos, $sourceMap);
+        }
+        if ($ch === '[') {
+            return self::parseJsonArrayWithSources($text, $pos, $sourceMap);
+        }
+        if ($ch === '"') {
+            $start = $pos;
+            $strVal = self::parseJsonStringRaw($text, $pos);
+            $val = new JsString($strVal);
+            $sourceMap[spl_object_id($holder) . ':' . $key] = [substr($text, $start, $pos - $start), $val];
+            return $val;
+        }
+        if ($ch === '-' || ($ch >= '0' && $ch <= '9')) {
+            $start = $pos;
+            $numVal = self::parseJsonNumberRaw($text, $pos);
+            $val = new JsNumber($numVal);
+            $sourceMap[spl_object_id($holder) . ':' . $key] = [substr($text, $start, $pos - $start), $val];
+            return $val;
+        }
+        if (substr($text, $pos, 4) === 'true') {
+            $val = new JsBoolean(true);
+            $sourceMap[spl_object_id($holder) . ':' . $key] = ['true', $val];
+            $pos += 4;
+            return $val;
+        }
+        if (substr($text, $pos, 5) === 'false') {
+            $val = new JsBoolean(false);
+            $sourceMap[spl_object_id($holder) . ':' . $key] = ['false', $val];
+            $pos += 5;
+            return $val;
+        }
+        if (substr($text, $pos, 4) === 'null') {
+            $val = JsNull::instance();
+            $sourceMap[spl_object_id($holder) . ':' . $key] = ['null', $val];
+            $pos += 4;
+            return $val;
+        }
+
+        throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON at position ' . $pos);
+    }
+
+    /**
+     * @param array<string, array{0: string, 1: JsValue}> $sourceMap
+     */
+    private static function parseJsonObjectWithSources(
+        string $text,
+        int &$pos,
+        array &$sourceMap,
+    ): JsObject {
+        $pos++; // skip {
+        $obj = new JsObject();
+        self::skipWhitespace($text, $pos);
+
+        if ($pos < strlen($text) && $text[$pos] === '}') {
+            $pos++;
+            return $obj;
+        }
+
+        while ($pos < strlen($text)) {
+            self::skipWhitespace($text, $pos);
+            if ($text[$pos] !== '"') {
+                throw new \PhpJs\Exceptions\SyntaxError('Expected string key in JSON object');
+            }
+            $propKey = self::parseJsonStringRaw($text, $pos);
+            self::skipWhitespace($text, $pos);
+            if ($pos >= strlen($text) || $text[$pos] !== ':') {
+                throw new \PhpJs\Exceptions\SyntaxError('Expected colon in JSON object');
+            }
+            $pos++; // skip :
+            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $obj, $propKey);
+            $obj->defineOwnProperty($propKey, PropertyDescriptor::data($propVal, true, true, true));
+            self::skipWhitespace($text, $pos);
+            if ($pos >= strlen($text)) {
+                break;
+            }
+            if ($text[$pos] === '}') {
+                $pos++;
+                return $obj;
+            }
+            if ($text[$pos] !== ',') {
+                throw new \PhpJs\Exceptions\SyntaxError('Expected comma or closing brace in JSON object');
+            }
+            $pos++; // skip ,
+        }
+
+        throw new \PhpJs\Exceptions\SyntaxError('Unterminated JSON object');
+    }
+
+    /**
+     * @param array<string, array{0: string, 1: JsValue}> $sourceMap
+     */
+    private static function parseJsonArrayWithSources(
+        string $text,
+        int &$pos,
+        array &$sourceMap,
+    ): JsArray {
+        $pos++; // skip [
+        $arr = JsArray::fromArray([]);
+        $index = 0;
+        self::skipWhitespace($text, $pos);
+
+        if ($pos < strlen($text) && $text[$pos] === ']') {
+            $pos++;
+            return $arr;
+        }
+
+        while ($pos < strlen($text)) {
+            $propKey = (string) $index;
+            $propVal = self::parseJsonValue($text, $pos, $sourceMap, $arr, $propKey);
+            $arr->defineOwnProperty($propKey, PropertyDescriptor::data($propVal, true, true, true));
+            $index++;
+            $arr->set('length', new JsNumber($index));
+            self::skipWhitespace($text, $pos);
+            if ($pos >= strlen($text)) {
+                break;
+            }
+            if ($text[$pos] === ']') {
+                $pos++;
+                return $arr;
+            }
+            if ($text[$pos] !== ',') {
+                throw new \PhpJs\Exceptions\SyntaxError('Expected comma or closing bracket in JSON array');
+            }
+            $pos++; // skip ,
+        }
+
+        throw new \PhpJs\Exceptions\SyntaxError('Unterminated JSON array');
+    }
+
+    private static function parseJsonStringRaw(string $text, int &$pos): string
+    {
+        $pos++; // skip opening "
+        $result = '';
+        $len = strlen($text);
+
+        while ($pos < $len) {
+            $ch = $text[$pos];
+            if ($ch === '"') {
+                $pos++;
+                return $result;
+            }
+            if ($ch === '\\') {
+                $pos++;
+                if ($pos >= $len) {
+                    break;
+                }
+                $esc = $text[$pos];
+                if ($esc === 'u') {
+                    $pos++;
+                    if ($pos + 4 > $len) {
+                        throw new \PhpJs\Exceptions\SyntaxError('Invalid unicode escape in JSON');
+                    }
+                    $hex = substr($text, $pos, 4);
+                    $pos += 4;
+                    $cp = hexdec($hex);
+                    $result .= mb_chr((int) $cp, 'UTF-8') ?: '';
+                } else {
+                    $result .= match ($esc) {
+                        '"' => '"',
+                        '\\' => '\\',
+                        '/' => '/',
+                        'b' => "\x08",
+                        'f' => "\x0C",
+                        'n' => "\n",
+                        'r' => "\r",
+                        't' => "\t",
+                        default => $esc,
+                    };
+                    $pos++;
+                }
+            } else {
+                $result .= $ch;
+                $pos++;
+            }
+        }
+
+        throw new \PhpJs\Exceptions\SyntaxError('Unterminated string in JSON');
+    }
+
+    private static function parseJsonNumberRaw(string $text, int &$pos): float
+    {
+        $start = $pos;
+        $slen = strlen($text);
+        if ($text[$pos] === '-') {
+            $pos++;
+        }
+        while ($pos < $slen && $text[$pos] >= '0' && $text[$pos] <= '9') {
+            $pos++;
+        }
+        if ($pos < $slen && $text[$pos] === '.') {
+            $pos++;
+            while ($pos < $slen && $text[$pos] >= '0' && $text[$pos] <= '9') {
+                $pos++;
+            }
+        }
+        if ($pos < $slen && ($text[$pos] === 'e' || $text[$pos] === 'E')) {
+            $pos++;
+            if ($pos < $slen && ($text[$pos] === '+' || $text[$pos] === '-')) {
+                $pos++;
+            }
+            while ($pos < $slen && $text[$pos] >= '0' && $text[$pos] <= '9') {
+                $pos++;
+            }
+        }
+        $raw = substr($text, $start, $pos - $start);
+        return $raw === '-0' ? -0.0 : (float) $raw;
+    }
+
+    private static function skipWhitespace(string $text, int &$pos): void
+    {
+        $slen = strlen($text);
+        while (
+            $pos < $slen
+            && ($text[$pos] === ' ' || $text[$pos] === "\t"
+                || $text[$pos] === "\n" || $text[$pos] === "\r")
+        ) {
+            $pos++;
+        }
+    }
+
+    /**
+     * @param array<string, array{0: string, 1: JsValue}>|null $sourceMap
+     */
     private static function internalizeJSONProperty(
         JsObject $holder,
         string $name,
         JsFunction $reviver,
+        ?array $sourceMap = null,
     ): JsValue {
         $val = $holder->get($name);
 
@@ -184,7 +519,7 @@ class JsonObject
 
                 for ($i = 0; $i < $len; $i++) {
                     $prop = (string) $i;
-                    $newElement = self::internalizeJSONProperty($val, $prop, $reviver);
+                    $newElement = self::internalizeJSONProperty($val, $prop, $reviver, $sourceMap);
 
                     if ($newElement instanceof JsUndefined) {
                         $val->delete($prop);
@@ -202,7 +537,7 @@ class JsonObject
                 $keys = self::enumerableOwnPropertyNames($val);
 
                 foreach ($keys as $key) {
-                    $newElement = self::internalizeJSONProperty($val, $key, $reviver);
+                    $newElement = self::internalizeJSONProperty($val, $key, $reviver, $sourceMap);
 
                     if ($newElement instanceof JsUndefined) {
                         $val->delete($key);
@@ -217,6 +552,22 @@ class JsonObject
                     }
                 }
             }
+        }
+
+        if ($sourceMap !== null) {
+            $context = new JsObject();
+            $mapKey = spl_object_id($holder) . ':' . $name;
+            // Only include source when the current holder value is the exact
+            // originally-parsed instance (not a value replaced by the reviver).
+            if (isset($sourceMap[$mapKey]) && $sourceMap[$mapKey][1] === $val) {
+                $context->defineOwnProperty('source', PropertyDescriptor::data(
+                    new JsString($sourceMap[$mapKey][0]),
+                    true,
+                    true,
+                    true,
+                ));
+            }
+            return $reviver->call($holder, [new JsString($name), $val, $context]);
         }
 
         return $reviver->call($holder, [new JsString($name), $val]);
@@ -366,6 +717,12 @@ class JsonObject
 
         if ($replacerFn !== null) {
             $value = $replacerFn->call($holder, [new JsString($key), $value]);
+        }
+
+        // Emit rawJSON values verbatim (JSON.rawJSON support).
+        if ($value instanceof JsObject && self::isRawJsonObject($value)) {
+            $rawProp = $value->get('rawJSON');
+            return $rawProp instanceof JsString ? $rawProp->value : 'null';
         }
 
         if ($value instanceof JsObject && !self::jsIsArray($value) && !$value instanceof JsFunction) {

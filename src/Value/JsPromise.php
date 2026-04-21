@@ -23,6 +23,69 @@ class JsPromise extends JsObject
     private string $state = self::STATE_PENDING;
     private JsValue $value;
 
+    /**
+     * Pending handlers queued while this promise is unresolved.
+     * Each entry is [onFulfilled|null, onRejected|null, childPromise].
+     *
+     * @var list<array{0: JsFunction|null, 1: JsFunction|null, 2: self}>
+     */
+    private array $pendingHandlers = [];
+
+    /**
+     * Global microtask queue: deferred callbacks scheduled by scheduleCallback().
+     * Drained by drainMicrotasks(), which is called after top-level JS evaluation.
+     *
+     * @var list<\Closure(): void>
+     */
+    private static array $microtaskQueue = [];
+
+    /**
+     * True while the microtask queue is being drained (prevents re-entrancy).
+     */
+    private static bool $drainingMicrotasks = false;
+
+    /**
+     * Schedule a callback to run in the microtask queue.
+     * Used to defer promise handler execution so that handlers fire in
+     * FIFO order relative to when their promises were resolved, matching
+     * JavaScript's microtask semantics.
+     *
+     * @param \Closure(): void $cb
+     */
+    public static function scheduleCallback(\Closure $cb): void
+    {
+        self::$microtaskQueue[] = $cb;
+    }
+
+    /**
+     * Drain the microtask queue, running all scheduled callbacks.
+     * Callbacks added during draining are also processed.
+     */
+    public static function drainMicrotasks(): void
+    {
+        if (self::$drainingMicrotasks) {
+            return;
+        }
+        self::$drainingMicrotasks = true;
+        try {
+            while (self::$microtaskQueue !== []) {
+                $cb = array_shift(self::$microtaskQueue);
+                $cb();
+            }
+        } finally {
+            self::$drainingMicrotasks = false;
+        }
+    }
+
+    /**
+     * Clear the microtask queue (used on engine reset).
+     */
+    public static function clearMicrotasks(): void
+    {
+        self::$microtaskQueue = [];
+        self::$drainingMicrotasks = false;
+    }
+
     /** Promise.prototype: the shared prototype for all JsPromise instances. */
     private static ?JsObject $promisePrototype = null;
 
@@ -63,26 +126,58 @@ class JsPromise extends JsObject
             return;
         }
 
-        // If value is a JsPromise, adopt its state.
+        // If value is a JsPromise, adopt its state or subscribe to it.
         if ($value instanceof self) {
             if ($value->state === self::STATE_FULFILLED) {
                 $this->state = self::STATE_FULFILLED;
                 $this->value = $value->value;
+                $this->drainPendingHandlers();
             } elseif ($value->state === self::STATE_REJECTED) {
                 $this->state = self::STATE_REJECTED;
                 $this->value = $value->value;
+                $this->drainPendingHandlers();
             } else {
-                // Still pending: adopt when it settles.
-                // In our synchronous model this shouldn't happen,
-                // but handle it by just adopting pending state.
-                $this->state = self::STATE_PENDING;
+                // Still pending: subscribe to it so we settle when it does.
+                $outer = $this;
+                $value->pendingHandlers[] = [null, null, null];
+                // Use a direct subscription via the inner promise's pending handler list.
+                $resolved = false;
+                $resolveFn = JsFunction::fromCallable('resolve', function (JsValue $this_, array $args) use ($outer, &$resolved): JsValue {
+                    if ($resolved) {
+                        return JsUndefined::instance();
+                    }
+                    $resolved = true;
+                    $outer->resolve($args[0] ?? JsUndefined::instance());
+                    return JsUndefined::instance();
+                }, 1);
+                $rejectFn = JsFunction::fromCallable('reject', function (JsValue $this_, array $args) use ($outer, &$resolved): JsValue {
+                    if ($resolved) {
+                        return JsUndefined::instance();
+                    }
+                    $resolved = true;
+                    $outer->reject($args[0] ?? JsUndefined::instance());
+                    return JsUndefined::instance();
+                }, 1);
+                // Register directly on the inner promise's handler list.
+                array_pop($value->pendingHandlers); // remove the placeholder we added above
+                $value->pendingHandlers[] = [$resolveFn, $rejectFn, null];
             }
             return;
         }
 
         // If value is a thenable (has a .then method), resolve via it.
         if ($value instanceof JsObject) {
-            $then = $value->get('then');
+            $then = null;
+            try {
+                $then = $value->get('then');
+            } catch (\Throwable $e) {
+                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                    $this->reject($e->jsValue);
+                } else {
+                    $this->reject(new JsString($e->getMessage()));
+                }
+                return;
+            }
             if ($then instanceof JsFunction) {
                 $resolved = false;
                 $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
@@ -121,6 +216,7 @@ class JsPromise extends JsObject
 
         $this->state = self::STATE_FULFILLED;
         $this->value = $value;
+        $this->drainPendingHandlers();
     }
 
     /**
@@ -134,6 +230,111 @@ class JsPromise extends JsObject
 
         $this->state = self::STATE_REJECTED;
         $this->value = $reason;
+        $this->drainPendingHandlers();
+    }
+
+    /**
+     * Run all pending handlers now that this promise has settled.
+     */
+    private function drainPendingHandlers(): void
+    {
+        $handlers = $this->pendingHandlers;
+        $this->pendingHandlers = [];
+        foreach ($handlers as [$onFulfilled, $onRejected, $child]) {
+            if ($child === null) {
+                // Subscription-only handler (no child promise).
+                $handler = $this->state === self::STATE_FULFILLED ? $onFulfilled : $onRejected;
+                if ($handler instanceof JsFunction) {
+                    try {
+                        $handler->call(JsUndefined::instance(), [$this->value]);
+                    } catch (\Throwable) {
+                        // Ignore errors in subscription handlers.
+                    }
+                }
+                continue;
+            }
+            $this->runHandler($onFulfilled, $onRejected, $child);
+        }
+    }
+
+    /**
+     * Execute a single then-handler pair and settle the child promise.
+     */
+    private function runHandler(?JsFunction $onFulfilled, ?JsFunction $onRejected, self $child): void
+    {
+        if ($this->state === self::STATE_FULFILLED) {
+            if ($onFulfilled instanceof JsFunction) {
+                try {
+                    $result = $onFulfilled->call(JsUndefined::instance(), [$this->value]);
+                    $child->resolve($result);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $child->reject($e->jsValue);
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                } catch (\Throwable $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                }
+            } else {
+                $child->resolve($this->value);
+            }
+        } elseif ($this->state === self::STATE_REJECTED) {
+            if ($onRejected instanceof JsFunction) {
+                try {
+                    $result = $onRejected->call(JsUndefined::instance(), [$this->value]);
+                    $child->resolve($result);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $child->reject($e->jsValue);
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                } catch (\Throwable $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                }
+            } else {
+                $child->reject($this->value);
+            }
+        }
+    }
+
+    /**
+     * Register a fulfill callback to run when this promise settles with fulfillment.
+     * If already fulfilled, runs immediately.
+     *
+     * @param \Closure(JsValue): void $cb
+     */
+    public function addFulfillHandler(\Closure $cb): void
+    {
+        if ($this->state === self::STATE_FULFILLED) {
+            $cb($this->value);
+            return;
+        }
+        if ($this->state === self::STATE_PENDING) {
+            $fn = JsFunction::fromCallable('', function (JsValue $this_, array $args) use ($cb): JsValue {
+                $cb($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1);
+            $this->pendingHandlers[] = [$fn, null, null];
+        }
+    }
+
+    /**
+     * Register a reject callback to run when this promise settles with rejection.
+     * If already rejected, runs immediately.
+     *
+     * @param \Closure(JsValue): void $cb
+     */
+    public function addRejectHandler(\Closure $cb): void
+    {
+        if ($this->state === self::STATE_REJECTED) {
+            $cb($this->value);
+            return;
+        }
+        if ($this->state === self::STATE_PENDING) {
+            $fn = JsFunction::fromCallable('', function (JsValue $this_, array $args) use ($cb): JsValue {
+                $cb($args[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1);
+            $this->pendingHandlers[] = [null, $fn, null];
+        }
     }
 
     /**
@@ -167,46 +368,18 @@ class JsPromise extends JsObject
         $onFulfilled = $args[0] ?? JsUndefined::instance();
         $onRejected = $args[1] ?? JsUndefined::instance();
 
+        $fulfillFn = $onFulfilled instanceof JsFunction ? $onFulfilled : null;
+        $rejectFn = $onRejected instanceof JsFunction ? $onRejected : null;
+
         $child = new self();
 
-        if ($this->state === self::STATE_FULFILLED) {
-            if ($onFulfilled instanceof JsFunction) {
-                try {
-                    $result = $onFulfilled->call(JsUndefined::instance(), [$this->value]);
-                    $child->resolve($result);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    $child->reject($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    $child->reject(new JsString($e->getMessage()));
-                } catch (\Throwable $e) {
-                    $child->reject(new JsString($e->getMessage()));
-                }
-            } else {
-                // Not callable: pass through the value.
-                $child->resolve($this->value);
-            }
-        } elseif ($this->state === self::STATE_REJECTED) {
-            if ($onRejected instanceof JsFunction) {
-                try {
-                    $result = $onRejected->call(JsUndefined::instance(), [$this->value]);
-                    $child->resolve($result);
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    $child->reject($e->jsValue);
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    $child->reject(new JsString($e->getMessage()));
-                } catch (\Throwable $e) {
-                    $child->reject(new JsString($e->getMessage()));
-                }
-            } else {
-                // Not callable: propagate the rejection.
-                $child->reject($this->value);
-            }
-        } else {
-            // Pending: in our synchronous model this shouldn't happen,
-            // but just propagate the pending state.
-            $child->resolve($this->value);
+        if ($this->state === self::STATE_PENDING) {
+            // Queue the handler to run when this promise settles.
+            $this->pendingHandlers[] = [$fulfillFn, $rejectFn, $child];
+            return $child;
         }
 
+        $this->runHandler($fulfillFn, $rejectFn, $child);
         return $child;
     }
 
@@ -229,17 +402,54 @@ class JsPromise extends JsObject
             return $this->then($args);
         }
 
+        $thenFn = $onFinally;
         $child = new self();
 
-        $thenFn = $onFinally;
+        if ($this->state === self::STATE_PENDING) {
+            // Build synthetic fulfill/reject handlers for the queue.
+            $originalValue = null;
+            $fulfilled = JsFunction::fromCallable('', function (JsValue $this_, array $args) use ($thenFn, $child, &$originalValue): JsValue {
+                $originalValue = $args[0] ?? JsUndefined::instance();
+                try {
+                    $result = $thenFn->call(JsUndefined::instance(), []);
+                    if ($result instanceof self && $result->state === self::STATE_REJECTED) {
+                        $child->reject($result->value);
+                    } else {
+                        $child->resolve($originalValue);
+                    }
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $child->reject($e->jsValue);
+                } catch (\Throwable $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                }
+                return JsUndefined::instance();
+            }, 1);
+            $rejected = JsFunction::fromCallable('', function (JsValue $this_, array $args) use ($thenFn, $child): JsValue {
+                $reason = $args[0] ?? JsUndefined::instance();
+                try {
+                    $result = $thenFn->call(JsUndefined::instance(), []);
+                    if ($result instanceof self && $result->state === self::STATE_REJECTED) {
+                        $child->reject($result->value);
+                    } else {
+                        $child->reject($reason);
+                    }
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $child->reject($e->jsValue);
+                } catch (\Throwable $e) {
+                    $child->reject(new JsString($e->getMessage()));
+                }
+                return JsUndefined::instance();
+            }, 1);
+            $this->pendingHandlers[] = [$fulfilled, $rejected, null];
+            return $child;
+        }
+
         if ($this->state === self::STATE_FULFILLED) {
             try {
                 $result = $thenFn->call(JsUndefined::instance(), []);
-                // If the onFinally handler returns a rejected promise, adopt that.
                 if ($result instanceof self && $result->state === self::STATE_REJECTED) {
                     $child->reject($result->value);
                 } else {
-                    // Otherwise, pass through the original value.
                     $child->resolve($this->value);
                 }
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
@@ -250,11 +460,9 @@ class JsPromise extends JsObject
         } elseif ($this->state === self::STATE_REJECTED) {
             try {
                 $result = $thenFn->call(JsUndefined::instance(), []);
-                // If the onFinally handler returns a rejected promise, adopt that.
                 if ($result instanceof self && $result->state === self::STATE_REJECTED) {
                     $child->reject($result->value);
                 } else {
-                    // Otherwise, propagate the original rejection.
                     $child->reject($this->value);
                 }
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
@@ -262,8 +470,6 @@ class JsPromise extends JsObject
             } catch (\Throwable $e) {
                 $child->reject(new JsString($e->getMessage()));
             }
-        } else {
-            $child->resolve($this->value);
         }
 
         return $child;

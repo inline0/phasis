@@ -25,6 +25,95 @@ use PhpJs\Value\JsValue;
  */
 class RegExpPrototype
 {
+    private static ?JsObject $regExpStringIteratorProto = null;
+
+    /** %RegExpStringIteratorPrototype%: inherits from %IteratorPrototype%. */
+    private static function getRegExpStringIteratorProto(): JsObject
+    {
+        if (self::$regExpStringIteratorProto !== null) {
+            return self::$regExpStringIteratorProto;
+        }
+        $proto = new JsObject();
+
+        // Set [[Prototype]] to %IteratorPrototype%.
+        $iterProto = JsFunction::getInterpreterInstance()
+            ?->getGlobalEnv()->get('__IteratorPrototype__');
+        if ($iterProto instanceof JsObject) {
+            $proto->setPrototype($iterProto);
+        }
+
+        // next method per spec 22.2.9.1.1.
+        $nextFn = JsFunction::fromCallable(
+            'next',
+            function (JsValue $this_): JsValue {
+                if (
+                    !$this_ instanceof JsObject
+                    || !$this_->hasOwnProperty('[[IteratingRegExp]]')
+                ) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'next called on non-RegExp string iterator'
+                    );
+                }
+                $doneVal = $this_->get('[[Done]]');
+                if ($doneVal instanceof JsBoolean && $doneVal->value) {
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
+                $R = $this_->get('[[IteratingRegExp]]');
+                $S = TypeConversion::toString($this_->get('[[IteratedString]]'));
+                $global = $this_->get('[[Global]]');
+                $isGlobal = $global instanceof JsBoolean && $global->value;
+                $fullUnicode = $this_->get('[[Unicode]]');
+                $isUnicode = $fullUnicode instanceof JsBoolean
+                    && $fullUnicode->value;
+                $match = self::regExpExec($R, $S);
+                if ($match instanceof JsNull) {
+                    $this_->set('[[Done]]', new JsBoolean(true));
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
+                if ($isGlobal) {
+                    $matchStr = TypeConversion::toString($match->get('0'));
+                    if ($matchStr === '') {
+                        $li = (int) TypeConversion::toNumber($R->get('lastIndex'));
+                        $next = $isUnicode
+                            ? self::advanceStringIndex($S, $li) : $li + 1;
+                        $R->set('lastIndex', new JsNumber((float) $next));
+                    }
+                } else {
+                    $this_->set('[[Done]]', new JsBoolean(true));
+                }
+                return self::iterResult($match, false);
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'next',
+            PropertyDescriptor::data($nextFn, true, false, true),
+        );
+
+        // Symbol.toStringTag
+        $tagSym = SymbolConstructor::toStringTag();
+        $proto->definePropertyBySymbol(
+            $tagSym,
+            PropertyDescriptor::data(
+                new JsString('RegExp String Iterator'),
+                false,
+                false,
+                true,
+            ),
+        );
+
+        self::$regExpStringIteratorProto = $proto;
+        return $proto;
+    }
+
+    private static function iterResult(JsValue $value, bool $done): JsObject
+    {
+        $obj = new JsObject();
+        $obj->set('value', $value);
+        $obj->set('done', new JsBoolean($done));
+        return $obj;
+    }
+
     public static function install(JsObject $proto): void
     {
         $addMethod = static function (string $name, \Closure $fn, int $length) use ($proto): void {
@@ -740,58 +829,53 @@ class RegExpPrototype
             $done = false;
             $currentIndex = $startIndex;
 
-            $iterator = new JsObject();
-            $nextFn = function () use (&$done, $matcher, $S, $global, $fullUnicode, &$currentIndex): JsValue {
-                $result = new JsObject();
-                if ($done) {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                    return $result;
-                }
-
-                // Set lastIndex before exec.
-                if ($global) {
-                    $matcher->set('lastIndex', new JsNumber((float) $currentIndex));
-                }
-
-                $match = self::regExpExec($matcher, $S);
-
-                if ($match instanceof JsNull) {
-                    $done = true;
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                    return $result;
-                }
-
-                if ($global) {
-                    $matchStr = TypeConversion::toString($match->get('0'));
-                    if ($matchStr === '') {
-                        // Advance to avoid infinite loop.
-                        $nextIndex = $fullUnicode
-                            ? self::advanceStringIndex($S, $currentIndex)
-                            : $currentIndex + 1;
-                        $currentIndex = $nextIndex;
-                        $matcher->set('lastIndex', new JsNumber((float) $currentIndex));
-                    } else {
-                        $currentIndex = (int) TypeConversion::toNumber($matcher->get('lastIndex'));
-                    }
-                } else {
-                    $done = true;
-                }
-
-                $result->set('value', $match);
-                $result->set('done', new JsBoolean(false));
-                return $result;
-            };
-
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn, 0));
-            $iterSym = SymbolConstructor::iterator();
-            $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
-                '[Symbol.iterator]',
-                function () use ($iterator): JsValue {
-                    return $iterator;
-                },
-            ));
+            // Store iterator state in internal slots on the iterator object.
+            $iterator = new JsObject(self::getRegExpStringIteratorProto());
+            $iterator->defineOwnProperty(
+                '[[Done]]',
+                \PhpJs\Object\PropertyDescriptor::data(
+                    new JsBoolean(false),
+                    true,
+                    false,
+                    false,
+                ),
+            );
+            $iterator->defineOwnProperty(
+                '[[IteratingRegExp]]',
+                \PhpJs\Object\PropertyDescriptor::data(
+                    $matcher,
+                    false,
+                    false,
+                    false,
+                ),
+            );
+            $iterator->defineOwnProperty(
+                '[[IteratedString]]',
+                \PhpJs\Object\PropertyDescriptor::data(
+                    new JsString($S),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+            $iterator->defineOwnProperty(
+                '[[Global]]',
+                \PhpJs\Object\PropertyDescriptor::data(
+                    new JsBoolean($global),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+            $iterator->defineOwnProperty(
+                '[[Unicode]]',
+                \PhpJs\Object\PropertyDescriptor::data(
+                    new JsBoolean($fullUnicode),
+                    false,
+                    false,
+                    false,
+                ),
+            );
             return $iterator;
         };
     }

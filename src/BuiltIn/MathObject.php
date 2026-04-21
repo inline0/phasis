@@ -58,6 +58,7 @@ class MathObject
         $m('tan', self::singleArgFn('tan'));
         $m('sign', self::signFn());
         $m('fround', self::froundFn());
+        $m('f16round', self::f16roundFn());
         $m('exp', self::singleArgFn('exp'));
         $m('expm1', self::singleArgFn('expm1'));
         $m('asin', self::singleArgFn('asin'));
@@ -207,6 +208,61 @@ class MathObject
             $packed = pack('f', $x);
             $unpacked = unpack('f', $packed);
             return new JsNumber($unpacked !== false ? (float) $unpacked[1] : $x);
+        };
+    }
+
+    /** IEEE 754 binary16 (half-precision) round. */
+    private static function f16roundFn(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
+            if (is_nan($x) || is_infinite($x) || $x === 0.0) {
+                return new JsNumber($x);
+            }
+            $sign = $x < 0 ? -1.0 : 1.0;
+            $abs = abs($x);
+            // Overflow to Infinity: >= 65520 rounds up per IEEE.
+            if ($abs >= 65520.0) {
+                return new JsNumber($sign * INF);
+            }
+            // Extract 64-bit IEEE representation.
+            $bits = unpack('Q', pack('d', $abs));
+            $raw = $bits[1];
+            $exp64 = ($raw >> 52) & 0x7FF;
+            $mant64 = $raw & 0xFFFFFFFFFFFFF;
+            $unbiased = $exp64 - 1023;
+            $exp16 = $unbiased + 15;
+            if ($exp16 <= 0) {
+                // Subnormal in binary16.
+                $sig53 = (1 << 52) | $mant64;
+                $shift = 43 - $exp16;
+                if ($shift >= 64) {
+                    return new JsNumber($sign * 0.0);
+                }
+                $mant16 = $sig53 >> $shift;
+                $rem = $sig53 & ((1 << $shift) - 1);
+                $half = 1 << ($shift - 1);
+                if ($rem > $half || ($rem === $half && ($mant16 & 1))) {
+                    $mant16++;
+                }
+                return new JsNumber($sign * $mant16 * (2.0 ** -24));
+            }
+            // Normal: drop low 42 bits with rounding.
+            $mant16 = $mant64 >> 42;
+            $rem = $mant64 & 0x3FFFFFFFFFF;
+            $half = 0x20000000000;
+            if ($rem > $half || ($rem === $half && ($mant16 & 1))) {
+                $mant16++;
+                if ($mant16 >= 1024) {
+                    $mant16 = 0;
+                    $exp16++;
+                    if ($exp16 >= 31) {
+                        return new JsNumber($sign * INF);
+                    }
+                }
+            }
+            $val = (2.0 ** ($exp16 - 15)) * (1.0 + $mant16 / 1024.0);
+            return new JsNumber($sign * $val);
         };
     }
 

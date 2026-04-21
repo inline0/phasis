@@ -293,6 +293,12 @@ class TemporalObject
         return $obj;
     }
 
+    /** Public factory for Date.prototype.toTemporalInstant. */
+    public static function createInstantFromNs(string $ns): JsObject
+    {
+        return self::createInstantObject($ns);
+    }
+
     // -----------------------------------------------------------------------
     // Temporal.Duration
     // -----------------------------------------------------------------------

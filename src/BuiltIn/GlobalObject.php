@@ -802,9 +802,11 @@ class GlobalObject
             \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGenerator'), false, false, true),
         );
         $asyncGenProto->defineOwnProperty('next', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('next', static function (JsValue $thisValue, array $args): JsValue {
+            JsFunction::fromCallable('next', function (JsValue $thisValue, array $args) use ($env): JsValue {
                 if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.next called on incompatible receiver');
+                    return \PhpJs\Value\JsPromise::rejected(
+                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'next')
+                    );
                 }
                 return $thisValue->next($args[0] ?? JsUndefined::instance());
             }, 1),
@@ -813,9 +815,11 @@ class GlobalObject
             true,
         ));
         $asyncGenProto->defineOwnProperty('return', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('return', static function (JsValue $thisValue, array $args): JsValue {
+            JsFunction::fromCallable('return', function (JsValue $thisValue, array $args) use ($env): JsValue {
                 if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.return called on incompatible receiver');
+                    return \PhpJs\Value\JsPromise::rejected(
+                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'return')
+                    );
                 }
                 return $thisValue->returnValue($args[0] ?? JsUndefined::instance());
             }, 1),
@@ -824,9 +828,11 @@ class GlobalObject
             true,
         ));
         $asyncGenProto->defineOwnProperty('throw', \PhpJs\Object\PropertyDescriptor::data(
-            JsFunction::fromCallable('throw', static function (JsValue $thisValue, array $args): JsValue {
+            JsFunction::fromCallable('throw', function (JsValue $thisValue, array $args) use ($env): JsValue {
                 if (!$thisValue instanceof \PhpJs\Value\JsAsyncGenerator) {
-                    throw new \PhpJs\Exceptions\TypeError('Method AsyncGenerator.prototype.throw called on incompatible receiver');
+                    return \PhpJs\Value\JsPromise::rejected(
+                        \PhpJs\Value\JsAsyncGenerator::makeIncompatibleReceiverError($env, 'throw')
+                    );
                 }
                 return $thisValue->throwValue($args[0] ?? JsUndefined::instance());
             }, 1),

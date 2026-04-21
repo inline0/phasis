@@ -954,6 +954,26 @@ class DateConstructor
         }, 1);
         $proto->definePropertyBySymbol($toPrimSym, PropertyDescriptor::data($toPrimFn, false, false, true));
 
+        // Date.prototype.toTemporalInstant() per Temporal proposal.
+        $proto->defineOwnProperty('toTemporalInstant', PropertyDescriptor::data(
+            JsFunction::fromCallable('toTemporalInstant', function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
+                    throw new TypeError('this is not a Date object');
+                }
+                $dvVal = $this_->get('[[DateValue]]');
+                $tv = ($dvVal instanceof JsNumber) ? $dvVal->value : NAN;
+                if (is_nan($tv)) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid time value');
+                }
+                $ms = (string) (int) $tv;
+                $ns = bcmul($ms, '1000000');
+                return TemporalObject::createInstantFromNs($ns);
+            }, 0),
+            true,
+            false,
+            true,
+        ));
+
         // Set Symbol.toStringTag so Object.prototype.toString returns "[object Date]".
         $toStringTagSym = SymbolConstructor::toStringTag();
         $proto->setBySymbol($toStringTagSym, new JsString('Date'));

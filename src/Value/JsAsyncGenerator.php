@@ -6,6 +6,7 @@ namespace PhpJs\Value;
 
 use PhpJs\Exceptions\JsThrowable;
 use PhpJs\Exceptions\RuntimeError;
+use PhpJs\Runtime\Environment;
 
 /**
  * Represents a JavaScript async generator object returned by calling an async generator function.
@@ -33,6 +34,20 @@ class JsAsyncGenerator extends JsObject
 
     /** True while the generator body is actively running (not suspended). */
     private bool $executing = false;
+
+    /**
+     * Queue of pending requests enqueued while the generator was executing.
+     * Each entry is ['next'|'return'|'throw', JsValue, JsPromise].
+     *
+     * @var list<array{0: 'next'|'return'|'throw', 1: JsValue, 2: JsPromise}>
+     */
+    private array $requestQueue = [];
+
+    /**
+     * True when the request queue was populated while the fiber was running
+     * and needs to be drained on the NEXT non-executing call.
+     */
+    private bool $queuePendingDrain = false;
 
     /**
      * @param JsFunction $generatorFn The async generator function that created this generator.
@@ -92,9 +107,21 @@ class JsAsyncGenerator extends JsObject
         }
 
         if ($this->executing) {
-            return JsPromise::rejected(
-                $this->makeTypeError('Generator is already running')
-            );
+            // Per spec: enqueue the request and return a pending promise.
+            $queued = new JsPromise();
+            $this->requestQueue[] = ['next', $value ?? JsUndefined::instance(), $queued];
+            return $queued;
+        }
+
+        // Drain any queue that was populated during the PREVIOUS execution.
+        if ($this->queuePendingDrain) {
+            $this->queuePendingDrain = false;
+            $this->drainRequestQueue();
+        }
+
+        // Re-check done after the drain (draining may have terminated the generator).
+        if ($this->done) {
+            return JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
         }
 
         $value ??= JsUndefined::instance();
@@ -111,34 +138,50 @@ class JsAsyncGenerator extends JsObject
         } catch (GeneratorReturnSignal $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::resolved($this->makeResult($e->value, true));
         } catch (GeneratorThrowSignal $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected($e->jsValue);
         } catch (RuntimeError $e) {
             $this->executing = false;
             $this->done = true;
-            if ($e instanceof JsThrowable) {
-                return JsPromise::rejected($e->jsValue);
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return $e instanceof JsThrowable
+                ? JsPromise::rejected($e->jsValue)
+                : JsPromise::rejected(self::errorToJsValue($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected(self::errorToJsValue($e));
         }
 
         if ($this->fiber->isTerminated()) {
             $this->done = true;
-            $returnValue = $this->fiber->getReturn();
-            if ($returnValue instanceof JsValue) {
-                return JsPromise::resolved($this->makeResult($returnValue, true));
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $returnValue = $this->fiber->getReturn();
+            return $returnValue instanceof JsValue
+                ? JsPromise::resolved($this->makeResult($returnValue, true))
+                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
         }
 
         // Fiber is suspended. $suspended is the value passed to Fiber::suspend().
+        if ($this->requestQueue !== []) {
+            $this->queuePendingDrain = true;
+        }
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
@@ -156,18 +199,28 @@ class JsAsyncGenerator extends JsObject
     public function returnValue(JsValue $value): JsPromise
     {
         if ($this->done) {
-            return JsPromise::resolved($this->makeResult($value, true));
+            // Per spec AsyncGeneratorAwaitReturn: PromiseResolve(Promise, value) then {value, done:true}.
+            return $this->asyncGeneratorAwaitReturn($value);
         }
 
         if ($this->executing) {
-            return JsPromise::rejected(
-                $this->makeTypeError('Generator is already running')
-            );
+            // Per spec: enqueue the request and return a pending promise.
+            $queued = new JsPromise();
+            $this->requestQueue[] = ['return', $value, $queued];
+            return $queued;
         }
 
-        if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
+        // Drain any queue that was populated during the PREVIOUS execution.
+        if ($this->queuePendingDrain) {
+            $this->queuePendingDrain = false;
+            $this->drainRequestQueue();
+        }
+
+        // Re-check done and terminated after the drain.
+        if ($this->done || !$this->fiber->isStarted() || $this->fiber->isTerminated()) {
             $this->done = true;
-            return JsPromise::resolved($this->makeResult($value, true));
+            // Per spec AsyncGeneratorAwaitReturn: PromiseResolve(Promise, value) then {value, done:true}.
+            return $this->asyncGeneratorAwaitReturn($value);
         }
 
         $suspended = null;
@@ -178,33 +231,49 @@ class JsAsyncGenerator extends JsObject
         } catch (GeneratorReturnSignal $e) {
             $this->executing = false;
             $this->done = true;
-            return JsPromise::resolved($this->makeResult($e->value, true));
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
+            return $this->asyncGeneratorAwaitReturn($e->value);
         } catch (GeneratorThrowSignal $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected($e->jsValue);
         } catch (RuntimeError $e) {
             $this->executing = false;
             $this->done = true;
-            if ($e instanceof JsThrowable) {
-                return JsPromise::rejected($e->jsValue);
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return $e instanceof JsThrowable
+                ? JsPromise::rejected($e->jsValue)
+                : JsPromise::rejected(self::errorToJsValue($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected(self::errorToJsValue($e));
         }
 
         if ($this->fiber->isTerminated()) {
             $this->done = true;
-            $returnValue = $this->fiber->getReturn();
-            if ($returnValue instanceof JsValue) {
-                return JsPromise::resolved($this->makeResult($returnValue, true));
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $returnValue = $this->fiber->getReturn();
+            return $returnValue instanceof JsValue
+                ? JsPromise::resolved($this->makeResult($returnValue, true))
+                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
         }
 
+        if ($this->requestQueue !== []) {
+            $this->queuePendingDrain = true;
+        }
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
@@ -212,6 +281,54 @@ class JsAsyncGenerator extends JsObject
             $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
             false,
         ));
+    }
+
+    /**
+     * Implements AsyncGeneratorAwaitReturn per spec sec-asyncgeneratorawaitreturn.
+     *
+     * Calls PromiseResolve(Promise, value) to unwrap thenable values, then
+     * resolves to {value: unwrappedValue, done: true} or rejects if the
+     * promise constructor is broken.
+     */
+    private function asyncGeneratorAwaitReturn(JsValue $value): JsPromise
+    {
+        // Step 6: Let promise be PromiseResolve(%Promise%, completion.[[Value]]).
+        // PromiseResolve checks if value.constructor === Promise; if the getter throws, reject.
+        if ($value instanceof JsObject) {
+            // Try to access .constructor - may throw for broken promises.
+            try {
+                $value->get('constructor');
+            } catch (\Throwable $e) {
+                // Step 7: If abrupt, reject.
+                if ($e instanceof JsThrowable) {
+                    return JsPromise::rejected($e->jsValue);
+                }
+                return JsPromise::rejected(self::errorToJsValue($e));
+            }
+        }
+
+        // If value is a pending JsPromise, chain on it: resolve to {value: innerVal, done: true}.
+        if ($value instanceof JsPromise) {
+            if ($value->getState() === JsPromise::STATE_PENDING) {
+                $outer = new JsPromise();
+                $makeResult = fn (JsValue $v) => $this->makeResult($v, true);
+                $value->addFulfillHandler(function (JsValue $resolved) use ($outer, $makeResult): void {
+                    $outer->resolve($makeResult($resolved));
+                });
+                $value->addRejectHandler(function (JsValue $reason) use ($outer): void {
+                    $outer->reject($reason);
+                });
+                return $outer;
+            }
+            if ($value->getState() === JsPromise::STATE_REJECTED) {
+                return JsPromise::rejected($value->getResolvedValue());
+            }
+            // Fulfilled: use its inner value.
+            return JsPromise::resolved($this->makeResult($value->getResolvedValue(), true));
+        }
+
+        // Non-thenable or fulfilled thenable: resolve directly.
+        return JsPromise::resolved($this->makeResult($value, true));
     }
 
     /**
@@ -227,12 +344,23 @@ class JsAsyncGenerator extends JsObject
         }
 
         if ($this->executing) {
-            return JsPromise::rejected(
-                $this->makeTypeError('Generator is already running')
-            );
+            // Per spec: enqueue the request and return a pending promise.
+            $queued = new JsPromise();
+            $this->requestQueue[] = ['throw', $value, $queued];
+            return $queued;
         }
 
-        if (!$this->fiber->isStarted()) {
+        // Drain any queue that was populated during the PREVIOUS execution.
+        if ($this->queuePendingDrain) {
+            $this->queuePendingDrain = false;
+            $this->drainRequestQueue();
+        }
+
+        // Re-check done and fiber state after the drain.
+        if ($this->done) {
+            return JsPromise::rejected($value);
+        }
+        if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
             $this->done = true;
             return JsPromise::rejected($value);
         }
@@ -246,29 +374,42 @@ class JsAsyncGenerator extends JsObject
         } catch (GeneratorThrowSignal $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected($e->jsValue);
         } catch (RuntimeError $e) {
             $this->executing = false;
             $this->done = true;
-            if ($e instanceof JsThrowable) {
-                return JsPromise::rejected($e->jsValue);
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::rejected(self::errorToJsValue($e));
+            return $e instanceof JsThrowable
+                ? JsPromise::rejected($e->jsValue)
+                : JsPromise::rejected(self::errorToJsValue($e));
         } catch (\Throwable $e) {
             $this->executing = false;
             $this->done = true;
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
+            }
             return JsPromise::rejected(self::errorToJsValue($e));
         }
 
         if ($this->fiber->isTerminated()) {
             $this->done = true;
-            $returnValue = $this->fiber->getReturn();
-            if ($returnValue instanceof JsValue) {
-                return JsPromise::resolved($this->makeResult($returnValue, true));
+            if ($this->requestQueue !== []) {
+                $this->queuePendingDrain = true;
             }
-            return JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $returnValue = $this->fiber->getReturn();
+            return $returnValue instanceof JsValue
+                ? JsPromise::resolved($this->makeResult($returnValue, true))
+                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
         }
 
+        if ($this->requestQueue !== []) {
+            $this->queuePendingDrain = true;
+        }
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
@@ -276,6 +417,133 @@ class JsAsyncGenerator extends JsObject
             $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
             false,
         ));
+    }
+
+    /**
+     * Process any requests that were enqueued while the generator was executing.
+     *
+     * Each queued request gets processed in order: the generator is advanced
+     * (or terminated/rejected) and the queued promise is settled accordingly.
+     */
+    private function drainRequestQueue(): void
+    {
+        while ($this->requestQueue !== [] && !$this->executing) {
+            [$type, $value, $queued] = array_shift($this->requestQueue);
+
+            if ($this->done) {
+                // Generator already done: settle appropriately.
+                if ($type === 'throw') {
+                    $queued->reject($value);
+                } elseif ($type === 'return') {
+                    $inner = $this->asyncGeneratorAwaitReturn($value);
+                    if ($inner->getState() === JsPromise::STATE_FULFILLED) {
+                        $queued->resolve($inner->getResolvedValue());
+                    } elseif ($inner->getState() === JsPromise::STATE_REJECTED) {
+                        $queued->reject($inner->getResolvedValue());
+                    } else {
+                        // Pending: chain
+                        $inner->addFulfillHandler(fn ($v) => $queued->resolve($v));
+                        $inner->addRejectHandler(fn ($v) => $queued->reject($v));
+                    }
+                } else {
+                    $queued->resolve($this->makeResult(JsUndefined::instance(), true));
+                }
+                continue;
+            }
+
+            // Drive the generator for this queued request.
+            $this->executing = true;
+            $suspended = null;
+            try {
+                if ($type === 'next') {
+                    if (!$this->fiber->isStarted()) {
+                        $suspended = $this->fiber->start();
+                    } elseif ($this->fiber->isTerminated()) {
+                        $this->executing = false;
+                        $this->done = true;
+                        $queued->resolve($this->makeResult(JsUndefined::instance(), true));
+                        continue;
+                    } else {
+                        $suspended = $this->fiber->resume($value);
+                    }
+                } elseif ($type === 'return') {
+                    if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
+                        $this->executing = false;
+                        $this->done = true;
+                        $inner = $this->asyncGeneratorAwaitReturn($value);
+                        if ($inner->getState() === JsPromise::STATE_FULFILLED) {
+                            $queued->resolve($inner->getResolvedValue());
+                        } elseif ($inner->getState() === JsPromise::STATE_REJECTED) {
+                            $queued->reject($inner->getResolvedValue());
+                        } else {
+                            $inner->addFulfillHandler(fn ($v) => $queued->resolve($v));
+                            $inner->addRejectHandler(fn ($v) => $queued->reject($v));
+                        }
+                        continue;
+                    }
+                    $suspended = $this->fiber->throw(new GeneratorReturnSignal($value));
+                } else {
+                    // throw
+                    if (!$this->fiber->isStarted() || $this->fiber->isTerminated()) {
+                        $this->executing = false;
+                        $this->done = true;
+                        $queued->reject($value);
+                        continue;
+                    }
+                    $suspended = $this->fiber->throw(new GeneratorThrowSignal($value));
+                }
+                $this->executing = false;
+            } catch (GeneratorReturnSignal $e) {
+                $this->executing = false;
+                $this->done = true;
+                $inner = $this->asyncGeneratorAwaitReturn($e->value);
+                if ($inner->getState() === JsPromise::STATE_FULFILLED) {
+                    $queued->resolve($inner->getResolvedValue());
+                } elseif ($inner->getState() === JsPromise::STATE_REJECTED) {
+                    $queued->reject($inner->getResolvedValue());
+                } else {
+                    $inner->addFulfillHandler(fn ($v) => $queued->resolve($v));
+                    $inner->addRejectHandler(fn ($v) => $queued->reject($v));
+                }
+                continue;
+            } catch (GeneratorThrowSignal $e) {
+                $this->executing = false;
+                $this->done = true;
+                $queued->reject($e->jsValue);
+                continue;
+            } catch (RuntimeError $e) {
+                $this->executing = false;
+                $this->done = true;
+                $jsErr = $e instanceof JsThrowable ? $e->jsValue : self::errorToJsValue($e);
+                $queued->reject($jsErr);
+                continue;
+            } catch (\Throwable $e) {
+                $this->executing = false;
+                $this->done = true;
+                $queued->reject(self::errorToJsValue($e));
+                continue;
+            }
+
+            if ($this->fiber->isTerminated()) {
+                $this->done = true;
+                $returnValue = $this->fiber->getReturn();
+                $iterResult = $returnValue instanceof JsValue
+                    ? $this->makeResult($returnValue, true)
+                    : $this->makeResult(JsUndefined::instance(), true);
+                $queued->resolve($iterResult);
+                continue;
+            }
+
+            // Fiber suspended.
+            if ($suspended instanceof YieldDelegateResult) {
+                $queued->resolve($suspended->result);
+            } else {
+                $queued->resolve($this->makeResult(
+                    $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
+                    false,
+                ));
+            }
+        }
     }
 
     /**
@@ -291,6 +559,38 @@ class JsAsyncGenerator extends JsObject
 
     private function makeTypeError(string $message): JsObject
     {
+        $error = new JsObject();
+        $error->set('message', new JsString($message));
+        $error->set('name', new JsString('TypeError'));
+        return $error;
+    }
+
+    /**
+     * Create a proper TypeError JsObject for incompatible receiver errors.
+     * Uses the TypeError constructor from $env so that instanceof TypeError works.
+     *
+     * @param \PhpJs\Runtime\Environment $env
+     */
+    public static function makeIncompatibleReceiverError(\PhpJs\Runtime\Environment $env, string $method): JsValue
+    {
+        $message = "Method AsyncGenerator.prototype.{$method} called on incompatible receiver";
+        try {
+            $ctor = $env->get('TypeError');
+            if ($ctor instanceof JsFunction) {
+                $obj = new JsObject();
+                $obj->set('[[NewTarget]]', $ctor);
+                $proto = $ctor->get('prototype');
+                if ($proto instanceof JsObject) {
+                    $obj->setPrototype($proto);
+                }
+                $result = $ctor->call($obj, [new JsString($message)]);
+                if ($result instanceof JsValue) {
+                    return $result;
+                }
+            }
+        } catch (\Throwable) {
+            // Fall through to plain object.
+        }
         $error = new JsObject();
         $error->set('message', new JsString($message));
         $error->set('name', new JsString('TypeError'));

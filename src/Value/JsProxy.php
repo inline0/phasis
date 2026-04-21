@@ -144,6 +144,18 @@ class JsProxy extends JsObject
     }
 
     /**
+     * Override getWithValueReceiver so prototype chain walks through a proxy
+     * (e.g. Object.create(proxy).prop) go through the [[Get]] trap.
+     */
+    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
+    {
+        if ($receiver instanceof JsObject) {
+            return $this->internalGet($name, $receiver);
+        }
+        return $this->internalGet($name, $this);
+    }
+
+    /**
      * ES spec: [[Get]] ( P, Receiver ) for Proxy objects.
      *
      * Forwards the receiver correctly for prototype chain lookups
