@@ -122,7 +122,7 @@ class TypedArrayConstructor
         $sliceFn = JsFunction::fromCallable(
             'slice',
             function (JsValue $this_, array $args) use ($constructor): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError('Method ArrayBuffer.prototype.slice called on incompatible receiver');
                 }
                 if ($this_->isDetached()) {
@@ -215,7 +215,7 @@ class TypedArrayConstructor
         $byteLengthGetter = JsFunction::fromCallable(
             'get byteLength',
             function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method get ArrayBuffer.prototype.byteLength called on incompatible receiver'
                     );
@@ -233,7 +233,7 @@ class TypedArrayConstructor
         $maxByteLengthGetter = JsFunction::fromCallable(
             'get maxByteLength',
             function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method get ArrayBuffer.prototype.maxByteLength called on incompatible receiver'
                     );
@@ -272,7 +272,7 @@ class TypedArrayConstructor
         $detachedGetter = JsFunction::fromCallable(
             'get detached',
             function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method get ArrayBuffer.prototype.detached called on incompatible receiver'
                     );
