@@ -931,8 +931,11 @@ class Engine
     {
         $modulePath = $path ?? $this->interpreter->getCurrentModulePath() ?? '/virtual-module.mjs';
         $loader = $this->interpreter->getModuleLoader();
-        $namespace = $loader->evaluateModule($modulePath, $source);
-        return $this->toPhp($namespace);
+        $loader->evaluateModule($modulePath, $source);
+        // Module namespace objects can be self-referential (export * from self),
+        // so converting to PHP would cause infinite recursion. Return null instead.
+        // Callers that need the namespace should use the ModuleLoader directly.
+        return null;
     }
 
     public function execFile(string $path): mixed

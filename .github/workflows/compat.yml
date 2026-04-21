@@ -10,7 +10,7 @@ concurrency:
 jobs:
   compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 180
 
     steps:
       - uses: actions/checkout@v4
@@ -22,24 +22,19 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: mbstring, bcmath
+          extensions: mbstring, bcmath, intl
           coverage: none
           ini-values: memory_limit=2G
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Run unit tests first
+      - name: Run unit tests
         run: vendor/bin/phpunit --testsuite=unit
 
       - name: Run full compat report
-        run: ./bin/compat-report --jobs 4 --timeout 300
-        timeout-minutes: 240
+        run: ./bin/compat-report --jobs 4 --timeout 30 --chunk-size 100
+        timeout-minutes: 150
 
       - name: Show summary
         if: always()
@@ -50,7 +45,7 @@ jobs:
             head -30 COMPAT.md >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload compat artifacts
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -58,16 +53,15 @@ jobs:
           path: |
             COMPAT.md
             compat.json
-          if-no-files-found: ignore
 
-      - name: Commit updated COMPAT.md
+      - name: Commit COMPAT.md
         if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add COMPAT.md compat.json
           if git diff --cached --quiet; then
-            echo "No changes to COMPAT.md"
+            echo "No changes"
           else
             git commit -m "Update COMPAT.md from CI [skip ci]"
             git push

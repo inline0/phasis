@@ -512,7 +512,8 @@ class TypedArrayConstructor
             function (JsValue $this_, array $args) use ($constructor): JsValue {
                 if (!$this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
-                        'Method SharedArrayBuffer.prototype.slice called on incompatible receiver'
+                        'Method SharedArrayBuffer.prototype.slice'
+                        . ' called on incompatible receiver'
                     );
                 }
                 $len = $this_->getByteLength();
@@ -524,17 +525,88 @@ class TypedArrayConstructor
                     : TypeConversion::toIntegerOrInfinity($endArg);
 
                 [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
-                $newBuf = new JsSharedArrayBuffer($newLen, $this_->getPrototype());
-                if ($newLen > 0) {
+
+                // SpeciesConstructor(O, %SharedArrayBuffer%).
+                $ctor = $this_->get('constructor');
+                if ($ctor instanceof JsUndefined) {
+                    $ctor = $constructor;
+                } elseif (!$ctor instanceof JsObject) {
+                    throw new TypeError(
+                        TypeConversion::toString($ctor) . ' is not an object'
+                    );
+                } else {
+                    $speciesSym = SymbolConstructor::species();
+                    $species = $ctor->getBySymbol($speciesSym);
+                    if (
+                        $species instanceof JsUndefined
+                        || $species instanceof JsNull
+                    ) {
+                        $ctor = $constructor;
+                    } elseif (
+                        $species instanceof JsFunction
+                        && $species->isConstructable()
+                    ) {
+                        $ctor = $species;
+                    } else {
+                        throw new TypeError(
+                            'SharedArrayBuffer.prototype.slice:'
+                            . ' species constructor is not a constructor'
+                        );
+                    }
+                }
+
+                // Construct(ctor, newLen).
+                if (
+                    $ctor instanceof JsFunction
+                    && $ctor->isConstructable()
+                ) {
+                    $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
+                } else {
+                    $newBuf = new JsSharedArrayBuffer(
+                        $newLen,
+                        $this_->getPrototype(),
+                    );
+                }
+
+                if (!$newBuf instanceof JsSharedArrayBuffer) {
+                    throw new TypeError(
+                        'SharedArrayBuffer.prototype.slice:'
+                        . ' species constructor did not return'
+                        . ' a SharedArrayBuffer'
+                    );
+                }
+                if ($newBuf === $this_) {
+                    throw new TypeError(
+                        'SharedArrayBuffer.prototype.slice:'
+                        . ' species constructor returned same buffer'
+                    );
+                }
+                if ($newBuf->getByteLength() < $newLen) {
+                    throw new TypeError(
+                        'SharedArrayBuffer.prototype.slice:'
+                        . ' species constructor returned too small buffer'
+                    );
+                }
+
+                if ($newLen > 0 && $newBuf->getByteLength() >= $newLen) {
                     $existingData = $newBuf->getData();
-                    $newData = substr_replace($existingData, $slicedData, 0, $newLen);
+                    $newData = substr_replace(
+                        $existingData,
+                        $slicedData,
+                        0,
+                        $newLen,
+                    );
                     $newBuf->setData($newData);
                 }
+
                 return $newBuf;
             },
             2,
         );
-        $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
+        $proto->defineOwnProperty(
+            'slice',
+            PropertyDescriptor::data($sliceFn, true, false, true),
+        );
 
         // Symbol.toStringTag.
         $toStringTagSym = SymbolConstructor::toStringTag();
@@ -547,7 +619,10 @@ class TypedArrayConstructor
             'constructor',
             PropertyDescriptor::data($constructor, true, false, true),
         );
-        $constructor->set('prototype', $proto);
+        $constructor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($proto, false, false, false),
+        );
 
         // Per spec: get SharedArrayBuffer[@@species] returns `this`.
         $speciesSym = SymbolConstructor::species();

@@ -2267,9 +2267,25 @@ class TemporalObject
         return 0;
     }
 
-    private static function compareISOTime(int $h1, int $m1, int $s1, int $ms1, int $us1, int $ns1, int $h2, int $m2, int $s2, int $ms2, int $us2, int $ns2): int
-    {
-        foreach ([[$h1, $h2], [$m1, $m2], [$s1, $s2], [$ms1, $ms2], [$us1, $us2], [$ns1, $ns2]] as [$a, $b]) {
+    private static function compareISOTime(
+        int $h1,
+        int $m1,
+        int $s1,
+        int $ms1,
+        int $us1,
+        int $ns1,
+        int $h2,
+        int $m2,
+        int $s2,
+        int $ms2,
+        int $us2,
+        int $ns2,
+    ): int {
+        $pairs = [
+            [$h1, $h2], [$m1, $m2], [$s1, $s2],
+            [$ms1, $ms2], [$us1, $us2], [$ns1, $ns2],
+        ];
+        foreach ($pairs as [$a, $b]) {
             if ($a !== $b) {
                 return $a < $b ? -1 : 1;
             }
@@ -2431,8 +2447,12 @@ class TemporalObject
         return $dateStr . $fracStr . 'Z';
     }
 
-    private static function instantToStringInZone(string $ns, string $timeZone, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc'): string
-    {
+    private static function instantToStringInZone(
+        string $ns,
+        string $timeZone,
+        string|int $fractionalSecondDigits = 'auto',
+        string $roundingMode = 'trunc',
+    ): string {
         $parts = self::epochNsToISOParts($ns, $timeZone);
         $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
         $timeStr = self::formatISOTime(
@@ -2468,8 +2488,18 @@ class TemporalObject
         return $obj;
     }
 
-    private static function createPlainDateTimeObject(int $y, int $m, int $d, int $h, int $min, int $s, int $ms, int $us, int $ns, string $cal): JsObject
-    {
+    private static function createPlainDateTimeObject(
+        int $y,
+        int $m,
+        int $d,
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        int $us,
+        int $ns,
+        string $cal,
+    ): JsObject {
         $obj = new JsObject(self::$plainDateTimeProto);
         self::setDateSlots($obj, $y, $m, $d, $cal);
         self::setTimeSlots($obj, $h, $min, $s, $ms, $us, $ns);
@@ -2503,8 +2533,18 @@ class TemporalObject
         return $obj;
     }
 
-    private static function createDurationObject(int $years, int $months, int $weeks, int $days, int $hours, int $minutes, int $seconds, int $milliseconds, int $microseconds, int $nanoseconds): JsObject
-    {
+    private static function createDurationObject(
+        int $years,
+        int $months,
+        int $weeks,
+        int $days,
+        int $hours,
+        int $minutes,
+        int $seconds,
+        int $milliseconds,
+        int $microseconds,
+        int $nanoseconds,
+    ): JsObject {
         $fields = [$years, $months, $weeks, $days, $hours, $minutes, $seconds, $milliseconds, $microseconds, $nanoseconds];
         self::validateDurationFields($fields);
         $obj = new JsObject(self::$durationProto);
@@ -2614,7 +2654,10 @@ class TemporalObject
     private static function parseDurationString(string $str): JsObject
     {
         // ISO 8601 duration: [+-]P[nY][nM][nW][nD][T[nH][nM][n[.frac]S]]
-        $pattern = '/^([+-])?P(?:(\d+(?:[.,]\d+)?)Y)?(?:(\d+(?:[.,]\d+)?)M)?(?:(\d+(?:[.,]\d+)?)W)?(?:(\d+(?:[.,]\d+)?)D)?(?:T(?:(\d+(?:[.,]\d+)?)H)?(?:(\d+(?:[.,]\d+)?)M)?(?:(\d+(?:[.,]\d+)?)S)?)?$/i';
+        $num = '(\d+(?:[.,]\d+)?)';
+        $pattern = "/^([+-])?P(?:{$num}Y)?(?:{$num}M)?"
+            . "(?:{$num}W)?(?:{$num}D)?"
+            . "(?:T(?:{$num}H)?(?:{$num}M)?(?:{$num}S)?)?\$/i";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid Duration string: {$str}");
         }
@@ -3055,7 +3098,12 @@ class TemporalObject
             $us = 0;
             $ns = 0;
             $any = false;
-            foreach (['hour' => &$h, 'minute' => &$min, 'second' => &$s, 'millisecond' => &$ms, 'microsecond' => &$us, 'nanosecond' => &$ns] as $name => &$ref) {
+            $tBag = [
+                'hour' => &$h, 'minute' => &$min,
+                'second' => &$s, 'millisecond' => &$ms,
+                'microsecond' => &$us, 'nanosecond' => &$ns,
+            ];
+            foreach ($tBag as $name => &$ref) {
                 $v = $item->get($name);
                 if (!($v instanceof JsUndefined)) {
                     $ref = (int) TypeConversion::toNumber($v);
@@ -3113,7 +3161,12 @@ class TemporalObject
                 $ms = 0;
                 $us = 0;
                 $ns = 0;
-                foreach (['hour' => &$h, 'minute' => &$min, 'second' => &$s, 'millisecond' => &$ms, 'microsecond' => &$us, 'nanosecond' => &$ns] as $name => &$ref) {
+                $dtBag = [
+                    'hour' => &$h, 'minute' => &$min,
+                    'second' => &$s, 'millisecond' => &$ms,
+                    'microsecond' => &$us, 'nanosecond' => &$ns,
+                ];
+                foreach ($dtBag as $name => &$ref) {
                     $v = $item->get($name);
                     if (!($v instanceof JsUndefined)) {
                         $ref = (int) TypeConversion::toNumber($v);
@@ -3276,9 +3329,19 @@ class TemporalObject
         return $trimmed === '' ? '' : '.' . $trimmed;
     }
 
-    private static function formatISOTime(int $h, int $min, int $s, int $ms, int $us, int $ns, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc'): string
-    {
-        $nsPadded = str_pad((string) $ms, 3, '0', STR_PAD_LEFT) . str_pad((string) $us, 3, '0', STR_PAD_LEFT) . str_pad((string) $ns, 3, '0', STR_PAD_LEFT);
+    private static function formatISOTime(
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        int $us,
+        int $ns,
+        string|int $fractionalSecondDigits = 'auto',
+        string $roundingMode = 'trunc',
+    ): string {
+        $nsPadded = str_pad((string) $ms, 3, '0', STR_PAD_LEFT)
+            . str_pad((string) $us, 3, '0', STR_PAD_LEFT)
+            . str_pad((string) $ns, 3, '0', STR_PAD_LEFT);
         $fracStr = self::formatSubSecond($nsPadded, $fractionalSecondDigits);
         return self::pad2($h) . ':' . self::pad2($min) . ':' . self::pad2($s) . $fracStr;
     }
@@ -3297,8 +3360,12 @@ class TemporalObject
         );
     }
 
-    private static function plainDateTimeToString(JsValue $this_, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc', string $calendarName = 'auto'): string
-    {
+    private static function plainDateTimeToString(
+        JsValue $this_,
+        string|int $fractionalSecondDigits = 'auto',
+        string $roundingMode = 'trunc',
+        string $calendarName = 'auto',
+    ): string {
         $y = self::getSlotInt($this_, '[[ISOYear]]');
         $m = self::getSlotInt($this_, '[[ISOMonth]]');
         $dd = self::getSlotInt($this_, '[[ISODay]]');
@@ -3373,8 +3440,18 @@ class TemporalObject
         ];
     }
 
-    private static function isoDateTimeToEpochNs(int $y, int $m, int $d, int $h, int $min, int $s, int $ms, int $us, int $ns, string $tz): string
-    {
+    private static function isoDateTimeToEpochNs(
+        int $y,
+        int $m,
+        int $d,
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        int $us,
+        int $ns,
+        string $tz,
+    ): string {
         try {
             $dt = new \DateTimeImmutable('2000-01-01 00:00:00', self::resolveTimeZone($tz));
             $dt = $dt->setDate($y, $m, $d);
@@ -3424,7 +3501,10 @@ class TemporalObject
     {
         $dur = self::toDuration($durationArg);
         // Instant only supports time components.
-        if (self::getDurationField($dur, 'years') !== 0 || self::getDurationField($dur, 'months') !== 0 || self::getDurationField($dur, 'weeks') !== 0) {
+        $hasCalUnit = self::getDurationField($dur, 'years') !== 0
+            || self::getDurationField($dur, 'months') !== 0
+            || self::getDurationField($dur, 'weeks') !== 0;
+        if ($hasCalUnit) {
             throw new RangeError('Instant arithmetic does not support years, months, or weeks');
         }
         $totalNs = self::durationToTotalNs($dur);
@@ -3752,11 +3832,26 @@ class TemporalObject
         }
         // quotient = value / increment, round according to mode.
         $q = bcdiv($value, $increment, 20);
+        $truncQ = bcdiv($value, $increment, 0);
+        $isNonNeg = bccomp($value, '0', 0) >= 0;
         $rounded = match ($mode) {
-            'ceil' => bcadd($q, '0', 0) === $q ? $q : (bccomp($q, '0', 0) >= 0 ? bcadd(bcdiv($value, $increment, 0), '1', 0) : bcdiv($value, $increment, 0)),
-            'floor' => bccomp($value, '0', 0) >= 0 ? bcdiv($value, $increment, 0) : (bcsub($value, bcsub($increment, '1', 0), 0) !== $value ? bcsub(bcdiv($value, $increment, 0), '1', 0) : bcdiv($value, $increment, 0)),
-            'trunc' => bcdiv($value, $increment, 0),
-            default => bcdiv(bcadd(bcmul($value, '2', 0), (bccomp($value, '0', 0) >= 0 ? $increment : bcsub('0', $increment, 0)), 0), bcmul($increment, '2', 0), 0),
+            'ceil' => bcadd($q, '0', 0) === $q
+                ? $q
+                : ($isNonNeg ? bcadd($truncQ, '1', 0) : $truncQ),
+            'floor' => $isNonNeg
+                ? $truncQ
+                : (bcsub($value, bcsub($increment, '1', 0), 0) !== $value
+                    ? bcsub($truncQ, '1', 0) : $truncQ),
+            'trunc' => $truncQ,
+            default => bcdiv(
+                bcadd(
+                    bcmul($value, '2', 0),
+                    $isNonNeg ? $increment : bcsub('0', $increment, 0),
+                    0,
+                ),
+                bcmul($increment, '2', 0),
+                0,
+            ),
         };
         return bcmul($rounded, $increment, 0);
     }

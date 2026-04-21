@@ -1087,7 +1087,7 @@ function buildCompatSnapshot(
         'discovery' => $state['discovery'],
         'runnerCaveats' => [
             'Feature families listed in config/support.php are skipped before execution.',
-            'Tests flagged as module are skipped by the current runner.',
+            'Tests flagged as module are executed as ES modules (always strict, import/export processed).',
             'Tests flagged as async are skipped by the current runner.',
             'Mixed-mode tests currently run only in sloppy mode unless onlyStrict or noStrict is set.',
             'Chunks that timeout, OOM, or crash are split automatically until a single-file blocker is isolated.',

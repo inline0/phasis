@@ -254,8 +254,9 @@ class AtomicsObject
     /**
      * Atomics.wait(int32Array, index, value, timeout?).
      *
-     * Single-threaded: never blocks. Returns "not-equal" if the current value
-     * differs from expected, otherwise "timed-out" (no real waiting).
+     * Single-threaded: the main agent has [[CanBlock]] = false,
+     * so per spec step 6-7 this always throws TypeError after
+     * validating all arguments.
      */
     private static function waitFn(JsValue $this_, array $args): JsValue
     {
@@ -271,33 +272,32 @@ class AtomicsObject
             );
         }
 
-        $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
+        $index = self::validateAtomicAccess(
+            $ta,
+            $args[1] ?? JsUndefined::instance(),
+        );
+
+        // Per spec step 3: convert value before timeout.
         $valueArg = $args[2] ?? JsUndefined::instance();
-        $timeoutArg = $args[3] ?? JsUndefined::instance();
-
         $isBigInt = $ta->getTypeName() === 'BigInt64Array';
-        $current = $ta->getIndex($index);
-
-        // Compare current value with expected.
         if ($isBigInt) {
-            $expected = TypeConversion::toBigInt($valueArg);
-            $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
-                ? $current
-                : TypeConversion::toBigInt($current);
-            if ($currentBig->value !== $expected->value) {
-                return new JsString('not-equal');
-            }
+            TypeConversion::toBigInt($valueArg);
         } else {
-            $expected = (int) TypeConversion::toNumber($valueArg);
-            $currentNum = (int) TypeConversion::toNumber($current);
-            if ($currentNum !== $expected) {
-                return new JsString('not-equal');
-            }
+            TypeConversion::toNumber($valueArg);
         }
 
-        // Values are equal, but we cannot actually wait in single-threaded PHP.
-        // Check timeout: if 0, return "timed-out". Otherwise also "timed-out".
-        return new JsString('timed-out');
+        // Per spec step 4: ToNumber(timeout) must be evaluated
+        // (may throw for poisoned objects).
+        $timeoutArg = $args[3] ?? JsUndefined::instance();
+        if (!$timeoutArg instanceof JsUndefined) {
+            TypeConversion::toNumber($timeoutArg);
+        }
+
+        // Per spec step 6-7: AgentCanSuspend() is false in
+        // single-threaded PHP, so throw TypeError.
+        throw new TypeError(
+            'Atomics.wait cannot be called in this context'
+        );
     }
 
     /**
@@ -446,9 +446,10 @@ class AtomicsObject
         }
 
         // Extend to same length with sign extension.
+        // Add explicit sign bit so the result can be interpreted correctly.
         $aSign = $aNeg ? '1' : '0';
         $bSign = $bNeg ? '1' : '0';
-        $maxLen = max(strlen($aBin), strlen($bBin));
+        $maxLen = max(strlen($aBin), strlen($bBin)) + 1;
         $aBin = str_pad($aBin, $maxLen, $aSign, STR_PAD_LEFT);
         $bBin = str_pad($bBin, $maxLen, $bSign, STR_PAD_LEFT);
 
