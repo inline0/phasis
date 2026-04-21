@@ -2195,27 +2195,37 @@ class StringPrototype
             $str = self::extractString($this_);
             $u16 = JsString::utf8ToUtf16LE($str);
             $u16Len = (int) (strlen($u16) / 2);
-            $result = '';
-            for ($i = 0; $i < $u16Len; $i++) {
-                $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+            $out = '';
+            $i = 0;
+            while ($i < $u16Len) {
+                $cu = ord($u16[$i * 2])
+                    | (ord($u16[$i * 2 + 1]) << 8);
                 if ($cu >= 0xD800 && $cu <= 0xDBFF) {
                     if ($i + 1 < $u16Len) {
-                        $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                        $next = ord($u16[($i + 1) * 2])
+                            | (ord($u16[($i + 1) * 2 + 1]) << 8);
                         if ($next >= 0xDC00 && $next <= 0xDFFF) {
-                            $result .= JsString::utf16CodeUnitToUtf8($cu);
-                            $result .= JsString::utf16CodeUnitToUtf8($next);
-                            $i++;
+                            // Valid pair: keep both code units.
+                            $out .= substr($u16, $i * 2, 4);
+                            $i += 2;
                             continue;
                         }
                     }
-                    $result .= "\xEF\xBF\xBD";
+                    // Lone high surrogate: replace with U+FFFD.
+                    $out .= pack('v', 0xFFFD);
+                    $i++;
                 } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
-                    $result .= "\xEF\xBF\xBD";
+                    // Lone low surrogate: replace with U+FFFD.
+                    $out .= pack('v', 0xFFFD);
+                    $i++;
                 } else {
-                    $result .= JsString::utf16CodeUnitToUtf8($cu);
+                    $out .= substr($u16, $i * 2, 2);
+                    $i++;
                 }
             }
-            return new JsString($result);
+            // Convert UTF-16LE back to UTF-8, which properly
+            // combines surrogate pairs into 4-byte sequences.
+            return new JsString(JsString::utf16LEToUtf8($out));
         };
     }
 }

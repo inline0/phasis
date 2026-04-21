@@ -37,9 +37,6 @@ class JsTypedArray extends JsObject
     /** Whether values should be clamped (Uint8ClampedArray). */
     private bool $clamped;
 
-    /** Whether this TypedArray auto-tracks the buffer's byte length. */
-    private bool $autoLength = false;
-
     /**
      * Type configuration table: name => [bytesPerElement, packFormat, isBigInt, isClamped].
      *
@@ -53,7 +50,6 @@ class JsTypedArray extends JsObject
         'Uint16Array' => [2, 'v', false, false],
         'Int32Array' => [4, 'l', false, false],
         'Uint32Array' => [4, 'V', false, false],
-        'Float16Array' => [2, 'H', false, false],
         'Float32Array' => [4, 'g', false, false],
         'Float64Array' => [8, 'e', false, false],
         'BigInt64Array' => [8, 'q', true, false],
@@ -140,32 +136,11 @@ class JsTypedArray extends JsObject
         return $this->byteOffset;
     }
 
-    /** Mark this TypedArray as auto-tracking the buffer's byte length. */
-    public function setAutoLength(bool $auto): void
-    {
-        $this->autoLength = $auto;
-    }
-
-    public function isAutoLength(): bool
-    {
-        return $this->autoLength;
-    }
-
     public function getLength(): int
     {
         // Per spec: if the viewed ArrayBuffer is detached, length is 0.
         if ($this->buffer->isDetached()) {
             return 0;
-        }
-        // For auto-tracking typed arrays on resizable buffers,
-        // recompute length from the current buffer byte length.
-        if ($this->autoLength) {
-            $bufLen = $this->buffer->getByteLength();
-            if ($this->byteOffset > $bufLen) {
-                return 0;
-            }
-            $remaining = $bufLen - $this->byteOffset;
-            return intdiv($remaining, $this->bytesPerElement);
         }
         return $this->length;
     }
@@ -187,8 +162,7 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return JsUndefined::instance();
         }
-        $len = $this->getLength();
-        if ($index < 0 || $index >= $len) {
+        if ($index < 0 || $index >= $this->length) {
             return JsUndefined::instance();
         }
 
@@ -230,8 +204,7 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return;
         }
-        $len = $this->getLength();
-        if ($index < 0 || $index >= $len) {
+        if ($index < 0 || $index >= $this->length) {
             return;
         }
 
@@ -381,7 +354,7 @@ class JsTypedArray extends JsObject
     {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->getLength()) {
+            if ($index >= 0 && $index < $this->length) {
                 $this->setIndex($index, $value);
                 return true;
             }
@@ -410,7 +383,7 @@ class JsTypedArray extends JsObject
     ): ?\PhpJs\Object\PropertyDescriptor {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->getLength()) {
+            if ($index >= 0 && $index < $this->length) {
                 return \PhpJs\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
                     true,
@@ -442,7 +415,7 @@ class JsTypedArray extends JsObject
     ): bool {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index < 0 || $index >= $this->getLength()) {
+            if ($index < 0 || $index >= $this->length) {
                 return false;
             }
             if ($desc->isAccessorDescriptor()) {
@@ -478,7 +451,7 @@ class JsTypedArray extends JsObject
             return true;
         }
 
-        if (ctype_digit($name) && (int) $name < $this->getLength()) {
+        if (ctype_digit($name) && (int) $name < $this->length) {
             return true;
         }
 
@@ -495,8 +468,7 @@ class JsTypedArray extends JsObject
     public function ownKeys(): array
     {
         $keys = [];
-        $len = $this->getLength();
-        for ($i = 0; $i < $len; $i++) {
+        for ($i = 0; $i < $this->length; $i++) {
             $keys[] = (string) $i;
         }
         return array_merge($keys, parent::ownKeys());
@@ -506,8 +478,7 @@ class JsTypedArray extends JsObject
     public function getOwnEnumerableKeys(): array
     {
         $keys = [];
-        $len = $this->getLength();
-        for ($i = 0; $i < $len; $i++) {
+        for ($i = 0; $i < $this->length; $i++) {
             $keys[] = (string) $i;
         }
         return $keys;
@@ -535,18 +506,17 @@ class JsTypedArray extends JsObject
      */
     public function subarray(int $begin, ?int $end = null): self
     {
-        $len = $this->getLength();
         if ($begin < 0) {
-            $begin = max(0, $len + $begin);
+            $begin = max(0, $this->length + $begin);
         }
-        $begin = min($begin, $len);
+        $begin = min($begin, $this->length);
 
         if ($end === null) {
-            $end = $len;
+            $end = $this->length;
         } elseif ($end < 0) {
-            $end = max(0, $len + $end);
+            $end = max(0, $this->length + $end);
         }
-        $end = min($end, $len);
+        $end = min($end, $this->length);
 
         $newLen = max(0, $end - $begin);
         $newByteOffset = $this->byteOffset + $begin * $this->bytesPerElement;
@@ -568,18 +538,17 @@ class JsTypedArray extends JsObject
      */
     public function sliceTyped(int $begin, ?int $end = null): self
     {
-        $len = $this->getLength();
         if ($begin < 0) {
-            $begin = max(0, $len + $begin);
+            $begin = max(0, $this->length + $begin);
         }
-        $begin = min($begin, $len);
+        $begin = min($begin, $this->length);
 
         if ($end === null) {
-            $end = $len;
+            $end = $this->length;
         } elseif ($end < 0) {
-            $end = max(0, $len + $end);
+            $end = max(0, $this->length + $end);
         }
-        $end = min($end, $len);
+        $end = min($end, $this->length);
 
         $newLen = max(0, $end - $begin);
         $result = self::fromLength($this->typeName, $newLen, $this->getPrototype());
@@ -596,7 +565,7 @@ class JsTypedArray extends JsObject
      */
     public function copyWithinTyped(int $target, int $start, ?int $end = null): self
     {
-        $len = $this->getLength();
+        $len = $this->length;
         if ($target < 0) {
             $target = max(0, $len + $target);
         }
@@ -631,16 +600,15 @@ class JsTypedArray extends JsObject
      */
     public function fillTyped(JsValue $value, int $start = 0, ?int $end = null): self
     {
-        $len = $this->getLength();
         if ($start < 0) {
-            $start = max(0, $len + $start);
+            $start = max(0, $this->length + $start);
         }
         if ($end === null) {
-            $end = $len;
+            $end = $this->length;
         } elseif ($end < 0) {
-            $end = max(0, $len + $end);
+            $end = max(0, $this->length + $end);
         }
-        $end = min($end, $len);
+        $end = min($end, $this->length);
 
         for ($i = $start; $i < $end; $i++) {
             $this->setIndex($i, $value);
@@ -654,10 +622,9 @@ class JsTypedArray extends JsObject
      */
     public function reverseTyped(): self
     {
-        $len = $this->getLength();
-        $mid = (int) ($len / 2);
+        $mid = (int) ($this->length / 2);
         for ($i = 0; $i < $mid; $i++) {
-            $j = $len - 1 - $i;
+            $j = $this->length - 1 - $i;
             $a = $this->getIndex($i);
             $b = $this->getIndex($j);
             $this->setIndex($i, $b);
@@ -671,11 +638,10 @@ class JsTypedArray extends JsObject
      */
     public function indexOfTyped(JsValue $search, int $fromIndex = 0): int
     {
-        $len = $this->getLength();
         if ($fromIndex < 0) {
-            $fromIndex = max(0, $len + $fromIndex);
+            $fromIndex = max(0, $this->length + $fromIndex);
         }
-        for ($i = $fromIndex; $i < $len; $i++) {
+        for ($i = $fromIndex; $i < $this->length; $i++) {
             $el = $this->getIndex($i);
             if ($this->strictEquals($el, $search)) {
                 return $i;
@@ -689,11 +655,10 @@ class JsTypedArray extends JsObject
      */
     public function includesTyped(JsValue $search, int $fromIndex = 0): bool
     {
-        $len = $this->getLength();
         if ($fromIndex < 0) {
-            $fromIndex = max(0, $len + $fromIndex);
+            $fromIndex = max(0, $this->length + $fromIndex);
         }
-        for ($i = $fromIndex; $i < $len; $i++) {
+        for ($i = $fromIndex; $i < $this->length; $i++) {
             $el = $this->getIndex($i);
             if ($this->sameValueZero($el, $search)) {
                 return true;
@@ -708,8 +673,7 @@ class JsTypedArray extends JsObject
     public function joinTyped(string $separator = ','): string
     {
         $parts = [];
-        $len = $this->getLength();
-        for ($i = 0; $i < $len; $i++) {
+        for ($i = 0; $i < $this->length; $i++) {
             $el = $this->getIndex($i);
             $parts[] = $el->toJsString();
         }
@@ -720,8 +684,7 @@ class JsTypedArray extends JsObject
     public function toList(): array
     {
         $result = [];
-        $len = $this->getLength();
-        for ($i = 0; $i < $len; $i++) {
+        for ($i = 0; $i < $this->length; $i++) {
             $result[] = $this->getIndex($i);
         }
         return $result;
@@ -835,13 +798,12 @@ class JsTypedArray extends JsObject
     public function display(): string
     {
         $parts = [];
-        $len = $this->getLength();
-        $max = min($len, 10);
+        $max = min($this->length, 10);
         for ($i = 0; $i < $max; $i++) {
             $el = $this->getIndex($i);
             $parts[] = $el->display();
         }
-        $suffix = $len > 10 ? ', ...' : '';
-        return $this->typeName . '(' . $len . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
+        $suffix = $this->length > 10 ? ', ...' : '';
+        return $this->typeName . '(' . $this->length . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
     }
 }

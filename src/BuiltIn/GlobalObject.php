@@ -840,6 +840,45 @@ class GlobalObject
             \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
             \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncGeneratorFunction'), false, false, true),
         );
+
+        // %AsyncGeneratorFunction% constructor: like Function() but for async generators.
+        $asyncGenFnConstructor = JsFunction::fromCallable(
+            'AsyncGeneratorFunction',
+            function (JsValue $this_, array $args) use ($env): JsValue {
+                $body = '';
+                $params = '';
+                if (count($args) > 0) {
+                    $stringArgs = [];
+                    foreach ($args as $arg) {
+                        $stringArgs[] = TypeConversion::toString($arg);
+                    }
+                    $body = array_pop($stringArgs);
+                    $params = implode(',', $stringArgs);
+                }
+                $source = "(async function* anonymous({$params}\n) {\n{$body}\n})";
+                $parser = new \PhpJs\Parser\Parser($source);
+                $program = $parser->parse();
+                $interp = new Interpreter($env);
+                return $interp->execute($program);
+            },
+            1,
+        );
+        $asyncGenFnConstructor->setConstructable();
+        $asyncGenFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsNumber(1.0), writable: false, enumerable: false, configurable: true,
+        ));
+        $asyncGenFnConstructor->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+            value: new JsString('AsyncGeneratorFunction'), writable: false, enumerable: false, configurable: true,
+        ));
+        $asyncGenFnConstructor->defineOwnProperty('prototype', new \PhpJs\Object\PropertyDescriptor(
+            value: $asyncGenFnProto, writable: false, enumerable: false, configurable: false,
+        ));
+        $asyncGenFnConstructor->setCustomPrototype($fnConstructor);
+        // %AsyncGeneratorFunction.prototype%.constructor = %AsyncGeneratorFunction%
+        $asyncGenFnProto->defineOwnProperty('constructor', \PhpJs\Object\PropertyDescriptor::data(
+            $asyncGenFnConstructor, false, false, true,
+        ));
+
         \PhpJs\Value\JsAsyncGenerator::setAsyncGeneratorPrototype($asyncGenProto);
         $env->defineVar('__AsyncGeneratorPrototype__', $asyncGenProto);
         $env->defineVar('__AsyncGeneratorFunctionPrototype__', $asyncGenFnProto);

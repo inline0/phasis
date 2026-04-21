@@ -4947,6 +4947,126 @@ class Interpreter
     }
 
     // -------------------------------------------------------------------------
+    // Disposal support (explicit resource management)
+    // -------------------------------------------------------------------------
+
+    /** Register a disposable resource on the given environment. */
+    private function registerDisposable(JsValue $value, bool $isAsync, Environment $env): void
+    {
+        if ($value instanceof JsNull || $value instanceof JsUndefined) {
+            return;
+        }
+        if (!$value instanceof JsObject) {
+            throw new TypeError('The value is not an object or null/undefined.');
+        }
+        if ($isAsync) {
+            $asyncMethod = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::asyncDispose());
+            $syncMethod = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+            if (
+                ($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull)
+                && ($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull)
+            ) {
+                throw new TypeError('The value does not have a dispose method.');
+            }
+        } else {
+            $method = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+            if ($method instanceof JsUndefined || $method instanceof JsNull) {
+                throw new TypeError('The value does not have a Symbol.dispose method.');
+            }
+            if (!$method instanceof JsFunction) {
+                throw new TypeError('Property [Symbol.dispose] is not a function.');
+            }
+        }
+        $env->addDisposable($value, $isAsync);
+    }
+
+    /** Run disposals for the given environment in reverse order. */
+    private function runDisposals(Environment $env, ?JsValue $pendingError = null): Completion
+    {
+        $disposables = $env->getDisposables();
+        if (empty($disposables) && $pendingError === null) {
+            return Completion::normal(JsUndefined::instance());
+        }
+        $error = $pendingError;
+        for ($i = count($disposables) - 1; $i >= 0; $i--) {
+            [$resource, $isAsync] = $disposables[$i];
+            try {
+                if ($isAsync) {
+                    $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::asyncDispose());
+                    if ($method instanceof JsUndefined || $method instanceof JsNull) {
+                        $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+                    }
+                } else {
+                    $method = $resource->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::dispose());
+                }
+                if ($method instanceof JsFunction) {
+                    $result = $method->call($resource, []);
+                    if ($isAsync && $result instanceof \PhpJs\Value\JsPromise) {
+                        $result->drainQueue();
+                    }
+                } else {
+                    throw new TypeError('Property [Symbol.dispose] is not a function.');
+                }
+            } catch (\Throwable $e) {
+                $newError = $this->phpExceptionToJsValue($e);
+                if ($error !== null) {
+                    $error = $this->createSuppressedError($newError, $error);
+                } else {
+                    $error = $newError;
+                }
+            }
+        }
+        if ($error !== null) {
+            return Completion::throw($error);
+        }
+        return Completion::normal(JsUndefined::instance());
+    }
+
+    /** Convert a PHP exception into a JS value for SuppressedError chaining. */
+    private function phpExceptionToJsValue(\Throwable $e): JsValue
+    {
+        if ($e instanceof \PhpJs\Exceptions\JsException) {
+            return $e->jsValue;
+        }
+        $errObj = new JsObject();
+        $errObj->set('message', new JsString($e->getMessage()));
+        $errObj->set('name', new JsString((new \ReflectionClass($e))->getShortName()));
+        $errObj->defineOwnProperty(
+            '[[ErrorData]]',
+            \PhpJs\Object\PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+        );
+        return $errObj;
+    }
+
+    /** Create a SuppressedError(error, suppressed). */
+    private function createSuppressedError(JsValue $error, JsValue $suppressed): JsObject
+    {
+        try {
+            $ctor = $this->globalEnv->get('SuppressedError');
+        } catch (\Throwable) {
+            $ctor = null;
+        }
+        if ($ctor instanceof JsFunction) {
+            $obj = new JsObject();
+            $obj->set('[[NewTarget]]', $ctor);
+            $proto = $ctor->get('prototype');
+            if ($proto instanceof JsObject) {
+                $obj->setPrototype($proto);
+            }
+            $result = $ctor->call($obj, [$error, $suppressed]);
+            if ($result instanceof JsObject) {
+                return $result;
+            }
+        }
+        $obj = new JsObject();
+        $obj->set('error', $error);
+        $obj->set('suppressed', $suppressed);
+        $obj->set('name', new JsString('SuppressedError'));
+        $obj->set('message', new JsString(''));
+        return $obj;
+    }
+
+    // -------------------------------------------------------------------------
     // Statement execution
     // -------------------------------------------------------------------------
 
