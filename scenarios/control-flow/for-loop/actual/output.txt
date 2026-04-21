@@ -1,3 +1,5 @@
-PHP Fatal error:  Cannot redeclare PhpJs\Runtime\Interpreter::phpExceptionToJsValue() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 9162
-
-Fatal error: Cannot redeclare PhpJs\Runtime\Interpreter::phpExceptionToJsValue() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Runtime/Interpreter.php on line 9162
+55
+8
+5
+128
+5

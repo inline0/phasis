@@ -2810,9 +2810,13 @@ class Interpreter
             if ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
                 $env->declareLet($stmt->id->name);
             }
-            if ($stmt instanceof VariableDeclaration && ($stmt->kind === 'let' || $stmt->kind === 'const')) {
+            if ($stmt instanceof VariableDeclaration && (
+                $stmt->kind === 'let' || $stmt->kind === 'const'
+                || $stmt->kind === 'using' || $stmt->kind === 'await using'
+            )) {
+                $isConst = $stmt->kind !== 'let';
                 foreach ($stmt->declarations as $decl) {
-                    $this->declarePatternTdz($decl->id, $env, $stmt->kind === 'const');
+                    $this->declarePatternTdz($decl->id, $env, $isConst);
                 }
             }
         }
@@ -3308,6 +3312,7 @@ class Interpreter
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeBody($body->body, $bodyEnv);
+                $completion = $this->applyDisposals($bodyEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
@@ -3328,6 +3333,7 @@ class Interpreter
                 $this->currentParamNames = $savedParamNames;
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
+                $completion = $this->applyDisposals($fnEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $this->derivedConstructorReturn($fn, $fnEnv, $completion->value);
                 }
@@ -5064,6 +5070,20 @@ class Interpreter
         $obj->set('name', new JsString('SuppressedError'));
         $obj->set('message', new JsString(''));
         return $obj;
+    }
+
+    /** Apply disposals for an environment and return the merged completion. */
+    private function applyDisposals(Environment $env, Completion $completion): Completion
+    {
+        if (!$env->hasDisposables()) {
+            return $completion;
+        }
+        $pendingError = $completion->type === CompletionType::Throw ? $completion->value : null;
+        $dr = $this->runDisposals($env, $pendingError);
+        if ($dr->type === CompletionType::Throw) {
+            return $dr;
+        }
+        return $completion;
     }
 
     // -------------------------------------------------------------------------
@@ -6974,7 +6994,10 @@ class Interpreter
         $lexicalNames = [];
         if (!$this->strictMode) {
             foreach ($statements as $s) {
-                if ($s instanceof VariableDeclaration && ($s->kind === 'let' || $s->kind === 'const')) {
+                if ($s instanceof VariableDeclaration && (
+                    $s->kind === 'let' || $s->kind === 'const'
+                    || $s->kind === 'using' || $s->kind === 'await using'
+                )) {
                     foreach ($s->declarations as $d) {
                         foreach ($this->patternBoundNames($d->id) as $n) {
                             $lexicalNames[$n] = true;
@@ -9155,48 +9178,7 @@ class Interpreter
         return $completion->value;
     }
 
-    /**
-     * Convert a PHP exception (representing a JS error) to a JS value
-     * suitable for use in a Completion::throw() record.
-     */
-    private function phpExceptionToJsValue(\RuntimeException $e): JsValue
-    {
-        $name = match (true) {
-            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
-            $e instanceof TypeError => 'TypeError',
-            $e instanceof ReferenceError => 'ReferenceError',
-            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
-            default => 'Error',
-        };
-
-        $errorObj = new JsObject();
-        $errorObj->defineOwnProperty(
-            '[[ErrorData]]',
-            \PhpJs\Object\PropertyDescriptor::data(
-                JsUndefined::instance(),
-                false,
-                false,
-                false,
-            ),
-        );
-        $errorObj->set('message', new JsString($e->getMessage()));
-        $errorObj->set('name', new JsString($name));
-        $errorObj->set('stack', new JsString($name . ': ' . $e->getMessage()));
-
-        // Set constructor to the global error constructor for instanceof/constructor checks
-        if ($this->globalEnv->has($name)) {
-            $constructor = $this->globalEnv->get($name);
-            if ($constructor instanceof JsFunction) {
-                $errorObj->set('constructor', $constructor);
-                $proto = $constructor->get('prototype');
-                if ($proto instanceof JsObject) {
-                    $errorObj->setPrototype($proto);
-                }
-            }
-        }
-
-        return $errorObj;
-    }
+    // phpExceptionToJsValue is defined earlier in this file.
 
     /** @return never */
     private function throwJsValue(JsValue $value): void

@@ -149,6 +149,17 @@ class JsDataView extends JsObject
 
     // --- Float reads ---
 
+    public function getFloat16(int $offset, bool $littleEndian = false): float
+    {
+        $this->checkBounds($offset, 2);
+        $raw = $this->readRaw($offset, 2);
+        if (!$littleEndian) {
+            $raw = strrev($raw);
+        }
+        $val = unpack('v', $raw);
+        return JsTypedArray::float16Decode($val[1]);
+    }
+
     public function getFloat32(int $offset, bool $littleEndian = false): float
     {
         $this->checkBounds($offset, 4);
@@ -235,6 +246,16 @@ class JsDataView extends JsObject
     }
 
     // --- Float writes ---
+
+    public function setFloat16(int $offset, float $value, bool $littleEndian = false): void
+    {
+        $this->checkBounds($offset, 2);
+        $packed = pack('v', JsTypedArray::float16Encode($value));
+        if (!$littleEndian) {
+            $packed = strrev($packed);
+        }
+        $this->writeRaw($offset, $packed);
+    }
 
     public function setFloat32(int $offset, float $value, bool $littleEndian = false): void
     {
