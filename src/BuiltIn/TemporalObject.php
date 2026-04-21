@@ -3713,9 +3713,16 @@ class TemporalObject
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
+        // Reject UTC designator (Z) for PlainDateTime.
+        $noAnnot = preg_replace('/\[.*?\]/', '', $str);
+        if (preg_match('/[Zz]/', $noAnnot)) {
+            throw new RangeError(
+                "String with UTC designator should not be valid as PlainDateTime"
+            );
+        }
         $datePart = '([+-]?\d{4,6})-?(\d{2})-?(\d{2})';
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
-        $tzPart = '(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?';
+        $tzPart = '(?:[+-]\d{2}(?::?\d{2})?)?';
         $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             // Fallback: date only (with or without dashes).
