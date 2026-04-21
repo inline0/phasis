@@ -158,6 +158,16 @@ class JsObject implements JsValue
      */
     protected function getWithReceiver(string $name, JsObject $receiver): JsValue
     {
+        return $this->getWithValueReceiver($name, $receiver);
+    }
+
+    /**
+     * Like getWithReceiver but accepts any JsValue as receiver.
+     * Implements the spec GetV(V, P) where V can be a primitive.
+     * Getter accessors are invoked with the receiver as their this value.
+     */
+    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
+    {
         $desc = $this->properties->get($name);
         if ($desc !== null) {
             if ($desc->get !== null) {
@@ -169,7 +179,7 @@ class JsObject implements JsValue
 
         $proto = $this->getPrototype();
         if ($proto !== null) {
-            return $proto->getWithReceiver($name, $receiver);
+            return $proto->getWithValueReceiver($name, $receiver);
         }
 
         return JsUndefined::instance();

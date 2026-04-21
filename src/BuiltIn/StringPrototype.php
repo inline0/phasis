@@ -2163,4 +2163,59 @@ class StringPrototype
             return new JsString($str);
         };
     }
+
+    private static function isWellFormed(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16Len = (int) (strlen($u16) / 2);
+            for ($i = 0; $i < $u16Len; $i++) {
+                $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+                if ($cu >= 0xD800 && $cu <= 0xDBFF) {
+                    if ($i + 1 >= $u16Len) {
+                        return new \PhpJs\Value\JsBoolean(false);
+                    }
+                    $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                    if ($next < 0xDC00 || $next > 0xDFFF) {
+                        return new \PhpJs\Value\JsBoolean(false);
+                    }
+                    $i++;
+                } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
+                    return new \PhpJs\Value\JsBoolean(false);
+                }
+            }
+            return new \PhpJs\Value\JsBoolean(true);
+        };
+    }
+
+    private static function toWellFormed(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16Len = (int) (strlen($u16) / 2);
+            $result = '';
+            for ($i = 0; $i < $u16Len; $i++) {
+                $cu = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+                if ($cu >= 0xD800 && $cu <= 0xDBFF) {
+                    if ($i + 1 < $u16Len) {
+                        $next = ord($u16[($i + 1) * 2]) | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                        if ($next >= 0xDC00 && $next <= 0xDFFF) {
+                            $result .= JsString::utf16CodeUnitToUtf8($cu);
+                            $result .= JsString::utf16CodeUnitToUtf8($next);
+                            $i++;
+                            continue;
+                        }
+                    }
+                    $result .= "\xEF\xBF\xBD";
+                } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
+                    $result .= "\xEF\xBF\xBD";
+                } else {
+                    $result .= JsString::utf16CodeUnitToUtf8($cu);
+                }
+            }
+            return new JsString($result);
+        };
+    }
 }

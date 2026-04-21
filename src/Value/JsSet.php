@@ -121,6 +121,23 @@ class JsSet extends JsObject
         return $result;
     }
 
+
+    /**
+     * Create a shallow copy of this Set with the same prototype.
+     * Only live (non-deleted) entries are copied, producing a compact list.
+     */
+    public function copy(): self
+    {
+        $clone = new self($this->getPrototype());
+        foreach ($this->values as $value) {
+            if ($value !== null) {
+                $clone->values[] = $value;
+                $clone->liveCount++;
+            }
+        }
+        return $clone;
+    }
+
     public function toJsString(): string
     {
         return '[object Set]';

@@ -3150,11 +3150,18 @@ class Interpreter
                 $fnEnv->declareLet('this');
                 // Store the newObj so super() can pass it to the parent constructor.
                 $fnEnv->defineVar('[[PendingThis]]', $thisValue);
+                $ntDesc = $thisValue instanceof JsObject
+                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                    : null;
+                if ($ntDesc !== null) {
+                    $nt = $ntDesc->value;
+                    $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
+                } else {
+                    $fnEnv->defineVar('[[NewTarget]]', $fn);
+                }
             } else {
                 $fnEnv->defineVar('this', $thisValue);
-                // new.target: set [[NewTarget]] to the constructor when called via new,
-                // or undefined otherwise. Arrow functions inherit it from the outer scope.
-                $ntDesc = $thisValue instanceof JsObject
+                $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
                     ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
                     : null;
                 if ($ntDesc !== null) {
