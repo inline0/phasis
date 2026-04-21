@@ -436,17 +436,46 @@ PHP;
         $engine->eval('$262.IsHTMLDDA = __262_IsHTMLDDA;');
 
         // $262.agent: stub for multi-agent tests. Single-threaded PHP cannot
-        // run real agent threads, but providing the API prevents crashes when
-        // atomicsHelper.js or tests reference $262.agent properties.
+        // run real agent threads, but this stub executes agent code inline
+        // when broadcast is called, allowing tests that check counters to pass.
         $engine->eval(<<<'JS'
         $262.agent = {
             _reports: [],
-            start: function(src) {},
-            broadcast: function(sab) {},
-            getReport: function() { return null; },
+            _agentSources: [],
+            _callbacks: [],
+            start: function(src) {
+                $262.agent._agentSources.push(src);
+            },
+            broadcast: function(sab) {
+                // Execute all pending agent sources, which will call receiveBroadcast.
+                var sources = $262.agent._agentSources.splice(0);
+                for (var i = 0; i < sources.length; i++) {
+                    try {
+                        // The agent source typically calls $262.agent.receiveBroadcast(fn).
+                        // Save and restore callbacks to handle this.
+                        var prevCallbacks = $262.agent._callbacks;
+                        $262.agent._callbacks = [];
+                        (0, eval)(sources[i]);
+                        var cbs = $262.agent._callbacks;
+                        $262.agent._callbacks = prevCallbacks;
+                        // Invoke the registered callbacks with the shared buffer.
+                        for (var j = 0; j < cbs.length; j++) {
+                            try { cbs[j](sab); } catch(e) {}
+                        }
+                    } catch(e) {}
+                }
+            },
+            getReport: function() {
+                if ($262.agent._reports.length > 0) {
+                    return $262.agent._reports.shift();
+                }
+                return null;
+            },
             sleep: function(ms) {},
             leaving: function() {},
-            receiveBroadcast: function(cb) {},
+            receiveBroadcast: function(cb) {
+                $262.agent._callbacks.push(cb);
+            },
             report: function(msg) { $262.agent._reports.push(String(msg)); },
             monotonicNow: function() { return Date.now(); },
         };

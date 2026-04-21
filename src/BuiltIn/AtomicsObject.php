@@ -404,12 +404,16 @@ class AtomicsObject
     {
         $iterationNumber = $args[0] ?? JsUndefined::instance();
 
-        // Per spec step 1: if iterationNumber is not undefined, convert to number.
+        // Per spec step 1: if iterationNumber is not undefined, validate strictly.
         if (!$iterationNumber instanceof JsUndefined) {
-            $n = TypeConversion::toNumber($iterationNumber);
-            // Per spec step 2: if n is not an integral Number, throw RangeError.
+            // Per spec: Type(iterationNumber) must be Number (not coerced).
+            if (!$iterationNumber instanceof JsNumber) {
+                throw new TypeError('Atomics.pause requires a Number argument');
+            }
+            // Per spec: IsIntegralNumber(iterationNumber) must be true.
+            $n = $iterationNumber->value;
             if (is_nan($n) || is_infinite($n) || $n < 0 || floor($n) !== $n) {
-                throw new RangeError('Invalid iteration count for Atomics.pause');
+                throw new TypeError('Atomics.pause requires a non-negative integral Number');
             }
         }
 

@@ -486,7 +486,7 @@ class TemporalObject
                     $fields[] = (int) $n;
                 }
             }
-            self::validateDurationFields($fields);
+            self::validateDurationFields($fields, true);
             $this_->setPrototype($proto);
             foreach ($names as $i => $name) {
                 $this_->defineOwnProperty("[[{$name}]]", PropertyDescriptor::data(
@@ -845,7 +845,7 @@ class TemporalObject
             $cal = 'iso8601';
             if (isset($args[3]) && !($args[3] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[3]));
-                self::validateCalendarId($cal);
+                $cal = self::resolveCalendarId($cal);
             }
             self::validateISODate($y, $m, $dd);
             $this_->setPrototype($proto);
@@ -1687,7 +1687,7 @@ class TemporalObject
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[2]));
-                self::validateCalendarId($cal);
+                $cal = self::resolveCalendarId($cal);
             }
             $refYear = 1972;
             if (isset($args[3]) && !($args[3] instanceof JsUndefined)) {
@@ -1708,9 +1708,19 @@ class TemporalObject
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
-                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = self::getOverflow($options);
-                return self::toPlainMonthDay($item, $overflow);
+                $rawOptions = $args[1] ?? JsUndefined::instance();
+                // For strings and PlainMonthDay instances, process first then validate options.
+                if ($item instanceof JsString || ($item instanceof JsObject && $item->has('[[IsPlainMonthDay]]'))) {
+                    $result = self::toPlainMonthDay($item);
+                    $options = self::getOptionsObject($rawOptions);
+                    self::getOverflow($options);
+                    return $result;
+                }
+                // For property bags, per spec: read fields first, then read overflow.
+                // We need to extract fields first, then read overflow, then apply overflow.
+                // Pass options lazily to toPlainMonthDay.
+                $options = self::getOptionsObject($rawOptions);
+                return self::toPlainMonthDayWithLazyOptions($item, $options);
             }, 1),
             true,
             false,
@@ -2416,7 +2426,10 @@ class TemporalObject
         // ISO 8601 with required timezone offset.
         // Supports date with hyphens (YYYY-MM-DD) or without (YYYYMMDD).
         // Supports sub-minute offsets (+HH:MM:SS.fractional).
-        $pattern = '/^([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))[T ](\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)(?:\[.*?\])*$/';
+        $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
+        $timePart = '(\d{2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?' ;
+        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)';
+        $pattern = "/^{$datePart}[T ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid Instant string: {$str}");
         }
@@ -2661,16 +2674,11 @@ class TemporalObject
     }
 
     /** @param list<int> $fields */
-    private static function validateDurationFields(array $fields): void
+    private static function validateDurationFields(array $fields, bool $checkRange = false): void
     {
-        // Max safe integer for Duration fields per spec.
-        $maxSafe = 2 ** 53;
         $hasPositive = false;
         $hasNegative = false;
         foreach ($fields as $v) {
-            if (abs($v) >= $maxSafe) {
-                throw new RangeError('Duration field out of range');
-            }
             if ($v > 0) {
                 $hasPositive = true;
             }
@@ -2680,6 +2688,71 @@ class TemporalObject
         }
         if ($hasPositive && $hasNegative) {
             throw new RangeError('Duration fields must not have mixed signs');
+        }
+        if ($checkRange) {
+            self::validateDurationRange($fields);
+        }
+    }
+
+    /**
+     * Per spec, validate Duration field ranges.
+     * years/months/weeks: max 2^32 - 1
+     * days: max ceil(2^53 / 86400)
+     * hours: max ceil(2^53 / 3600)
+     * minutes: max ceil(2^53 / 60)
+     * seconds: max 2^53 - 1
+     * ms/us/ns balance must not push seconds beyond 2^53.
+     */
+    private static function validateDurationRange(array $fields): void
+    {
+        // Max values per field.
+        $maxYMW = 4294967295; // 2^32 - 1
+        $maxDays = 104249991374; // ceil(2^53 / 86400) - 1
+        $maxHours = 2501999792983; // ceil(2^53 / 3600) - 1
+        $maxMinutes = 150119987579016; // ceil(2^53 / 60) - 1
+        $maxSeconds = 9007199254740991; // 2^53 - 1
+
+        // [years, months, weeks, days, hours, minutes, seconds, ms, us, ns]
+        $abs = array_map('abs', $fields);
+
+        if ($abs[0] > $maxYMW) {
+            throw new RangeError('years out of range');
+        }
+        if ($abs[1] > $maxYMW) {
+            throw new RangeError('months out of range');
+        }
+        if ($abs[2] > $maxYMW) {
+            throw new RangeError('weeks out of range');
+        }
+
+        // Balance sub-second into seconds for range check.
+        $totalNs = $abs[9] + $abs[8] * 1000 + $abs[7] * 1000000;
+        $extraSec = intdiv($totalNs, 1000000000);
+        $balancedSec = $abs[6] + $extraSec;
+
+        // Balance seconds into minutes.
+        $extraMin = intdiv($balancedSec, 60);
+        $balancedMin = $abs[5] + $extraMin;
+
+        // Balance minutes into hours.
+        $extraHours = intdiv($balancedMin, 60);
+        $balancedHours = $abs[4] + $extraHours;
+
+        // Balance hours into days.
+        $extraDays = intdiv($balancedHours, 24);
+        $balancedDays = $abs[3] + $extraDays;
+
+        if ($balancedDays > $maxDays) {
+            throw new RangeError('days out of range');
+        }
+        if ($balancedHours > $maxHours) {
+            throw new RangeError('hours out of range');
+        }
+        if ($balancedMin > $maxMinutes) {
+            throw new RangeError('minutes out of range');
+        }
+        if ($balancedSec > $maxSeconds) {
+            throw new RangeError('seconds out of range');
         }
     }
 
@@ -2766,9 +2839,17 @@ class TemporalObject
         $parseFrac = static function (string $val, string $unit): array {
             $val = str_replace(',', '.', $val);
             if (!str_contains($val, '.')) {
+                $f = (float) $val;
+                if (!is_finite($f)) {
+                    throw new RangeError("Duration field out of range: {$val}");
+                }
                 return [(int) $val, 0, 0, 0];
             }
             $parts = explode('.', $val);
+            $f = (float) $parts[0];
+            if (!is_finite($f)) {
+                throw new RangeError("Duration field out of range: {$val}");
+            }
             $whole = (int) $parts[0];
             $frac = $parts[1];
 
@@ -2807,10 +2888,18 @@ class TemporalObject
             }
         };
 
-        $years = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
-        $months = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : 0;
-        $weeks = isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0;
-        $days = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+        $safeInt = static function (string $val): int {
+            $f = (float) $val;
+            if (!is_finite($f)) {
+                throw new RangeError("Duration field out of range: {$val}");
+            }
+            return (int) $val;
+        };
+
+        $years = isset($m[2]) && $m[2] !== '' ? $safeInt($m[2]) : 0;
+        $months = isset($m[3]) && $m[3] !== '' ? $safeInt($m[3]) : 0;
+        $weeks = isset($m[4]) && $m[4] !== '' ? $safeInt($m[4]) : 0;
+        $days = isset($m[5]) && $m[5] !== '' ? $safeInt($m[5]) : 0;
 
         $hours = 0;
         $minutes = 0;
@@ -3149,11 +3238,7 @@ class TemporalObject
                 $cal = 'iso8601';
                 $calVal = $item->get('calendar');
                 if (!($calVal instanceof JsUndefined)) {
-                    $cal = strtolower(TypeConversion::toString($calVal));
-                    if ($cal === '') {
-                        throw new RangeError('empty string is not a valid calendar ID');
-                    }
-                    self::validateCalendarId($cal);
+                    $cal = self::toCalendarSlotValue($calVal);
                 }
                 // Check for -0 year.
                 if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
@@ -3398,14 +3483,7 @@ class TemporalObject
             $calVal = $item->get('calendar');
             $cal = 'iso8601';
             if (!($calVal instanceof JsUndefined)) {
-                if ($calVal instanceof JsNull) {
-                    throw new TypeError('null is not a valid calendar');
-                }
-                $cal = strtolower(TypeConversion::toString($calVal));
-                if ($cal === '') {
-                    throw new RangeError('empty string is not a valid calendar ID');
-                }
-                self::validateCalendarId($cal);
+                $cal = self::toCalendarSlotValue($calVal);
             }
 
             $monthCode = $item->get('monthCode');
@@ -3436,11 +3514,40 @@ class TemporalObject
 
             if ($hasMonthCode) {
                 $mStr = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mStr, $mcm)) {
+                // Syntax check: must match M\d{2} or M\d{2}L.
+                if (!preg_match('/^M(\d{2})(L?)$/', $mStr, $mcm)) {
                     throw new RangeError("Invalid monthCode: {$mStr}");
                 }
                 $m = (int) $mcm[1];
+                $hasLeap = $mcm[2] === 'L';
+            } else {
+                $mVal = TypeConversion::toNumber($month);
+                if (!is_finite($mVal)) {
+                    throw new RangeError('month must be finite');
+                }
+                $m = (int) $mVal;
+                $hasLeap = false;
+                $mStr = '';
+            }
 
+            // Year type validation happens before month code suitability.
+            $refYear = 1972;
+            if ($hasYear) {
+                $yVal = TypeConversion::toNumber($year);
+                if (!is_finite($yVal)) {
+                    throw new RangeError('year must be finite');
+                }
+                $refYear = (int) $yVal;
+            }
+
+            // Now validate month code suitability (semantic check).
+            if ($hasMonthCode) {
+                if ($m < 1 || $m > 12) {
+                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
+                }
+                if ($hasLeap) {
+                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
+                }
                 // Check for monthCode/month conflict.
                 if ($hasMonth) {
                     $monthNum = (int) TypeConversion::toNumber($month);
@@ -3448,29 +3555,162 @@ class TemporalObject
                         throw new RangeError("monthCode {$mStr} and month {$monthNum} conflict");
                     }
                 }
-            } else {
-                $mVal = TypeConversion::toNumber($month);
-                if (!is_finite($mVal)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $mVal;
-            }
-
-            if ($hasYear) {
-                $yVal = TypeConversion::toNumber($year);
-                if (!is_finite($yVal)) {
-                    throw new RangeError('year must be finite');
-                }
             }
 
             if ($overflow === 'constrain') {
-                [$m, $d] = self::constrainISOMonthDay($m, $d);
+                // Months <= 0 are always invalid even with constrain.
+                if ($m < 1) {
+                    throw new RangeError("Invalid month: {$m}");
+                }
+                $m = min(12, $m);
+                // Days <= 0 are always invalid even with constrain.
+                if ($d < 1) {
+                    throw new RangeError("Invalid day: {$d}");
+                }
+                $dim = self::isoDaysInMonth($refYear, $m);
+                $d = min($dim, $d);
             } else {
                 // reject: validate strictly.
                 if ($m < 1 || $m > 12) {
                     throw new RangeError("Invalid month: {$m}");
                 }
-                $dim = self::isoDaysInMonth(1972, $m);
+                $dim = self::isoDaysInMonth($refYear, $m);
+                if ($d < 1 || $d > $dim) {
+                    throw new RangeError("Invalid day: {$d} for month {$m} in year {$refYear}");
+                }
+            }
+            return self::createPlainMonthDayObject($m, $d, 1972, $cal);
+        }
+        $str = TypeConversion::toString($item);
+        return self::parsePlainMonthDayString($str);
+    }
+
+    /**
+     * Like toPlainMonthDay but reads overflow from options AFTER reading fields from the item.
+     * This is necessary to satisfy observable property access order per the spec.
+     */
+    private static function toPlainMonthDayWithLazyOptions(JsValue $item, JsValue $options): JsObject
+    {
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined or null to a Temporal.PlainMonthDay');
+        }
+        if ($item instanceof JsBoolean || $item instanceof JsNumber || $item instanceof JsBigInt) {
+            throw new TypeError('Cannot convert primitive to a Temporal.PlainMonthDay');
+        }
+        if ($item instanceof JsObject && $item->has('[[IsPlainMonthDay]]')) {
+            $result = self::createPlainMonthDayObject(
+                self::getSlotInt($item, '[[ISOMonth]]'),
+                self::getSlotInt($item, '[[ISODay]]'),
+                self::getSlotInt($item, '[[ISOYear]]'),
+                self::getSlotString($item, '[[Calendar]]'),
+            );
+            self::getOverflow($options);
+            return $result;
+        }
+        if ($item instanceof JsObject) {
+            // Read fields in alphabetical order per spec, coercing immediately.
+            // 1. calendar
+            $calVal = $item->get('calendar');
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
+
+            // 2. day (read and coerce immediately)
+            $dayVal = $item->get('day');
+            $hasDay = !($dayVal instanceof JsUndefined);
+            $d = 0;
+            if ($hasDay) {
+                $dNum = TypeConversion::toNumber($dayVal);
+                if (!is_finite($dNum)) {
+                    throw new RangeError('day must be finite');
+                }
+                $d = (int) $dNum;
+            }
+
+            // 3. month (read and coerce immediately)
+            $monthVal = $item->get('month');
+            $hasMonth = !($monthVal instanceof JsUndefined);
+            $monthNum = 0;
+            if ($hasMonth) {
+                $mVal = TypeConversion::toNumber($monthVal);
+                if (!is_finite($mVal)) {
+                    throw new RangeError('month must be finite');
+                }
+                $monthNum = (int) $mVal;
+            }
+
+            // 4. monthCode (read and coerce immediately)
+            $monthCodeVal = $item->get('monthCode');
+            $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
+            $m = 0;
+            $hasLeap = false;
+            $mStr = '';
+            if ($hasMonthCode) {
+                $mStr = TypeConversion::toString($monthCodeVal);
+                if (!preg_match('/^M(\d{2})(L?)$/', $mStr, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mStr}");
+                }
+                $m = (int) $mcm[1];
+                $hasLeap = $mcm[2] === 'L';
+            }
+
+            // 5. year (read and coerce immediately)
+            $yearVal = $item->get('year');
+            $hasYear = !($yearVal instanceof JsUndefined);
+            $refYear = 1972;
+            if ($hasYear) {
+                $yVal = TypeConversion::toNumber($yearVal);
+                if (!is_finite($yVal)) {
+                    throw new RangeError('year must be finite');
+                }
+                $refYear = (int) $yVal;
+            }
+
+            // Validate required fields.
+            if (!$hasDay) {
+                throw new TypeError('Required property day missing');
+            }
+            if (!$hasMonthCode && !$hasMonth) {
+                throw new TypeError('Required property month or monthCode missing');
+            }
+
+            // Resolve month from monthCode or month.
+            if (!$hasMonthCode) {
+                $m = $monthNum;
+            }
+
+            // Validate month code suitability after year type validation.
+            if ($hasMonthCode) {
+                if ($m < 1 || $m > 12) {
+                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
+                }
+                if ($hasLeap) {
+                    throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
+                }
+                if ($hasMonth && $monthNum !== $m) {
+                    throw new RangeError("monthCode {$mStr} and month {$monthNum} conflict");
+                }
+            }
+
+            // NOW read overflow from options (after all field reads).
+            $overflow = self::getOverflow($options);
+
+            if ($overflow === 'constrain') {
+                if ($m < 1) {
+                    throw new RangeError("Invalid month: {$m}");
+                }
+                $m = min(12, $m);
+                if ($d < 1) {
+                    throw new RangeError("Invalid day: {$d}");
+                }
+                $dim = self::isoDaysInMonth($refYear, $m);
+                $d = min($dim, $d);
+            } else {
+                if ($m < 1 || $m > 12) {
+                    throw new RangeError("Invalid month: {$m}");
+                }
+                $dim = self::isoDaysInMonth($refYear, $m);
                 if ($d < 1 || $d > $dim) {
                     throw new RangeError("Invalid day: {$d}");
                 }
@@ -3483,6 +3723,11 @@ class TemporalObject
 
     private static function parsePlainMonthDayString(string $str): JsObject
     {
+        // Reject Unicode minus sign (U+2212) which is not valid in ISO 8601.
+        if (str_contains($str, "\u{2212}")) {
+            throw new RangeError("variant minus sign is not valid: {$str}");
+        }
+
         // Reject UTC designator (Z) for PlainMonthDay.
         // Check after date/time portion, not inside annotations.
         $noAnnotation = preg_replace('/\[.*?\]/', '', $str);
@@ -3501,12 +3746,19 @@ class TemporalObject
             $content = $ann[2];
             if (str_starts_with($content, 'u-ca=')) {
                 $calAnnotations[] = ['critical' => $critical, 'value' => substr($content, 5)];
-            } else {
-                // Reject critical unknown annotations.
-                if ($critical && !preg_match('/^[A-Za-z_\/]+$/', $content)) {
+            } elseif (str_contains($content, '=')) {
+                // Key-value annotation. Keys must be lowercase.
+                $eqPos = strpos($content, '=');
+                $key = substr($content, 0, $eqPos);
+                if ($key !== strtolower($key)) {
+                    throw new RangeError("annotation keys must be lowercase: {$str}");
+                }
+                // Unknown key-value annotation. If critical, reject.
+                if ($critical) {
                     throw new RangeError("reject unknown annotation with critical flag: {$str}");
                 }
-                // Check if it looks like a timezone or unknown annotation.
+            } else {
+                // Timezone annotation.
                 if ($critical && !self::isValidTimeZoneAnnotation($content)) {
                     throw new RangeError("reject unknown annotation with critical flag: {$str}");
                 }
@@ -3532,8 +3784,10 @@ class TemporalObject
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
 
-        // MM-DD or --MM-DD format (with optional annotations).
+        // Remove annotations for structural matching (already collected above).
         $cleanStr = preg_replace('/\[.*?\]/', '', $str);
+
+        // MM-DD or --MM-DD format (with optional annotations).
         $pattern = '/^(?:--)?(\d{2})-(\d{2})$/';
         if (preg_match($pattern, $cleanStr, $m)) {
             $mo = (int) $m[1];
@@ -3544,11 +3798,29 @@ class TemporalObject
             $cal = 'iso8601';
             if (!empty($calAnnotations)) {
                 $cal = strtolower($calAnnotations[0]['value']);
+                // For MM-DD format, only iso8601 calendar is valid.
+                if ($cal !== 'iso8601') {
+                    throw new RangeError("non-iso8601 calendar not valid with month-day format: {$str}");
+                }
             }
             return self::createPlainMonthDayObject($mo, $dd, 1972, $cal);
         }
-        // Full ISO date: YYYY-MM-DD with optional time, offset, and annotations.
-        $pattern2 = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:T[^[]*)?$/';
+
+        // Check for UTC offset without time in MM-DD or --MM-DD format.
+        if (preg_match('/^(?:--)?(\d{2})-(\d{2})[Zz+\-]/', $cleanStr)) {
+            throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
+        }
+
+        // Full ISO date: YYYY-MM-DD with optional time and offset.
+        // First check for date-only with offset (no time): reject.
+        if (
+            preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Zz+\-]/', $cleanStr)
+            && !preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Tt ]/', $cleanStr)
+        ) {
+            throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
+        }
+
+        $pattern2 = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:[Tt ][^[]*)?$/';
         if (preg_match($pattern2, $cleanStr, $m)) {
             $mo = (int) $m[2];
             $dd = (int) $m[3];
@@ -3574,12 +3846,16 @@ class TemporalObject
 
     private static function isValidTimeZoneAnnotation(string $content): bool
     {
+        // Annotations with = are key-value pairs (calendar, etc.), not timezone.
+        if (str_contains($content, '=')) {
+            return false;
+        }
         // Valid timezone annotations are IANA names (e.g., "UTC", "America/New_York")
-        // or numeric offsets (e.g., "+05:30").
+        // or numeric offsets (e.g., "+05:30", "-02:30").
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_+\-\/]*$/', $content)) {
             return true;
         }
-        if (preg_match('/^[+-]\d{2}:\d{2}$/', $content)) {
+        if (preg_match('/^[+-]\d{2}:?\d{2}$/', $content)) {
             return true;
         }
         return false;
@@ -3750,6 +4026,11 @@ class TemporalObject
      */
     private static function parseTimeZoneFromISOString(string $str): ?string
     {
+        // Reject minus zero year.
+        if (preg_match('/^-0{4,6}-/', $str)) {
+            throw new RangeError("reject minus zero as extended year: {$str}");
+        }
+
         // Must look like a datetime string.
         // Pattern: date T time [offset] [annotation]
         // Allow seconds of 60 for leap second in the time portion.
@@ -3794,15 +4075,12 @@ class TemporalObject
             // After removing non-digits (except sign), format is: +HHMM or +HHMMSS...
             $digits = ltrim($cleanOffset, '+-');
             if (strlen($digits) > 4) {
-                // Has seconds component. Only allow if all zero.
-                $secPart = substr($digits, 4);
-                $fracPart = '';
-                if (preg_match('/[.,](\d+)/', $offset, $fp)) {
-                    $fracPart = $fp[1];
-                }
-                if ((int) $secPart !== 0 || ($fracPart !== '' && (int) $fracPart !== 0)) {
-                    throw new RangeError("ISO string with a sub-minute offset is not a valid time zone: {$str}");
-                }
+                // Has seconds component: always invalid as timezone, even if zero.
+                throw new RangeError("ISO string with a sub-minute offset is not a valid time zone: {$str}");
+            }
+            // Also check for fractional seconds in the offset.
+            if (preg_match('/[.,]\d+/', $offset)) {
+                throw new RangeError("ISO string with a sub-minute offset is not a valid time zone: {$str}");
             }
             // Normalize to +HH:MM format.
             $sign = $offset[0];
@@ -4388,7 +4666,7 @@ class TemporalObject
 
     private static function getOverflow(JsValue $options): string
     {
-        if (!$options instanceof JsObject || !$options->has('overflow')) {
+        if (!$options instanceof JsObject) {
             return 'constrain';
         }
         $v = $options->get('overflow');
@@ -4402,13 +4680,14 @@ class TemporalObject
         return $str;
     }
 
-    private static function validateCalendarId(string $cal): void
+    /**
+     * Resolve a calendar identifier string. Accepts IANA calendar names or ISO datetime strings
+     * (from which the calendar defaults to 'iso8601'). Returns the resolved calendar ID.
+     */
+    private static function resolveCalendarId(string $cal): string
     {
-        // Only 'iso8601' is supported as a built-in calendar.
-        // Per spec, calendar IDs must match IANA / Unicode CLDR calendar names.
-        // Reject obviously invalid ones.
-        if ($cal === '' || !preg_match('/^[a-z0-9][a-z0-9\-]*$/', $cal)) {
-            throw new RangeError("Invalid calendar: {$cal}");
+        if ($cal === '') {
+            throw new RangeError('empty string is not a valid calendar ID');
         }
         // Known valid calendars from the Unicode CLDR.
         $known = [
@@ -4417,30 +4696,79 @@ class TemporalObject
             'islamic-umalqura', 'islamic-tbla', 'islamic-civil', 'islamic-rgsa',
             'islamicc', 'persian', 'roc',
         ];
-        if (!in_array($cal, $known, true)) {
-            throw new RangeError("Invalid calendar: {$cal}");
+        if (in_array($cal, $known, true)) {
+            return $cal;
         }
+        // Try to parse as ISO datetime string. If it parses, extract calendar (default iso8601).
+        if (preg_match('/^\d{4}/', $cal) || preg_match('/^[+-]\d{4,6}/', $cal)) {
+            // Reject minus zero year.
+            if (preg_match('/^-0{4,6}-/', $cal)) {
+                throw new RangeError("reject minus zero as extended year: {$cal}");
+            }
+            // Looks like an ISO date string. Extract calendar annotation if present.
+            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
+                $extracted = strtolower($cm[1]);
+                if (in_array($extracted, $known, true)) {
+                    return $extracted;
+                }
+            }
+            // Default to iso8601 for valid-looking date strings.
+            if (preg_match('/^\d{4}-\d{2}-\d{2}/', $cal) || preg_match('/^[+-]\d{4,6}-\d{2}-\d{2}/', $cal)) {
+                return 'iso8601';
+            }
+        }
+        throw new RangeError("Invalid calendar: {$cal}");
+    }
+
+
+    /**
+     * Convert a JsValue from a property bag's 'calendar' property to a calendar ID string.
+     * Per spec, null/boolean/number/bigint/symbol/object throw TypeError.
+     */
+    private static function toCalendarSlotValue(JsValue $calVal): string
+    {
+        if ($calVal instanceof JsNull) {
+            throw new TypeError('null is not a valid calendar');
+        }
+        if ($calVal instanceof JsBoolean) {
+            throw new TypeError('boolean is not a valid calendar');
+        }
+        if ($calVal instanceof JsNumber) {
+            throw new TypeError('number is not a valid calendar');
+        }
+        if ($calVal instanceof JsBigInt) {
+            throw new TypeError('bigint is not a valid calendar');
+        }
+        if ($calVal instanceof JsObject) {
+            // Duration and other Temporal types are not valid calendar.
+            throw new TypeError('object is not a valid calendar');
+        }
+        if (!$calVal instanceof JsString) {
+            throw new TypeError('Cannot convert value to a valid calendar string');
+        }
+        $cal = strtolower(TypeConversion::toString($calVal));
+        if ($cal === '') {
+            throw new RangeError('empty string is not a valid calendar ID');
+        }
+        return self::resolveCalendarId($cal);
     }
 
     private static function constrainISODate(int $y, int $m, int $d): array
     {
-        $m = max(1, min(12, $m));
+        // Months <= 0 are always invalid even with constrain.
+        if ($m < 1) {
+            throw new RangeError("Invalid month: {$m}");
+        }
+        $m = min(12, $m);
+        // Days <= 0 are always invalid even with constrain.
+        if ($d < 1) {
+            throw new RangeError("Invalid day: {$d}");
+        }
         $dim = self::isoDaysInMonth($y, $m);
-        $d = max(1, min($dim, $d));
+        $d = min($dim, $d);
         return [$y, $m, $d];
     }
 
-    /**
-     * Constrain day to valid range for a PlainMonthDay (uses reference year 1972, a leap year).
-     */
-    private static function constrainISOMonthDay(int $m, int $d): array
-    {
-        $m = max(1, min(12, $m));
-        // Use 1972 (leap year) as reference for max days in month.
-        $dim = self::isoDaysInMonth(1972, $m);
-        $d = max(1, min($dim, $d));
-        return [$m, $d];
-    }
 
     // -----------------------------------------------------------------------
     // Helpers: prototype method registration
