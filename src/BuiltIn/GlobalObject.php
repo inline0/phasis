@@ -791,6 +791,44 @@ class GlobalObject
                 true,
             ),
         );
+        // %AsyncIteratorPrototype%[@@asyncDispose] per explicit-resource-management.
+        // Calls this.return() and wraps the result in a Promise.
+        $asyncDisposeSym = \PhpJs\BuiltIn\SymbolConstructor::asyncDispose();
+        $asyncIteratorPrototype->definePropertyBySymbol(
+            $asyncDisposeSym,
+            \PhpJs\Object\PropertyDescriptor::data(
+                JsFunction::fromCallable(
+                    '[Symbol.asyncDispose]',
+                    static function (JsValue $this_, array $args): JsValue {
+                        if (!$this_ instanceof \PhpJs\Value\JsObject) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'Symbol.asyncDispose called on non-object'
+                            );
+                        }
+                        $returnFn = $this_->get('return');
+                        if (
+                            $returnFn instanceof \PhpJs\Value\JsUndefined
+                            || $returnFn instanceof \PhpJs\Value\JsNull
+                        ) {
+                            return \PhpJs\Value\JsPromise::resolve(
+                                \PhpJs\Value\JsUndefined::instance()
+                            );
+                        }
+                        if (!$returnFn instanceof JsFunction) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'return is not a function'
+                            );
+                        }
+                        $result = $returnFn->call($this_, []);
+                        return \PhpJs\Value\JsPromise::resolve($result);
+                    },
+                    0,
+                ),
+                true,
+                false,
+                true,
+            ),
+        );
         $env->defineVar('__AsyncIteratorPrototype__', $asyncIteratorPrototype);
 
         $asyncGenFnProto = new \PhpJs\Value\JsObject($fnProto);
