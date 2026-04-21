@@ -3341,36 +3341,10 @@ class TemporalObject
 
     private static function parsePlainDateString(string $str): JsObject
     {
-        // Normalize Unicode minus sign (U+2212) to ASCII minus.
-        $str = str_replace("\xE2\x88\x92", '-', $str);
+        [$str, $cal] = self::normalizeTemporalString($str);
         // Reject -000000 (minus zero year).
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
-        }
-        // Reject critical unknown annotations (non-calendar with !).
-        preg_match_all('/\[(!?)([^\]]+)\]/', $str, $allAnnotations, PREG_SET_ORDER);
-        $calMatches = [];
-        foreach ($allAnnotations as $ann) {
-            $critical = $ann[1] === '!';
-            $content = $ann[2];
-            if (str_starts_with($content, 'u-ca=')) {
-                $calMatches[] = ['critical' => $critical, 'value' => substr($content, 5)];
-            } elseif ($critical && str_contains($content, '=')) {
-                // Critical unknown annotation: reject per spec.
-                throw new RangeError(
-                    "reject unknown annotation with critical flag: {$str}"
-                );
-            }
-            // Non-critical unknown annotations are silently ignored.
-        }
-        if (count($calMatches) > 1) {
-            foreach ($calMatches as $cm) {
-                if ($cm['critical']) {
-                    throw new RangeError(
-                        "reject more than one calendar annotation if any critical: {$str}"
-                    );
-                }
-            }
         }
         // YYYY-MM-DD or YYYYMMDD with optional time and annotations.
         $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ][^[]*)?(?:\[.*?\])*$/';
@@ -3380,10 +3354,6 @@ class TemporalObject
         $y = (int) $m[1];
         $m2 = (int) $m[2];
         $d = (int) $m[3];
-        $cal = 'iso8601';
-        if (!empty($calMatches)) {
-            $cal = strtolower($calMatches[0]['value']);
-        }
         self::validateISODate($y, $m2, $d);
         return self::createPlainDateObject($y, $m2, $d, $cal);
     }
@@ -3987,6 +3957,45 @@ class TemporalObject
     private static function pad2(int $n): string
     {
         return str_pad((string) $n, 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Normalize a Temporal ISO string: replace Unicode minus, validate annotations.
+     * Returns the normalized string. Throws RangeError for critical unknown annotations
+     * or duplicate critical calendar annotations.
+     *
+     * @return array{0: string, 1: string} [normalized string, calendar ID]
+     */
+    private static function normalizeTemporalString(string $str): array
+    {
+        // Normalize Unicode minus sign (U+2212).
+        $str = str_replace("\xE2\x88\x92", '-', $str);
+        // Parse annotations.
+        $cal = 'iso8601';
+        $calCount = 0;
+        $hasCriticalCal = false;
+        preg_match_all('/\[(!?)([^\]]+)\]/', $str, $anns, PREG_SET_ORDER);
+        foreach ($anns as $ann) {
+            $critical = $ann[1] === '!';
+            $content = $ann[2];
+            if (str_starts_with($content, 'u-ca=')) {
+                $calCount++;
+                $cal = strtolower(substr($content, 5));
+                if ($critical) {
+                    $hasCriticalCal = true;
+                }
+            } elseif ($critical && str_contains($content, '=')) {
+                throw new RangeError(
+                    "reject unknown annotation with critical flag: {$str}"
+                );
+            }
+        }
+        if ($calCount > 1 && $hasCriticalCal) {
+            throw new RangeError(
+                "reject more than one calendar annotation if any critical: {$str}"
+            );
+        }
+        return [$str, $cal];
     }
 
     private static function formatSubSecond(string $nsPadded, string|int $fractionalSecondDigits): string
