@@ -912,9 +912,19 @@ class TemporalObject
         // Static: PlainDate.from
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
+                $item = $args[0] ?? JsUndefined::instance();
+                // Per spec: reject non-string/non-object BEFORE reading options.
+                if (
+                    $item instanceof JsUndefined || $item instanceof JsNull
+                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                ) {
+                    // Type check happens in toPlainDate, call it first.
+                    return self::toPlainDate($item, 'constrain');
+                }
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = self::getOverflow($options);
-                return self::toPlainDate($args[0] ?? JsUndefined::instance(), $overflow);
+                return self::toPlainDate($item, $overflow);
             }, 1),
             true,
             false,
