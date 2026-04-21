@@ -3556,6 +3556,20 @@ class TemporalObject
             $year = $item->get('year');
             $month = $item->get('month');
             $day = $item->get('day');
+            // Per spec: object must have required temporal properties.
+            if ($year instanceof JsUndefined && $month instanceof JsUndefined && $day instanceof JsUndefined) {
+                // Check if it has any temporal-like property at all.
+                $hasAnything = false;
+                foreach (['hour', 'minute', 'second', 'monthCode', 'era', 'eraYear'] as $k) {
+                    if (!($item->get($k) instanceof JsUndefined)) {
+                        $hasAnything = true;
+                        break;
+                    }
+                }
+                if (!$hasAnything) {
+                    throw new TypeError('missing required property: year');
+                }
+            }
             if (!($year instanceof JsUndefined) && !($month instanceof JsUndefined) && !($day instanceof JsUndefined)) {
                 $y = (int) TypeConversion::toNumber($year);
                 $m = (int) TypeConversion::toNumber($month);
