@@ -3500,6 +3500,13 @@ class TemporalObject
     private static function parsePlainDateString(string $str): JsObject
     {
         [$str, $cal] = self::normalizeTemporalString($str);
+        // Reject UTC designator (Z) for PlainDate.
+        $noAnnot = preg_replace('/\[.*?\]/', '', $str);
+        if (preg_match('/[Zz]/', $noAnnot)) {
+            throw new RangeError(
+                "String with UTC designator should not be valid as a PlainDate"
+            );
+        }
         // Reject -000000 (minus zero year).
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
