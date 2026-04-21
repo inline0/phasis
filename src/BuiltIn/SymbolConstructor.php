@@ -29,6 +29,20 @@ class SymbolConstructor
     /** Symbol.prototype, stored for access by TypeConversion::toObject. */
     private static ?JsObject $proto = null;
 
+    /**
+     * Check if a symbol is registered in the global registry (created via Symbol.for).
+     * Registered symbols cannot be used as WeakMap/WeakSet keys per spec.
+     */
+    public static function isRegisteredSymbol(JsSymbol $sym): bool
+    {
+        foreach (self::$registry as $registered) {
+            if ($registered === $sym) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Return Symbol.prototype (null before install() runs). */
     public static function getProto(): ?JsObject
     {

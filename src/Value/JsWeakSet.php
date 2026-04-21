@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\Value;
 
+use PhpJs\BuiltIn\SymbolConstructor;
 use PhpJs\Spec\AbstractOperations;
 
 /**
@@ -26,7 +27,10 @@ class JsWeakSet extends JsObject
 
     public function weakSetAdd(JsValue $value): void
     {
-        if (!$value instanceof JsObject) {
+        // Per spec: objects and non-registered symbols are valid WeakSet values.
+        $validValue = $value instanceof JsObject
+            || ($value instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($value));
+        if (!$validValue) {
             throw new \PhpJs\Exceptions\TypeError('Invalid value used in weak set');
         }
         if (!$this->weakSetHas($value)) {

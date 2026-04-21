@@ -57,7 +57,6 @@ return [
         'Float16Array',
         'WeakRef',
         'FinalizationRegistry',
-        'symbols-as-weakmap-keys',
         'import-assertions',
         'import-attributes',
         'dynamic-import',

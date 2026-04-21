@@ -96,6 +96,13 @@ class Engine
         $this->globalEnv->defineVar('this', $globalObj);
         $this->globalEnv->defineVar('globalThis', $globalObj);
 
+        // Per spec: globalThis is a property of the global object itself,
+        // writable and configurable but not enumerable.
+        $globalObj->defineOwnProperty(
+            'globalThis',
+            \PhpJs\Object\PropertyDescriptor::data($globalObj, true, false, true),
+        );
+
         // Link the global environment to the global object so that
         // top-level var declarations and assignments create properties
         // on globalThis (per ES spec 9.1.1.1 Global Environment Records).

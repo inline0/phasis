@@ -70,9 +70,9 @@ class JsObject implements JsValue
      * Needed because the constructor's `null ?? $globalPrototype` falls back to
      * the global prototype when null is passed.
      */
-    public static function createNullPrototype(): static
+    public static function createNullPrototype(): self
     {
-        $obj = new static();
+        $obj = new self();
         $obj->prototype = null;
         return $obj;
     }
