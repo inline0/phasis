@@ -6767,9 +6767,10 @@ class Interpreter
                 $v = $result->value;
                 if ($result->isAbrupt()) {
                     if ($result->type === CompletionType::Break && $result->target === null) {
-                        return Completion::normal($v);
+                        $finalResult = Completion::normal($v);
+                        return $this->applyDisposals($switchEnv, $finalResult);
                     }
-                    return $result;
+                    return $this->applyDisposals($switchEnv, $result);
                 }
             }
         }
@@ -6788,15 +6789,16 @@ class Interpreter
                     $v = $result->value;
                     if ($result->isAbrupt()) {
                         if ($result->type === CompletionType::Break && $result->target === null) {
-                            return Completion::normal($v);
+                            $finalResult = Completion::normal($v);
+                            return $this->applyDisposals($switchEnv, $finalResult);
                         }
-                        return $result;
+                        return $this->applyDisposals($switchEnv, $result);
                     }
                 }
             }
         }
 
-        return Completion::normal($v);
+        return $this->applyDisposals($switchEnv, Completion::normal($v));
     }
 
     /**

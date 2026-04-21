@@ -73,7 +73,21 @@ class TypedArrayConstructor
                 $arg0 = $args[0] ?? new JsNumber(0.0);
                 // Step 2: ToIndex(length).
                 $length = TypeConversion::toIndex($arg0);
-                // Step 3: AllocateArrayBuffer calls OrdinaryCreateFromConstructor
+
+                // Step 3: Handle options argument for resizable ArrayBuffer.
+                $maxByteLength = null;
+                $optionsArg = $args[1] ?? JsUndefined::instance();
+                if ($optionsArg instanceof JsObject) {
+                    $maxByteLengthVal = $optionsArg->get('maxByteLength');
+                    if (!$maxByteLengthVal instanceof JsUndefined) {
+                        $maxByteLength = TypeConversion::toIndex($maxByteLengthVal);
+                        if ($length > $maxByteLength) {
+                            throw new RangeError('Invalid array buffer length');
+                        }
+                    }
+                }
+
+                // AllocateArrayBuffer calls OrdinaryCreateFromConstructor
                 // which accesses NewTarget.prototype. When called via Reflect.construct
                 // with a custom newTarget, this may trigger a getter or throw.
                 $useProto = $proto;
@@ -86,7 +100,7 @@ class TypedArrayConstructor
                         }
                     }
                 }
-                return new JsArrayBuffer($length, $useProto);
+                return new JsArrayBuffer($length, $useProto, $maxByteLength);
             },
             1,
         );

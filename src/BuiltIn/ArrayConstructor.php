@@ -1914,7 +1914,7 @@ class ArrayConstructor
                 if (!$mapFnRaw instanceof JsFunction) {
                     $promise = new JsPromise();
                     $promise->reject(
-                        TypeConversion::createTypeError(
+                        self::createTypeErrorObject(
                             TypeConversion::toString($mapFnRaw) . ' is not a function'
                         )
                     );
@@ -2097,7 +2097,7 @@ class ArrayConstructor
                     $errVal = $e->getJsValue();
                     $promise->reject($errVal ?? new JsString($e->getMessage()));
                 } elseif ($e instanceof TypeError) {
-                    $promise->reject(TypeConversion::createTypeError($e->getMessage()));
+                    $promise->reject(self::createTypeErrorObject($e->getMessage()));
                 } else {
                     $promise->reject(new JsString($e->getMessage()));
                 }

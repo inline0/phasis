@@ -110,6 +110,63 @@ class ErrorConstructor
 
             $env->defineVar($name, $constructor);
         }
+
+        // SuppressedError: SuppressedError(error, suppressed [, message])
+        // Per spec: has .error, .suppressed, .message properties.
+        if ($errorProto !== null) {
+            $suppressedProto = new JsObject();
+            $suppressedProto->defineOwnProperty(
+                'name',
+                PropertyDescriptor::data(new JsString('SuppressedError'), true, false, true),
+            );
+            $suppressedProto->defineOwnProperty(
+                'message',
+                PropertyDescriptor::data(new JsString(''), true, false, true),
+            );
+            $suppressedProto->setPrototype($errorProto);
+
+            $suppressedProto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
+                'toString',
+                function (JsValue $this_): JsValue {
+                    if (!$this_ instanceof JsObject) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Error.prototype.toString requires that \'this\' be an Object',
+                        );
+                    }
+                    $n = $this_->get('name');
+                    $nameStr = ($n instanceof JsUndefined) ? 'Error' : TypeConversion::toString($n);
+                    $m = $this_->get('message');
+                    $msgStr = ($m instanceof JsUndefined) ? '' : TypeConversion::toString($m);
+                    if ($nameStr === '') {
+                        return new JsString($msgStr);
+                    }
+                    if ($msgStr === '') {
+                        return new JsString($nameStr);
+                    }
+                    return new JsString("{$nameStr}: {$msgStr}");
+                },
+                0,
+            ), true, false, true));
+
+            $suppressedCtor = JsFunction::fromCallable(
+                'SuppressedError',
+                self::makeSuppressedErrorConstructor($suppressedProto),
+                3,
+            );
+            $suppressedCtor->setConstructable();
+            $suppressedProto->defineOwnProperty(
+                'constructor',
+                PropertyDescriptor::data($suppressedCtor, true, false, true),
+            );
+            $suppressedCtor->defineOwnProperty(
+                'prototype',
+                PropertyDescriptor::data($suppressedProto, false, false, false),
+            );
+            if ($errorConstructor !== null) {
+                $suppressedCtor->setPrototype($errorConstructor);
+            }
+            $env->defineVar('SuppressedError', $suppressedCtor);
+        }
     }
 
     /**
