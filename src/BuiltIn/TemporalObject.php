@@ -2930,7 +2930,7 @@ class TemporalObject
     {
         [$str, ] = self::normalizeTemporalString($str);
         // Reject extended year without sign.
-        if (preg_match('/^\d{5,}/', $str)) {
+        if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
         }
         // Reject -000000.
@@ -4189,8 +4189,8 @@ class TemporalObject
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
-        // Reject extended year without sign.
-        if (preg_match('/^\d{5,}/', $str)) {
+        // Reject extended year without sign (5+ digits followed by dash).
+        if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
         }
         // Reject UTC designator (Z) for PlainDateTime.
@@ -4344,7 +4344,7 @@ class TemporalObject
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
         // Reject extended year without sign.
-        if (preg_match('/^\d{5,}/', $str)) {
+        if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
         }
         $timePart = '(?:[Tt ]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?(?:[+-]\\d{2}(?::?\\d{2})?)?)?';
