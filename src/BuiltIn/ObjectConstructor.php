@@ -263,7 +263,7 @@ class ObjectConstructor
         $env->defineVar('Object', $constructor);
 
         // Store the prototype for auto-boxing and object literal creation.
-        $env->defineVar('__ObjectPrototype__', $proto);
+        $env->defineInternal('__ObjectPrototype__', $proto);
 
         // Set as global default prototype so all new JsObject() inherit valueOf/toString
         JsObject::setGlobalPrototype($proto);

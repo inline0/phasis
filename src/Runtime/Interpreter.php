@@ -1555,18 +1555,15 @@ class Interpreter
             $callee = $this->evaluate($node->callee, $env);
             // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
             // via an Object Environment Record (with statement), thisValue =
-            // envRec.WithBaseObject(). Walk the scope chain to find the with-object.
+            // envRec.WithBaseObject(). Use the lastWithBase flag set during get()
+            // to avoid triggering an extra [[Has]] proxy trap.
             if ($node->callee instanceof Identifier && !empty($this->withEnvObjects)) {
-                $name = $node->callee->name;
                 $walkEnv = $env;
                 while ($walkEnv !== null) {
-                    $envId = spl_object_id($walkEnv);
-                    if (isset($this->withEnvObjects[$envId])) {
-                        $withObj = $this->withEnvObjects[$envId];
-                        if ($withObj->has($name)) {
-                            $thisValue = $withObj;
-                            break;
-                        }
+                    if ($walkEnv->lastWithBase !== null) {
+                        $thisValue = $walkEnv->lastWithBase;
+                        $walkEnv->lastWithBase = null;
+                        break;
                     }
                     $walkEnv = $walkEnv->getParent();
                 }

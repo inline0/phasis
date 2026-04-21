@@ -291,7 +291,7 @@ class SymbolConstructor
 
         $env->defineVar('Symbol', $symbolFn);
         // Store prototype for auto-boxing symbol property access
-        $env->defineVar('__SymbolPrototype__', $proto);
+        $env->defineInternal('__SymbolPrototype__', $proto);
     }
 
     private static function symbolFor(): \Closure

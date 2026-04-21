@@ -749,6 +749,14 @@ class TypedArrayConstructor
             PropertyDescriptor::data($proto, false, false, false),
         );
 
+        if ($typeName === 'Uint8Array') {
+            self::installUint8ArrayBase64Methods(
+                $constructor,
+                $proto,
+                $env,
+            );
+        }
+
         $env->defineVar($typeName, $constructor);
     }
 
@@ -2357,5 +2365,711 @@ class TypedArrayConstructor
             return JsTypedArray::fromLength($typeName, $len, $proto);
         }
         return JsTypedArray::fromLength($typeName, 0, $proto);
+    }
+
+    /** @return never */
+    private static function throwJsSyntaxError(
+        string $message,
+        Environment $env,
+    ): void {
+        $errorObj = new JsObject();
+        $errorObj->set('message', new JsString($message));
+        $errorObj->set('name', new JsString('SyntaxError'));
+        $errorObj->set(
+            'stack',
+            new JsString('SyntaxError: ' . $message),
+        );
+        if ($env->has('SyntaxError')) {
+            $ctor = $env->get('SyntaxError');
+            if ($ctor instanceof JsFunction) {
+                $errorObj->set('constructor', $ctor);
+                $p = $ctor->get('prototype');
+                if ($p instanceof JsObject) {
+                    $errorObj->setPrototype($p);
+                }
+            }
+        }
+        throw new \PhpJs\Exceptions\JsThrowable(
+            $errorObj,
+            'SyntaxError: ' . $message,
+        );
+    }
+
+    /**
+     * Read base64 options (alphabet, lastChunkHandling).
+     *
+     * @return array{string, string}
+     */
+    private static function readBase64Options(JsValue $opts): array
+    {
+        $alphabet = 'base64';
+        $lastChunk = 'loose';
+
+        if (!$opts instanceof JsObject) {
+            return [$alphabet, $lastChunk];
+        }
+
+        $aVal = $opts->get('alphabet');
+        if (!$aVal instanceof JsUndefined) {
+            if (!$aVal instanceof JsString) {
+                throw new TypeError(
+                    'options.alphabet must be a string'
+                );
+            }
+            $alphabet = $aVal->value;
+            if (
+                $alphabet !== 'base64'
+                && $alphabet !== 'base64url'
+            ) {
+                throw new TypeError(
+                    'options.alphabet must be '
+                    . '"base64" or "base64url"'
+                );
+            }
+        }
+
+        $lVal = $opts->get('lastChunkHandling');
+        if (!$lVal instanceof JsUndefined) {
+            if (!$lVal instanceof JsString) {
+                throw new TypeError(
+                    'options.lastChunkHandling must be a string'
+                );
+            }
+            $lastChunk = $lVal->value;
+            if (
+                $lastChunk !== 'loose'
+                && $lastChunk !== 'strict'
+                && $lastChunk !== 'stop-before-partial'
+            ) {
+                throw new TypeError(
+                    'options.lastChunkHandling must be '
+                    . '"loose", "strict", '
+                    . 'or "stop-before-partial"'
+                );
+            }
+        }
+
+        return [$alphabet, $lastChunk];
+    }
+
+    private static function isBase64Whitespace(string $ch): bool
+    {
+        return $ch === ' ' || $ch === "\t"
+            || $ch === "\n" || $ch === "\x0C"
+            || $ch === "\r";
+    }
+
+    /**
+     * Core base64 decode.
+     *
+     * @param list<int> $partial Filled with valid bytes on error.
+     * @return array{list<int>, int}
+     */
+    private static function decodeBase64(
+        string $input,
+        string $alphabet,
+        string $lastChunk,
+        ?int $maxBytes,
+        Environment $env,
+        array &$partial = [],
+    ): array {
+        $table = $alphabet === 'base64url'
+            ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop'
+              . 'qrstuvwxyz0123456789-_'
+            : 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop'
+              . 'qrstuvwxyz0123456789+/';
+
+        $bytes = [];
+        $chunk = [];
+        $chunkStart = 0;
+        $i = 0;
+        $len = strlen($input);
+        $read = 0;
+
+        while ($i < $len) {
+            $ch = $input[$i];
+
+            if (self::isBase64Whitespace($ch)) {
+                $i++;
+                continue;
+            }
+
+            if ($ch === '=') {
+                $cc = count($chunk);
+                if ($cc < 2) {
+                    self::throwJsSyntaxError(
+                        'Invalid base64: unexpected padding',
+                        $env,
+                    );
+                }
+
+                if ($cc === 2) {
+                    // Need second '='
+                    $j = $i + 1;
+                    while (
+                        $j < $len
+                        && self::isBase64Whitespace($input[$j])
+                    ) {
+                        $j++;
+                    }
+                    if ($j >= $len || $input[$j] !== '=') {
+                        if ($lastChunk === 'stop-before-partial') {
+                            return [$bytes, $chunkStart];
+                        }
+                        self::throwJsSyntaxError(
+                            'Invalid base64: '
+                            . 'expected second padding',
+                            $env,
+                        );
+                    }
+                    $j++;
+                    while ($j < $len) {
+                        if (self::isBase64Whitespace($input[$j])) {
+                            $j++;
+                            continue;
+                        }
+                        self::throwJsSyntaxError(
+                            'Invalid base64: '
+                            . 'characters after padding',
+                            $env,
+                        );
+                    }
+                    $bits = ($chunk[0] << 6) | $chunk[1];
+                    if (
+                        $lastChunk === 'strict'
+                        && ($bits & 0x0F) !== 0
+                    ) {
+                        self::throwJsSyntaxError(
+                            'Invalid base64: '
+                            . 'non-zero padding bits',
+                            $env,
+                        );
+                    }
+                    $byte = ($bits >> 4) & 0xFF;
+                    if (
+                        $maxBytes !== null
+                        && count($bytes) >= $maxBytes
+                    ) {
+                        return [$bytes, $chunkStart];
+                    }
+                    $bytes[] = $byte;
+                    return [$bytes, $j];
+                }
+
+                if ($cc === 3) {
+                    $j = $i + 1;
+                    while ($j < $len) {
+                        if (self::isBase64Whitespace($input[$j])) {
+                            $j++;
+                            continue;
+                        }
+                        self::throwJsSyntaxError(
+                            'Invalid base64: '
+                            . 'characters after padding',
+                            $env,
+                        );
+                    }
+                    $bits = ($chunk[0] << 12)
+                        | ($chunk[1] << 6) | $chunk[2];
+                    if (
+                        $lastChunk === 'strict'
+                        && ($bits & 0x03) !== 0
+                    ) {
+                        self::throwJsSyntaxError(
+                            'Invalid base64: '
+                            . 'non-zero padding bits',
+                            $env,
+                        );
+                    }
+                    $b1 = ($bits >> 10) & 0xFF;
+                    $b2 = ($bits >> 2) & 0xFF;
+                    if (
+                        $maxBytes !== null
+                        && count($bytes) + 2 > $maxBytes
+                    ) {
+                        return [$bytes, $chunkStart];
+                    }
+                    $bytes[] = $b1;
+                    $bytes[] = $b2;
+                    return [$bytes, $j];
+                }
+                break;
+            }
+
+            $idx = strpos($table, $ch);
+            if ($idx === false) {
+                self::throwJsSyntaxError(
+                    'Invalid character in base64: ' . $ch,
+                    $env,
+                );
+            }
+
+            $chunk[] = $idx;
+            $i++;
+
+            if (count($chunk) === 4) {
+                $bits = ($chunk[0] << 18)
+                    | ($chunk[1] << 12)
+                    | ($chunk[2] << 6)
+                    | $chunk[3];
+                $b1 = ($bits >> 16) & 0xFF;
+                $b2 = ($bits >> 8) & 0xFF;
+                $b3 = $bits & 0xFF;
+
+                if (
+                    $maxBytes !== null
+                    && count($bytes) + 3 > $maxBytes
+                ) {
+                    return [$bytes, $chunkStart];
+                }
+                $bytes[] = $b1;
+                $bytes[] = $b2;
+                $bytes[] = $b3;
+                $read = $i;
+                $chunk = [];
+                $chunkStart = $i;
+                $partial = $bytes;
+            }
+        }
+
+        $rem = count($chunk);
+        if ($rem === 0) {
+            return [$bytes, $read];
+        }
+
+        if ($rem === 1) {
+            if ($lastChunk === 'stop-before-partial') {
+                return [$bytes, $chunkStart];
+            }
+            self::throwJsSyntaxError(
+                'Invalid base64: incomplete chunk',
+                $env,
+            );
+        }
+
+        if ($rem === 2) {
+            if ($lastChunk === 'stop-before-partial') {
+                return [$bytes, $chunkStart];
+            }
+            if ($lastChunk === 'strict') {
+                self::throwJsSyntaxError(
+                    'Invalid base64: missing padding',
+                    $env,
+                );
+            }
+            $bits = ($chunk[0] << 6) | $chunk[1];
+            $byte = ($bits >> 4) & 0xFF;
+            if (
+                $maxBytes !== null
+                && count($bytes) >= $maxBytes
+            ) {
+                return [$bytes, $chunkStart];
+            }
+            $bytes[] = $byte;
+            return [$bytes, $i];
+        }
+
+        if ($rem === 3) {
+            if ($lastChunk === 'stop-before-partial') {
+                return [$bytes, $chunkStart];
+            }
+            if ($lastChunk === 'strict') {
+                self::throwJsSyntaxError(
+                    'Invalid base64: missing padding',
+                    $env,
+                );
+            }
+            $bits = ($chunk[0] << 12)
+                | ($chunk[1] << 6) | $chunk[2];
+            $b1 = ($bits >> 10) & 0xFF;
+            $b2 = ($bits >> 2) & 0xFF;
+            if (
+                $maxBytes !== null
+                && count($bytes) + 2 > $maxBytes
+            ) {
+                return [$bytes, $chunkStart];
+            }
+            $bytes[] = $b1;
+            $bytes[] = $b2;
+            return [$bytes, $i];
+        }
+
+        return [$bytes, $read];
+    }
+
+    /**
+     * Core hex decode.
+     *
+     * @param list<int> $partial Filled with valid bytes on error.
+     * @return array{list<int>, int}
+     */
+    private static function decodeHex(
+        string $input,
+        ?int $maxBytes,
+        Environment $env,
+        array &$partial = [],
+    ): array {
+        $len = strlen($input);
+        $bytes = [];
+        $read = 0;
+
+        if ($len % 2 !== 0) {
+            self::throwJsSyntaxError(
+                'Invalid hex string: odd number of characters',
+                $env,
+            );
+        }
+
+        for ($i = 0; $i < $len; $i += 2) {
+            $hi = $input[$i];
+            $lo = $input[$i + 1];
+
+            if (!ctype_xdigit($hi) || !ctype_xdigit($lo)) {
+                $partial = $bytes;
+                self::throwJsSyntaxError(
+                    'Invalid character in hex string',
+                    $env,
+                );
+            }
+
+            if (
+                $maxBytes !== null
+                && count($bytes) >= $maxBytes
+            ) {
+                return [$bytes, $read];
+            }
+
+            $bytes[] = (int) hexdec($hi . $lo);
+            $read = $i + 2;
+        }
+
+        return [$bytes, $read];
+    }
+
+    /**
+     * Install fromBase64, fromHex, toBase64, toHex,
+     * setFromBase64, setFromHex on Uint8Array.
+     */
+    private static function installUint8ArrayBase64Methods(
+        JsFunction $ctor,
+        JsObject $proto,
+        Environment $env,
+    ): void {
+        // Uint8Array.fromBase64(string, options?)
+        $fromBase64 = JsFunction::fromCallable(
+            'fromBase64',
+            function (JsValue $this_, array $args) use ($env, $proto): JsValue {
+                $input = $args[0] ?? JsUndefined::instance();
+                if (!$input instanceof JsString) {
+                    throw new TypeError(
+                        'Uint8Array.fromBase64 requires a string'
+                    );
+                }
+                $opts = $args[1] ?? JsUndefined::instance();
+                [$alph, $lch] = self::readBase64Options($opts);
+                [$bytes] = self::decodeBase64(
+                    $input->value,
+                    $alph,
+                    $lch,
+                    null,
+                    $env,
+                );
+                $r = JsTypedArray::fromLength(
+                    'Uint8Array',
+                    count($bytes),
+                    $proto,
+                );
+                foreach ($bytes as $i => $b) {
+                    $r->setIndex($i, new JsNumber((float) $b));
+                }
+                return $r;
+            },
+            1,
+        );
+        $ctor->defineOwnProperty(
+            'fromBase64',
+            PropertyDescriptor::data($fromBase64, true, false, true),
+        );
+
+        // Uint8Array.fromHex(string)
+        $fromHex = JsFunction::fromCallable(
+            'fromHex',
+            function (JsValue $this_, array $args) use ($env, $proto): JsValue {
+                $input = $args[0] ?? JsUndefined::instance();
+                if (!$input instanceof JsString) {
+                    throw new TypeError(
+                        'Uint8Array.fromHex requires a string'
+                    );
+                }
+                [$bytes] = self::decodeHex(
+                    $input->value,
+                    null,
+                    $env,
+                );
+                $r = JsTypedArray::fromLength(
+                    'Uint8Array',
+                    count($bytes),
+                    $proto,
+                );
+                foreach ($bytes as $i => $b) {
+                    $r->setIndex($i, new JsNumber((float) $b));
+                }
+                return $r;
+            },
+            1,
+        );
+        $ctor->defineOwnProperty(
+            'fromHex',
+            PropertyDescriptor::data($fromHex, true, false, true),
+        );
+
+        // Uint8Array.prototype.toBase64(options?)
+        $toBase64 = JsFunction::fromCallable(
+            'toBase64',
+            function (JsValue $this_, array $args): JsValue {
+                if (
+                    !$this_ instanceof JsTypedArray
+                    || $this_->getTypeName() !== 'Uint8Array'
+                ) {
+                    throw new TypeError(
+                        'toBase64 requires a Uint8Array'
+                    );
+                }
+                $this_->validateNotDetached();
+
+                $opts = $args[0] ?? JsUndefined::instance();
+                $alph = 'base64';
+                $omit = false;
+
+                if ($opts instanceof JsObject) {
+                    $av = $opts->get('alphabet');
+                    if (!$av instanceof JsUndefined) {
+                        if (!$av instanceof JsString) {
+                            throw new TypeError(
+                                'options.alphabet must be a string'
+                            );
+                        }
+                        $alph = $av->value;
+                        if (
+                            $alph !== 'base64'
+                            && $alph !== 'base64url'
+                        ) {
+                            throw new TypeError(
+                                'options.alphabet must be '
+                                . '"base64" or "base64url"'
+                            );
+                        }
+                    }
+                    $ov = $opts->get('omitPadding');
+                    if (!$ov instanceof JsUndefined) {
+                        $omit = TypeConversion::toBoolean($ov);
+                    }
+                }
+
+                $len = $this_->getLength();
+                $data = '';
+                for ($i = 0; $i < $len; $i++) {
+                    $v = $this_->getIndex($i);
+                    $data .= chr(
+                        (int) TypeConversion::toNumber($v)
+                    );
+                }
+
+                $enc = base64_encode($data);
+                if ($alph === 'base64url') {
+                    $enc = str_replace(
+                        ['+', '/'],
+                        ['-', '_'],
+                        $enc,
+                    );
+                }
+                if ($omit) {
+                    $enc = rtrim($enc, '=');
+                }
+                return new JsString($enc);
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'toBase64',
+            PropertyDescriptor::data($toBase64, true, false, true),
+        );
+
+        // Uint8Array.prototype.toHex()
+        $toHex = JsFunction::fromCallable(
+            'toHex',
+            function (JsValue $this_): JsValue {
+                if (
+                    !$this_ instanceof JsTypedArray
+                    || $this_->getTypeName() !== 'Uint8Array'
+                ) {
+                    throw new TypeError(
+                        'toHex requires a Uint8Array'
+                    );
+                }
+                $this_->validateNotDetached();
+                $len = $this_->getLength();
+                $hex = '';
+                for ($i = 0; $i < $len; $i++) {
+                    $v = $this_->getIndex($i);
+                    $hex .= str_pad(
+                        dechex(
+                            (int) TypeConversion::toNumber($v)
+                        ),
+                        2,
+                        '0',
+                        STR_PAD_LEFT,
+                    );
+                }
+                return new JsString($hex);
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'toHex',
+            PropertyDescriptor::data($toHex, true, false, true),
+        );
+
+        // Uint8Array.prototype.setFromBase64(string, options?)
+        $setFromB64 = JsFunction::fromCallable(
+            'setFromBase64',
+            function (JsValue $this_, array $args) use ($env): JsValue {
+                if (
+                    !$this_ instanceof JsTypedArray
+                    || $this_->getTypeName() !== 'Uint8Array'
+                ) {
+                    throw new TypeError(
+                        'setFromBase64 requires a Uint8Array'
+                    );
+                }
+                $this_->validateNotDetached();
+
+                $input = $args[0] ?? JsUndefined::instance();
+                if (!$input instanceof JsString) {
+                    throw new TypeError(
+                        'setFromBase64 requires a string'
+                    );
+                }
+                $opts = $args[1] ?? JsUndefined::instance();
+                [$alph, $lch] = self::readBase64Options($opts);
+
+                $max = $this_->getLength();
+                $partial = [];
+                try {
+                    [$bytes, $rd] = self::decodeBase64(
+                        $input->value,
+                        $alph,
+                        $lch,
+                        $max,
+                        $env,
+                        $partial,
+                    );
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    foreach ($partial as $i => $b) {
+                        $this_->setIndex(
+                            $i,
+                            new JsNumber((float) $b),
+                        );
+                    }
+                    throw $e;
+                }
+
+                foreach ($bytes as $i => $b) {
+                    $this_->setIndex(
+                        $i,
+                        new JsNumber((float) $b),
+                    );
+                }
+                $result = new JsObject();
+                $result->set(
+                    'read',
+                    new JsNumber((float) $rd),
+                );
+                $result->set(
+                    'written',
+                    new JsNumber((float) count($bytes)),
+                );
+                return $result;
+            },
+            1,
+        );
+        $proto->defineOwnProperty(
+            'setFromBase64',
+            PropertyDescriptor::data(
+                $setFromB64,
+                true,
+                false,
+                true,
+            ),
+        );
+
+        // Uint8Array.prototype.setFromHex(string)
+        $setFromHex = JsFunction::fromCallable(
+            'setFromHex',
+            function (JsValue $this_, array $args) use ($env): JsValue {
+                if (
+                    !$this_ instanceof JsTypedArray
+                    || $this_->getTypeName() !== 'Uint8Array'
+                ) {
+                    throw new TypeError(
+                        'setFromHex requires a Uint8Array'
+                    );
+                }
+                $this_->validateNotDetached();
+
+                $input = $args[0] ?? JsUndefined::instance();
+                if (!$input instanceof JsString) {
+                    throw new TypeError(
+                        'setFromHex requires a string'
+                    );
+                }
+
+                $max = $this_->getLength();
+                $partial = [];
+                try {
+                    [$bytes, $rd] = self::decodeHex(
+                        $input->value,
+                        $max,
+                        $env,
+                        $partial,
+                    );
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    foreach ($partial as $i => $b) {
+                        $this_->setIndex(
+                            $i,
+                            new JsNumber((float) $b),
+                        );
+                    }
+                    throw $e;
+                }
+
+                foreach ($bytes as $i => $b) {
+                    $this_->setIndex(
+                        $i,
+                        new JsNumber((float) $b),
+                    );
+                }
+                $result = new JsObject();
+                $result->set(
+                    'read',
+                    new JsNumber((float) $rd),
+                );
+                $result->set(
+                    'written',
+                    new JsNumber((float) count($bytes)),
+                );
+                return $result;
+            },
+            1,
+        );
+        $proto->defineOwnProperty(
+            'setFromHex',
+            PropertyDescriptor::data(
+                $setFromHex,
+                true,
+                false,
+                true,
+            ),
+        );
     }
 }

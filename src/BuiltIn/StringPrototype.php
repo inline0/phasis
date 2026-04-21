@@ -340,7 +340,7 @@ class StringPrototype
         \PhpJs\Value\JsString::setStringPrototype($proto);
 
         // Store the prototype so the interpreter can access it for auto-boxing.
-        $env->defineVar('__StringPrototype__', $proto);
+        $env->defineInternal('__StringPrototype__', $proto);
     }
 
     private static function rawFn(): \Closure

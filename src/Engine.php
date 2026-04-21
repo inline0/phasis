@@ -159,6 +159,13 @@ class Engine
                         }
                     }
                 }
+                // %IteratorPrototype% -> Object.prototype
+                if ($this->globalEnv->has('__IteratorPrototype__')) {
+                    $iterProto = $this->globalEnv->get('__IteratorPrototype__');
+                    if ($iterProto instanceof JsObject && $iterProto->getPrototype() === null) {
+                        $iterProto->setPrototype($objProto);
+                    }
+                }
             }
         }
         \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
@@ -901,7 +908,7 @@ class Engine
         ));
         $this->globalEnv->defineVar($name, $constructor);
         // Store prototype for internal use (e.g. Interpreter::createRegExpObject).
-        $this->globalEnv->defineVar("__{$name}Prototype__", $proto);
+        $this->globalEnv->defineInternal("__{$name}Prototype__", $proto);
     }
 
     public function eval(string $source): mixed
