@@ -5474,13 +5474,21 @@ class TemporalObject
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                $instantLU = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                if (!in_array($largestUnit, $instantLU, true)) {
+                    throw new RangeError("Invalid largest unit for Instant: {$largestUnit}");
+                }
             }
-            // Validate smallestUnit.
+            // Validate smallestUnit (Instant only supports time units).
             $smallestUnit = 'nanosecond';
             $su = $opts->get('smallestUnit');
             if (!($su instanceof JsUndefined)) {
                 $smallestUnit = TypeConversion::toString($su);
                 $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                $instantUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                if (!in_array($smallestUnit, $instantUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
+                }
             }
             // Validate roundingMode.
             $rm = $opts->get('roundingMode');
