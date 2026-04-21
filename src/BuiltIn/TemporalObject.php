@@ -789,12 +789,32 @@ class TemporalObject
         $d('add', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $ovStr = TypeConversion::toString($ov);
+                    if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$ovStr}");
+                    }
+                }
+            }
             return self::plainDateAdd($this_, $dur, 1);
         }, 1);
 
         $d('subtract', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $ovStr = TypeConversion::toString($ov);
+                    if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$ovStr}");
+                    }
+                }
+            }
             return self::plainDateAdd($this_, $dur, -1);
         }, 1);
 
