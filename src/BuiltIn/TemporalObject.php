@@ -5430,6 +5430,16 @@ class TemporalObject
         }
         $dim = self::isoDaysInMonth($y, $m);
         $d = min($dim, $d);
+        // Even with constrain, must be in representable range.
+        if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+            throw new RangeError("Year out of range: {$y}");
+        }
+        if ($y === self::ISO_YEAR_MIN && ($m < 4 || ($m === 4 && $d < 19))) {
+            throw new RangeError("Date outside representable range");
+        }
+        if ($y === self::ISO_YEAR_MAX && ($m > 9 || ($m === 9 && $d > 13))) {
+            throw new RangeError("Date outside representable range");
+        }
         return [$y, $m, $d];
     }
 
