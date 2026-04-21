@@ -1572,16 +1572,17 @@ class TemporalObject
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                $overflow = 'constrain';
                 if ($options instanceof JsObject && $options->has('overflow')) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
-                        $ovStr = TypeConversion::toString($ov);
-                        if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$ovStr}");
+                        $overflow = TypeConversion::toString($ov);
+                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                            throw new RangeError("Invalid overflow: {$overflow}");
                         }
                     }
                 }
-                return self::toPlainDateTime($args[0] ?? JsUndefined::instance());
+                return self::toPlainDateTime($args[0] ?? JsUndefined::instance(), $overflow);
             }, 1),
             true,
             false,
@@ -3925,7 +3926,7 @@ class TemporalObject
         return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
     }
 
-    private static function toPlainDateTime(JsValue $item): JsObject
+    private static function toPlainDateTime(JsValue $item, string $overflow = 'constrain'): JsObject
     {
         if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
             return $item;
@@ -4006,8 +4007,18 @@ class TemporalObject
                 if (!($calVal instanceof JsUndefined)) {
                     $cal = strtolower(TypeConversion::toString($calVal));
                 }
-                self::validateISODate($y, $m, $d);
-                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+                if ($overflow === 'constrain') {
+                    [$y, $m, $d] = self::constrainISODate($y, $m, $d);
+                    $h = max(0, min(23, $h));
+                    $min = max(0, min(59, $min));
+                    $s = max(0, min(59, $s));
+                    $ms = max(0, min(999, $ms));
+                    $us = max(0, min(999, $us));
+                    $ns = max(0, min(999, $ns));
+                } else {
+                    self::validateISODate($y, $m, $d);
+                    self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+                }
                 return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
             }
         }
