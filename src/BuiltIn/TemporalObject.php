@@ -5318,6 +5318,21 @@ class TemporalObject
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
+            $rm = $options->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
+            }
+            $ri = $options->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+            }
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
     }
