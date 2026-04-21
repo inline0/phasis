@@ -3531,7 +3531,15 @@ class TemporalObject
             throw new TypeError('Cannot convert undefined/null to PlainTime');
         }
         if ($item instanceof JsObject && $item->has('[[IsPlainTime]]')) {
-            return $item;
+            // Return a copy, not the same object.
+            return self::createPlainTimeObject(
+                self::getSlotInt($item, '[[ISOHour]]'),
+                self::getSlotInt($item, '[[ISOMinute]]'),
+                self::getSlotInt($item, '[[ISOSecond]]'),
+                self::getSlotInt($item, '[[ISOMillisecond]]'),
+                self::getSlotInt($item, '[[ISOMicrosecond]]'),
+                self::getSlotInt($item, '[[ISONanosecond]]'),
+            );
         }
         if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
             return self::createPlainTimeObject(
