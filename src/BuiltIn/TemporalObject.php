@@ -2807,6 +2807,14 @@ class TemporalObject
     private static function parseInstantString(string $str): string
     {
         [$str, ] = self::normalizeTemporalString($str);
+        // Reject extended year without sign.
+        if (preg_match('/^\d{5,}/', $str)) {
+            throw new RangeError("Extended year requires sign: {$str}");
+        }
+        // Reject -000000.
+        if (preg_match('/^-0{4,6}[-\d]/', $str)) {
+            throw new RangeError("reject minus zero year: {$str}");
+        }
         // ISO 8601 with required timezone offset.
         // Supports date with hyphens (YYYY-MM-DD) or without (YYYYMMDD).
         // Supports sub-minute offsets (+HH:MM:SS.fractional).
@@ -3963,6 +3971,10 @@ class TemporalObject
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
+        // Reject extended year without sign.
+        if (preg_match('/^\d{5,}/', $str)) {
+            throw new RangeError("Extended year requires sign: {$str}");
+        }
         // Reject UTC designator (Z) for PlainDateTime.
         $noAnnot = preg_replace('/\[.*?\]/', '', $str);
         if (preg_match('/[Zz]/', $noAnnot)) {
