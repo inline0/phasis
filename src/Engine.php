@@ -922,6 +922,8 @@ class Engine
         $parser = new Parser($source);
         $program = $parser->parse();
         $result = $this->interpreter->execute($program);
+        // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
+        \PhpJs\Value\JsPromise::drainMicrotasks();
         return $this->toPhp($result);
     }
 
@@ -940,6 +942,8 @@ class Engine
         $modulePath = $path ?? $this->interpreter->getCurrentModulePath() ?? '/virtual-module.mjs';
         $loader = $this->interpreter->getModuleLoader();
         $loader->evaluateModule($modulePath, $source);
+        // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
+        \PhpJs\Value\JsPromise::drainMicrotasks();
         // Module namespace objects can be self-referential (export * from self),
         // so converting to PHP would cause infinite recursion. Return null instead.
         // Callers that need the namespace should use the ModuleLoader directly.
@@ -1029,6 +1033,7 @@ class Engine
 
     public function reset(): void
     {
+        \PhpJs\Value\JsPromise::clearMicrotasks();
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
         $this->callStack = new CallStack();

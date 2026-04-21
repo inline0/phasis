@@ -49,6 +49,14 @@ class JsAsyncGenerator extends JsObject
      */
     private bool $queuePendingDrain = false;
 
+    /**
+     * True while the current yield is awaiting a pending promise.
+     * In this state, new next/return/throw calls are queued rather than
+     * resuming the fiber immediately (the fiber will resume when the
+     * pending promise resolves).
+     */
+    private bool $awaitingYieldPromise = false;
+
     /** Optional closure to convert PHP exceptions to proper JS error objects. */
     private ?\Closure $errorConverter = null;
 
@@ -113,7 +121,7 @@ class JsAsyncGenerator extends JsObject
             return JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
         }
 
-        if ($this->executing) {
+        if ($this->executing || $this->awaitingYieldPromise) {
             // Per spec: enqueue the request and return a pending promise.
             $queued = new JsPromise();
             $this->requestQueue[] = ['next', $value ?? JsUndefined::instance(), $queued];
@@ -192,10 +200,8 @@ class JsAsyncGenerator extends JsObject
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
-        return JsPromise::resolved($this->makeResult(
-            $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
-            false,
-        ));
+        $yieldedValue = $suspended instanceof JsValue ? $suspended : JsUndefined::instance();
+        return $this->asyncGeneratorYieldResult($yieldedValue);
     }
 
     /**
@@ -210,7 +216,7 @@ class JsAsyncGenerator extends JsObject
             return $this->asyncGeneratorAwaitReturn($value);
         }
 
-        if ($this->executing) {
+        if ($this->executing || $this->awaitingYieldPromise) {
             // Per spec: enqueue the request and return a pending promise.
             $queued = new JsPromise();
             $this->requestQueue[] = ['return', $value, $queued];
@@ -230,10 +236,30 @@ class JsAsyncGenerator extends JsObject
             return $this->asyncGeneratorAwaitReturn($value);
         }
 
+        // Per spec AsyncGeneratorAwaitReturn (sec-asyncgeneratorawaitreturn):
+        // PromiseResolve(%Promise%, value) is called. If accessing value.constructor
+        // throws (broken promise), the error becomes a Throw completion that is
+        // thrown INTO the generator body (not a direct rejection). This allows
+        // try/catch in the generator to handle the broken-promise error.
+        $constructorError = null;
+        if ($value instanceof JsObject) {
+            try {
+                $value->get('constructor');
+            } catch (\Throwable $e) {
+                $constructorError = $e instanceof JsThrowable ? $e->jsValue : $this->convertError($e);
+            }
+        }
+
         $suspended = null;
         $this->executing = true;
         try {
-            $suspended = $this->fiber->throw(new GeneratorReturnSignal($value));
+            if ($constructorError !== null) {
+                // Broken constructor: throw the error into the generator so it can
+                // be caught by try/catch in the generator body.
+                $suspended = $this->fiber->throw(new GeneratorThrowSignal($constructorError));
+            } else {
+                $suspended = $this->fiber->throw(new GeneratorReturnSignal($value));
+            }
             $this->executing = false;
         } catch (GeneratorReturnSignal $e) {
             $this->executing = false;
@@ -284,10 +310,8 @@ class JsAsyncGenerator extends JsObject
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
-        return JsPromise::resolved($this->makeResult(
-            $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
-            false,
-        ));
+        $yieldedValue = $suspended instanceof JsValue ? $suspended : JsUndefined::instance();
+        return $this->asyncGeneratorYieldResult($yieldedValue);
     }
 
     /**
@@ -350,7 +374,7 @@ class JsAsyncGenerator extends JsObject
             return JsPromise::rejected($value);
         }
 
-        if ($this->executing) {
+        if ($this->executing || $this->awaitingYieldPromise) {
             // Per spec: enqueue the request and return a pending promise.
             $queued = new JsPromise();
             $this->requestQueue[] = ['throw', $value, $queued];
@@ -420,10 +444,8 @@ class JsAsyncGenerator extends JsObject
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
-        return JsPromise::resolved($this->makeResult(
-            $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
-            false,
-        ));
+        $yieldedValue = $suspended instanceof JsValue ? $suspended : JsUndefined::instance();
+        return $this->asyncGeneratorYieldResult($yieldedValue);
     }
 
     /**
@@ -545,12 +567,67 @@ class JsAsyncGenerator extends JsObject
             if ($suspended instanceof YieldDelegateResult) {
                 $queued->resolve($suspended->result);
             } else {
-                $queued->resolve($this->makeResult(
-                    $suspended instanceof JsValue ? $suspended : JsUndefined::instance(),
-                    false,
-                ));
+                $yieldedValue = $suspended instanceof JsValue ? $suspended : JsUndefined::instance();
+                $yieldResult = $this->asyncGeneratorYieldResult($yieldedValue);
+                if ($yieldResult->getState() === JsPromise::STATE_FULFILLED) {
+                    $queued->resolve($yieldResult->getResolvedValue());
+                } elseif ($yieldResult->getState() === JsPromise::STATE_REJECTED) {
+                    $queued->reject($yieldResult->getResolvedValue());
+                } else {
+                    // Pending: chain to queued promise.
+                    $yieldResult->addFulfillHandler(fn ($v) => $queued->resolve($v));
+                    $yieldResult->addRejectHandler(fn ($v) => $queued->reject($v));
+                }
             }
         }
+    }
+
+    /**
+     * Per spec AsyncGeneratorYield: the yielded value is wrapped via
+     * PromiseResolve(%Promise%, value). If the yielded value is a thenable,
+     * the outer promise resolves to {value: inner, done: false} only AFTER
+     * the inner promise resolves (or rejects).
+     *
+     * This handles `yield pendingPromise` in async generators correctly.
+     * When the yielded value is a pending promise, sets $awaitingYieldPromise = true
+     * so subsequent next/return/throw calls are queued until the promise resolves.
+     */
+    private function asyncGeneratorYieldResult(JsValue $value): JsPromise
+    {
+        if (!($value instanceof JsPromise)) {
+            return JsPromise::resolved($this->makeResult($value, false));
+        }
+
+        if ($value->getState() === JsPromise::STATE_FULFILLED) {
+            return JsPromise::resolved($this->makeResult($value->getResolvedValue(), false));
+        }
+
+        if ($value->getState() === JsPromise::STATE_REJECTED) {
+            return JsPromise::rejected($value->getResolvedValue());
+        }
+
+        // Pending promise: suspend the generator until the promise settles.
+        // New next/return/throw calls will be queued while awaiting.
+        $this->awaitingYieldPromise = true;
+        $outer = new JsPromise();
+        $makeResult = fn (JsValue $v) => $this->makeResult($v, false);
+        $value->addFulfillHandler(function (JsValue $resolved) use ($outer, $makeResult): void {
+            $this->awaitingYieldPromise = false;
+            $outer->resolve($makeResult($resolved));
+            // Drain any requests queued while we were awaiting.
+            if ($this->requestQueue !== []) {
+                $this->drainRequestQueue();
+            }
+        });
+        $value->addRejectHandler(function (JsValue $reason) use ($outer): void {
+            $this->awaitingYieldPromise = false;
+            $outer->reject($reason);
+            // Drain any requests queued while we were awaiting.
+            if ($this->requestQueue !== []) {
+                $this->drainRequestQueue();
+            }
+        });
+        return $outer;
     }
 
     /**
@@ -562,14 +639,6 @@ class JsAsyncGenerator extends JsObject
         $result->set('value', $value);
         $result->set('done', new JsBoolean($done));
         return $result;
-    }
-
-    private function makeTypeError(string $message): JsObject
-    {
-        $error = new JsObject();
-        $error->set('message', new JsString($message));
-        $error->set('name', new JsString('TypeError'));
-        return $error;
     }
 
     /**
@@ -590,10 +659,7 @@ class JsAsyncGenerator extends JsObject
                 if ($proto instanceof JsObject) {
                     $obj->setPrototype($proto);
                 }
-                $result = $ctor->call($obj, [new JsString($message)]);
-                if ($result instanceof JsValue) {
-                    return $result;
-                }
+                return $ctor->call($obj, [new JsString($message)]);
             }
         } catch (\Throwable) {
             // Fall through to plain object.

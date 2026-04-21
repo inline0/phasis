@@ -6723,12 +6723,13 @@ class Interpreter
 
         $syncNext = $syncIterator->get('next');
 
-        $wrapper->set('next', JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($syncIterator, $syncNext, $interpreter): JsValue {
+        $nextFn = function (JsValue $this_, array $args) use ($syncIterator, $syncNext, $interpreter): JsValue {
             $value = $args[0] ?? JsUndefined::instance();
             return $interpreter->asyncFromSyncNext($syncIterator, $syncNext, $value);
-        }, 1));
+        };
+        $wrapper->set('next', JsFunction::fromCallable('next', $nextFn, 1));
 
-        $wrapper->set('return', JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
+        $returnFn = function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
             $value = $args[0] ?? JsUndefined::instance();
             $returnMethod = $syncIterator->get('return');
             if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
@@ -6741,19 +6742,32 @@ class Interpreter
                 throw new TypeError('return is not a function');
             }
             return $interpreter->asyncFromSyncMethod($syncIterator, $returnMethod, $value);
-        }, 1));
+        };
+        $wrapper->set('return', JsFunction::fromCallable('return', $returnFn, 1));
 
-        $wrapper->set('throw', JsFunction::fromCallable('throw', function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
+        $throwFn = function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
             $value = $args[0] ?? JsUndefined::instance();
             $throwMethod = $syncIterator->get('throw');
             if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
-                return \PhpJs\Value\JsPromise::rejected($value);
+                // Per spec 27.1.4.4 step 7: close the iterator, then reject with TypeError.
+                $interpreter->iteratorClose($syncIterator);
+                $err = $interpreter->phpExceptionToJsValue(
+                    new TypeError(
+                        'The iterator does not provide a throw method'
+                    )
+                );
+                return \PhpJs\Value\JsPromise::rejected($err);
             }
             if (!$throwMethod instanceof JsFunction) {
-                throw new TypeError('throw is not a function');
+                $interpreter->iteratorClose($syncIterator);
+                $err = $interpreter->phpExceptionToJsValue(
+                    new TypeError('throw is not a function')
+                );
+                return \PhpJs\Value\JsPromise::rejected($err);
             }
             return $interpreter->asyncFromSyncMethod($syncIterator, $throwMethod, $value);
-        }, 1));
+        };
+        $wrapper->set('throw', JsFunction::fromCallable('throw', $throwFn, 1));
 
         return $wrapper;
     }

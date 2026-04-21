@@ -379,7 +379,12 @@ class JsPromise extends JsObject
             return $child;
         }
 
-        $this->runHandler($fulfillFn, $rejectFn, $child);
+        // Promise is already settled: schedule the handler as a microtask so that
+        // handlers attached in reverse order still fire in resolution order.
+        $parent = $this;
+        self::scheduleCallback(static function () use ($parent, $fulfillFn, $rejectFn, $child): void {
+            $parent->runHandler($fulfillFn, $rejectFn, $child);
+        });
         return $child;
     }
 
