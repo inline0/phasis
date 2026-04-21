@@ -707,23 +707,71 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
+            // Reject calendar/timeZone in with().
+            if (!($item->get('calendar') instanceof JsUndefined)) {
+                throw new TypeError('calendar not allowed in with()');
+            }
+            if (!($item->get('timeZone') instanceof JsUndefined)) {
+                throw new TypeError('timeZone not allowed in with()');
+            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
+            }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
+            $any = false;
             $yv = $item->get('year');
             if (!($yv instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($yv);
+                $n = TypeConversion::toNumber($yv);
+                if (!is_finite($n)) {
+                    throw new RangeError('year must be finite');
+                }
+                $y = (int) $n;
+                $any = true;
             }
+            $mcv = $item->get('monthCode');
             $mv = $item->get('month');
-            if (!($mv instanceof JsUndefined)) {
-                $m = (int) TypeConversion::toNumber($mv);
+            if (!($mcv instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($mcv);
+                if (preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    $m = (int) $mcm[1];
+                }
+                $any = true;
+            } elseif (!($mv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($mv);
+                if (!is_finite($n)) {
+                    throw new RangeError('month must be finite');
+                }
+                $m = (int) $n;
+                $any = true;
             }
             $dv = $item->get('day');
             if (!($dv instanceof JsUndefined)) {
-                $dd = (int) TypeConversion::toNumber($dv);
+                $n = TypeConversion::toNumber($dv);
+                if (!is_finite($n)) {
+                    throw new RangeError('day must be finite');
+                }
+                $dd = (int) $n;
+                $any = true;
             }
-            self::validateISODate($y, $m, $dd);
+            if (!$any) {
+                throw new TypeError('at least one date property required');
+            }
+            if ($overflow === 'constrain') {
+                [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
+            } else {
+                self::validateISODate($y, $m, $dd);
+            }
             return self::createPlainDateObject($y, $m, $dd, $cal);
         }, 1);
 
