@@ -178,6 +178,7 @@ class Engine
         \PhpJs\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\DisposableStackConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\ShadowRealmConstructor::install($this->globalEnv);
+        \PhpJs\BuiltIn\TemporalObject::install($this->globalEnv);
 
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.

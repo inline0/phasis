@@ -57,7 +57,6 @@ return [
         'source-phase-imports',
         'import-defer',
         'source-phase-imports-module-source',
-        // Massive API (in progress)
-        'Temporal',
+        // Temporal is now implemented (TemporalObject.php).
     ],
 ];
