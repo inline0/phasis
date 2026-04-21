@@ -3389,7 +3389,10 @@ class TemporalObject
         $microseconds = 0;
         $nanoseconds = 0;
 
+        $hourHasFrac = false;
+        $minHasFrac = false;
         if (isset($m[6]) && $m[6] !== '') {
+            $hourHasFrac = str_contains(str_replace(',', '.', $m[6]), '.');
             [$hours, $fracMin, $fracSec, $fracSubNs] = $parseFrac($m[6], 'H');
             $minutes += $fracMin;
             $seconds += $fracSec;
@@ -3398,6 +3401,12 @@ class TemporalObject
             $nanoseconds += $fracSubNs % 1000;
         }
         if (isset($m[7]) && $m[7] !== '') {
+            if ($hourHasFrac) {
+                throw new RangeError(
+                    "fractional hours with minutes: {$str}"
+                );
+            }
+            $minHasFrac = str_contains(str_replace(',', '.', $m[7]), '.');
             [$min2, $fracSec2, $fracSubNs2] = $parseFrac($m[7], 'M');
             $minutes += $min2;
             $seconds += $fracSec2;
@@ -3406,6 +3415,11 @@ class TemporalObject
             $nanoseconds += $fracSubNs2 % 1000;
         }
         if (isset($m[8]) && $m[8] !== '') {
+            if ($hourHasFrac || $minHasFrac) {
+                throw new RangeError(
+                    "fractional hours/minutes with seconds: {$str}"
+                );
+            }
             [$sec3, $ms3, $us3, $ns3] = $parseFrac($m[8], 'S');
             $seconds += $sec3;
             $milliseconds += $ms3;
