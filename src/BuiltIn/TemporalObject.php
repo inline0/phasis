@@ -3545,6 +3545,15 @@ class TemporalObject
 
     private static function addDurations(JsValue $a, JsValue $b, int $sign): JsObject
     {
+        // Per spec: reject if either duration has years, months, or weeks.
+        foreach (['years', 'months', 'weeks'] as $cu) {
+            if (self::getDurationField($a, $cu) !== 0) {
+                throw new RangeError("Cannot add/subtract duration with {$cu}");
+            }
+            if (self::getDurationField($b, $cu) !== 0) {
+                throw new RangeError("Cannot add/subtract duration with {$cu}");
+            }
+        }
         $fields = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
         $vals = [];
         foreach ($fields as $f) {
