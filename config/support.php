@@ -51,8 +51,6 @@ return [
         'Atomics',
         'Atomics.pause',
         'SharedArrayBuffer',
-        'resizable-arraybuffer',
-        'arraybuffer-transfer',
         'Float16Array',
         'symbols-as-weakmap-keys',
         'import-assertions',

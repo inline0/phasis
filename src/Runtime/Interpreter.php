@@ -5959,7 +5959,20 @@ class Interpreter
         $this->hoistDeclarations($node->body, $blockEnv);
         $this->skipAnnexBHoisting = $savedSkip;
         $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
-        return $this->executeBody($node->body, $blockEnv);
+        $completion = $this->executeBody($node->body, $blockEnv);
+
+        // Run disposals for `using`/`await using` declarations in this block.
+        if ($blockEnv->hasDisposables()) {
+            $pendingError = $completion->type === CompletionType::Throw
+                ? $completion->value : null;
+            $disposalCompletion = $this->runDisposals($blockEnv, $pendingError);
+            if ($disposalCompletion->type === CompletionType::Throw) {
+                return $disposalCompletion;
+            }
+            // For non-throw abrupt completions (return, break, continue),
+            // preserve the original completion after successful disposal.
+        }
+        return $completion;
     }
 
     private function execIfStatement(IfStatement $node, Environment $env): Completion
@@ -9153,57 +9166,6 @@ class Interpreter
             $this->throwJsValue($completion->value);
         }
         return $completion->value;
-    }
-
-    /**
-     * Convert a PHP exception (representing a JS error) to a JS value
-     * suitable for use in a Completion::throw() record.
-     */
-    private function phpExceptionToJsValue(\RuntimeException $e): JsValue
-    {
-        $name = match (true) {
-            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
-            $e instanceof TypeError => 'TypeError',
-            $e instanceof ReferenceError => 'ReferenceError',
-            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
-            default => 'Error',
-        };
-
-        $errorObj = new JsObject();
-        $errorObj->defineOwnProperty(
-            '[[ErrorData]]',
-            \PhpJs\Object\PropertyDescriptor::data(
-                JsUndefined::instance(),
-                false,
-                false,
-                false,
-            ),
-        );
-        $errorObj->set('message', new JsString($e->getMessage()));
-        $errorObj->set('name', new JsString($name));
-        $errorObj->set('stack', new JsString($name . ': ' . $e->getMessage()));
-
-        // Set constructor to the global error constructor for instanceof/constructor checks
-        if ($this->globalEnv->has($name)) {
-            $constructor = $this->globalEnv->get($name);
-            if ($constructor instanceof JsFunction) {
-                $errorObj->set('constructor', $constructor);
-                $proto = $constructor->get('prototype');
-                if ($proto instanceof JsObject) {
-                    $errorObj->setPrototype($proto);
-                }
-            }
-        }
-
-        return $errorObj;
-    }
-
-    /** @return never */
-    private function throwJsValue(JsValue $value): void
-    {
-        // Always use JsThrowable to preserve the original JS value.
-        // execTryStatement catches JsThrowable and extracts jsValue for the catch block.
-        throw new \PhpJs\Exceptions\JsThrowable($value, TypeConversion::toString($value));
     }
 
     public function getCallStack(): CallStack

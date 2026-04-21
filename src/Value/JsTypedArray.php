@@ -254,7 +254,7 @@ class JsTypedArray extends JsObject
         }
 
         // For float arrays, preserve NaN and Infinity.
-        if ($this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
+        if ($this->typeName === 'Float16Array' || $this->typeName === 'Float32Array' || $this->typeName === 'Float64Array') {
             return $num;
         }
 
@@ -805,5 +805,129 @@ class JsTypedArray extends JsObject
         }
         $suffix = $this->length > 10 ? ', ...' : '';
         return $this->typeName . '(' . $this->length . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
+    }
+
+    /**
+     * Decode a 16-bit unsigned integer as an IEEE 754 half-precision float.
+     *
+     * Format: 1 sign bit, 5 exponent bits (bias 15), 10 mantissa bits.
+     */
+    public static function float16Decode(int $half): float
+    {
+        $sign = ($half >> 15) & 1;
+        $exp = ($half >> 10) & 0x1F;
+        $frac = $half & 0x3FF;
+
+        if ($exp === 0) {
+            // Subnormal or zero.
+            if ($frac === 0) {
+                return $sign ? -0.0 : 0.0;
+            }
+            // Subnormal: value = (-1)^sign * 2^(-14) * (frac / 1024).
+            $val = ($frac / 1024.0) * (2.0 ** -14);
+            return $sign ? -$val : $val;
+        }
+
+        if ($exp === 0x1F) {
+            // Infinity or NaN.
+            if ($frac === 0) {
+                return $sign ? -INF : INF;
+            }
+            return NAN;
+        }
+
+        // Normalized: value = (-1)^sign * 2^(exp-15) * (1 + frac/1024).
+        $val = (1.0 + $frac / 1024.0) * (2.0 ** ($exp - 15));
+        return $sign ? -$val : $val;
+    }
+
+    /**
+     * Encode a PHP float as an IEEE 754 half-precision 16-bit unsigned integer.
+     *
+     * Uses round-to-nearest-even (banker's rounding) per spec.
+     */
+    public static function float16Encode(float $value): int
+    {
+        if (is_nan($value)) {
+            return 0x7E00; // Canonical NaN.
+        }
+
+        $sign = 0;
+        if ($value < 0.0 || ($value === 0.0 && 1.0 / $value === -INF)) {
+            $sign = 1;
+            $value = -$value;
+        }
+
+        if ($value === INF) {
+            return ($sign << 15) | 0x7C00;
+        }
+
+        if ($value === 0.0) {
+            return $sign << 15;
+        }
+
+        // Convert through float32 first to get proper rounding,
+        // then extract bits from the float64 representation.
+        $bits = unpack('J', pack('E', $value));
+        $f64bits = $bits[1];
+        $f64exp = (int) (($f64bits >> 52) & 0x7FF);
+        $f64frac = $f64bits & 0x000FFFFFFFFFFFFF;
+
+        // Unbiased exponent (float64 bias is 1023).
+        $unbiasedExp = $f64exp - 1023;
+
+        // Float16 bias is 15, range: [-14, 15] for normals.
+        // Exponent too large: clamp to infinity.
+        if ($unbiasedExp > 15) {
+            return ($sign << 15) | 0x7C00;
+        }
+
+        // Exponent in normal range [-14, 15].
+        if ($unbiasedExp >= -14) {
+            $halfExp = $unbiasedExp + 15;
+            // Take top 10 bits of 52-bit mantissa.
+            $halfFrac = (int) ($f64frac >> 42);
+            // Round-to-nearest-even: check remaining 42 bits.
+            $remainder = $f64frac & 0x3FFFFFFFFFF;
+            $halfway = 0x20000000000; // 1 << 41
+            if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
+                $halfFrac++;
+                if ($halfFrac > 0x3FF) {
+                    // Mantissa overflow: increment exponent.
+                    $halfFrac = 0;
+                    $halfExp++;
+                    if ($halfExp > 0x1F) {
+                        // Overflow to infinity.
+                        return ($sign << 15) | 0x7C00;
+                    }
+                }
+            }
+            return ($sign << 15) | ($halfExp << 10) | $halfFrac;
+        }
+
+        // Subnormal range: unbiasedExp < -14.
+        // Value = frac * 2^(-14), where frac = significand * 2^(exp - (-14)).
+        $shift = -14 - $unbiasedExp; // Number of additional right shifts.
+        // Full significand with implicit 1 bit: 1.frac (53 bits total).
+        $fullSignificand = $f64frac | (1 << 52);
+        // Shift right by (42 + shift) to fit into 10-bit mantissa.
+        $totalShift = 42 + $shift;
+        if ($totalShift >= 53) {
+            // Completely shifted out: rounds to zero.
+            return $sign << 15;
+        }
+        $halfFrac = (int) ($fullSignificand >> $totalShift);
+        // Round-to-nearest-even on the bits being shifted off.
+        $mask = (1 << $totalShift) - 1;
+        $remainder = (int) ($fullSignificand & $mask);
+        $halfway = 1 << ($totalShift - 1);
+        if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
+            $halfFrac++;
+            if ($halfFrac > 0x3FF) {
+                // Overflow from subnormal to normal.
+                return ($sign << 15) | (1 << 10);
+            }
+        }
+        return ($sign << 15) | $halfFrac;
     }
 }

@@ -275,7 +275,12 @@ class TypedArrayConstructor
                 // Step 8-9: byteLength.
                 $lenArg = $args[2] ?? JsUndefined::instance();
                 if ($lenArg instanceof JsUndefined) {
-                    $byteLength = $bufLen - $byteOffset;
+                    // For resizable buffers, pass null to enable auto-tracking.
+                    if ($buffer->isResizable()) {
+                        $byteLength = null;
+                    } else {
+                        $byteLength = $bufLen - $byteOffset;
+                    }
                 } else {
                     $byteLength = TypeConversion::toIndex($lenArg);
                     if (($byteOffset + $byteLength) > $bufLen) {
@@ -395,6 +400,9 @@ class TypedArrayConstructor
             'getUint32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber((float) $dv->getUint32($offset, $le));
             }],
+            'getFloat16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
+                return new JsNumber($dv->getFloat16($offset, $le));
+            }],
             'getFloat32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
                 return new JsNumber($dv->getFloat32($offset, $le));
             }],
@@ -407,6 +415,7 @@ class TypedArrayConstructor
             'setUint16' => [2, false, null],
             'setInt32' => [2, false, null],
             'setUint32' => [2, false, null],
+            'setFloat16' => [2, false, null],
             'setFloat32' => [2, false, null],
             'setFloat64' => [2, false, null],
             'getBigInt64' => [1, true, function (JsDataView $dv, int $offset, bool $le): JsValue {
@@ -475,6 +484,7 @@ class TypedArrayConstructor
                     'setUint16' => $this_->setUint16($getIndex, (int) $numValue, $littleEndian),
                     'setInt32' => $this_->setInt32($getIndex, (int) $numValue, $littleEndian),
                     'setUint32' => $this_->setUint32($getIndex, (int) $numValue, $littleEndian),
+                    'setFloat16' => $this_->setFloat16($getIndex, $numValue, $littleEndian),
                     'setFloat32' => $this_->setFloat32($getIndex, $numValue, $littleEndian),
                     'setFloat64' => $this_->setFloat64($getIndex, $numValue, $littleEndian),
                     'setBigInt64' => $this_->setBigInt64($getIndex, $rawInt, $littleEndian),
