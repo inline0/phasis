@@ -3090,6 +3090,9 @@ class TemporalObject
             $tzH = (int) substr($tzDigits, 0, 2);
             $tzM = strlen($tzDigits) >= 4 ? (int) substr($tzDigits, 2, 2) : 0;
             $tzS = strlen($tzDigits) >= 6 ? (int) substr($tzDigits, 4, 2) : 0;
+            if ($tzH > 23 || $tzM > 59 || $tzS > 59) {
+                throw new RangeError("Invalid UTC offset: {$str}");
+            }
             // Sub-second fractional offset.
             $tzFrac = '0';
             if (preg_match('/[.,](\d+)/', $tzBody, $fm)) {
