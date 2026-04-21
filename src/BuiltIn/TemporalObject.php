@@ -2156,6 +2156,15 @@ class TemporalObject
                 if ($calArg instanceof JsNull) {
                     throw new TypeError('null is not a valid calendar');
                 }
+                if ($calArg instanceof JsBoolean) {
+                    throw new TypeError('boolean is not a valid calendar');
+                }
+                if ($calArg instanceof JsNumber) {
+                    throw new TypeError('number is not a valid calendar');
+                }
+                if ($calArg instanceof \PhpJs\Value\JsBigInt) {
+                    throw new TypeError('bigint is not a valid calendar');
+                }
                 if ($calArg instanceof \PhpJs\Value\JsSymbol) {
                     throw new TypeError('Symbol is not a valid calendar');
                 }
