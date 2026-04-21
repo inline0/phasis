@@ -2027,12 +2027,19 @@ class TemporalObject
             }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
+            // Reject calendar/timeZone in with().
+            if (!($item->get('calendar') instanceof JsUndefined)) {
+                throw new TypeError('calendar not allowed in with()');
+            }
+            if (!($item->get('timeZone') instanceof JsUndefined)) {
+                throw new TypeError('timeZone not allowed in with()');
+            }
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // Read partial fields from the item.
-            $monthCode = $item->get('monthCode');
-            $month = $item->get('month');
+            // Read partial fields from the item in alphabetical order.
             $day = $item->get('day');
+            $month = $item->get('month');
+            $monthCode = $item->get('monthCode');
             $year = $item->get('year');
             if (
                 $monthCode instanceof JsUndefined
