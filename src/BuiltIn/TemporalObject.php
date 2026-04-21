@@ -2119,10 +2119,17 @@ class TemporalObject
                 throw new RangeError('year must be finite');
             }
             $y = (int) $yNum;
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            // Constrain day to valid range for the target year+month.
+            $dim = self::isoDaysInMonth($y, $m);
+            if ($dd > $dim) {
+                $dd = $dim;
+            }
             return self::createPlainDateObject(
                 $y,
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-                self::getSlotInt($this_, '[[ISODay]]'),
+                $m,
+                $dd,
                 self::getSlotString($this_, '[[Calendar]]'),
             );
         }, 1);
