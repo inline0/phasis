@@ -217,11 +217,6 @@ class TypedArrayConstructor
                         'Method get ArrayBuffer.prototype.byteLength called on incompatible receiver'
                     );
                 }
-                if ($this_->isDetached()) {
-                    throw new TypeError(
-                        'Cannot read byteLength of a detached ArrayBuffer'
-                    );
-                }
                 return new JsNumber((float) $this_->getByteLength());
             },
             0,

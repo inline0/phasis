@@ -851,4 +851,106 @@ class JsTypedArray extends JsObject
         $suffix = $len > 10 ? ', ...' : '';
         return $this->typeName . '(' . $len . ') [ ' . implode(', ', $parts) . $suffix . ' ]';
     }
+
+    /**
+     * Decode a 16-bit unsigned integer as an IEEE 754 half-precision float.
+     *
+     * Format: 1 sign bit, 5 exponent bits (bias 15), 10 mantissa bits.
+     */
+    public static function float16Decode(int $half): float
+    {
+        $sign = ($half >> 15) & 1;
+        $exp = ($half >> 10) & 0x1F;
+        $frac = $half & 0x3FF;
+
+        if ($exp === 0) {
+            if ($frac === 0) {
+                return $sign ? -0.0 : 0.0;
+            }
+            $val = ($frac / 1024.0) * (2.0 ** -14);
+            return $sign ? -$val : $val;
+        }
+
+        if ($exp === 0x1F) {
+            if ($frac === 0) {
+                return $sign ? -INF : INF;
+            }
+            return NAN;
+        }
+
+        $val = (1.0 + $frac / 1024.0) * (2.0 ** ($exp - 15));
+        return $sign ? -$val : $val;
+    }
+
+    /**
+     * Encode a PHP float as an IEEE 754 half-precision 16-bit unsigned integer.
+     *
+     * Uses round-to-nearest-even (banker's rounding) per spec.
+     */
+    public static function float16Encode(float $value): int
+    {
+        if (is_nan($value)) {
+            return 0x7E00;
+        }
+
+        $sign = 0;
+        if ($value < 0.0 || ($value === 0.0 && 1.0 / $value === -INF)) {
+            $sign = 1;
+            $value = -$value;
+        }
+
+        if ($value === INF) {
+            return ($sign << 15) | 0x7C00;
+        }
+
+        if ($value === 0.0) {
+            return $sign << 15;
+        }
+
+        $bits = unpack('J', pack('E', $value));
+        $f64bits = $bits[1];
+        $f64exp = (int) (($f64bits >> 52) & 0x7FF);
+        $f64frac = $f64bits & 0x000FFFFFFFFFFFFF;
+        $unbiasedExp = $f64exp - 1023;
+
+        if ($unbiasedExp > 15) {
+            return ($sign << 15) | 0x7C00;
+        }
+
+        if ($unbiasedExp >= -14) {
+            $halfExp = $unbiasedExp + 15;
+            $halfFrac = (int) ($f64frac >> 42);
+            $remainder = $f64frac & 0x3FFFFFFFFFF;
+            $halfway = 0x20000000000;
+            if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
+                $halfFrac++;
+                if ($halfFrac > 0x3FF) {
+                    $halfFrac = 0;
+                    $halfExp++;
+                    if ($halfExp > 0x1F) {
+                        return ($sign << 15) | 0x7C00;
+                    }
+                }
+            }
+            return ($sign << 15) | ($halfExp << 10) | $halfFrac;
+        }
+
+        $shift = -14 - $unbiasedExp;
+        $fullSignificand = $f64frac | (1 << 52);
+        $totalShift = 42 + $shift;
+        if ($totalShift >= 53) {
+            return $sign << 15;
+        }
+        $halfFrac = (int) ($fullSignificand >> $totalShift);
+        $mask = (1 << $totalShift) - 1;
+        $remainder = (int) ($fullSignificand & $mask);
+        $halfway = 1 << ($totalShift - 1);
+        if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
+            $halfFrac++;
+            if ($halfFrac > 0x3FF) {
+                return ($sign << 15) | (1 << 10);
+            }
+        }
+        return ($sign << 15) | $halfFrac;
+    }
 }
