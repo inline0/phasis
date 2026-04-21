@@ -3610,7 +3610,12 @@ class TemporalObject
                 self::getSlotInt($item, '[[ISOYear]]'),
                 self::getSlotInt($item, '[[ISOMonth]]'),
                 self::getSlotInt($item, '[[ISODay]]'),
-                0, 0, 0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
                 self::getSlotString($item, '[[Calendar]]'),
             );
         }
@@ -3698,7 +3703,10 @@ class TemporalObject
     private static function parsePlainDateTimeString(string $str): JsObject
     {
         [$str, $calFromAnnotation] = self::normalizeTemporalString($str);
-        $pattern = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?(?:\[.*?\])*$/';
+        $datePart = '([+-]?\d{4,6})-?(\d{2})-?(\d{2})';
+        $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
+        $tzPart = '(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?';
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             // Fallback: date only (with or without dashes).
             $dateOnly = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:\[.*?\])*$/';
@@ -3708,7 +3716,16 @@ class TemporalObject
                 $d = (int) $m[3];
                 self::validateISODate($y, $m2, $d);
                 return self::createPlainDateTimeObject(
-                    $y, $m2, $d, 0, 0, 0, 0, 0, 0, $calFromAnnotation,
+                    $y,
+                    $m2,
+                    $d,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    $calFromAnnotation,
                 );
             }
             throw new RangeError("Invalid PlainDateTime string: {$str}");
@@ -3726,7 +3743,16 @@ class TemporalObject
         self::validateISODate($y, $mo, $dd);
         self::validateISOTime($h, $min, $s, $ms, $us, $ns);
         return self::createPlainDateTimeObject(
-            $y, $mo, $dd, $h, $min, $s, $ms, $us, $ns, $calFromAnnotation,
+            $y,
+            $mo,
+            $dd,
+            $h,
+            $min,
+            $s,
+            $ms,
+            $us,
+            $ns,
+            $calFromAnnotation,
         );
     }
 
