@@ -3396,7 +3396,26 @@ class TemporalObject
             $year = $item->get('year');
             $month = $item->get('month');
             $day = $item->get('day');
-            if (!($year instanceof JsUndefined) && !($month instanceof JsUndefined) && !($day instanceof JsUndefined)) {
+            // Required properties: year, month (or monthCode), day.
+            if ($year instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            if ($month instanceof JsUndefined) {
+                $monthCode = $item->get('monthCode');
+                if ($monthCode instanceof JsUndefined) {
+                    throw new TypeError('missing required property: month');
+                }
+                // Convert monthCode to month number.
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
+                }
+                $month = new JsNumber((float) (int) $mcm[1]);
+            }
+            if ($day instanceof JsUndefined) {
+                throw new TypeError('missing required property: day');
+            }
+            if (true) {
                 $yNum = TypeConversion::toNumber($year);
                 if (!is_finite($yNum)) {
                     throw new RangeError('year must be finite');
