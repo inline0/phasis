@@ -9375,6 +9375,86 @@ class Interpreter
                 }
                 $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
 
+                if ($hasIndices) {
+                    $indEls = [];
+                    foreach ($matches as $ik => $im) {
+                        if (!is_int($ik)) {
+                            continue;
+                        }
+                        if ($im[1] === -1 || $im[0] === null) {
+                            $indEls[] = JsUndefined::instance();
+                        } else {
+                            $isc = mb_strlen(
+                                substr($str, 0, $im[1]),
+                                'UTF-8'
+                            );
+                            $iec = $isc + mb_strlen(
+                                $im[0],
+                                'UTF-8'
+                            );
+                            $indEls[] = JsArray::fromArray([
+                                new JsNumber((float) $isc),
+                                new JsNumber((float) $iec),
+                            ]);
+                        }
+                    }
+                    $iArr = JsArray::fromArray($indEls);
+                    $iGrp = new JsObject(null);
+                    $iHasGrp = false;
+                    foreach ($matches as $ik => $im) {
+                        if (!is_string($ik)) {
+                            continue;
+                        }
+                        $iHasGrp = true;
+                        if ($im[1] === -1 || $im[0] === null) {
+                            $iGrp->defineOwnProperty(
+                                $ik,
+                                PropertyDescriptor::data(
+                                    JsUndefined::instance()
+                                )
+                            );
+                        } else {
+                            $igsc = mb_strlen(
+                                substr($str, 0, $im[1]),
+                                'UTF-8'
+                            );
+                            $igec = $igsc + mb_strlen(
+                                $im[0],
+                                'UTF-8'
+                            );
+                            $iGrp->defineOwnProperty(
+                                $ik,
+                                PropertyDescriptor::data(
+                                    JsArray::fromArray([
+                                        new JsNumber((float) $igsc),
+                                        new JsNumber((float) $igec),
+                                    ])
+                                )
+                            );
+                        }
+                    }
+                    $iArr->defineOwnProperty(
+                        'groups',
+                        PropertyDescriptor::data(
+                            $iHasGrp
+                                ? $iGrp
+                                : JsUndefined::instance(),
+                            true,
+                            true,
+                            true
+                        )
+                    );
+                    $result->defineOwnProperty(
+                        'indices',
+                        PropertyDescriptor::data(
+                            $iArr,
+                            true,
+                            true,
+                            true
+                        )
+                    );
+                }
+
                 return $result;
             }
 

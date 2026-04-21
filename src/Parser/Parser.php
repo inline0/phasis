@@ -141,6 +141,46 @@ class Parser
             return $this->parseStatement();
         }
 
+        // `using` as a declaration keyword: `using x = expr`
+        if ($token->type === TokenType::Identifier && $token->value === 'using') {
+            $next = $this->peek();
+            if (
+                $next->type === TokenType::Identifier
+                || $next->type === TokenType::Await
+                || $next->type === TokenType::Yield
+                || $next->type === TokenType::Let
+                || $next->type === TokenType::Async
+                || $next->type === TokenType::Static_
+                || $next->type === TokenType::Of
+            ) {
+                return $this->parseUsingDeclaration(false);
+            }
+        }
+
+        // `await using x = expr` (top-level or inside async)
+        if ($token->type === TokenType::Await) {
+            $next = $this->peek();
+            if ($next->type === TokenType::Identifier && $next->value === 'using') {
+                $savedPos = $this->pos;
+                $this->advance(); // consume 'await'
+                $this->advance(); // consume 'using'
+                $afterUsing = $this->current();
+                $this->pos = $savedPos;
+                if (
+                    $afterUsing->type === TokenType::Identifier
+                    || $afterUsing->type === TokenType::Await
+                    || $afterUsing->type === TokenType::Yield
+                    || $afterUsing->type === TokenType::Let
+                    || $afterUsing->type === TokenType::Async
+                    || $afterUsing->type === TokenType::Static_
+                    || $afterUsing->type === TokenType::Of
+                ) {
+                    $this->advance(); // consume 'await'
+                    return $this->parseUsingDeclaration(true);
+                }
+            }
+        }
+
         return match ($token->type) {
             TokenType::Var, TokenType::Const_ => $this->parseVariableDeclaration(),
             TokenType::Function_ => $this->parseFunctionDeclaration(),
@@ -540,11 +580,14 @@ class Parser
         $params = $this->parseFormalParameters();
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
         $this->inGenerator = $isGenerator;
         $this->inAsync = $isAsync;
+        $this->topLevel = false;
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $this->topLevel = $prevTopLevel;
 
         $value = new FunctionExpression(
             $body->location,
@@ -569,12 +612,15 @@ class Parser
             $id = $this->parseIdentifier();
             $prevGenerator = $this->inGenerator;
             $prevAsync = $this->inAsync;
+            $prevTopLevel = $this->topLevel;
             $this->inGenerator = $generator;
             $this->inAsync = true;
+            $this->topLevel = false;
             $params = $this->parseFormalParameters();
             $body = $this->parseBlockStatement();
             $this->inGenerator = $prevGenerator;
             $this->inAsync = $prevAsync;
+            $this->topLevel = $prevTopLevel;
             return new FunctionDeclaration(
                 $location,
                 $id,
@@ -1547,16 +1593,20 @@ class Parser
         $this->expect(TokenType::Arrow);
 
         $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
         $this->inAsync = $async;
+        $this->topLevel = false;
 
         if ($this->check(TokenType::LeftBrace)) {
             $body = $this->parseBlockStatement();
             $this->inAsync = $prevAsync;
+            $this->topLevel = $prevTopLevel;
             return new ArrowFunction($location, $params, $body, false, $async, $this->extractSource($startOffset));
         }
 
         $body = $this->parseAssignmentExpression();
         $this->inAsync = $prevAsync;
+        $this->topLevel = $prevTopLevel;
         return new ArrowFunction($location, $params, $body, true, $async, $this->extractSource($startOffset));
     }
 

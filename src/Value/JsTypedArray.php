@@ -37,6 +37,9 @@ class JsTypedArray extends JsObject
     /** Whether values should be clamped (Uint8ClampedArray). */
     private bool $clamped;
 
+    /** Whether this TypedArray auto-tracks the buffer's byte length. */
+    private bool $autoLength = false;
+
     /**
      * Type configuration table: name => [bytesPerElement, packFormat, isBigInt, isClamped].
      *
@@ -136,11 +139,32 @@ class JsTypedArray extends JsObject
         return $this->byteOffset;
     }
 
+    /** Mark this TypedArray as auto-tracking the buffer's byte length. */
+    public function setAutoLength(bool $auto): void
+    {
+        $this->autoLength = $auto;
+    }
+
+    public function isAutoLength(): bool
+    {
+        return $this->autoLength;
+    }
+
     public function getLength(): int
     {
         // Per spec: if the viewed ArrayBuffer is detached, length is 0.
         if ($this->buffer->isDetached()) {
             return 0;
+        }
+        // For auto-tracking typed arrays on resizable buffers,
+        // recompute length from the current buffer byte length.
+        if ($this->autoLength) {
+            $bufLen = $this->buffer->getByteLength();
+            if ($this->byteOffset > $bufLen) {
+                return 0;
+            }
+            $remaining = $bufLen - $this->byteOffset;
+            return intdiv($remaining, $this->bytesPerElement);
         }
         return $this->length;
     }
@@ -162,7 +186,8 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return JsUndefined::instance();
         }
-        if ($index < 0 || $index >= $this->length) {
+        $len = $this->getLength();
+        if ($index < 0 || $index >= $len) {
             return JsUndefined::instance();
         }
 
@@ -204,7 +229,8 @@ class JsTypedArray extends JsObject
         if ($this->buffer->isDetached()) {
             return;
         }
-        if ($index < 0 || $index >= $this->length) {
+        $len = $this->getLength();
+        if ($index < 0 || $index >= $len) {
             return;
         }
 
