@@ -1418,6 +1418,86 @@ class TemporalObject
             );
         }, 0);
 
+        $d('with', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDateTime($this_);
+            $item = $args[0] ?? JsUndefined::instance();
+            if (!$item instanceof JsObject) {
+                throw new TypeError('argument must be an object');
+            }
+            if (!($item->get('calendar') instanceof JsUndefined)) {
+                throw new TypeError('calendar not allowed in with()');
+            }
+            if (!($item->get('timeZone') instanceof JsUndefined)) {
+                throw new TypeError('timeZone not allowed in with()');
+            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject && $options->has('overflow')) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
+            }
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $h = self::getSlotInt($this_, '[[ISOHour]]');
+            $min = self::getSlotInt($this_, '[[ISOMinute]]');
+            $s = self::getSlotInt($this_, '[[ISOSecond]]');
+            $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
+            $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
+            $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $dateFields = ['year' => &$y, 'month' => &$m, 'day' => &$dd];
+            $timeFields = [
+                'hour' => &$h, 'minute' => &$min, 'second' => &$s,
+                'millisecond' => &$ms, 'microsecond' => &$us, 'nanosecond' => &$ns,
+            ];
+            $any = false;
+            foreach (array_merge($dateFields, $timeFields) as $name => &$ref) {
+                $v = $item->get($name);
+                if (!($v instanceof JsUndefined)) {
+                    $n = TypeConversion::toNumber($v);
+                    if (!is_finite($n)) {
+                        throw new RangeError("{$name} must be finite");
+                    }
+                    $ref = (int) $n;
+                    $any = true;
+                }
+            }
+            unset($ref);
+            // Also check monthCode.
+            $mcv = $item->get('monthCode');
+            if (!($mcv instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($mcv);
+                if (preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    $m = (int) $mcm[1];
+                }
+                $any = true;
+            }
+            if (!$any) {
+                throw new TypeError('at least one property required');
+            }
+            if ($overflow === 'constrain') {
+                [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
+                $h = max(0, min(23, $h));
+                $min = max(0, min(59, $min));
+                $s = max(0, min(59, $s));
+                $ms = max(0, min(999, $ms));
+                $us = max(0, min(999, $us));
+                $ns = max(0, min(999, $ns));
+            } else {
+                self::validateISODate($y, $m, $dd);
+                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            }
+            return self::createPlainDateTimeObject(
+                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal,
+            );
+        }, 1);
+
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $cal = TypeConversion::toString($args[0] ?? JsUndefined::instance());
