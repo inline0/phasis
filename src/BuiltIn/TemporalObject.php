@@ -5709,6 +5709,16 @@ class TemporalObject
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $suStr = TypeConversion::toString($su);
+                $suCanon = self::canonicalTemporalUnit($suStr);
+                // PlainTime only supports time units.
+                $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                if (!in_array($suCanon, $timeUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for time: {$suStr}");
+                }
+            }
             $rm = $opts->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
                 $rmStr = TypeConversion::toString($rm);
