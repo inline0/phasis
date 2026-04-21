@@ -5736,6 +5736,14 @@ class TemporalObject
                     throw new RangeError("Invalid roundingIncrement");
                 }
             }
+            // Validate largestUnit >= smallestUnit.
+            if (isset($suCanon)) {
+                $luIdx = array_search($largestUnit, $validTimeUnits);
+                $suIdx = array_search($suCanon, $validTimeUnits);
+                if ($luIdx !== false && $suIdx !== false && $luIdx > $suIdx) {
+                    throw new RangeError('largestUnit must be >= smallestUnit');
+                }
+            }
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
     }
