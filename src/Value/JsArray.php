@@ -196,7 +196,7 @@ class JsArray extends JsObject
         }
     }
 
-    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
     {
         if ($receiver === $this && $name !== 'length') {
             $result = parent::internalSet($name, $value, $receiver);

@@ -211,7 +211,7 @@ class JsObject implements JsValue
      * indicating success or failure. The receiver is the original object
      * that the property assignment was initiated on.
      */
-    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
     {
         $ownDesc = $this->getOwnPropertyDescriptor($name);
         return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
@@ -225,7 +225,7 @@ class JsObject implements JsValue
     protected function ordinarySetWithOwnDescriptor(
         string $name,
         JsValue $value,
-        JsObject $receiver,
+        JsValue $receiver,
         ?PropertyDescriptor $ownDesc,
     ): bool {
         if ($ownDesc === null) {
@@ -240,6 +240,10 @@ class JsObject implements JsValue
 
         if ($ownDesc->isDataDescriptor()) {
             if ($ownDesc->writable === false) {
+                return false;
+            }
+            // Per spec step 4.b: If Receiver is not an Object, return false.
+            if (!$receiver instanceof JsObject) {
                 return false;
             }
             // Check the receiver for its own property.
@@ -270,7 +274,11 @@ class JsObject implements JsValue
 
         // Accessor descriptor.
         if ($ownDesc->set !== null) {
-            $ownDesc->set->call($receiver, [$value]);
+            if ($receiver instanceof JsObject) {
+                $ownDesc->set->call($receiver, [$value]);
+            } else {
+                $ownDesc->set->call(TypeConversion::toObject($receiver), [$value]);
+            }
             return true;
         }
         return false;
@@ -367,19 +375,27 @@ class JsObject implements JsValue
      * so that setters are invoked with the correct `this`.
      * Returns false if the set failed (non-configurable/non-writable).
      */
-    public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsObject $receiver): bool
+    public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsValue $receiver): bool
     {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
             $desc = $this->symbolProperties[$id];
             if ($desc->set !== null) {
-                $desc->set->call($receiver, [$value]);
+                if ($receiver instanceof JsObject) {
+                    $desc->set->call($receiver, [$value]);
+                } else {
+                    $desc->set->call(TypeConversion::toObject($receiver), [$value]);
+                }
                 return true;
             }
             if ($desc->isAccessorDescriptor()) {
                 return false;
             }
             if ($desc->writable === false) {
+                return false;
+            }
+            // Per spec: If Receiver is not an Object, return false.
+            if (!$receiver instanceof JsObject) {
                 return false;
             }
             // Per OrdinarySet: if the property is found on the receiver itself,
@@ -412,6 +428,10 @@ class JsObject implements JsValue
         $proto = $this->getPrototype();
         if ($proto !== null) {
             return $proto->internalSetBySymbol($symbol, $value, $receiver);
+        }
+        // Per spec: If Receiver is not an Object, return false.
+        if (!$receiver instanceof JsObject) {
+            return false;
         }
         if (!$receiver->extensible) {
             return false;

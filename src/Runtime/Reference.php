@@ -171,9 +171,12 @@ class Reference
         // Proxy set traps on the prototype chain to fire.
         $wrapped = TypeConversion::toObject($this->base);
         $name = $this->resolvedName();
+        // Per spec: the receiver is the original primitive (V.[[Base]]), not the
+        // wrapper. OrdinarySetWithOwnDescriptor returns false when the receiver
+        // is not an Object, which triggers TypeError in strict mode.
         $success = $this->symbolKey !== null
-            ? $wrapped->internalSetBySymbol($this->symbolKey, $value, $wrapped)
-            : $wrapped->internalSet($name, $value, $wrapped);
+            ? $wrapped->internalSetBySymbol($this->symbolKey, $value, $this->base)
+            : $wrapped->internalSet($name, $value, $this->base);
         if (!$success && $this->strict) {
             throw new TypeError(
                 "Cannot assign to read only property '{$name}' of a primitive"

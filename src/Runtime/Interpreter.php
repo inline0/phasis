@@ -4434,15 +4434,17 @@ class Interpreter
                 // Step 5b: received is throw.
                 $throwMethod = $iterator->get('throw');
                 if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
-                    // Per spec: if throw is undefined, throw a TypeError and also
-                    // IteratorClose the iterator (close via return method if present).
-                    try {
-                        $returnMethod = $iterator->get('return');
-                        if ($returnMethod instanceof JsFunction) {
-                            $this->callFunction($returnMethod, $iterator, []);
+                    // Per spec 27.5.3.7 step 5.b.iii:
+                    // 1. Perform ? IteratorClose(iterator, NormalCompletion(empty)).
+                    //    IteratorClose (7.4.6): if return() throws, propagate that error.
+                    // 2. Then throw TypeError for the protocol violation.
+                    $returnMethod = $iterator->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        $closeResult = $this->callFunction($returnMethod, $iterator, []);
+                        // IteratorClose step 8: if result is not an Object, throw TypeError.
+                        if (!$closeResult instanceof JsObject) {
+                            throw new TypeError('Iterator return method returned a non-object value');
                         }
-                    } catch (\Throwable) {
-                        // Ignore close errors per spec.
                     }
                     throw new TypeError('The iterator does not provide a throw method');
                 }
@@ -6038,8 +6040,13 @@ class Interpreter
             return $iterator;
         }
 
+        // Per spec 7.4.2 GetIterator: call ToObject on primitives so that
+        // Symbol.iterator can be found on their prototype (e.g. Boolean.prototype).
         if (!$iterable instanceof JsObject) {
-            return null;
+            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                return null;
+            }
+            $iterable = TypeConversion::toObject($iterable);
         }
 
         // Check for Symbol.iterator method.
@@ -8640,7 +8647,9 @@ class Interpreter
         }
 
         // Step 7: if completion.[[type]] is throw, return Completion(completion).
-        if ($completion !== null) {
+        // Only JS throw completions (RuntimeError/JsThrowable) suppress inner errors.
+        // Return completions (GeneratorReturnSignal) do not suppress inner errors.
+        if ($completion !== null && !$completion instanceof GeneratorReturnSignal) {
             throw $completion;
         }
 
@@ -8652,6 +8661,12 @@ class Interpreter
         // Step 9: if Type(innerResult.[[value]]) is not Object, throw TypeError.
         if (!$innerResult instanceof JsObject) {
             throw new TypeError('Iterator return result is not an object');
+        }
+
+        // If we had a non-throw completion (e.g. GeneratorReturnSignal), re-throw it
+        // now that the close completed successfully.
+        if ($completion !== null) {
+            throw $completion;
         }
     }
 

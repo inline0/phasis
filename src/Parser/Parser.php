@@ -1262,6 +1262,8 @@ class Parser
             && !$this->check(TokenType::RightBracket)
             && !$this->check(TokenType::Comma)
             && !$this->check(TokenType::Colon)
+            && !$this->check(TokenType::TemplateMiddle)
+            && !$this->check(TokenType::TemplateTail)
             && !$this->isAtEnd()
             && ($delegate || !$this->current()->lineTerminatorBefore)
         ) {

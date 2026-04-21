@@ -285,7 +285,7 @@ class JsProxy extends JsObject
      * (target, P, V, Receiver) and validates invariants. When missing,
      * forwards to target.[[Set]](P, V, Receiver).
      */
-    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
     {
         $trap = $this->getTrap('set');
         if ($trap !== null) {
