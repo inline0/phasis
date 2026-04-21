@@ -2056,7 +2056,17 @@ class TemporalObject
                 if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
                     throw new RangeError("Invalid monthCode: {$mc}");
                 }
-                $m = (int) $mcm[1];
+                $mcMonth = (int) $mcm[1];
+                if (!($month instanceof JsUndefined)) {
+                    $n = TypeConversion::toNumber($month);
+                    if (!is_finite($n)) {
+                        throw new RangeError('month must be finite');
+                    }
+                    if ((int) $n !== $mcMonth) {
+                        throw new RangeError('month and monthCode disagree');
+                    }
+                }
+                $m = $mcMonth;
             } elseif (!($month instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($month);
                 if (!is_finite($n)) {
