@@ -231,11 +231,25 @@ class IteratorConstructor
         return $result;
     }
 
-    private static function closeIterator(JsObject $iterator): void
+    /**
+     * Close an iterator by calling its return() method if it exists.
+     * When $suppressErrors is true, errors from return() are swallowed.
+     * Per spec IteratorClose: if the original completion is throw, the
+     * original error takes precedence over any error from return().
+     */
+    private static function closeIterator(JsObject $iterator, bool $suppressErrors = false): void
     {
         $returnMethod = $iterator->get('return');
         if ($returnMethod instanceof JsFunction) {
-            $returnMethod->call($iterator, []);
+            if ($suppressErrors) {
+                try {
+                    $returnMethod->call($iterator, []);
+                } catch (\Throwable) {
+                    // Suppress per IteratorClose spec.
+                }
+            } else {
+                $returnMethod->call($iterator, []);
+            }
         }
     }
 
@@ -366,8 +380,14 @@ class IteratorConstructor
                 throw new TypeError('Iterator.prototype.take called on non-object');
             }
             // Per spec: ToNumber(limit) happens before GetIteratorDirect.
+            // If it throws, close the iterator first.
             $limitArg = $args[0] ?? JsUndefined::instance();
-            $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            try {
+                $numLimit = self::toIntegerOrInfinityNonNegative($limitArg);
+            } catch (\Throwable $e) {
+                self::closeIterator($this_, true);
+                throw $e;
+            }
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $remaining = $numLimit;
             $done = false;
@@ -609,7 +629,7 @@ class IteratorConstructor
                         [$accumulator, $value, new JsNumber((float) $counter)],
                     );
                 } catch (\Throwable $e) {
-                    self::closeIterator($itObj);
+                    self::closeIterator($itObj, true);
                     throw $e;
                 }
                 $counter++;
@@ -661,7 +681,7 @@ class IteratorConstructor
                 try {
                     $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
                 } catch (\Throwable $e) {
-                    self::closeIterator($itObj);
+                    self::closeIterator($itObj, true);
                     throw $e;
                 }
                 $counter++;
@@ -691,7 +711,7 @@ class IteratorConstructor
                         [$value, new JsNumber((float) $counter)],
                     );
                 } catch (\Throwable $e) {
-                    self::closeIterator($itObj);
+                    self::closeIterator($itObj, true);
                     throw $e;
                 }
                 $counter++;
@@ -723,7 +743,7 @@ class IteratorConstructor
                         [$value, new JsNumber((float) $counter)],
                     );
                 } catch (\Throwable $e) {
-                    self::closeIterator($itObj);
+                    self::closeIterator($itObj, true);
                     throw $e;
                 }
                 $counter++;
@@ -755,7 +775,7 @@ class IteratorConstructor
                         [$value, new JsNumber((float) $counter)],
                     );
                 } catch (\Throwable $e) {
-                    self::closeIterator($itObj);
+                    self::closeIterator($itObj, true);
                     throw $e;
                 }
                 $counter++;

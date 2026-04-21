@@ -245,6 +245,31 @@ class Parser
         return new VariableDeclaration($location, $kind, $declarations);
     }
 
+    /**
+     * Parse `using x = expr` or `await using x = expr`.
+     * Reuses VariableDeclaration with kind 'using' or 'await using'.
+     */
+    private function parseUsingDeclaration(bool $isAwait): VariableDeclaration
+    {
+        $token = $this->advance(); // consume 'using'
+        $location = $isAwait
+            ? new SourceLocation(
+                $this->tokens[$this->pos - 2]->location->line,
+                $this->tokens[$this->pos - 2]->location->column,
+                $this->tokens[$this->pos - 2]->location->offset,
+            )
+            : $token->location;
+        $kind = $isAwait ? 'await using' : 'using';
+        $declarations = [];
+
+        do {
+            $declarations[] = $this->parseVariableDeclarator();
+        } while ($this->eat(TokenType::Comma));
+
+        $this->consumeSemicolon();
+        return new VariableDeclaration($location, $kind, $declarations);
+    }
+
     private function parseVariableDeclarator(): VariableDeclarator
     {
         $id = $this->parseBindingPattern();
@@ -2020,12 +2045,15 @@ class Parser
 
         $prevGenerator = $this->inGenerator;
         $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
         $this->inGenerator = $generator;
         $this->inAsync = true;
+        $this->topLevel = false;
         $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement();
         $this->inGenerator = $prevGenerator;
         $this->inAsync = $prevAsync;
+        $this->topLevel = $prevTopLevel;
 
         return new FunctionExpression(
             $location,

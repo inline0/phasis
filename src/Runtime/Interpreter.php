@@ -201,6 +201,7 @@ class Interpreter
         if ($this->strictMode) {
             $this->validateStrictModeRestrictions($program->body);
         }
+        $this->validateSelfStrictFunctions($program->body);
 
         $this->validateGlobalLexDecls($program->body);
         $this->hoistDeclarations($program->body, $this->globalEnv);
@@ -1762,6 +1763,11 @@ class Interpreter
             } catch (\PhpJs\Exceptions\SyntaxError $e) {
                 $this->throwJsValue($this->phpExceptionToJsValue($e));
             }
+        }
+        try {
+            $this->validateSelfStrictFunctions($program->body);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
 
         if ($evalStrict && !$this->strictMode) {

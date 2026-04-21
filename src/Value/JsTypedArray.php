@@ -380,7 +380,7 @@ class JsTypedArray extends JsObject
     {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->length) {
+            if ($index >= 0 && $index < $this->getLength()) {
                 $this->setIndex($index, $value);
                 return true;
             }
@@ -409,7 +409,7 @@ class JsTypedArray extends JsObject
     ): ?\PhpJs\Object\PropertyDescriptor {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index >= 0 && $index < $this->length) {
+            if ($index >= 0 && $index < $this->getLength()) {
                 return \PhpJs\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
                     true,
@@ -441,7 +441,7 @@ class JsTypedArray extends JsObject
     ): bool {
         if (ctype_digit($name)) {
             $index = (int) $name;
-            if ($index < 0 || $index >= $this->length) {
+            if ($index < 0 || $index >= $this->getLength()) {
                 return false;
             }
             if ($desc->isAccessorDescriptor()) {
@@ -477,7 +477,7 @@ class JsTypedArray extends JsObject
             return true;
         }
 
-        if (ctype_digit($name) && (int) $name < $this->length) {
+        if (ctype_digit($name) && (int) $name < $this->getLength()) {
             return true;
         }
 
@@ -494,7 +494,8 @@ class JsTypedArray extends JsObject
     public function ownKeys(): array
     {
         $keys = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $keys[] = (string) $i;
         }
         return array_merge($keys, parent::ownKeys());
@@ -504,7 +505,8 @@ class JsTypedArray extends JsObject
     public function getOwnEnumerableKeys(): array
     {
         $keys = [];
-        for ($i = 0; $i < $this->length; $i++) {
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
             $keys[] = (string) $i;
         }
         return $keys;
