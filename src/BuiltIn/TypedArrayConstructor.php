@@ -283,7 +283,24 @@ class TypedArrayConstructor
                     }
                 }
 
-                return new JsDataView($buffer, $byteOffset, $byteLength, $proto);
+                // Step 10: OrdinaryCreateFromConstructor(NewTarget, ...).
+                // Resolve the prototype from [[NewTarget]] (set by Reflect.construct)
+                // AFTER argument validation, per spec evaluation order.
+                $useProto = $proto;
+                if ($this_ instanceof JsObject) {
+                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                    if ($ntDesc !== null && $ntDesc->value instanceof JsValue) {
+                        $nt = $ntDesc->value;
+                        if ($nt instanceof JsObject) {
+                            $ntProto = $nt->get('prototype');
+                            if ($ntProto instanceof JsObject) {
+                                $useProto = $ntProto;
+                            }
+                        }
+                    }
+                }
+
+                return new JsDataView($buffer, $byteOffset, $byteLength, $useProto);
             },
             1,
         );

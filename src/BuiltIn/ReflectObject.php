@@ -325,19 +325,44 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec 9.1.13 OrdinaryCreateFromConstructor: Get newTarget.prototype
-                // and use it as the prototype for the new object. This must happen
-                // BEFORE the constructor runs so that Object.getPrototypeOf(this)
-                // inside the constructor body sees the correct prototype.
+                $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
+
+                // For built-in (native) constructors, defer OrdinaryCreateFromConstructor:
+                // the built-in algorithm validates arguments first and calls
+                // OrdinaryCreateFromConstructor at the spec-mandated step.
+                // For user-defined constructors, resolve newTarget.prototype eagerly
+                // so Object.getPrototypeOf(this) inside the body sees the right chain.
+                if ($target instanceof JsFunction && $target->isNative()) {
+                    $newObj = new JsObject();
+                    $newObj->defineOwnProperty(
+                        '[[NewTarget]]',
+                        PropertyDescriptor::data($ntValue, false, false, false),
+                    );
+                    $result = $target->call($newObj, $callArgs);
+                    if ($result instanceof JsObject && $result !== $newObj) {
+                        return $result;
+                    }
+                    // Constructor used $this (newObj): resolve the prototype now.
+                    $ntProto = $newTarget->get('prototype');
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                    if ($useProto === null) {
+                        $targetProto = $target->get('prototype');
+                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    }
+                    if ($useProto !== null) {
+                        $newObj->setPrototype($useProto);
+                    }
+                    return $result instanceof JsObject ? $result : $newObj;
+                }
+
+                // User-defined constructor: resolve newTarget.prototype before execution.
                 $ntProto = $newTarget->get('prototype');
                 $useProto = $ntProto instanceof JsObject ? $ntProto : null;
                 if ($useProto === null) {
-                    // Fall back to target's prototype when newTarget.prototype is not an object.
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
                 }
                 $newObj = new JsObject($useProto);
-                $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
                 $newObj->defineOwnProperty(
                     '[[NewTarget]]',
                     PropertyDescriptor::data($ntValue, false, false, false),

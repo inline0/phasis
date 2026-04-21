@@ -44,6 +44,13 @@ class Environment
     private ?\PhpJs\Value\JsObject $withObject = null;
 
     /**
+     * Set after get() resolves a name through a with-object environment.
+     * Used by the interpreter to determine WithBaseObject() for this-binding
+     * in call expressions without triggering an extra [[Has]] proxy trap.
+     */
+    public ?\PhpJs\Value\JsObject $lastWithBase = null;
+
+    /**
      * Tracks the kind of function this environment belongs to.
      * Used by EvalDeclarationInstantiation to enforce restrictions on
      * var arguments declarations in generators and arrow functions.
