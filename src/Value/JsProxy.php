@@ -285,7 +285,7 @@ class JsProxy extends JsObject
      * (target, P, V, Receiver) and validates invariants. When missing,
      * forwards to target.[[Set]](P, V, Receiver).
      */
-    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
         $trap = $this->getTrap('set');
         if ($trap !== null) {
@@ -470,23 +470,9 @@ class JsProxy extends JsObject
         $trap = $this->getTrap('ownKeys');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target]);
-            $trapResult = $this->trapResultToPropertyKeys($result);
-            // Build stringified list for invariant validation.
-            $stringified = [];
-            foreach ($trapResult as $k) {
-                $stringified[] = ($k instanceof JsSymbol)
-                    ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
-                    : ($k instanceof JsString ? $k->value : (string) $k);
-            }
-            $this->validateOwnKeysInvariants($stringified);
-            // Return string keys only (symbols are handled via ordinaryOwnPropertyKeys).
-            $stringKeys = [];
-            foreach ($trapResult as $k) {
-                if ($k instanceof JsString) {
-                    $stringKeys[] = $k->value;
-                }
-            }
-            return $stringKeys;
+            $trapResult = $this->trapResultToStringArray($result);
+            $this->validateOwnKeysInvariants($trapResult);
+            return $trapResult;
         }
         // Forward to target's [[OwnPropertyKeys]] in spec order.
         return $this->target->getOwnPropertyNames();
@@ -1238,20 +1224,20 @@ class JsProxy extends JsObject
             throw new TypeError('\'ownKeys\' on proxy: trap returned non-object');
         }
         $keys = [];
-        // Per CreateListFromArrayLike: read "length" and iterate indexed elements.
-        $lenVal = $result->get('length');
-        $len = (int) \PhpJs\Spec\TypeConversion::toLength($lenVal);
-        for ($i = 0; $i < $len; $i++) {
-            $elem = $result->get((string) $i);
-            if ($elem instanceof JsSymbol) {
-                $keys[] = $elem;
-            } elseif ($elem instanceof JsString) {
-                $keys[] = $elem;
-            } else {
-                throw new TypeError(
-                    \PhpJs\Spec\TypeConversion::toString($elem)
-                    . ' is not a valid property name'
-                );
+        if ($result instanceof JsArray) {
+            $len = $result->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $elem = $result->get((string) $i);
+                if ($elem instanceof JsSymbol) {
+                    $keys[] = $elem;
+                } elseif ($elem instanceof JsString) {
+                    $keys[] = $elem;
+                } else {
+                    throw new TypeError(
+                        \PhpJs\Spec\TypeConversion::toString($elem)
+                        . ' is not a valid property name'
+                    );
+                }
             }
         }
         return $keys;

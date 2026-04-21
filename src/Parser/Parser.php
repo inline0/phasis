@@ -639,14 +639,6 @@ class Parser
     private function parseForStatement(): Node
     {
         $location = $this->expect(TokenType::For)->location;
-
-        // for await (... of ...) — only valid inside async functions/generators.
-        $isAwait = false;
-        if ($this->check(TokenType::Await)) {
-            $isAwait = true;
-            $this->advance();
-        }
-
         $this->expect(TokenType::LeftParen);
 
         // Per spec: `let` is a declaration keyword in for-headers only when
@@ -671,8 +663,8 @@ class Parser
             $id = $this->parseBindingPattern();
             $init = null;
 
-            // for (var x in ...) — not valid with await
-            if ($this->check(TokenType::In) && !$isAwait) {
+            // for (var x in ...)
+            if ($this->check(TokenType::In)) {
                 $this->advance();
                 $right = $this->parseExpression();
                 $this->expect(TokenType::RightParen);
@@ -685,7 +677,7 @@ class Parser
                 return new ForInStatement($location, $left, $right, $body);
             }
 
-            // for (var x of ...) or for await (var x of ...)
+            // for (var x of ...)
             if ($this->check(TokenType::Of)) {
                 $this->advance();
                 $right = $this->parseAssignmentExpression();
@@ -696,7 +688,7 @@ class Parser
                     $kind,
                     [new VariableDeclarator($id->location, $id, null)],
                 );
-                return new ForOfStatement($location, $left, $right, $body, $isAwait);
+                return new ForOfStatement($location, $left, $right, $body, false);
             }
 
             // Regular for with var declaration
@@ -753,7 +745,7 @@ class Parser
         $init = $this->parseExpression();
         $this->noIn = false;
 
-        if ($this->check(TokenType::In) && !$isAwait) {
+        if ($this->check(TokenType::In)) {
             $this->advance();
             $right = $this->parseExpression();
             $this->expect(TokenType::RightParen);
@@ -766,7 +758,7 @@ class Parser
             $right = $this->parseAssignmentExpression();
             $this->expect(TokenType::RightParen);
             $body = $this->parseStatement();
-            return new ForOfStatement($location, $init, $right, $body, $isAwait);
+            return new ForOfStatement($location, $init, $right, $body, false);
         }
 
         // Regular for
@@ -1272,8 +1264,6 @@ class Parser
             && !$this->check(TokenType::RightBracket)
             && !$this->check(TokenType::Comma)
             && !$this->check(TokenType::Colon)
-            && !$this->check(TokenType::TemplateMiddle)
-            && !$this->check(TokenType::TemplateTail)
             && !$this->isAtEnd()
             && ($delegate || !$this->current()->lineTerminatorBefore)
         ) {
@@ -1286,14 +1276,6 @@ class Parser
     private function parsePrimaryExpression(): Node
     {
         $token = $this->current();
-
-        // When the lexer emitted Slash or SlashEqual after a RightBrace (which
-        // could be a block, function body, or class body), we are actually at the
-        // start of a regex literal. Re-scan from the source text.
-        if ($token->type === TokenType::Slash || $token->type === TokenType::SlashEqual) {
-            $this->rescanSlashAsRegExp();
-            $token = $this->current();
-        }
 
         return match ($token->type) {
             TokenType::Number => $this->parseNumericLiteral(),
@@ -2263,108 +2245,5 @@ class Parser
         }
 
         throw new ParseError('Expected semicolon', $this->current());
-    }
-
-    /**
-     * Re-scan a Slash or SlashEqual token as a RegExp literal.
-     *
-     * The lexer cannot always determine whether / starts a regex or is a
-     * division operator because that requires parser context. When the parser
-     * reaches a Slash/SlashEqual at the start of a primary expression, it
-     * re-reads the source from the token's offset to extract the full regex,
-     * then splices a RegExp token into the token stream, removing any tokens
-     * that were part of the regex body/flags (which the lexer had split into
-     * separate tokens like Slash, Identifier, Number, etc.).
-     */
-    private function rescanSlashAsRegExp(): void
-    {
-        $token = $this->tokens[$this->pos];
-        $offset = $token->location->offset;
-        $src = $this->source;
-        $len = strlen($src);
-
-        // The source at $offset should start with '/'.
-        if ($offset >= $len || $src[$offset] !== '/') {
-            return;
-        }
-
-        $i = $offset + 1;
-        $pattern = '';
-        $inCharClass = false;
-
-        while ($i < $len) {
-            $ch = $src[$i];
-
-            if ($ch === '\\') {
-                $pattern .= $ch;
-                $i++;
-                if ($i < $len) {
-                    $ch2 = $src[$i];
-                    if ($ch2 === "\n" || $ch2 === "\r") {
-                        return; // Unterminated regex, let the error propagate normally.
-                    }
-                    $pattern .= $ch2;
-                    $i++;
-                }
-                continue;
-            }
-
-            if ($ch === '[') {
-                $inCharClass = true;
-                $pattern .= $ch;
-                $i++;
-                continue;
-            }
-
-            if ($ch === ']' && $inCharClass) {
-                $inCharClass = false;
-                $pattern .= $ch;
-                $i++;
-                continue;
-            }
-
-            if ($ch === '/' && !$inCharClass) {
-                $i++; // skip closing /
-                break;
-            }
-
-            if ($ch === "\n" || $ch === "\r") {
-                return; // Unterminated regex.
-            }
-
-            $pattern .= $ch;
-            $i++;
-        }
-
-        // Read flags.
-        $flags = '';
-        while ($i < $len && preg_match('/[a-zA-Z]/', $src[$i])) {
-            $flags .= $src[$i];
-            $i++;
-        }
-
-        $regExpValue = '/' . $pattern . '/' . $flags;
-        $regExpToken = new Token(
-            TokenType::RegExp,
-            $regExpValue,
-            $token->location,
-            $token->lineTerminatorBefore,
-        );
-
-        // Remove tokens that the lexer produced from the regex source region.
-        // Everything from the current position whose source offset is less than $i.
-        $removeCount = 0;
-        for ($j = $this->pos; $j < count($this->tokens); $j++) {
-            $t = $this->tokens[$j];
-            if ($t->location->offset >= $i) {
-                break;
-            }
-            $removeCount++;
-        }
-        if ($removeCount < 1) {
-            $removeCount = 1;
-        }
-
-        array_splice($this->tokens, $this->pos, $removeCount, [$regExpToken]);
     }
 }

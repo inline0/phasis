@@ -196,7 +196,7 @@ class JsArray extends JsObject
         }
     }
 
-    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
         if ($receiver === $this && $name !== 'length') {
             $result = parent::internalSet($name, $value, $receiver);
@@ -266,28 +266,18 @@ class JsArray extends JsObject
             $newWritable = $desc->writable !== false;
             $newLen = $uint32;
             // Delete elements above new length in descending order (step 15).
-            // Collect only actually-existing array-index properties >= newLen
-            // to avoid iterating billions of empty slots on sparse arrays.
-            $indicesToDelete = [];
-            foreach ($this->properties->keys() as $key) {
-                if (self::isArrayIndex($key)) {
-                    $idx = (int) $key;
-                    if ($idx >= $newLen) {
-                        $indicesToDelete[] = $idx;
-                    }
-                }
-            }
-            rsort($indicesToDelete, SORT_NUMERIC);
             $deleteSucceeded = true;
-            foreach ($indicesToDelete as $i) {
+            for ($i = $this->length - 1; $i >= $newLen; $i--) {
                 $key = (string) $i;
-                $elemDesc = parent::getOwnPropertyDescriptor($key);
-                if ($elemDesc !== null && $elemDesc->configurable === false) {
-                    $newLen = $i + 1;
-                    $deleteSucceeded = false;
-                    break;
+                if ($this->hasOwnProperty($key)) {
+                    $elemDesc = parent::getOwnPropertyDescriptor($key);
+                    if ($elemDesc !== null && $elemDesc->configurable === false) {
+                        $newLen = $i + 1;
+                        $deleteSucceeded = false;
+                        break;
+                    }
+                    $this->delete($key);
                 }
-                $this->delete($key);
             }
             $this->length = $newLen;
             if (!$deleteSucceeded) {

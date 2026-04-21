@@ -80,7 +80,7 @@ class JsArgumentsObject extends JsObject
      * If P is a mapped index and this is the receiver, update the
      * environment binding. Then proceed with ordinary set.
      */
-    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
         if ($receiver === $this && isset($this->parameterMap[$name]) && $this->env !== null) {
             $this->env->set($this->parameterMap[$name], $value);

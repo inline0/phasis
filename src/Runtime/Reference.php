@@ -165,22 +165,8 @@ class Reference
             return;
         }
 
-        // Per spec 6.2.3.2 PutValue step 6a: when the base is a primitive,
-        // coerce it to an object with ToObject, then call [[Set]] using the
-        // original primitive as the receiver (GetThisValue). This allows
-        // Proxy set traps on the prototype chain to fire.
-        $wrapped = TypeConversion::toObject($this->base);
-        $name = $this->resolvedName();
-        // Per spec: the receiver is the original primitive (V.[[Base]]), not the
-        // wrapper. OrdinarySetWithOwnDescriptor returns false when the receiver
-        // is not an Object, which triggers TypeError in strict mode.
-        $success = $this->symbolKey !== null
-            ? $wrapped->internalSetBySymbol($this->symbolKey, $value, $this->base)
-            : $wrapped->internalSet($name, $value, $this->base);
-        if (!$success && $this->strict) {
-            throw new TypeError(
-                "Cannot assign to read only property '{$name}' of a primitive"
-            );
+        if ($this->strict) {
+            throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}' of a primitive");
         }
     }
 }

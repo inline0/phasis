@@ -311,7 +311,7 @@ class GlobalObject
 
         // Store %ThrowTypeError% so the arguments object creator can reuse
         // the same function identity per spec requirement.
-        $env->defineInternal('__ThrowTypeError__', $thrower);
+        $env->defineVar('__ThrowTypeError__', $thrower);
 
         // Per spec §19.2.3.3, Function.prototype.call passes thisArg as-is.
         // Sloppy-mode this-wrapping happens inside the function body, not here.
@@ -579,7 +579,7 @@ class GlobalObject
                 true,
             ),
         );
-        $env->defineInternal('__IteratorPrototype__', $iteratorPrototype);
+        $env->defineVar('__IteratorPrototype__', $iteratorPrototype);
 
         // Set up %GeneratorFunction%, %GeneratorFunction.prototype%, and %GeneratorPrototype%.
         // Per spec 27.3: GeneratorFunction.prototype is an ordinary non-callable object
@@ -774,8 +774,8 @@ class GlobalObject
         // Register the intrinsic so JsGenerator can use it as fallback when fn.prototype is not an Object.
         \PhpJs\Value\JsGenerator::setGeneratorPrototype($generatorPrototype);
         // Store for interpreter access.
-        $env->defineInternal('__GeneratorPrototype__', $generatorPrototype);
-        $env->defineInternal('__GeneratorFunctionPrototype__', $generatorFunctionProto);
+        $env->defineVar('__GeneratorPrototype__', $generatorPrototype);
+        $env->defineVar('__GeneratorFunctionPrototype__', $generatorFunctionProto);
         $env->defineVar('GeneratorFunction', $genFnConstructor);
     }
 
@@ -1400,80 +1400,27 @@ class GlobalObject
     private static function checkNoWithStatements(array $statements): void
     {
         foreach ($statements as $stmt) {
-            self::checkNodeForWith($stmt);
-        }
-    }
-
-    private static function checkNodeForWith(\PhpJs\Ast\Node $node): void
-    {
-        if ($node instanceof \PhpJs\Ast\Statement\WithStatement) {
-            throw new \PhpJs\Exceptions\SyntaxError(
-                'Strict mode code may not include a with statement',
-            );
-        }
-        if ($node instanceof \PhpJs\Ast\Statement\BlockStatement) {
-            foreach ($node->body as $child) {
-                self::checkNodeForWith($child);
+            if ($stmt instanceof \PhpJs\Ast\Statement\WithStatement) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Strict mode code may not include a with statement',
+                );
             }
-        } elseif ($node instanceof \PhpJs\Ast\Statement\IfStatement) {
-            self::checkNodeForWith($node->consequent);
-            if ($node->alternate !== null) {
-                self::checkNodeForWith($node->alternate);
-            }
-        } elseif (
-            $node instanceof \PhpJs\Ast\Statement\ForStatement
-            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\DoWhileStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForInStatement
-            || $node instanceof \PhpJs\Ast\Statement\ForOfStatement
-        ) {
-            self::checkNodeForWith($node->body);
-        } elseif ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
-            self::checkNodeForWith($node->block);
-            if ($node->handler !== null) {
-                self::checkNodeForWith($node->handler->body);
-            }
-            if ($node->finalizer !== null) {
-                self::checkNodeForWith($node->finalizer);
-            }
-        } elseif ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
-            foreach ($node->cases as $case) {
-                foreach ($case->consequent as $child) {
-                    self::checkNodeForWith($child);
+            if ($stmt instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                self::checkNoWithStatements($stmt->body);
+            } elseif ($stmt instanceof \PhpJs\Ast\Statement\IfStatement) {
+                if ($stmt->consequent instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                    self::checkNoWithStatements($stmt->consequent->body);
+                } elseif ($stmt->consequent instanceof \PhpJs\Ast\Statement\WithStatement) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                }
+                if ($stmt->alternate !== null) {
+                    if ($stmt->alternate instanceof \PhpJs\Ast\Statement\BlockStatement) {
+                        self::checkNoWithStatements($stmt->alternate->body);
+                    } elseif ($stmt->alternate instanceof \PhpJs\Ast\Statement\WithStatement) {
+                        throw new \PhpJs\Exceptions\SyntaxError('Strict mode code may not include a with statement');
+                    }
                 }
             }
-        } elseif ($node instanceof \PhpJs\Ast\Statement\LabeledStatement) {
-            self::checkNodeForWith($node->body);
-        } elseif ($node instanceof \PhpJs\Ast\Declaration\VariableDeclaration) {
-            foreach ($node->declarations as $decl) {
-                if ($decl->init !== null) {
-                    self::checkExprForWith($decl->init);
-                }
-            }
-        } elseif ($node instanceof \PhpJs\Ast\Statement\ExpressionStatement) {
-            self::checkExprForWith($node->expression);
-        } elseif ($node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
-            if ($node->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                foreach ($node->body->body as $child) {
-                    self::checkNodeForWith($child);
-                }
-            }
-        }
-    }
-
-    private static function checkExprForWith(\PhpJs\Ast\Node $expr): void
-    {
-        if (
-            $expr instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $expr instanceof \PhpJs\Ast\Expression\ArrowFunction
-        ) {
-            if ($expr->body instanceof \PhpJs\Ast\Statement\BlockStatement) {
-                foreach ($expr->body->body as $child) {
-                    self::checkNodeForWith($child);
-                }
-            }
-        } elseif ($expr instanceof \PhpJs\Ast\Expression\AssignmentExpression) {
-            self::checkExprForWith($expr->right);
         }
     }
 }

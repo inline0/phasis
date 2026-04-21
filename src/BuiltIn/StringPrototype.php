@@ -197,8 +197,6 @@ class StringPrototype
         $d('codePointAt', self::codePointAt(), 1);
         $d('normalize', self::normalize(), 0);
         $d('localeCompare', self::localeCompare(), 1);
-        $d('isWellFormed', self::isWellFormed(), 0);
-        $d('toWellFormed', self::toWellFormed(), 0);
 
         // String.prototype.length is 0 per spec (it is the empty string object).
         $proto->defineOwnProperty('length', PropertyDescriptor::data(new JsNumber(0), false, false, false));
@@ -342,7 +340,7 @@ class StringPrototype
         \PhpJs\Value\JsString::setStringPrototype($proto);
 
         // Store the prototype so the interpreter can access it for auto-boxing.
-        $env->defineInternal('__StringPrototype__', $proto);
+        $env->defineVar('__StringPrototype__', $proto);
     }
 
     private static function rawFn(): \Closure
@@ -2161,6 +2159,81 @@ class StringPrototype
                 $str .= $ch !== false ? $ch : '';
             }
             return new JsString($str);
+        };
+    }
+
+    /**
+     * String.prototype.isWellFormed() per spec.
+     *
+     * Returns true if the string contains no lone surrogates.
+     */
+    private static function isWellFormed(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16Len = (int) (strlen($u16) / 2);
+            $i = 0;
+            while ($i < $u16Len) {
+                $cu = ord($u16[$i * 2])
+                    | (ord($u16[$i * 2 + 1]) << 8);
+                if ($cu >= 0xD800 && $cu <= 0xDBFF) {
+                    if ($i + 1 >= $u16Len) {
+                        return new JsBoolean(false);
+                    }
+                    $next = ord($u16[($i + 1) * 2])
+                        | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                    if ($next < 0xDC00 || $next > 0xDFFF) {
+                        return new JsBoolean(false);
+                    }
+                    $i += 2;
+                } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
+                    return new JsBoolean(false);
+                } else {
+                    $i++;
+                }
+            }
+            return new JsBoolean(true);
+        };
+    }
+
+    /**
+     * String.prototype.toWellFormed() per spec.
+     *
+     * Returns a new string with lone surrogates replaced by U+FFFD.
+     */
+    private static function toWellFormed(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $u16Len = (int) (strlen($u16) / 2);
+            $out = '';
+            $i = 0;
+            while ($i < $u16Len) {
+                $cu = ord($u16[$i * 2])
+                    | (ord($u16[$i * 2 + 1]) << 8);
+                if ($cu >= 0xD800 && $cu <= 0xDBFF) {
+                    if ($i + 1 < $u16Len) {
+                        $next = ord($u16[($i + 1) * 2])
+                            | (ord($u16[($i + 1) * 2 + 1]) << 8);
+                        if ($next >= 0xDC00 && $next <= 0xDFFF) {
+                            $out .= substr($u16, $i * 2, 4);
+                            $i += 2;
+                            continue;
+                        }
+                    }
+                    $out .= pack('v', 0xFFFD);
+                    $i++;
+                } elseif ($cu >= 0xDC00 && $cu <= 0xDFFF) {
+                    $out .= pack('v', 0xFFFD);
+                    $i++;
+                } else {
+                    $out .= substr($u16, $i * 2, 2);
+                    $i++;
+                }
+            }
+            return new JsString(JsString::utf16LEToUtf8($out));
         };
     }
 }

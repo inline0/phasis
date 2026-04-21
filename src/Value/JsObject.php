@@ -70,9 +70,9 @@ class JsObject implements JsValue
      * Needed because the constructor's `null ?? $globalPrototype` falls back to
      * the global prototype when null is passed.
      */
-    public static function createNullPrototype(): self
+    public static function createNullPrototype(): static
     {
-        $obj = new self();
+        $obj = new static();
         $obj->prototype = null;
         return $obj;
     }
@@ -158,16 +158,6 @@ class JsObject implements JsValue
      */
     protected function getWithReceiver(string $name, JsObject $receiver): JsValue
     {
-        return $this->getWithValueReceiver($name, $receiver);
-    }
-
-    /**
-     * Like getWithReceiver but accepts any JsValue as receiver.
-     * This implements the spec's GetV(V, P) where V can be a primitive.
-     * Getter accessors are invoked with the receiver as their `this` value.
-     */
-    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
-    {
         $desc = $this->properties->get($name);
         if ($desc !== null) {
             if ($desc->get !== null) {
@@ -179,7 +169,7 @@ class JsObject implements JsValue
 
         $proto = $this->getPrototype();
         if ($proto !== null) {
-            return $proto->getWithValueReceiver($name, $receiver);
+            return $proto->getWithReceiver($name, $receiver);
         }
 
         return JsUndefined::instance();
@@ -221,7 +211,7 @@ class JsObject implements JsValue
      * indicating success or failure. The receiver is the original object
      * that the property assignment was initiated on.
      */
-    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
         $ownDesc = $this->getOwnPropertyDescriptor($name);
         return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
@@ -235,7 +225,7 @@ class JsObject implements JsValue
     protected function ordinarySetWithOwnDescriptor(
         string $name,
         JsValue $value,
-        JsValue $receiver,
+        JsObject $receiver,
         ?PropertyDescriptor $ownDesc,
     ): bool {
         if ($ownDesc === null) {
@@ -250,10 +240,6 @@ class JsObject implements JsValue
 
         if ($ownDesc->isDataDescriptor()) {
             if ($ownDesc->writable === false) {
-                return false;
-            }
-            // Per spec step 4.b: If Receiver is not an Object, return false.
-            if (!$receiver instanceof JsObject) {
                 return false;
             }
             // Check the receiver for its own property.
@@ -284,11 +270,7 @@ class JsObject implements JsValue
 
         // Accessor descriptor.
         if ($ownDesc->set !== null) {
-            if ($receiver instanceof JsObject) {
-                $ownDesc->set->call($receiver, [$value]);
-            } else {
-                $ownDesc->set->call(TypeConversion::toObject($receiver), [$value]);
-            }
+            $ownDesc->set->call($receiver, [$value]);
             return true;
         }
         return false;
@@ -385,27 +367,19 @@ class JsObject implements JsValue
      * so that setters are invoked with the correct `this`.
      * Returns false if the set failed (non-configurable/non-writable).
      */
-    public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsValue $receiver): bool
+    public function internalSetBySymbol(JsSymbol $symbol, JsValue $value, JsObject $receiver): bool
     {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
             $desc = $this->symbolProperties[$id];
             if ($desc->set !== null) {
-                if ($receiver instanceof JsObject) {
-                    $desc->set->call($receiver, [$value]);
-                } else {
-                    $desc->set->call(TypeConversion::toObject($receiver), [$value]);
-                }
+                $desc->set->call($receiver, [$value]);
                 return true;
             }
             if ($desc->isAccessorDescriptor()) {
                 return false;
             }
             if ($desc->writable === false) {
-                return false;
-            }
-            // Per spec: If Receiver is not an Object, return false.
-            if (!$receiver instanceof JsObject) {
                 return false;
             }
             // Per OrdinarySet: if the property is found on the receiver itself,
@@ -438,10 +412,6 @@ class JsObject implements JsValue
         $proto = $this->getPrototype();
         if ($proto !== null) {
             return $proto->internalSetBySymbol($symbol, $value, $receiver);
-        }
-        // Per spec: If Receiver is not an Object, return false.
-        if (!$receiver instanceof JsObject) {
-            return false;
         }
         if (!$receiver->extensible) {
             return false;

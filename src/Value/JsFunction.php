@@ -350,9 +350,19 @@ class JsFunction extends JsObject
     public function getPrototype(): ?JsObject
     {
         if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
+            // Async generator functions use %AsyncGeneratorFunction.prototype%.
+            if (
+                $this->isAsync
+                && $this->isGenerator
+                && self::$asyncGeneratorFunctionPrototype !== null
+                && $this !== self::$asyncGeneratorFunctionPrototype
+            ) {
+                return self::$asyncGeneratorFunctionPrototype;
+            }
             // Generator functions use %GeneratorFunction.prototype% instead of %Function.prototype%.
             if (
                 $this->isGenerator
+                && !$this->isAsync
                 && self::$generatorFunctionPrototype !== null
                 && $this !== self::$generatorFunctionPrototype
             ) {

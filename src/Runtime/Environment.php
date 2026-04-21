@@ -44,13 +44,6 @@ class Environment
     private ?\PhpJs\Value\JsObject $withObject = null;
 
     /**
-     * Set after get() resolves a name through a with-object environment.
-     * Used by the interpreter to determine WithBaseObject() for this-binding
-     * in call expressions without triggering an extra [[Has]] proxy trap.
-     */
-    public ?\PhpJs\Value\JsObject $lastWithBase = null;
-
-    /**
      * Tracks the kind of function this environment belongs to.
      * Used by EvalDeclarationInstantiation to enforce restrictions on
      * var arguments declarations in generators and arrow functions.
@@ -112,26 +105,18 @@ class Environment
         return isset($this->lexical[$name]);
     }
 
-    /**
-     * Define an internal binding that is NOT synced to the global object.
-     * Used for engine-internal prototypes (__ObjectPrototype__, etc.)
-     * and special bindings like 'this' / 'globalThis'.
-     */
-    public function defineInternal(string $name, JsValue $value): void
-    {
-        unset($this->tdz[$name]);
-        $this->bindings[$name] = $value;
-    }
-
     /** Define a var-declared variable in the current environment. */
     public function defineVar(string $name, JsValue $value): void
     {
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         // Sync to the linked global object if present.
+        // Skip internal bindings that start with __ (prototypes, etc.)
+        // and the special 'this'/'globalThis' bindings.
         if (
             $this->linkedObject !== null
             && $name !== 'this' && $name !== 'globalThis'
+            && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
         ) {
             $this->linkedObject->defineOwnProperty(
                 $name,
@@ -281,6 +266,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
+                && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
             ) {
                 $this->linkedObject->defineOwnProperty(
                     $name,
@@ -301,15 +287,10 @@ class Environment
      */
     public function get(string $name, bool $strict = false): JsValue
     {
-        // Reset with-base tracking. The root caller will see the final value.
-        $this->lastWithBase = null;
-
         // "with" object environment record: HasBinding + GetBindingValue.
         if ($this->withObject !== null) {
             // HasBinding: HasProperty then @@unscopables.
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
-                // Track that this resolution went through a with-object.
-                $this->lastWithBase = $this->withObject;
                 // GetBindingValue (9.1.1.2.6): a separate HasProperty check
                 // is required per spec. The @@unscopables getter above can
                 // have side effects (e.g. deleting the property), and Proxy
@@ -402,6 +383,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
+                && !(str_starts_with($name, '__') && str_ends_with($name, '__'))
                 && $this->linkedObject->hasOwnProperty($name)
             ) {
                 $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
@@ -511,11 +493,6 @@ class Environment
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->deletable[$name])) {
                 unset($this->bindings[$name], $this->deletable[$name]);
-                // Also remove from the linked global object so that a
-                // subsequent get() does not find a stale property there.
-                if ($this->linkedObject !== null) {
-                    $this->linkedObject->delete($name);
-                }
                 return true;
             }
             // Declared bindings are not deletable.

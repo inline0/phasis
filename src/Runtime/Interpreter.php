@@ -198,9 +198,6 @@ class Interpreter
             $this->validateStrictModeRestrictions($program->body);
         }
 
-        // Validate functions that enable strict mode via their own "use strict" directive.
-        $this->validateSelfStrictFunctions($program->body);
-
         $this->validateGlobalLexDecls($program->body);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
@@ -375,7 +372,6 @@ class Interpreter
     public function executeBody(array $statements, Environment $env): Completion
     {
         $result = JsUndefined::instance();
-        $hasValue = false;
         foreach ($statements as $stmt) {
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
@@ -393,14 +389,9 @@ class Interpreter
             // Empty completions don't override the accumulated value
             if (!$completion->empty) {
                 $result = $completion->value;
-                $hasValue = true;
             }
         }
-        // When no statement produced a non-empty completion (e.g. empty block,
-        // or all statements were empty like EmptyStatement), propagate
-        // empty: true so that callers implementing UpdateEmpty (like eval)
-        // can preserve the previous accumulated value.
-        return new Completion(CompletionType::Normal, $result, empty: !$hasValue);
+        return Completion::normal($result);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -1328,37 +1319,8 @@ class Interpreter
                 }
             }
 
-            // Per spec SuperCall step 6: Construct(func, argList, newTarget).
-            // The super constructor must be invoked with [[Construct]] semantics.
-            // Temporarily set [[NewTarget]] on currentThis so that callFunction's
-            // class-constructor guard recognizes this as a construct call.
-            // Retrieve newTarget from the current environment.
-            $newTarget = null;
-            try {
-                $nt = $env->get('[[NewTarget]]');
-                if (!$nt instanceof JsUndefined) {
-                    $newTarget = $nt;
-                }
-            } catch (\Throwable) {
-            }
-            $hadNewTarget = false;
-            if ($currentThis instanceof JsObject) {
-                $hadNewTarget = !($currentThis->get('[[NewTarget]]') instanceof JsUndefined);
-                if (!$hadNewTarget && $newTarget instanceof JsFunction) {
-                    $currentThis->defineOwnProperty(
-                        '[[NewTarget]]',
-                        \PhpJs\Object\PropertyDescriptor::data($newTarget, false, false, false),
-                    );
-                }
-            }
-            try {
-                $result = $this->callFunction($superCtor, $currentThis, $args);
-            } finally {
-                // Clean up the temporary [[NewTarget]] marker.
-                if ($currentThis instanceof JsObject && !$hadNewTarget) {
-                    $currentThis->forceDelete('[[NewTarget]]');
-                }
-            }
+            // Call the super constructor. It may return a new object (factory pattern).
+            $result = $this->callFunction($superCtor, $currentThis, $args);
 
             // Per spec 8.1.1.3.1 BindThisValue: if this is already initialized,
             // calling super() again throws ReferenceError. The check happens AFTER
@@ -1593,15 +1555,18 @@ class Interpreter
             $callee = $this->evaluate($node->callee, $env);
             // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
             // via an Object Environment Record (with statement), thisValue =
-            // envRec.WithBaseObject(). Use the lastWithBase flag set during get()
-            // to avoid triggering an extra [[Has]] proxy trap.
+            // envRec.WithBaseObject(). Walk the scope chain to find the with-object.
             if ($node->callee instanceof Identifier && !empty($this->withEnvObjects)) {
+                $name = $node->callee->name;
                 $walkEnv = $env;
                 while ($walkEnv !== null) {
-                    if ($walkEnv->lastWithBase !== null) {
-                        $thisValue = $walkEnv->lastWithBase;
-                        $walkEnv->lastWithBase = null;
-                        break;
+                    $envId = spl_object_id($walkEnv);
+                    if (isset($this->withEnvObjects[$envId])) {
+                        $withObj = $this->withEnvObjects[$envId];
+                        if ($withObj->has($name)) {
+                            $thisValue = $withObj;
+                            break;
+                        }
                     }
                     $walkEnv = $walkEnv->getParent();
                 }
@@ -1774,15 +1739,6 @@ class Interpreter
             } catch (\PhpJs\Exceptions\SyntaxError $e) {
                 $this->throwJsValue($this->phpExceptionToJsValue($e));
             }
-        }
-
-        // Per spec: functions that contain a "use strict" directive in their body
-        // are strict even when the enclosing code is sloppy. Validate parameters
-        // of such functions as early errors.
-        try {
-            $this->validateSelfStrictFunctions($program->body);
-        } catch (\PhpJs\Exceptions\SyntaxError $e) {
-            $this->throwJsValue($this->phpExceptionToJsValue($e));
         }
 
         if ($evalStrict && !$this->strictMode) {
@@ -2289,13 +2245,9 @@ class Interpreter
         }
 
         // Variable declarations must not use strict-mode reserved words as binding names.
-        // Also validate function expressions nested in initializers.
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
                 $this->checkStrictBindingNames($decl->id);
-                if ($decl->init !== null) {
-                    $this->validateStrictExpressions($decl->init);
-                }
             }
         }
 
@@ -2329,7 +2281,6 @@ class Interpreter
             foreach ($node->params as $param) {
                 $this->checkStrictBindingNames($param);
             }
-            $this->checkDuplicateParams($node->params);
         }
 
         if ($node instanceof TryStatement) {
@@ -2432,13 +2383,9 @@ class Interpreter
     private function checkStrictExpressionNode(Node $node): void
     {
         if ($node instanceof AssignmentExpression && $node->left instanceof Identifier) {
-            if (
-                $this->isStrictReservedWord($node->left->name)
-                || $node->left->name === 'eval'
-                || $node->left->name === 'arguments'
-            ) {
+            if ($this->isStrictReservedWord($node->left->name)) {
                 throw new \PhpJs\Exceptions\SyntaxError(
-                    "Assignment to eval or arguments is not allowed in strict mode",
+                    "Unexpected strict mode reserved word '{$node->left->name}'",
                 );
             }
         }
@@ -2456,7 +2403,6 @@ class Interpreter
             foreach ($params as $param) {
                 $this->checkStrictBindingNames($param);
             }
-            $this->checkDuplicateParams($params);
             // Validate body statements.
             if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
                 $body = $node->body->body;
@@ -2497,149 +2443,6 @@ class Interpreter
         } elseif ($node instanceof BinaryExpression) {
             $this->validateStrictExpressions($node->left);
             $this->validateStrictExpressions($node->right);
-        }
-    }
-
-    /**
-     * Check for duplicate parameter names in strict mode functions.
-     *
-     * @param Node[] $params
-     */
-    private function checkDuplicateParams(array $params): void
-    {
-        $names = [];
-        foreach ($params as $param) {
-            $this->collectParamNames($param, $names);
-        }
-        $seen = [];
-        foreach ($names as $name) {
-            if (isset($seen[$name])) {
-                throw new \PhpJs\Exceptions\SyntaxError(
-                    "Duplicate parameter name not allowed in this context",
-                );
-            }
-            $seen[$name] = true;
-        }
-    }
-
-    /**
-     * Collect binding names from a parameter pattern.
-     *
-     * @param string[] &$names
-     */
-    private function collectParamNames(Node $node, array &$names): void
-    {
-        if ($node instanceof Identifier) {
-            $names[] = $node->name;
-        } elseif ($node instanceof AssignmentPattern) {
-            $this->collectParamNames($node->left, $names);
-        } elseif ($node instanceof RestElement) {
-            $this->collectParamNames($node->argument, $names);
-        } elseif ($node instanceof ArrayPattern) {
-            foreach ($node->elements as $el) {
-                if ($el !== null) {
-                    $this->collectParamNames($el, $names);
-                }
-            }
-        } elseif ($node instanceof ObjectPattern) {
-            foreach ($node->properties as $prop) {
-                if ($prop instanceof AssignmentProperty) {
-                    $this->collectParamNames($prop->value, $names);
-                } elseif ($prop instanceof RestElement) {
-                    $this->collectParamNames($prop->argument, $names);
-                }
-            }
-        }
-    }
-
-    /**
-     * Find function declarations/expressions that have "use strict" in their own
-     * body, and validate their parameters as strict mode early errors.
-     * This catches cases like: function f(eval) { "use strict"; }
-     *
-     * @param Node[] $statements
-     */
-    private function validateSelfStrictFunctions(array $statements): void
-    {
-        foreach ($statements as $stmt) {
-            $this->findAndValidateSelfStrictFunction($stmt);
-        }
-    }
-
-    private function findAndValidateSelfStrictFunction(Node $node): void
-    {
-        // Function declaration with "use strict" in body.
-        if ($node instanceof FunctionDeclaration && $node->body instanceof BlockStatement) {
-            if ($this->hasUseStrictDirective($node->body->body)) {
-                foreach ($node->params as $param) {
-                    $this->checkStrictBindingNames($param);
-                }
-                $this->checkDuplicateParams($node->params);
-                if (
-                    $this->isStrictReservedWord($node->id->name)
-                    || $node->id->name === 'eval'
-                    || $node->id->name === 'arguments'
-                ) {
-                    throw new \PhpJs\Exceptions\SyntaxError(
-                        "Unexpected eval or arguments in strict mode",
-                    );
-                }
-                // Also validate body.
-                $this->validateStrictModeRestrictions($node->body->body);
-            }
-            // Recurse into the body for nested functions.
-            foreach ($node->body->body as $child) {
-                $this->findAndValidateSelfStrictFunction($child);
-            }
-            return;
-        }
-
-        // Function expression with "use strict" in body.
-        if ($node instanceof FunctionExpression && $node->body instanceof BlockStatement) {
-            if ($this->hasUseStrictDirective($node->body->body)) {
-                foreach ($node->params as $param) {
-                    $this->checkStrictBindingNames($param);
-                }
-                $this->checkDuplicateParams($node->params);
-                if ($node->name !== null) {
-                    if (
-                        $this->isStrictReservedWord($node->name)
-                        || $node->name === 'eval'
-                        || $node->name === 'arguments'
-                    ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
-                            "Unexpected eval or arguments in strict mode",
-                        );
-                    }
-                }
-                $this->validateStrictModeRestrictions($node->body->body);
-            }
-            foreach ($node->body->body as $child) {
-                $this->findAndValidateSelfStrictFunction($child);
-            }
-            return;
-        }
-
-        // Recurse into statement structures.
-        if ($node instanceof ExpressionStatement) {
-            $this->findAndValidateSelfStrictFunction($node->expression);
-        } elseif ($node instanceof VariableDeclaration) {
-            foreach ($node->declarations as $decl) {
-                if ($decl->init !== null) {
-                    $this->findAndValidateSelfStrictFunction($decl->init);
-                }
-            }
-        } elseif ($node instanceof BlockStatement) {
-            foreach ($node->body as $child) {
-                $this->findAndValidateSelfStrictFunction($child);
-            }
-        } elseif ($node instanceof IfStatement) {
-            $this->findAndValidateSelfStrictFunction($node->consequent);
-            if ($node->alternate !== null) {
-                $this->findAndValidateSelfStrictFunction($node->alternate);
-            }
-        } elseif ($node instanceof AssignmentExpression) {
-            $this->findAndValidateSelfStrictFunction($node->right);
         }
     }
 
@@ -3225,27 +3028,11 @@ class Interpreter
                 $fnEnv->declareLet('this');
                 // Store the newObj so super() can pass it to the parent constructor.
                 $fnEnv->defineVar('[[PendingThis]]', $thisValue);
-                // Per spec: [[NewTarget]] must be available in derived constructors
-                // for super() calls and new.target access. Arrow functions inside
-                // the constructor inherit it from this scope.
-                $ntDesc = $thisValue instanceof JsObject
-                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
-                    : null;
-                if ($ntDesc !== null) {
-                    $nt = $ntDesc->value;
-                    $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
-                } else {
-                    $fnEnv->defineVar('[[NewTarget]]', $fn);
-                }
             } else {
                 $fnEnv->defineVar('this', $thisValue);
                 // new.target: set [[NewTarget]] to the constructor when called via new,
                 // or undefined otherwise. Arrow functions inherit it from the outer scope.
-                // Only constructable functions should pick up [[NewTarget]] from the
-                // thisValue. Regular methods, getters, and setters called during
-                // construction must NOT inherit [[NewTarget]] even though their
-                // thisValue may carry the [[NewTarget]] marker from the new expression.
-                $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
+                $ntDesc = $thisValue instanceof JsObject
                     ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
                     : null;
                 if ($ntDesc !== null) {
@@ -4650,17 +4437,15 @@ class Interpreter
                 // Step 5b: received is throw.
                 $throwMethod = $iterator->get('throw');
                 if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
-                    // Per spec 27.5.3.7 step 5.b.iii:
-                    // 1. Perform ? IteratorClose(iterator, NormalCompletion(empty)).
-                    //    IteratorClose (7.4.6): if return() throws, propagate that error.
-                    // 2. Then throw TypeError for the protocol violation.
-                    $returnMethod = $iterator->get('return');
-                    if ($returnMethod instanceof JsFunction) {
-                        $closeResult = $this->callFunction($returnMethod, $iterator, []);
-                        // IteratorClose step 8: if result is not an Object, throw TypeError.
-                        if (!$closeResult instanceof JsObject) {
-                            throw new TypeError('Iterator return method returned a non-object value');
+                    // Per spec: if throw is undefined, throw a TypeError and also
+                    // IteratorClose the iterator (close via return method if present).
+                    try {
+                        $returnMethod = $iterator->get('return');
+                        if ($returnMethod instanceof JsFunction) {
+                            $this->callFunction($returnMethod, $iterator, []);
                         }
+                    } catch (\Throwable) {
+                        // Ignore close errors per spec.
                     }
                     throw new TypeError('The iterator does not provide a throw method');
                 }
@@ -6256,13 +6041,8 @@ class Interpreter
             return $iterator;
         }
 
-        // Per spec 7.4.2 GetIterator: call ToObject on primitives so that
-        // Symbol.iterator can be found on their prototype (e.g. Boolean.prototype).
         if (!$iterable instanceof JsObject) {
-            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-                return null;
-            }
-            $iterable = TypeConversion::toObject($iterable);
+            return null;
         }
 
         // Check for Symbol.iterator method.
@@ -8863,9 +8643,7 @@ class Interpreter
         }
 
         // Step 7: if completion.[[type]] is throw, return Completion(completion).
-        // Only JS throw completions (RuntimeError/JsThrowable) suppress inner errors.
-        // Return completions (GeneratorReturnSignal) do not suppress inner errors.
-        if ($completion !== null && !$completion instanceof GeneratorReturnSignal) {
+        if ($completion !== null) {
             throw $completion;
         }
 
@@ -8877,12 +8655,6 @@ class Interpreter
         // Step 9: if Type(innerResult.[[value]]) is not Object, throw TypeError.
         if (!$innerResult instanceof JsObject) {
             throw new TypeError('Iterator return result is not an object');
-        }
-
-        // If we had a non-throw completion (e.g. GeneratorReturnSignal), re-throw it
-        // now that the close completed successfully.
-        if ($completion !== null) {
-            throw $completion;
         }
     }
 

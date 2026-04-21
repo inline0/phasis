@@ -96,13 +96,6 @@ class Engine
         $this->globalEnv->defineVar('this', $globalObj);
         $this->globalEnv->defineVar('globalThis', $globalObj);
 
-        // Per spec: globalThis is a property of the global object itself,
-        // writable and configurable but not enumerable.
-        $globalObj->defineOwnProperty(
-            'globalThis',
-            \PhpJs\Object\PropertyDescriptor::data($globalObj, true, false, true),
-        );
-
         // Link the global environment to the global object so that
         // top-level var declarations and assignments create properties
         // on globalThis (per ES spec 9.1.1.1 Global Environment Records).
@@ -159,13 +152,6 @@ class Engine
                         }
                     }
                 }
-                // %IteratorPrototype% -> Object.prototype
-                if ($this->globalEnv->has('__IteratorPrototype__')) {
-                    $iterProto = $this->globalEnv->get('__IteratorPrototype__');
-                    if ($iterProto instanceof JsObject && $iterProto->getPrototype() === null) {
-                        $iterProto->setPrototype($objProto);
-                    }
-                }
             }
         }
         \PhpJs\BuiltIn\ErrorConstructor::install($this->globalEnv);
@@ -185,8 +171,6 @@ class Engine
 
         \PhpJs\BuiltIn\WeakMapConstructor::install($this->globalEnv);
         \PhpJs\BuiltIn\WeakSetConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\WeakRefConstructor::install($this->globalEnv);
-        \PhpJs\BuiltIn\FinalizationRegistryConstructor::install($this->globalEnv);
 
         // BigInt constructor: callable but not intended for `new`.
         // Per spec 21.2.1, when called with `new`, throws TypeError.
@@ -910,7 +894,7 @@ class Engine
         ));
         $this->globalEnv->defineVar($name, $constructor);
         // Store prototype for internal use (e.g. Interpreter::createRegExpObject).
-        $this->globalEnv->defineInternal("__{$name}Prototype__", $proto);
+        $this->globalEnv->defineVar("__{$name}Prototype__", $proto);
     }
 
     public function eval(string $source): mixed

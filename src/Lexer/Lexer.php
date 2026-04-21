@@ -126,26 +126,13 @@ class Lexer
             return $this->readIdentifier($start);
         }
 
-        // Multi-byte Unicode identifier start (CJK, Cyrillic, etc.)
-        if (ord($ch) >= 0x80 && $this->isUnicodeIdentifierStart()) {
-            return $this->readIdentifier($start);
-        }
-
         // Unicode escape at identifier start: \uXXXX or \u{XXXX}
-        if (
-            $ch === '\\'
-            && $this->pos + 1 < $this->length
-            && $this->source[$this->pos + 1] === 'u'
-        ) {
+        if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
             return $this->readIdentifierWithEscapes($start);
         }
 
         // Numeric literals
-        if (
-            $ch === '.'
-            && $this->pos + 1 < $this->length
-            && ctype_digit($this->source[$this->pos + 1])
-        ) {
+        if ($ch === '.' && $this->pos + 1 < $this->length && ctype_digit($this->source[$this->pos + 1])) {
             return $this->readNumber($start);
         }
         if (ctype_digit($ch)) {
@@ -168,31 +155,8 @@ class Lexer
         }
 
         // Private identifier (#name) for class private fields/methods
-        if ($ch === '#' && $this->pos + 1 < $this->length) {
-            $nextCh = $this->source[$this->pos + 1];
-            if ($this->isIdentifierStart($nextCh)) {
-                return $this->readPrivateIdentifier($start);
-            }
-            if (ord($nextCh) >= 0x80) {
-                $savedPos = $this->pos;
-                $savedCol = $this->column;
-                $this->pos++;
-                $this->column++;
-                if ($this->isUnicodeIdentifierStart()) {
-                    $this->pos = $savedPos;
-                    $this->column = $savedCol;
-                    return $this->readPrivateIdentifier($start);
-                }
-                $this->pos = $savedPos;
-                $this->column = $savedCol;
-            }
-            if (
-                $nextCh === '\\'
-                && $this->pos + 2 < $this->length
-                && $this->source[$this->pos + 2] === 'u'
-            ) {
-                return $this->readPrivateIdentifier($start);
-            }
+        if ($ch === '#' && $this->pos + 1 < $this->length && $this->isIdentifierStart($this->source[$this->pos + 1])) {
+            return $this->readPrivateIdentifier($start);
         }
 
         // Punctuators
@@ -204,11 +168,7 @@ class Lexer
         $result = '';
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
-            if (
-                $ch === '\\'
-                && $this->pos + 1 < $this->length
-                && $this->source[$this->pos + 1] === 'u'
-            ) {
+            if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
                 $this->advance(); // skip backslash
                 $this->advance(); // skip 'u'
                 $decoded = $this->readUnicodeEscape();
@@ -218,11 +178,6 @@ class Lexer
             if ($this->isIdentifierPart($ch)) {
                 $result .= $ch;
                 $this->advance();
-            } elseif (
-                ord($ch) >= 0x80
-                && $this->isUnicodeIdentifierPart()
-            ) {
-                $result .= $this->consumeUtf8Char();
             } else {
                 break;
             }
@@ -240,59 +195,11 @@ class Lexer
     {
         $this->advance(); // skip '#'
         $name = '';
-
-        // First character: ASCII, multi-byte Unicode, or unicode escape.
-        if ($this->pos < $this->length) {
-            $ch = $this->source[$this->pos];
-            if (
-                $ch === '\\'
-                && $this->pos + 1 < $this->length
-                && $this->source[$this->pos + 1] === 'u'
-            ) {
-                $this->advance();
-                $this->advance();
-                $name .= $this->readUnicodeEscape();
-            } elseif (
-                ord($ch) >= 0x80
-                && $this->isUnicodeIdentifierStart()
-            ) {
-                $name .= $this->consumeUtf8Char();
-            } elseif ($this->isIdentifierStart($ch)) {
-                $name .= $ch;
-                $this->advance();
-            }
+        while ($this->pos < $this->length && $this->isIdentifierPart($this->source[$this->pos])) {
+            $name .= $this->source[$this->pos];
+            $this->advance();
         }
-
-        // Continuation characters.
-        while ($this->pos < $this->length) {
-            $ch = $this->source[$this->pos];
-            if (
-                $ch === '\\'
-                && $this->pos + 1 < $this->length
-                && $this->source[$this->pos + 1] === 'u'
-            ) {
-                $this->advance();
-                $this->advance();
-                $name .= $this->readUnicodeEscape();
-                continue;
-            }
-            if ($this->isIdentifierPart($ch)) {
-                $name .= $ch;
-                $this->advance();
-            } elseif (
-                ord($ch) >= 0x80
-                && $this->isUnicodeIdentifierPart()
-            ) {
-                $name .= $this->consumeUtf8Char();
-            } else {
-                break;
-            }
-        }
-        return new Token(
-            TokenType::PrivateIdentifier,
-            '#' . $name,
-            $start,
-        );
+        return new Token(TokenType::PrivateIdentifier, '#' . $name, $start);
     }
 
     private function readIdentifierWithEscapes(SourceLocation $start): Token
@@ -308,11 +215,7 @@ class Lexer
         // Continue reading identifier parts (including more escapes)
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
-            if (
-                $ch === '\\'
-                && $this->pos + 1 < $this->length
-                && $this->source[$this->pos + 1] === 'u'
-            ) {
+            if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
                 $this->advance(); // skip backslash
                 $this->advance(); // skip 'u'
                 $decoded = $this->readUnicodeEscape();
@@ -322,11 +225,6 @@ class Lexer
             if ($this->isIdentifierPart($ch)) {
                 $result .= $ch;
                 $this->advance();
-            } elseif (
-                ord($ch) >= 0x80
-                && $this->isUnicodeIdentifierPart()
-            ) {
-                $result .= $this->consumeUtf8Char();
             } else {
                 break;
             }
@@ -1220,82 +1118,12 @@ class Lexer
     {
         // Guard against high bytes: ctype_alpha is locale-dependent and may
         // return true for bytes >= 0x80 on some platforms (e.g. macOS).
-        return (ord($ch) < 128 && ctype_alpha($ch))
-            || $ch === '_' || $ch === '$';
+        return (ord($ch) < 128 && ctype_alpha($ch)) || $ch === '_' || $ch === '$';
     }
 
     private function isIdentifierPart(string $ch): bool
     {
-        return (ord($ch) < 128 && ctype_alnum($ch))
-            || $ch === '_' || $ch === '$';
-    }
-
-    /**
-     * Read a full UTF-8 character at the current position.
-     *
-     * @return array{string, int}|null Character and byte length, or null.
-     */
-    private function readUtf8Char(): ?array
-    {
-        $b0 = ord($this->source[$this->pos]);
-        if ($b0 < 0x80) {
-            return [$this->source[$this->pos], 1];
-        }
-        if ($b0 < 0xC0) {
-            return null;
-        }
-        if ($b0 < 0xE0) {
-            $len = 2;
-        } elseif ($b0 < 0xF0) {
-            $len = 3;
-        } else {
-            $len = 4;
-        }
-        if ($this->pos + $len > $this->length) {
-            return null;
-        }
-        return [substr($this->source, $this->pos, $len), $len];
-    }
-
-    /**
-     * Check if the multi-byte UTF-8 character at the current position
-     * is a valid Unicode ID_Start character.
-     */
-    private function isUnicodeIdentifierStart(): bool
-    {
-        $info = $this->readUtf8Char();
-        if ($info === null || $info[1] < 2) {
-            return false;
-        }
-        return preg_match('/\p{ID_Start}/u', $info[0]) === 1;
-    }
-
-    /**
-     * Check if the multi-byte UTF-8 character at the current position
-     * is a valid Unicode ID_Continue character.
-     */
-    private function isUnicodeIdentifierPart(): bool
-    {
-        $info = $this->readUtf8Char();
-        if ($info === null || $info[1] < 2) {
-            return false;
-        }
-        return preg_match('/\p{ID_Continue}/u', $info[0]) === 1;
-    }
-
-    /**
-     * Consume the multi-byte UTF-8 character at the current position.
-     */
-    private function consumeUtf8Char(): string
-    {
-        $info = $this->readUtf8Char();
-        if ($info === null) {
-            $this->advance();
-            return '?';
-        }
-        $this->pos += $info[1];
-        $this->column++;
-        return $info[0];
+        return (ord($ch) < 128 && ctype_alnum($ch)) || $ch === '_' || $ch === '$';
     }
 
     private function isDigitOrSeparator(): bool

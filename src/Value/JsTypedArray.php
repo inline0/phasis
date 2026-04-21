@@ -350,7 +350,7 @@ class JsTypedArray extends JsObject
     /**
      * Override internalSet for Reflect.set and spec-compliant [[Set]] on integer indices.
      */
-    public function internalSet(string $name, JsValue $value, JsValue $receiver): bool
+    public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
         if (ctype_digit($name)) {
             $index = (int) $name;
