@@ -888,7 +888,7 @@ class TemporalObject
             return self::createPlainMonthDayObject(
                 self::getSlotInt($this_, '[[ISOMonth]]'),
                 self::getSlotInt($this_, '[[ISODay]]'),
-                self::getSlotInt($this_, '[[ISOYear]]'),
+                1972, // Reference year per spec
                 self::getSlotString($this_, '[[Calendar]]'),
             );
         }, 0);
