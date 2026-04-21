@@ -2998,35 +2998,28 @@ class TemporalObject
             $whole = (int) $parts[0];
             $frac = $parts[1];
 
-            // Convert fraction to sub-units.
+            // Convert fraction to sub-units using integer arithmetic.
+            // Pad fraction to 9 digits for nanosecond precision.
+            $frac9 = str_pad(substr($frac, 0, 9), 9, '0');
+            $fracNs = (int) $frac9; // fractional part as nanoseconds of the unit
             switch ($unit) {
                 case 'H':
-                    $fracVal = (float) ('0.' . $frac);
-                    $totalMinutes = $fracVal * 60;
-                    $minutes = (int) floor($totalMinutes);
-                    $remSeconds = ($totalMinutes - $minutes) * 60;
-                    $seconds = (int) round($remSeconds * 1e9) / 1e9;
-                    $secWhole = (int) floor($seconds);
-                    $subSecNs = (int) round(($seconds - $secWhole) * 1e9);
-                    $msFromSub = intdiv($subSecNs, 1000000);
-                    $usFromSub = intdiv($subSecNs % 1000000, 1000);
-                    $nsFromSub = $subSecNs % 1000;
-                    return [$whole, $minutes, $secWhole, $msFromSub * 1000000 + $usFromSub * 1000 + $nsFromSub];
+                    // fracNs * 3600 gives total ns from fractional hours
+                    $totalNs = $fracNs * 3600;
+                    $minutes = intdiv($totalNs, 60000000000);
+                    $remNs = $totalNs % 60000000000;
+                    $secWhole = intdiv($remNs, 1000000000);
+                    $subNs = $remNs % 1000000000;
+                    return [$whole, $minutes, $secWhole, $subNs];
                 case 'M': // minutes
-                    $fracVal = (float) ('0.' . $frac);
-                    $totalSeconds = $fracVal * 60;
-                    $secWhole = (int) floor($totalSeconds);
-                    $subSecNs = (int) round(($totalSeconds - $secWhole) * 1e9);
-                    $msFromSub = intdiv($subSecNs, 1000000);
-                    $usFromSub = intdiv($subSecNs % 1000000, 1000);
-                    $nsFromSub = $subSecNs % 1000;
-                    return [$whole, $secWhole, $msFromSub * 1000000 + $usFromSub * 1000 + $nsFromSub, 0];
+                    $totalNs = $fracNs * 60;
+                    $secWhole = intdiv($totalNs, 1000000000);
+                    $subNs = $totalNs % 1000000000;
+                    return [$whole, $secWhole, $subNs, 0];
                 case 'S':
-                    // Pad to 9 digits for nanosecond precision.
-                    $frac = str_pad(substr($frac, 0, 9), 9, '0');
-                    $ms = (int) substr($frac, 0, 3);
-                    $us = (int) substr($frac, 3, 3);
-                    $ns = (int) substr($frac, 6, 3);
+                    $ms = (int) substr($frac9, 0, 3);
+                    $us = (int) substr($frac9, 3, 3);
+                    $ns = (int) substr($frac9, 6, 3);
                     return [$whole, $ms, $us, $ns];
                 default:
                     return [(int) $val, 0, 0, 0];
@@ -3057,13 +3050,17 @@ class TemporalObject
             [$hours, $fracMin, $fracSec, $fracSubNs] = $parseFrac($m[6], 'H');
             $minutes += $fracMin;
             $seconds += $fracSec;
-            $nanoseconds += $fracSubNs;
+            $milliseconds += intdiv($fracSubNs, 1000000);
+            $microseconds += intdiv($fracSubNs % 1000000, 1000);
+            $nanoseconds += $fracSubNs % 1000;
         }
         if (isset($m[7]) && $m[7] !== '') {
             [$min2, $fracSec2, $fracSubNs2] = $parseFrac($m[7], 'M');
             $minutes += $min2;
             $seconds += $fracSec2;
-            $nanoseconds += $fracSubNs2;
+            $milliseconds += intdiv($fracSubNs2, 1000000);
+            $microseconds += intdiv($fracSubNs2 % 1000000, 1000);
+            $nanoseconds += $fracSubNs2 % 1000;
         }
         if (isset($m[8]) && $m[8] !== '') {
             [$sec3, $ms3, $us3, $ns3] = $parseFrac($m[8], 'S');
