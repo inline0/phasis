@@ -4077,14 +4077,44 @@ class TemporalObject
         if ($item instanceof JsObject) {
             $year = $item->get('year');
             $month = $item->get('month');
-            if (!($year instanceof JsUndefined) && !($month instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($year);
-                $m = (int) TypeConversion::toNumber($month);
-                $cal = 'iso8601';
-                $calVal = $item->get('calendar');
-                if (!($calVal instanceof JsUndefined)) {
-                    $cal = self::toCalendarSlotValue($calVal);
+            $monthCode = $item->get('monthCode');
+            if ($year instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            if ($month instanceof JsUndefined && $monthCode instanceof JsUndefined) {
+                throw new TypeError('missing required property: month or monthCode');
+            }
+            $yNum = TypeConversion::toNumber($year);
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $y = (int) $yNum;
+            if (!($monthCode instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($monthCode);
+                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mc}");
                 }
+                $m = (int) $mcm[1];
+                // Check month/monthCode agreement if both present.
+                if (!($month instanceof JsUndefined)) {
+                    $mVal = (int) TypeConversion::toNumber($month);
+                    if ($mVal !== $m) {
+                        throw new RangeError("month and monthCode disagree");
+                    }
+                }
+            } else {
+                $mNum = TypeConversion::toNumber($month);
+                if (!is_finite($mNum)) {
+                    throw new RangeError('month must be finite');
+                }
+                $m = (int) $mNum;
+            }
+            $cal = 'iso8601';
+            $calVal = $item->get('calendar');
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
+            if (true) {
                 return self::createPlainYearMonthObject($y, $m, 1, $cal);
             }
         }
