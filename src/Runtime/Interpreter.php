@@ -2575,16 +2575,14 @@ class Interpreter
                     $this->checkStrictBindingNames($param);
                 }
                 $this->checkDuplicateParams($node->params);
-                if ($node->id !== null) {
-                    if (
-                        $this->isStrictReservedWord($node->id->name)
-                        || $node->id->name === 'eval'
-                        || $node->id->name === 'arguments'
-                    ) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
-                            "Unexpected eval or arguments in strict mode",
-                        );
-                    }
+                if (
+                    $this->isStrictReservedWord($node->id->name)
+                    || $node->id->name === 'eval'
+                    || $node->id->name === 'arguments'
+                ) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Unexpected eval or arguments in strict mode",
+                    );
                 }
                 // Also validate body.
                 $this->validateStrictModeRestrictions($node->body->body);

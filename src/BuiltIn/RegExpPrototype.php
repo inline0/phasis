@@ -381,6 +381,62 @@ class RegExpPrototype
                 }
                 $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
 
+                // regexp-match-indices: populate indices when hasIndices (d flag) is set.
+                $hasIndices = TypeConversion::toBoolean($this_->get('hasIndices'));
+                if ($hasIndices) {
+                    $indicesElements = [];
+                    foreach ($matches as $key => $match) {
+                        if (is_int($key)) {
+                            if ($match[1] === -1 || $match[0] === null) {
+                                $indicesElements[] = JsUndefined::instance();
+                            } else {
+                                $startChar = mb_strlen(substr($str, 0, $match[1]), 'UTF-8');
+                                $endChar = $startChar + mb_strlen($match[0], 'UTF-8');
+                                $indicesElements[] = JsArray::fromArray([
+                                    new JsNumber((float) $startChar),
+                                    new JsNumber((float) $endChar),
+                                ]);
+                            }
+                        }
+                    }
+                    $indicesArray = JsArray::fromArray($indicesElements);
+
+                    // Build indices.groups: null-prototype object with named group indices.
+                    $indicesGroups = JsObject::createNullPrototype();
+                    $hasIndicesGroups = false;
+                    foreach ($matches as $key => $match) {
+                        if (is_string($key)) {
+                            $hasIndicesGroups = true;
+                            if ($match[1] === -1 || $match[0] === null) {
+                                $indicesGroups->defineOwnProperty($key, PropertyDescriptor::data(
+                                    JsUndefined::instance(),
+                                ));
+                            } else {
+                                $gStartChar = mb_strlen(substr($str, 0, $match[1]), 'UTF-8');
+                                $gEndChar = $gStartChar + mb_strlen($match[0], 'UTF-8');
+                                $indicesGroups->defineOwnProperty($key, PropertyDescriptor::data(
+                                    JsArray::fromArray([
+                                        new JsNumber((float) $gStartChar),
+                                        new JsNumber((float) $gEndChar),
+                                    ]),
+                                ));
+                            }
+                        }
+                    }
+                    $indicesArray->defineOwnProperty('groups', PropertyDescriptor::data(
+                        $hasIndicesGroups ? $indicesGroups : JsUndefined::instance(),
+                        true,
+                        true,
+                        true,
+                    ));
+                    $result->defineOwnProperty('indices', PropertyDescriptor::data(
+                        $indicesArray,
+                        true,
+                        true,
+                        true,
+                    ));
+                }
+
                 return $result;
             }
 

@@ -197,6 +197,8 @@ class StringPrototype
         $d('codePointAt', self::codePointAt(), 1);
         $d('normalize', self::normalize(), 0);
         $d('localeCompare', self::localeCompare(), 1);
+        $d('isWellFormed', self::isWellFormed(), 0);
+        $d('toWellFormed', self::toWellFormed(), 0);
 
         // String.prototype.length is 0 per spec (it is the empty string object).
         $proto->defineOwnProperty('length', PropertyDescriptor::data(new JsNumber(0), false, false, false));

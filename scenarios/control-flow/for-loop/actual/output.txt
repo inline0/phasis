@@ -1,5 +1,17 @@
-55
-8
-5
-128
-5
+PHP Fatal error:  Uncaught Error: Call to undefined method PhpJs\BuiltIn\StringPrototype::isWellFormed() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/StringPrototype.php:200
+Stack trace:
+#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(174): PhpJs\BuiltIn\StringPrototype::install(Object(PhpJs\Runtime\Environment))
+#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
+#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
+#3 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('// Basic for\nle...')
+#4 {main}
+  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/StringPrototype.php on line 200
+
+Fatal error: Uncaught Error: Call to undefined method PhpJs\BuiltIn\StringPrototype::isWellFormed() in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/StringPrototype.php:200
+Stack trace:
+#0 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(174): PhpJs\BuiltIn\StringPrototype::install(Object(PhpJs\Runtime\Environment))
+#1 /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/Engine.php(38): PhpJs\Engine->installBuiltins()
+#2 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(47): PhpJs\Engine->__construct()
+#3 /Users/dennis/Local Sites/fabrikat/inline0/php-js/bin/php-js(43): executeSource('// Basic for\nle...')
+#4 {main}
+  thrown in /Users/dennis/Local Sites/fabrikat/inline0/php-js/src/BuiltIn/StringPrototype.php on line 200
