@@ -1420,7 +1420,8 @@ class GlobalObject
             if ($node->alternate !== null) {
                 self::checkNodeForWith($node->alternate);
             }
-        } elseif ($node instanceof \PhpJs\Ast\Statement\ForStatement
+        } elseif (
+            $node instanceof \PhpJs\Ast\Statement\ForStatement
             || $node instanceof \PhpJs\Ast\Statement\WhileStatement
             || $node instanceof \PhpJs\Ast\Statement\DoWhileStatement
             || $node instanceof \PhpJs\Ast\Statement\ForInStatement
