@@ -3817,16 +3817,17 @@ class TemporalObject
             throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
         }
 
-        // Full ISO date: YYYY-MM-DD with optional time and offset.
+        // Full ISO date with optional time and offset.
         // First check for date-only with offset (no time): reject.
         if (
-            preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Zz+\-]/', $cleanStr)
-            && !preg_match('/^([+-]?\d{4,6})-(\d{2})-(\d{2})[Tt ]/', $cleanStr)
+            preg_match('/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Zz+\-]/', $cleanStr)
+            && !preg_match('/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})[Tt ]/', $cleanStr)
         ) {
             throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
         }
 
-        $pattern2 = '/^([+-]?\d{4,6})-(\d{2})-(\d{2})(?:[Tt ][^[]*)?$/';
+        // Full ISO date: YYYY-MM-DD or YYYYMMDD with optional time/offset.
+        $pattern2 = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ][^[]*)?$/';
         if (preg_match($pattern2, $cleanStr, $m)) {
             $mo = (int) $m[2];
             $dd = (int) $m[3];
