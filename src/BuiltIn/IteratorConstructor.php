@@ -291,7 +291,10 @@ class IteratorConstructor
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
-            return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter): JsObject {
+            return self::createIteratorHelper(
+                $itObj,
+                $nextMethod,
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter): JsObject {
                 [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
                 if ($isDone) {
                     $alive = false;
@@ -323,7 +326,10 @@ class IteratorConstructor
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
-            return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $predicate, &$counter): JsObject {
+            return self::createIteratorHelper(
+                $itObj,
+                $nextMethod,
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $predicate, &$counter): JsObject {
                 while (true) {
                     [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
                     if ($isDone) {
@@ -361,7 +367,10 @@ class IteratorConstructor
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $remaining = $numLimit;
             $done = false;
-            return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$remaining): JsObject {
+            return self::createIteratorHelper(
+                $itObj,
+                $nextMethod,
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$remaining): JsObject {
                 if ($remaining <= 0) {
                     $done = true;
                     $alive = false;
@@ -396,7 +405,10 @@ class IteratorConstructor
             $toDrop = $numLimit;
             $dropped = false;
             $done = false;
-            return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$toDrop, &$dropped): JsObject {
+            return self::createIteratorHelper(
+                $itObj,
+                $nextMethod,
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, &$toDrop, &$dropped): JsObject {
                 while (!$dropped) {
                     if ($toDrop <= 0) {
                         $dropped = true;
@@ -437,7 +449,10 @@ class IteratorConstructor
             $innerNx = null;
             $innerDone = true;
 
-            return self::createIteratorHelper($itObj, $nextMethod, function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter, &$innerIt, &$innerNx, &$innerDone): JsObject {
+            return self::createIteratorHelper(
+                $itObj,
+                $nextMethod,
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter, &$innerIt, &$innerNx, &$innerDone): JsObject {
                 while (true) {
                     if ($innerIt !== null && !$innerDone) {
                         $innerResult = $innerNx->call($innerIt, []);
