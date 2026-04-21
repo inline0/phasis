@@ -9,6 +9,9 @@ use PhpJs\Lexer\SourceLocation;
 
 readonly class ClassMethod extends Node
 {
+    /**
+     * @param Node[] $decorators
+     */
     public function __construct(
         SourceLocation $location,
         public Node $key,
@@ -16,6 +19,7 @@ readonly class ClassMethod extends Node
         public string $kind,
         public bool $static,
         public bool $computed,
+        public array $decorators = [],
     ) {
         parent::__construct($location);
     }

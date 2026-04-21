@@ -3598,6 +3598,7 @@ class Interpreter
                 $this->hoistDeclarations($body->body, $bodyEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $bodyEnv);
                 $completion = $this->executeBody($body->body, $bodyEnv);
+                $completion = $this->applyDisposals($bodyEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
                 }
@@ -3612,6 +3613,7 @@ class Interpreter
                 $this->hoistDeclarations($body->body, $fnEnv);
                 $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $completion = $this->executeBody($body->body, $fnEnv);
+                $completion = $this->applyDisposals($fnEnv, $completion);
                 if ($completion->type === CompletionType::Return) {
                     return $completion->value;
                 }
@@ -4824,6 +4826,8 @@ class Interpreter
         if ($node->sourceText !== null) {
             $cls->setSourceText($node->sourceText);
         }
+        // Apply class decorators.
+        $cls = $this->applyClassDecorators($node->decorators, $cls, $env);
         return $cls;
     }
 
@@ -5447,12 +5451,52 @@ class Interpreter
         if ($node->sourceText !== null) {
             $cls->setSourceText($node->sourceText);
         }
+        // Apply class decorators (evaluated in reverse order, innermost first).
+        $cls = $this->applyClassDecorators($node->decorators, $cls, $env);
         if ($node->id !== null) {
             // Class declarations are lexical bindings (like let), not var bindings.
             // They must NOT be visible as properties on the global object.
             $env->defineLet($node->id->name, $cls);
         }
         return Completion::normal(JsUndefined::instance());
+    }
+
+    /**
+     * Apply class-level decorators. Each decorator is a function that receives
+     * (value, context) and may return a replacement value.
+     *
+     * @param Node[] $decorators
+     */
+    private function applyClassDecorators(array $decorators, JsFunction $cls, Environment $env): JsFunction
+    {
+        if (empty($decorators)) {
+            return $cls;
+        }
+        // Evaluate all decorators first (left to right), then apply (right to left).
+        $fns = [];
+        foreach ($decorators as $decorator) {
+            $fns[] = $this->evaluate($decorator, $env);
+        }
+        $result = $cls;
+        for ($i = count($fns) - 1; $i >= 0; $i--) {
+            $fn = $fns[$i];
+            if (!$fn instanceof JsFunction) {
+                throw new TypeError('A decorator must be a function');
+            }
+            $context = new JsObject();
+            $context->set('kind', new JsString('class'));
+            $context->set('name', $cls->getName() !== ''
+                ? new JsString($cls->getName())
+                : JsUndefined::instance());
+            $ret = $this->callFunction($fn, JsUndefined::instance(), [$result, $context]);
+            if (!($ret instanceof JsUndefined)) {
+                if (!$ret instanceof JsFunction) {
+                    throw new TypeError('A class decorator must return a constructor or undefined');
+                }
+                $result = $ret;
+            }
+        }
+        return $result;
     }
 
     /** @param list<Node> $elements ClassMethod, ClassProperty, or StaticBlock nodes. */
@@ -5922,7 +5966,12 @@ class Interpreter
                 // Per spec, new.target is undefined inside static blocks.
                 $blockEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
                 $this->hoistDeclarations($element->body->body, $blockEnv);
-                $this->executeBody($element->body->body, $blockEnv);
+                $this->hoistEvalLexicalDeclarations($element->body->body, $blockEnv);
+                $sbCompletion = $this->executeBody($element->body->body, $blockEnv);
+                $sbCompletion = $this->applyDisposals($blockEnv, $sbCompletion);
+                if ($sbCompletion->type === CompletionType::Throw) {
+                    $this->throwJsValue($sbCompletion->value);
+                }
             }
         }
 

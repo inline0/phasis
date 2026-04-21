@@ -927,6 +927,15 @@ class Engine
         $this->globalEnv->defineVar($name, $jsValue);
     }
 
+    /**
+     * Set a global variable to a raw JsValue without PHP-to-JS conversion.
+     * Used by test harness to inject special values like IsHTMLDDA.
+     */
+    public function setGlobalJsValue(string $name, JsValue $value): void
+    {
+        $this->globalEnv->defineVar($name, $value);
+    }
+
     public function call(string $name, mixed ...$args): mixed
     {
         $fn = $this->globalEnv->get($name);

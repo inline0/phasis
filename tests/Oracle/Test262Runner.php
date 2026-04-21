@@ -383,6 +383,11 @@ PHP;
         // $262.gc() - no-op (PHP has no manual GC trigger useful here)
         $engine->eval('$262.gc = function() {};');
 
+        // $262.IsHTMLDDA: an object with the [[IsHTMLDDA]] internal slot.
+        // typeof returns "undefined", ToBoolean returns false, == null/undefined is true.
+        $engine->setGlobalJsValue('__262_IsHTMLDDA', new \PhpJs\Value\JsHTMLDDA());
+        $engine->eval('$262.IsHTMLDDA = __262_IsHTMLDDA;');
+
         // test262 host function: print (used by some tests as a no-op or to store output).
         $engine->eval('function print() {}');
     }

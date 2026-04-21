@@ -166,9 +166,11 @@ class Lexer
     private function readIdentifier(SourceLocation $start): Token
     {
         $result = '';
+        $hasEscape = false;
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
             if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
+                $hasEscape = true;
                 $this->advance(); // skip backslash
                 $this->advance(); // skip 'u'
                 $decoded = $this->readUnicodeEscape();
@@ -185,7 +187,10 @@ class Lexer
 
         $keyword = TokenType::fromKeyword($result);
         if ($keyword !== null) {
-            return new Token($keyword, $result, $start);
+            // Mark escaped keywords so the parser can reject them where the spec
+            // requires the literal keyword (e.g. import() must be literal 'import').
+            $rawValue = $hasEscape ? 'escaped' : null;
+            return new Token($keyword, $result, $start, rawValue: $rawValue);
         }
 
         return new Token(TokenType::Identifier, $result, $start);
@@ -230,10 +235,12 @@ class Lexer
             }
         }
 
-        // Check if the decoded identifier matches a keyword
+        // Check if the decoded identifier matches a keyword.
+        // Always mark as escaped since this method is only called when the
+        // identifier starts with a unicode escape sequence.
         $keyword = TokenType::fromKeyword($result);
         if ($keyword !== null) {
-            return new Token($keyword, $result, $start);
+            return new Token($keyword, $result, $start, rawValue: 'escaped');
         }
 
         return new Token(TokenType::Identifier, $result, $start);
@@ -931,6 +938,7 @@ class Lexer
             '?' => TokenType::Question,
             ':' => TokenType::Colon,
             '=' => TokenType::Equal,
+            '@' => TokenType::At,
             default => throw new SyntaxError("Unexpected character: {$ch}", $start),
         };
 

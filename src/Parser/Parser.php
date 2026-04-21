@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace PhpJs\Parser;
 
 use PhpJs\Ast\Declaration\ClassDeclaration;
+use PhpJs\Ast\Declaration\ExportDeclaration;
+use PhpJs\Ast\Declaration\ExportSpecifier;
 use PhpJs\Ast\Declaration\FunctionDeclaration;
+use PhpJs\Ast\Declaration\ImportDeclaration;
+use PhpJs\Ast\Declaration\ImportSpecifier;
 use PhpJs\Ast\Declaration\VariableDeclaration;
 use PhpJs\Ast\Declaration\VariableDeclarator;
 use PhpJs\Ast\Expression\ArrayExpression;
@@ -20,6 +24,8 @@ use PhpJs\Ast\Expression\ClassProperty;
 use PhpJs\Ast\Expression\PrivateIdentifier;
 use PhpJs\Ast\Expression\StaticBlock;
 use PhpJs\Ast\Expression\ConditionalExpression;
+use PhpJs\Ast\Expression\ImportExpression;
+use PhpJs\Ast\Expression\MetaProperty;
 use PhpJs\Ast\Expression\FunctionExpression;
 use PhpJs\Ast\Expression\Identifier;
 use PhpJs\Ast\Expression\Literal;
@@ -181,11 +187,19 @@ class Parser
             }
         }
 
+        // Decorators: @expr before class declaration
+        if ($token->type === TokenType::At) {
+            $decorators = $this->parseDecoratorList();
+            return $this->parseClassDeclaration($decorators);
+        }
+
         return match ($token->type) {
             TokenType::Var, TokenType::Const_ => $this->parseVariableDeclaration(),
             TokenType::Function_ => $this->parseFunctionDeclaration(),
             TokenType::Class_ => $this->parseClassDeclaration(),
             TokenType::Async => $this->maybeParseAsyncFunction(),
+            TokenType::Import => $this->parseImportDeclarationOrExpression(),
+            TokenType::Export => $this->parseExportDeclaration(),
             default => $this->parseStatement(),
         };
     }
@@ -268,6 +282,237 @@ class Parser
 
         $this->consumeSemicolon();
         return new VariableDeclaration($location, $kind, $declarations);
+    }
+
+    /**
+     * Disambiguate: `import` at statement level can be an import declaration
+     * (import x from 'y') or an expression statement (import('./x.js')).
+     *
+     * If followed by '(' or '.', treat as expression statement. Otherwise
+     * parse as import declaration.
+     */
+    private function parseImportDeclarationOrExpression(): Node
+    {
+        $next = $this->peek();
+        // import( ... ) or import.meta: treat as expression statement.
+        if ($next->type === TokenType::LeftParen || $next->type === TokenType::Dot) {
+            return $this->parseStatement();
+        }
+        return $this->parseImportDeclaration();
+    }
+
+    /**
+     * Parse an import declaration.
+     *
+     * import defaultExport from 'source';
+     * import { a, b as c } from 'source';
+     * import * as ns from 'source';
+     * import 'source';
+     * import defaultExport, { a } from 'source';
+     * import defaultExport, * as ns from 'source';
+     */
+    private function parseImportDeclaration(): ImportDeclaration
+    {
+        $location = $this->expect(TokenType::Import)->location;
+        $specifiers = [];
+
+        // import 'source' (bare import, no specifiers).
+        if ($this->check(TokenType::String)) {
+            $source = $this->advance()->value;
+            $this->consumeSemicolon();
+            return new ImportDeclaration($location, $specifiers, $source);
+        }
+
+        // import * as ns from 'source'
+        if ($this->check(TokenType::Star)) {
+            $this->advance();
+            $this->expectContextual('as');
+            $local = $this->parseIdentifier();
+            $specifiers[] = new ImportSpecifier($local->location, 'namespace', $local->name);
+        } elseif ($this->check(TokenType::LeftBrace)) {
+            // import { a, b as c } from 'source'
+            $specifiers = $this->parseNamedImports();
+        } else {
+            // Default import: import foo from 'source'
+            $local = $this->parseIdentifier();
+            $specifiers[] = new ImportSpecifier($local->location, 'default', $local->name);
+
+            // import foo, { a } from 'source' or import foo, * as ns from 'source'
+            if ($this->eat(TokenType::Comma)) {
+                if ($this->check(TokenType::Star)) {
+                    $this->advance();
+                    $this->expectContextual('as');
+                    $nsLocal = $this->parseIdentifier();
+                    $specifiers[] = new ImportSpecifier(
+                        $nsLocal->location,
+                        'namespace',
+                        $nsLocal->name,
+                    );
+                } elseif ($this->check(TokenType::LeftBrace)) {
+                    $specifiers = array_merge($specifiers, $this->parseNamedImports());
+                }
+            }
+        }
+
+        $this->expectContextual('from');
+
+        if (!$this->check(TokenType::String)) {
+            throw new ParseError('Expected module specifier string', $this->current());
+        }
+        $source = $this->advance()->value;
+
+        $this->consumeSemicolon();
+        return new ImportDeclaration($location, $specifiers, $source);
+    }
+
+    /** @return ImportSpecifier[] */
+    private function parseNamedImports(): array
+    {
+        $this->expect(TokenType::LeftBrace);
+        $specifiers = [];
+
+        while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
+            $importedToken = $this->current();
+            $imported = $importedToken->value;
+            $this->advance();
+
+            $local = $imported;
+            if ($this->checkContextual('as')) {
+                $this->advance();
+                $localNode = $this->parseIdentifier();
+                $local = $localNode->name;
+            }
+
+            $specifiers[] = new ImportSpecifier(
+                $importedToken->location,
+                'named',
+                $local,
+                $imported,
+            );
+
+            if (!$this->eat(TokenType::Comma)) {
+                break;
+            }
+        }
+
+        $this->expect(TokenType::RightBrace);
+        return $specifiers;
+    }
+
+    /**
+     * Parse an export declaration.
+     *
+     * export default expr;
+     * export { a, b as c };
+     * export var x = 1;
+     * export function foo() {}
+     * export class Bar {}
+     * export { a } from 'source';
+     * export * from 'source';
+     * export * as ns from 'source';
+     */
+    private function parseExportDeclaration(): ExportDeclaration
+    {
+        $location = $this->expect(TokenType::Export)->location;
+
+        // export default ...
+        if ($this->check(TokenType::Default_)) {
+            $this->advance();
+
+            $declaration = null;
+            if ($this->check(TokenType::Function_)) {
+                $declaration = $this->parseFunctionDeclaration(true);
+            } elseif ($this->check(TokenType::Class_)) {
+                $declaration = $this->parseClassDeclaration();
+            } elseif ($this->check(TokenType::Async) && $this->peek()->type === TokenType::Function_) {
+                $declaration = $this->maybeParseAsyncFunction();
+            } else {
+                $declaration = $this->parseAssignmentExpression();
+                $this->consumeSemicolon();
+            }
+
+            return new ExportDeclaration($location, declaration: $declaration, isDefault: true);
+        }
+
+        // export * from 'source' or export * as ns from 'source'
+        if ($this->check(TokenType::Star)) {
+            $this->advance();
+            $allAs = null;
+            if ($this->checkContextual('as')) {
+                $this->advance();
+                $aliasToken = $this->current();
+                $allAs = $aliasToken->value;
+                $this->advance();
+            }
+            $this->expectContextual('from');
+            if (!$this->check(TokenType::String)) {
+                throw new ParseError('Expected module specifier string', $this->current());
+            }
+            $source = $this->advance()->value;
+            $this->consumeSemicolon();
+            return new ExportDeclaration(
+                $location,
+                source: $source,
+                isAll: true,
+                allAs: $allAs,
+            );
+        }
+
+        // export { a, b as c } or export { a } from 'source'
+        if ($this->check(TokenType::LeftBrace)) {
+            $specifiers = $this->parseExportSpecifiers();
+            $source = null;
+            if ($this->checkContextual('from')) {
+                $this->advance();
+                if (!$this->check(TokenType::String)) {
+                    throw new ParseError('Expected module specifier string', $this->current());
+                }
+                $source = $this->advance()->value;
+            }
+            $this->consumeSemicolon();
+            return new ExportDeclaration($location, specifiers: $specifiers, source: $source);
+        }
+
+        // export var/let/const, export function, export class, export async function
+        $declaration = match ($this->current()->type) {
+            TokenType::Var, TokenType::Let, TokenType::Const_ => $this->parseVariableDeclaration(),
+            TokenType::Function_ => $this->parseFunctionDeclaration(),
+            TokenType::Class_ => $this->parseClassDeclaration(),
+            TokenType::Async => $this->maybeParseAsyncFunction(),
+            default => throw new ParseError('Unexpected token in export', $this->current()),
+        };
+
+        return new ExportDeclaration($location, declaration: $declaration);
+    }
+
+    /** @return ExportSpecifier[] */
+    private function parseExportSpecifiers(): array
+    {
+        $this->expect(TokenType::LeftBrace);
+        $specifiers = [];
+
+        while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
+            $localToken = $this->current();
+            $local = $localToken->value;
+            $this->advance();
+
+            $exported = $local;
+            if ($this->checkContextual('as')) {
+                $this->advance();
+                $exportedToken = $this->current();
+                $exported = $exportedToken->value;
+                $this->advance();
+            }
+
+            $specifiers[] = new ExportSpecifier($localToken->location, $local, $exported);
+
+            if (!$this->eat(TokenType::Comma)) {
+                break;
+            }
+        }
+
+        $this->expect(TokenType::RightBrace);
+        return $specifiers;
     }
 
     private function parseVariableDeclarator(): VariableDeclarator
@@ -400,12 +645,15 @@ class Parser
         return new RestElement($location, $argument);
     }
 
-    private function parseFunctionDeclaration(): FunctionDeclaration
+    private function parseFunctionDeclaration(bool $optionalName = false): FunctionDeclaration
     {
         $location = $this->expect(TokenType::Function_)->location;
         $startOffset = $location->offset;
         $generator = $this->eat(TokenType::Star);
-        $id = $this->parseIdentifier();
+        $id = null;
+        if (!$optionalName || $this->check(TokenType::Identifier) || $this->check(TokenType::Yield) || $this->check(TokenType::Await) || $this->check(TokenType::Let) || $this->check(TokenType::Static_) || $this->check(TokenType::Of) || $this->check(TokenType::Async)) {
+            $id = $this->parseIdentifier();
+        }
         // Set inGenerator/inAsync BEFORE parsing parameters so that default
         // parameter expressions use the function's own context.
         $prevGenerator = $this->inGenerator;
@@ -432,7 +680,8 @@ class Parser
         );
     }
 
-    private function parseClassDeclaration(): ClassDeclaration
+    /** @param Node[] $decorators */
+    private function parseClassDeclaration(array $decorators = []): ClassDeclaration
     {
         $location = $this->expect(TokenType::Class_)->location;
         $startOffset = $location->offset;
@@ -445,7 +694,77 @@ class Parser
             $superClass = $this->parseLeftHandSideExpression();
         }
         $body = $this->parseClassBody();
-        return new ClassDeclaration($location, $id, $superClass, $body, $this->extractSource($startOffset));
+        return new ClassDeclaration(
+            $location,
+            $id,
+            $superClass,
+            $body,
+            $this->extractSource($startOffset),
+            $decorators,
+        );
+    }
+
+    /**
+     * Parse a list of decorators: @expr (@expr)*
+     *
+     * @return Node[]
+     */
+    private function parseDecoratorList(): array
+    {
+        $decorators = [];
+        while ($this->check(TokenType::At)) {
+            $decorators[] = $this->parseDecorator();
+        }
+        return $decorators;
+    }
+
+    /**
+     * Parse a single decorator: @ DecoratorExpression
+     *
+     * DecoratorExpression:
+     *   DecoratorMemberExpression
+     *   DecoratorMemberExpression Arguments (call expression)
+     *   DecoratorParenthesizedExpression
+     *
+     * DecoratorMemberExpression:
+     *   IdentifierReference
+     *   DecoratorMemberExpression . IdentifierName
+     *   DecoratorMemberExpression . PrivateIdentifier
+     */
+    private function parseDecorator(): Node
+    {
+        $this->expect(TokenType::At);
+        $location = $this->current()->location;
+
+        // Parenthesized expression: @(expr)
+        if ($this->check(TokenType::LeftParen)) {
+            $this->advance();
+            $expr = $this->parseAssignmentExpression();
+            $this->expect(TokenType::RightParen);
+            return $expr;
+        }
+
+        // Member expression: @foo.bar.baz or @foo
+        $expr = $this->parseIdentifier();
+
+        while ($this->check(TokenType::Dot)) {
+            $this->advance();
+            if ($this->check(TokenType::PrivateIdentifier)) {
+                $token = $this->advance();
+                $prop = new PrivateIdentifier($token->location, $token->value);
+            } else {
+                $prop = $this->parseIdentifierName();
+            }
+            $expr = new MemberExpression($location, $expr, $prop, false);
+        }
+
+        // Optional call: @foo(args) or @foo.bar(args)
+        if ($this->check(TokenType::LeftParen)) {
+            $args = $this->parseArguments();
+            $expr = new CallExpression($location, $expr, $args);
+        }
+
+        return $expr;
     }
 
     /** @return Node[] Returns ClassMethod, ClassProperty, or StaticBlock nodes. */
@@ -458,7 +777,36 @@ class Parser
             if ($this->eat(TokenType::Semicolon)) {
                 continue;
             }
-            $elements[] = $this->parseClassElement();
+            // Parse decorators before each class element
+            $elementDecorators = [];
+            if ($this->check(TokenType::At)) {
+                $elementDecorators = $this->parseDecoratorList();
+            }
+            $element = $this->parseClassElement();
+            // Attach decorators to the element
+            if (!empty($elementDecorators)) {
+                if ($element instanceof ClassMethod) {
+                    $element = new ClassMethod(
+                        $element->location,
+                        $element->key,
+                        $element->value,
+                        $element->kind,
+                        $element->static,
+                        $element->computed,
+                        $elementDecorators,
+                    );
+                } elseif ($element instanceof ClassProperty) {
+                    $element = new ClassProperty(
+                        $element->location,
+                        $element->key,
+                        $element->value,
+                        $element->static,
+                        $element->computed,
+                        $elementDecorators,
+                    );
+                }
+            }
+            $elements[] = $element;
         }
 
         $this->expect(TokenType::RightBrace);
@@ -1384,6 +1732,7 @@ class Parser
             TokenType::Ellipsis => $this->parseSpreadElement(),
             TokenType::Async => $this->parseAsyncExpression(),
             TokenType::Super => $this->parseSuperExpression(),
+            TokenType::Import => $this->parseImportExpression(),
             default => throw new ParseError('Unexpected token', $token),
         };
     }
@@ -2075,7 +2424,8 @@ class Parser
         );
     }
 
-    private function parseClassExpression(): ClassExpression
+    /** @param Node[] $decorators */
+    private function parseClassExpression(array $decorators = []): ClassExpression
     {
         $location = $this->expect(TokenType::Class_)->location;
         $startOffset = $location->offset;
@@ -2088,7 +2438,14 @@ class Parser
             $superClass = $this->parseLeftHandSideExpression();
         }
         $body = $this->parseClassBody();
-        return new ClassExpression($location, $id, $superClass, $body, $this->extractSource($startOffset));
+        return new ClassExpression(
+            $location,
+            $id,
+            $superClass,
+            $body,
+            $this->extractSource($startOffset),
+            $decorators,
+        );
     }
 
     private function parseLeftHandSideExpression(): Node
@@ -2241,6 +2598,66 @@ class Parser
         return $args;
     }
 
+    /**
+     * Parse import() call or import.meta meta-property.
+     *
+     * Per spec, `import` as a keyword must not contain escape sequences
+     * when used as ImportCall or import.meta. The lexer emits the token
+     * with rawValue tracking.
+     */
+    private function parseImportExpression(): Node
+    {
+        $token = $this->advance(); // consume 'import'
+        $location = $token->location;
+
+        // Per spec: import keyword must not contain escape sequences.
+        if ($token->rawValue === 'escaped') {
+            throw new ParseError('Unexpected token', $token);
+        }
+
+        // import.meta
+        if ($this->check(TokenType::Dot)) {
+            $this->advance();
+            $prop = $this->current();
+            if ($prop->type === TokenType::Identifier && $prop->value === 'meta') {
+                $this->advance();
+                return new MetaProperty($location, 'import', 'meta');
+            }
+            throw new ParseError('Expected "meta" after "import."', $prop);
+        }
+
+        // import(assignmentExpression) or import(assignmentExpression, options)
+        if (!$this->check(TokenType::LeftParen)) {
+            throw new ParseError('Expected "(" or "." after "import"', $this->current());
+        }
+
+        $this->expect(TokenType::LeftParen);
+
+        // import() with no arguments is a syntax error per spec.
+        if ($this->check(TokenType::RightParen)) {
+            throw new ParseError(
+                'import() requires a specifier',
+                $this->current(),
+            );
+        }
+
+        $source = $this->parseAssignmentExpression();
+        $options = null;
+
+        // Optional second argument (import attributes / options).
+        if ($this->eat(TokenType::Comma)) {
+            if (!$this->check(TokenType::RightParen)) {
+                $options = $this->parseAssignmentExpression();
+                // Allow trailing comma.
+                $this->eat(TokenType::Comma);
+            }
+        }
+
+        $this->expect(TokenType::RightParen);
+
+        return new ImportExpression($location, $source, $options);
+    }
+
     private function parseSuperExpression(): Node
     {
         $location = $this->advance()->location;
@@ -2303,6 +2720,15 @@ class Parser
     {
         $token = $this->current();
         return $token->type === TokenType::Identifier && $token->value === $name;
+    }
+
+    private function expectContextual(string $name): Token
+    {
+        $token = $this->current();
+        if ($token->type !== TokenType::Identifier || $token->value !== $name) {
+            throw new ParseError("Expected '{$name}'", $token);
+        }
+        return $this->advance();
     }
 
     /** @phpstan-impure */

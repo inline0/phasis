@@ -324,7 +324,27 @@ class JsDataView extends JsObject
     // --- Internal helpers ---
 
     /**
-     * Validate the buffer is not detached.
+     * Whether this DataView's view is out of bounds for its buffer.
+     */
+    public function isOutOfBounds(): bool
+    {
+        if ($this->buffer->isDetached()) {
+            return true;
+        }
+        if (!$this->buffer->isResizable()) {
+            return false;
+        }
+        $bufLen = $this->buffer->getByteLength();
+        if ($this->autoLength) {
+            return $this->byteOffset > $bufLen;
+        }
+        // Fixed-length DataView on resizable buffer.
+        $viewEnd = $this->byteOffset + ($this->byteLength ?? 0);
+        return $viewEnd > $bufLen;
+    }
+
+    /**
+     * Validate the buffer is not detached and the view is not out of bounds.
      * Per spec, this check runs after ToIndex(offset) but before the bounds check.
      */
     public function validateNotDetached(): void
@@ -332,6 +352,11 @@ class JsDataView extends JsObject
         if ($this->buffer->isDetached()) {
             throw new \PhpJs\Exceptions\TypeError(
                 'Cannot perform DataView operation on a detached ArrayBuffer'
+            );
+        }
+        if ($this->isOutOfBounds()) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot perform DataView operation on an out-of-bounds DataView'
             );
         }
     }

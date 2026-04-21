@@ -12,6 +12,7 @@ readonly class ClassDeclaration extends Node
 {
     /**
      * @param Node[] $body
+     * @param Node[] $decorators
      */
     public function __construct(
         SourceLocation $location,
@@ -19,6 +20,7 @@ readonly class ClassDeclaration extends Node
         public ?Node $superClass,
         public array $body,
         public ?string $sourceText = null,
+        public array $decorators = [],
     ) {
         parent::__construct($location);
     }

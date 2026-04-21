@@ -83,7 +83,9 @@ class JsTypedArray extends JsObject
     }
 
     /**
-     * Throw TypeError if the underlying buffer is detached.
+     * Throw TypeError if the underlying buffer is detached or the view is out of bounds.
+     * Per spec (ValidateTypedArray), a typed array backed by a resizable buffer
+     * is out of bounds if its fixed view extends beyond the buffer's current byte length.
      */
     public function validateNotDetached(): void
     {
@@ -93,6 +95,34 @@ class JsTypedArray extends JsObject
                 . ' on a detached ArrayBuffer'
             );
         }
+        if ($this->isOutOfBounds()) {
+            throw new \PhpJs\Exceptions\TypeError(
+                'Cannot perform %TypedArray%.prototype method'
+                . ' on an out-of-bounds TypedArray'
+            );
+        }
+    }
+
+    /**
+     * Whether this TypedArray's view is out of bounds for its buffer.
+     * Only relevant for fixed-length views on resizable buffers.
+     */
+    public function isOutOfBounds(): bool
+    {
+        if ($this->buffer->isDetached()) {
+            return true;
+        }
+        if (!$this->buffer->isResizable()) {
+            return false;
+        }
+        $bufLen = $this->buffer->getByteLength();
+        if ($this->autoLength) {
+            // Auto-length views are out of bounds only if byteOffset > bufLen.
+            return $this->byteOffset > $bufLen;
+        }
+        // Fixed-length view on resizable buffer.
+        $viewEnd = $this->byteOffset + $this->length * $this->bytesPerElement;
+        return $viewEnd > $bufLen;
     }
 
     /**
@@ -163,6 +193,13 @@ class JsTypedArray extends JsObject
             }
             $remaining = $bufLen - $this->byteOffset;
             return intdiv($remaining, $this->bytesPerElement);
+        }
+        // Fixed-length view on resizable buffer: out of bounds means 0.
+        if ($this->buffer->isResizable()) {
+            $viewEnd = $this->byteOffset + $this->length * $this->bytesPerElement;
+            if ($viewEnd > $this->buffer->getByteLength()) {
+                return 0;
+            }
         }
         return $this->length;
     }
@@ -336,8 +373,8 @@ class JsTypedArray extends JsObject
             return new JsNumber((float) ($this->getLength() * $this->bytesPerElement));
         }
         if ($name === 'byteOffset') {
-            // Per spec: byteOffset is 0 when buffer is detached.
-            if ($this->buffer->isDetached()) {
+            // Per spec: byteOffset is 0 when buffer is detached or out of bounds.
+            if ($this->buffer->isDetached() || $this->isOutOfBounds()) {
                 return new JsNumber(0.0);
             }
             return new JsNumber((float) $this->byteOffset);

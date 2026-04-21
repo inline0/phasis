@@ -122,6 +122,9 @@ enum TokenType: string
     case Arrow = '=>';
     case OptionalChaining = '?.';
 
+    // Decorator
+    case At = '@';
+
     // Private identifier (#name)
     case PrivateIdentifier = 'PrivateIdentifier';
 

@@ -11,6 +11,7 @@ readonly class ClassExpression extends Node
 {
     /**
      * @param ClassMethod[] $body
+     * @param Node[] $decorators
      */
     public function __construct(
         SourceLocation $location,
@@ -18,6 +19,7 @@ readonly class ClassExpression extends Node
         public ?Node $superClass,
         public array $body,
         public ?string $sourceText = null,
+        public array $decorators = [],
     ) {
         parent::__construct($location);
     }

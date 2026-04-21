@@ -62,7 +62,10 @@ class ArrayConstructor
         );
         $fromFn = JsFunction::fromCallable('from', self::from(), 1);
         $fromFn->setNonConstructable();
-        $constructor->defineOwnProperty('from', \PhpJs\Object\PropertyDescriptor::data($fromFn, true, false, true));
+        $constructor->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
+        $fromAsyncFn = JsFunction::fromCallable('fromAsync', self::fromAsync(), 1);
+        $fromAsyncFn->setNonConstructable();
+        $constructor->defineOwnProperty('fromAsync', PropertyDescriptor::data($fromAsyncFn, true, false, true));
         $ofFn = JsFunction::fromCallable('of', self::of(), 0);
         $ofFn->setNonConstructable();
         $constructor->defineOwnProperty('of', \PhpJs\Object\PropertyDescriptor::data($ofFn, true, false, true));
@@ -1912,7 +1915,7 @@ class ArrayConstructor
             $mapFn = null;
             if (!$mapFnRaw instanceof JsUndefined) {
                 if (!$mapFnRaw instanceof JsFunction) {
-                    $promise = new JsPromise();
+                    $promise = new \PhpJs\Value\JsPromise();
                     $promise->reject(
                         self::createTypeErrorObject(
                             TypeConversion::toString($mapFnRaw) . ' is not a function'
@@ -1923,7 +1926,7 @@ class ArrayConstructor
                 $mapFn = $mapFnRaw;
             }
 
-            $promise = new JsPromise();
+            $promise = new \PhpJs\Value\JsPromise();
             try {
                 $isConstructor = ($c instanceof JsFunction && $c->isConstructable());
 
@@ -2112,8 +2115,8 @@ class ArrayConstructor
      */
     private static function awaitValue(JsValue $value): JsValue
     {
-        if ($value instanceof JsPromise) {
-            if ($value->getState() === JsPromise::STATE_REJECTED) {
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
                 $reason = $value->getResolvedValue();
                 throw new \PhpJs\Exceptions\JsThrowable($reason);
             }

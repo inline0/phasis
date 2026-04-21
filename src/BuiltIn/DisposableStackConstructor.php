@@ -23,8 +23,11 @@ use PhpJs\Value\JsValue;
  */
 class DisposableStackConstructor
 {
+    private static ?Environment $globalEnv = null;
+
     public static function install(Environment $env): void
     {
+        self::$globalEnv = $env;
         self::installDisposableStack($env);
         self::installAsyncDisposableStack($env);
     }
@@ -252,9 +255,16 @@ class DisposableStackConstructor
                 }
                 $asyncMethod = $value->getBySymbol(SymbolConstructor::asyncDispose());
                 $syncMethod = $value->getBySymbol(SymbolConstructor::dispose());
-                $hasAsync = !($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull);
-                $hasSync = !($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull);
+                $hasAsync = $asyncMethod instanceof JsFunction;
+                $hasSync = $syncMethod instanceof JsFunction;
+                // Check for non-callable but present symbols.
+                if (!$hasAsync && !($asyncMethod instanceof JsUndefined || $asyncMethod instanceof JsNull)) {
+                    throw new TypeError('Property [Symbol.asyncDispose] is not a function.');
+                }
                 if (!$hasAsync && !$hasSync) {
+                    if (!($syncMethod instanceof JsUndefined || $syncMethod instanceof JsNull)) {
+                        throw new TypeError('Property [Symbol.dispose] is not a function.');
+                    }
                     throw new TypeError('The value does not have a dispose method.');
                 }
                 self::pushToStack($this_, $value, true);
@@ -504,6 +514,25 @@ class DisposableStackConstructor
 
     private static function buildSuppressedError(JsValue $error, JsValue $suppressed): JsObject
     {
+        if (self::$globalEnv !== null) {
+            try {
+                $ctor = self::$globalEnv->get('SuppressedError');
+                if ($ctor instanceof JsFunction) {
+                    $obj = new JsObject();
+                    $obj->set('[[NewTarget]]', $ctor);
+                    $proto = $ctor->get('prototype');
+                    if ($proto instanceof JsObject) {
+                        $obj->setPrototype($proto);
+                    }
+                    $result = $ctor->call($obj, [$error, $suppressed]);
+                    if ($result instanceof JsObject) {
+                        return $result;
+                    }
+                }
+            } catch (\Throwable) {
+                // Fall through to manual construction.
+            }
+        }
         $obj = new JsObject();
         $obj->set('name', new JsString('SuppressedError'));
         $obj->set('message', new JsString(''));

@@ -36,6 +36,19 @@ final class AbstractOperations
             return self::strictEquals($x, $y);
         }
 
+        // Annex B: [[IsHTMLDDA]] objects are == null and == undefined.
+        $xIsHTMLDDA = \PhpJs\Value\JsHTMLDDA::isHTMLDDA($x);
+        $yIsHTMLDDA = \PhpJs\Value\JsHTMLDDA::isHTMLDDA($y);
+        if ($xIsHTMLDDA && ($y instanceof JsNull || $y instanceof JsUndefined)) {
+            return true;
+        }
+        if ($yIsHTMLDDA && ($x instanceof JsNull || $x instanceof JsUndefined)) {
+            return true;
+        }
+        if ($xIsHTMLDDA && $yIsHTMLDDA) {
+            return true;
+        }
+
         // 2. null == undefined -> true (and vice versa).
         if ($x instanceof JsNull && $y instanceof JsUndefined) {
             return true;
