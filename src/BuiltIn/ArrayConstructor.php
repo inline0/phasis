@@ -2264,4 +2264,15 @@ class ArrayConstructor
 
         return $key === '0' || $key[0] !== '0';
     }
+
+    /**
+     * Create a TypeError object suitable for Promise rejection.
+     */
+    private static function createTypeErrorObject(string $message): JsObject
+    {
+        $err = new JsObject();
+        $err->set('name', new JsString('TypeError'));
+        $err->set('message', new JsString($message));
+        return $err;
+    }
 }

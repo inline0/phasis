@@ -9705,6 +9705,30 @@ class Interpreter
 
             if ($ch === '\\' && $i + 1 < $len) {
                 $next = $pattern[$i + 1];
+
+                // \p{...} and \P{...} Unicode property escapes.
+                if (($next === 'p' || $next === 'P') && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $closeBrace = strpos($pattern, '}', $i + 3);
+                    if ($closeBrace !== false) {
+                        $propExpr = substr($pattern, $i + 3, $closeBrace - ($i + 3));
+                        if ($isUnicodeMode) {
+                            $pcreProperty = self::mapEsPropertyToPcre($propExpr, $next === 'P');
+                            if ($pcreProperty === null) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    'Invalid regular expression: Invalid property expression'
+                                );
+                            }
+                            $result .= $pcreProperty;
+                        } else {
+                            // Outside unicode mode, \p is an identity escape for 'p'.
+                            $result .= '\\x{' . strtoupper(dechex(ord($next))) . '}';
+                            $result .= '{' . $propExpr . '}';
+                        }
+                        $i = $closeBrace + 1;
+                        continue;
+                    }
+                }
+
                 if ($next === 's') {
                     if ($inCharClass) {
                         // Inside [...], add \x{FEFF} alongside \s.

@@ -400,4 +400,63 @@ class ErrorConstructor
             return $obj;
         };
     }
+
+    /**
+     * SuppressedError constructor per spec.
+     *
+     * Signature: SuppressedError(error, suppressed [, message])
+     */
+    private static function makeSuppressedErrorConstructor(JsObject $proto): \Closure
+    {
+        return function (JsValue $this_, array $args) use ($proto): JsValue {
+            $errorArg = $args[0] ?? JsUndefined::instance();
+            $suppressedArg = $args[1] ?? JsUndefined::instance();
+            $messageArg = $args[2] ?? JsUndefined::instance();
+
+            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                $obj = $this_;
+            } else {
+                $obj = new JsObject($proto);
+            }
+
+            $obj->defineOwnProperty(
+                '[[ErrorData]]',
+                PropertyDescriptor::data(JsUndefined::instance(), false, false, false),
+            );
+
+            if (!$messageArg instanceof JsUndefined) {
+                $msgStr = TypeConversion::toString($messageArg);
+                $obj->defineOwnProperty('message', PropertyDescriptor::data(
+                    new JsString($msgStr),
+                    true,
+                    false,
+                    true,
+                ));
+            }
+
+            $obj->defineOwnProperty('error', PropertyDescriptor::data(
+                $errorArg,
+                true,
+                false,
+                true,
+            ));
+
+            $obj->defineOwnProperty('suppressed', PropertyDescriptor::data(
+                $suppressedArg,
+                true,
+                false,
+                true,
+            ));
+
+            $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
+            $obj->defineOwnProperty('stack', PropertyDescriptor::data(
+                new JsString("SuppressedError: {$message}"),
+                true,
+                false,
+                true,
+            ));
+
+            return $obj;
+        };
+    }
 }

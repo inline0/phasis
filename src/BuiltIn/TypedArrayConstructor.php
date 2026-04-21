@@ -223,6 +223,134 @@ class TypedArrayConstructor
             PropertyDescriptor::accessor($byteLengthGetter, null, false, true),
         );
 
+        // ArrayBuffer.prototype.maxByteLength getter.
+        $maxByteLengthGetter = JsFunction::fromCallable(
+            'get maxByteLength',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method get ArrayBuffer.prototype.maxByteLength called on incompatible receiver'
+                    );
+                }
+                if ($this_->isDetached()) {
+                    return new JsNumber(0.0);
+                }
+                return new JsNumber((float) $this_->getMaxByteLength());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'maxByteLength',
+            PropertyDescriptor::accessor($maxByteLengthGetter, null, false, true),
+        );
+
+        // ArrayBuffer.prototype.resizable getter.
+        $resizableGetter = JsFunction::fromCallable(
+            'get resizable',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method get ArrayBuffer.prototype.resizable called on incompatible receiver'
+                    );
+                }
+                return new JsBoolean($this_->isResizable());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'resizable',
+            PropertyDescriptor::accessor($resizableGetter, null, false, true),
+        );
+
+        // ArrayBuffer.prototype.detached getter.
+        $detachedGetter = JsFunction::fromCallable(
+            'get detached',
+            function (JsValue $this_): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method get ArrayBuffer.prototype.detached called on incompatible receiver'
+                    );
+                }
+                return new JsBoolean($this_->isDetached());
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'detached',
+            PropertyDescriptor::accessor($detachedGetter, null, false, true),
+        );
+
+        // ArrayBuffer.prototype.resize(newByteLength).
+        $resizeFn = JsFunction::fromCallable(
+            'resize',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method ArrayBuffer.prototype.resize called on incompatible receiver'
+                    );
+                }
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot resize a detached ArrayBuffer');
+                }
+                if (!$this_->isResizable()) {
+                    throw new TypeError('ArrayBuffer is not resizable');
+                }
+                $newLenArg = $args[0] ?? JsUndefined::instance();
+                $newByteLength = TypeConversion::toIndex($newLenArg);
+                $this_->resize($newByteLength);
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $proto->defineOwnProperty('resize', PropertyDescriptor::data($resizeFn, true, false, true));
+
+        // ArrayBuffer.prototype.transfer(newLength?).
+        $transferFn = JsFunction::fromCallable(
+            'transfer',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method ArrayBuffer.prototype.transfer called on incompatible receiver'
+                    );
+                }
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot transfer a detached ArrayBuffer');
+                }
+                $newLenArg = $args[0] ?? JsUndefined::instance();
+                $newLen = $newLenArg instanceof JsUndefined
+                    ? null
+                    : TypeConversion::toIndex($newLenArg);
+                return $this_->transfer($newLen);
+            },
+            0,
+        );
+        $proto->defineOwnProperty('transfer', PropertyDescriptor::data($transferFn, true, false, true));
+
+        // ArrayBuffer.prototype.transferToFixedLength(newLength?).
+        $transferToFixedLengthFn = JsFunction::fromCallable(
+            'transferToFixedLength',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsArrayBuffer) {
+                    throw new TypeError(
+                        'Method ArrayBuffer.prototype.transferToFixedLength called on incompatible receiver'
+                    );
+                }
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot transfer a detached ArrayBuffer');
+                }
+                $newLenArg = $args[0] ?? JsUndefined::instance();
+                $newLen = $newLenArg instanceof JsUndefined
+                    ? null
+                    : TypeConversion::toIndex($newLenArg);
+                return $this_->transferToFixedLength($newLen);
+            },
+            0,
+        );
+        $proto->defineOwnProperty(
+            'transferToFixedLength',
+            PropertyDescriptor::data($transferToFixedLengthFn, true, false, true),
+        );
+
         // Symbol.toStringTag.
         $toStringTagSym = SymbolConstructor::toStringTag();
         $proto->definePropertyBySymbol(
