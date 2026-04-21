@@ -5722,14 +5722,13 @@ class TemporalObject
             if (preg_match('/^-0{4,6}-/', $cal)) {
                 throw new RangeError("reject minus zero as extended year: {$cal}");
             }
-            // Looks like an ISO date string. Extract calendar annotation if present.
-            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
-                $extracted = strtolower($cm[1]);
-                if (in_array($extracted, $known, true)) {
-                    return $extracted;
-                }
+            // Per spec: ISO strings with calendar annotations are NOT valid calendar IDs.
+            if (preg_match('/\[/', $cal)) {
+                throw new RangeError(
+                    "ISO string with annotations is not a valid calendar: {$cal}"
+                );
             }
-            // Default to iso8601 for valid-looking date strings.
+            // Default to iso8601 for valid-looking date strings without annotations.
             if (preg_match('/^\d{4}-\d{2}-\d{2}/', $cal) || preg_match('/^[+-]\d{4,6}-\d{2}-\d{2}/', $cal)) {
                 return 'iso8601';
             }
