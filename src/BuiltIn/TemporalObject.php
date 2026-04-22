@@ -3130,6 +3130,55 @@ class TemporalObject
             return self::createZonedDateTimeObject($startNs, $tz, $cal);
         }, 0);
 
+        $d('round', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $roundTo = $args[0] ?? JsUndefined::instance();
+            if ($roundTo instanceof JsUndefined) {
+                throw new TypeError('options parameter is required');
+            }
+            if ($roundTo instanceof JsString) {
+                $opt = new JsObject();
+                $opt->set('smallestUnit', $roundTo);
+                $roundTo = $opt;
+            }
+            if (!$roundTo instanceof JsObject) {
+                throw new TypeError('options must be an object');
+            }
+            $unit = self::getTemporalUnit(
+                $roundTo,
+                'smallestUnit',
+                ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'],
+                true,
+            );
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
+            $increment = self::getRoundingIncrement($roundTo);
+            if ($increment > 1 && $unit !== 'day') {
+                self::validateRoundingIncrement($unit, $increment);
+            }
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // Round the epoch ns.
+            if ($unit === 'day') {
+                // Round to day boundaries in the timezone.
+                $parts = self::epochNsToISOParts($ns, $tz);
+                $startNs = self::isoDateTimeToEpochNs(
+                    $parts['year'], $parts['month'], $parts['day'],
+                    0, 0, 0, 0, 0, 0, $tz,
+                );
+                $dayNs = '86400000000000';
+                $timeInDay = bcsub($ns, $startNs, 0);
+                $rounded = self::roundNs($timeInDay, bcmul((string) $increment, $dayNs, 0), $roundingMode);
+                $result = bcadd($startNs, $rounded, 0);
+            } else {
+                $unitNs = self::temporalUnitToNs($unit);
+                $incrementNs = bcmul((string) $increment, $unitNs, 0);
+                $result = self::roundNs($ns, $incrementNs, $roundingMode);
+            }
+            self::validateInstantRange($result);
+            return self::createZonedDateTimeObject($result, $tz, $cal);
+        }, 1);
+
         $d('until', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
