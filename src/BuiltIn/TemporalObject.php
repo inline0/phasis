@@ -5492,8 +5492,7 @@ class TemporalObject
         int $increment,
         string $largestUnit,
         ?JsValue $relativeTo = null,
-    ): JsObject
-    {
+    ): JsObject {
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
         $weeks = self::getDurationField($dur, 'weeks');
