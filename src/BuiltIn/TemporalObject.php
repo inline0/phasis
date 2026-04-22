@@ -559,6 +559,10 @@ class TemporalObject
                 throw new TypeError('total requires a string or options object');
             }
             $unit = self::canonicalTemporalUnit($unit);
+            // Always validate relativeTo if provided.
+            if ($relativeTo !== null) {
+                self::toRelativeToPlainDate($relativeTo);
+            }
             // Calendar units require relativeTo.
             $calUnits = ['year', 'month', 'week'];
             $hasCalUnit = self::getDurationField($this_, 'years') !== 0
@@ -5862,6 +5866,11 @@ class TemporalObject
             $largestUnit = $unit;
         }
 
+        // Always validate relativeTo if provided (even for non-calendar rounding).
+        if ($relativeTo !== null) {
+            self::toRelativeToPlainDate($relativeTo);
+        }
+
         // Calendar-aware rounding is needed when:
         // (a) the smallestUnit or largestUnit is a calendar unit (year/month/week), OR
         // (b) the duration itself has calendar units that need resolving via calendar.
@@ -6192,27 +6201,99 @@ class TemporalObject
             ) {
                 return self::toPlainDate($item);
             }
-            // Property bag: per spec, read and validate all fields including timeZone, offset, and time props.
-            // Read fields in alphabetical order per spec.
+            // Property bag: per spec, read and convert all fields in alphabetical order.
+            // calendar
             $calVal = $item->get('calendar');
+            // day (with valueOf)
             $dayVal = $item->get('day');
+            $dNum = NAN;
+            if (!($dayVal instanceof JsUndefined)) {
+                $dNum = TypeConversion::toNumber($dayVal);
+                if (!is_finite($dNum)) {
+                    throw new RangeError("day must be finite");
+                }
+            }
+            // hour
             $hourVal = $item->get('hour');
+            if (!($hourVal instanceof JsUndefined)) {
+                $hn = TypeConversion::toNumber($hourVal);
+                if (!is_finite($hn)) {
+                    throw new RangeError("hour must be finite");
+                }
+            }
+            // microsecond
             $microVal = $item->get('microsecond');
+            if (!($microVal instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($microVal);
+                if (!is_finite($n)) {
+                    throw new RangeError("microsecond must be finite");
+                }
+            }
+            // millisecond
             $milliVal = $item->get('millisecond');
+            if (!($milliVal instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($milliVal);
+                if (!is_finite($n)) {
+                    throw new RangeError("millisecond must be finite");
+                }
+            }
+            // minute
             $minVal = $item->get('minute');
+            if (!($minVal instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($minVal);
+                if (!is_finite($n)) {
+                    throw new RangeError("minute must be finite");
+                }
+            }
+            // month (with valueOf)
             $monthVal = $item->get('month');
+            $mNum = NAN;
+            if (!($monthVal instanceof JsUndefined)) {
+                $mNum = TypeConversion::toNumber($monthVal);
+                if (!is_finite($mNum)) {
+                    throw new RangeError("month must be finite");
+                }
+            }
+            // monthCode (with toString)
             $mcVal = $item->get('monthCode');
+            $mc = null;
+            if (!($mcVal instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($mcVal);
+            }
+            // nanosecond
             $nanoVal = $item->get('nanosecond');
+            if (!($nanoVal instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($nanoVal);
+                if (!is_finite($n)) {
+                    throw new RangeError("nanosecond must be finite");
+                }
+            }
+            // offset
             $offsetVal = $item->get('offset');
+            // second
             $secVal = $item->get('second');
+            if (!($secVal instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($secVal);
+                if (!is_finite($n)) {
+                    throw new RangeError("second must be finite");
+                }
+            }
+            // timeZone
             $tzVal = $item->get('timeZone');
+            // year (with valueOf)
             $yearVal = $item->get('year');
+            $yNum = NAN;
+            if (!($yearVal instanceof JsUndefined)) {
+                $yNum = TypeConversion::toNumber($yearVal);
+                if (!is_finite($yNum)) {
+                    throw new RangeError("year must be finite");
+                }
+            }
             // Validate timeZone if present.
             $hasTz = !($tzVal instanceof JsUndefined);
             if ($hasTz) {
-                // Validate the timeZone property via toTemporalTimeZoneIdentifier.
                 self::toTemporalTimeZoneIdentifier($tzVal);
-                // When timeZone is present, validate offset if present.
+                // Validate offset when timeZone is present.
                 if (!($offsetVal instanceof JsUndefined)) {
                     if ($offsetVal instanceof JsNull || $offsetVal instanceof JsNumber
                         || $offsetVal instanceof JsBoolean || $offsetVal instanceof \PhpJs\Value\JsBigInt) {
@@ -6222,42 +6303,47 @@ class TemporalObject
                         throw new TypeError("Cannot convert a Symbol to a string");
                     }
                     $offStr = ($offsetVal instanceof JsString) ? $offsetVal->value : TypeConversion::toString($offsetVal);
-                    // Validate offset string format: must be +HH:MM or -HH:MM.
                     if (!preg_match('/^[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:\.\d{1,9})?)?)?$/', $offStr)) {
                         throw new RangeError("{$offStr} is not a valid offset string");
                     }
                 }
             }
-            // Validate time properties for Infinity.
-            foreach (['hour' => $hourVal, 'microsecond' => $microVal, 'millisecond' => $milliVal,
-                       'minute' => $minVal, 'nanosecond' => $nanoVal, 'second' => $secVal] as $pName => $pVal) {
-                if (!($pVal instanceof JsUndefined)) {
-                    $n = TypeConversion::toNumber($pVal);
-                    if (!is_finite($n)) {
-                        throw new RangeError("{$pName} must be finite");
-                    }
+            // Required: year, day (and month or monthCode).
+            if ($yearVal instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            if ($dayVal instanceof JsUndefined) {
+                throw new TypeError('missing required property: day');
+            }
+            // Resolve month from month or monthCode.
+            if ($monthVal instanceof JsUndefined) {
+                if ($mc === null) {
+                    throw new TypeError('missing required property: month');
+                }
+                $mNum = (float) self::parseMonthCode($mc);
+            } elseif ($mc !== null) {
+                $mcMonth = self::parseMonthCode($mc);
+                if ($mcMonth !== (int) $mNum) {
+                    throw new RangeError("month and monthCode must agree");
                 }
             }
-            // Validate year/month/day for Infinity.
-            if (!($yearVal instanceof JsUndefined)) {
-                $yn = TypeConversion::toNumber($yearVal);
-                if (!is_finite($yn)) {
-                    throw new RangeError("year must be finite");
-                }
+            $y = (int) $yNum;
+            $m = (int) $mNum;
+            $d = (int) $dNum;
+            if (!is_finite($dNum)) {
+                throw new RangeError("day must be finite");
             }
-            if (!($monthVal instanceof JsUndefined)) {
-                $mn = TypeConversion::toNumber($monthVal);
-                if (!is_finite($mn)) {
-                    throw new RangeError("month must be finite");
-                }
+            $d = (int) $dNum;
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
             }
-            if (!($dayVal instanceof JsUndefined)) {
-                $dn = TypeConversion::toNumber($dayVal);
-                if (!is_finite($dn)) {
-                    throw new RangeError("day must be finite");
-                }
+            // Check for -0 year.
+            if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
+                throw new RangeError('reject minus zero as extended year');
             }
-            return self::toPlainDate($item);
+            [$y, $m, $d] = self::constrainISODate($y, $m, $d);
+            return self::createPlainDateObject($y, $m, $d, $cal);
         }
         // Reject non-string, non-object primitives per spec.
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
