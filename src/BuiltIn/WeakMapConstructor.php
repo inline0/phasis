@@ -186,6 +186,46 @@ class WeakMapConstructor
         }, 1);
         $proto->defineOwnProperty('delete', PropertyDescriptor::data($deleteFn, true, false, true));
 
+        // WeakMap.prototype.getOrInsert(key, value)
+        $getOrInsertFn = JsFunction::fromCallable('getOrInsert', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.getOrInsert called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            if (!$key instanceof JsObject) {
+                throw new TypeError('Invalid value used as weak map key');
+            }
+            $value = $args[1] ?? JsUndefined::instance();
+            if ($this_->weakMapHas($key)) {
+                return $this_->weakMapGet($key);
+            }
+            $this_->weakMapSet($key, $value);
+            return $value;
+        }, 2);
+        $proto->defineOwnProperty('getOrInsert', PropertyDescriptor::data($getOrInsertFn, true, false, true));
+
+        // WeakMap.prototype.getOrInsertComputed(key, callbackfn)
+        $getOrInsertComputedFn = JsFunction::fromCallable('getOrInsertComputed', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsWeakMap) {
+                throw new TypeError('Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            if (!$key instanceof JsObject) {
+                throw new TypeError('Invalid value used as weak map key');
+            }
+            $callbackfn = $args[1] ?? JsUndefined::instance();
+            if (!$callbackfn instanceof JsFunction) {
+                throw new TypeError('callbackfn is not a function');
+            }
+            if ($this_->weakMapHas($key)) {
+                return $this_->weakMapGet($key);
+            }
+            $value = $callbackfn->call(JsUndefined::instance(), [$key]);
+            $this_->weakMapSet($key, $value);
+            return $value;
+        }, 2);
+        $proto->defineOwnProperty('getOrInsertComputed', PropertyDescriptor::data($getOrInsertComputedFn, true, false, true));
+
         // Symbol.toStringTag = "WeakMap".
         $toStringTagSym = SymbolConstructor::toStringTag();
         $proto->definePropertyBySymbol(

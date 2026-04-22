@@ -431,6 +431,40 @@ class MapConstructor
         }, 1);
         $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
 
+        // Map.prototype.getOrInsert(key, value)
+        $getOrInsertFn = JsFunction::fromCallable('getOrInsert', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsMap) {
+                throw new TypeError('Method Map.prototype.getOrInsert called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            $value = $args[1] ?? JsUndefined::instance();
+            if ($this_->mapHas($key)) {
+                return $this_->mapGet($key);
+            }
+            $this_->mapSet($key, $value);
+            return $value;
+        }, 2);
+        $proto->defineOwnProperty('getOrInsert', PropertyDescriptor::data($getOrInsertFn, true, false, true));
+
+        // Map.prototype.getOrInsertComputed(key, callbackfn)
+        $getOrInsertComputedFn = JsFunction::fromCallable('getOrInsertComputed', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsMap) {
+                throw new TypeError('Method Map.prototype.getOrInsertComputed called on incompatible receiver');
+            }
+            $key = $args[0] ?? JsUndefined::instance();
+            $callbackfn = $args[1] ?? JsUndefined::instance();
+            if (!$callbackfn instanceof JsFunction) {
+                throw new TypeError('callbackfn is not a function');
+            }
+            if ($this_->mapHas($key)) {
+                return $this_->mapGet($key);
+            }
+            $value = $callbackfn->call(JsUndefined::instance(), [$key]);
+            $this_->mapSet($key, $value);
+            return $value;
+        }, 2);
+        $proto->defineOwnProperty('getOrInsertComputed', PropertyDescriptor::data($getOrInsertComputedFn, true, false, true));
+
         $keysFn = JsFunction::fromCallable('keys', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsMap) {
                 throw new TypeError('Method Map.prototype.keys called on incompatible receiver');
