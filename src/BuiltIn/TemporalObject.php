@@ -3960,6 +3960,22 @@ class TemporalObject
                 $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
             }
         }
+        // Validate largestUnit >= smallestUnit.
+        $suFinal = $smallestUnit ?? 'nanosecond';
+        $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+        $liIdx = array_search($largestUnit, $allU);
+        $siIdx = array_search($suFinal, $allU);
+        if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+            $largestUnit = $suFinal;
+            $liIdx = $siIdx;
+        }
+        if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+            throw new RangeError('largestUnit must be >= smallestUnit');
+        }
+        // Validate roundingIncrement.
+        if (isset($riNum) && $riNum > 1) {
+            self::validateRoundingIncrement($suFinal, $riNum);
+        }
         $calendarUnits = ['year', 'month', 'week', 'day'];
         if (in_array($largestUnit, $calendarUnits, true)) {
             // Calendar-aware difference using date parts.
