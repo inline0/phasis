@@ -283,6 +283,7 @@ class TemporalObject
 
     private static function createInstantObject(string $ns): JsObject
     {
+        self::validateInstantRange($ns);
         $obj = new JsObject(self::$instantProto);
         $obj->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(
             new JsString($ns),
