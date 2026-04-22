@@ -3227,7 +3227,7 @@ class TemporalObject
             if ($tz instanceof JsUndefined) {
                 throw new TypeError('ZonedDateTime from object requires timeZone');
             }
-            $timeZone = TypeConversion::toString($tz);
+            $timeZone = self::toTemporalTimeZoneIdentifier($tz);
             // Get date/time fields.
             $year = $item->get('year');
             $month = $item->get('month');
@@ -3297,7 +3297,8 @@ class TemporalObject
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?' ;
         $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
         $annPart = '(?:\\[([^\\]]+)\\])?';
-        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}{$annPart}/";
+        $annsEnd = '(?:\\[[^\\]]+\\])*$';
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}{$annPart}{$annsEnd}/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid ZonedDateTime string: {$str}");
         }
@@ -3318,7 +3319,19 @@ class TemporalObject
         $annotation = isset($m[11]) && $m[11] !== '' ? $m[11] : null;
         // Timezone: annotation takes priority, fallback to offset.
         if ($annotation !== null && !str_contains($annotation, '=')) {
-            $timeZone = $annotation;
+            // Normalize timezone name (case-insensitive).
+            $upper = strtoupper($annotation);
+            if ($upper === 'UTC' || $upper === 'GMT') {
+                $timeZone = $upper;
+            } else {
+                try {
+                    $tzObj = new \DateTimeZone($annotation);
+                    $timeZone = $tzObj->getName();
+                } catch (\Throwable) {
+                    // Might be an offset like +05:30.
+                    $timeZone = $annotation;
+                }
+            }
         } elseif ($offset !== null) {
             $timeZone = strtoupper($offset) === 'Z' ? 'UTC' : $offset;
         } else {
