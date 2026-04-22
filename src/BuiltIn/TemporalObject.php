@@ -6253,14 +6253,16 @@ class TemporalObject
                 throw new RangeError('largestUnit must be >= smallestUnit');
             }
         }
+        // For calendar units (year, month, week), compute using date components.
+        $calendarUnits = ['year', 'month', 'week'];
+        if (in_array($largestUnit, $calendarUnits, true)) {
+            return self::calendarDateTimeDifference($dt1, $dt2, $largestUnit);
+        }
         // Apply rounding.
         $roundIncrement = isset($riNum) ? (int) $riNum : 1;
         $roundMode = $rmStr ?? 'trunc';
         if ($smallestUnit !== 'nanosecond' || $roundIncrement !== 1) {
             $unitNsMap = [
-                'year' => bcmul('31557600', '1000000000', 0),
-                'month' => bcmul('2629800', '1000000000', 0),
-                'week' => bcmul('604800', '1000000000', 0),
                 'day' => '86400000000000',
                 'hour' => '3600000000000',
                 'minute' => '60000000000',
@@ -6274,6 +6276,126 @@ class TemporalObject
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Calendar-aware difference for year/month/week largestUnit. */
+    private static function calendarDateTimeDifference(JsValue $dt1, JsValue $dt2, string $largestUnit): JsObject
+    {
+        $y1 = self::getSlotInt($dt1, '[[ISOYear]]');
+        $m1 = self::getSlotInt($dt1, '[[ISOMonth]]');
+        $d1 = self::getSlotInt($dt1, '[[ISODay]]');
+        $y2 = self::getSlotInt($dt2, '[[ISOYear]]');
+        $m2 = self::getSlotInt($dt2, '[[ISOMonth]]');
+        $d2 = self::getSlotInt($dt2, '[[ISODay]]');
+        // Determine sign.
+        $cmp = ($y2 <=> $y1) ?: ($m2 <=> $m1) ?: ($d2 <=> $d1);
+        if ($cmp === 0) {
+            // Same date, compute time diff.
+            $ns1 = self::isoDateTimeToEpochNs($y1, $m1, $d1,
+                self::getSlotInt($dt1, '[[ISOHour]]'), self::getSlotInt($dt1, '[[ISOMinute]]'),
+                self::getSlotInt($dt1, '[[ISOSecond]]'), self::getSlotInt($dt1, '[[ISOMillisecond]]'),
+                self::getSlotInt($dt1, '[[ISOMicrosecond]]'), self::getSlotInt($dt1, '[[ISONanosecond]]'), 'UTC');
+            $ns2 = self::isoDateTimeToEpochNs($y2, $m2, $d2,
+                self::getSlotInt($dt2, '[[ISOHour]]'), self::getSlotInt($dt2, '[[ISOMinute]]'),
+                self::getSlotInt($dt2, '[[ISOSecond]]'), self::getSlotInt($dt2, '[[ISOMillisecond]]'),
+                self::getSlotInt($dt2, '[[ISOMicrosecond]]'), self::getSlotInt($dt2, '[[ISONanosecond]]'), 'UTC');
+            $diffNs = bcsub($ns2, $ns1, 0);
+            return self::nsToTimeDuration($diffNs, 'hour');
+        }
+        $sign = $cmp > 0 ? 1 : -1;
+        // Compute in positive direction, then apply sign.
+        if ($sign < 0) {
+            [$y1, $m1, $d1, $y2, $m2, $d2] = [$y2, $m2, $d2, $y1, $m1, $d1];
+            [$dt1, $dt2] = [$dt2, $dt1];
+        }
+        $years = 0;
+        $months = 0;
+        $weeks = 0;
+        $days = 0;
+        if ($largestUnit === 'year') {
+            $years = $y2 - $y1;
+            if ($m2 < $m1 || ($m2 === $m1 && $d2 < $d1)) {
+                $years--;
+            }
+            // Start from dt1 + years.
+            $tempY = $y1 + $years;
+            $tempM = $m1;
+            $tempD = min($d1, self::isoDaysInMonth($tempY, $tempM));
+            $months = ($y2 * 12 + $m2) - ($tempY * 12 + $tempM);
+            if ($d2 < $tempD) {
+                $months--;
+            }
+            if ($months < 0) {
+                $months += 12;
+                $years--;
+            }
+            // Compute remaining days.
+            $midY = $y1 + $years;
+            $midTotalM = $midY * 12 + ($m1 - 1) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $jd1 = self::isoToJulianDay($midMY, $midMM, $midD);
+            $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+            $days = $jd2 - $jd1;
+        } elseif ($largestUnit === 'month') {
+            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+            if ($d2 < $d1) {
+                $totalMonths--;
+            }
+            $months = $totalMonths;
+            // Compute remaining days.
+            $midTotalM = $y1 * 12 + ($m1 - 1) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $jd1 = self::isoToJulianDay($midMY, $midMM, $midD);
+            $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+            $days = $jd2 - $jd1;
+        } elseif ($largestUnit === 'week') {
+            $jd1 = self::isoToJulianDay($y1, $m1, $d1);
+            $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+            $totalDays = $jd2 - $jd1;
+            $weeks = intdiv($totalDays, 7);
+            $days = $totalDays % 7;
+        }
+        // Compute time difference.
+        $timeNs1 = (self::getSlotInt($dt1, '[[ISOHour]]') * 3600
+            + self::getSlotInt($dt1, '[[ISOMinute]]') * 60
+            + self::getSlotInt($dt1, '[[ISOSecond]]')) * 1000000000
+            + self::getSlotInt($dt1, '[[ISOMillisecond]]') * 1000000
+            + self::getSlotInt($dt1, '[[ISOMicrosecond]]') * 1000
+            + self::getSlotInt($dt1, '[[ISONanosecond]]');
+        $timeNs2 = (self::getSlotInt($dt2, '[[ISOHour]]') * 3600
+            + self::getSlotInt($dt2, '[[ISOMinute]]') * 60
+            + self::getSlotInt($dt2, '[[ISOSecond]]')) * 1000000000
+            + self::getSlotInt($dt2, '[[ISOMillisecond]]') * 1000000
+            + self::getSlotInt($dt2, '[[ISOMicrosecond]]') * 1000
+            + self::getSlotInt($dt2, '[[ISONanosecond]]');
+        $timeDiffNs = (string) ($timeNs2 - $timeNs1);
+        if ($timeNs2 < $timeNs1 && $days > 0) {
+            $days--;
+            $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
+        }
+        $timeDur = self::nsToTimeDuration($timeDiffNs, 'hour');
+        $hours = self::getDurationField($timeDur, 'hours');
+        $minutes = self::getDurationField($timeDur, 'minutes');
+        $seconds = self::getDurationField($timeDur, 'seconds');
+        $ms = self::getDurationField($timeDur, 'milliseconds');
+        $us = self::getDurationField($timeDur, 'microseconds');
+        $ns = self::getDurationField($timeDur, 'nanoseconds');
+        return self::createDurationObject(
+            $sign * $years,
+            $sign * $months,
+            $sign * $weeks,
+            $sign * $days,
+            $sign * $hours,
+            $sign * $minutes,
+            $sign * $seconds,
+            $sign * $ms,
+            $sign * $us,
+            $sign * $ns,
+        );
     }
 
     /** Convert nanosecond diff to Duration with date+time units. */
