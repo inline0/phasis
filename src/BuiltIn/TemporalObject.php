@@ -4979,11 +4979,15 @@ class TemporalObject
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
                 }
             }
-            // MMDD (4-digit): ambiguous if MM is valid month AND DD is valid day.
+            // MMDD (4-digit): ambiguous if it could be a valid date.
             if (preg_match('/^(\d{4})(?:$|\[)/', $noAnnot2, $amb4)) {
                 $mmCandidate = (int) substr($amb4[1], 0, 2);
                 $ddCandidate = (int) substr($amb4[1], 2, 2);
-                if ($mmCandidate >= 1 && $mmCandidate <= 12 && $ddCandidate >= 1 && $ddCandidate <= 31) {
+                // Max days per month (including leap year for Feb).
+                $maxDays = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+                if ($mmCandidate >= 1 && $mmCandidate <= 12
+                    && $ddCandidate >= 1 && $ddCandidate <= ($maxDays[$mmCandidate] ?? 31)
+                ) {
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
                 }
             }
