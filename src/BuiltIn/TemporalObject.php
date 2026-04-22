@@ -3327,18 +3327,18 @@ class TemporalObject
         [$str, $cal] = self::normalizeTemporalString($str);
         // Parse the datetime part, optional offset, and timezone annotation.
         $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
-        $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?' ;
+        $timePart = '(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?)?';
         $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
         $annPart = '(?:\\[([^\\]]+)\\])?';
         $annsEnd = '(?:\\[[^\\]]+\\])*$';
-        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}{$annPart}{$annsEnd}/";
+        $pattern = "/^{$datePart}{$timePart}{$tzPart}{$annPart}{$annsEnd}/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid ZonedDateTime string: {$str}");
         }
         $year = (int) $m[1];
         $month = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : (int) ($m[4] ?? 0);
         $day = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : (int) ($m[5] ?? 0);
-        $hour = (int) $m[6];
+        $hour = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
         $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
         $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
         if ($sec === 60) {
