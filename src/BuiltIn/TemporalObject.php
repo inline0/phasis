@@ -7947,6 +7947,26 @@ class TemporalObject
                     throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suCanon}");
                 }
             }
+            // Validate roundingIncrement.
+            if (isset($ri) && !($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum)) {
+                    throw new RangeError('roundingIncrement must be finite');
+                }
+                $riFinal = (int) $riNum;
+                if ($riFinal < 1) {
+                    throw new RangeError('roundingIncrement must be >= 1');
+                }
+            }
+            // Validate largestUnit >= smallestUnit.
+            if (isset($suCanon)) {
+                $allU = ['year', 'month'];
+                $liIdx = array_search($largestUnit, $allU);
+                $siIdx = array_search($suCanon, $allU);
+                if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                    throw new RangeError('largestUnit must be >= smallestUnit');
+                }
+            }
         }
         $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
         if ($largestUnit === 'year') {
