@@ -172,17 +172,7 @@ class TemporalObject
         $d('toZonedDateTimeISO', function (JsValue $this_, array $args): JsValue {
             $ns = self::requireInstant($this_);
             $item = $args[0] ?? JsUndefined::instance();
-            if ($item instanceof JsString) {
-                $timeZone = $item->value;
-            } elseif ($item instanceof JsObject) {
-                $tz = $item->get('timeZone');
-                if ($tz instanceof JsUndefined) {
-                    throw new TypeError('missing timeZone property');
-                }
-                $timeZone = TypeConversion::toString($tz);
-            } else {
-                throw new TypeError('Expected a string or an object with a timeZone property');
-            }
+            $timeZone = self::toTemporalTimeZoneIdentifier($item);
             return self::createZonedDateTimeObject($ns, $timeZone, 'iso8601');
         }, 1);
 
