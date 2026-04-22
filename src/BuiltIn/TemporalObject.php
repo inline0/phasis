@@ -1072,13 +1072,8 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
-            // Reject calendar/timeZone properties.
-            if (!($item->get('calendar') instanceof JsUndefined)) {
-                throw new TypeError('calendar not allowed in with()');
-            }
-            if (!($item->get('timeZone') instanceof JsUndefined)) {
-                throw new TypeError('timeZone not allowed in with()');
-            }
+            // RejectObjectWithCalendarOrTimeZone.
+            self::rejectObjectWithCalendarOrTimeZone($item);
             $h = self::getSlotInt($this_, '[[ISOHour]]');
             $min = self::getSlotInt($this_, '[[ISOMinute]]');
             $s = self::getSlotInt($this_, '[[ISOSecond]]');
@@ -1086,10 +1081,11 @@ class TemporalObject
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
             $any = false;
+            // Read in alphabetical order per spec.
             $mapping = [
-                'hour' => &$h, 'minute' => &$min,
-                'second' => &$s, 'millisecond' => &$ms,
-                'microsecond' => &$us, 'nanosecond' => &$ns,
+                'hour' => &$h, 'microsecond' => &$us,
+                'millisecond' => &$ms, 'minute' => &$min,
+                'nanosecond' => &$ns, 'second' => &$s,
             ];
             foreach ($mapping as $name => &$ref) {
                 $v = $item->get($name);
@@ -1152,9 +1148,7 @@ class TemporalObject
         $d('since', function (JsValue $this_, array $args): JsValue {
             self::requirePlainTime($this_);
             $other = self::toPlainTime($args[0] ?? JsUndefined::instance());
-            $dur = self::plainTimeDifference($this_, $other, $args[1] ?? JsUndefined::instance());
-            // Negate for since
-            return self::negateDuration($dur);
+            return self::plainTimeDifference($other, $this_, $args[1] ?? JsUndefined::instance());
         }, 1);
 
         $d('round', function (JsValue $this_, array $args): JsValue {
@@ -1214,18 +1208,17 @@ class TemporalObject
                 ) {
                     return self::toPlainTime($item);
                 }
-                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = 'constrain';
-                if ($options instanceof JsObject) {
-                    $ov = $options->get('overflow');
-                    if (!($ov instanceof JsUndefined)) {
-                        $overflow = TypeConversion::toString($ov);
-                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$overflow}");
-                        }
-                    }
+                // For strings/PlainTime: parse first, then validate options.
+                if ($item instanceof JsString || ($item instanceof JsObject && $item->has('[[IsPlainTime]]'))) {
+                    $result = self::toPlainTime($item);
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    self::getOverflow($options);
+                    return $result;
                 }
-                return self::toPlainTime($item, $overflow);
+                // For property bags: read fields first, then options.
+                // toPlainTime reads the fields, then we read overflow.
+                $rawOpts = $args[1] ?? JsUndefined::instance();
+                return self::toPlainTimeFromBag($item, $rawOpts);
             }, 1),
             true,
             false,
@@ -4434,10 +4427,11 @@ class TemporalObject
             $us = 0;
             $ns = 0;
             $any = false;
+            // Read in alphabetical order per spec.
             $tBag = [
-                'hour' => &$h, 'minute' => &$min,
-                'second' => &$s, 'millisecond' => &$ms,
-                'microsecond' => &$us, 'nanosecond' => &$ns,
+                'hour' => &$h, 'microsecond' => &$us,
+                'millisecond' => &$ms, 'minute' => &$min,
+                'nanosecond' => &$ns, 'second' => &$s,
             ];
             foreach ($tBag as $name => &$ref) {
                 $v = $item->get($name);
@@ -4481,6 +4475,52 @@ class TemporalObject
         return self::parsePlainTimeString($str);
     }
 
+    /** Create PlainTime from property bag with correct fields-before-options ordering. */
+    private static function toPlainTimeFromBag(JsObject $item, JsValue $rawOpts): JsObject
+    {
+        $h = 0;
+        $min = 0;
+        $s = 0;
+        $ms = 0;
+        $us = 0;
+        $ns = 0;
+        $any = false;
+        $tBag = [
+            'hour' => &$h, 'microsecond' => &$us,
+            'millisecond' => &$ms, 'minute' => &$min,
+            'nanosecond' => &$ns, 'second' => &$s,
+        ];
+        foreach ($tBag as $name => &$ref) {
+            $v = $item->get($name);
+            if (!($v instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($v);
+                if (!is_finite($n)) {
+                    throw new RangeError("{$name} must be finite");
+                }
+                $ref = (int) $n;
+                $any = true;
+            }
+        }
+        unset($ref);
+        if (!$any) {
+            throw new TypeError('missing required time property');
+        }
+        // Read options AFTER fields per spec.
+        $options = self::getOptionsObject($rawOpts);
+        $overflow = self::getOverflow($options);
+        if ($overflow === 'constrain') {
+            $h = max(0, min(23, $h));
+            $min = max(0, min(59, $min));
+            $s = max(0, min(59, $s));
+            $ms = max(0, min(999, $ms));
+            $us = max(0, min(999, $us));
+            $ns = max(0, min(999, $ns));
+        } else {
+            self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+        }
+        return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
+    }
+
     private static function parsePlainTimeString(string $str): JsObject
     {
         [$str] = self::normalizeTemporalString($str);
@@ -4495,31 +4535,53 @@ class TemporalObject
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
-        // Strip annotations for time-only parsing.
-        $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
-        // Strip offset.
-        $cleanStr = preg_replace('/[+\-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d+)?)?)?$/', '', $cleanStr);
-        // Strip leading T/t designator for time-only strings.
-        $hasT = (bool) preg_match('/^[Tt]/', $cleanStr);
-        if ($hasT) {
-            $cleanStr = substr($cleanStr, 1);
-        }
         // Reject space-prefixed strings (space is not a substitute for T).
         if (preg_match('/^ /', $str)) {
             throw new RangeError("space is not accepted as a substitute for T prefix: '{$str}'");
         }
+        // Strip annotations for ambiguity checking.
+        $noAnnot2 = preg_replace('/(?:\[.*?\])+$/', '', $str);
+        $hasT = (bool) preg_match('/^[Tt]/', $noAnnot2);
         // Reject ambiguous strings (could be date-like) without T prefix.
+        // Per spec: YYYY-MM, MMDD, MM-DD, YYYYMM are ambiguous with time.
+        // Check on annotation-stripped string BEFORE offset stripping.
         if (!$hasT) {
-            $stripped = $cleanStr;
-            // YYYY-MM, YYYY-MM-DD, MMDD, YYYYMM, MM-DD patterns.
-            if (
-                preg_match('/^\d{4}-\d{2}$/', $stripped) // YYYY-MM
-                || preg_match('/^\d{4}\d{2}$/', $stripped) // YYYYMM
-                || preg_match('/^\d{4}$/', $stripped) // MMDD or HHMM
-                || preg_match('/^\d{2}-\d{2}$/', $stripped) // MM-DD or HH-UU
-            ) {
-                throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+            // YYYY-MM or YYYY-MM[ann]: ambiguous only if MM is valid month.
+            if (preg_match('/^(\d{4})-(\d{2})(?:$|\[)/', $noAnnot2, $ambM)) {
+                $ambMonth = (int) $ambM[2];
+                if ($ambMonth >= 1 && $ambMonth <= 12) {
+                    throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+                }
             }
+            // MM-DD or MM-DD[ann]: ambiguous only if MM is valid month.
+            if (preg_match('/^(\d{2})-(\d{2})(?:$|\[)/', $noAnnot2, $ambMD)) {
+                $ambMM = (int) $ambMD[1];
+                if ($ambMM >= 1 && $ambMM <= 12) {
+                    throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+                }
+            }
+            // MMDD (4-digit): ambiguous if MM could be valid month.
+            if (preg_match('/^(\d{4})(?:$|\[)/', $noAnnot2, $amb4)) {
+                $mmCandidate = (int) substr($amb4[1], 0, 2);
+                if ($mmCandidate >= 1 && $mmCandidate <= 12) {
+                    throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+                }
+            }
+            // YYYYMM (6-digit): ambiguous if last 2 digits are valid month.
+            if (preg_match('/^(\d{6})(?:$|\[)/', $noAnnot2, $amb6)) {
+                $mmPart = (int) substr($amb6[1], 4, 2);
+                if ($mmPart >= 1 && $mmPart <= 12) {
+                    throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+                }
+            }
+        }
+        // Strip annotations for time-only parsing.
+        $cleanStr = $noAnnot2;
+        // Strip offset.
+        $cleanStr = preg_replace('/[+\-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d+)?)?)?$/', '', $cleanStr);
+        // Strip leading T/t designator.
+        if ($hasT) {
+            $cleanStr = substr($cleanStr, 1);
         }
         $pattern = '/^(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?$/';
         if (!preg_match($pattern, $cleanStr, $m)) {
@@ -6325,21 +6387,32 @@ class TemporalObject
         $ns2 = self::timeToNs($time2);
         $diffNs = (string) ($ns2 - $ns1);
         $largestUnit = 'hour';
+        $largestUnitExplicit = false;
         $validTimeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
                 $largestUnit = TypeConversion::toString($lu);
-                $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                if (!in_array($largestUnit, $validTimeUnits, true)) {
-                    throw new RangeError("Invalid largest unit for time: {$largestUnit}");
+                if ($largestUnit === 'auto') {
+                    $largestUnit = 'hour';
+                    $largestUnitExplicit = false;
+                } else {
+                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                    if (!in_array($largestUnit, $validTimeUnits, true)) {
+                        throw new RangeError("Invalid largest unit for time: {$largestUnit}");
+                    }
                 }
             }
             // Alphabetical order: roundingIncrement, roundingMode, smallestUnit.
             $ri = $opts->get('roundingIncrement');
             if (!($ri instanceof JsUndefined)) {
                 $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                if (!is_finite($riNum)) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+                $riNum = (int) $riNum;
+                if ($riNum < 1 || $riNum > 1_000_000_000) {
                     throw new RangeError("Invalid roundingIncrement");
                 }
             }
@@ -6359,10 +6432,18 @@ class TemporalObject
                     throw new RangeError("Invalid smallest unit for time: {$suStr}");
                 }
             }
-            // Validate largestUnit >= smallestUnit.
+            // Validate roundingIncrement divides evenly.
+            if (isset($riNum) && $riNum > 1) {
+                self::validateRoundingIncrement($suCanon ?? 'nanosecond', $riNum);
+            }
+            // Default largestUnit to smallestUnit if needed.
             if (isset($suCanon)) {
                 $luIdx = array_search($largestUnit, $validTimeUnits);
                 $suIdx = array_search($suCanon, $validTimeUnits);
+                if (!$largestUnitExplicit && $suIdx < $luIdx) {
+                    $largestUnit = $suCanon;
+                    $luIdx = $suIdx;
+                }
                 if ($luIdx !== false && $suIdx !== false && $luIdx > $suIdx) {
                     throw new RangeError('largestUnit must be >= smallestUnit');
                 }
