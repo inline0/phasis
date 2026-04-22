@@ -470,19 +470,38 @@ class TemporalObject
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
-            // For Duration.round, date/time only units allowed.
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', [
-                'year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond',
-            ], true);
+            // For Duration.round, smallestUnit is optional (defaults to nanosecond).
+            $allDurUnits = [
+                'year', 'month', 'week', 'day', 'hour', 'minute',
+                'second', 'millisecond', 'microsecond', 'nanosecond',
+            ];
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $allDurUnits, false);
+            if ($unit === '') {
+                $unit = 'nanosecond';
+            }
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
             $largestUnit = 'auto';
             if ($roundTo->has('largestUnit')) {
                 $lu = $roundTo->get('largestUnit');
                 if (!($lu instanceof JsUndefined)) {
-                    $largestUnit = TypeConversion::toString($lu);
-                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                    $luStr = TypeConversion::toString($lu);
+                    if ($luStr !== 'auto') {
+                        $largestUnit = self::canonicalTemporalUnit($luStr);
+                    }
                 }
+            }
+            // At least one of smallestUnit or largestUnit must be provided.
+            $suExplicit = false;
+            $suV = $roundTo->get('smallestUnit');
+            if (!($suV instanceof JsUndefined)) {
+                $suExplicit = true;
+            }
+            if (!$suExplicit && $largestUnit === 'auto') {
+                throw new RangeError('at least one of smallestUnit or largestUnit is required');
+            }
+            if ($increment > 1) {
+                self::validateRoundingIncrement($unit, $increment);
             }
             // Read relativeTo.
             $relativeTo = null;
@@ -2454,10 +2473,7 @@ class TemporalObject
             $m = (int) $mNum;
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
-                $cal = strtolower(TypeConversion::toString($args[2]));
-                if (!self::isValidCalendar($cal)) {
-                    throw new RangeError("Invalid calendar: {$cal}");
-                }
+                $cal = self::toCalendarSlotValue($args[2]);
             }
             $refDay = isset($args[3]) && !($args[3] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[3]) : 1;
             self::validateISODate($y, $m, $refDay);
@@ -2505,7 +2521,11 @@ class TemporalObject
                 if ($c !== 0) {
                     return new JsNumber((float) $c);
                 }
-                return new JsNumber((float) (self::getSlotInt($one, '[[ISOMonth]]') <=> self::getSlotInt($two, '[[ISOMonth]]')));
+                $cm = self::getSlotInt($one, '[[ISOMonth]]') <=> self::getSlotInt($two, '[[ISOMonth]]');
+                if ($cm !== 0) {
+                    return new JsNumber((float) $cm);
+                }
+                return new JsNumber((float) (self::getSlotInt($one, '[[ISODay]]') <=> self::getSlotInt($two, '[[ISODay]]')));
             }, 2),
             true,
             false,
