@@ -7831,6 +7831,30 @@ class TemporalObject
             $years = 0;
             $months = $totalMonths;
         }
+        // Apply rounding.
+        $suFinal = $suCanon ?? 'month';
+        $rmFinal = $rmStr ?? 'trunc';
+        $riFinal = 1;
+        if (isset($ri) && !($ri instanceof JsUndefined)) {
+            $riFinal = (int) TypeConversion::toNumber($ri);
+            if ($riFinal < 1) {
+                $riFinal = 1;
+            }
+        }
+        if ($suFinal === 'year' && $months !== 0) {
+            $sign = $totalMonths >= 0 ? 1 : -1;
+            $absYears = abs($years);
+            $absMonths = abs($months);
+            $frac = $absMonths / 12.0;
+            $totalYearsFloat = $absYears + $frac;
+            $rounded = self::roundToIncrement(
+                (int) round($totalYearsFloat * 1000000),
+                $riFinal * 1000000,
+                $rmFinal,
+            );
+            $years = $sign * intdiv($rounded, 1000000);
+            $months = 0;
+        }
         return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
