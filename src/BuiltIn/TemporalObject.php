@@ -470,46 +470,55 @@ class TemporalObject
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
-            // For Duration.round, smallestUnit is optional (defaults to nanosecond).
+            // Read options in SPEC order: largestUnit, relativeTo, roundingIncrement, roundingMode, smallestUnit.
             $allDurUnits = [
                 'year', 'month', 'week', 'day', 'hour', 'minute',
                 'second', 'millisecond', 'microsecond', 'nanosecond',
             ];
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $allDurUnits, false);
-            if ($unit === '') {
-                $unit = 'nanosecond';
-            }
-            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
-            $increment = self::getRoundingIncrement($roundTo);
+            // 1. largestUnit
             $largestUnit = 'auto';
-            if ($roundTo->has('largestUnit')) {
-                $lu = $roundTo->get('largestUnit');
-                if (!($lu instanceof JsUndefined)) {
-                    $luStr = TypeConversion::toString($lu);
-                    if ($luStr !== 'auto') {
-                        $largestUnit = self::canonicalTemporalUnit($luStr);
+            $largestUnitExplicit = false;
+            $lu = $roundTo->get('largestUnit');
+            if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
+                $luStr = TypeConversion::toString($lu);
+                if ($luStr !== 'auto') {
+                    $largestUnit = self::canonicalTemporalUnit($luStr);
+                    if (!in_array($largestUnit, $allDurUnits, true)) {
+                        throw new RangeError("Invalid largestUnit: {$largestUnit}");
                     }
                 }
             }
-            // At least one of smallestUnit or largestUnit must be provided.
-            $suExplicit = false;
-            $suV = $roundTo->get('smallestUnit');
-            if (!($suV instanceof JsUndefined)) {
-                $suExplicit = true;
+            // 2. relativeTo
+            $relativeTo = null;
+            $rtv = $roundTo->get('relativeTo');
+            if (!($rtv instanceof JsUndefined)) {
+                $relativeTo = $rtv;
             }
-            if (!$suExplicit && $largestUnit === 'auto') {
+            // 3. roundingIncrement
+            $increment = self::getRoundingIncrement($roundTo);
+            // 4. roundingMode
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
+            // 5. smallestUnit
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $allDurUnits, false);
+            $suExplicit = $unit !== '';
+            if (!$suExplicit) {
+                $unit = 'nanosecond';
+            }
+            // At least one of smallestUnit or largestUnit must be provided.
+            if (!$suExplicit && !$largestUnitExplicit) {
                 throw new RangeError('at least one of smallestUnit or largestUnit is required');
+            }
+            // Validate smallestUnit <= largestUnit.
+            if ($largestUnit !== 'auto') {
+                $luRank = array_search($largestUnit, $allDurUnits);
+                $suRank = array_search($unit, $allDurUnits);
+                if ($luRank !== false && $suRank !== false && $suRank < $luRank) {
+                    throw new RangeError('smallestUnit must not be larger than largestUnit');
+                }
             }
             if ($increment > 1) {
                 self::validateRoundingIncrement($unit, $increment);
-            }
-            // Read relativeTo.
-            $relativeTo = null;
-            if ($roundTo->has('relativeTo')) {
-                $rtv = $roundTo->get('relativeTo');
-                if (!($rtv instanceof JsUndefined)) {
-                    $relativeTo = $rtv;
-                }
             }
             // Calendar units require relativeTo.
             $hasCalUnit = self::getDurationField($this_, 'years') !== 0
