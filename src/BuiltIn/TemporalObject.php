@@ -4575,11 +4575,7 @@ class TemporalObject
             $y = (int) $yNum;
             if (!($monthCode instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $m = (int) $mcm[1];
-                // Check month/monthCode agreement if both present.
+                $m = self::parseMonthCode($mc);
                 if (!($month instanceof JsUndefined)) {
                     $mVal = (int) TypeConversion::toNumber($month);
                     if ($mVal !== $m) {
