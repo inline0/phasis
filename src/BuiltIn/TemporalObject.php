@@ -3450,32 +3450,33 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            // Add date parts first.
+            // Step 1: Add years and months to the calendar date (with overflow/constrain).
             $y = $parts['year'] + self::getDurationField($dur, 'years');
             $m = $parts['month'] + self::getDurationField($dur, 'months');
-            $dd = $parts['day'] + self::getDurationField($dur, 'weeks') * 7 + self::getDurationField($dur, 'days');
-            [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
-            // Then add time parts via nanoseconds.
-            $timeNs = self::isoDateTimeToEpochNs(
-                $y,
-                $m,
-                $dd,
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
+            // Normalize month overflow.
+            while ($m > 12) {
+                $m -= 12;
+                $y++;
+            }
+            while ($m < 1) {
+                $m += 12;
+                $y--;
+            }
+            $maxDay = self::isoDaysInMonth($y, $m);
+            $dd = min($parts['day'], $maxDay);
+            // Step 2: Get epoch ns for the date/time result after year/month addition.
+            $intermediateNs = self::isoDateTimeToEpochNs(
+                $y, $m, $dd,
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
                 $tz,
             );
-            // Add only the time sub-day components as nanoseconds. Days/weeks/months/years
-            // were already consumed by advancing the calendar date above.
-            $timeOnlyNs = self::durationToTotalNs(
+            // Step 3: Add weeks, days, and sub-day components as nanoseconds.
+            $subDayNs = self::durationToTotalNs(
                 self::createDurationObject(
-                    0,
-                    0,
-                    0,
-                    0,
+                    0, 0,
+                    self::getDurationField($dur, 'weeks'),
+                    self::getDurationField($dur, 'days'),
                     self::getDurationField($dur, 'hours'),
                     self::getDurationField($dur, 'minutes'),
                     self::getDurationField($dur, 'seconds'),
@@ -3484,7 +3485,7 @@ class TemporalObject
                     self::getDurationField($dur, 'nanoseconds'),
                 )
             );
-            $result = bcadd($timeNs, $timeOnlyNs, 0);
+            $result = bcadd($intermediateNs, $subDayNs, 0);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -3498,30 +3499,32 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
+            // Step 1: Subtract years and months from the calendar date.
             $y = $parts['year'] - self::getDurationField($dur, 'years');
             $m = $parts['month'] - self::getDurationField($dur, 'months');
-            $dd = $parts['day'] - self::getDurationField($dur, 'weeks') * 7 - self::getDurationField($dur, 'days');
-            [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
-            $timeNs = self::isoDateTimeToEpochNs(
-                $y,
-                $m,
-                $dd,
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
+            while ($m > 12) {
+                $m -= 12;
+                $y++;
+            }
+            while ($m < 1) {
+                $m += 12;
+                $y--;
+            }
+            $maxDay = self::isoDaysInMonth($y, $m);
+            $dd = min($parts['day'], $maxDay);
+            // Step 2: Get epoch ns for the date/time after year/month subtraction.
+            $intermediateNs = self::isoDateTimeToEpochNs(
+                $y, $m, $dd,
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
                 $tz,
             );
-            // Subtract only time sub-day components. Days/weeks/months/years already
-            // consumed by rewinding the calendar date above.
-            $timeOnlyNs = self::durationToTotalNs(
+            // Step 3: Subtract weeks, days, and sub-day components as nanoseconds.
+            $subDayNs = self::durationToTotalNs(
                 self::createDurationObject(
-                    0,
-                    0,
-                    0,
-                    0,
+                    0, 0,
+                    self::getDurationField($dur, 'weeks'),
+                    self::getDurationField($dur, 'days'),
                     self::getDurationField($dur, 'hours'),
                     self::getDurationField($dur, 'minutes'),
                     self::getDurationField($dur, 'seconds'),
@@ -3530,7 +3533,7 @@ class TemporalObject
                     self::getDurationField($dur, 'nanoseconds'),
                 )
             );
-            $result = bcsub($timeNs, $timeOnlyNs, 0);
+            $result = bcsub($intermediateNs, $subDayNs, 0);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -3750,6 +3753,29 @@ class TemporalObject
             if (!($calV instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($calV));
             }
+            // Validate `offset` property if present: must be a string type.
+            $offsetProp = $item->get('offset');
+            if (!($offsetProp instanceof JsUndefined)) {
+                // Non-string primitives (number, boolean, null, bigint) must throw TypeError.
+                if ($offsetProp instanceof JsNumber
+                    || $offsetProp instanceof JsBoolean
+                    || $offsetProp instanceof JsNull
+                    || $offsetProp instanceof \PhpJs\Value\JsBigInt
+                ) {
+                    throw new TypeError('ZonedDateTime offset property must be a string');
+                }
+                // For strings or objects (proxy), convert to string (calls toString via proxy).
+                $offsetStr = TypeConversion::toString($offsetProp);
+                // Validate the offset string format: must be +HH:MM or -HH:MM with optional seconds.
+                if (!preg_match('/^[+-]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?$/', $offsetStr)) {
+                    throw new RangeError("Invalid offset string: {$offsetStr}");
+                }
+                $givenOffsetNs = self::parseOffsetToNs($offsetStr);
+                $tzOffsetNs = self::parseOffsetToNs($timeZone);
+                if ($givenOffsetNs !== $tzOffsetNs) {
+                    throw new RangeError("Property bag offset \"{$offsetStr}\" does not match time zone \"{$timeZone}\"");
+                }
+            }
             // Validate options.
             if ($rawOptions !== null) {
                 $options = self::getOptionsObject($rawOptions);
@@ -3852,12 +3878,17 @@ class TemporalObject
             } else {
                 // Non-Z numeric offset: validate the wall-time is consistent with the annotation timezone.
                 // The wall-time in the explicit offset must equal the wall-time in the annotation timezone.
-                $epochFromExplicitOffset = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $offset);
-                $epochFromAnnotation = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
-                if (bccomp($epochFromExplicitOffset, $epochFromAnnotation, 0) !== 0) {
-                    throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
+                // For fixed-offset annotations, validate the explicit offset matches.
+                $givenOffsetNs = self::parseOffsetToNs($offset);
+                if (self::isFixedOffset($timeZone)) {
+                    $annotationOffsetNs = self::parseOffsetToNs($timeZone);
+                    if ($givenOffsetNs !== $annotationOffsetNs) {
+                        throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
+                    }
                 }
-                $epochNs = $epochFromExplicitOffset;
+                // Use explicit offset (normalized) to compute epoch.
+                $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
             }
         } else {
             // No offset: use wall time in the annotation timezone.
@@ -7401,18 +7432,23 @@ class TemporalObject
         if ($smallestUnit === 'month') {
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
             $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
-            // For negative durations, $ref is the later (end) point. Compute the month
-            // that is at the start-of-remainder position by going backward from $ref.
+            // The fractional month comes from the "remainder" days. For positive durations,
+            // $ref is the start, and the span goes forward $absMonths months then $absDays days.
+            // The relevant daysInMonth is at ref + absMonths.
+            // For negative durations, $ref is the end (later), and the absDays span ends at ref.
+            // The relevant month is the one just before ref (ref.month - 1).
             if ($sign < 0) {
-                $midTotalM = ($refY * 12 + ($refM - 1)) - ($absYears * 12 + $absMonths);
+                $midTotalM = $refY * 12 + ($refM - 2); // zero-based months: refM-1 then subtract 1
+                $midY2 = intdiv($midTotalM, 12);
+                $midM2 = ($midTotalM % 12) + 1;
+                if ($midM2 < 1) {
+                    $midM2 += 12;
+                    $midY2--;
+                }
             } else {
                 $midTotalM = ($refY * 12 + ($refM - 1)) + ($absYears * 12 + $absMonths);
-            }
-            $midY2 = intdiv($midTotalM, 12);
-            $midM2 = ($midTotalM % 12) + 1;
-            if ($midM2 < 1) {
-                $midM2 += 12;
-                $midY2--;
+                $midY2 = intdiv($midTotalM, 12);
+                $midM2 = ($midTotalM % 12) + 1;
             }
             $daysInMonth = self::isoDaysInMonth($midY2, $midM2);
             $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
@@ -7425,13 +7461,33 @@ class TemporalObject
             return self::createDurationObject(0, $sign * $rm, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'week') {
-            $totalDays = $absWeeks * 7 + $absDays;
-            $rounded = self::roundToIncrement($totalDays, $increment * 7, $absRoundingMode);
-            return self::createDurationObject($sign * $absYears, $sign * $absMonths, $sign * intdiv($rounded, 7), 0, 0, 0, 0, 0, 0, 0);
+            // Include sub-day time as fractional days for rounding purposes.
+            $timeNs = abs($hours) * 3600000000000
+                + abs($minutes) * 60000000000
+                + abs($seconds) * 1000000000
+                + abs($ms) * 1000000
+                + abs($us) * 1000
+                + abs($ns);
+            $dayNs = 86400000000000;
+            $weekNs = $dayNs * 7 * $increment;
+            $totalNs = ($absWeeks * 7 + $absDays) * $dayNs + $timeNs;
+            $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $weekNs, $roundingMode);
+            $roundedWeeks = (int) (abs((int) $roundedNs) / $dayNs / 7);
+            return self::createDurationObject($sign * $absYears, $sign * $absMonths, $sign * $roundedWeeks, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'day') {
-            $totalDays = $absWeeks * 7 + $absDays;
-            $rounded = self::roundToIncrement($totalDays, $increment, $absRoundingMode);
+            // Include sub-day time as fractional days for rounding purposes.
+            $timeNs = abs($hours) * 3600000000000
+                + abs($minutes) * 60000000000
+                + abs($seconds) * 1000000000
+                + abs($ms) * 1000000
+                + abs($us) * 1000
+                + abs($ns);
+            $dayNs = 86400000000000;
+            $totalNs = ($absWeeks * 7 + $absDays) * $dayNs + $timeNs;
+            $incrNs = $dayNs * $increment;
+            $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $incrNs, $roundingMode);
+            $rounded = (int) (abs((int) $roundedNs) / $dayNs);
             if ($largestUnit === 'week') {
                 return self::createDurationObject(
                     $sign * $absYears,
@@ -7714,13 +7770,14 @@ class TemporalObject
         }
     }
 
-    /** Parse an ISO offset string (e.g. "Z", "+05:30", "-01:00") to nanoseconds. */
+    /** Parse an ISO offset string (e.g. "Z", "+05:30", "-01:00", "+01:35:00.000000000") to nanoseconds. */
     private static function parseOffsetToNs(string $offset): int
     {
         if (strtoupper($offset) === 'Z') {
             return 0;
         }
-        if (preg_match('/^([+-])(\d{2})(?::(\d{2})(?::(\d{2}))?)?$/', $offset, $m)) {
+        // Extended format: +HH:MM[:SS[.fractional]]
+        if (preg_match('/^([+-])(\d{2})(?::(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?)?$/', $offset, $m)) {
             $sign = $m[1] === '+' ? 1 : -1;
             $h = (int) $m[2];
             $min = isset($m[3]) ? (int) $m[3] : 0;
@@ -7728,6 +7785,30 @@ class TemporalObject
             return $sign * ($h * 3600 + $min * 60 + $sec) * 1_000_000_000;
         }
         return 0;
+    }
+
+    /** Return true if the given string looks like a fixed UTC offset (not an IANA name). */
+    private static function isFixedOffset(string $tz): bool
+    {
+        if (strtoupper($tz) === 'Z' || strtoupper($tz) === 'UTC' || strtoupper($tz) === 'GMT') {
+            return true;
+        }
+        return (bool) preg_match('/^[+-]\d{2}(?::\d{2}(?::\d{2}(?:[.,]\d+)?)?)?$/', $tz);
+    }
+
+    /** Normalize a UTC-offset-in-nanoseconds to a canonical "+HH:MM" or "+HH:MM:SS" string. */
+    private static function normalizeOffset(int $offsetNs): string
+    {
+        $sign = $offsetNs >= 0 ? '+' : '-';
+        $absS = abs(intdiv($offsetNs, 1_000_000_000));
+        $h = intdiv($absS, 3600);
+        $m = intdiv($absS % 3600, 60);
+        $s = $absS % 60;
+        $result = $sign . sprintf('%02d', $h) . ':' . sprintf('%02d', $m);
+        if ($s !== 0) {
+            $result .= ':' . sprintf('%02d', $s);
+        }
+        return $result;
     }
 
     private static function timeZoneOffsetString(string $ns, string $tz): string
