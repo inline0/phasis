@@ -4989,7 +4989,8 @@ class TemporalObject
                 $ddCandidate = (int) substr($amb4[1], 2, 2);
                 // Max days per month (including leap year for Feb).
                 $maxDays = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-                if ($mmCandidate >= 1 && $mmCandidate <= 12
+                if (
+                    $mmCandidate >= 1 && $mmCandidate <= 12
                     && $ddCandidate >= 1 && $ddCandidate <= ($maxDays[$mmCandidate] ?? 31)
                 ) {
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
@@ -6291,14 +6292,30 @@ class TemporalObject
         $cmp = ($y2 <=> $y1) ?: ($m2 <=> $m1) ?: ($d2 <=> $d1);
         if ($cmp === 0) {
             // Same date, compute time diff.
-            $ns1 = self::isoDateTimeToEpochNs($y1, $m1, $d1,
-                self::getSlotInt($dt1, '[[ISOHour]]'), self::getSlotInt($dt1, '[[ISOMinute]]'),
-                self::getSlotInt($dt1, '[[ISOSecond]]'), self::getSlotInt($dt1, '[[ISOMillisecond]]'),
-                self::getSlotInt($dt1, '[[ISOMicrosecond]]'), self::getSlotInt($dt1, '[[ISONanosecond]]'), 'UTC');
-            $ns2 = self::isoDateTimeToEpochNs($y2, $m2, $d2,
-                self::getSlotInt($dt2, '[[ISOHour]]'), self::getSlotInt($dt2, '[[ISOMinute]]'),
-                self::getSlotInt($dt2, '[[ISOSecond]]'), self::getSlotInt($dt2, '[[ISOMillisecond]]'),
-                self::getSlotInt($dt2, '[[ISOMicrosecond]]'), self::getSlotInt($dt2, '[[ISONanosecond]]'), 'UTC');
+            $ns1 = self::isoDateTimeToEpochNs(
+                $y1,
+                $m1,
+                $d1,
+                self::getSlotInt($dt1, '[[ISOHour]]'),
+                self::getSlotInt($dt1, '[[ISOMinute]]'),
+                self::getSlotInt($dt1, '[[ISOSecond]]'),
+                self::getSlotInt($dt1, '[[ISOMillisecond]]'),
+                self::getSlotInt($dt1, '[[ISOMicrosecond]]'),
+                self::getSlotInt($dt1, '[[ISONanosecond]]'),
+                'UTC'
+            );
+            $ns2 = self::isoDateTimeToEpochNs(
+                $y2,
+                $m2,
+                $d2,
+                self::getSlotInt($dt2, '[[ISOHour]]'),
+                self::getSlotInt($dt2, '[[ISOMinute]]'),
+                self::getSlotInt($dt2, '[[ISOSecond]]'),
+                self::getSlotInt($dt2, '[[ISOMillisecond]]'),
+                self::getSlotInt($dt2, '[[ISOMicrosecond]]'),
+                self::getSlotInt($dt2, '[[ISONanosecond]]'),
+                'UTC'
+            );
             $diffNs = bcsub($ns2, $ns1, 0);
             return self::nsToTimeDuration($diffNs, 'hour');
         }
