@@ -1066,17 +1066,10 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $calArg = $args[0] ?? JsUndefined::instance();
-            if ($calArg instanceof JsUndefined) {
-                throw new TypeError('calendar argument is required');
+            if (!($calArg instanceof JsString)) {
+                throw new TypeError('calendar argument must be a string');
             }
-            if (
-                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
-                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
-                || $calArg instanceof JsNull
-            ) {
-                throw new TypeError('Invalid calendar type');
-            }
-            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = strtolower($calArg->value);
             $cal = self::resolveCalendarId($cal);
             return self::createPlainDateObject(
                 self::getSlotInt($this_, '[[ISOYear]]'),
@@ -2061,17 +2054,10 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $calArg = $args[0] ?? JsUndefined::instance();
-            if ($calArg instanceof JsUndefined) {
-                throw new TypeError('calendar argument is required');
+            if (!($calArg instanceof JsString)) {
+                throw new TypeError('calendar argument must be a string');
             }
-            if (
-                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
-                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
-                || $calArg instanceof JsNull
-            ) {
-                throw new TypeError('Invalid calendar type');
-            }
-            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = strtolower($calArg->value);
             $cal = self::resolveCalendarId($cal);
             return self::createPlainDateTimeObject(
                 self::getSlotInt($this_, '[[ISOYear]]'),
@@ -3182,17 +3168,10 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $calArg = $args[0] ?? JsUndefined::instance();
-            if ($calArg instanceof JsUndefined) {
-                throw new TypeError('calendar argument is required');
+            if (!($calArg instanceof JsString)) {
+                throw new TypeError('calendar argument must be a string');
             }
-            if (
-                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
-                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
-                || $calArg instanceof JsNull
-            ) {
-                throw new TypeError('Invalid calendar type');
-            }
-            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = strtolower($calArg->value);
             $cal = self::resolveCalendarId($cal);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
