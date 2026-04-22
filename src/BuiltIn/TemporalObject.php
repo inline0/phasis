@@ -2189,17 +2189,6 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
-            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            $overflow = 'constrain';
-            if ($options instanceof JsObject) {
-                $ov = $options->get('overflow');
-                if (!($ov instanceof JsUndefined)) {
-                    $overflow = TypeConversion::toString($ov);
-                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                        throw new RangeError("Invalid overflow: {$overflow}");
-                    }
-                }
-            }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             // Reject calendar/timeZone in with().
@@ -2255,6 +2244,18 @@ class TemporalObject
                     throw new RangeError('day must be finite');
                 }
                 $dd = (int) $n;
+            }
+            // Read options AFTER fields per spec.
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
             }
             // Year is read but NOT used to change the reference year.
             $refY = $y; // Keep original reference year.
