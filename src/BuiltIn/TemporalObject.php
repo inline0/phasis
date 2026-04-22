@@ -3418,9 +3418,15 @@ class TemporalObject
             throw new RangeError('weeks out of range');
         }
 
-        // Balance sub-second into seconds for range check.
-        $totalNs = $abs[9] + $abs[8] * 1000 + $abs[7] * 1000000;
-        $extraSec = intdiv($totalNs, 1000000000);
+        // Balance sub-second into seconds for range check (use strings for large values).
+        $totalNs = (string) $abs[9] + $abs[8] * 1000 + $abs[7] * 1000000;
+        if (is_float($totalNs)) {
+            // Overflow - use bcmath.
+            $totalNs = bcadd(bcadd((string) $abs[9], bcmul((string) $abs[8], '1000', 0), 0), bcmul((string) $abs[7], '1000000', 0), 0);
+            $extraSec = (int) bcdiv($totalNs, '1000000000', 0);
+        } else {
+            $extraSec = intdiv((int) $totalNs, 1000000000);
+        }
         $balancedSec = $abs[6] + $extraSec;
 
         // Balance seconds into minutes.
