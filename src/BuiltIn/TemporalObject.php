@@ -5116,7 +5116,10 @@ class TemporalObject
             $content = $ann[2];
             if (str_starts_with($content, 'u-ca=')) {
                 $calCount++;
-                $cal = strtolower(substr($content, 5));
+                if ($calCount === 1) {
+                    // Use FIRST calendar annotation per spec.
+                    $cal = strtolower(substr($content, 5));
+                }
                 if ($critical) {
                     $hasCriticalCal = true;
                 }
