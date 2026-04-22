@@ -4168,8 +4168,8 @@ class TemporalObject
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
-        // Reject extended year without sign prefix (e.g., 02020 instead of +002020).
-        if (preg_match('/^\d{5,}/', $str)) {
+        // Reject extended year without sign (5+ digits with dash = year).
+        if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires + or - prefix: {$str}");
         }
         // YYYY-MM-DD or YYYYMMDD with optional time, offset, and annotations.
