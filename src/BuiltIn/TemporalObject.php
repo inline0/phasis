@@ -4626,10 +4626,22 @@ class TemporalObject
         if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
         }
-        $timePart = '(?:[Tt ]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?(?:[+-]\\d{2}(?::?\\d{2})?)?)?';
+        $timePart = '(?:[Tt ](\\d{2})(?::?(\\d{2})(?::?(\\d{2})(?:[.,]\\d{1,9})?)?)?(?:[+-]\\d{2}(?::?\\d{2})?)?)?';
         $pattern = "/^([+-]?\\d{4,6})-?(\\d{2})(?:-?\\d{2})?{$timePart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainYearMonth string: {$str}");
+        }
+        // Validate time if present.
+        if (isset($m[3]) && $m[3] !== '') {
+            $th = (int) $m[3];
+            $tmin = isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0;
+            $ts = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+            if ($ts === 60) {
+                $ts = 59;
+            }
+            if ($th > 23 || $tmin > 59 || $ts > 59) {
+                throw new RangeError("Invalid time: {$str}");
+            }
         }
         $y = (int) $m[1];
         $mo = (int) $m[2];
