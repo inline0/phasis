@@ -119,6 +119,16 @@ class TemporalObject
                 ];
                 $incrementNs = $unitNsMap[$smallestUnit] ?? '1';
                 $ns = self::roundNs($ns, $incrementNs, $roundingMode);
+            } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
+                // Round to the specified number of fractional digits.
+                $digitsToNs = [
+                    0 => '1000000000', 1 => '100000000', 2 => '10000000',
+                    3 => '1000000', 4 => '100000', 5 => '10000',
+                    6 => '1000', 7 => '100', 8 => '10',
+                ];
+                if (isset($digitsToNs[$fractionalSecondDigits])) {
+                    $ns = self::roundNs($ns, $digitsToNs[$fractionalSecondDigits], $roundingMode);
+                }
             }
             $timeZone = null;
             if ($options instanceof JsObject && $options->has('timeZone')) {
