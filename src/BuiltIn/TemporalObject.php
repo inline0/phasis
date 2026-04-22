@@ -2030,14 +2030,15 @@ class TemporalObject
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $months = self::getSlotInt($dur, '[[Months]]') + self::getSlotInt($dur, '[[Years]]') * 12;
-            $totalMonths = ($y * 12 + ($m - 1)) + $months;
-            $newY = intdiv($totalMonths, 12);
-            $newM = ($totalMonths % 12) + 1;
-            if ($newM <= 0) {
-                $newM += 12;
-                $newY--;
-            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($options);
+            // Create a PlainDate from the end of the month.
+            $dim = self::isoDaysInMonth($y, $m);
+            $date = self::createPlainDateObject($y, $m, $dim, $cal);
+            // Add the duration to the date.
+            $result = self::plainDateAdd($date, $dur, 1, $overflow);
+            $newY = self::getSlotInt($result, '[[ISOYear]]');
+            $newM = self::getSlotInt($result, '[[ISOMonth]]');
             return self::createPlainYearMonthObject($newY, $newM, 1, $cal);
         }, 1);
 
@@ -2047,14 +2048,16 @@ class TemporalObject
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $months = self::getSlotInt($dur, '[[Months]]') + self::getSlotInt($dur, '[[Years]]') * 12;
-            $totalMonths = ($y * 12 + ($m - 1)) - $months;
-            $newY = intdiv($totalMonths, 12);
-            $newM = ($totalMonths % 12) + 1;
-            if ($newM <= 0) {
-                $newM += 12;
-                $newY--;
-            }
+            $refDay = self::getSlotInt($this_, '[[ISODay]]');
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($options);
+            // Create a PlainDate from the end of the month.
+            $dim = self::isoDaysInMonth($y, $m);
+            $date = self::createPlainDateObject($y, $m, $dim, $cal);
+            // Subtract the duration from the date.
+            $result = self::plainDateAdd($date, $dur, -1, $overflow);
+            $newY = self::getSlotInt($result, '[[ISOYear]]');
+            $newM = self::getSlotInt($result, '[[ISOMonth]]');
             return self::createPlainYearMonthObject($newY, $newM, 1, $cal);
         }, 1);
 
