@@ -2754,6 +2754,45 @@ class TemporalObject
             $parts = self::epochNsToISOParts($ns, $tz);
             return new JsBoolean(self::isoIsLeapYear($parts['year']));
         });
+        self::defineGetter($proto, 'daysInWeek', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            return new JsNumber(7.0);
+        });
+        self::defineGetter($proto, 'hoursInDay', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $startNs = self::isoDateTimeToEpochNs(
+                $parts['year'], $parts['month'], $parts['day'],
+                0, 0, 0, 0, 0, 0, $tz,
+            );
+            $nextDate = self::isoDateTimeToEpochNs(
+                $parts['year'], $parts['month'], $parts['day'] + 1,
+                0, 0, 0, 0, 0, 0, $tz,
+            );
+            $dayNs = bcsub($nextDate, $startNs, 0);
+            return new JsNumber((float) bcdiv($dayNs, '3600000000000', 10));
+        });
+        self::defineGetter($proto, 'offsetNanoseconds', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $wallNs = self::isoDateTimeToEpochNs(
+                $parts['year'], $parts['month'], $parts['day'],
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'],
+                $parts['nanosecond'], 'UTC',
+            );
+            return new JsNumber((float) bcsub($wallNs, $ns, 0));
+        });
+        self::defineGetter($proto, 'offset', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            return new JsString(self::timeZoneOffsetString($ns, $tz));
+        });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             return JsUndefined::instance();
