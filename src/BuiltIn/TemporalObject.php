@@ -5444,32 +5444,40 @@ class TemporalObject
         if (abs($weeks)) {
             $result .= abs($weeks) . 'W';
         }
-        if (abs($days)) {
-            $result .= abs($days) . 'D';
-        }
+        // Days are appended after carry calculation below.
 
-        // Time part: balance sub-seconds.
-        $totalNs = abs($nanoseconds) + abs($microseconds) * 1000 + abs($milliseconds) * 1000000;
+        // Time part: balance sub-seconds using bcmath to avoid float overflow.
+        $bNs = (string) abs($nanoseconds);
+        $bUs = bcmul((string) abs($microseconds), '1000', 0);
+        $bMs = bcmul((string) abs($milliseconds), '1000000', 0);
+        $totalNsBig = bcadd(bcadd($bNs, $bUs, 0), $bMs, 0);
         // Apply rounding if fractionalSecondDigits < 9.
         if (is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
             $digitsToIncr = [
-                0 => 1000000000, 1 => 100000000, 2 => 10000000,
-                3 => 1000000, 4 => 100000, 5 => 10000,
-                6 => 1000, 7 => 100, 8 => 10,
+                0 => '1000000000', 1 => '100000000', 2 => '10000000',
+                3 => '1000000', 4 => '100000', 5 => '10000',
+                6 => '1000', 7 => '100', 8 => '10',
             ];
-            $incr = $digitsToIncr[$fractionalSecondDigits] ?? 1;
-            $totalTimeNs = (abs($seconds) * 1000000000 + $totalNs);
-            $rounded = self::roundToIncrement($totalTimeNs, $incr, $roundingMode);
-            $totalNs = $rounded % 1000000000;
-            $totalSec = intdiv($rounded, 1000000000);
+            $incr = $digitsToIncr[$fractionalSecondDigits] ?? '1';
+            $totalTimeNsBig = bcadd(bcmul((string) abs($seconds), '1000000000', 0), $totalNsBig, 0);
+            $roundedBig = self::roundBigIntNs($totalTimeNsBig, $incr, $roundingMode);
+            // After rounding, check if total time in seconds (including days/hours/minutes) exceeds MAX_SAFE_INTEGER.
+            $roundedSecStr = bcdiv($roundedBig, '1000000000', 0);
+            $allTimeSec = bcadd($roundedSecStr, (string) (abs($days) * 86400 + abs($hours) * 3600 + abs($minutes) * 60), 0);
+            if (bccomp($allTimeSec, '9007199254740991', 0) > 0) {
+                throw new RangeError('Duration time value out of range after rounding');
+            }
+            $totalNs = (int) bcmod($roundedBig, '1000000000', 0);
+            $totalSec = (int) $roundedSecStr;
         } else {
-            $totalSec = abs($seconds) + intdiv($totalNs, 1000000000);
-            $totalNs = $totalNs % 1000000000;
+            $totalSec = abs($seconds) + (int) bcdiv($totalNsBig, '1000000000', 0);
+            $totalNs = (int) bcmod($totalNsBig, '1000000000', 0);
         }
         $remainNs = $totalNs;
-        // Carry over from rounding: seconds -> minutes -> hours.
+        // Carry over from rounding: seconds -> minutes -> hours -> days.
         $displayMinutes = abs($minutes);
         $displayHours = abs($hours);
+        $displayDays = abs($days);
         if ($smallestUnit === 'minute') {
             $totalSec += $remainNs > 0 ? 1 : 0;
             $remainNs = 0;
@@ -5479,15 +5487,26 @@ class TemporalObject
         }
         // Per spec step 21: include seconds if precision is not auto, or if any time units are nonzero.
         $precisionNotAuto = $fractionalSecondDigits !== 'auto' || $smallestUnit !== null;
-        // Carry seconds overflow into minutes and hours (only when rounding was applied).
+        // Carry seconds overflow into minutes, hours, and days (only when rounding was applied).
+        // Per spec, carry only into units that were already present in the original duration.
         $wasRounded = is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9;
-        if ($wasRounded && $totalSec >= 60) {
+        $origMinutes = abs($minutes);
+        $origHours = abs($hours);
+        if ($wasRounded && $totalSec >= 60 && ($origMinutes || $origHours || $displayDays)) {
             $displayMinutes += intdiv($totalSec, 60);
             $totalSec = $totalSec % 60;
         }
-        if ($wasRounded && $displayMinutes >= 60) {
+        if ($wasRounded && $displayMinutes >= 60 && ($origHours || $displayDays)) {
             $displayHours += intdiv($displayMinutes, 60);
             $displayMinutes = $displayMinutes % 60;
+        }
+        if ($wasRounded && $displayHours >= 24) {
+            $displayDays += intdiv($displayHours, 24);
+            $displayHours = $displayHours % 24;
+        }
+        // Now append days (after carry from hours).
+        if ($displayDays) {
+            $result .= $displayDays . 'D';
         }
         $hasTime = $displayHours || $displayMinutes || $totalSec || $remainNs || $precisionNotAuto;
 
@@ -6172,6 +6191,71 @@ class TemporalObject
                 || $item->has('[[IsZonedDateTime]]') || $item->has('[[ISOYear]]')
             ) {
                 return self::toPlainDate($item);
+            }
+            // Property bag: per spec, read and validate all fields including timeZone, offset, and time props.
+            // Read fields in alphabetical order per spec.
+            $calVal = $item->get('calendar');
+            $dayVal = $item->get('day');
+            $hourVal = $item->get('hour');
+            $microVal = $item->get('microsecond');
+            $milliVal = $item->get('millisecond');
+            $minVal = $item->get('minute');
+            $monthVal = $item->get('month');
+            $mcVal = $item->get('monthCode');
+            $nanoVal = $item->get('nanosecond');
+            $offsetVal = $item->get('offset');
+            $secVal = $item->get('second');
+            $tzVal = $item->get('timeZone');
+            $yearVal = $item->get('year');
+            // Validate timeZone if present.
+            $hasTz = !($tzVal instanceof JsUndefined);
+            if ($hasTz) {
+                // Validate the timeZone property via toTemporalTimeZoneIdentifier.
+                self::toTemporalTimeZoneIdentifier($tzVal);
+                // When timeZone is present, validate offset if present.
+                if (!($offsetVal instanceof JsUndefined)) {
+                    if ($offsetVal instanceof JsNull || $offsetVal instanceof JsNumber
+                        || $offsetVal instanceof JsBoolean || $offsetVal instanceof \PhpJs\Value\JsBigInt) {
+                        throw new TypeError("offset must be a string");
+                    }
+                    if ($offsetVal instanceof \PhpJs\Value\JsSymbol) {
+                        throw new TypeError("Cannot convert a Symbol to a string");
+                    }
+                    $offStr = ($offsetVal instanceof JsString) ? $offsetVal->value : TypeConversion::toString($offsetVal);
+                    // Validate offset string format: must be +HH:MM or -HH:MM.
+                    if (!preg_match('/^[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:\.\d{1,9})?)?)?$/', $offStr)) {
+                        throw new RangeError("{$offStr} is not a valid offset string");
+                    }
+                }
+            }
+            // Validate time properties for Infinity.
+            foreach (['hour' => $hourVal, 'microsecond' => $microVal, 'millisecond' => $milliVal,
+                       'minute' => $minVal, 'nanosecond' => $nanoVal, 'second' => $secVal] as $pName => $pVal) {
+                if (!($pVal instanceof JsUndefined)) {
+                    $n = TypeConversion::toNumber($pVal);
+                    if (!is_finite($n)) {
+                        throw new RangeError("{$pName} must be finite");
+                    }
+                }
+            }
+            // Validate year/month/day for Infinity.
+            if (!($yearVal instanceof JsUndefined)) {
+                $yn = TypeConversion::toNumber($yearVal);
+                if (!is_finite($yn)) {
+                    throw new RangeError("year must be finite");
+                }
+            }
+            if (!($monthVal instanceof JsUndefined)) {
+                $mn = TypeConversion::toNumber($monthVal);
+                if (!is_finite($mn)) {
+                    throw new RangeError("month must be finite");
+                }
+            }
+            if (!($dayVal instanceof JsUndefined)) {
+                $dn = TypeConversion::toNumber($dayVal);
+                if (!is_finite($dn)) {
+                    throw new RangeError("day must be finite");
+                }
             }
             return self::toPlainDate($item);
         }
