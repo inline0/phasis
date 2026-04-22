@@ -1034,6 +1034,28 @@ class TemporalObject
             );
         }, 0);
 
+        $d('withCalendar', function (JsValue $this_, array $args): JsValue {
+            self::requirePlainDate($this_);
+            $calArg = $args[0] ?? JsUndefined::instance();
+            if ($calArg instanceof JsUndefined) {
+                throw new TypeError('calendar argument is required');
+            }
+            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
+                || $calArg instanceof JsNull
+            ) {
+                throw new TypeError('Invalid calendar type');
+            }
+            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = self::resolveCalendarId($cal);
+            return self::createPlainDateObject(
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+                $cal,
+            );
+        }, 1);
+
         $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $item = $args[0] ?? JsUndefined::instance();
