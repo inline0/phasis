@@ -1474,7 +1474,7 @@ class TemporalObject
                     }
                 }
             }
-            return self::plainDateTimeAdd($this_, $dur, 1);
+            return self::plainDateTimeAdd($this_, $dur, 1, $ovStr ?? 'constrain');
         }, 1);
 
         $d('subtract', function (JsValue $this_, array $args): JsValue {
@@ -1490,7 +1490,7 @@ class TemporalObject
                     }
                 }
             }
-            return self::plainDateTimeAdd($this_, $dur, -1);
+            return self::plainDateTimeAdd($this_, $dur, -1, $ovStr ?? 'constrain');
         }, 1);
 
         $d('withPlainTime', function (JsValue $this_, array $args): JsValue {
@@ -7361,7 +7361,7 @@ class TemporalObject
         return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
     }
 
-    private static function plainDateTimeAdd(JsValue $dt, JsObject $dur, int $sign): JsObject
+    private static function plainDateTimeAdd(JsValue $dt, JsObject $dur, int $sign, string $overflow = 'constrain'): JsObject
     {
         $y = self::getSlotInt($dt, '[[ISOYear]]');
         $m = self::getSlotInt($dt, '[[ISOMonth]]');
@@ -7388,7 +7388,7 @@ class TemporalObject
             0,
             0,
         );
-        $newDate = self::plainDateAdd($dateObj, $dateDur, $sign);
+        $newDate = self::plainDateAdd($dateObj, $dateDur, $sign, $overflow);
 
         // Add time part.
         $timeObj = self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
