@@ -4917,6 +4917,10 @@ class TemporalObject
             if ($dd < 1 || $dd > $dim) {
                 throw new RangeError("Invalid PlainMonthDay: {$str}");
             }
+            // Validate year range even for PlainMonthDay.
+            if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+                throw new RangeError("Year out of range: {$str}");
+            }
             // For PlainMonthDay from string, reference year is always 1972 per spec.
             return self::createPlainMonthDayObject($mo, $dd, 1972, $cal);
         }
