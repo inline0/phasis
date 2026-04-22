@@ -519,13 +519,19 @@ class TemporalObject
             }
             if ($increment > 1) {
                 self::validateRoundingIncrement($unit, $increment);
+                // Cannot round to an increment > 1 of calendar units while also balancing to larger calendar units.
+                $dateUnitsRank = ['day' => 3, 'week' => 2, 'month' => 1, 'year' => 0];
+                if (isset($dateUnitsRank[$unit], $dateUnitsRank[$largestUnit]) && $dateUnitsRank[$largestUnit] < $dateUnitsRank[$unit]) {
+                    throw new RangeError("Cannot round to an increment of {$unit}s while also balancing to {$largestUnit}s");
+                }
             }
             // Calendar units require relativeTo.
             $hasCalUnit = self::getDurationField($this_, 'years') !== 0
                 || self::getDurationField($this_, 'months') !== 0
                 || self::getDurationField($this_, 'weeks') !== 0;
             $calSmallest = in_array($unit, ['year', 'month', 'week'], true);
-            if (($hasCalUnit || $calSmallest) && $relativeTo === null) {
+            $calLargest = in_array($largestUnit, ['year', 'month', 'week'], true);
+            if (($hasCalUnit || $calSmallest || $calLargest) && $relativeTo === null) {
                 throw new RangeError('relativeTo is required for rounding durations with calendar units');
             }
             return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
@@ -3658,10 +3664,26 @@ class TemporalObject
                     return $result;
                 }
                 if ($item instanceof JsString) {
-                    $result = self::parseZonedDateTimeString($item->value);
                     $options = self::getOptionsObject($rawOptions);
-                    self::validateZonedDateTimeOptions($options);
-                    return $result;
+                    $offOptForParse = 'reject';
+                    if ($options instanceof JsObject) {
+                        $dv = $options->get('disambiguation');
+                        if (!($dv instanceof JsUndefined)) {
+                            $dis = TypeConversion::toString($dv);
+                            if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                                throw new RangeError("Invalid disambiguation: {$dis}");
+                            }
+                        }
+                        $offOpt = $options->get('offset');
+                        if (!($offOpt instanceof JsUndefined)) {
+                            $offOptForParse = TypeConversion::toString($offOpt);
+                            if (!in_array($offOptForParse, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                                throw new RangeError("Invalid offset option: {$offOptForParse}");
+                            }
+                        }
+                        self::getOverflow($options);
+                    }
+                    return self::parseZonedDateTimeString($item->value, $offOptForParse);
                 }
                 return self::toZonedDateTime($item, $rawOptions);
             }, 1),
@@ -3836,6 +3858,16 @@ class TemporalObject
             }
             self::rejectISOTime($h, $min, $s, $ms, $us, $ns);
         }
+        // Validate that the offset property agrees with the timezone (default: reject).
+        if ($offsetStr !== null) {
+            $givenOffsetNs = self::parseOffsetToNs($offsetStr);
+            // Compute what offset the timezone would have at this wall time.
+            $epochNsFromWall = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
+            $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochNsFromWall);
+            if ($givenOffsetNs !== $actualOffsetNs) {
+                throw new RangeError("offset property \"{$offsetStr}\" does not match time zone \"{$timeZone}\"");
+            }
+        }
         $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
     }
@@ -3849,7 +3881,7 @@ class TemporalObject
         return self::getSlotString($zdt, '[[EpochNanoseconds]]');
     }
 
-    private static function parseZonedDateTimeString(string $str): JsObject
+    private static function parseZonedDateTimeString(string $str, string $offsetOption = 'reject'): JsObject
     {
         [$str, $cal] = self::normalizeTemporalString($str);
         // Parse the datetime part, optional offset, and timezone annotation.
@@ -3870,6 +3902,17 @@ class TemporalObject
         $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
         if ($sec === 60) {
             $sec = 59;
+        }
+        // Validate ISO date/time ranges for string input (overflow constrain does not apply to strings).
+        if ($month < 1 || $month > 12) {
+            throw new RangeError("Invalid month {$month} in ZonedDateTime string: {$str}");
+        }
+        $dim = self::isoDaysInMonth($year, $month);
+        if ($day < 1 || $day > $dim) {
+            throw new RangeError("Invalid day {$day} in ZonedDateTime string: {$str}");
+        }
+        if ($hour > 23 || $min > 59 || $sec > 59) {
+            throw new RangeError("Invalid time in ZonedDateTime string: {$str}");
         }
         $frac = isset($m[9]) && $m[9] !== '' ? str_pad($m[9], 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
@@ -3902,28 +3945,40 @@ class TemporalObject
                 $timeZone = $annotation;
             }
         }
-        if ($offset !== null) {
+        if ($offset !== null && $offsetOption !== 'ignore') {
             $isZ = strtoupper($offset) === 'Z';
             if ($isZ) {
                 // Z means exact UTC instant; annotation is the named timezone. No offset validation.
                 $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
             } else {
-                // Non-Z numeric offset: validate the wall-time is consistent with the annotation timezone.
-                // The wall-time in the explicit offset must equal the wall-time in the annotation timezone.
-                // For fixed-offset annotations, validate the explicit offset matches.
+                // Non-Z numeric offset: validate or use based on offsetOption.
                 $givenOffsetNs = self::parseOffsetToNs($offset);
                 if (self::isFixedOffset($timeZone)) {
                     $annotationOffsetNs = self::parseOffsetToNs($timeZone);
                     if ($givenOffsetNs !== $annotationOffsetNs) {
+                        if ($offsetOption === 'reject') {
+                            throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
+                        }
+                    }
+                } else {
+                    // Named time zone: check if offset matches the wall time in the zone.
+                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                    $epochFromOffset = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                    $epochFromWall = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+                    if ($epochFromOffset !== $epochFromWall && $offsetOption === 'reject') {
                         throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
                     }
                 }
-                // Use explicit offset (normalized) to compute epoch.
-                $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                if ($offsetOption === 'use' || $offsetOption === 'prefer') {
+                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                    $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                } else {
+                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                    $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                }
             }
         } else {
-            // No offset: use wall time in the annotation timezone.
+            // No offset or ignore: use wall time in the annotation timezone.
             $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
         }
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
@@ -5534,22 +5589,17 @@ class TemporalObject
             if ($m2 < $m1 || ($m2 === $m1 && $d2 < $d1)) {
                 $years--;
             }
-            // Remaining as fraction.
-            $tempY = $y1 + $years;
-            $totalM = ($y2 * 12 + $m2) - ($tempY * 12 + $m1);
-            if ($d2 < $d1) {
-                $totalM--;
-            }
-            $midTotalM = $tempY * 12 + ($m1 - 1) + $totalM;
-            $midMY = intdiv($midTotalM, 12);
-            $midMM = ($midTotalM % 12) + 1;
-            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
-            $remainDays = ($jd2 - self::isoToJulianDay($midMY, $midMM, $midD)) + $fractionalDays;
-            // Days in the current year for fractional calculation.
-            $daysInYear = self::isoDaysInYear($tempY + $years + 1);
-            $monthFrac = $totalM / 12.0;
-            $dayFrac = $remainDays / (float) $daysInYear;
-            return $years + $monthFrac + $dayFrac;
+            // Per spec: compute remaining days / year-boundary days.
+            // yearStart = ref + wholeYears.
+            $ysD = min($d1, self::isoDaysInMonth($y1 + $years, $m1));
+            $ysJd = self::isoToJulianDay($y1 + $years, $m1, $ysD);
+            // yearEnd = ref + wholeYears + 1 year.
+            $yeD = min($d1, self::isoDaysInMonth($y1 + $years + 1, $m1));
+            $yeJd = self::isoToJulianDay($y1 + $years + 1, $m1, $yeD);
+            $yearLengthDays = $yeJd - $ysJd;
+            $remainDays = ($jd2 - $ysJd) + $fractionalDays;
+            $frac = $yearLengthDays > 0 ? $remainDays / (float) $yearLengthDays : 0;
+            return $years + $frac;
         }
         // For time units, just use ns total.
         return self::durationTotalNs($dur, $unit);
@@ -6024,6 +6074,19 @@ class TemporalObject
                 return self::toPlainDate($item);
             }
             return self::toPlainDate($item);
+        }
+        // Reject non-string, non-object primitives per spec.
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to relativeTo');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert a Symbol to relativeTo');
+        }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert a number/BigInt to relativeTo');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert a boolean to relativeTo');
         }
         if ($item instanceof JsString) {
             $str = $item->value;
@@ -7589,13 +7652,30 @@ class TemporalObject
             };
         }
         if ($smallestUnit === 'year') {
-            // Compute fractional year.
+            // Compute fractional year per spec: remaining days / year-boundary days.
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
             $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
-            $daysInYear = self::isoDaysInYear($refY + $absYears * $sign);
-            $monthFrac = $absMonths / 12.0;
-            $dayFrac = ($absDays + abs($hours) / 24.0) / (float) $daysInYear;
-            $totalYears = $absYears + $monthFrac + $dayFrac;
+            $refD = $ref instanceof JsObject && $ref->has('[[ISODay]]') ? self::getSlotInt($ref, '[[ISODay]]') : 1;
+            // yearStart = ref + absYears years (in the forward direction).
+            $ysY = $refY + $absYears * $sign;
+            $ysM = $refM;
+            $ysD = min($refD, self::isoDaysInMonth($ysY, $ysM));
+            // yearEnd = yearStart + 1 year.
+            $yeY = $ysY + $sign;
+            $yeM = $ysM;
+            $yeD = min($refD, self::isoDaysInMonth($yeY, $yeM));
+            $yearLengthDays = abs(self::isoToJulianDay($yeY, $yeM, $yeD) - self::isoToJulianDay($ysY, $ysM, $ysD));
+            // Compute remaining days from yearStart to (yearStart + months + days + time).
+            $midDur = self::createDurationObject(0, $absMonths, $absWeeks, $absDays, 0, 0, 0, 0, 0, 0);
+            $midEnd = self::plainDateAdd(self::createPlainDateObject($ysY, $ysM, $ysD, 'iso8601'), $midDur, $sign);
+            $remainDays = abs(self::isoToJulianDay(
+                self::getSlotInt($midEnd, '[[ISOYear]]'),
+                self::getSlotInt($midEnd, '[[ISOMonth]]'),
+                self::getSlotInt($midEnd, '[[ISODay]]'),
+            ) - self::isoToJulianDay($ysY, $ysM, $ysD));
+            $timeFrac = (abs($hours) * 3600 + abs($minutes) * 60 + abs($seconds)) / 86400.0;
+            $frac = $yearLengthDays > 0 ? ($remainDays + $timeFrac) / (float) $yearLengthDays : 0;
+            $totalYears = $absYears + $frac;
             $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
             return self::createDurationObject($sign * intdiv($rounded, 1000000), 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
@@ -8576,16 +8656,16 @@ class TemporalObject
         if ($natSign < 0) {
             [$y1, $m1, $d1, $y2, $m2, $d2] = [$y2, $m2, $d2, $y1, $m1, $d1];
         }
-        // Anchor day for month-boundary clamping per Temporal spec.
-        // For "until" (sign=1): anchor = start day (d1 after swap).
-        // For "since" (sign=-1): anchor = end day (d2 after swap = receiver's day).
-        $anchorDay = $sign < 0 ? $d2 : $d1;
+        // Anchor day for month-boundary clamping: always the start day (d1 after
+        // swap). This gives "forward from start" semantics. Since/until only differ
+        // in the final sign, not in how month steps are counted.
+        $anchorDay = $d1;
         $years = 0;
         $months = 0;
         $weeks = 0;
         $days = 0;
         if ($largestUnit === 'year' || $largestUnit === 'month') {
-            // Compute total months (upper bound).
+            // Compute total months (initial estimate).
             $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
             if ($d2 < $d1) {
                 $totalMonths--;
@@ -8593,22 +8673,13 @@ class TemporalObject
             // Compute the midpoint date using anchorDay. For "until" (sign=1), go
             // forward from start: remaining = end - mid. For "since" (sign=-1), go
             // backward from end: remaining = mid - start.
-            [$midMY, $midMM, $midD] = self::computeMonthMidpoint($sign, $y1, $m1, $y2, $m2, $anchorDay, $totalMonths);
-            $jdMid = self::isoToJulianDay($midMY, $midMM, $midD);
-            if ($sign < 0) {
-                $days = $jdMid - self::isoToJulianDay($y1, $m1, $d1);
-            } else {
-                $days = self::isoToJulianDay($y2, $m2, $d2) - $jdMid;
-            }
+            // Always go forward from start using the anchor for clamping.
+            [$midMY, $midMM, $midD] = self::computeMonthMidpoint(1, $y1, $m1, $y2, $m2, $anchorDay, $totalMonths);
+            $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY, $midMM, $midD);
             if ($days < 0) {
                 $totalMonths--;
-                [$midMY, $midMM, $midD] = self::computeMonthMidpoint($sign, $y1, $m1, $y2, $m2, $anchorDay, $totalMonths);
-                $jdMid = self::isoToJulianDay($midMY, $midMM, $midD);
-                if ($sign < 0) {
-                    $days = $jdMid - self::isoToJulianDay($y1, $m1, $d1);
-                } else {
-                    $days = self::isoToJulianDay($y2, $m2, $d2) - $jdMid;
-                }
+                [$midMY, $midMM, $midD] = self::computeMonthMidpoint(1, $y1, $m1, $y2, $m2, $anchorDay, $totalMonths);
+                $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY, $midMM, $midD);
             }
             if ($largestUnit === 'year') {
                 $years = intdiv($totalMonths, 12);
