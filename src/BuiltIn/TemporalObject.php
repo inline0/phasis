@@ -5437,7 +5437,6 @@ class TemporalObject
             if (!($su instanceof JsUndefined)) {
                 $smallestUnit = TypeConversion::toString($su);
                 $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                }
             }
             // Validate largestUnit >= smallestUnit.
             $allUnits = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
