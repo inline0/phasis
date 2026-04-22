@@ -650,7 +650,10 @@ class TemporalObject
                     // Add time parts.
                     $timeNs1 = self::durationToTotalNs(
                         self::createDurationObject(
-                            0, 0, 0, 0,
+                            0,
+                            0,
+                            0,
+                            0,
                             self::getDurationField($one, 'hours'),
                             self::getDurationField($one, 'minutes'),
                             self::getDurationField($one, 'seconds'),
@@ -661,7 +664,10 @@ class TemporalObject
                     );
                     $timeNs2 = self::durationToTotalNs(
                         self::createDurationObject(
-                            0, 0, 0, 0,
+                            0,
+                            0,
+                            0,
+                            0,
                             self::getDurationField($two, 'hours'),
                             self::getDurationField($two, 'minutes'),
                             self::getDurationField($two, 'seconds'),
@@ -3094,7 +3100,8 @@ class TemporalObject
             if ($calArg instanceof JsUndefined) {
                 throw new TypeError('calendar argument is required');
             }
-            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+            if (
+                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
                 || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
                 || $calArg instanceof JsNull
             ) {
