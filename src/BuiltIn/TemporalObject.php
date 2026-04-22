@@ -201,13 +201,13 @@ class TemporalObject
                 throw new TypeError('options must be an object');
             }
             $validUnits = [
-                'day', 'hour', 'minute', 'second',
+                'hour', 'minute', 'second',
                 'millisecond', 'microsecond', 'nanosecond',
             ];
             $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $validUnits, true);
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
-            if ($increment > 1 && $unit !== 'day') {
+            if ($increment > 1) {
                 self::validateRoundingIncrement($unit, $increment);
             }
             $unitNs = self::temporalUnitToNs($unit);
