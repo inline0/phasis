@@ -1056,7 +1056,8 @@ class TemporalObject
             if ($calArg instanceof JsUndefined) {
                 throw new TypeError('calendar argument is required');
             }
-            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+            if (
+                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
                 || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
                 || $calArg instanceof JsNull
             ) {
@@ -2050,7 +2051,8 @@ class TemporalObject
             if ($calArg instanceof JsUndefined) {
                 throw new TypeError('calendar argument is required');
             }
-            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+            if (
+                $calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
                 || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
                 || $calArg instanceof JsNull
             ) {
@@ -5512,7 +5514,10 @@ class TemporalObject
             // Add time parts.
             $sign = self::durationSign($dur);
             $timeDur = self::createDurationObject(
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 self::getDurationField($dur, 'hours'),
                 self::getDurationField($dur, 'minutes'),
                 self::getDurationField($dur, 'seconds'),
@@ -7338,9 +7343,16 @@ class TemporalObject
             $rounded = self::roundToIncrement($totalDays, $increment, $roundingMode);
             if ($largestUnit === 'week') {
                 return self::createDurationObject(
-                    $sign * $absYears, $sign * $absMonths,
-                    $sign * intdiv($rounded, 7), $sign * ($rounded % 7),
-                    0, 0, 0, 0, 0, 0,
+                    $sign * $absYears,
+                    $sign * $absMonths,
+                    $sign * intdiv($rounded, 7),
+                    $sign * ($rounded % 7),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
             }
             return self::createDurationObject($sign * $absYears, $sign * $absMonths, 0, $sign * $rounded, 0, 0, 0, 0, 0, 0);
