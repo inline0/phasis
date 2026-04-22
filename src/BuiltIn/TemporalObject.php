@@ -3517,7 +3517,7 @@ class TemporalObject
         $m('plainDateISO', function (JsValue $this_, array $args): JsValue {
             $tz = date_default_timezone_get();
             if (isset($args[0]) && !($args[0] instanceof JsUndefined)) {
-                $tz = self::toTemporalTimeZoneString($args[0]);
+                $tz = self::toTemporalTimeZoneIdentifier($args[0]);
             }
             $dt = new \DateTimeImmutable('now', self::resolveTimeZone($tz));
             return self::createPlainDateObject(
@@ -3531,7 +3531,7 @@ class TemporalObject
         $m('plainTimeISO', function (JsValue $this_, array $args): JsValue {
             $tz = date_default_timezone_get();
             if (isset($args[0]) && !($args[0] instanceof JsUndefined)) {
-                $tz = self::toTemporalTimeZoneString($args[0]);
+                $tz = self::toTemporalTimeZoneIdentifier($args[0]);
             }
             $dt = new \DateTimeImmutable('now', self::resolveTimeZone($tz));
             return self::createPlainTimeObject(
@@ -3547,7 +3547,7 @@ class TemporalObject
         $m('plainDateTimeISO', function (JsValue $this_, array $args): JsValue {
             $tz = date_default_timezone_get();
             if (isset($args[0]) && !($args[0] instanceof JsUndefined)) {
-                $tz = self::toTemporalTimeZoneString($args[0]);
+                $tz = self::toTemporalTimeZoneIdentifier($args[0]);
             }
             $dt = new \DateTimeImmutable('now', self::resolveTimeZone($tz));
             return self::createPlainDateTimeObject(
@@ -3567,7 +3567,7 @@ class TemporalObject
         $m('zonedDateTimeISO', function (JsValue $this_, array $args): JsValue {
             $tz = date_default_timezone_get();
             if (isset($args[0]) && !($args[0] instanceof JsUndefined)) {
-                $tz = self::toTemporalTimeZoneString($args[0]);
+                $tz = self::toTemporalTimeZoneIdentifier($args[0]);
             }
             $ms = (int) (microtime(true) * 1000);
             $ns = bcmul((string) $ms, '1000000', 0);
