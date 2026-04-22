@@ -6193,6 +6193,19 @@ class TemporalObject
                 return 'iso8601';
             }
         }
+        // Also accept MM-DD, --MM-DD, YYYY-MM as valid temporal strings -> iso8601.
+        if (preg_match('/^\d{2}-\d{2}/', $cal) || preg_match('/^--\d{2}-\d{2}/', $cal)) {
+            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
+                return strtolower($cm[1]);
+            }
+            return 'iso8601';
+        }
+        if (preg_match('/^\d{4}-\d{2}$/', $cal) || preg_match('/^\d{4}-\d{2}\[/', $cal)) {
+            if (preg_match('/\[u-ca=([^\]]+)\]/', $cal, $cm)) {
+                return strtolower($cm[1]);
+            }
+            return 'iso8601';
+        }
         throw new RangeError("Invalid calendar: {$cal}");
     }
 
