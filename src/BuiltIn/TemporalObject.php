@@ -6027,28 +6027,40 @@ class TemporalObject
 
     private static function getRoundingMode(JsValue $options, string $fallback): string
     {
-        if (!$options instanceof JsObject || !$options->has('roundingMode')) {
+        if (!$options instanceof JsObject) {
             return $fallback;
         }
         $v = $options->get('roundingMode');
         if ($v instanceof JsUndefined) {
             return $fallback;
         }
-        return TypeConversion::toString($v);
+        $mode = TypeConversion::toString($v);
+        $valid = [
+            'ceil', 'floor', 'expand', 'trunc',
+            'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven',
+        ];
+        if (!in_array($mode, $valid, true)) {
+            throw new RangeError("Invalid roundingMode: {$mode}");
+        }
+        return $mode;
     }
 
     private static function getRoundingIncrement(JsObject $options): int
     {
-        if (!$options->has('roundingIncrement')) {
-            return 1;
-        }
         $v = $options->get('roundingIncrement');
         if ($v instanceof JsUndefined) {
             return 1;
         }
-        $n = (int) TypeConversion::toNumber($v);
-        if ($n < 1) {
-            throw new RangeError('roundingIncrement must be at least 1');
+        $num = TypeConversion::toNumber($v);
+        if (!is_finite($num)) {
+            throw new RangeError('roundingIncrement must be finite');
+        }
+        if ($num < 1 || floor($num) !== $num) {
+            throw new RangeError('roundingIncrement must be a positive integer');
+        }
+        $n = (int) $num;
+        if ($n > 1000000000) {
+            throw new RangeError('roundingIncrement out of range');
         }
         return $n;
     }
