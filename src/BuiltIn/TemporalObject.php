@@ -5728,6 +5728,9 @@ class TemporalObject
         }
     }
 
+    /** @var int $overflowDays Set by plainTimeAdd for PlainDateTime to use. */
+    private static int $lastTimeAddOverflowDays = 0;
+
     private static function plainTimeAdd(JsValue $time, JsObject $dur, int $sign): JsObject
     {
         $h = self::getSlotInt($time, '[[ISOHour]]');
@@ -5737,35 +5740,50 @@ class TemporalObject
         $us = self::getSlotInt($time, '[[ISOMicrosecond]]');
         $ns = self::getSlotInt($time, '[[ISONanosecond]]');
 
-        // Convert to total nanoseconds.
-        $totalNs = ($h * 3600 + $min * 60 + $s) * 1000000000 + $ms * 1000000 + $us * 1000 + $ns;
-        $durNs = $sign * (
-            self::getDurationField($dur, 'hours') * 3600000000000
-            + self::getDurationField($dur, 'minutes') * 60000000000
-            + self::getDurationField($dur, 'seconds') * 1000000000
-            + self::getDurationField($dur, 'milliseconds') * 1000000
-            + self::getDurationField($dur, 'microseconds') * 1000
-            + self::getDurationField($dur, 'nanoseconds')
+        // Use bcmath for large values.
+        $totalNs = bcadd(
+            bcadd(bcmul((string) ($h * 3600 + $min * 60 + $s), '1000000000', 0), (string) ($ms * 1000000 + $us * 1000 + $ns), 0),
+            '0',
+            0,
+        );
+        $durH = (string) ($sign * self::getDurationField($dur, 'hours'));
+        $durMin = (string) ($sign * self::getDurationField($dur, 'minutes'));
+        $durS = (string) ($sign * self::getDurationField($dur, 'seconds'));
+        $durMs = (string) ($sign * self::getDurationField($dur, 'milliseconds'));
+        $durUs = (string) ($sign * self::getDurationField($dur, 'microseconds'));
+        $durNsV = (string) ($sign * self::getDurationField($dur, 'nanoseconds'));
+        $durNs = bcadd(
+            bcadd(bcmul($durH, '3600000000000', 0), bcmul($durMin, '60000000000', 0), 0),
+            bcadd(bcmul($durS, '1000000000', 0), bcadd(bcmul($durMs, '1000000', 0), bcadd(bcmul($durUs, '1000', 0), $durNsV, 0), 0), 0),
+            0,
         );
 
-        $result = $totalNs + $durNs;
-        // Wrap to 0-86399999999999 range.
-        $dayNs = 86400000000000;
-        $result = $result % $dayNs;
-        if ($result < 0) {
-            $result += $dayNs;
+        $result = bcadd($totalNs, $durNs, 0);
+        $dayNs = '86400000000000';
+        // Calculate overflow days.
+        if (bccomp($result, '0', 0) < 0) {
+            $overflowDays = (int) bcsub(bcdiv($result, $dayNs, 0), '1', 0);
+            $result = bcsub($result, bcmul((string) $overflowDays, $dayNs, 0), 0);
+        } else {
+            $overflowDays = (int) bcdiv($result, $dayNs, 0);
+            $result = bcmod($result, $dayNs);
         }
+        self::$lastTimeAddOverflowDays = $overflowDays;
 
-        $ns2 = $result % 1000;
-        $result = intdiv($result, 1000);
-        $us2 = $result % 1000;
-        $result = intdiv($result, 1000);
-        $ms2 = $result % 1000;
-        $result = intdiv($result, 1000);
-        $s2 = $result % 60;
-        $result = intdiv($result, 60);
-        $min2 = $result % 60;
-        $h2 = intdiv($result, 60);
+        $resultInt = (int) (string) $result;
+        if ($resultInt < 0) {
+            $resultInt += 86400000000000;
+        }
+        $ns2 = $resultInt % 1000;
+        $resultInt = intdiv($resultInt, 1000);
+        $us2 = $resultInt % 1000;
+        $resultInt = intdiv($resultInt, 1000);
+        $ms2 = $resultInt % 1000;
+        $resultInt = intdiv($resultInt, 1000);
+        $s2 = $resultInt % 60;
+        $resultInt = intdiv($resultInt, 60);
+        $min2 = $resultInt % 60;
+        $h2 = intdiv($resultInt, 60);
 
         return self::createPlainTimeObject($h2, $min2, $s2, $ms2, $us2, $ns2);
     }
@@ -5906,6 +5924,12 @@ class TemporalObject
             self::getDurationField($dur, 'nanoseconds'),
         );
         $newTime = self::plainTimeAdd($timeObj, $timeDur, $sign);
+        // Add overflow days from time addition to the date.
+        $overflowDays = self::$lastTimeAddOverflowDays;
+        if ($overflowDays !== 0) {
+            $extraDur = self::createDurationObject(0, 0, 0, $overflowDays, 0, 0, 0, 0, 0, 0);
+            $newDate = self::plainDateAdd($newDate, $extraDur, 1);
+        }
 
         return self::createPlainDateTimeObject(
             self::getSlotInt($newDate, '[[ISOYear]]'),
