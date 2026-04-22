@@ -33,7 +33,7 @@ jobs:
         run: vendor/bin/phpunit --testsuite=unit
 
       - name: Run full compat report
-        run: ./bin/compat-report --jobs 4 --timeout 30 --chunk-size 100
+        run: ./bin/compat-report --jobs 8 --timeout 20 --chunk-size 300
         timeout-minutes: 240
 
       - name: Show summary
