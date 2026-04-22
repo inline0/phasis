@@ -2552,10 +2552,6 @@ class TemporalObject
                 ) {
                     return self::toPlainYearMonth($item);
                 }
-                // Per spec: for string arguments, parse first, skip options.
-                if ($item instanceof JsString) {
-                    return self::toPlainYearMonth($item);
-                }
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
                 if ($options instanceof JsObject) {
@@ -3755,6 +3751,9 @@ class TemporalObject
                 $y--;
             }
             $maxDay = self::isoDaysInMonth($y, $m);
+            if ($overflow === 'reject' && $parts['day'] > $maxDay) {
+                throw new RangeError("Day {$parts['day']} is out of range for month {$m} in year {$y}");
+            }
             $dd = min($parts['day'], $maxDay);
             // Step 2: Get epoch ns for the date/time after year/month subtraction.
             $intermediateNs = self::isoDateTimeToEpochNs(
