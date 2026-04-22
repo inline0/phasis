@@ -4291,7 +4291,10 @@ class TemporalObject
 
     private static function parsePlainTimeString(string $str): JsObject
     {
-        [$str, ] = self::normalizeTemporalString($str);
+        [$str, $cal] = self::normalizeTemporalString($str);
+        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
+            throw new RangeError("Invalid calendar: {$cal}");
+        }
         // Reject UTC designator (Z) for PlainTime.
         $noAnnot = preg_replace('/\[.*?\]/', '', $str);
         if (preg_match('/[Zz]/', $noAnnot)) {
