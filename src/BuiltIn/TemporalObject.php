@@ -3825,12 +3825,75 @@ class TemporalObject
                 throw new RangeError("Cannot add/subtract duration with {$cu}");
             }
         }
-        $fields = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
-        $vals = [];
-        foreach ($fields as $f) {
-            $vals[] = self::getDurationField($a, $f) + $sign * self::getDurationField($b, $f);
+        // Compute total nanoseconds for time-only durations and balance.
+        $aDays = self::getDurationField($a, 'days');
+        $bDays = self::getDurationField($b, 'days');
+        $aNs = bcadd(
+            bcadd(
+                bcmul((string) self::getDurationField($a, 'hours'), '3600000000000', 0),
+                bcmul((string) self::getDurationField($a, 'minutes'), '60000000000', 0),
+                0,
+            ),
+            bcadd(
+                bcmul((string) self::getDurationField($a, 'seconds'), '1000000000', 0),
+                bcadd(
+                    bcmul((string) self::getDurationField($a, 'milliseconds'), '1000000', 0),
+                    bcadd(bcmul((string) self::getDurationField($a, 'microseconds'), '1000', 0), (string) self::getDurationField($a, 'nanoseconds'), 0),
+                    0,
+                ),
+                0,
+            ),
+            0,
+        );
+        $bNs = bcadd(
+            bcadd(
+                bcmul((string) self::getDurationField($b, 'hours'), '3600000000000', 0),
+                bcmul((string) self::getDurationField($b, 'minutes'), '60000000000', 0),
+                0,
+            ),
+            bcadd(
+                bcmul((string) self::getDurationField($b, 'seconds'), '1000000000', 0),
+                bcadd(
+                    bcmul((string) self::getDurationField($b, 'milliseconds'), '1000000', 0),
+                    bcadd(bcmul((string) self::getDurationField($b, 'microseconds'), '1000', 0), (string) self::getDurationField($b, 'nanoseconds'), 0),
+                    0,
+                ),
+                0,
+            ),
+            0,
+        );
+        $totalDays = $aDays + $sign * $bDays;
+        $totalNs = bcsub($aNs, bcmul((string) ($sign * -1 + 1), '0', 0), 0);
+        if ($sign === 1) {
+            $totalNs = bcadd($aNs, $bNs, 0);
+        } else {
+            $totalNs = bcsub($aNs, $bNs, 0);
         }
-        return self::createDurationObject(...$vals);
+        // Balance ns into days.
+        $dayNs = '86400000000000';
+        $extraDays = (int) bcdiv($totalNs, $dayNs, 0);
+        $remainNs = bcmod($totalNs, $dayNs);
+        // Ensure same sign.
+        if (bccomp($remainNs, '0', 0) < 0 && ($totalDays + $extraDays) > 0) {
+            $extraDays--;
+            $remainNs = bcadd($remainNs, $dayNs, 0);
+        } elseif (bccomp($remainNs, '0', 0) > 0 && ($totalDays + $extraDays) < 0) {
+            $extraDays++;
+            $remainNs = bcsub($remainNs, $dayNs, 0);
+        }
+        $days = $totalDays + $extraDays;
+        $rNs = (int) $remainNs;
+        $hours = intdiv($rNs, 3600000000000);
+        $rNs %= 3600000000000;
+        $minutes = intdiv($rNs, 60000000000);
+        $rNs %= 60000000000;
+        $seconds = intdiv($rNs, 1000000000);
+        $rNs %= 1000000000;
+        $ms = intdiv($rNs, 1000000);
+        $rNs %= 1000000;
+        $us = intdiv($rNs, 1000);
+        $ns = $rNs % 1000;
+        return self::createDurationObject(0, 0, 0, $days, $hours, $minutes, $seconds, $ms, $us, $ns);
     }
 
     private static function negateDuration(JsObject $dur): JsObject
