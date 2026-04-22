@@ -4327,36 +4327,15 @@ class TemporalObject
      */
     private static function isoWeekOfYear(int $year, int $month, int $day): array
     {
-        $dayOfYear = self::isoDayOfYear($year, $month, $day);
-        $dow = self::isoDayOfWeek($year, $month, $day); // 1=Mon..7=Sun
-        // ISO week number: the week containing Jan 4 is week 1.
-        $jan4Dow = self::isoDayOfWeek($year, 1, 4);
-        $startOfWeek1 = 4 - $jan4Dow + 1; // Day of year of Monday of week 1
-        if ($startOfWeek1 > 1) {
-            $startOfWeek1 -= 7;
+        // Use PHP's built-in ISO week calculation for reliability.
+        try {
+            $dt = new \DateTimeImmutable("{$year}-{$month}-{$day}", new \DateTimeZone('UTC'));
+            $weekNum = (int) $dt->format('W');
+            $yearOfWeek = (int) $dt->format('o');
+            return [$weekNum, $yearOfWeek];
+        } catch (\Throwable) {
+            return [null, null];
         }
-        $weekNum = intdiv($dayOfYear - $startOfWeek1, 7) + 1;
-        $yearOfWeek = $year;
-        if ($weekNum < 1) {
-            $yearOfWeek = $year - 1;
-            // Recalculate with previous year.
-            $dec31DayOfYear = self::isoDaysInYear($yearOfWeek);
-            $jan4DowPrev = self::isoDayOfWeek($yearOfWeek, 1, 4);
-            $startOfWeek1Prev = 4 - $jan4DowPrev + 1;
-            if ($startOfWeek1Prev > 1) {
-                $startOfWeek1Prev -= 7;
-            }
-            $weekNum = intdiv($dec31DayOfYear + ($dayOfYear - self::isoDaysInYear($year)) - $startOfWeek1Prev, 7) + 1;
-        } elseif ($weekNum > 52) {
-            // Check if it belongs to next year.
-            $dec31Dow = self::isoDayOfWeek($year, 12, 31);
-            if ($dec31Dow < 4) {
-                // Belongs to week 1 of next year.
-                $yearOfWeek = $year + 1;
-                $weekNum = 1;
-            }
-        }
-        return [$weekNum, $yearOfWeek];
     }
 
     private static function validateISODate(int $y, int $m, int $d): void
