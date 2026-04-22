@@ -2764,12 +2764,28 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
             $startNs = self::isoDateTimeToEpochNs(
-                $parts['year'], $parts['month'], $parts['day'],
-                0, 0, 0, 0, 0, 0, $tz,
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                $tz,
             );
             $nextDate = self::isoDateTimeToEpochNs(
-                $parts['year'], $parts['month'], $parts['day'] + 1,
-                0, 0, 0, 0, 0, 0, $tz,
+                $parts['year'],
+                $parts['month'],
+                $parts['day'] + 1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                $tz,
             );
             $dayNs = bcsub($nextDate, $startNs, 0);
             return new JsNumber((float) bcdiv($dayNs, '3600000000000', 10));
@@ -2780,10 +2796,16 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
             $wallNs = self::isoDateTimeToEpochNs(
-                $parts['year'], $parts['month'], $parts['day'],
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'],
-                $parts['nanosecond'], 'UTC',
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                'UTC',
             );
             return new JsNumber((float) bcsub($wallNs, $ns, 0));
         });
@@ -3202,8 +3224,16 @@ class TemporalObject
                 // Round to day boundaries in the timezone.
                 $parts = self::epochNsToISOParts($ns, $tz);
                 $startNs = self::isoDateTimeToEpochNs(
-                    $parts['year'], $parts['month'], $parts['day'],
-                    0, 0, 0, 0, 0, 0, $tz,
+                    $parts['year'],
+                    $parts['month'],
+                    $parts['day'],
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    $tz,
                 );
                 $dayNs = '86400000000000';
                 $timeInDay = bcsub($ns, $startNs, 0);
@@ -3792,16 +3822,28 @@ class TemporalObject
             $parts2 = self::epochNsToISOParts($ns2, $tz);
             // Create PlainDateTimes and delegate.
             $dt1 = self::createPlainDateTimeObject(
-                $parts1['year'], $parts1['month'], $parts1['day'],
-                $parts1['hour'], $parts1['minute'], $parts1['second'],
-                $parts1['millisecond'], $parts1['microsecond'],
-                $parts1['nanosecond'], 'iso8601',
+                $parts1['year'],
+                $parts1['month'],
+                $parts1['day'],
+                $parts1['hour'],
+                $parts1['minute'],
+                $parts1['second'],
+                $parts1['millisecond'],
+                $parts1['microsecond'],
+                $parts1['nanosecond'],
+                'iso8601',
             );
             $dt2 = self::createPlainDateTimeObject(
-                $parts2['year'], $parts2['month'], $parts2['day'],
-                $parts2['hour'], $parts2['minute'], $parts2['second'],
-                $parts2['millisecond'], $parts2['microsecond'],
-                $parts2['nanosecond'], 'iso8601',
+                $parts2['year'],
+                $parts2['month'],
+                $parts2['day'],
+                $parts2['hour'],
+                $parts2['minute'],
+                $parts2['second'],
+                $parts2['millisecond'],
+                $parts2['microsecond'],
+                $parts2['nanosecond'],
+                'iso8601',
             );
             return self::plainDateTimeDifference($dt1, $dt2, $opts);
         }
