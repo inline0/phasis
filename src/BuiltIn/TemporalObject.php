@@ -5416,11 +5416,13 @@ class TemporalObject
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
-            $smallestUnit = 'nanosecond';
-            $su = $options->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $smallestUnit = TypeConversion::toString($su);
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            // Alphabetical: roundingIncrement, roundingMode, smallestUnit.
+            $ri = $options->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
             }
             $rm = $options->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
@@ -5430,11 +5432,11 @@ class TemporalObject
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
             }
-            $ri = $options->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
-                    throw new RangeError("Invalid roundingIncrement");
+            $smallestUnit = 'nanosecond';
+            $su = $options->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
                 }
             }
             // Validate largestUnit >= smallestUnit.
@@ -5590,18 +5592,14 @@ class TemporalObject
                     throw new RangeError("Invalid largest unit for Instant: {$largestUnit}");
                 }
             }
-            // Validate smallestUnit (Instant only supports time units).
-            $smallestUnit = 'nanosecond';
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $smallestUnit = TypeConversion::toString($su);
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                $instantUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
-                if (!in_array($smallestUnit, $instantUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
+            // Read options in ALPHABETICAL order per spec.
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
                 }
             }
-            // Validate roundingMode.
             $rm = $opts->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
                 $rmStr = TypeConversion::toString($rm);
@@ -5614,12 +5612,14 @@ class TemporalObject
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
             }
-            // Validate roundingIncrement.
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
-                    throw new RangeError("Invalid roundingIncrement");
+            $smallestUnit = 'nanosecond';
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                $instantUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                if (!in_array($smallestUnit, $instantUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
                 }
             }
             // Validate largestUnit >= smallestUnit.
@@ -5898,12 +5898,12 @@ class TemporalObject
                     throw new RangeError("Invalid largest unit for time: {$largestUnit}");
                 }
             }
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $suStr = TypeConversion::toString($su);
-                $suCanon = self::canonicalTemporalUnit($suStr);
-                if (!in_array($suCanon, $validTimeUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for time: {$suStr}");
+            // Alphabetical order: roundingIncrement, roundingMode, smallestUnit.
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
                 }
             }
             $rm = $opts->get('roundingMode');
@@ -5914,11 +5914,12 @@ class TemporalObject
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
             }
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
-                    throw new RangeError("Invalid roundingIncrement");
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $suStr = TypeConversion::toString($su);
+                $suCanon = self::canonicalTemporalUnit($suStr);
+                if (!in_array($suCanon, $validTimeUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for time: {$suStr}");
                 }
             }
             // Validate largestUnit >= smallestUnit.
