@@ -3030,7 +3030,17 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $calArg = $args[0] ?? JsUndefined::instance();
-            $cal = TypeConversion::toString($calArg);
+            if ($calArg instanceof JsUndefined) {
+                throw new TypeError('calendar argument is required');
+            }
+            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
+                || $calArg instanceof JsNull
+            ) {
+                throw new TypeError('Invalid calendar type');
+            }
+            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = self::resolveCalendarId($cal);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             return self::createZonedDateTimeObject($ns, $tz, $cal);
