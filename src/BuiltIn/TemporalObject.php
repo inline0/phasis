@@ -468,7 +468,23 @@ class TemporalObject
                     $largestUnit = self::canonicalTemporalUnit($largestUnit);
                 }
             }
-            return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit);
+            // Read relativeTo.
+            $relativeTo = null;
+            if ($roundTo->has('relativeTo')) {
+                $rtv = $roundTo->get('relativeTo');
+                if (!($rtv instanceof JsUndefined)) {
+                    $relativeTo = $rtv;
+                }
+            }
+            // Calendar units require relativeTo.
+            $hasCalUnit = self::getDurationField($this_, 'years') !== 0
+                || self::getDurationField($this_, 'months') !== 0
+                || self::getDurationField($this_, 'weeks') !== 0;
+            $calSmallest = in_array($unit, ['year', 'month', 'week'], true);
+            if (($hasCalUnit || $calSmallest) && $relativeTo === null) {
+                throw new RangeError('relativeTo is required for rounding durations with calendar units');
+            }
+            return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
         }, 1);
 
         $d('total', function (JsValue $this_, array $args): JsValue {
@@ -5463,21 +5479,11 @@ class TemporalObject
         return self::createDurationObject(...$vals);
     }
 
-    private static function roundDuration(JsValue $dur, string $unit, string $roundingMode, int $increment, string $largestUnit): JsObject
+    private static function roundDuration(JsValue $dur, string $unit, string $roundingMode, int $increment, string $largestUnit, ?JsValue $relativeTo = null): JsObject
     {
-        // Simplified rounding: convert to total nanoseconds, round, then redistribute.
-        // This works for time-only durations. Calendar durations with year/month need more work.
-        $totalNs = self::durationToTotalNs($dur);
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
         $weeks = self::getDurationField($dur, 'weeks');
-
-        $unitNs = self::temporalUnitToNs($unit);
-        $incNs = bcmul((string) $increment, $unitNs, 0);
-
-        if ($incNs !== '0') {
-            $totalNs = self::roundBigIntNs($totalNs, $incNs, $roundingMode);
-        }
 
         // Determine largest unit.
         if ($largestUnit === 'auto') {
@@ -5492,7 +5498,54 @@ class TemporalObject
             }
         }
 
-        return self::nsToTimeDuration($totalNs, $largestUnit, $years, $months, $weeks);
+        // For calendar units with relativeTo, use calendar-aware rounding.
+        $calUnits = ['year', 'month', 'week'];
+        if ((in_array($unit, $calUnits, true) || in_array($largestUnit, $calUnits, true)) && $relativeTo !== null) {
+            $refDate = self::toPlainDate($relativeTo);
+            $endDate = self::plainDateAdd($refDate, $dur, 1);
+            // Create a PlainDate-only duration (date part).
+            $dateDiff = self::plainDateDifference($refDate, $endDate, JsUndefined::instance(), 1);
+            // Override largestUnit.
+            $dateDiffOpts = new JsObject();
+            $dateDiffOpts->set('largestUnit', new JsString($largestUnit));
+            $dateDiff = self::plainDateDifference($refDate, $endDate, $dateDiffOpts, 1);
+            // Add time parts.
+            $sign = self::durationSign($dur);
+            $timeDur = self::createDurationObject(
+                0, 0, 0, 0,
+                self::getDurationField($dur, 'hours'),
+                self::getDurationField($dur, 'minutes'),
+                self::getDurationField($dur, 'seconds'),
+                self::getDurationField($dur, 'milliseconds'),
+                self::getDurationField($dur, 'microseconds'),
+                self::getDurationField($dur, 'nanoseconds'),
+            );
+            // Combine date and time parts.
+            $combined = self::createDurationObject(
+                self::getDurationField($dateDiff, 'years'),
+                self::getDurationField($dateDiff, 'months'),
+                self::getDurationField($dateDiff, 'weeks'),
+                self::getDurationField($dateDiff, 'days'),
+                self::getDurationField($dur, 'hours'),
+                self::getDurationField($dur, 'minutes'),
+                self::getDurationField($dur, 'seconds'),
+                self::getDurationField($dur, 'milliseconds'),
+                self::getDurationField($dur, 'microseconds'),
+                self::getDurationField($dur, 'nanoseconds'),
+            );
+            return self::roundCalendarDuration($combined, $unit, $roundingMode, $increment, $largestUnit, $refDate);
+        }
+
+        // Time-only: convert to ns, round, redistribute.
+        $totalNs = self::durationToTotalNs($dur);
+        $unitNs = self::temporalUnitToNs($unit);
+        $incNs = bcmul((string) $increment, $unitNs, 0);
+
+        if ($incNs !== '0') {
+            $totalNs = self::roundNs($totalNs, $incNs, $roundingMode);
+        }
+
+        return self::nsToTimeDuration($totalNs, $largestUnit);
     }
 
     private static function defaultLargestUnit(JsValue $dur): string
