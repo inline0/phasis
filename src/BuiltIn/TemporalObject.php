@@ -5318,6 +5318,12 @@ class TemporalObject
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
             }
+            $smallestUnit = 'nanosecond';
+            $su = $options->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            }
             $rm = $options->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
                 $rmStr = TypeConversion::toString($rm);
@@ -5332,6 +5338,13 @@ class TemporalObject
                 if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
                     throw new RangeError("Invalid roundingIncrement");
                 }
+            }
+            // Validate largestUnit >= smallestUnit.
+            $allUnits = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            $liIdx = array_search($largestUnit, $allUnits);
+            $siIdx = array_search($smallestUnit, $allUnits);
+            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                throw new RangeError('largestUnit must be >= smallestUnit');
             }
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
