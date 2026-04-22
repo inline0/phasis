@@ -1736,6 +1736,21 @@ class TemporalObject
                 ) {
                     return self::toPlainDateTime($item);
                 }
+                if ($item instanceof JsString) {
+                    $result = self::toPlainDateTime($item);
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    // Validate overflow even for strings.
+                    if ($options instanceof JsObject) {
+                        $ov = $options->get('overflow');
+                        if (!($ov instanceof JsUndefined)) {
+                            $ovStr = TypeConversion::toString($ov);
+                            if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
+                                throw new RangeError("Invalid overflow: {$ovStr}");
+                            }
+                        }
+                    }
+                    return $result;
+                }
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
                 if ($options instanceof JsObject) {
