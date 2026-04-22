@@ -2041,6 +2041,14 @@ class TemporalObject
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
+                // Type check primitives BEFORE reading options.
+                if (
+                    $item instanceof JsUndefined || $item instanceof JsNull
+                    || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
+                    || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
+                ) {
+                    return self::toPlainYearMonth($item);
+                }
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
                 if ($options instanceof JsObject) {
