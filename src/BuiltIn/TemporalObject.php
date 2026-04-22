@@ -892,14 +892,31 @@ class TemporalObject
         $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $item = $args[0] ?? JsUndefined::instance();
+            $h = 0;
+            $min = 0;
+            $s = 0;
+            $ms = 0;
+            $us = 0;
+            $nsPart = 0;
             if ($item instanceof JsString) {
-                $timeZone = $item->value;
+                $timeZone = self::toTemporalTimeZoneIdentifier($item);
             } elseif ($item instanceof JsObject) {
+                // Read timeZone BEFORE plainTime per spec.
                 $tz = $item->get('timeZone');
                 if ($tz instanceof JsUndefined) {
                     throw new TypeError('missing timeZone property');
                 }
-                $timeZone = TypeConversion::toString($tz);
+                $timeZone = self::toTemporalTimeZoneIdentifier($tz);
+                $ptArg = $item->get('plainTime');
+                if (!($ptArg instanceof JsUndefined)) {
+                    $t = self::toPlainTime($ptArg);
+                    $h = self::getSlotInt($t, '[[ISOHour]]');
+                    $min = self::getSlotInt($t, '[[ISOMinute]]');
+                    $s = self::getSlotInt($t, '[[ISOSecond]]');
+                    $ms = self::getSlotInt($t, '[[ISOMillisecond]]');
+                    $us = self::getSlotInt($t, '[[ISOMicrosecond]]');
+                    $nsPart = self::getSlotInt($t, '[[ISONanosecond]]');
+                }
             } else {
                 throw new TypeError('Expected a string or an object with a timeZone property');
             }
@@ -907,8 +924,7 @@ class TemporalObject
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // Convert PlainDate at midnight in the given timezone to epoch nanoseconds.
-            $ns = self::isoDateTimeToEpochNs($y, $m, $dd, 0, 0, 0, 0, 0, 0, $timeZone);
+            $ns = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone);
             return self::createZonedDateTimeObject($ns, $timeZone, $cal);
         }, 1);
 
@@ -2668,13 +2684,7 @@ class TemporalObject
         $d('withTimeZone', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $tzArg = $args[0] ?? JsUndefined::instance();
-            if ($tzArg instanceof JsUndefined) {
-                throw new TypeError('timeZone is required');
-            }
-            $timeZone = TypeConversion::toString($tzArg);
-            if ($timeZone === '') {
-                throw new RangeError('empty string does not convert to a valid ISO string');
-            }
+            $timeZone = self::toTemporalTimeZoneIdentifier($tzArg);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             return self::createZonedDateTimeObject($ns, $timeZone, $cal);
@@ -3088,6 +3098,95 @@ class TemporalObject
         $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(new JsString($cal), false, false, false));
         $obj->defineOwnProperty('[[IsZonedDateTime]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
         return $obj;
+    }
+
+    /** Convert a timezone argument (string, Temporal type, or string-convertible) to a timezone identifier. */
+    private static function toTemporalTimeZoneIdentifier(JsValue $item): string
+    {
+        // Per spec: if it's an Object, check for ZonedDateTime brand, otherwise throw.
+        if ($item instanceof JsObject) {
+            if ($item->has('[[IsZonedDateTime]]')) {
+                return self::getSlotString($item, '[[TimeZone]]');
+            }
+            throw new TypeError('Expected a string for TimeZone');
+        }
+        // If it's not a String, throw TypeError.
+        if (!($item instanceof JsString)) {
+            throw new TypeError('Expected a string for TimeZone');
+        }
+        $str = $item->value;
+        return self::parseTemporalTimeZoneString($str);
+    }
+
+    /** Parse a timezone string. Accepts IANA names, UTC offsets, or datetime strings with TZ annotation. */
+    private static function parseTemporalTimeZoneString(string $str): string
+    {
+        if ($str === '') {
+            throw new RangeError('empty string does not convert to a valid ISO string');
+        }
+        // Reject Unicode minus sign.
+        if (str_contains($str, "\xE2\x88\x92")) {
+            throw new RangeError("Non-ASCII minus sign is not acceptable");
+        }
+        // Simple IANA timezone name (e.g. UTC, America/New_York).
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_+\-\/]*$/', $str)) {
+            // Check if it's a known timezone.
+            try {
+                new \DateTimeZone($str);
+                return $str;
+            } catch (\Throwable) {
+                // Fall through: try case-insensitive match for common names.
+                $upper = strtoupper($str);
+                if ($upper === 'UTC' || $upper === 'GMT') {
+                    return $upper;
+                }
+                throw new RangeError("Invalid time zone: {$str}");
+            }
+        }
+        // UTC offset: +HH:MM or -HH:MM (no seconds).
+        if (preg_match('/^[+-](\d{2}):?(\d{2})$/', $str, $m)) {
+            $h = (int) $m[1];
+            $min = (int) $m[2];
+            if ($h > 23 || $min > 59) {
+                throw new RangeError("Invalid UTC offset: {$str}");
+            }
+            return $str;
+        }
+        // Reject sub-minute offsets.
+        if (preg_match('/^[+-]\d{2}:?\d{2}:?\d{2}/', $str)) {
+            throw new RangeError("{$str} is not a valid time zone string");
+        }
+        // Try as datetime string with TZ annotation.
+        [$cleaned] = self::normalizeTemporalString($str);
+        // Extract timezone annotation.
+        if (preg_match('/\[([^\]=]+)\]/', $str, $annM)) {
+            $tzName = $annM[1];
+            if (!str_contains($tzName, '=')) {
+                // It's a timezone annotation, not a key=value.
+                if (preg_match('/^[+-]\d{2}:?\d{2}$/', $tzName)) {
+                    return $tzName;
+                }
+                try {
+                    new \DateTimeZone($tzName);
+                    return $tzName;
+                } catch (\Throwable) {
+                    throw new RangeError("Invalid time zone: {$tzName}");
+                }
+            }
+        }
+        // Try parsing as a datetime string and extract the offset.
+        $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
+        $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
+        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2})?)';
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}/";
+        if (preg_match($pattern, $cleaned, $dtM)) {
+            $offset = $dtM[10];
+            if (strtoupper($offset) === 'Z') {
+                return 'UTC';
+            }
+            return $offset;
+        }
+        throw new RangeError("Invalid time zone string: {$str}");
     }
 
     private static function zonedDateTimeParts(JsValue $zdt): array
@@ -4828,10 +4927,11 @@ class TemporalObject
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
                 }
             }
-            // MMDD (4-digit): ambiguous if MM could be valid month.
+            // MMDD (4-digit): ambiguous if MM is valid month AND DD is valid day.
             if (preg_match('/^(\d{4})(?:$|\[)/', $noAnnot2, $amb4)) {
                 $mmCandidate = (int) substr($amb4[1], 0, 2);
-                if ($mmCandidate >= 1 && $mmCandidate <= 12) {
+                $ddCandidate = (int) substr($amb4[1], 2, 2);
+                if ($mmCandidate >= 1 && $mmCandidate <= 12 && $ddCandidate >= 1 && $ddCandidate <= 31) {
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
                 }
             }
