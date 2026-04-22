@@ -5623,6 +5623,16 @@ class TemporalObject
                     throw new RangeError("Invalid roundingIncrement");
                 }
             }
+            // Validate largestUnit >= smallestUnit.
+            if (isset($smallestUnit)) {
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                $liIdx = array_search($largestUnit, $allU);
+                $siIdx = array_search($smallestUnit, $allU);
+                if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                    throw new RangeError('largestUnit must be >= smallestUnit');
+                }
+            }
         }
 
         // Julian day difference.
