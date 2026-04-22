@@ -200,10 +200,10 @@ class TemporalObject
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
-            if ($increment > 1) {
+            if ($increment > 1 && $unit !== 'day') {
                 self::validateRoundingIncrement($unit, $increment);
             }
             $unitNs = self::temporalUnitToNs($unit);
