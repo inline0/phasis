@@ -200,7 +200,11 @@ class TemporalObject
             if (!$roundTo instanceof JsObject) {
                 throw new TypeError('options must be an object');
             }
-            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
+            $validUnits = [
+                'day', 'hour', 'minute', 'second',
+                'millisecond', 'microsecond', 'nanosecond',
+            ];
+            $unit = self::getTemporalUnit($roundTo, 'smallestUnit', $validUnits, true);
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
             if ($increment > 1 && $unit !== 'day') {
@@ -5481,7 +5485,14 @@ class TemporalObject
         return self::createDurationObject(...$vals);
     }
 
-    private static function roundDuration(JsValue $dur, string $unit, string $roundingMode, int $increment, string $largestUnit, ?JsValue $relativeTo = null): JsObject
+    private static function roundDuration(
+        JsValue $dur,
+        string $unit,
+        string $roundingMode,
+        int $increment,
+        string $largestUnit,
+        ?JsValue $relativeTo = null,
+    ): JsObject
     {
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
