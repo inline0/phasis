@@ -613,6 +613,67 @@ class TemporalObject
             JsFunction::fromCallable('compare', function (JsValue $this_, array $args): JsValue {
                 $one = self::toDuration($args[0] ?? JsUndefined::instance());
                 $two = self::toDuration($args[1] ?? JsUndefined::instance());
+                // Check for options (relativeTo).
+                $options = self::getOptionsObject($args[2] ?? JsUndefined::instance());
+                $relativeTo = null;
+                if ($options instanceof JsObject) {
+                    $rtv = $options->get('relativeTo');
+                    if (!($rtv instanceof JsUndefined)) {
+                        $relativeTo = $rtv;
+                    }
+                }
+                // Check if either duration has calendar units.
+                $hasCalUnit = self::getDurationField($one, 'years') !== 0
+                    || self::getDurationField($one, 'months') !== 0
+                    || self::getDurationField($one, 'weeks') !== 0
+                    || self::getDurationField($two, 'years') !== 0
+                    || self::getDurationField($two, 'months') !== 0
+                    || self::getDurationField($two, 'weeks') !== 0;
+                if ($hasCalUnit && $relativeTo === null) {
+                    throw new RangeError('relativeTo is required for comparing durations with calendar units');
+                }
+                if ($relativeTo !== null && $hasCalUnit) {
+                    // Compare by adding both durations to relativeTo and comparing results.
+                    $refDate = self::toPlainDate($relativeTo);
+                    $end1 = self::plainDateAdd($refDate, $one, 1);
+                    $end2 = self::plainDateAdd($refDate, $two, 1);
+                    $jd1 = self::isoToJulianDay(
+                        self::getSlotInt($end1, '[[ISOYear]]'),
+                        self::getSlotInt($end1, '[[ISOMonth]]'),
+                        self::getSlotInt($end1, '[[ISODay]]'),
+                    );
+                    $jd2 = self::isoToJulianDay(
+                        self::getSlotInt($end2, '[[ISOYear]]'),
+                        self::getSlotInt($end2, '[[ISOMonth]]'),
+                        self::getSlotInt($end2, '[[ISODay]]'),
+                    );
+                    // Add time parts.
+                    $timeNs1 = self::durationToTotalNs(
+                        self::createDurationObject(
+                            0, 0, 0, 0,
+                            self::getDurationField($one, 'hours'),
+                            self::getDurationField($one, 'minutes'),
+                            self::getDurationField($one, 'seconds'),
+                            self::getDurationField($one, 'milliseconds'),
+                            self::getDurationField($one, 'microseconds'),
+                            self::getDurationField($one, 'nanoseconds'),
+                        )
+                    );
+                    $timeNs2 = self::durationToTotalNs(
+                        self::createDurationObject(
+                            0, 0, 0, 0,
+                            self::getDurationField($two, 'hours'),
+                            self::getDurationField($two, 'minutes'),
+                            self::getDurationField($two, 'seconds'),
+                            self::getDurationField($two, 'milliseconds'),
+                            self::getDurationField($two, 'microseconds'),
+                            self::getDurationField($two, 'nanoseconds'),
+                        )
+                    );
+                    $total1 = bcadd(bcmul((string) $jd1, '86400000000000', 0), $timeNs1, 0);
+                    $total2 = bcadd(bcmul((string) $jd2, '86400000000000', 0), $timeNs2, 0);
+                    return new JsNumber((float) bccomp($total1, $total2, 0));
+                }
                 $ns1 = self::durationToTotalNs($one);
                 $ns2 = self::durationToTotalNs($two);
                 return new JsNumber((float) self::bigCmp($ns1, $ns2));
