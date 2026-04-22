@@ -1126,6 +1126,10 @@ class Lexer
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
+            // Exclude Unicode whitespace and line terminators.
+            if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
+                return false;
+            }
             return true;
         }
         return ctype_alpha($ch) || $ch === '_' || $ch === '$';
@@ -1135,6 +1139,10 @@ class Lexer
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
+            // Exclude Unicode whitespace and line terminators.
+            if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
+                return false;
+            }
             return true;
         }
         return ctype_alnum($ch) || $ch === '_' || $ch === '$';
