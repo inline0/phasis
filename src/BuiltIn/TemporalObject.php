@@ -750,7 +750,7 @@ class TemporalObject
             $result = self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd);
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $showCal = $calendarName === 'always'
-                || ($calendarName === 'critical' && $cal !== 'iso8601')
+                || $calendarName === 'critical'
                 || ($calendarName !== 'never' && $cal !== 'iso8601');
             if ($showCal) {
                 $prefix = $calendarName === 'critical' ? '!' : '';
