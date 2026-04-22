@@ -1733,32 +1733,70 @@ class TemporalObject
         $d('round', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $roundTo = $args[0] ?? JsUndefined::instance();
-            if ($roundTo instanceof JsString) {
-                $smallestUnit = self::canonicalTemporalUnit($roundTo->value);
-            } elseif ($roundTo instanceof JsObject) {
-                $su = $roundTo->get('smallestUnit');
-                if ($su instanceof JsUndefined) {
-                    throw new RangeError('smallestUnit is required');
-                }
-                $smallestUnit = self::canonicalTemporalUnit(
-                    TypeConversion::toString($su)
-                );
-            } else {
-                throw new TypeError('options must be string or object');
+            if ($roundTo instanceof JsUndefined) {
+                throw new TypeError('options parameter is required');
             }
-            // For now, just return the same DateTime (rounding not implemented).
-            return self::createPlainDateTimeObject(
-                self::getSlotInt($this_, '[[ISOYear]]'),
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-                self::getSlotInt($this_, '[[ISODay]]'),
-                self::getSlotInt($this_, '[[ISOHour]]'),
-                self::getSlotInt($this_, '[[ISOMinute]]'),
-                self::getSlotInt($this_, '[[ISOSecond]]'),
-                self::getSlotInt($this_, '[[ISOMillisecond]]'),
-                self::getSlotInt($this_, '[[ISOMicrosecond]]'),
-                self::getSlotInt($this_, '[[ISONanosecond]]'),
-                self::getSlotString($this_, '[[Calendar]]'),
+            if ($roundTo instanceof JsString) {
+                $opt = new JsObject();
+                $opt->set('smallestUnit', $roundTo);
+                $roundTo = $opt;
+            }
+            if (!$roundTo instanceof JsObject) {
+                throw new TypeError('options must be an object');
+            }
+            $unit = self::getTemporalUnit(
+                $roundTo,
+                'smallestUnit',
+                ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'],
+                true,
             );
+            $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
+            $increment = self::getRoundingIncrement($roundTo);
+            if ($increment > 1 && $unit !== 'day') {
+                self::validateRoundingIncrement($unit, $increment);
+            }
+            // Convert to nanoseconds from midnight, round, convert back.
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $timeNs = (self::getSlotInt($this_, '[[ISOHour]]') * 3600
+                + self::getSlotInt($this_, '[[ISOMinute]]') * 60
+                + self::getSlotInt($this_, '[[ISOSecond]]')) * 1000000000
+                + self::getSlotInt($this_, '[[ISOMillisecond]]') * 1000000
+                + self::getSlotInt($this_, '[[ISOMicrosecond]]') * 1000
+                + self::getSlotInt($this_, '[[ISONanosecond]]');
+            $unitNs = (int) self::temporalUnitToNs($unit);
+            $incNs = $unitNs * $increment;
+            $rounded = self::roundToIncrement($timeNs, $incNs, $roundingMode);
+            // Handle day overflow.
+            $dayNs = 86400000000000;
+            $extraDays = intdiv($rounded, $dayNs);
+            $rounded = $rounded % $dayNs;
+            if ($rounded < 0) {
+                $rounded += $dayNs;
+                $extraDays--;
+            }
+            $h = intdiv($rounded, 3600000000000);
+            $rounded %= 3600000000000;
+            $min = intdiv($rounded, 60000000000);
+            $rounded %= 60000000000;
+            $s = intdiv($rounded, 1000000000);
+            $rounded %= 1000000000;
+            $ms = intdiv($rounded, 1000000);
+            $rounded %= 1000000;
+            $us = intdiv($rounded, 1000);
+            $ns = $rounded % 1000;
+            // Add extra days.
+            if ($extraDays !== 0) {
+                $dateObj = self::createPlainDateObject($y, $m, $dd, $cal);
+                $durObj = self::createDurationObject(0, 0, 0, $extraDays, 0, 0, 0, 0, 0, 0);
+                $newDate = self::plainDateAdd($dateObj, $durObj, 1);
+                $y = self::getSlotInt($newDate, '[[ISOYear]]');
+                $m = self::getSlotInt($newDate, '[[ISOMonth]]');
+                $dd = self::getSlotInt($newDate, '[[ISODay]]');
+            }
+            return self::createPlainDateTimeObject($y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal);
         }, 1);
 
         $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
