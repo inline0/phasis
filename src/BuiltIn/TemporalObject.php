@@ -1675,15 +1675,20 @@ class TemporalObject
 
         $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
-            $tz = $args[0] ?? JsUndefined::instance();
-            if ($tz instanceof JsString) {
-                $tzName = $tz->value;
-            } elseif ($tz instanceof JsObject && $tz->has('timeZone')) {
-                $tzName = TypeConversion::toString($tz->get('timeZone'));
-            } else {
-                $tzName = TypeConversion::toString($tz);
+            $tzArg = $args[0] ?? JsUndefined::instance();
+            $tzName = self::toTemporalTimeZoneIdentifier($tzArg);
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            // Read disambiguation option.
+            if ($options instanceof JsObject) {
+                $dv = $options->get('disambiguation');
+                if (!($dv instanceof JsUndefined)) {
+                    $disam = TypeConversion::toString($dv);
+                    $valid = ['compatible', 'earlier', 'later', 'reject'];
+                    if (!in_array($disam, $valid, true)) {
+                        throw new RangeError("Invalid disambiguation: {$disam}");
+                    }
+                }
             }
-            // Convert to epoch nanoseconds using the timezone offset.
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
@@ -3101,19 +3106,18 @@ class TemporalObject
     private static function parseZonedDateTimeString(string $str): JsObject
     {
         [$str, $cal] = self::normalizeTemporalString($str);
-        // Parse the datetime part and timezone annotation.
-        // Format: YYYY-MM-DDTHH:MM:SS.frac+/-HH:MM[TimeZone]
+        // Parse the datetime part, optional offset, and timezone annotation.
         $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?' ;
-        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)';
+        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
         $annPart = '(?:\\[([^\\]]+)\\])?';
         $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}{$annPart}/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid ZonedDateTime string: {$str}");
         }
         $year = (int) $m[1];
-        $month = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : (int) $m[4];
-        $day = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : (int) $m[5];
+        $month = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : (int) ($m[4] ?? 0);
+        $day = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : (int) ($m[5] ?? 0);
         $hour = (int) $m[6];
         $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
         $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
@@ -3124,10 +3128,15 @@ class TemporalObject
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
         $ns = (int) substr($frac, 6, 3);
-        // Timezone annotation takes priority, fallback to offset.
-        $timeZone = isset($m[11]) && $m[11] !== '' ? $m[11] : $m[10];
-        if (strtoupper($timeZone) === 'Z') {
-            $timeZone = 'UTC';
+        $offset = isset($m[10]) && $m[10] !== '' ? $m[10] : null;
+        $annotation = isset($m[11]) && $m[11] !== '' ? $m[11] : null;
+        // Timezone: annotation takes priority, fallback to offset.
+        if ($annotation !== null && !str_contains($annotation, '=')) {
+            $timeZone = $annotation;
+        } elseif ($offset !== null) {
+            $timeZone = strtoupper($offset) === 'Z' ? 'UTC' : $offset;
+        } else {
+            throw new RangeError("Invalid ZonedDateTime string (no timezone): {$str}");
         }
         $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
