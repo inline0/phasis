@@ -430,9 +430,16 @@ class TemporalObject
         $d('total', function (JsValue $this_, array $args): JsValue {
             self::requireDuration($this_);
             $totalOf = $args[0] ?? JsUndefined::instance();
+            if ($totalOf instanceof JsUndefined) {
+                throw new TypeError('total requires a string or options object');
+            }
             if ($totalOf instanceof JsString) {
                 $unit = $totalOf->value;
+                $relativeTo = null;
             } elseif ($totalOf instanceof JsObject) {
+                // Read relativeTo first per spec.
+                $rtv = $totalOf->get('relativeTo');
+                $relativeTo = ($rtv instanceof JsUndefined) ? null : $rtv;
                 $u = $totalOf->get('unit');
                 if ($u instanceof JsUndefined) {
                     throw new RangeError('unit is required');
@@ -442,6 +449,20 @@ class TemporalObject
                 throw new TypeError('total requires a string or options object');
             }
             $unit = self::canonicalTemporalUnit($unit);
+            // Calendar units require relativeTo.
+            $calUnits = ['year', 'month', 'week'];
+            $hasCalUnit = self::getDurationField($this_, 'years') !== 0
+                || self::getDurationField($this_, 'months') !== 0
+                || self::getDurationField($this_, 'weeks') !== 0;
+            if (($hasCalUnit || in_array($unit, $calUnits, true)) && $relativeTo === null) {
+                throw new RangeError('relativeTo is required for calendar units');
+            }
+            if ($relativeTo !== null && in_array($unit, $calUnits, true)) {
+                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
+            }
+            if ($relativeTo !== null && $hasCalUnit) {
+                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
+            }
             return new JsNumber(self::durationTotalNs($this_, $unit));
         }, 1);
 
@@ -4416,6 +4437,108 @@ class TemporalObject
             return number_format($v->value, 0, '.', '');
         }
         return '0';
+    }
+
+    /** Compute Duration.total with a relativeTo reference point. */
+    private static function durationTotalWithRelativeTo(JsValue $dur, string $unit, JsValue $relativeTo): float
+    {
+        // Parse relativeTo as a PlainDate or PlainDateTime.
+        $refDate = null;
+        if ($relativeTo instanceof JsObject && $relativeTo->has('[[IsPlainDate]]')) {
+            $refDate = $relativeTo;
+        } elseif ($relativeTo instanceof JsObject && $relativeTo->has('[[IsPlainDateTime]]')) {
+            $refDate = self::createPlainDateObject(
+                self::getSlotInt($relativeTo, '[[ISOYear]]'),
+                self::getSlotInt($relativeTo, '[[ISOMonth]]'),
+                self::getSlotInt($relativeTo, '[[ISODay]]'),
+                self::getSlotString($relativeTo, '[[Calendar]]'),
+            );
+        } elseif ($relativeTo instanceof JsObject && $relativeTo->has('[[IsZonedDateTime]]')) {
+            $parts = self::zonedDateTimeParts($relativeTo);
+            $refDate = self::createPlainDateObject(
+                $parts['year'], $parts['month'], $parts['day'],
+                self::getSlotString($relativeTo, '[[Calendar]]'),
+            );
+        } elseif ($relativeTo instanceof JsString) {
+            $refDate = self::toPlainDate($relativeTo);
+        } elseif ($relativeTo instanceof JsObject) {
+            $refDate = self::toPlainDate($relativeTo);
+        } else {
+            throw new TypeError('relativeTo must be a Temporal object or string');
+        }
+        // Add the duration to the reference date.
+        $endDate = self::plainDateAdd($refDate, $dur, 1);
+        // Now compute difference in the target unit.
+        $y1 = self::getSlotInt($refDate, '[[ISOYear]]');
+        $m1 = self::getSlotInt($refDate, '[[ISOMonth]]');
+        $d1 = self::getSlotInt($refDate, '[[ISODay]]');
+        $y2 = self::getSlotInt($endDate, '[[ISOYear]]');
+        $m2 = self::getSlotInt($endDate, '[[ISOMonth]]');
+        $d2 = self::getSlotInt($endDate, '[[ISODay]]');
+        // Add time component as fractional days.
+        $timeNs = self::durationToTotalNs(
+            self::createDurationObject(
+                0, 0, 0, 0,
+                self::getDurationField($dur, 'hours'),
+                self::getDurationField($dur, 'minutes'),
+                self::getDurationField($dur, 'seconds'),
+                self::getDurationField($dur, 'milliseconds'),
+                self::getDurationField($dur, 'microseconds'),
+                self::getDurationField($dur, 'nanoseconds'),
+            )
+        );
+        $fractionalDays = (float) $timeNs / 86400000000000.0;
+        $jd1 = self::isoToJulianDay($y1, $m1, $d1);
+        $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+        $totalDays = ($jd2 - $jd1) + $fractionalDays;
+        if ($unit === 'day') {
+            return $totalDays;
+        }
+        if ($unit === 'week') {
+            return $totalDays / 7.0;
+        }
+        if ($unit === 'month') {
+            // Whole months from date diff.
+            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+            if ($d2 < $d1) {
+                $totalMonths--;
+            }
+            // Remaining days as fraction of the last month.
+            $midTotalM = $y1 * 12 + ($m1 - 1) + $totalMonths;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $remainDays = ($jd2 - self::isoToJulianDay($midMY, $midMM, $midD)) + $fractionalDays;
+            // Next month length for fractional calculation.
+            $nextMM = $midMM === 12 ? 1 : $midMM + 1;
+            $nextMY = $midMM === 12 ? $midMY + 1 : $midMY;
+            $daysInNextMonth = self::isoDaysInMonth($nextMY, $nextMM);
+            return $totalMonths + $remainDays / $daysInNextMonth;
+        }
+        if ($unit === 'year') {
+            $years = $y2 - $y1;
+            if ($m2 < $m1 || ($m2 === $m1 && $d2 < $d1)) {
+                $years--;
+            }
+            // Remaining as fraction.
+            $tempY = $y1 + $years;
+            $totalM = ($y2 * 12 + $m2) - ($tempY * 12 + $m1);
+            if ($d2 < $d1) {
+                $totalM--;
+            }
+            $midTotalM = $tempY * 12 + ($m1 - 1) + $totalM;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $remainDays = ($jd2 - self::isoToJulianDay($midMY, $midMM, $midD)) + $fractionalDays;
+            // Days in the current year for fractional calculation.
+            $daysInYear = self::isoDaysInYear($tempY + $years + 1);
+            $monthFrac = $totalM / 12.0;
+            $dayFrac = $remainDays / (float) $daysInYear;
+            return $years + $monthFrac + $dayFrac;
+        }
+        // For time units, just use ns total.
+        return self::durationTotalNs($dur, $unit);
     }
 
     private static function durationTotalNs(JsValue $dur, string $unit): float
