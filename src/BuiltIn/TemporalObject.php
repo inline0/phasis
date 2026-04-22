@@ -1170,8 +1170,7 @@ class TemporalObject
             $dd = (int) $ddNum;
             $cal = 'iso8601';
             if (isset($args[3]) && !($args[3] instanceof JsUndefined)) {
-                $cal = strtolower(TypeConversion::toString($args[3]));
-                $cal = self::resolveCalendarId($cal);
+                $cal = self::toCalendarSlotValue($args[3]);
             }
             self::validateISODate($y, $m, $dd);
             $this_->setPrototype($proto);
@@ -2125,8 +2124,7 @@ class TemporalObject
             $ns = isset($args[8]) && !($args[8] instanceof JsUndefined) ? $toInt($args[8], 'nanosecond') : 0;
             $cal = 'iso8601';
             if (isset($args[9]) && !($args[9] instanceof JsUndefined)) {
-                $cal = strtolower(TypeConversion::toString($args[9]));
-                $cal = self::resolveCalendarId($cal);
+                $cal = self::toCalendarSlotValue($args[9]);
             }
             self::validateISODate($y, $m, $dd);
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
@@ -3578,7 +3576,7 @@ class TemporalObject
             $timeZone = TypeConversion::toString($tzArg);
             $cal = 'iso8601';
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
-                $cal = strtolower(TypeConversion::toString($args[2]));
+                $cal = self::toCalendarSlotValue($args[2]);
             }
             $this_->setPrototype($proto);
             $this_->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(new JsString($ns), false, false, false));
@@ -3835,10 +3833,9 @@ class TemporalObject
                     $timeZone = $annotation;
                 }
             }
-        } elseif ($offset !== null) {
-            $timeZone = strtoupper($offset) === 'Z' ? 'UTC' : $offset;
         } else {
-            throw new RangeError("Invalid ZonedDateTime string (no timezone): {$str}");
+            // ZonedDateTime strings require a bracketed timezone annotation.
+            throw new RangeError("Invalid ZonedDateTime string (no bracketed timezone annotation): {$str}");
         }
         $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
