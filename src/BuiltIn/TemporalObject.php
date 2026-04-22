@@ -3311,6 +3311,16 @@ class TemporalObject
 
     private static function createPlainYearMonthObject(int $y, int $m, int $refDay, string $cal): JsObject
     {
+        // Validate range: the YearMonth must contain at least one in-range date.
+        if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+            throw new RangeError("Year out of range: {$y}");
+        }
+        if ($y === self::ISO_YEAR_MIN && $m < 4) {
+            throw new RangeError("YearMonth outside representable range");
+        }
+        if ($y === self::ISO_YEAR_MAX && $m > 9) {
+            throw new RangeError("YearMonth outside representable range");
+        }
         $obj = new JsObject(self::$plainYearMonthProto);
         self::setDateSlots($obj, $y, $m, $refDay, $cal);
         $obj->defineOwnProperty('[[IsPlainYearMonth]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
