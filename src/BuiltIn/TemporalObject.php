@@ -2327,6 +2327,9 @@ class TemporalObject
                 if ($calArg instanceof \PhpJs\Value\JsSymbol) {
                     throw new TypeError('Symbol is not a valid calendar');
                 }
+                if ($calArg instanceof JsObject) {
+                    throw new TypeError('object is not a valid calendar');
+                }
                 $cal = strtolower(TypeConversion::toString($calArg));
                 $cal = self::resolveCalendarId($cal);
             }
