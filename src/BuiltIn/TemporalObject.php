@@ -553,19 +553,16 @@ class TemporalObject
                 if (!($su instanceof JsUndefined)) {
                     $smallestUnit = TypeConversion::toString($su);
                     $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                    $validUnits = ['second', 'millisecond', 'microsecond', 'nanosecond', 'minute', 'hour'];
+                    $validUnits = ['second', 'millisecond', 'microsecond', 'nanosecond'];
                     if (!in_array($smallestUnit, $validUnits, true)) {
                         throw new RangeError("Invalid smallestUnit for Duration.toString: {$smallestUnit}");
                     }
                     // smallestUnit determines fractionalSecondDigits.
                     $unitToDigits = [
-                        'minute' => -1, 'hour' => -1, 'second' => 0,
+                        'second' => 0,
                         'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
                     ];
                     $fractionalSecondDigits = $unitToDigits[$smallestUnit];
-                    if ($fractionalSecondDigits === -1) {
-                        $fractionalSecondDigits = 0;
-                    }
                 }
             }
             return new JsString(
@@ -5218,9 +5215,13 @@ class TemporalObject
             }
         }
 
-        // If completely empty, output "PT0S".
+        // If completely empty, output "PT0S" (with precision if specified).
         if ($result === 'P' || $result === '-P') {
-            $result = 'PT0S';
+            if ($fractionalSecondDigits !== 'auto' && is_int($fractionalSecondDigits) && $fractionalSecondDigits > 0) {
+                $result = 'PT0.' . str_repeat('0', $fractionalSecondDigits) . 'S';
+            } else {
+                $result = 'PT0S';
+            }
         }
 
         return $result;
