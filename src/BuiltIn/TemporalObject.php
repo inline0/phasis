@@ -3254,6 +3254,7 @@ class TemporalObject
         }
         $obj = new JsObject(self::$plainDateProto);
         self::setDateSlots($obj, $y, $m, $d, $cal);
+        $obj->defineOwnProperty('[[IsPlainDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
         return $obj;
     }
 
