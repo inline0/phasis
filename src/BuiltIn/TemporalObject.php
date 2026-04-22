@@ -131,10 +131,10 @@ class TemporalObject
                 }
             }
             $timeZone = null;
-            if ($options instanceof JsObject && $options->has('timeZone')) {
+            if ($options instanceof JsObject) {
                 $tz = $options->get('timeZone');
                 if (!($tz instanceof JsUndefined)) {
-                    $timeZone = TypeConversion::toString($tz);
+                    $timeZone = self::toTemporalTimeZoneIdentifier($tz);
                 }
             }
             $omitSec = $smallestUnit === 'minute';
@@ -8536,7 +8536,7 @@ class TemporalObject
             if (!is_finite($v->value) || is_nan($v->value)) {
                 throw new RangeError('fractionalSecondDigits must be 0-9 or auto');
             }
-            $n = (int) $v->value;
+            $n = (int) floor($v->value);
             if ($n < 0 || $n > 9) {
                 throw new RangeError('fractionalSecondDigits must be 0-9 or auto');
             }
