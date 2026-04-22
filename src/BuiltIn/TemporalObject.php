@@ -2734,8 +2734,16 @@ class TemporalObject
                 $nsPart = self::getSlotInt($t, '[[ISONanosecond]]');
             }
             $newNs = self::isoDateTimeToEpochNs(
-                $parts['year'], $parts['month'], $parts['day'],
-                $h, $min, $s, $ms, $us, $nsPart, $tz,
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $nsPart,
+                $tz,
             );
             return self::createZonedDateTimeObject($newNs, $tz, $cal);
         }, 0);
@@ -2823,8 +2831,16 @@ class TemporalObject
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
             $startNs = self::isoDateTimeToEpochNs(
-                $parts['year'], $parts['month'], $parts['day'],
-                0, 0, 0, 0, 0, 0, $tz,
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                $tz,
             );
             return self::createZonedDateTimeObject($startNs, $tz, $cal);
         }, 0);
@@ -2855,9 +2871,15 @@ class TemporalObject
             [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
             // Then add time parts via nanoseconds.
             $timeNs = self::isoDateTimeToEpochNs(
-                $y, $m, $dd,
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $y,
+                $m,
+                $dd,
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
                 $tz,
             );
             $totalNs = self::durationToTotalNs($dur);
@@ -2883,9 +2905,15 @@ class TemporalObject
             $dd = $parts['day'] - self::getDurationField($dur, 'weeks') * 7 - self::getDurationField($dur, 'days');
             [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
             $timeNs = self::isoDateTimeToEpochNs(
-                $y, $m, $dd,
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $y,
+                $m,
+                $dd,
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
                 $tz,
             );
             $totalNs = self::durationToTotalNs($dur);
@@ -2905,7 +2933,10 @@ class TemporalObject
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
             return self::createPlainYearMonthObject(
-                $parts['year'], $parts['month'], $parts['day'], $cal,
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
+                $cal,
             );
         }, 0);
 
@@ -2916,8 +2947,10 @@ class TemporalObject
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
             return self::createPlainMonthDayObject(
-                $parts['month'], $parts['day'],
-                $parts['year'], $cal,
+                $parts['month'],
+                $parts['day'],
+                $parts['year'],
+                $cal,
             );
         }, 0);
 
@@ -4427,7 +4460,11 @@ class TemporalObject
                 bcmul((string) self::getDurationField($a, 'seconds'), '1000000000', 0),
                 bcadd(
                     bcmul((string) self::getDurationField($a, 'milliseconds'), '1000000', 0),
-                    bcadd(bcmul((string) self::getDurationField($a, 'microseconds'), '1000', 0), (string) self::getDurationField($a, 'nanoseconds'), 0),
+                    bcadd(
+                        bcmul((string) self::getDurationField($a, 'microseconds'), '1000', 0),
+                        (string) self::getDurationField($a, 'nanoseconds'),
+                        0,
+                    ),
                     0,
                 ),
                 0,
@@ -4444,7 +4481,11 @@ class TemporalObject
                 bcmul((string) self::getDurationField($b, 'seconds'), '1000000000', 0),
                 bcadd(
                     bcmul((string) self::getDurationField($b, 'milliseconds'), '1000000', 0),
-                    bcadd(bcmul((string) self::getDurationField($b, 'microseconds'), '1000', 0), (string) self::getDurationField($b, 'nanoseconds'), 0),
+                    bcadd(
+                        bcmul((string) self::getDurationField($b, 'microseconds'), '1000', 0),
+                        (string) self::getDurationField($b, 'nanoseconds'),
+                        0,
+                    ),
                     0,
                 ),
                 0,
