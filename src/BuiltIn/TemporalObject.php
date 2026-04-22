@@ -2008,8 +2008,18 @@ class TemporalObject
 
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
-            $cal = TypeConversion::toString($args[0] ?? JsUndefined::instance());
-            $cal = strtolower($cal);
+            $calArg = $args[0] ?? JsUndefined::instance();
+            if ($calArg instanceof JsUndefined) {
+                throw new TypeError('calendar argument is required');
+            }
+            if ($calArg instanceof JsNumber || $calArg instanceof \PhpJs\Value\JsBigInt
+                || $calArg instanceof JsBoolean || $calArg instanceof \PhpJs\Value\JsSymbol
+                || $calArg instanceof JsNull
+            ) {
+                throw new TypeError('Invalid calendar type');
+            }
+            $cal = strtolower(TypeConversion::toString($calArg));
+            $cal = self::resolveCalendarId($cal);
             return self::createPlainDateTimeObject(
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
