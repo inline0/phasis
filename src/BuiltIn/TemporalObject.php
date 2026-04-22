@@ -1713,6 +1713,11 @@ class TemporalObject
             }
             self::validateISODate($y, $m, $dd);
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+            // Use createPlainDateTimeObject for range validation.
+            $result = self::createPlainDateTimeObject(
+                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal,
+            );
+            // Copy slots to $this_ for proper prototype chain.
             $this_->setPrototype($proto);
             self::setDateSlots($this_, $y, $m, $dd, $cal);
             self::setTimeSlots($this_, $h, $min, $s, $ms, $us, $ns);
