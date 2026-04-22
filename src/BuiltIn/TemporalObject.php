@@ -1553,9 +1553,7 @@ class TemporalObject
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($mcv);
-                if (preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    $m = (int) $mcm[1];
-                }
+                $m = self::parseMonthCode($mc);
                 $any = true;
             }
             if (!$any) {
@@ -1966,9 +1964,7 @@ class TemporalObject
             }
             if (!($monthCodeVal instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCodeVal);
-                if (preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    $m = (int) $mcm[1];
-                }
+                $m = self::parseMonthCode($mc);
             } elseif (!($monthVal instanceof JsUndefined)) {
                 $m = (int) TypeConversion::toNumber($monthVal);
             }
@@ -2237,10 +2233,7 @@ class TemporalObject
             }
             if (!($monthCode instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $mcMonth = (int) $mcm[1];
+                $mcMonth = self::parseMonthCode($mc);
                 if (!($month instanceof JsUndefined)) {
                     $n = TypeConversion::toNumber($month);
                     if (!is_finite($n)) {
