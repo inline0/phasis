@@ -3174,16 +3174,16 @@ class TemporalObject
         }
         // Simple IANA timezone name (e.g. UTC, America/New_York).
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_+\-\/]*$/', $str)) {
+            // Case-insensitive match for UTC/GMT.
+            $upper = strtoupper($str);
+            if ($upper === 'UTC' || $upper === 'GMT') {
+                return $upper;
+            }
             // Check if it's a known timezone.
             try {
-                new \DateTimeZone($str);
-                return $str;
+                $tz = new \DateTimeZone($str);
+                return $tz->getName();
             } catch (\Throwable) {
-                // Fall through: try case-insensitive match for common names.
-                $upper = strtoupper($str);
-                if ($upper === 'UTC' || $upper === 'GMT') {
-                    return $upper;
-                }
                 throw new RangeError("Invalid time zone: {$str}");
             }
         }
@@ -3219,14 +3219,19 @@ class TemporalObject
             }
         }
         // Try parsing as a datetime string and extract the offset.
+        // Use a full offset regex that captures sub-minute parts for rejection.
         $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
-        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2})?)';
-        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}/";
+        $tzFull = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d+)?)?)?)';
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzFull}/";
         if (preg_match($pattern, $cleaned, $dtM)) {
             $offset = $dtM[10];
             if (strtoupper($offset) === 'Z') {
                 return 'UTC';
+            }
+            // Reject sub-minute offsets (seconds or fractional).
+            if (preg_match('/^[+-]\d{2}:?\d{2}:?\d{2}/', $offset)) {
+                throw new RangeError("{$str} is not a valid time zone string");
             }
             return $offset;
         }
