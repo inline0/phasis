@@ -2824,9 +2824,14 @@ class TemporalObject
             }
             $parts = self::epochNsToISOParts($ns, $tz);
             $timeStr = self::formatISOTime(
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
-                $fractionalSecondDigits, 'trunc',
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+                $fractionalSecondDigits,
+                'trunc',
             );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
             $offsetStr = self::timeZoneOffsetString($ns, $tz);
@@ -2838,7 +2843,8 @@ class TemporalObject
             if ($timeZoneName !== 'never') {
                 $result .= "[{$tz}]";
             }
-            if ($calendarName === 'always' || ($calendarName === 'auto' && $cal !== 'iso8601')
+            if (
+                $calendarName === 'always' || ($calendarName === 'auto' && $cal !== 'iso8601')
                 || $calendarName === 'critical'
             ) {
                 $prefix = $calendarName === 'critical' ? '!' : '';
@@ -4693,8 +4699,7 @@ class TemporalObject
         string|int $fractionalSecondDigits = 'auto',
         string $roundingMode = 'trunc',
         ?string $smallestUnit = null,
-    ): string
-    {
+    ): string {
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
         $weeks = self::getDurationField($dur, 'weeks');
