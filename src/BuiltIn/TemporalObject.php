@@ -3659,13 +3659,22 @@ class TemporalObject
             // Get date/time fields.
             $year = $item->get('year');
             $month = $item->get('month');
+            $monthCode = $item->get('monthCode');
             $day = $item->get('day');
-            if ($year instanceof JsUndefined || $month instanceof JsUndefined || $day instanceof JsUndefined) {
-                throw new TypeError('ZonedDateTime from object requires year, month, day');
+            if ($year instanceof JsUndefined || $day instanceof JsUndefined) {
+                throw new TypeError('ZonedDateTime from object requires year and day');
+            }
+            if ($month instanceof JsUndefined && $monthCode instanceof JsUndefined) {
+                throw new TypeError('ZonedDateTime from object requires month or monthCode');
             }
             $y = (int) TypeConversion::toNumber($year);
-            $mo = (int) TypeConversion::toNumber($month);
             $d = (int) TypeConversion::toNumber($day);
+            if (!($monthCode instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($monthCode);
+                $mo = self::parseMonthCode($mc);
+            } else {
+                $mo = (int) TypeConversion::toNumber($month);
+            }
             $h = 0;
             $min = 0;
             $s = 0;
