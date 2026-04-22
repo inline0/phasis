@@ -1504,12 +1504,7 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
-            if (!($item->get('calendar') instanceof JsUndefined)) {
-                throw new TypeError('calendar not allowed in with()');
-            }
-            if (!($item->get('timeZone') instanceof JsUndefined)) {
-                throw new TypeError('timeZone not allowed in with()');
-            }
+            self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
@@ -1520,13 +1515,15 @@ class TemporalObject
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $dateFields = ['year' => &$y, 'month' => &$m, 'day' => &$dd];
-            $timeFields = [
-                'hour' => &$h, 'minute' => &$min, 'second' => &$s,
-                'millisecond' => &$ms, 'microsecond' => &$us, 'nanosecond' => &$ns,
-            ];
             $any = false;
-            foreach (array_merge($dateFields, $timeFields) as $name => &$ref) {
+            // Read fields in ALPHABETICAL order per spec:
+            // day, hour, microsecond, millisecond, minute, month, monthCode, nanosecond, second, year
+            $allFields = [
+                'day' => &$dd, 'hour' => &$h,
+                'microsecond' => &$us, 'millisecond' => &$ms,
+                'minute' => &$min, 'month' => &$m,
+            ];
+            foreach ($allFields as $name => &$ref) {
                 $v = $item->get($name);
                 if (!($v instanceof JsUndefined)) {
                     $n = TypeConversion::toNumber($v);
@@ -1538,15 +1535,45 @@ class TemporalObject
                 }
             }
             unset($ref);
-            // Also check monthCode.
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($mcv);
                 $m = self::parseMonthCode($mc);
                 $any = true;
             }
+            $nsv = $item->get('nanosecond');
+            if (!($nsv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($nsv);
+                if (!is_finite($n)) {
+                    throw new RangeError('nanosecond must be finite');
+                }
+                $ns = (int) $n;
+                $any = true;
+            }
+            $sv = $item->get('second');
+            if (!($sv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($sv);
+                if (!is_finite($n)) {
+                    throw new RangeError('second must be finite');
+                }
+                $s = (int) $n;
+                $any = true;
+            }
+            $yv = $item->get('year');
+            if (!($yv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($yv);
+                if (!is_finite($n)) {
+                    throw new RangeError('year must be finite');
+                }
+                $y = (int) $n;
+                $any = true;
+            }
             if (!$any) {
                 throw new TypeError('at least one property required');
+            }
+            // Validate bounds before options (negative day/month).
+            if ($m < 1 || $dd < 1) {
+                throw new RangeError('month and day must be >= 1');
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
@@ -5770,11 +5797,18 @@ class TemporalObject
         );
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'day';
+        $largestUnitExplicit = false;
         if ($options instanceof JsObject) {
             $lu = $options->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
                 $largestUnit = TypeConversion::toString($lu);
-                $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                if ($largestUnit === 'auto') {
+                    $largestUnit = 'day';
+                    $largestUnitExplicit = false;
+                } else {
+                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                }
             }
             // Alphabetical: roundingIncrement, roundingMode, smallestUnit.
             $ri = $options->get('roundingIncrement');
@@ -5806,10 +5840,14 @@ class TemporalObject
             if (isset($riNum) && $riNum > 1) {
                 self::validateRoundingIncrement($smallestUnit, $riNum);
             }
-            // Validate largestUnit >= smallestUnit.
+            // Default largestUnit to smallestUnit if needed.
             $allUnits = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
             $liIdx = array_search($largestUnit, $allUnits);
             $siIdx = array_search($smallestUnit, $allUnits);
+            if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+                $largestUnit = $smallestUnit;
+                $liIdx = $siIdx;
+            }
             if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
                 throw new RangeError('largestUnit must be >= smallestUnit');
             }
