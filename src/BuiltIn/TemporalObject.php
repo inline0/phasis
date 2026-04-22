@@ -709,9 +709,12 @@ class TemporalObject
                     }
                     throw new RangeError('relativeTo is required for comparing durations with calendar units');
                 }
+                if ($relativeTo !== null) {
+                    // Validate and parse relativeTo even when not strictly needed.
+                    $refDate = self::toRelativeToPlainDate($relativeTo);
+                }
                 if ($relativeTo !== null && $hasCalUnit) {
                     // Compare by adding both durations to relativeTo and comparing results.
-                    $refDate = self::toRelativeToPlainDate($relativeTo);
                     $end1 = self::plainDateAdd($refDate, $one, 1);
                     $end2 = self::plainDateAdd($refDate, $two, 1);
                     $jd1 = self::isoToJulianDay(
@@ -4581,7 +4584,15 @@ class TemporalObject
     }
 
     /** Compute a midpoint date for month-boundary clamping in date differences. */
-    private static function computeMonthMidpoint(int $sign, int $y1, int $m1, int $y2, int $m2, int $anchorDay, int $monthCount): array
+    private static function computeMonthMidpoint(
+        int $sign,
+        int $y1,
+        int $m1,
+        int $y2,
+        int $m2,
+        int $anchorDay,
+        int $monthCount,
+    ): array
     {
         if ($sign < 0) {
             $mt = $y2 * 12 + ($m2 - 1) - $monthCount;
