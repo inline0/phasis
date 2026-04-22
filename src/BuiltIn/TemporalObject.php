@@ -1989,32 +1989,43 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
+            self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $refDay = self::getSlotInt($this_, '[[ISODay]]');
-            $yearVal = $item->get('year');
+            $any = false;
+            // Read in alphabetical order: month, monthCode, year.
             $monthVal = $item->get('month');
+            if (!($monthVal instanceof JsUndefined)) {
+                $m = (int) TypeConversion::toNumber($monthVal);
+                $any = true;
+            }
             $monthCodeVal = $item->get('monthCode');
-            if (
-                $yearVal instanceof JsUndefined
-                && $monthVal instanceof JsUndefined
-                && $monthCodeVal instanceof JsUndefined
-            ) {
-                throw new TypeError(
-                    'At least one temporal property must be provided'
-                );
-            }
-            if (!($yearVal instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($yearVal);
-            }
             if (!($monthCodeVal instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCodeVal);
                 $m = self::parseMonthCode($mc);
-            } elseif (!($monthVal instanceof JsUndefined)) {
-                $m = (int) TypeConversion::toNumber($monthVal);
+                $any = true;
             }
-            $m = max(1, min(12, $m));
+            $yearVal = $item->get('year');
+            if (!($yearVal instanceof JsUndefined)) {
+                $y = (int) TypeConversion::toNumber($yearVal);
+                $any = true;
+            }
+            if (!$any) {
+                throw new TypeError('At least one temporal property must be provided');
+            }
+            // Validate bounds before options.
+            if ($m < 1) {
+                throw new RangeError('month must be >= 1');
+            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($options);
+            if ($overflow === 'constrain') {
+                $m = max(1, min(12, $m));
+            } elseif ($m > 12) {
+                throw new RangeError("month {$m} out of range");
+            }
             return self::createPlainYearMonthObject($y, $m, $refDay, $cal);
         }, 1);
 
