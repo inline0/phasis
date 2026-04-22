@@ -5735,13 +5735,12 @@ class TemporalObject
                     throw new RangeError("Invalid largest unit for date: {$largestUnit}");
                 }
             }
-            $su = $opts->get('smallestUnit');
-            if (!($su instanceof JsUndefined)) {
-                $smallestUnit = TypeConversion::toString($su);
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
-                $dateUnits = ['year', 'month', 'week', 'day'];
-                if (!in_array($smallestUnit, $dateUnits, true)) {
-                    throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
+            // Read options in ALPHABETICAL order per spec.
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                    throw new RangeError("Invalid roundingIncrement");
                 }
             }
             $rm = $opts->get('roundingMode');
@@ -5752,16 +5751,17 @@ class TemporalObject
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
             }
-            $ri = $opts->get('roundingIncrement');
-            if (!($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
-                    throw new RangeError("Invalid roundingIncrement");
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                $dateUnits = ['year', 'month', 'week', 'day'];
+                if (!in_array($smallestUnit, $dateUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
                 }
             }
             // Validate largestUnit >= smallestUnit.
             if (isset($smallestUnit)) {
-                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
                 $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
                 $liIdx = array_search($largestUnit, $allU);
                 $siIdx = array_search($smallestUnit, $allU);
