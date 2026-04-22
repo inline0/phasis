@@ -964,9 +964,16 @@ class TemporalObject
                     || $item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt
                     || $item instanceof JsBoolean || $item instanceof \PhpJs\Value\JsSymbol
                 ) {
-                    // Type check happens in toPlainDate, call it first.
                     return self::toPlainDate($item, 'constrain');
                 }
+                if ($item instanceof JsString) {
+                    // For strings: parse first, then validate options.
+                    $result = self::toPlainDate($item, 'constrain');
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    self::getOverflow($options);
+                    return $result;
+                }
+                // For objects (property bags): read options after fields.
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = self::getOverflow($options);
                 return self::toPlainDate($item, $overflow);
