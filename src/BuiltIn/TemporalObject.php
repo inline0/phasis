@@ -2665,6 +2665,247 @@ class TemporalObject
             );
         }, 0);
 
+        $d('withTimeZone', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $tzArg = $args[0] ?? JsUndefined::instance();
+            if ($tzArg instanceof JsUndefined) {
+                throw new TypeError('timeZone is required');
+            }
+            $timeZone = TypeConversion::toString($tzArg);
+            if ($timeZone === '') {
+                throw new RangeError('empty string does not convert to a valid ISO string');
+            }
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            return self::createZonedDateTimeObject($ns, $timeZone, $cal);
+        }, 1);
+
+        $d('withCalendar', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $calArg = $args[0] ?? JsUndefined::instance();
+            $cal = TypeConversion::toString($calArg);
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            return self::createZonedDateTimeObject($ns, $tz, $cal);
+        }, 1);
+
+        $d('withPlainTime', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $timeArg = $args[0] ?? JsUndefined::instance();
+            if ($timeArg instanceof JsUndefined) {
+                $h = 0;
+                $min = 0;
+                $s = 0;
+                $ms = 0;
+                $us = 0;
+                $nsPart = 0;
+            } else {
+                $t = self::toPlainTime($timeArg);
+                $h = self::getSlotInt($t, '[[ISOHour]]');
+                $min = self::getSlotInt($t, '[[ISOMinute]]');
+                $s = self::getSlotInt($t, '[[ISOSecond]]');
+                $ms = self::getSlotInt($t, '[[ISOMillisecond]]');
+                $us = self::getSlotInt($t, '[[ISOMicrosecond]]');
+                $nsPart = self::getSlotInt($t, '[[ISONanosecond]]');
+            }
+            $newNs = self::isoDateTimeToEpochNs(
+                $parts['year'], $parts['month'], $parts['day'],
+                $h, $min, $s, $ms, $us, $nsPart, $tz,
+            );
+            return self::createZonedDateTimeObject($newNs, $tz, $cal);
+        }, 0);
+
+        $d('with', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $item = $args[0] ?? JsUndefined::instance();
+            if (!$item instanceof JsObject) {
+                throw new TypeError('argument must be an object');
+            }
+            self::rejectObjectWithCalendarOrTimeZone($item);
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $y = $parts['year'];
+            $m = $parts['month'];
+            $dd = $parts['day'];
+            $h = $parts['hour'];
+            $min = $parts['minute'];
+            $s = $parts['second'];
+            $ms = $parts['millisecond'];
+            $us = $parts['microsecond'];
+            $nsPart = $parts['nanosecond'];
+            $any = false;
+            // Read in alphabetical order.
+            $fields = [
+                'day' => &$dd, 'hour' => &$h,
+                'microsecond' => &$us, 'millisecond' => &$ms,
+                'minute' => &$min, 'month' => &$m,
+            ];
+            foreach ($fields as $name => &$ref) {
+                $v = $item->get($name);
+                if (!($v instanceof JsUndefined)) {
+                    $ref = (int) TypeConversion::toNumber($v);
+                    $any = true;
+                }
+            }
+            unset($ref);
+            $mcv = $item->get('monthCode');
+            if (!($mcv instanceof JsUndefined)) {
+                $m = self::parseMonthCode(TypeConversion::toString($mcv));
+                $any = true;
+            }
+            $nsv = $item->get('nanosecond');
+            if (!($nsv instanceof JsUndefined)) {
+                $nsPart = (int) TypeConversion::toNumber($nsv);
+                $any = true;
+            }
+            $sv = $item->get('second');
+            if (!($sv instanceof JsUndefined)) {
+                $s = (int) TypeConversion::toNumber($sv);
+                $any = true;
+            }
+            $yv = $item->get('year');
+            if (!($yv instanceof JsUndefined)) {
+                $y = (int) TypeConversion::toNumber($yv);
+                $any = true;
+            }
+            if (!$any) {
+                throw new TypeError('at least one property required');
+            }
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($options);
+            if ($overflow === 'constrain') {
+                [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
+                $h = max(0, min(23, $h));
+                $min = max(0, min(59, $min));
+                $s = max(0, min(59, $s));
+                $ms = max(0, min(999, $ms));
+                $us = max(0, min(999, $us));
+                $nsPart = max(0, min(999, $nsPart));
+            } else {
+                self::validateISODate($y, $m, $dd);
+                self::validateISOTime($h, $min, $s, $ms, $us, $nsPart);
+            }
+            $newNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz);
+            return self::createZonedDateTimeObject($newNs, $tz, $cal);
+        }, 1);
+
+        $d('startOfDay', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $startNs = self::isoDateTimeToEpochNs(
+                $parts['year'], $parts['month'], $parts['day'],
+                0, 0, 0, 0, 0, 0, $tz,
+            );
+            return self::createZonedDateTimeObject($startNs, $tz, $cal);
+        }, 0);
+
+        $d('equals', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
+            $ns1 = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
+            $tz1 = self::getSlotString($this_, '[[TimeZone]]');
+            $tz2 = self::getSlotString($other, '[[TimeZone]]');
+            $cal1 = self::getSlotString($this_, '[[Calendar]]');
+            $cal2 = self::getSlotString($other, '[[Calendar]]');
+            return new JsBoolean(bccomp($ns1, $ns2, 0) === 0 && $tz1 === $tz2 && $cal1 === $cal2);
+        }, 1);
+
+        $d('add', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            // Add date parts first.
+            $y = $parts['year'] + self::getDurationField($dur, 'years');
+            $m = $parts['month'] + self::getDurationField($dur, 'months');
+            $dd = $parts['day'] + self::getDurationField($dur, 'weeks') * 7 + self::getDurationField($dur, 'days');
+            [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
+            // Then add time parts via nanoseconds.
+            $timeNs = self::isoDateTimeToEpochNs(
+                $y, $m, $dd,
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $tz,
+            );
+            $totalNs = self::durationToTotalNs($dur);
+            $result = bcadd($timeNs, $totalNs, 0);
+            // Subtract date part NS to avoid double-counting.
+            $dateParts = self::durationToTotalNs(
+                self::createDurationObject(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            );
+            $result = bcsub(bcadd($timeNs, $totalNs, 0), $dateParts, 0);
+            self::validateInstantRange($result);
+            return self::createZonedDateTimeObject($result, $tz, $cal);
+        }, 1);
+
+        $d('subtract', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $y = $parts['year'] - self::getDurationField($dur, 'years');
+            $m = $parts['month'] - self::getDurationField($dur, 'months');
+            $dd = $parts['day'] - self::getDurationField($dur, 'weeks') * 7 - self::getDurationField($dur, 'days');
+            [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
+            $timeNs = self::isoDateTimeToEpochNs(
+                $y, $m, $dd,
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $tz,
+            );
+            $totalNs = self::durationToTotalNs($dur);
+            $result = bcsub($timeNs, $totalNs, 0);
+            $dateParts = self::durationToTotalNs(
+                self::createDurationObject(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            );
+            $result = bcadd(bcsub($timeNs, $totalNs, 0), $dateParts, 0);
+            self::validateInstantRange($result);
+            return self::createZonedDateTimeObject($result, $tz, $cal);
+        }, 1);
+
+        $d('toPlainYearMonth', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            return self::createPlainYearMonthObject(
+                $parts['year'], $parts['month'], $parts['day'], $cal,
+            );
+        }, 0);
+
+        $d('toPlainMonthDay', function (JsValue $this_): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            return self::createPlainMonthDayObject(
+                $parts['month'], $parts['day'],
+                $parts['year'], $cal,
+            );
+        }, 0);
+
+        $d('getTimeZoneTransition', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            // Simplified: return null for now (full implementation requires timezone transition data).
+            return JsNull::instance();
+        }, 1);
+
         self::setToStringTag($proto, 'Temporal.ZonedDateTime');
 
         $ctor = JsFunction::fromCallable('ZonedDateTime', function (JsValue $this_, array $args) use ($proto): JsValue {
