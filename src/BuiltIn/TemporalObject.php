@@ -4392,16 +4392,10 @@ class TemporalObject
                     throw new TypeError('missing required property: month');
                 }
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $month = new JsNumber((float) (int) $mcm[1]);
+                $month = new JsNumber((float) self::parseMonthCode($mc));
             } elseif (!($monthCode instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $mcMonth = (int) $mcm[1];
+                $mcMonth = self::parseMonthCode($mc);
                 $mVal = (int) TypeConversion::toNumber($month);
                 if ($mcMonth !== $mVal) {
                     throw new RangeError('month and monthCode must agree');
@@ -5096,6 +5090,19 @@ class TemporalObject
             'islamic-rgsa', 'islamicc', 'japanese', 'persian', 'roc',
         ];
         return in_array($cal, $known, true);
+    }
+
+    /** Parse and validate a monthCode string. Returns month number 1-12. */
+    private static function parseMonthCode(string $mc): int
+    {
+        if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
+            throw new RangeError("Invalid monthCode: {$mc}");
+        }
+        $month = (int) $mcm[1];
+        if ($month < 1 || $month > 12) {
+            throw new RangeError("monthCode '{$mc}' is not valid for ISO 8601 calendar");
+        }
+        return $month;
     }
 
     private static function pad2(int $n): string
