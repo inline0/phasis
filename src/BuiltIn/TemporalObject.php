@@ -2770,29 +2770,79 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
-
+            $smallestUnit = null;
+            $calendarName = 'auto';
+            $timeZoneName = 'auto';
+            $offset = 'auto';
+            if ($options instanceof JsObject) {
+                $su = $options->get('smallestUnit');
+                if (!($su instanceof JsUndefined)) {
+                    $smallestUnit = TypeConversion::toString($su);
+                    $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                    $valid = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                    if (!in_array($smallestUnit, $valid, true)) {
+                        throw new RangeError("Invalid smallestUnit: {$smallestUnit}");
+                    }
+                    $unitToDigits = [
+                        'minute' => 0, 'second' => 0,
+                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                    ];
+                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
+                }
+                $cn = $options->get('calendarName');
+                if (!($cn instanceof JsUndefined)) {
+                    $calendarName = TypeConversion::toString($cn);
+                }
+                $tzn = $options->get('timeZoneName');
+                if (!($tzn instanceof JsUndefined)) {
+                    $timeZoneName = TypeConversion::toString($tzn);
+                }
+                $offOpt = $options->get('offset');
+                if (!($offOpt instanceof JsUndefined)) {
+                    $offset = TypeConversion::toString($offOpt);
+                }
+            }
+            // Apply rounding to epoch ns.
+            if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
+                $unitNsMap = [
+                    'minute' => '60000000000', 'second' => '1000000000',
+                    'millisecond' => '1000000', 'microsecond' => '1000',
+                ];
+                $ns = self::roundNs($ns, $unitNsMap[$smallestUnit], $roundingMode);
+            } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
+                $digitsToNs = [
+                    0 => '1000000000', 1 => '100000000', 2 => '10000000',
+                    3 => '1000000', 4 => '100000', 5 => '10000',
+                    6 => '1000', 7 => '100', 8 => '10',
+                ];
+                if (isset($digitsToNs[$fractionalSecondDigits])) {
+                    $ns = self::roundNs($ns, $digitsToNs[$fractionalSecondDigits], $roundingMode);
+                }
+            }
+            $parts = self::epochNsToISOParts($ns, $tz);
             $timeStr = self::formatISOTime(
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
-                $fractionalSecondDigits,
-                $roundingMode
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $fractionalSecondDigits, 'trunc',
             );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
-
-            // Compute offset string.
             $offsetStr = self::timeZoneOffsetString($ns, $tz);
-
-            $result = "{$dateStr}T{$timeStr}{$offsetStr}[{$tz}]";
-            if ($cal !== 'iso8601') {
-                $result .= "[u-ca={$cal}]";
+            // Handle smallestUnit=minute: omit seconds from time.
+            if ($smallestUnit === 'minute') {
+                $timeStr = self::pad2($parts['hour']) . ':' . self::pad2($parts['minute']);
+            }
+            $result = "{$dateStr}T{$timeStr}{$offsetStr}";
+            if ($timeZoneName !== 'never') {
+                $result .= "[{$tz}]";
+            }
+            if ($calendarName === 'always' || ($calendarName === 'auto' && $cal !== 'iso8601')
+                || $calendarName === 'critical'
+            ) {
+                $prefix = $calendarName === 'critical' ? '!' : '';
+                $result .= "[{$prefix}u-ca={$cal}]";
             }
             return new JsString($result);
         }, 0);
