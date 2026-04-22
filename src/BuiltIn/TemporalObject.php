@@ -3123,7 +3123,10 @@ class TemporalObject
 
     private static function parseInstantString(string $str): string
     {
-        [$str, ] = self::normalizeTemporalString($str);
+        [$str, $cal] = self::normalizeTemporalString($str);
+        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
+            throw new RangeError("Invalid calendar: {$cal}");
+        }
         // Reject extended year without sign.
         if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
