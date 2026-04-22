@@ -4636,6 +4636,10 @@ class TemporalObject
         if ($mo < 1 || $mo > 12) {
             throw new RangeError("month {$mo} out of range");
         }
+        // Validate calendar.
+        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
+            throw new RangeError("Invalid calendar: {$cal}");
+        }
         return self::createPlainYearMonthObject($y, $mo, 1, $cal);
     }
 
