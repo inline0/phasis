@@ -947,6 +947,7 @@ class TemporalObject
             self::validateISODate($y, $m, $dd);
             $this_->setPrototype($proto);
             self::setDateSlots($this_, $y, $m, $dd, $cal);
+            $this_->defineOwnProperty('[[IsPlainDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
         }, 3);
         $ctor->setConstructable();
