@@ -2812,6 +2812,26 @@ class TemporalObject
                 throw new TypeError('at least one property required');
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            // Read disambiguation option.
+            if ($options instanceof JsObject) {
+                $dv = $options->get('disambiguation');
+                if (!($dv instanceof JsUndefined)) {
+                    $disam = TypeConversion::toString($dv);
+                    $valid = ['compatible', 'earlier', 'later', 'reject'];
+                    if (!in_array($disam, $valid, true)) {
+                        throw new RangeError("Invalid disambiguation: {$disam}");
+                    }
+                }
+                // Read offset option.
+                $offOpt = $options->get('offset');
+                if (!($offOpt instanceof JsUndefined)) {
+                    $offsetStr = TypeConversion::toString($offOpt);
+                    $validOff = ['prefer', 'use', 'ignore', 'reject'];
+                    if (!in_array($offsetStr, $validOff, true)) {
+                        throw new RangeError("Invalid offset option: {$offsetStr}");
+                    }
+                }
+            }
             $overflow = self::getOverflow($options);
             if ($overflow === 'constrain') {
                 [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
