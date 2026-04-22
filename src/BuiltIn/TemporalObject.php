@@ -218,7 +218,7 @@ class TemporalObject
                     'nanosecond' => 86400000000000,
                 ];
                 $max = $maxForSolarDay[$unit] ?? 1;
-                if ($increment >= $max || $max % $increment !== 0) {
+                if ($increment > $max || $max % $increment !== 0) {
                     throw new RangeError("Invalid roundingIncrement for {$unit}: {$increment}");
                 }
             }
