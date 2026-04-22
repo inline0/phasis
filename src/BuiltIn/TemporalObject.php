@@ -1094,11 +1094,7 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $calArg = $args[0] ?? JsUndefined::instance();
-            if (!($calArg instanceof JsString)) {
-                throw new TypeError('calendar argument must be a string');
-            }
-            $cal = strtolower($calArg->value);
-            $cal = self::resolveCalendarId($cal);
+            $cal = self::toCalendarSlotValue($calArg);
             return self::createPlainDateObject(
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
@@ -2081,11 +2077,7 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $calArg = $args[0] ?? JsUndefined::instance();
-            if (!($calArg instanceof JsString)) {
-                throw new TypeError('calendar argument must be a string');
-            }
-            $cal = strtolower($calArg->value);
-            $cal = self::resolveCalendarId($cal);
+            $cal = self::toCalendarSlotValue($calArg);
             return self::createPlainDateTimeObject(
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
@@ -3195,11 +3187,7 @@ class TemporalObject
         $d('withCalendar', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $calArg = $args[0] ?? JsUndefined::instance();
-            if (!($calArg instanceof JsString)) {
-                throw new TypeError('calendar argument must be a string');
-            }
-            $cal = strtolower($calArg->value);
-            $cal = self::resolveCalendarId($cal);
+            $cal = self::toCalendarSlotValue($calArg);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             return self::createZonedDateTimeObject($ns, $tz, $cal);
@@ -3480,13 +3468,23 @@ class TemporalObject
                 $parts['nanosecond'],
                 $tz,
             );
-            $totalNs = self::durationToTotalNs($dur);
-            $result = bcadd($timeNs, $totalNs, 0);
-            // Subtract date part NS to avoid double-counting.
-            $dateParts = self::durationToTotalNs(
-                self::createDurationObject(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            // Add only the time sub-day components as nanoseconds. Days/weeks/months/years
+            // were already consumed by advancing the calendar date above.
+            $timeOnlyNs = self::durationToTotalNs(
+                self::createDurationObject(
+                    0,
+                    0,
+                    0,
+                    0,
+                    self::getDurationField($dur, 'hours'),
+                    self::getDurationField($dur, 'minutes'),
+                    self::getDurationField($dur, 'seconds'),
+                    self::getDurationField($dur, 'milliseconds'),
+                    self::getDurationField($dur, 'microseconds'),
+                    self::getDurationField($dur, 'nanoseconds'),
+                )
             );
-            $result = bcsub(bcadd($timeNs, $totalNs, 0), $dateParts, 0);
+            $result = bcadd($timeNs, $timeOnlyNs, 0);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -3516,12 +3514,23 @@ class TemporalObject
                 $parts['nanosecond'],
                 $tz,
             );
-            $totalNs = self::durationToTotalNs($dur);
-            $result = bcsub($timeNs, $totalNs, 0);
-            $dateParts = self::durationToTotalNs(
-                self::createDurationObject(0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            // Subtract only time sub-day components. Days/weeks/months/years already
+            // consumed by rewinding the calendar date above.
+            $timeOnlyNs = self::durationToTotalNs(
+                self::createDurationObject(
+                    0,
+                    0,
+                    0,
+                    0,
+                    self::getDurationField($dur, 'hours'),
+                    self::getDurationField($dur, 'minutes'),
+                    self::getDurationField($dur, 'seconds'),
+                    self::getDurationField($dur, 'milliseconds'),
+                    self::getDurationField($dur, 'microseconds'),
+                    self::getDurationField($dur, 'nanoseconds'),
+                )
             );
-            $result = bcadd(bcsub($timeNs, $totalNs, 0), $dateParts, 0);
+            $result = bcsub($timeNs, $timeOnlyNs, 0);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -3818,26 +3827,42 @@ class TemporalObject
         $ns = (int) substr($frac, 6, 3);
         $offset = isset($m[10]) && $m[10] !== '' ? $m[10] : null;
         $annotation = isset($m[11]) && $m[11] !== '' ? $m[11] : null;
-        // Timezone: annotation takes priority, fallback to offset.
-        if ($annotation !== null && !str_contains($annotation, '=')) {
-            // Normalize timezone name (case-insensitive).
-            $upper = strtoupper($annotation);
-            if ($upper === 'UTC' || $upper === 'GMT') {
-                $timeZone = $upper;
-            } else {
-                try {
-                    $tzObj = new \DateTimeZone($annotation);
-                    $timeZone = $tzObj->getName();
-                } catch (\Throwable) {
-                    // Might be an offset like +05:30.
-                    $timeZone = $annotation;
-                }
-            }
-        } else {
-            // ZonedDateTime strings require a bracketed timezone annotation.
+        // ZonedDateTime strings require a bracketed timezone annotation.
+        if ($annotation === null || str_contains($annotation, '=')) {
             throw new RangeError("Invalid ZonedDateTime string (no bracketed timezone annotation): {$str}");
         }
-        $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+        // Normalize the annotation to a timezone identifier.
+        $upper = strtoupper($annotation);
+        if ($upper === 'UTC' || $upper === 'GMT') {
+            $timeZone = $upper;
+        } else {
+            try {
+                $tzObj = new \DateTimeZone($annotation);
+                $timeZone = $tzObj->getName();
+            } catch (\Throwable) {
+                // Might be a numeric offset like +05:30.
+                $timeZone = $annotation;
+            }
+        }
+        if ($offset !== null) {
+            $isZ = strtoupper($offset) === 'Z';
+            if ($isZ) {
+                // Z means exact UTC instant; annotation is the named timezone. No offset validation.
+                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
+            } else {
+                // Non-Z numeric offset: validate the wall-time is consistent with the annotation timezone.
+                // The wall-time in the explicit offset must equal the wall-time in the annotation timezone.
+                $epochFromExplicitOffset = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $offset);
+                $epochFromAnnotation = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+                if (bccomp($epochFromExplicitOffset, $epochFromAnnotation, 0) !== 0) {
+                    throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
+                }
+                $epochNs = $epochFromExplicitOffset;
+            }
+        } else {
+            // No offset: use wall time in the annotation timezone.
+            $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+        }
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
     }
 
@@ -7350,6 +7375,18 @@ class TemporalObject
         $absMonths = abs($months);
         $absWeeks = abs($weeks);
         $absDays = abs($days);
+        // Rounding modes are defined relative to the number line (+inf/-inf).
+        // When working on absolute values of negative durations, swap directional modes.
+        $absRoundingMode = $roundingMode;
+        if ($sign < 0) {
+            $absRoundingMode = match ($roundingMode) {
+                'ceil' => 'floor',
+                'floor' => 'ceil',
+                'halfCeil' => 'halfFloor',
+                'halfFloor' => 'halfCeil',
+                default => $roundingMode,
+            };
+        }
         if ($smallestUnit === 'year') {
             // Compute fractional year.
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
@@ -7358,18 +7395,29 @@ class TemporalObject
             $monthFrac = $absMonths / 12.0;
             $dayFrac = ($absDays + abs($hours) / 24.0) / (float) $daysInYear;
             $totalYears = $absYears + $monthFrac + $dayFrac;
-            $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $roundingMode);
+            $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
             return self::createDurationObject($sign * intdiv($rounded, 1000000), 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'month') {
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
             $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
-            $midM = (($refM - 1 + $absYears * 12 + $absMonths) % 12) + 1;
-            $midY = $refY + intdiv(($refM - 1 + $absYears * 12 + $absMonths), 12);
-            $daysInMonth = self::isoDaysInMonth($midY, $midM);
+            // For negative durations, $ref is the later (end) point. Compute the month
+            // that is at the start-of-remainder position by going backward from $ref.
+            if ($sign < 0) {
+                $midTotalM = ($refY * 12 + ($refM - 1)) - ($absYears * 12 + $absMonths);
+            } else {
+                $midTotalM = ($refY * 12 + ($refM - 1)) + ($absYears * 12 + $absMonths);
+            }
+            $midY2 = intdiv($midTotalM, 12);
+            $midM2 = ($midTotalM % 12) + 1;
+            if ($midM2 < 1) {
+                $midM2 += 12;
+                $midY2--;
+            }
+            $daysInMonth = self::isoDaysInMonth($midY2, $midM2);
             $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
             $totalMonths = $absYears * 12 + $absMonths + $frac;
-            $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $roundingMode);
+            $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
             $rm = intdiv($rounded, 1000000);
             if ($largestUnit === 'year') {
                 return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
@@ -7378,12 +7426,12 @@ class TemporalObject
         }
         if ($smallestUnit === 'week') {
             $totalDays = $absWeeks * 7 + $absDays;
-            $rounded = self::roundToIncrement($totalDays, $increment * 7, $roundingMode);
+            $rounded = self::roundToIncrement($totalDays, $increment * 7, $absRoundingMode);
             return self::createDurationObject($sign * $absYears, $sign * $absMonths, $sign * intdiv($rounded, 7), 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'day') {
             $totalDays = $absWeeks * 7 + $absDays;
-            $rounded = self::roundToIncrement($totalDays, $increment, $roundingMode);
+            $rounded = self::roundToIncrement($totalDays, $increment, $absRoundingMode);
             if ($largestUnit === 'week') {
                 return self::createDurationObject(
                     $sign * $absYears,
@@ -7648,6 +7696,38 @@ class TemporalObject
         $epochNs = bcmul($epochSec, '1000000000', 0);
         $subNs = (string) ($ms * 1000000 + $us * 1000 + $ns);
         return bcadd($epochNs, $subNs, 0);
+    }
+
+    /** Return the UTC offset in nanoseconds for the given timezone at a given epoch-ns instant. */
+    private static function getUtcOffsetNsForTimestamp(string $tz, string $epochNs): int
+    {
+        $negative = isset($epochNs[0]) && $epochNs[0] === '-';
+        $abs = $negative ? substr($epochNs, 1) : $epochNs;
+        $secStr = bcdiv($abs, '1000000000', 0);
+        $epochSec = $negative ? '-' . $secStr : $secStr;
+        try {
+            $dt = new \DateTimeImmutable('@' . $epochSec);
+            $local = $dt->setTimezone(self::resolveTimeZone($tz));
+            return (int) $local->format('Z') * 1_000_000_000;
+        } catch (\Throwable) {
+            return 0;
+        }
+    }
+
+    /** Parse an ISO offset string (e.g. "Z", "+05:30", "-01:00") to nanoseconds. */
+    private static function parseOffsetToNs(string $offset): int
+    {
+        if (strtoupper($offset) === 'Z') {
+            return 0;
+        }
+        if (preg_match('/^([+-])(\d{2})(?::(\d{2})(?::(\d{2}))?)?$/', $offset, $m)) {
+            $sign = $m[1] === '+' ? 1 : -1;
+            $h = (int) $m[2];
+            $min = isset($m[3]) ? (int) $m[3] : 0;
+            $sec = isset($m[4]) ? (int) $m[4] : 0;
+            return $sign * ($h * 3600 + $min * 60 + $sec) * 1_000_000_000;
+        }
+        return 0;
     }
 
     private static function timeZoneOffsetString(string $ns, string $tz): string
@@ -8836,6 +8916,10 @@ class TemporalObject
      */
     private static function toCalendarSlotValue(JsValue $calVal): string
     {
+        // Temporal objects with [[Calendar]] slot: extract directly.
+        if ($calVal instanceof JsObject && $calVal->has('[[Calendar]]')) {
+            return self::getSlotString($calVal, '[[Calendar]]');
+        }
         if ($calVal instanceof JsNull) {
             throw new TypeError('null is not a valid calendar');
         }
@@ -8849,7 +8933,6 @@ class TemporalObject
             throw new TypeError('bigint is not a valid calendar');
         }
         if ($calVal instanceof JsObject) {
-            // Duration and other Temporal types are not valid calendar.
             throw new TypeError('object is not a valid calendar');
         }
         if (!$calVal instanceof JsString) {
