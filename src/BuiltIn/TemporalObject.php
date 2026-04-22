@@ -1465,6 +1465,7 @@ class TemporalObject
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
             $calendarName = 'auto';
+            $smallestUnit = null;
             if ($options instanceof JsObject) {
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
@@ -1473,8 +1474,42 @@ class TemporalObject
                         throw new RangeError("Invalid calendarName: {$calendarName}");
                     }
                 }
+                $su = $options->get('smallestUnit');
+                if (!($su instanceof JsUndefined)) {
+                    $smallestUnit = TypeConversion::toString($su);
+                    $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                    $valid = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                    if (!in_array($smallestUnit, $valid, true)) {
+                        throw new RangeError("Invalid smallestUnit: {$smallestUnit}");
+                    }
+                    $unitToDigits = [
+                        'minute' => 0, 'second' => 0,
+                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                    ];
+                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
+                }
             }
-            return new JsString(self::plainDateTimeToString($this_, $fractionalSecondDigits, $roundingMode, $calendarName));
+            // Apply rounding if needed.
+            $dt = $this_;
+            if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
+                $unitNsMap = [
+                    'minute' => 60000000000,
+                    'second' => 1000000000,
+                    'millisecond' => 1000000,
+                    'microsecond' => 1000,
+                ];
+                $dt = self::roundPlainDateTime($this_, $unitNsMap[$smallestUnit], $roundingMode);
+            } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
+                $digitsToNs = [
+                    0 => 1000000000, 1 => 100000000, 2 => 10000000,
+                    3 => 1000000, 4 => 100000, 5 => 10000,
+                    6 => 1000, 7 => 100, 8 => 10,
+                ];
+                if (isset($digitsToNs[$fractionalSecondDigits])) {
+                    $dt = self::roundPlainDateTime($this_, $digitsToNs[$fractionalSecondDigits], $roundingMode);
+                }
+            }
+            return new JsString(self::plainDateTimeToString($dt, $fractionalSecondDigits, 'trunc', $calendarName));
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
@@ -7573,6 +7608,48 @@ class TemporalObject
         $us = self::getSlotInt($time, '[[ISOMicrosecond]]');
         $ns = self::getSlotInt($time, '[[ISONanosecond]]');
         return ($h * 3600 + $min * 60 + $s) * 1000000000 + $ms * 1000000 + $us * 1000 + $ns;
+    }
+
+    /** Round a PlainDateTime's time component by increment in ns, returning a new PlainDateTime. */
+    private static function roundPlainDateTime(JsValue $dt, int $incrementNs, string $roundingMode): JsObject
+    {
+        $timeNs = (self::getSlotInt($dt, '[[ISOHour]]') * 3600
+            + self::getSlotInt($dt, '[[ISOMinute]]') * 60
+            + self::getSlotInt($dt, '[[ISOSecond]]')) * 1000000000
+            + self::getSlotInt($dt, '[[ISOMillisecond]]') * 1000000
+            + self::getSlotInt($dt, '[[ISOMicrosecond]]') * 1000
+            + self::getSlotInt($dt, '[[ISONanosecond]]');
+        $rounded = self::roundToIncrement($timeNs, $incrementNs, $roundingMode);
+        $dayNs = 86400000000000;
+        $extraDays = intdiv($rounded, $dayNs);
+        $rounded = $rounded % $dayNs;
+        if ($rounded < 0) {
+            $rounded += $dayNs;
+            $extraDays--;
+        }
+        $h = intdiv($rounded, 3600000000000);
+        $rounded %= 3600000000000;
+        $min = intdiv($rounded, 60000000000);
+        $rounded %= 60000000000;
+        $s = intdiv($rounded, 1000000000);
+        $rounded %= 1000000000;
+        $ms = intdiv($rounded, 1000000);
+        $rounded %= 1000000;
+        $us = intdiv($rounded, 1000);
+        $ns = $rounded % 1000;
+        $y = self::getSlotInt($dt, '[[ISOYear]]');
+        $m = self::getSlotInt($dt, '[[ISOMonth]]');
+        $dd = self::getSlotInt($dt, '[[ISODay]]');
+        $cal = self::getSlotString($dt, '[[Calendar]]');
+        if ($extraDays !== 0) {
+            $dateObj = self::createPlainDateObject($y, $m, $dd, $cal);
+            $durObj = self::createDurationObject(0, 0, 0, $extraDays, 0, 0, 0, 0, 0, 0);
+            $newDate = self::plainDateAdd($dateObj, $durObj, 1);
+            $y = self::getSlotInt($newDate, '[[ISOYear]]');
+            $m = self::getSlotInt($newDate, '[[ISOMonth]]');
+            $dd = self::getSlotInt($newDate, '[[ISODay]]');
+        }
+        return self::createPlainDateTimeObject($y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal);
     }
 
     private static function roundPlainTime(JsValue $time, string $unit, string $roundingMode, int $increment): JsObject
