@@ -4817,6 +4817,15 @@ class TemporalObject
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
+            if ($item->has('[[IsZonedDateTime]]')) {
+                $parts = self::zonedDateTimeParts($item);
+                return self::createPlainDateObject(
+                    $parts['year'],
+                    $parts['month'],
+                    $parts['day'],
+                    self::getSlotString($item, '[[Calendar]]'),
+                );
+            }
             // Property bag: read in ALPHABETICAL order per spec.
             $calVal = $item->get('calendar');
             $day = $item->get('day');
