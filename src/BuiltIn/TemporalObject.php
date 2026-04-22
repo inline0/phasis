@@ -7875,6 +7875,70 @@ class TemporalObject
             $jd2 = self::isoToJulianDay($y2, $m2, $d2);
             $days = $jd2 - $jd1;
         }
+        // Apply rounding if smallestUnit is specified.
+        $roundedSU = $smallestUnit ?? 'day';
+        $roundMode = $rmStr ?? 'trunc';
+        $roundInc = isset($riNum) ? $riNum : 1;
+        if ($roundedSU === 'year' && ($months !== 0 || $days !== 0)) {
+            // Round to years: compute fractional year from months+days.
+            $totalMonths = $months;
+            // Days in the reference month for fractional calculation.
+            $midTotalM = ($natSign < 0 ? $y2 : $y1) * 12 + (($natSign < 0 ? $m2 : $m1) - 1) + ($years * 12) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $nextMonthDays = self::isoDaysInMonth($midMY, $midMM);
+            $frac = ($totalMonths + ($nextMonthDays > 0 ? $days / $nextMonthDays : 0)) / 12.0;
+            $totalYearsFloat = $years + $frac;
+            $roundedYears = self::roundToIncrement(
+                (int) round($totalYearsFloat * 1000000),
+                $roundInc * 1000000,
+                $roundMode,
+            );
+            $years = intdiv($roundedYears, 1000000);
+            $months = 0;
+            $weeks = 0;
+            $days = 0;
+        } elseif ($roundedSU === 'month' && $days !== 0) {
+            // Round to months: compute fractional month from days.
+            $midTotalM = ($natSign < 0 ? $y2 : $y1) * 12 + (($natSign < 0 ? $m2 : $m1) - 1) + ($years * 12) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $daysInMonth = self::isoDaysInMonth($midMY, $midMM);
+            $frac = $daysInMonth > 0 ? $days / $daysInMonth : 0;
+            $totalMonthsFloat = ($years * 12 + $months) + $frac;
+            $roundedMonths = self::roundToIncrement(
+                (int) round($totalMonthsFloat * 1000000),
+                $roundInc * 1000000,
+                $roundMode,
+            );
+            $totalMonthsRounded = intdiv($roundedMonths, 1000000);
+            $years = intdiv($totalMonthsRounded, 12);
+            $months = $totalMonthsRounded - $years * 12;
+            if ($largestUnit === 'month') {
+                $months = $totalMonthsRounded;
+                $years = 0;
+            }
+            $weeks = 0;
+            $days = 0;
+        } elseif ($roundedSU === 'week' && $days % 7 !== 0) {
+            $totalDays = $weeks * 7 + $days;
+            $roundedDays = self::roundToIncrement($totalDays, $roundInc * 7, $roundMode);
+            $weeks = intdiv($roundedDays, 7);
+            $days = $roundedDays - $weeks * 7;
+            if ($largestUnit !== 'week') {
+                $days = $roundedDays;
+                $weeks = 0;
+            }
+        } elseif ($roundedSU === 'day' && $roundInc > 1) {
+            $totalDays = $weeks * 7 + $days;
+            $roundedDays = self::roundToIncrement($totalDays, $roundInc, $roundMode);
+            if ($largestUnit === 'week') {
+                $weeks = intdiv($roundedDays, 7);
+                $days = $roundedDays - $weeks * 7;
+            } else {
+                $days = $roundedDays;
+            }
+        }
         $effectiveSign = $sign * $natSign;
         return self::createDurationObject(
             $effectiveSign * $years,
