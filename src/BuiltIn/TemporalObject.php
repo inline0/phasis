@@ -802,32 +802,34 @@ class TemporalObject
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
             if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
-                    $ovStr = TypeConversion::toString($ov);
-                    if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
-                        throw new RangeError("Invalid overflow: {$ovStr}");
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
                     }
                 }
             }
-            return self::plainDateAdd($this_, $dur, 1);
+            return self::plainDateAdd($this_, $dur, 1, $overflow);
         }, 1);
 
         $d('subtract', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
             if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
-                    $ovStr = TypeConversion::toString($ov);
-                    if ($ovStr !== 'constrain' && $ovStr !== 'reject') {
-                        throw new RangeError("Invalid overflow: {$ovStr}");
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
                     }
                 }
             }
-            return self::plainDateAdd($this_, $dur, -1);
+            return self::plainDateAdd($this_, $dur, -1, $overflow);
         }, 1);
 
         $d('until', function (JsValue $this_, array $args): JsValue {
@@ -5631,7 +5633,7 @@ class TemporalObject
         return self::nsToTimeDuration($diffNs, $largestUnit);
     }
 
-    private static function plainDateAdd(JsValue $date, JsObject $dur, int $sign): JsObject
+    private static function plainDateAdd(JsValue $date, JsObject $dur, int $sign, string $overflow = 'constrain'): JsObject
     {
         $y = self::getSlotInt($date, '[[ISOYear]]');
         $m = self::getSlotInt($date, '[[ISOMonth]]');
@@ -5684,9 +5686,12 @@ class TemporalObject
             $y--;
         }
 
-        // Clamp day to valid range.
+        // Clamp or reject day based on overflow.
         $dim = self::isoDaysInMonth($y, $m);
         if ($d > $dim) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$d} out of range for month");
+            }
             $d = $dim;
         }
 
