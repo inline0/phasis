@@ -6236,14 +6236,26 @@ class TemporalObject
         if ($increment === 0) {
             return $value;
         }
-        $quotient = $value / $increment;
-        return match ($mode) {
-            'ceil' => (int) ceil($quotient) * $increment,
-            'floor' => (int) floor($quotient) * $increment,
-            'trunc' => (int) (($value >= 0 ? floor($quotient) : ceil($quotient))) * $increment,
-            'expand' => (int) (($value >= 0 ? ceil($quotient) : floor($quotient))) * $increment,
-            default => (int) round($quotient) * $increment, // halfExpand
+        $sign = $value >= 0 ? 1 : -1;
+        $abs = abs($value);
+        $q = intdiv($abs, $increment);
+        $r = $abs % $increment;
+        if ($r === 0) {
+            return $value;
+        }
+        $rounded = match ($mode) {
+            'ceil' => $sign > 0 ? $q + 1 : $q,
+            'floor' => $sign < 0 ? $q + 1 : $q,
+            'trunc' => $q,
+            'expand' => $q + 1,
+            'halfExpand' => $r * 2 >= $increment ? $q + 1 : $q,
+            'halfTrunc' => $r * 2 > $increment ? $q + 1 : $q,
+            'halfCeil' => $r * 2 > $increment || ($r * 2 === $increment && $sign > 0) ? $q + 1 : $q,
+            'halfFloor' => $r * 2 > $increment || ($r * 2 === $increment && $sign < 0) ? $q + 1 : $q,
+            'halfEven' => $r * 2 > $increment || ($r * 2 === $increment && $q % 2 !== 0) ? $q + 1 : $q,
+            default => $r * 2 >= $increment ? $q + 1 : $q,
         };
+        return $sign * $rounded * $increment;
     }
 
     private static function roundBigIntNs(string $value, string $increment, string $mode): string
