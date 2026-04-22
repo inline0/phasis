@@ -6373,9 +6373,45 @@ class TemporalObject
             + self::getSlotInt($dt2, '[[ISOMicrosecond]]') * 1000
             + self::getSlotInt($dt2, '[[ISONanosecond]]');
         $timeDiffNs = (string) ($timeNs2 - $timeNs1);
-        if ($timeNs2 < $timeNs1 && $days > 0) {
-            $days--;
-            $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
+        if ($timeNs2 < $timeNs1) {
+            if ($days > 0) {
+                $days--;
+                $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
+            } elseif ($months > 0) {
+                $months--;
+                // Recompute days with one fewer month.
+                if ($largestUnit === 'year') {
+                    $midTotalM2 = ($y1 + $years) * 12 + ($m1 - 1) + $months;
+                } else {
+                    $midTotalM2 = $y1 * 12 + ($m1 - 1) + $months;
+                }
+                $midMY2 = intdiv($midTotalM2, 12);
+                $midMM2 = ($midTotalM2 % 12) + 1;
+                $midD2 = min($d1, self::isoDaysInMonth($midMY2, $midMM2));
+                $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
+                if ($days > 0) {
+                    $days--;
+                }
+                $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
+            } elseif ($years > 0) {
+                $years--;
+                // Recompute months and days.
+                $tempY = $y1 + $years;
+                $totalM = ($y2 * 12 + $m2) - ($tempY * 12 + $m1);
+                if ($d2 < $d1) {
+                    $totalM--;
+                }
+                $months = $totalM;
+                $midTotalM2 = $tempY * 12 + ($m1 - 1) + $months;
+                $midMY2 = intdiv($midTotalM2, 12);
+                $midMM2 = ($midTotalM2 % 12) + 1;
+                $midD2 = min($d1, self::isoDaysInMonth($midMY2, $midMM2));
+                $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
+                if ($days > 0) {
+                    $days--;
+                }
+                $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
+            }
         }
         $timeDur = self::nsToTimeDuration($timeDiffNs, 'hour');
         $hours = self::getDurationField($timeDur, 'hours');
