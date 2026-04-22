@@ -208,7 +208,19 @@ class TemporalObject
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
             if ($increment > 1) {
-                self::validateRoundingIncrement($unit, $increment);
+                // Instant uses solar day (86400s) as the max for all units.
+                $maxForSolarDay = [
+                    'hour' => 24,
+                    'minute' => 1440,
+                    'second' => 86400,
+                    'millisecond' => 86400000,
+                    'microsecond' => 86400000000,
+                    'nanosecond' => 86400000000000,
+                ];
+                $max = $maxForSolarDay[$unit] ?? 1;
+                if ($increment >= $max || $max % $increment !== 0) {
+                    throw new RangeError("Invalid roundingIncrement for {$unit}: {$increment}");
+                }
             }
             $unitNs = self::temporalUnitToNs($unit);
             $incrementNs = bcmul((string) $increment, $unitNs, 0);
