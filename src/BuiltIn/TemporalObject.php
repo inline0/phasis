@@ -5009,9 +5009,22 @@ class TemporalObject
             throw new RangeError("UTC offset without time is not valid for PlainMonthDay: {$str}");
         }
 
-        // Full ISO date: YYYY-MM-DD or YYYYMMDD with optional time/offset.
-        $pattern2 = '/^([+-]?\d{4,6})-?(\d{2})-?(\d{2})(?:[Tt ][^[]*)?$/';
+        // Full ISO date with optional time (captured for validation).
+        $timeOpt = '(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?(?:[+-]\d{2}(?::?\d{2})?)?)?';
+        $pattern2 = "/^([+-]?\\d{4,6})-?(\\d{2})-?(\\d{2}){$timeOpt}\$/";
         if (preg_match($pattern2, $cleanStr, $m)) {
+            // Validate time if present.
+            if (isset($m[4]) && $m[4] !== '') {
+                $th = (int) $m[4];
+                $tmin = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+                $ts = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+                if ($ts === 60) {
+                    $ts = 59;
+                }
+                if ($th > 23 || $tmin > 59 || $ts > 59) {
+                    throw new RangeError("Invalid time in string: {$str}");
+                }
+            }
             $mo = (int) $m[2];
             $dd = (int) $m[3];
             // Extract calendar annotation if present.
