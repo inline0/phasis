@@ -727,7 +727,7 @@ class TemporalObject
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $overflow = TypeConversion::toString($ov);
@@ -801,7 +801,7 @@ class TemporalObject
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $ovStr = TypeConversion::toString($ov);
@@ -817,7 +817,7 @@ class TemporalObject
             self::requirePlainDate($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $ovStr = TypeConversion::toString($ov);
@@ -1078,7 +1078,7 @@ class TemporalObject
             // Check at least one time property.
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $overflow = TypeConversion::toString($ov);
@@ -1204,7 +1204,7 @@ class TemporalObject
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
-                if ($options instanceof JsObject && $options->has('overflow')) {
+                if ($options instanceof JsObject) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
                         $overflow = TypeConversion::toString($ov);
@@ -1433,7 +1433,7 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            if ($opts instanceof JsObject && $opts->has('overflow')) {
+            if ($opts instanceof JsObject) {
                 $ov = $opts->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $ovStr = TypeConversion::toString($ov);
@@ -1449,7 +1449,7 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            if ($opts instanceof JsObject && $opts->has('overflow')) {
+            if ($opts instanceof JsObject) {
                 $ov = $opts->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $ovStr = TypeConversion::toString($ov);
@@ -1507,7 +1507,7 @@ class TemporalObject
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $overflow = TypeConversion::toString($ov);
@@ -1719,7 +1719,7 @@ class TemporalObject
                 }
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
-                if ($options instanceof JsObject && $options->has('overflow')) {
+                if ($options instanceof JsObject) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
                         $overflow = TypeConversion::toString($ov);
@@ -2042,7 +2042,7 @@ class TemporalObject
                 $item = $args[0] ?? JsUndefined::instance();
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = 'constrain';
-                if ($options instanceof JsObject && $options->has('overflow')) {
+                if ($options instanceof JsObject) {
                     $ov = $options->get('overflow');
                     if (!($ov instanceof JsUndefined)) {
                         $overflow = TypeConversion::toString($ov);
@@ -2172,7 +2172,7 @@ class TemporalObject
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
-            if ($options instanceof JsObject && $options->has('overflow')) {
+            if ($options instanceof JsObject) {
                 $ov = $options->get('overflow');
                 if (!($ov instanceof JsUndefined)) {
                     $overflow = TypeConversion::toString($ov);
