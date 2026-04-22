@@ -5528,6 +5528,26 @@ class TemporalObject
                 throw new RangeError('largestUnit must be >= smallestUnit');
             }
         }
+        // Apply rounding.
+        $roundIncrement = isset($riNum) ? (int) $riNum : 1;
+        $roundMode = $rmStr ?? 'trunc';
+        if ($smallestUnit !== 'nanosecond' || $roundIncrement !== 1) {
+            $unitNsMap = [
+                'year' => bcmul('31557600', '1000000000', 0),
+                'month' => bcmul('2629800', '1000000000', 0),
+                'week' => bcmul('604800', '1000000000', 0),
+                'day' => '86400000000000',
+                'hour' => '3600000000000',
+                'minute' => '60000000000',
+                'second' => '1000000000',
+                'millisecond' => '1000000',
+                'microsecond' => '1000',
+                'nanosecond' => '1',
+            ];
+            $unitNs = $unitNsMap[$smallestUnit] ?? '1';
+            $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
+            $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
+        }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
     }
 
@@ -6081,6 +6101,23 @@ class TemporalObject
                     throw new RangeError('largestUnit must be >= smallestUnit');
                 }
             }
+        }
+        // Apply rounding.
+        $roundIncrement = isset($riNum) ? (int) $riNum : 1;
+        $roundMode = $rmStr ?? 'trunc';
+        $suFinal = $suCanon ?? 'nanosecond';
+        if ($suFinal !== 'nanosecond' || $roundIncrement !== 1) {
+            $unitNsMap = [
+                'hour' => '3600000000000',
+                'minute' => '60000000000',
+                'second' => '1000000000',
+                'millisecond' => '1000000',
+                'microsecond' => '1000',
+                'nanosecond' => '1',
+            ];
+            $unitNs = $unitNsMap[$suFinal] ?? '1';
+            $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
+            $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
     }
