@@ -3026,6 +3026,56 @@ class TemporalObject
             JsFunction::fromCallable('from', function (JsValue $this_, array $args) use ($proto): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
                 $rawOptions = $args[1] ?? JsUndefined::instance();
+                // For ZDT or string: parse first, then validate options.
+                if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+                    $result = self::createZonedDateTimeObject(
+                        self::getSlotString($item, '[[EpochNanoseconds]]'),
+                        self::getSlotString($item, '[[TimeZone]]'),
+                        self::getSlotString($item, '[[Calendar]]'),
+                    );
+                    $options = self::getOptionsObject($rawOptions);
+                    self::getOverflow($options);
+                    // Also validate disambiguation and offset.
+                    if ($options instanceof JsObject) {
+                        $dv = $options->get('disambiguation');
+                        if (!($dv instanceof JsUndefined)) {
+                            $dis = TypeConversion::toString($dv);
+                            if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                                throw new RangeError("Invalid disambiguation: {$dis}");
+                            }
+                        }
+                        $offOpt = $options->get('offset');
+                        if (!($offOpt instanceof JsUndefined)) {
+                            $offStr = TypeConversion::toString($offOpt);
+                            if (!in_array($offStr, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                                throw new RangeError("Invalid offset option: {$offStr}");
+                            }
+                        }
+                    }
+                    return $result;
+                }
+                if ($item instanceof JsString) {
+                    $result = self::parseZonedDateTimeString($item->value);
+                    $options = self::getOptionsObject($rawOptions);
+                    self::getOverflow($options);
+                    if ($options instanceof JsObject) {
+                        $dv = $options->get('disambiguation');
+                        if (!($dv instanceof JsUndefined)) {
+                            $dis = TypeConversion::toString($dv);
+                            if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                                throw new RangeError("Invalid disambiguation: {$dis}");
+                            }
+                        }
+                        $offOpt = $options->get('offset');
+                        if (!($offOpt instanceof JsUndefined)) {
+                            $offStr = TypeConversion::toString($offOpt);
+                            if (!in_array($offStr, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                                throw new RangeError("Invalid offset option: {$offStr}");
+                            }
+                        }
+                    }
+                    return $result;
+                }
                 return self::toZonedDateTime($item, $rawOptions);
             }, 1),
             true,
