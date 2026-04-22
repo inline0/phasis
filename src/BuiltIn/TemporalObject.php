@@ -3326,6 +3326,13 @@ class TemporalObject
         int $ns,
         string $cal,
     ): JsObject {
+        // Validate PlainDateTime range: -271821-04-19T00:00:00.000000001 to +275760-09-13T23:59:59.999999999
+        if ($y === self::ISO_YEAR_MIN && $m === 4 && $d === 19) {
+            // At the minimum date, time must be > 00:00:00.000000000
+            if ($h === 0 && $min === 0 && $s === 0 && $ms === 0 && $us === 0 && $ns === 0) {
+                throw new RangeError("PlainDateTime outside representable range");
+            }
+        }
         $obj = new JsObject(self::$plainDateTimeProto);
         self::setDateSlots($obj, $y, $m, $d, $cal);
         self::setTimeSlots($obj, $h, $min, $s, $ms, $us, $ns);
