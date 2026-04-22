@@ -1079,18 +1079,6 @@ class TemporalObject
             if (!($item->get('timeZone') instanceof JsUndefined)) {
                 throw new TypeError('timeZone not allowed in with()');
             }
-            // Check at least one time property.
-            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            $overflow = 'constrain';
-            if ($options instanceof JsObject) {
-                $ov = $options->get('overflow');
-                if (!($ov instanceof JsUndefined)) {
-                    $overflow = TypeConversion::toString($ov);
-                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                        throw new RangeError("Invalid overflow: {$overflow}");
-                    }
-                }
-            }
             $h = self::getSlotInt($this_, '[[ISOHour]]');
             $min = self::getSlotInt($this_, '[[ISOMinute]]');
             $s = self::getSlotInt($this_, '[[ISOSecond]]');
@@ -1117,6 +1105,18 @@ class TemporalObject
             unset($ref);
             if (!$any) {
                 throw new TypeError('at least one time property required');
+            }
+            // Read options AFTER fields per spec.
+            $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = 'constrain';
+            if ($options instanceof JsObject) {
+                $ov = $options->get('overflow');
+                if (!($ov instanceof JsUndefined)) {
+                    $overflow = TypeConversion::toString($ov);
+                    if ($overflow !== 'constrain' && $overflow !== 'reject') {
+                        throw new RangeError("Invalid overflow: {$overflow}");
+                    }
+                }
             }
             if ($overflow === 'constrain') {
                 $h = max(0, min(23, $h));
