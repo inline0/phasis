@@ -4513,6 +4513,10 @@ class TemporalObject
         $h = (int) $m[4];
         $min = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
         $s = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+        // Leap second: clamp 60 to 59.
+        if ($s === 60) {
+            $s = 59;
+        }
         $frac = isset($m[7]) && $m[7] !== '' ? str_pad(substr($m[7], 0, 9), 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
