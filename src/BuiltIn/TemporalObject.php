@@ -1765,6 +1765,7 @@ class TemporalObject
             $cal = 'iso8601';
             if (isset($args[9]) && !($args[9] instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($args[9]));
+                $cal = self::resolveCalendarId($cal);
             }
             self::validateISODate($y, $m, $dd);
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
