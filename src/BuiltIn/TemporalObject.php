@@ -7132,7 +7132,15 @@ class TemporalObject
         // For calendar units (year, month, week), compute using date components.
         $calendarUnits = ['year', 'month', 'week'];
         if (in_array($largestUnit, $calendarUnits, true)) {
-            return self::calendarDateTimeDifference($dt1, $dt2, $largestUnit);
+            $dur = self::calendarDateTimeDifference($dt1, $dt2, $largestUnit);
+            // Apply rounding if smallestUnit is a calendar unit.
+            $suFinal = $smallestUnit ?? 'nanosecond';
+            $rmFinal = $rmStr ?? 'trunc';
+            $riFinal = isset($riNum) ? (int) $riNum : 1;
+            if (in_array($suFinal, ['year', 'month', 'week', 'day'], true)) {
+                return self::roundCalendarDuration($dur, $suFinal, $rmFinal, $riFinal, $largestUnit, $dt1);
+            }
+            return $dur;
         }
         // Apply rounding.
         $roundIncrement = isset($riNum) ? (int) $riNum : 1;
@@ -7152,6 +7160,79 @@ class TemporalObject
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Round a calendar-unit Duration to the specified smallestUnit. */
+    private static function roundCalendarDuration(
+        JsObject $dur,
+        string $smallestUnit,
+        string $roundingMode,
+        int $increment,
+        string $largestUnit,
+        JsValue $ref,
+    ): JsObject {
+        $years = self::getDurationField($dur, 'years');
+        $months = self::getDurationField($dur, 'months');
+        $weeks = self::getDurationField($dur, 'weeks');
+        $days = self::getDurationField($dur, 'days');
+        $hours = self::getDurationField($dur, 'hours');
+        $minutes = self::getDurationField($dur, 'minutes');
+        $seconds = self::getDurationField($dur, 'seconds');
+        $ms = self::getDurationField($dur, 'milliseconds');
+        $us = self::getDurationField($dur, 'microseconds');
+        $ns = self::getDurationField($dur, 'nanoseconds');
+        $sign = self::durationSign($dur);
+        if ($sign === 0) {
+            return $dur;
+        }
+        $absYears = abs($years);
+        $absMonths = abs($months);
+        $absWeeks = abs($weeks);
+        $absDays = abs($days);
+        if ($smallestUnit === 'year') {
+            // Compute fractional year.
+            $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
+            $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
+            $daysInYear = self::isoDaysInYear($refY + $absYears * $sign);
+            $monthFrac = $absMonths / 12.0;
+            $dayFrac = ($absDays + abs($hours) / 24.0) / (float) $daysInYear;
+            $totalYears = $absYears + $monthFrac + $dayFrac;
+            $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $roundingMode);
+            return self::createDurationObject($sign * intdiv($rounded, 1000000), 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+        if ($smallestUnit === 'month') {
+            $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
+            $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
+            $midM = (($refM - 1 + $absYears * 12 + $absMonths) % 12) + 1;
+            $midY = $refY + intdiv(($refM - 1 + $absYears * 12 + $absMonths), 12);
+            $daysInMonth = self::isoDaysInMonth($midY, $midM);
+            $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
+            $totalMonths = $absYears * 12 + $absMonths + $frac;
+            $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $roundingMode);
+            $rm = intdiv($rounded, 1000000);
+            if ($largestUnit === 'year') {
+                return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
+            }
+            return self::createDurationObject(0, $sign * $rm, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+        if ($smallestUnit === 'week') {
+            $totalDays = $absWeeks * 7 + $absDays;
+            $rounded = self::roundToIncrement($totalDays, $increment * 7, $roundingMode);
+            return self::createDurationObject($sign * $absYears, $sign * $absMonths, $sign * intdiv($rounded, 7), 0, 0, 0, 0, 0, 0, 0);
+        }
+        if ($smallestUnit === 'day') {
+            $totalDays = $absWeeks * 7 + $absDays;
+            $rounded = self::roundToIncrement($totalDays, $increment, $roundingMode);
+            if ($largestUnit === 'week') {
+                return self::createDurationObject(
+                    $sign * $absYears, $sign * $absMonths,
+                    $sign * intdiv($rounded, 7), $sign * ($rounded % 7),
+                    0, 0, 0, 0, 0, 0,
+                );
+            }
+            return self::createDurationObject($sign * $absYears, $sign * $absMonths, 0, $sign * $rounded, 0, 0, 0, 0, 0, 0);
+        }
+        return $dur;
     }
 
     /** Calendar-aware difference for year/month/week largestUnit. */
