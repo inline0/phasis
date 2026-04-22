@@ -6884,42 +6884,68 @@ class TemporalObject
             }
         }
 
-        // Julian day difference.
-        $jd1 = self::isoToJulianDay($y1, $m1, $d1);
-        $jd2 = self::isoToJulianDay($y2, $m2, $d2);
-        $diffDays = $jd2 - $jd1;
-
+        // Determine natural sign from date comparison.
+        $cmp = ($y2 <=> $y1) ?: ($m2 <=> $m1) ?: ($d2 <=> $d1);
+        if ($cmp === 0) {
+            return self::createDurationObject(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        }
+        $natSign = $cmp > 0 ? 1 : -1;
+        // Always compute positive difference, then apply sign.
+        if ($natSign < 0) {
+            [$y1, $m1, $d1, $y2, $m2, $d2] = [$y2, $m2, $d2, $y1, $m1, $d1];
+        }
         $years = 0;
         $months = 0;
         $weeks = 0;
-        $days = $diffDays;
-
-        if ($largestUnit === 'year' || $largestUnit === 'month') {
-            // Calculate year and month difference.
+        $days = 0;
+        if ($largestUnit === 'year') {
             $years = $y2 - $y1;
-            $months = $m2 - $m1;
-            $days = $d2 - $d1;
-
-            if ($days < 0) {
-                $months--;
-                $dim = self::isoDaysInMonth($y2, $m2 === 1 ? 12 : $m2 - 1);
-                $days += $dim;
-            }
-            if ($months < 0) {
+            if ($m2 < $m1 || ($m2 === $m1 && $d2 < $d1)) {
                 $years--;
-                $months += 12;
             }
-            if ($largestUnit === 'month') {
-                $months += $years * 12;
-                $years = 0;
+            $tempY = $y1 + $years;
+            $totalM = ($y2 * 12 + $m2) - ($tempY * 12 + $m1);
+            if ($d2 < min($d1, self::isoDaysInMonth($y2, $m2))) {
+                if ($d2 < $d1) {
+                    $totalM--;
+                }
             }
+            $months = $totalM;
+            $midTotalM = $tempY * 12 + ($m1 - 1) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY, $midMM, $midD);
+        } elseif ($largestUnit === 'month') {
+            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+            if ($d2 < $d1) {
+                $totalMonths--;
+            }
+            $months = $totalMonths;
+            $midTotalM = $y1 * 12 + ($m1 - 1) + $months;
+            $midMY = intdiv($midTotalM, 12);
+            $midMM = ($midTotalM % 12) + 1;
+            $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
+            $days = self::isoToJulianDay($y2, $m2, $d2) - self::isoToJulianDay($midMY, $midMM, $midD);
         } elseif ($largestUnit === 'week') {
-            $weeks = intdiv($diffDays, 7);
-            $days = $diffDays - $weeks * 7;
+            $jd1 = self::isoToJulianDay($y1, $m1, $d1);
+            $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+            $totalDays = $jd2 - $jd1;
+            $weeks = intdiv($totalDays, 7);
+            $days = $totalDays - $weeks * 7;
+        } else {
+            $jd1 = self::isoToJulianDay($y1, $m1, $d1);
+            $jd2 = self::isoToJulianDay($y2, $m2, $d2);
+            $days = $jd2 - $jd1;
         }
-
-        $dur = self::createDurationObject($sign * $years, $sign * $months, $sign * $weeks, $sign * $days, 0, 0, 0, 0, 0, 0);
-        return $dur;
+        $effectiveSign = $sign * $natSign;
+        return self::createDurationObject(
+            $effectiveSign * $years,
+            $effectiveSign * $months,
+            $effectiveSign * $weeks,
+            $effectiveSign * $days,
+            0, 0, 0, 0, 0, 0,
+        );
     }
 
     private static function isoToJulianDay(int $y, int $m, int $d): int
