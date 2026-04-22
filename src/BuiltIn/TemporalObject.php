@@ -2238,16 +2238,18 @@ class TemporalObject
                 }
                 $dd = (int) $n;
             }
+            // Year is read but NOT used to change the reference year.
+            $refY = $y; // Keep original reference year.
             if (!($year instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($year);
                 if (!is_finite($n)) {
                     throw new RangeError('year must be finite');
                 }
-                $y = (int) $n;
+                // Use for validation only, not for the stored reference year.
             }
             if ($overflow === 'constrain') {
                 $m = max(1, min(12, $m));
-                $dim = self::isoDaysInMonth($y, $m);
+                $dim = self::isoDaysInMonth($refY, $m);
                 $dd = max(1, min($dim, $dd));
             } else {
                 if ($m < 1 || $m > 12) {
@@ -2258,7 +2260,7 @@ class TemporalObject
                     throw new RangeError("day {$dd} out of range");
                 }
             }
-            return self::createPlainMonthDayObject($m, $dd, $y, $cal);
+            return self::createPlainMonthDayObject($m, $dd, $refY, $cal);
         }, 1);
 
         $d('toPlainDate', function (JsValue $this_, array $args): JsValue {
