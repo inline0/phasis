@@ -202,8 +202,12 @@ class TemporalObject
             $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
+            if ($increment > 1) {
+                self::validateRoundingIncrement($unit, $increment);
+            }
             $unitNs = self::temporalUnitToNs($unit);
-            $rounded = self::roundBigIntNs($ns, bcmul((string) $increment, $unitNs, 0), $roundingMode);
+            $incrementNs = bcmul((string) $increment, $unitNs, 0);
+            $rounded = self::roundNs($ns, $incrementNs, $roundingMode);
             self::validateInstantRange($rounded);
             return self::createInstantObject($rounded);
         }, 1);
@@ -7754,10 +7758,10 @@ class TemporalObject
         if (!is_finite($num)) {
             throw new RangeError('roundingIncrement must be finite');
         }
-        if ($num < 1 || floor($num) !== $num) {
+        $n = (int) $num;
+        if ($n < 1) {
             throw new RangeError('roundingIncrement must be a positive integer');
         }
-        $n = (int) $num;
         if ($n > 1000000000) {
             throw new RangeError('roundingIncrement out of range');
         }
