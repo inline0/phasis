@@ -5711,7 +5711,77 @@ class TemporalObject
                 throw new RangeError("largestUnit must be >= smallestUnit");
             }
         }
+        // Apply rounding if smallestUnit != nanosecond or increment != 1.
+        $roundIncrement = isset($riNum) ? (int) $riNum : 1;
+        $roundMode = $rmStr ?? 'trunc';
+        if ($smallestUnit !== 'nanosecond' || $roundIncrement !== 1) {
+            $unitNsMap = [
+                'hour' => '3600000000000',
+                'minute' => '60000000000',
+                'second' => '1000000000',
+                'millisecond' => '1000000',
+                'microsecond' => '1000',
+                'nanosecond' => '1',
+            ];
+            $unitNs = $unitNsMap[$smallestUnit] ?? '1';
+            $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
+            $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
+        }
         return self::nsToTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Round a nanosecond value to the nearest increment. */
+    private static function roundNs(string $ns, string $incrementNs, string $mode): string
+    {
+        $sign = bccomp($ns, '0', 0) < 0 ? -1 : 1;
+        $abs = $sign < 0 ? bcsub('0', $ns, 0) : $ns;
+        $quotient = bcdiv($abs, $incrementNs, 0);
+        $remainder = bcmod($abs, $incrementNs);
+        if ($remainder === '0') {
+            return $ns;
+        }
+        $rounded = $quotient;
+        switch ($mode) {
+            case 'trunc':
+                // Already truncated.
+                break;
+            case 'ceil':
+                if ($sign > 0) {
+                    $rounded = bcadd($quotient, '1', 0);
+                }
+                break;
+            case 'floor':
+                if ($sign < 0) {
+                    $rounded = bcadd($quotient, '1', 0);
+                }
+                break;
+            case 'expand':
+                $rounded = bcadd($quotient, '1', 0);
+                break;
+            case 'halfExpand':
+            case 'halfCeil':
+            case 'halfFloor':
+            case 'halfTrunc':
+            case 'halfEven':
+                $half = bcdiv($incrementNs, '2', 0);
+                $cmp = bccomp($remainder, $half, 0);
+                if ($cmp > 0) {
+                    $rounded = bcadd($quotient, '1', 0);
+                } elseif ($cmp === 0) {
+                    // Tie-breaking per mode.
+                    if ($mode === 'halfExpand' || $mode === 'halfCeil') {
+                        $rounded = bcadd($quotient, '1', 0);
+                    } elseif ($mode === 'halfEven') {
+                        if (bcmod($quotient, '2') !== '0') {
+                            $rounded = bcadd($quotient, '1', 0);
+                        }
+                    }
+                    // halfTrunc and halfFloor: stay at quotient.
+                }
+                break;
+        }
+        $result = bcmul($rounded, $incrementNs, 0);
+        return $sign < 0 ? bcsub('0', $result, 0) : $result;
     }
 
     private static function plainDateAdd(JsValue $date, JsObject $dur, int $sign, string $overflow = 'constrain'): JsObject
