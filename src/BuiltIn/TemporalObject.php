@@ -4504,7 +4504,12 @@ class TemporalObject
         );
     }
 
-    private static function durationToString(JsValue $dur, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc', ?string $smallestUnit = null): string
+    private static function durationToString(
+        JsValue $dur,
+        string|int $fractionalSecondDigits = 'auto',
+        string $roundingMode = 'trunc',
+        ?string $smallestUnit = null,
+    ): string
     {
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
