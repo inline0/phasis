@@ -2061,27 +2061,13 @@ class TemporalObject
         $d('until', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $other = self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
-            $y1 = self::getSlotInt($this_, '[[ISOYear]]');
-            $m1 = self::getSlotInt($this_, '[[ISOMonth]]');
-            $y2 = self::getSlotInt($other, '[[ISOYear]]');
-            $m2 = self::getSlotInt($other, '[[ISOMonth]]');
-            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
-            $years = intdiv($totalMonths, 12);
-            $months = $totalMonths % 12;
-            return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
+            return self::plainYearMonthDifference($this_, $other, $args[1] ?? JsUndefined::instance());
         }, 1);
 
         $d('since', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $other = self::toPlainYearMonth($args[0] ?? JsUndefined::instance());
-            $y1 = self::getSlotInt($other, '[[ISOYear]]');
-            $m1 = self::getSlotInt($other, '[[ISOMonth]]');
-            $y2 = self::getSlotInt($this_, '[[ISOYear]]');
-            $m2 = self::getSlotInt($this_, '[[ISOMonth]]');
-            $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
-            $years = intdiv($totalMonths, 12);
-            $months = $totalMonths % 12;
-            return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
+            return self::plainYearMonthDifference($other, $this_, $args[1] ?? JsUndefined::instance());
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainYearMonth');
@@ -6825,6 +6811,57 @@ class TemporalObject
 
         self::validateISODate($y, $m, $d);
         return self::createPlainDateObject($y, $m, $d, $cal);
+    }
+
+    private static function plainYearMonthDifference(JsValue $ym1, JsValue $ym2, JsValue $options): JsObject
+    {
+        $opts = self::getOptionsObject($options);
+        $y1 = self::getSlotInt($ym1, '[[ISOYear]]');
+        $m1 = self::getSlotInt($ym1, '[[ISOMonth]]');
+        $y2 = self::getSlotInt($ym2, '[[ISOYear]]');
+        $m2 = self::getSlotInt($ym2, '[[ISOMonth]]');
+        $largestUnit = 'year';
+        if ($opts instanceof JsObject) {
+            $lu = $opts->get('largestUnit');
+            if (!($lu instanceof JsUndefined)) {
+                $largestUnit = TypeConversion::toString($lu);
+                if ($largestUnit === 'auto') {
+                    $largestUnit = 'year';
+                } else {
+                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                }
+                if (!in_array($largestUnit, ['year', 'month'], true)) {
+                    throw new RangeError("Invalid largest unit for PlainYearMonth: {$largestUnit}");
+                }
+            }
+            // Read remaining options for validation.
+            $ri = $opts->get('roundingIncrement');
+            $rm = $opts->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
+            }
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $suStr = TypeConversion::toString($su);
+                $suCanon = self::canonicalTemporalUnit($suStr);
+                if (!in_array($suCanon, ['year', 'month'], true)) {
+                    throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suCanon}");
+                }
+            }
+        }
+        $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
+        if ($largestUnit === 'year') {
+            $years = intdiv($totalMonths, 12);
+            $months = $totalMonths - $years * 12;
+        } else {
+            $years = 0;
+            $months = $totalMonths;
+        }
+        return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     private static function plainDateDifference(JsValue $date1, JsValue $date2, JsValue $options, int $sign): JsObject
