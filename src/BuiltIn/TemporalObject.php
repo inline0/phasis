@@ -4104,17 +4104,10 @@ class TemporalObject
                     throw new TypeError('missing required property: month');
                 }
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $month = new JsNumber((float) (int) $mcm[1]);
+                $month = new JsNumber((float) self::parseMonthCode($mc));
             } elseif (!($monthCode instanceof JsUndefined)) {
-                // Both month and monthCode present: must agree.
                 $mc = TypeConversion::toString($monthCode);
-                if (!preg_match('/^M(\d{2})$/', $mc, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mc}");
-                }
-                $mcMonth = (int) $mcm[1];
+                $mcMonth = self::parseMonthCode($mc);
                 $mVal = (int) TypeConversion::toNumber($month);
                 if ($mcMonth !== $mVal) {
                     throw new RangeError(
@@ -4434,7 +4427,11 @@ class TemporalObject
                 foreach ($dtBag as $name => &$ref) {
                     $v = $item->get($name);
                     if (!($v instanceof JsUndefined)) {
-                        $ref = (int) TypeConversion::toNumber($v);
+                        $n = TypeConversion::toNumber($v);
+                        if (!is_finite($n)) {
+                            throw new RangeError("{$name} must be finite");
+                        }
+                        $ref = (int) $n;
                     }
                 }
                 unset($ref);
