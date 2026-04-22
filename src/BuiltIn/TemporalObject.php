@@ -6838,14 +6838,21 @@ class TemporalObject
         $d2 = self::getSlotInt($date2, '[[ISODay]]');
 
         $largestUnit = 'day';
+        $largestUnitExplicit = false;
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
                 $largestUnit = TypeConversion::toString($lu);
-                $largestUnit = self::canonicalTemporalUnit($largestUnit);
-                $dateUnitsLU = ['year', 'month', 'week', 'day'];
-                if (!in_array($largestUnit, $dateUnitsLU, true)) {
-                    throw new RangeError("Invalid largest unit for date: {$largestUnit}");
+                if ($largestUnit === 'auto') {
+                    $largestUnit = 'day';
+                    $largestUnitExplicit = false;
+                } else {
+                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                    $dateUnitsLU = ['year', 'month', 'week', 'day'];
+                    if (!in_array($largestUnit, $dateUnitsLU, true)) {
+                        throw new RangeError("Invalid largest unit for date: {$largestUnit}");
+                    }
                 }
             }
             // Read options in ALPHABETICAL order per spec.
@@ -6873,11 +6880,15 @@ class TemporalObject
                     throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
                 }
             }
-            // Validate largestUnit >= smallestUnit.
+            // Default largestUnit to smallestUnit if needed.
             if (isset($smallestUnit)) {
                 $allU = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
                 $liIdx = array_search($largestUnit, $allU);
                 $siIdx = array_search($smallestUnit, $allU);
+                if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+                    $largestUnit = $smallestUnit;
+                    $liIdx = $siIdx;
+                }
                 if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
                     throw new RangeError('largestUnit must be >= smallestUnit');
                 }
