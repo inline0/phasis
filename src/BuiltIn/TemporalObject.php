@@ -1129,7 +1129,60 @@ class TemporalObject
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
-            return new JsString(self::plainTimeToString($this_, $fractionalSecondDigits, $roundingMode));
+            $smallestUnit = null;
+            if ($options instanceof JsObject) {
+                $su = $options->get('smallestUnit');
+                if (!($su instanceof JsUndefined)) {
+                    $smallestUnit = TypeConversion::toString($su);
+                    $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                    $valid = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                    if (!in_array($smallestUnit, $valid, true)) {
+                        throw new RangeError("Invalid smallestUnit: {$smallestUnit}");
+                    }
+                    $unitToDigits = [
+                        'minute' => 0, 'second' => 0,
+                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                    ];
+                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
+                }
+            }
+            // Apply rounding.
+            $time = $this_;
+            if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
+                $unitNsMap = [
+                    'minute' => 60000000000,
+                    'second' => 1000000000,
+                    'millisecond' => 1000000,
+                    'microsecond' => 1000,
+                ];
+                $time = self::roundPlainTime($this_, $smallestUnit, $roundingMode, 1);
+            } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
+                $digitsToUnit = [
+                    0 => 'second', 1 => 'second', 2 => 'second',
+                    3 => 'millisecond', 4 => 'millisecond', 5 => 'millisecond',
+                    6 => 'microsecond', 7 => 'microsecond', 8 => 'microsecond',
+                ];
+                $digitsToIncr = [
+                    0 => 1000000000, 1 => 100000000, 2 => 10000000,
+                    3 => 1000000, 4 => 100000, 5 => 10000,
+                    6 => 1000, 7 => 100, 8 => 10,
+                ];
+                $timeNs = self::timeToNs($this_);
+                $rounded = self::roundToIncrement($timeNs, $digitsToIncr[$fractionalSecondDigits], $roundingMode);
+                $rounded = $rounded % 86400000000000;
+                if ($rounded < 0) {
+                    $rounded += 86400000000000;
+                }
+                $time = self::createPlainTimeObject(
+                    intdiv($rounded, 3600000000000),
+                    intdiv($rounded % 3600000000000, 60000000000),
+                    intdiv($rounded % 60000000000, 1000000000),
+                    intdiv($rounded % 1000000000, 1000000),
+                    intdiv($rounded % 1000000, 1000),
+                    $rounded % 1000,
+                );
+            }
+            return new JsString(self::plainTimeToString($time, $fractionalSecondDigits, 'trunc'));
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
