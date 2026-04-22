@@ -3273,8 +3273,41 @@ class TemporalObject
             if (!($calV instanceof JsUndefined)) {
                 $cal = strtolower(TypeConversion::toString($calV));
             }
+            // Validate options.
+            if ($rawOptions !== null) {
+                $options = self::getOptionsObject($rawOptions);
+                self::getOverflow($options);
+                if ($options instanceof JsObject) {
+                    $dv = $options->get('disambiguation');
+                    if (!($dv instanceof JsUndefined)) {
+                        $dis = TypeConversion::toString($dv);
+                        if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                            throw new RangeError("Invalid disambiguation: {$dis}");
+                        }
+                    }
+                    $offOpt = $options->get('offset');
+                    if (!($offOpt instanceof JsUndefined)) {
+                        $offStr = TypeConversion::toString($offOpt);
+                        if (!in_array($offStr, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                            throw new RangeError("Invalid offset option: {$offStr}");
+                        }
+                    }
+                }
+            }
             $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
             return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+        }
+        if ($item instanceof JsUndefined || $item instanceof JsNull) {
+            throw new TypeError('Cannot convert undefined/null to ZonedDateTime');
+        }
+        if ($item instanceof JsNumber || $item instanceof \PhpJs\Value\JsBigInt) {
+            throw new TypeError('Cannot convert number to ZonedDateTime');
+        }
+        if ($item instanceof JsBoolean) {
+            throw new TypeError('Cannot convert boolean to ZonedDateTime');
+        }
+        if ($item instanceof \PhpJs\Value\JsSymbol) {
+            throw new TypeError('Cannot convert Symbol to ZonedDateTime');
         }
         $str = TypeConversion::toString($item);
         return self::parseZonedDateTimeString($str);
