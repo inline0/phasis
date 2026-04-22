@@ -5554,6 +5554,33 @@ class TemporalObject
         $months = $sign * self::getDurationField($dur, 'months');
         $weeks = $sign * self::getDurationField($dur, 'weeks');
         $days = $sign * self::getDurationField($dur, 'days');
+        // Per spec: balance time components into days for PlainDate.
+        $hours = $sign * self::getDurationField($dur, 'hours');
+        $minutes = $sign * self::getDurationField($dur, 'minutes');
+        $seconds = $sign * self::getDurationField($dur, 'seconds');
+        $ms = $sign * self::getDurationField($dur, 'milliseconds');
+        $us = $sign * self::getDurationField($dur, 'microseconds');
+        $ns = $sign * self::getDurationField($dur, 'nanoseconds');
+        // Total nanoseconds from time units, convert to extra days.
+        $totalTimeNs = bcadd(
+            bcadd(
+                bcadd(
+                    bcmul((string) $hours, '3600000000000', 0),
+                    bcmul((string) $minutes, '60000000000', 0),
+                    0,
+                ),
+                bcmul((string) $seconds, '1000000000', 0),
+                0,
+            ),
+            bcadd(
+                bcadd(bcmul((string) $ms, '1000000', 0), bcmul((string) $us, '1000', 0), 0),
+                (string) $ns,
+                0,
+            ),
+            0,
+        );
+        $extraDays = (int) bcdiv($totalTimeNs, '86400000000000', 0);
+        $days += $extraDays;
 
         // Add years and months first.
         $y += $years;
