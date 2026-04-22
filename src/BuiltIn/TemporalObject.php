@@ -3429,6 +3429,8 @@ class TemporalObject
         $d('add', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($opts);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
@@ -3465,6 +3467,8 @@ class TemporalObject
         $d('subtract', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $dur = self::toDuration($args[0] ?? JsUndefined::instance());
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            $overflow = self::getOverflow($opts);
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
