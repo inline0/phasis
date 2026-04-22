@@ -137,10 +137,11 @@ class TemporalObject
                     $timeZone = TypeConversion::toString($tz);
                 }
             }
+            $omitSec = $smallestUnit === 'minute';
             if ($timeZone !== null) {
                 return new JsString(self::instantToStringInZone($ns, $timeZone, $fractionalSecondDigits, $roundingMode));
             }
-            return new JsString(self::instantToString($ns, $fractionalSecondDigits, $roundingMode));
+            return new JsString(self::instantToString($ns, $fractionalSecondDigits, 'trunc', $omitSec));
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
@@ -1249,6 +1250,11 @@ class TemporalObject
                     $rounded % 1000,
                 );
             }
+            if ($smallestUnit === 'minute') {
+                $h = self::getSlotInt($time, '[[ISOHour]]');
+                $min = self::getSlotInt($time, '[[ISOMinute]]');
+                return new JsString(self::pad2($h) . ':' . self::pad2($min));
+            }
             return new JsString(self::plainTimeToString($time, $fractionalSecondDigits, 'trunc'));
         }, 0);
 
@@ -1628,6 +1634,22 @@ class TemporalObject
                 if (isset($digitsToNs[$fractionalSecondDigits])) {
                     $dt = self::roundPlainDateTime($this_, $digitsToNs[$fractionalSecondDigits], $roundingMode);
                 }
+            }
+            if ($smallestUnit === 'minute') {
+                // Format without seconds.
+                $y = self::getSlotInt($dt, '[[ISOYear]]');
+                $m = self::getSlotInt($dt, '[[ISOMonth]]');
+                $dd = self::getSlotInt($dt, '[[ISODay]]');
+                $h = self::getSlotInt($dt, '[[ISOHour]]');
+                $min = self::getSlotInt($dt, '[[ISOMinute]]');
+                $result = self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd) . 'T' . self::pad2($h) . ':' . self::pad2($min);
+                $cal = self::getSlotString($dt, '[[Calendar]]');
+                $showCal = $calendarName === 'always' || $calendarName === 'critical' || ($calendarName !== 'never' && $cal !== 'iso8601');
+                if ($showCal) {
+                    $prefix = $calendarName === 'critical' ? '!' : '';
+                    $result .= "[{$prefix}u-ca={$cal}]";
+                }
+                return new JsString($result);
             }
             return new JsString(self::plainDateTimeToString($dt, $fractionalSecondDigits, 'trunc', $calendarName));
         }, 0);
@@ -4532,18 +4554,20 @@ class TemporalObject
         return $epochNs;
     }
 
-    private static function instantToString(string $ns, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc'): string
-    {
+    private static function instantToString(
+        string $ns,
+        string|int $fractionalSecondDigits = 'auto',
+        string $roundingMode = 'trunc',
+        bool $omitSeconds = false,
+    ): string {
         // Split ns into seconds and sub-second nanoseconds.
         $negative = isset($ns[0]) && $ns[0] === '-';
         $abs = $negative ? substr($ns, 1) : $ns;
 
-        // seconds = abs / 1e9, subNs = abs % 1e9
         $sec = bcdiv($abs, '1000000000', 0);
         $subNs = bcsub($abs, bcmul($sec, '1000000000', 0), 0);
 
         if ($negative && $subNs !== '0') {
-            // For negative timestamps with fractional part: adjust.
             $sec = bcadd($sec, '1', 0);
             $subNs = bcsub('1000000000', $subNs, 0);
         }
@@ -4558,6 +4582,10 @@ class TemporalObject
         }
 
         $year = (int) $dt->format('Y');
+        if ($omitSeconds) {
+            $dateStr = self::padISOYear($year) . $dt->format('-m-d\TH:i');
+            return $dateStr . 'Z';
+        }
         $dateStr = self::padISOYear($year) . $dt->format('-m-d\TH:i:s');
 
         $subNsPadded = str_pad($subNs, 9, '0', STR_PAD_LEFT);
