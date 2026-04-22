@@ -3271,38 +3271,70 @@ class TemporalObject
             $us = $parts['microsecond'];
             $nsPart = $parts['nanosecond'];
             $any = false;
-            // Read in alphabetical order.
-            $fields = [
-                'day' => &$dd, 'hour' => &$h,
-                'microsecond' => &$us, 'millisecond' => &$ms,
-                'minute' => &$min, 'month' => &$m,
-            ];
-            foreach ($fields as $name => &$ref) {
-                $v = $item->get($name);
-                if (!($v instanceof JsUndefined)) {
-                    $ref = (int) TypeConversion::toNumber($v);
-                    $any = true;
-                }
+            $monthChanged = false;
+            $monthCodeChanged = false;
+            $origMonth = $m;
+            // Read fields in alphabetical order, converting each immediately.
+            $dv = $item->get('day');
+            if (!($dv instanceof JsUndefined)) {
+                $dd = self::toTemporalInteger($dv, 'day');
+                $any = true;
             }
-            unset($ref);
+            $hv = $item->get('hour');
+            if (!($hv instanceof JsUndefined)) {
+                $h = self::toTemporalInteger($hv, 'hour');
+                $any = true;
+            }
+            $usv = $item->get('microsecond');
+            if (!($usv instanceof JsUndefined)) {
+                $us = self::toTemporalInteger($usv, 'microsecond');
+                $any = true;
+            }
+            $msv = $item->get('millisecond');
+            if (!($msv instanceof JsUndefined)) {
+                $ms = self::toTemporalInteger($msv, 'millisecond');
+                $any = true;
+            }
+            $minv = $item->get('minute');
+            if (!($minv instanceof JsUndefined)) {
+                $min = self::toTemporalInteger($minv, 'minute');
+                $any = true;
+            }
+            $mv = $item->get('month');
+            if (!($mv instanceof JsUndefined)) {
+                $m = self::toTemporalInteger($mv, 'month');
+                $any = true;
+                $monthChanged = true;
+            }
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
-                $m = self::parseMonthCode(TypeConversion::toString($mcv));
+                $mcMonth = self::parseMonthCode(TypeConversion::toString($mcv));
                 $any = true;
+                $monthCodeChanged = true;
+                // If both month and monthCode are set and disagree, throw.
+                if ($monthChanged && $m !== $mcMonth) {
+                    throw new RangeError('month and monthCode must agree');
+                }
+                $m = $mcMonth;
             }
             $nsv = $item->get('nanosecond');
             if (!($nsv instanceof JsUndefined)) {
-                $nsPart = (int) TypeConversion::toNumber($nsv);
+                $nsPart = self::toTemporalInteger($nsv, 'nanosecond');
                 $any = true;
+            }
+            // Read offset property from fields (for observable property access order).
+            $offsetFieldV = $item->get('offset');
+            if (!($offsetFieldV instanceof JsUndefined)) {
+                TypeConversion::toString($offsetFieldV);
             }
             $sv = $item->get('second');
             if (!($sv instanceof JsUndefined)) {
-                $s = (int) TypeConversion::toNumber($sv);
+                $s = self::toTemporalInteger($sv, 'second');
                 $any = true;
             }
             $yv = $item->get('year');
             if (!($yv instanceof JsUndefined)) {
-                $y = (int) TypeConversion::toNumber($yv);
+                $y = self::toTemporalInteger($yv, 'year');
                 $any = true;
             }
             if (!$any) {
@@ -3485,15 +3517,22 @@ class TemporalObject
             $dd = min($parts['day'], $maxDay);
             // Step 2: Get epoch ns for the date/time result after year/month addition.
             $intermediateNs = self::isoDateTimeToEpochNs(
-                $y, $m, $dd,
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $y,
+                $m,
+                $dd,
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
                 $tz,
             );
             // Step 3: Add weeks, days, and sub-day components as nanoseconds.
             $subDayNs = self::durationToTotalNs(
                 self::createDurationObject(
-                    0, 0,
+                    0,
+                    0,
                     self::getDurationField($dur, 'weeks'),
                     self::getDurationField($dur, 'days'),
                     self::getDurationField($dur, 'hours'),
@@ -3533,15 +3572,22 @@ class TemporalObject
             $dd = min($parts['day'], $maxDay);
             // Step 2: Get epoch ns for the date/time after year/month subtraction.
             $intermediateNs = self::isoDateTimeToEpochNs(
-                $y, $m, $dd,
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $y,
+                $m,
+                $dd,
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
                 $tz,
             );
             // Step 3: Subtract weeks, days, and sub-day components as nanoseconds.
             $subDayNs = self::durationToTotalNs(
                 self::createDurationObject(
-                    0, 0,
+                    0,
+                    0,
                     self::getDurationField($dur, 'weeks'),
                     self::getDurationField($dur, 'days'),
                     self::getDurationField($dur, 'hours'),
@@ -3664,26 +3710,7 @@ class TemporalObject
                     return $result;
                 }
                 if ($item instanceof JsString) {
-                    $options = self::getOptionsObject($rawOptions);
-                    $offOptForParse = 'reject';
-                    if ($options instanceof JsObject) {
-                        $dv = $options->get('disambiguation');
-                        if (!($dv instanceof JsUndefined)) {
-                            $dis = TypeConversion::toString($dv);
-                            if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
-                                throw new RangeError("Invalid disambiguation: {$dis}");
-                            }
-                        }
-                        $offOpt = $options->get('offset');
-                        if (!($offOpt instanceof JsUndefined)) {
-                            $offOptForParse = TypeConversion::toString($offOpt);
-                            if (!in_array($offOptForParse, ['prefer', 'use', 'ignore', 'reject'], true)) {
-                                throw new RangeError("Invalid offset option: {$offOptForParse}");
-                            }
-                        }
-                        self::getOverflow($options);
-                    }
-                    return self::parseZonedDateTimeString($item->value, $offOptForParse);
+                    return self::zdtFromString($item->value, $rawOptions);
                 }
                 return self::toZonedDateTime($item, $rawOptions);
             }, 1),
@@ -3777,7 +3804,8 @@ class TemporalObject
         $offsetProp = $item->get('offset');
         $offsetStr = null;
         if (!($offsetProp instanceof JsUndefined)) {
-            if ($offsetProp instanceof JsNumber
+            if (
+                $offsetProp instanceof JsNumber
                 || $offsetProp instanceof JsBoolean
                 || $offsetProp instanceof JsNull
                 || $offsetProp instanceof \PhpJs\Value\JsBigInt
@@ -3879,6 +3907,39 @@ class TemporalObject
         }
         $zdt = self::toZonedDateTime($item);
         return self::getSlotString($zdt, '[[EpochNanoseconds]]');
+    }
+
+    /** Parse a ZDT string from the from() method: parse first, then read options, then resolve. */
+    private static function zdtFromString(string $str, JsValue $rawOptions): JsObject
+    {
+        // Phase 1: parse and validate syntax only (use 'ignore' to skip offset mismatch check).
+        // This throws on invalid ISO strings BEFORE reading options (per spec).
+        $result = self::parseZonedDateTimeString($str, 'ignore');
+        // Phase 2: now read and validate options.
+        $options = self::getOptionsObject($rawOptions);
+        $offOptStr = 'reject';
+        if ($options instanceof JsObject) {
+            $dv = $options->get('disambiguation');
+            if (!($dv instanceof JsUndefined)) {
+                $dis = TypeConversion::toString($dv);
+                if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                    throw new RangeError("Invalid disambiguation: {$dis}");
+                }
+            }
+            $offOpt = $options->get('offset');
+            if (!($offOpt instanceof JsUndefined)) {
+                $offOptStr = TypeConversion::toString($offOpt);
+                if (!in_array($offOptStr, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                    throw new RangeError("Invalid offset option: {$offOptStr}");
+                }
+            }
+            self::getOverflow($options);
+        }
+        // Phase 3: re-parse with the actual offset option (handles reject/ignore/use/prefer).
+        if ($offOptStr !== 'ignore') {
+            $result = self::parseZonedDateTimeString($str, $offOptStr);
+        }
+        return $result;
     }
 
     private static function parseZonedDateTimeString(string $str, string $offsetOption = 'reject'): JsObject
@@ -5395,7 +5456,7 @@ class TemporalObject
             $totalNs = $totalNs % 1000000000;
         }
         $remainNs = $totalNs;
-        // Carry over from rounding.
+        // Carry over from rounding: seconds -> minutes -> hours.
         $displayMinutes = abs($minutes);
         $displayHours = abs($hours);
         if ($smallestUnit === 'minute') {
@@ -5405,8 +5466,19 @@ class TemporalObject
             $totalSec = 0;
             $remainNs = 0;
         }
-
-        $hasTime = $displayHours || $displayMinutes || $totalSec || $remainNs;
+        // Per spec step 21: include seconds if precision is not auto, or if any time units are nonzero.
+        $precisionNotAuto = $fractionalSecondDigits !== 'auto' || $smallestUnit !== null;
+        // Carry seconds overflow into minutes and hours (only when rounding was applied).
+        $wasRounded = is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9;
+        if ($wasRounded && $totalSec >= 60) {
+            $displayMinutes += intdiv($totalSec, 60);
+            $totalSec = $totalSec % 60;
+        }
+        if ($wasRounded && $displayMinutes >= 60) {
+            $displayHours += intdiv($displayMinutes, 60);
+            $displayMinutes = $displayMinutes % 60;
+        }
+        $hasTime = $displayHours || $displayMinutes || $totalSec || $remainNs || $precisionNotAuto;
 
         if ($hasTime) {
             $result .= 'T';
@@ -5416,7 +5488,7 @@ class TemporalObject
             if ($displayMinutes) {
                 $result .= $displayMinutes . 'M';
             }
-            if ($totalSec || $remainNs || ($smallestUnit === 'second' || ($smallestUnit === null && $fractionalSecondDigits !== 'auto'))) {
+            if ($totalSec || $remainNs || $precisionNotAuto) {
                 $secStr = (string) $totalSec;
                 if ($remainNs > 0) {
                     $nsPadded = str_pad((string) $remainNs, 9, '0', STR_PAD_LEFT);
@@ -5531,7 +5603,12 @@ class TemporalObject
             self::getDurationField($dur, 'months'),
             self::getDurationField($dur, 'weeks'),
             self::getDurationField($dur, 'days'),
-            0, 0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         );
         $endDate = self::plainDateAdd($refDate, $dateDur, 1);
         // Now compute difference in the target unit.
@@ -5748,8 +5825,10 @@ class TemporalObject
             'hour' => 4, 'minute' => 5, 'second' => 6,
             'millisecond' => 7, 'microsecond' => 8, 'nanosecond' => 9,
         ];
-        if (isset($allUnitsRank[$unit], $allUnitsRank[$largestUnit])
-            && $allUnitsRank[$unit] < $allUnitsRank[$largestUnit]) {
+        if (
+            isset($allUnitsRank[$unit], $allUnitsRank[$largestUnit])
+            && $allUnitsRank[$unit] < $allUnitsRank[$largestUnit]
+        ) {
             $largestUnit = $unit;
         }
 
@@ -5765,7 +5844,10 @@ class TemporalObject
             $refDate = self::toRelativeToPlainDate($relativeTo);
             // Balance time into whole days + sub-day remainder.
             $tNsBc = self::durationToTotalNs(self::createDurationObject(
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 self::getDurationField($dur, 'hours'),
                 self::getDurationField($dur, 'minutes'),
                 self::getDurationField($dur, 'seconds'),
@@ -5786,7 +5868,12 @@ class TemporalObject
                 self::getDurationField($dur, 'months'),
                 self::getDurationField($dur, 'weeks'),
                 self::getDurationField($dur, 'days') + $extraDays,
-                0, 0, 0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
             );
             $endDate = self::plainDateAdd($refDate, $dateDur, 1);
             // plainDateDifference only supports date units, so cap at day.
@@ -6069,8 +6156,10 @@ class TemporalObject
     private static function toRelativeToPlainDate(JsValue $item): JsObject
     {
         if ($item instanceof JsObject) {
-            if ($item->has('[[IsPlainDate]]') || $item->has('[[IsPlainDateTime]]')
-                || $item->has('[[IsZonedDateTime]]') || $item->has('[[ISOYear]]')) {
+            if (
+                $item->has('[[IsPlainDate]]') || $item->has('[[IsPlainDateTime]]')
+                || $item->has('[[IsZonedDateTime]]') || $item->has('[[ISOYear]]')
+            ) {
                 return self::toPlainDate($item);
             }
             return self::toPlainDate($item);
@@ -8565,13 +8654,40 @@ class TemporalObject
             $absMonths = abs($months);
             $frac = $absMonths / 12.0;
             $totalYearsFloat = $absYears + $frac;
+            $absRm = $rmFinal;
+            if ($sign < 0) {
+                $absRm = match ($rmFinal) {
+                    'ceil' => 'floor', 'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor', 'halfFloor' => 'halfCeil',
+                    default => $rmFinal,
+                };
+            }
             $rounded = self::roundToIncrement(
                 (int) round($totalYearsFloat * 1000000),
                 $riFinal * 1000000,
-                $rmFinal,
+                $absRm,
             );
             $years = $sign * intdiv($rounded, 1000000);
             $months = 0;
+        } elseif ($suFinal === 'month' && $riFinal > 1) {
+            // Round months to increment.
+            $sign = $totalMonths >= 0 ? 1 : -1;
+            $absRm = $rmFinal;
+            if ($sign < 0) {
+                $absRm = match ($rmFinal) {
+                    'ceil' => 'floor', 'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor', 'halfFloor' => 'halfCeil',
+                    default => $rmFinal,
+                };
+            }
+            $rounded = self::roundToIncrement(abs($totalMonths), $riFinal, $absRm);
+            if ($largestUnit === 'year') {
+                $years = $sign * intdiv($rounded, 12);
+                $months = $sign * ($rounded - intdiv($rounded, 12) * 12);
+            } else {
+                $years = 0;
+                $months = $sign * $rounded;
+            }
         }
         return self::createDurationObject($years, $months, 0, 0, 0, 0, 0, 0, 0, 0);
     }
