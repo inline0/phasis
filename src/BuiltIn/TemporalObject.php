@@ -4564,7 +4564,9 @@ class TemporalObject
         } elseif ($relativeTo instanceof JsObject && $relativeTo->has('[[IsZonedDateTime]]')) {
             $parts = self::zonedDateTimeParts($relativeTo);
             $refDate = self::createPlainDateObject(
-                $parts['year'], $parts['month'], $parts['day'],
+                $parts['year'],
+                $parts['month'],
+                $parts['day'],
                 self::getSlotString($relativeTo, '[[Calendar]]'),
             );
         } elseif ($relativeTo instanceof JsString) {
@@ -4586,7 +4588,10 @@ class TemporalObject
         // Add time component as fractional days.
         $timeNs = self::durationToTotalNs(
             self::createDurationObject(
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 self::getDurationField($dur, 'hours'),
                 self::getDurationField($dur, 'minutes'),
                 self::getDurationField($dur, 'seconds'),
@@ -7235,7 +7240,12 @@ class TemporalObject
             $effectiveSign * $months,
             $effectiveSign * $weeks,
             $effectiveSign * $days,
-            0, 0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         );
     }
 
