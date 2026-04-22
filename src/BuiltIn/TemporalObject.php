@@ -510,7 +510,30 @@ class TemporalObject
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
-            return new JsString(self::durationToString($this_, $fractionalSecondDigits, $roundingMode));
+            $smallestUnit = null;
+            if ($options instanceof JsObject) {
+                $su = $options->get('smallestUnit');
+                if (!($su instanceof JsUndefined)) {
+                    $smallestUnit = TypeConversion::toString($su);
+                    $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                    $validUnits = ['second', 'millisecond', 'microsecond', 'nanosecond', 'minute', 'hour'];
+                    if (!in_array($smallestUnit, $validUnits, true)) {
+                        throw new RangeError("Invalid smallestUnit for Duration.toString: {$smallestUnit}");
+                    }
+                    // smallestUnit determines fractionalSecondDigits.
+                    $unitToDigits = [
+                        'minute' => -1, 'hour' => -1, 'second' => 0,
+                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                    ];
+                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
+                    if ($fractionalSecondDigits === -1) {
+                        $fractionalSecondDigits = 0;
+                    }
+                }
+            }
+            return new JsString(
+                self::durationToString($this_, $fractionalSecondDigits, $roundingMode, $smallestUnit)
+            );
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
@@ -4436,7 +4459,7 @@ class TemporalObject
         );
     }
 
-    private static function durationToString(JsValue $dur, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc'): string
+    private static function durationToString(JsValue $dur, string|int $fractionalSecondDigits = 'auto', string $roundingMode = 'trunc', ?string $smallestUnit = null): string
     {
         $years = self::getDurationField($dur, 'years');
         $months = self::getDurationField($dur, 'months');
@@ -4468,20 +4491,45 @@ class TemporalObject
 
         // Time part: balance sub-seconds.
         $totalNs = abs($nanoseconds) + abs($microseconds) * 1000 + abs($milliseconds) * 1000000;
-        $totalSec = abs($seconds) + intdiv($totalNs, 1000000000);
-        $remainNs = $totalNs % 1000000000;
+        // Apply rounding if fractionalSecondDigits < 9.
+        if (is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
+            $digitsToIncr = [
+                0 => 1000000000, 1 => 100000000, 2 => 10000000,
+                3 => 1000000, 4 => 100000, 5 => 10000,
+                6 => 1000, 7 => 100, 8 => 10,
+            ];
+            $incr = $digitsToIncr[$fractionalSecondDigits] ?? 1;
+            $totalTimeNs = (abs($seconds) * 1000000000 + $totalNs);
+            $rounded = self::roundToIncrement($totalTimeNs, $incr, $roundingMode);
+            $totalNs = $rounded % 1000000000;
+            $totalSec = intdiv($rounded, 1000000000);
+        } else {
+            $totalSec = abs($seconds) + intdiv($totalNs, 1000000000);
+            $totalNs = $totalNs % 1000000000;
+        }
+        $remainNs = $totalNs;
+        // Carry over from rounding.
+        $displayMinutes = abs($minutes);
+        $displayHours = abs($hours);
+        if ($smallestUnit === 'minute') {
+            $totalSec += $remainNs > 0 ? 1 : 0;
+            $remainNs = 0;
+            $displayMinutes += intdiv($totalSec, 60);
+            $totalSec = 0;
+            $remainNs = 0;
+        }
 
-        $hasTime = abs($hours) || abs($minutes) || $totalSec || $remainNs;
+        $hasTime = $displayHours || $displayMinutes || $totalSec || $remainNs;
 
         if ($hasTime) {
             $result .= 'T';
-            if (abs($hours)) {
-                $result .= abs($hours) . 'H';
+            if ($displayHours) {
+                $result .= $displayHours . 'H';
             }
-            if (abs($minutes)) {
-                $result .= abs($minutes) . 'M';
+            if ($displayMinutes) {
+                $result .= $displayMinutes . 'M';
             }
-            if ($totalSec || $remainNs) {
+            if ($totalSec || $remainNs || ($smallestUnit === 'second' || ($smallestUnit === null && $fractionalSecondDigits !== 'auto'))) {
                 $secStr = (string) $totalSec;
                 if ($remainNs > 0) {
                     $nsPadded = str_pad((string) $remainNs, 9, '0', STR_PAD_LEFT);
