@@ -8533,6 +8533,9 @@ class TemporalObject
             return 'auto';
         }
         if ($v instanceof JsNumber) {
+            if (!is_finite($v->value) || is_nan($v->value)) {
+                throw new RangeError('fractionalSecondDigits must be 0-9 or auto');
+            }
             $n = (int) $v->value;
             if ($n < 0 || $n > 9) {
                 throw new RangeError('fractionalSecondDigits must be 0-9 or auto');
