@@ -3888,16 +3888,20 @@ class TemporalObject
         // Try as datetime string with TZ annotation.
         [$cleaned] = self::normalizeTemporalString($str);
         // Extract timezone annotation.
-        if (preg_match('/\[([^\]=]+)\]/', $str, $annM)) {
-            $tzName = $annM[1];
+        if (preg_match('/\[(!?)([^\]=]+)\]/', $str, $annM)) {
+            $tzName = $annM[2];
             if (!str_contains($tzName, '=')) {
                 // It's a timezone annotation, not a key=value.
                 if (preg_match('/^[+-]\d{2}:?\d{2}$/', $tzName)) {
                     return $tzName;
                 }
+                $upper = strtoupper($tzName);
+                if ($upper === 'UTC' || $upper === 'GMT') {
+                    return $upper;
+                }
                 try {
-                    new \DateTimeZone($tzName);
-                    return $tzName;
+                    $tzObj = new \DateTimeZone($tzName);
+                    return $tzObj->getName();
                 } catch (\Throwable) {
                     throw new RangeError("Invalid time zone: {$tzName}");
                 }
