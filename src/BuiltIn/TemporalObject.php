@@ -1261,6 +1261,9 @@ class TemporalObject
             $unit = self::getTemporalUnit($roundTo, 'smallestUnit', ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'], true);
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
+            if ($increment > 1) {
+                self::validateRoundingIncrement($unit, $increment);
+            }
             return self::roundPlainTime($this_, $unit, $roundingMode, $increment);
         }, 1);
 
