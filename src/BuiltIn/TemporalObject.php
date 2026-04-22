@@ -3130,6 +3130,26 @@ class TemporalObject
             return self::createZonedDateTimeObject($startNs, $tz, $cal);
         }, 0);
 
+        $d('until', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
+            $ns1 = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            return self::zonedDateTimeDifference($ns1, $ns2, $tz, $opts);
+        }, 1);
+
+        $d('since', function (JsValue $this_, array $args): JsValue {
+            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
+            $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
+            $ns1 = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+            return self::zonedDateTimeDifference($ns2, $ns1, $tz, $opts);
+        }, 1);
+
         $d('equals', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
@@ -3139,7 +3159,11 @@ class TemporalObject
             $tz2 = self::getSlotString($other, '[[TimeZone]]');
             $cal1 = self::getSlotString($this_, '[[Calendar]]');
             $cal2 = self::getSlotString($other, '[[Calendar]]');
-            return new JsBoolean(bccomp($ns1, $ns2, 0) === 0 && $tz1 === $tz2 && $cal1 === $cal2);
+            return new JsBoolean(
+                bccomp($ns1, $ns2, 0) === 0
+                && self::normalizeTimeZoneId($tz1) === self::normalizeTimeZoneId($tz2)
+                && $cal1 === $cal2,
+            );
         }, 1);
 
         $d('add', function (JsValue $this_, array $args): JsValue {
@@ -3621,6 +3645,114 @@ class TemporalObject
             return $offset;
         }
         throw new RangeError("Invalid time zone string: {$str}");
+    }
+
+    /** Compute difference between two ZonedDateTime epoch ns values. */
+    private static function zonedDateTimeDifference(
+        string $ns1,
+        string $ns2,
+        string $tz,
+        JsValue $opts,
+    ): JsObject {
+        $largestUnit = 'hour';
+        $largestUnitExplicit = false;
+        if ($opts instanceof JsObject) {
+            $lu = $opts->get('largestUnit');
+            if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
+                $largestUnit = TypeConversion::toString($lu);
+                if ($largestUnit === 'auto') {
+                    $largestUnit = 'hour';
+                    $largestUnitExplicit = false;
+                } else {
+                    $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                }
+            }
+            $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum)) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+                $riNum = (int) $riNum;
+                if ($riNum < 1 || $riNum > 1_000_000_000) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+            }
+            $rm = $opts->get('roundingMode');
+            if (!($rm instanceof JsUndefined)) {
+                $rmStr = TypeConversion::toString($rm);
+                $validRM = [
+                    'ceil', 'floor', 'expand', 'trunc',
+                    'halfCeil', 'halfFloor', 'halfExpand',
+                    'halfTrunc', 'halfEven',
+                ];
+                if (!in_array($rmStr, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                }
+            }
+            $su = $opts->get('smallestUnit');
+            if (!($su instanceof JsUndefined)) {
+                $smallestUnit = TypeConversion::toString($su);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            }
+        }
+        $calendarUnits = ['year', 'month', 'week', 'day'];
+        if (in_array($largestUnit, $calendarUnits, true)) {
+            // Calendar-aware difference using date parts.
+            $parts1 = self::epochNsToISOParts($ns1, $tz);
+            $parts2 = self::epochNsToISOParts($ns2, $tz);
+            // Create PlainDateTimes and delegate.
+            $dt1 = self::createPlainDateTimeObject(
+                $parts1['year'], $parts1['month'], $parts1['day'],
+                $parts1['hour'], $parts1['minute'], $parts1['second'],
+                $parts1['millisecond'], $parts1['microsecond'],
+                $parts1['nanosecond'], 'iso8601',
+            );
+            $dt2 = self::createPlainDateTimeObject(
+                $parts2['year'], $parts2['month'], $parts2['day'],
+                $parts2['hour'], $parts2['minute'], $parts2['second'],
+                $parts2['millisecond'], $parts2['microsecond'],
+                $parts2['nanosecond'], 'iso8601',
+            );
+            return self::plainDateTimeDifference($dt1, $dt2, $opts);
+        }
+        // Time-only difference using epoch ns.
+        $diffNs = bcsub($ns2, $ns1, 0);
+        $roundIncrement = isset($riNum) ? $riNum : 1;
+        $roundMode = $rmStr ?? 'trunc';
+        $suFinal = $smallestUnit ?? 'nanosecond';
+        if ($suFinal !== 'nanosecond' || $roundIncrement !== 1) {
+            $unitNsMap = [
+                'hour' => '3600000000000',
+                'minute' => '60000000000',
+                'second' => '1000000000',
+                'millisecond' => '1000000',
+                'microsecond' => '1000',
+                'nanosecond' => '1',
+            ];
+            $unitNs = $unitNsMap[$suFinal] ?? '1';
+            $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
+            $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
+        }
+        return self::nsToTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Normalize a timezone ID to a canonical form for comparison. */
+    private static function normalizeTimeZoneId(string $tz): string
+    {
+        $upper = strtoupper($tz);
+        if ($upper === 'UTC' || $upper === 'GMT') {
+            return $upper;
+        }
+        // Normalize numeric offsets to +HH:MM form.
+        if (preg_match('/^([+-])(\d{2}):?(\d{2})?$/', $tz, $m)) {
+            $sign = $m[1];
+            $h = $m[2];
+            $min = $m[3] ?? '00';
+            return "{$sign}{$h}:{$min}";
+        }
+        return $tz;
     }
 
     private static function zonedDateTimeParts(JsValue $zdt): array
