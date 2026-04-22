@@ -719,51 +719,14 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
-            // Reject calendar/timeZone in with().
-            if (!($item->get('calendar') instanceof JsUndefined)) {
-                throw new TypeError('calendar not allowed in with()');
-            }
-            if (!($item->get('timeZone') instanceof JsUndefined)) {
-                throw new TypeError('timeZone not allowed in with()');
-            }
+            // RejectObjectWithCalendarOrTimeZone.
+            self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $any = false;
-            $yv = $item->get('year');
-            if (!($yv instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($yv);
-                if (!is_finite($n)) {
-                    throw new RangeError('year must be finite');
-                }
-                $y = (int) $n;
-                $any = true;
-            }
-            $mcv = $item->get('monthCode');
-            $mv = $item->get('month');
-            if (!($mcv instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($mcv);
-                $mcMonth = self::parseMonthCode($mc);
-                if (!($mv instanceof JsUndefined)) {
-                    $n = TypeConversion::toNumber($mv);
-                    if (!is_finite($n)) {
-                        throw new RangeError('month must be finite');
-                    }
-                    if ((int) $n !== $mcMonth) {
-                        throw new RangeError('month and monthCode disagree');
-                    }
-                }
-                $m = $mcMonth;
-                $any = true;
-            } elseif (!($mv instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($mv);
-                if (!is_finite($n)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $n;
-                $any = true;
-            }
+            // Read fields in ALPHABETICAL order per spec: day, month, monthCode, year.
             $dv = $item->get('day');
             if (!($dv instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($dv);
@@ -773,8 +736,40 @@ class TemporalObject
                 $dd = (int) $n;
                 $any = true;
             }
+            $mv = $item->get('month');
+            if (!($mv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($mv);
+                if (!is_finite($n)) {
+                    throw new RangeError('month must be finite');
+                }
+                $m = (int) $n;
+                $any = true;
+            }
+            $mcv = $item->get('monthCode');
+            if (!($mcv instanceof JsUndefined)) {
+                $mc = TypeConversion::toString($mcv);
+                $mcMonth = self::parseMonthCode($mc);
+                if (!($mv instanceof JsUndefined) && $m !== $mcMonth) {
+                    throw new RangeError('month and monthCode disagree');
+                }
+                $m = $mcMonth;
+                $any = true;
+            }
+            $yv = $item->get('year');
+            if (!($yv instanceof JsUndefined)) {
+                $n = TypeConversion::toNumber($yv);
+                if (!is_finite($n)) {
+                    throw new RangeError('year must be finite');
+                }
+                $y = (int) $n;
+                $any = true;
+            }
             if (!$any) {
                 throw new TypeError('at least one date property required');
+            }
+            // Validate basic bounds before reading options (negative day/month always invalid).
+            if ($m < 1 || $dd < 1) {
+                throw new RangeError('month and day must be >= 1');
             }
             // Read options AFTER fields per spec.
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
@@ -1715,7 +1710,16 @@ class TemporalObject
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
             // Use createPlainDateTimeObject for range validation.
             $result = self::createPlainDateTimeObject(
-                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $cal,
+                $y,
+                $m,
+                $dd,
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $ns,
+                $cal,
             );
             // Copy slots to $this_ for proper prototype chain.
             $this_->setPrototype($proto);
@@ -2213,13 +2217,8 @@ class TemporalObject
             }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
-            // Reject calendar/timeZone in with().
-            if (!($item->get('calendar') instanceof JsUndefined)) {
-                throw new TypeError('calendar not allowed in with()');
-            }
-            if (!($item->get('timeZone') instanceof JsUndefined)) {
-                throw new TypeError('timeZone not allowed in with()');
-            }
+            // RejectObjectWithCalendarOrTimeZone.
+            self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             // Read partial fields from the item in alphabetical order.
@@ -2673,6 +2672,31 @@ class TemporalObject
         }, 2);
         $ctor->setConstructable();
 
+        // ZonedDateTime.from(item [, options])
+        $ctor->defineOwnProperty('from', PropertyDescriptor::data(
+            JsFunction::fromCallable('from', function (JsValue $this_, array $args) use ($proto): JsValue {
+                $item = $args[0] ?? JsUndefined::instance();
+                $rawOptions = $args[1] ?? JsUndefined::instance();
+                return self::toZonedDateTime($item, $rawOptions);
+            }, 1),
+            true,
+            false,
+            true,
+        ));
+
+        // ZonedDateTime.compare(one, two)
+        $ctor->defineOwnProperty('compare', PropertyDescriptor::data(
+            JsFunction::fromCallable('compare', function (JsValue $this_, array $args): JsValue {
+                $one = self::toZonedDateTimeNs($args[0] ?? JsUndefined::instance());
+                $two = self::toZonedDateTimeNs($args[1] ?? JsUndefined::instance());
+                $cmp = bccomp($one, $two, 0);
+                return new JsNumber((float) $cmp);
+            }, 2),
+            true,
+            false,
+            true,
+        ));
+
         $ctor->defineOwnProperty('prototype', PropertyDescriptor::data($proto, false, false, false));
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data($ctor, true, false, true));
 
@@ -2680,6 +2704,136 @@ class TemporalObject
         self::$zonedDateTimeProto = $proto;
 
         return $proto;
+    }
+
+    /** Convert an item to a ZonedDateTime. */
+    private static function toZonedDateTime(JsValue $item, ?JsValue $rawOptions = null): JsObject
+    {
+        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+            return $item;
+        }
+        if ($item instanceof JsString) {
+            return self::parseZonedDateTimeString($item->value);
+        }
+        if ($item instanceof JsObject) {
+            // Property bag with timeZone required.
+            $tz = $item->get('timeZone');
+            if ($tz instanceof JsUndefined) {
+                throw new TypeError('ZonedDateTime from object requires timeZone');
+            }
+            $timeZone = TypeConversion::toString($tz);
+            // Get date/time fields.
+            $year = $item->get('year');
+            $month = $item->get('month');
+            $day = $item->get('day');
+            if ($year instanceof JsUndefined || $month instanceof JsUndefined || $day instanceof JsUndefined) {
+                throw new TypeError('ZonedDateTime from object requires year, month, day');
+            }
+            $y = (int) TypeConversion::toNumber($year);
+            $mo = (int) TypeConversion::toNumber($month);
+            $d = (int) TypeConversion::toNumber($day);
+            $h = 0;
+            $min = 0;
+            $s = 0;
+            $ms = 0;
+            $us = 0;
+            $ns = 0;
+            $hv = $item->get('hour');
+            if (!($hv instanceof JsUndefined)) {
+                $h = (int) TypeConversion::toNumber($hv);
+            }
+            $minv = $item->get('minute');
+            if (!($minv instanceof JsUndefined)) {
+                $min = (int) TypeConversion::toNumber($minv);
+            }
+            $sv = $item->get('second');
+            if (!($sv instanceof JsUndefined)) {
+                $s = (int) TypeConversion::toNumber($sv);
+            }
+            $msv = $item->get('millisecond');
+            if (!($msv instanceof JsUndefined)) {
+                $ms = (int) TypeConversion::toNumber($msv);
+            }
+            $usv = $item->get('microsecond');
+            if (!($usv instanceof JsUndefined)) {
+                $us = (int) TypeConversion::toNumber($usv);
+            }
+            $nsv = $item->get('nanosecond');
+            if (!($nsv instanceof JsUndefined)) {
+                $ns = (int) TypeConversion::toNumber($nsv);
+            }
+            $cal = 'iso8601';
+            $calV = $item->get('calendar');
+            if (!($calV instanceof JsUndefined)) {
+                $cal = strtolower(TypeConversion::toString($calV));
+            }
+            $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
+            return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+        }
+        $str = TypeConversion::toString($item);
+        return self::parseZonedDateTimeString($str);
+    }
+
+    private static function toZonedDateTimeNs(JsValue $item): string
+    {
+        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+            return self::getSlotString($item, '[[EpochNanoseconds]]');
+        }
+        $zdt = self::toZonedDateTime($item);
+        return self::getSlotString($zdt, '[[EpochNanoseconds]]');
+    }
+
+    private static function parseZonedDateTimeString(string $str): JsObject
+    {
+        [$str, $cal] = self::normalizeTemporalString($str);
+        // Parse the datetime part and timezone annotation.
+        // Format: YYYY-MM-DDTHH:MM:SS.frac+/-HH:MM[TimeZone]
+        $datePart = '([+-]?\d{4,6})(?:-(\d{2})-(\d{2})|(\d{2})(\d{2}))';
+        $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?' ;
+        $tzPart = '([Zz]|[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)';
+        $annPart = '(?:\\[([^\\]]+)\\])?';
+        $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}{$annPart}/";
+        if (!preg_match($pattern, $str, $m)) {
+            throw new RangeError("Invalid ZonedDateTime string: {$str}");
+        }
+        $year = (int) $m[1];
+        $month = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : (int) $m[4];
+        $day = isset($m[3]) && $m[3] !== '' ? (int) $m[3] : (int) $m[5];
+        $hour = (int) $m[6];
+        $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
+        $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
+        if ($sec === 60) {
+            $sec = 59;
+        }
+        $frac = isset($m[9]) && $m[9] !== '' ? str_pad($m[9], 9, '0') : '000000000';
+        $ms = (int) substr($frac, 0, 3);
+        $us = (int) substr($frac, 3, 3);
+        $ns = (int) substr($frac, 6, 3);
+        // Timezone annotation takes priority, fallback to offset.
+        $timeZone = isset($m[11]) && $m[11] !== '' ? $m[11] : $m[10];
+        if (strtoupper($timeZone) === 'Z') {
+            $timeZone = 'UTC';
+        }
+        $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+        return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+    }
+
+    private static function createZonedDateTimeObject(string $ns, string $timeZone, string $cal): JsObject
+    {
+        self::validateInstantRange($ns);
+        $obj = new JsObject(self::$zonedDateTimeProto);
+        $obj->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(new JsString($ns), false, false, false));
+        $obj->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(new JsString($timeZone), false, false, false));
+        $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(new JsString($cal), false, false, false));
+        $obj->defineOwnProperty('[[IsZonedDateTime]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
+        return $obj;
+    }
+
+    private static function zonedDateTimeParts(JsValue $zdt): array
+    {
+        $ns = self::getSlotString($zdt, '[[EpochNanoseconds]]');
+        $tz = self::getSlotString($zdt, '[[TimeZone]]');
+        return self::epochNsToISOParts($ns, $tz);
     }
 
     // -----------------------------------------------------------------------
@@ -2882,6 +3036,24 @@ class TemporalObject
             throw new TypeError("this is not a {$typeName}");
         }
         return true;
+    }
+
+    /** RejectObjectWithCalendarOrTimeZone per spec. */
+    private static function rejectObjectWithCalendarOrTimeZone(JsObject $item): void
+    {
+        // Reject known Temporal types with brands.
+        $brands = ['[[IsPlainDate]]', '[[IsPlainDateTime]]', '[[IsPlainMonthDay]]', '[[IsPlainTime]]', '[[IsPlainYearMonth]]', '[[IsZonedDateTime]]'];
+        foreach ($brands as $brand) {
+            if ($item->has($brand)) {
+                throw new TypeError('Temporal object not allowed in with()');
+            }
+        }
+        if (!($item->get('calendar') instanceof JsUndefined)) {
+            throw new TypeError('calendar not allowed in with()');
+        }
+        if (!($item->get('timeZone') instanceof JsUndefined)) {
+            throw new TypeError('timeZone not allowed in with()');
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -3128,10 +3300,7 @@ class TemporalObject
 
     private static function parseInstantString(string $str): string
     {
-        [$str, $cal] = self::normalizeTemporalString($str);
-        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
-            throw new RangeError("Invalid calendar: {$cal}");
-        }
+        [$str] = self::normalizeTemporalString($str);
         // Reject extended year without sign.
         if (preg_match('/^\d{5,}-/', $str)) {
             throw new RangeError("Extended year requires sign: {$str}");
@@ -3223,6 +3392,8 @@ class TemporalObject
         }
         // Subtract the offset.
         $epochNs = bcsub($epochNs, $offsetNs, 0);
+
+        self::validateInstantRange($epochNs);
 
         return $epochNs;
     }
@@ -3365,27 +3536,19 @@ class TemporalObject
         return $obj;
     }
 
-    private static function createZonedDateTimeObject(string $ns, string $tz, string $cal): JsObject
-    {
-        $obj = new JsObject(self::$zonedDateTimeProto);
-        $obj->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(new JsString($ns), false, false, false));
-        $obj->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(new JsString($tz), false, false, false));
-        $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(new JsString($cal), false, false, false));
-        $obj->defineOwnProperty('[[IsZonedDateTime]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
-        return $obj;
-    }
+
 
     private static function createDurationObject(
-        int $years,
-        int $months,
-        int $weeks,
-        int $days,
-        int $hours,
-        int $minutes,
-        int $seconds,
-        int $milliseconds,
-        int $microseconds,
-        int $nanoseconds,
+        int|float $years,
+        int|float $months,
+        int|float $weeks,
+        int|float $days,
+        int|float $hours,
+        int|float $minutes,
+        int|float $seconds,
+        int|float $milliseconds,
+        int|float $microseconds,
+        int|float $nanoseconds,
     ): JsObject {
         $fields = [$years, $months, $weeks, $days, $hours, $minutes, $seconds, $milliseconds, $microseconds, $nanoseconds];
         self::validateDurationFields($fields, true);
@@ -3469,7 +3632,10 @@ class TemporalObject
         $maxSeconds = 9007199254740991; // 2^53 - 1
 
         // [years, months, weeks, days, hours, minutes, seconds, ms, us, ns]
-        $abs = array_map('abs', $fields);
+        $abs = array_map(fn ($v) => abs($v), $fields);
+        // Convert to bc-safe strings.
+        $toStr = fn ($v) => abs($v) < 1e15 ? (string) (int) abs($v) : number_format(abs($v), 0, '.', '');
+        $absStr = array_map($toStr, $fields);
 
         if ($abs[0] > $maxYMW) {
             throw new RangeError('years out of range');
@@ -3481,39 +3647,33 @@ class TemporalObject
             throw new RangeError('weeks out of range');
         }
 
-        // Balance sub-second into seconds for range check (use strings for large values).
-        $totalNs = (string) $abs[9] + $abs[8] * 1000 + $abs[7] * 1000000;
-        if (is_float($totalNs)) {
-            // Overflow - use bcmath.
-            $totalNs = bcadd(bcadd((string) $abs[9], bcmul((string) $abs[8], '1000', 0), 0), bcmul((string) $abs[7], '1000000', 0), 0);
-            $extraSec = (int) bcdiv($totalNs, '1000000000', 0);
-        } else {
-            $extraSec = intdiv((int) $totalNs, 1000000000);
-        }
-        $balancedSec = $abs[6] + $extraSec;
+        // Balance sub-second into seconds for range check (use bcmath for safety).
+        $totalNs = bcadd(bcadd($absStr[9], bcmul($absStr[8], '1000', 0), 0), bcmul($absStr[7], '1000000', 0), 0);
+        $extraSec = bcdiv($totalNs, '1000000000', 0);
+        $balancedSec = bcadd($absStr[6], $extraSec, 0);
 
         // Balance seconds into minutes.
-        $extraMin = intdiv($balancedSec, 60);
-        $balancedMin = $abs[5] + $extraMin;
+        $extraMin = bcdiv($balancedSec, '60', 0);
+        $balancedMin = bcadd($absStr[5], $extraMin, 0);
 
         // Balance minutes into hours.
-        $extraHours = intdiv($balancedMin, 60);
-        $balancedHours = $abs[4] + $extraHours;
+        $extraHours = bcdiv($balancedMin, '60', 0);
+        $balancedHours = bcadd($absStr[4], $extraHours, 0);
 
         // Balance hours into days.
-        $extraDays = intdiv($balancedHours, 24);
-        $balancedDays = $abs[3] + $extraDays;
+        $extraDays = bcdiv($balancedHours, '24', 0);
+        $balancedDays = bcadd($absStr[3], $extraDays, 0);
 
-        if ($balancedDays > $maxDays) {
+        if (bccomp($balancedDays, (string) $maxDays, 0) > 0) {
             throw new RangeError('days out of range');
         }
-        if ($balancedHours > $maxHours) {
+        if (bccomp($balancedHours, (string) $maxHours, 0) > 0) {
             throw new RangeError('hours out of range');
         }
-        if ($balancedMin > $maxMinutes) {
+        if (bccomp($balancedMin, (string) $maxMinutes, 0) > 0) {
             throw new RangeError('minutes out of range');
         }
-        if ($balancedSec > $maxSeconds) {
+        if (bccomp($balancedSec, (string) $maxSeconds, 0) > 0) {
             throw new RangeError('seconds out of range');
         }
     }
@@ -3573,7 +3733,7 @@ class TemporalObject
                 if (floor($n) !== $n) {
                     throw new RangeError("fractional Duration field: {$f}");
                 }
-                $read[$f] = (int) $n;
+                $read[$f] = $n;
                 $any = true;
             }
         }
@@ -3809,40 +3969,56 @@ class TemporalObject
     private static function durationToTotalNs(JsValue $dur): string
     {
         // Only time components can be converted to nanoseconds without a reference point.
-        $days = self::getDurationField($dur, 'days');
-        $hours = self::getDurationField($dur, 'hours');
-        $minutes = self::getDurationField($dur, 'minutes');
-        $seconds = self::getDurationField($dur, 'seconds');
-        $milliseconds = self::getDurationField($dur, 'milliseconds');
-        $microseconds = self::getDurationField($dur, 'microseconds');
-        $nanoseconds = self::getDurationField($dur, 'nanoseconds');
+        $days = self::getDurationFieldStr($dur, 'days');
+        $hours = self::getDurationFieldStr($dur, 'hours');
+        $minutes = self::getDurationFieldStr($dur, 'minutes');
+        $seconds = self::getDurationFieldStr($dur, 'seconds');
+        $milliseconds = self::getDurationFieldStr($dur, 'milliseconds');
+        $microseconds = self::getDurationFieldStr($dur, 'microseconds');
+        $nanoseconds = self::getDurationFieldStr($dur, 'nanoseconds');
 
         $totalNs = bcadd(
             bcadd(
                 bcadd(
-                    bcmul((string) $days, '86400000000000', 0),
-                    bcmul((string) $hours, '3600000000000', 0),
+                    bcmul($days, '86400000000000', 0),
+                    bcmul($hours, '3600000000000', 0),
                     0,
                 ),
                 bcadd(
-                    bcmul((string) $minutes, '60000000000', 0),
-                    bcmul((string) $seconds, '1000000000', 0),
+                    bcmul($minutes, '60000000000', 0),
+                    bcmul($seconds, '1000000000', 0),
                     0,
                 ),
                 0,
             ),
             bcadd(
                 bcadd(
-                    bcmul((string) $milliseconds, '1000000', 0),
-                    bcmul((string) $microseconds, '1000', 0),
+                    bcmul($milliseconds, '1000000', 0),
+                    bcmul($microseconds, '1000', 0),
                     0,
                 ),
-                (string) $nanoseconds,
+                $nanoseconds,
                 0,
             ),
             0,
         );
         return $totalNs;
+    }
+
+    /** Get a duration field as bcmath string to avoid PHP int overflow. */
+    private static function getDurationFieldStr(JsValue $obj, string $field): string
+    {
+        if (!$obj instanceof JsObject) {
+            return '0';
+        }
+        $v = $obj->get("[[{$field}]]");
+        if ($v instanceof JsNumber) {
+            if (abs($v->value) < 1e15) {
+                return (string) (int) $v->value;
+            }
+            return number_format($v->value, 0, '.', '');
+        }
+        return '0';
     }
 
     private static function durationTotalNs(JsValue $dur, string $unit): float
@@ -4238,6 +4414,17 @@ class TemporalObject
                 self::getSlotInt($item, '[[ISONanosecond]]'),
             );
         }
+        if ($item instanceof JsObject && $item->has('[[IsZonedDateTime]]')) {
+            $parts = self::zonedDateTimeParts($item);
+            return self::createPlainTimeObject(
+                $parts['hour'],
+                $parts['minute'],
+                $parts['second'],
+                $parts['millisecond'],
+                $parts['microsecond'],
+                $parts['nanosecond'],
+            );
+        }
         if ($item instanceof JsObject) {
             // Property bag.
             $h = 0;
@@ -4296,10 +4483,7 @@ class TemporalObject
 
     private static function parsePlainTimeString(string $str): JsObject
     {
-        [$str, $cal] = self::normalizeTemporalString($str);
-        if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
-            throw new RangeError("Invalid calendar: {$cal}");
-        }
+        [$str] = self::normalizeTemporalString($str);
         // Reject UTC designator (Z) for PlainTime.
         $noAnnot = preg_replace('/\[.*?\]/', '', $str);
         if (preg_match('/[Zz]/', $noAnnot)) {
@@ -4311,16 +4495,38 @@ class TemporalObject
         if (preg_match('/^-0{4,6}[-\d]/', $str)) {
             throw new RangeError("reject minus zero as extended year: {$str}");
         }
-        // Strip offset and annotations for time-only parsing.
+        // Strip annotations for time-only parsing.
         $cleanStr = preg_replace('/(?:\[.*?\])+$/', '', $str);
-        $cleanStr = preg_replace('/[Zz+\-]\d{2}(?::?\d{2})?$/', '', $cleanStr);
+        // Strip offset.
+        $cleanStr = preg_replace('/[+\-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d+)?)?)?$/', '', $cleanStr);
         // Strip leading T/t designator for time-only strings.
-        if (preg_match('/^[Tt]/', $cleanStr)) {
+        $hasT = (bool) preg_match('/^[Tt]/', $cleanStr);
+        if ($hasT) {
             $cleanStr = substr($cleanStr, 1);
+        }
+        // Reject space-prefixed strings (space is not a substitute for T).
+        if (preg_match('/^ /', $str)) {
+            throw new RangeError("space is not accepted as a substitute for T prefix: '{$str}'");
+        }
+        // Reject ambiguous strings (could be date-like) without T prefix.
+        if (!$hasT) {
+            $stripped = $cleanStr;
+            // YYYY-MM, YYYY-MM-DD, MMDD, YYYYMM, MM-DD patterns.
+            if (
+                preg_match('/^\d{4}-\d{2}$/', $stripped) // YYYY-MM
+                || preg_match('/^\d{4}\d{2}$/', $stripped) // YYYYMM
+                || preg_match('/^\d{4}$/', $stripped) // MMDD or HHMM
+                || preg_match('/^\d{2}-\d{2}$/', $stripped) // MM-DD or HH-UU
+            ) {
+                throw new RangeError("'{$str}' is ambiguous and requires T prefix");
+            }
         }
         $pattern = '/^(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?$/';
         if (!preg_match($pattern, $cleanStr, $m)) {
             // Also try datetime string and extract time.
+            if ($hasT) {
+                throw new RangeError("Invalid PlainTime string: {$str}");
+            }
             $pattern2 = '/[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?/';
             if (!preg_match($pattern2, $cleanStr, $m)) {
                 throw new RangeError("Invalid PlainTime string: {$str}");
@@ -5198,6 +5404,16 @@ class TemporalObject
             $content = $ann[2];
             if (!str_contains($content, '=')) {
                 $tzCount++;
+                // Reject sub-minute offsets in timezone annotations.
+                // Matches both colon-separated (+HH:MM:SS) and compact (+HHMMSS) forms.
+                if (
+                    preg_match('/^[+-]\d{2}:?\d{2}:?\d{2}/', $content)
+                    || preg_match('/^[+-]\d{2}:?\d{2}[.,]/', $content)
+                ) {
+                    throw new RangeError(
+                        "ISO strings cannot have sub-minute offsets in time zone annotations: {$str}"
+                    );
+                }
             }
         }
         if ($tzCount > 1) {
@@ -5502,7 +5718,11 @@ class TemporalObject
             $ri = $options->get('roundingIncrement');
             if (!($ri instanceof JsUndefined)) {
                 $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                if (!is_finite($riNum)) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+                $riNum = (int) $riNum;
+                if ($riNum < 1 || $riNum > 1_000_000_000) {
                     throw new RangeError("Invalid roundingIncrement");
                 }
             }
@@ -5519,6 +5739,10 @@ class TemporalObject
             if (!($su instanceof JsUndefined)) {
                 $smallestUnit = TypeConversion::toString($su);
                 $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+            }
+            // Validate roundingIncrement divides evenly.
+            if (isset($riNum) && $riNum > 1) {
+                self::validateRoundingIncrement($smallestUnit, $riNum);
             }
             // Validate largestUnit >= smallestUnit.
             $allUnits = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
@@ -5683,9 +5907,11 @@ class TemporalObject
         $opts = self::getOptionsObject($options);
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'second';
+        $largestUnitExplicit = false;
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
+                $largestUnitExplicit = true;
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
                 $instantLU = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
@@ -5697,7 +5923,11 @@ class TemporalObject
             $ri = $opts->get('roundingIncrement');
             if (!($ri instanceof JsUndefined)) {
                 $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum) || $riNum < 1 || floor($riNum) !== $riNum) {
+                if (!is_finite($riNum)) {
+                    throw new RangeError("Invalid roundingIncrement");
+                }
+                $riNum = (int) $riNum;
+                if ($riNum < 1 || $riNum > 1_000_000_000) {
                     throw new RangeError("Invalid roundingIncrement");
                 }
             }
@@ -5723,10 +5953,18 @@ class TemporalObject
                     throw new RangeError("Invalid smallest unit for Instant: {$smallestUnit}");
                 }
             }
-            // Validate largestUnit >= smallestUnit.
+            // Validate roundingIncrement divides evenly into next unit.
+            if (isset($riNum) && $riNum > 1) {
+                self::validateRoundingIncrement($smallestUnit, $riNum);
+            }
+            // Default largestUnit to smallestUnit if smallestUnit is larger.
             $unitOrder = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
             $liIdx = array_search($largestUnit, $unitOrder);
             $siIdx = array_search($smallestUnit, $unitOrder);
+            if (!$largestUnitExplicit && $siIdx !== false && $liIdx !== false && $siIdx < $liIdx) {
+                $largestUnit = $smallestUnit;
+                $liIdx = $siIdx;
+            }
             if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
                 throw new RangeError("largestUnit must be >= smallestUnit");
             }
@@ -5748,6 +5986,25 @@ class TemporalObject
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
+    }
+
+    /** Validate that roundingIncrement divides evenly into the next highest unit. */
+    private static function validateRoundingIncrement(string $unit, int $increment): void
+    {
+        $maxIncrements = [
+            'hour' => 24,
+            'minute' => 60,
+            'second' => 60,
+            'millisecond' => 1000,
+            'microsecond' => 1000,
+            'nanosecond' => 1000,
+        ];
+        $max = $maxIncrements[$unit] ?? null;
+        if ($max !== null) {
+            if ($increment >= $max || $max % $increment !== 0) {
+                throw new RangeError("Invalid roundingIncrement for {$unit}: {$increment}");
+            }
+        }
     }
 
     /** Round a nanosecond value to the nearest increment. */
@@ -5785,18 +6042,27 @@ class TemporalObject
             case 'halfEven':
                 $half = bcdiv($incrementNs, '2', 0);
                 $cmp = bccomp($remainder, $half, 0);
-                if ($cmp > 0) {
+                $isExact = bccomp(bcmul($half, '2', 0), $incrementNs, 0) === 0;
+                if ($cmp > 0 || ($cmp === 0 && !$isExact)) {
                     $rounded = bcadd($quotient, '1', 0);
-                } elseif ($cmp === 0) {
-                    // Tie-breaking per mode.
-                    if ($mode === 'halfExpand' || $mode === 'halfCeil') {
+                } elseif ($cmp === 0 && $isExact) {
+                    // Exact tie-breaking per mode.
+                    if ($mode === 'halfExpand') {
                         $rounded = bcadd($quotient, '1', 0);
+                    } elseif ($mode === 'halfCeil') {
+                        if ($sign > 0) {
+                            $rounded = bcadd($quotient, '1', 0);
+                        }
+                    } elseif ($mode === 'halfFloor') {
+                        if ($sign < 0) {
+                            $rounded = bcadd($quotient, '1', 0);
+                        }
                     } elseif ($mode === 'halfEven') {
                         if (bcmod($quotient, '2') !== '0') {
                             $rounded = bcadd($quotient, '1', 0);
                         }
                     }
-                    // halfTrunc and halfFloor: stay at quotient.
+                    // halfTrunc: stay at quotient.
                 }
                 break;
         }
