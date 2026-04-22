@@ -3880,14 +3880,17 @@ class TemporalObject
                 throw new RangeError("Invalid time zone: {$str}");
             }
         }
-        // UTC offset: +HH:MM or -HH:MM (no seconds).
-        if (preg_match('/^[+-](\d{2}):?(\d{2})$/', $str, $m)) {
+        // UTC offset: +HH, +HH:MM or -HH:MM (no seconds).
+        if (preg_match('/^[+-](\d{2})(?::?(\d{2}))?$/', $str, $m)) {
             $h = (int) $m[1];
-            $min = (int) $m[2];
+            $min = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
             if ($h > 23 || $min > 59) {
                 throw new RangeError("Invalid UTC offset: {$str}");
             }
-            return $str;
+            // Normalize to +HH:MM.
+            $sign = $str[0];
+            return "{$sign}" . str_pad((string) $h, 2, '0', STR_PAD_LEFT)
+                . ':' . str_pad((string) $min, 2, '0', STR_PAD_LEFT);
         }
         // Reject sub-minute offsets.
         if (preg_match('/^[+-]\d{2}:?\d{2}:?\d{2}/', $str)) {
