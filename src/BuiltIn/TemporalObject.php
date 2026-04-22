@@ -6520,8 +6520,12 @@ class TemporalObject
         );
         $result = "{$dateStr}T{$timeStr}";
         $cal = self::getSlotString($this_, '[[Calendar]]');
-        if ($calendarName === 'always' || ($calendarName !== 'never' && $cal !== 'iso8601')) {
-            $result .= "[u-ca={$cal}]";
+        $showCal = $calendarName === 'always'
+            || $calendarName === 'critical'
+            || ($calendarName !== 'never' && $cal !== 'iso8601');
+        if ($showCal) {
+            $prefix = $calendarName === 'critical' ? '!' : '';
+            $result .= "[{$prefix}u-ca={$cal}]";
         }
         return $result;
     }
