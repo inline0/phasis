@@ -5602,11 +5602,19 @@ class TemporalObject
             if (!($lu instanceof JsUndefined)) {
                 $largestUnit = TypeConversion::toString($lu);
                 $largestUnit = self::canonicalTemporalUnit($largestUnit);
+                $dateUnitsLU = ['year', 'month', 'week', 'day'];
+                if (!in_array($largestUnit, $dateUnitsLU, true)) {
+                    throw new RangeError("Invalid largest unit for date: {$largestUnit}");
+                }
             }
             $su = $opts->get('smallestUnit');
             if (!($su instanceof JsUndefined)) {
                 $smallestUnit = TypeConversion::toString($su);
-                self::canonicalTemporalUnit($smallestUnit);
+                $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                $dateUnits = ['year', 'month', 'week', 'day'];
+                if (!in_array($smallestUnit, $dateUnits, true)) {
+                    throw new RangeError("Invalid smallest unit for date: {$smallestUnit}");
+                }
             }
             $rm = $opts->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
