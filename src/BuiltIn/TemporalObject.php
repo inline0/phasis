@@ -1543,6 +1543,7 @@ class TemporalObject
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $any = false;
+            $monthWasSet = false;
             // Read fields in ALPHABETICAL order per spec:
             // day, hour, microsecond, millisecond, minute, month, monthCode, nanosecond, second, year
             $allFields = [
@@ -1559,13 +1560,20 @@ class TemporalObject
                     }
                     $ref = (int) $n;
                     $any = true;
+                    if ($name === 'month') {
+                        $monthWasSet = true;
+                    }
                 }
             }
             unset($ref);
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($mcv);
-                $m = self::parseMonthCode($mc);
+                $mcMonth = self::parseMonthCode($mc);
+                if ($monthWasSet && $m !== $mcMonth) {
+                    throw new RangeError('month and monthCode must agree');
+                }
+                $m = $mcMonth;
                 $any = true;
             }
             $nsv = $item->get('nanosecond');
