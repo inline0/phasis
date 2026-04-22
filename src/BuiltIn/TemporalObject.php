@@ -91,6 +91,35 @@ class TemporalObject
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
             $fractionalSecondDigits = self::getFractionalSecondDigits($options);
             $roundingMode = self::getRoundingMode($options, 'trunc');
+            $smallestUnit = null;
+            if ($options instanceof JsObject) {
+                $su = $options->get('smallestUnit');
+                if (!($su instanceof JsUndefined)) {
+                    $smallestUnit = TypeConversion::toString($su);
+                    $smallestUnit = self::canonicalTemporalUnit($smallestUnit);
+                    $validUnits = ['minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                    if (!in_array($smallestUnit, $validUnits, true)) {
+                        throw new RangeError("Invalid smallestUnit for toString: {$smallestUnit}");
+                    }
+                    // smallestUnit overrides fractionalSecondDigits.
+                    $unitToDigits = [
+                        'minute' => 0, 'second' => 0,
+                        'millisecond' => 3, 'microsecond' => 6, 'nanosecond' => 9,
+                    ];
+                    $fractionalSecondDigits = $unitToDigits[$smallestUnit];
+                }
+            }
+            // Round the ns if needed.
+            if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
+                $unitNsMap = [
+                    'minute' => '60000000000',
+                    'second' => '1000000000',
+                    'millisecond' => '1000000',
+                    'microsecond' => '1000',
+                ];
+                $incrementNs = $unitNsMap[$smallestUnit] ?? '1';
+                $ns = self::roundNs($ns, $incrementNs, $roundingMode);
+            }
             $timeZone = null;
             if ($options instanceof JsObject && $options->has('timeZone')) {
                 $tz = $options->get('timeZone');
