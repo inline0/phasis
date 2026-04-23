@@ -6794,6 +6794,16 @@ class Interpreter
             // HTMLDDA's [[Call]] returns null, which fails the object check.
             throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
         }
+        // Per spec GetMethod: if the property is present but neither callable
+        // nor null/undefined, throw TypeError before falling back to
+        // Symbol.iterator. This avoids observing the [@@iterator] getter when
+        // the async hint already saw an incompatible @@asyncIterator value.
+        if (
+            !($asyncIterMethod instanceof JsUndefined)
+            && !($asyncIterMethod instanceof JsNull)
+        ) {
+            throw new TypeError('Symbol.asyncIterator is not a function');
+        }
 
         // Fall back to Symbol.iterator: wrap in AsyncFromSyncIterator.
         $syncIterator = $this->getIterator($iterable);
