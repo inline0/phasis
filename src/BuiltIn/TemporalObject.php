@@ -118,7 +118,7 @@ class TemporalObject
                     'microsecond' => '1000',
                 ];
                 $incrementNs = $unitNsMap[$smallestUnit] ?? '1';
-                $ns = self::roundNs($ns, $incrementNs, $roundingMode);
+                $ns = self::roundInstantNs($ns, $incrementNs, $roundingMode);
             } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
                 // Round to the specified number of fractional digits.
                 $digitsToNs = [
@@ -127,7 +127,7 @@ class TemporalObject
                     6 => '1000', 7 => '100', 8 => '10',
                 ];
                 if (isset($digitsToNs[$fractionalSecondDigits])) {
-                    $ns = self::roundNs($ns, $digitsToNs[$fractionalSecondDigits], $roundingMode);
+                    $ns = self::roundInstantNs($ns, $digitsToNs[$fractionalSecondDigits], $roundingMode);
                 }
             }
             $timeZone = null;
@@ -224,7 +224,7 @@ class TemporalObject
             }
             $unitNs = self::temporalUnitToNs($unit);
             $incrementNs = bcmul((string) $increment, $unitNs, 0);
-            $rounded = self::roundNs($ns, $incrementNs, $roundingMode);
+            $rounded = self::roundInstantNs($ns, $incrementNs, $roundingMode);
             self::validateInstantRange($rounded);
             return self::createInstantObject($rounded);
         }, 1);
@@ -249,7 +249,6 @@ class TemporalObject
             $arg = $args[0] ?? JsUndefined::instance();
             $ns = self::toBigIntNsFromArg($arg);
             self::validateInstantRange($ns);
-            $this_->setPrototype($proto);
             $this_->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(
                 new JsString($ns),
                 false,
@@ -549,6 +548,13 @@ class TemporalObject
             if (($hasCalUnit || $calSmallest || $calLargest) && $relativeTo === null) {
                 throw new RangeError('relativeTo is required for rounding durations with calendar units');
             }
+            // Per spec: validate target epoch ns when ZonedDateTime relativeTo.
+            if ($rtv instanceof JsObject && $rtv->has('[[IsZonedDateTime]]')) {
+                $epochNs = self::getSlotString($rtv, '[[EpochNanoseconds]]');
+                $durNs = self::durationToTotalNs($this_);
+                $targetNs = bcadd($epochNs, $durNs, 0);
+                self::validateInstantRange($targetNs);
+            }
             return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
         }, 1);
 
@@ -590,6 +596,17 @@ class TemporalObject
             }
             if ($relativeTo !== null && $hasCalUnit) {
                 return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
+            }
+            // Per spec: when zonedRelativeTo is defined, validate target epoch ns.
+            if (
+                $relativeTo !== null
+                && $relativeTo instanceof JsObject
+                && $relativeTo->has('[[IsZonedDateTime]]')
+            ) {
+                $epochNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
+                $durNs = self::durationToTotalNs($this_);
+                $targetNs = bcadd($epochNs, $durNs, 0);
+                self::validateInstantRange($targetNs);
             }
             return new JsNumber(self::durationTotalNs($this_, $unit));
         }, 1);
@@ -736,6 +753,17 @@ class TemporalObject
                 if ($relativeTo !== null) {
                     // Validate and parse relativeTo even when not strictly needed.
                     $refDate = self::toRelativeToPlainDate($relativeTo);
+                    // Per spec: validate target epoch ns for ZonedDateTime.
+                    if (
+                        $relativeTo instanceof JsObject
+                        && $relativeTo->has('[[IsZonedDateTime]]')
+                    ) {
+                        $epochNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
+                        $durNs1 = self::durationToTotalNs($one);
+                        $durNs2 = self::durationToTotalNs($two);
+                        self::validateInstantRange(bcadd($epochNs, $durNs1, 0));
+                        self::validateInstantRange(bcadd($epochNs, $durNs2, 0));
+                    }
                 }
                 if ($relativeTo !== null && $hasCalUnit) {
                     // Compare by adding both durations to relativeTo and comparing results.
@@ -1526,7 +1554,6 @@ class TemporalObject
             $us = isset($args[4]) && !($args[4] instanceof JsUndefined) ? $toInt($args[4], 'microsecond') : 0;
             $ns = isset($args[5]) && !($args[5] instanceof JsUndefined) ? $toInt($args[5], 'nanosecond') : 0;
             self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-            $this_->setPrototype($proto);
             self::setTimeSlots($this_, $h, $min, $s, $ms, $us, $ns);
             $this_->defineOwnProperty('[[IsPlainTime]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
@@ -1543,8 +1570,10 @@ class TemporalObject
                 ) {
                     return self::toPlainTime($item);
                 }
-                // For strings/PlainTime: parse first, then validate options.
-                if ($item instanceof JsString || ($item instanceof JsObject && $item->has('[[IsPlainTime]]'))) {
+                // For strings/PlainTime/PlainDateTime/ZonedDateTime: convert first, then validate options.
+                if ($item instanceof JsString || ($item instanceof JsObject && (
+                    $item->has('[[IsPlainTime]]') || $item->has('[[IsPlainDateTime]]') || $item->has('[[IsZonedDateTime]]')
+                ))) {
                     $result = self::toPlainTime($item);
                     $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                     self::getOverflow($options);
@@ -2541,7 +2570,27 @@ class TemporalObject
             if ($refDay < 1 || $refDay > self::isoDaysInMonth($y, $m)) {
                 throw new RangeError("Invalid day: {$refDay}");
             }
-            $this_->setPrototype($proto);
+            if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+                throw new RangeError("Year out of range: {$y}");
+            }
+            if ($y === self::ISO_YEAR_MIN && $m < 4) {
+                throw new RangeError("YearMonth outside representable range");
+            }
+            if ($y === self::ISO_YEAR_MAX && $m > 9) {
+                throw new RangeError("YearMonth outside representable range");
+            }
+            $p = $this_->getPrototype();
+            $hasProto = false;
+            while ($p !== null) {
+                if ($p === $proto) {
+                    $hasProto = true;
+                    break;
+                }
+                $p = $p->getPrototype();
+            }
+            if (!$hasProto) {
+                $this_->setPrototype($proto);
+            }
             self::setDateSlots($this_, $y, $m, $refDay, $cal);
             $this_->defineOwnProperty('[[IsPlainYearMonth]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
@@ -2559,18 +2608,78 @@ class TemporalObject
                 ) {
                     return self::toPlainYearMonth($item);
                 }
-                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = 'constrain';
-                if ($options instanceof JsObject) {
-                    $ov = $options->get('overflow');
-                    if (!($ov instanceof JsUndefined)) {
-                        $overflow = TypeConversion::toString($ov);
-                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$overflow}");
-                        }
-                    }
+                if ($item instanceof JsObject && $item->has('[[IsPlainYearMonth]]')) {
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    self::getOverflow($options);
+                    return self::createPlainYearMonthObject(
+                        self::getSlotInt($item, '[[ISOYear]]'),
+                        self::getSlotInt($item, '[[ISOMonth]]'),
+                        self::getSlotInt($item, '[[ISODay]]'),
+                        self::getSlotString($item, '[[Calendar]]'),
+                    );
                 }
-                return self::toPlainYearMonth($item, $overflow);
+                if ($item instanceof JsObject) {
+                    $cal = 'iso8601';
+                    $calVal = $item->get('calendar');
+                    if (!($calVal instanceof JsUndefined)) {
+                        $cal = self::toCalendarSlotValue($calVal);
+                    }
+                    $month = $item->get('month');
+                    $mVal = null;
+                    if (!($month instanceof JsUndefined)) {
+                        $mNum = TypeConversion::toNumber($month);
+                        if (!is_finite($mNum)) {
+                            throw new RangeError('month must be finite');
+                        }
+                        $mVal = (int) $mNum;
+                    }
+                    $monthCode = $item->get('monthCode');
+                    $mcStr = null;
+                    $mcParsed = null;
+                    if (!($monthCode instanceof JsUndefined)) {
+                        $mcStr = TypeConversion::toString($monthCode);
+                        $mcParsed = self::parseMonthCodeSyntax($mcStr);
+                    }
+                    $year = $item->get('year');
+                    if ($year instanceof JsUndefined) {
+                        throw new TypeError('missing required property: year');
+                    }
+                    $yNum = TypeConversion::toNumber($year);
+                    if (!is_finite($yNum)) {
+                        throw new RangeError('year must be finite');
+                    }
+                    $y = (int) $yNum;
+                    if ($mVal === null && $mcStr === null) {
+                        throw new TypeError('missing required property: month or monthCode');
+                    }
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    $overflow = self::getOverflow($options);
+                    if ($mcParsed !== null) {
+                        [$mcMonth, $mcLeap] = $mcParsed;
+                        if ($mcMonth < 1 || $mcMonth > 12 || $mcLeap) {
+                            throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
+                        }
+                        $m = $mcMonth;
+                        if ($mVal !== null && $mVal !== $m) {
+                            throw new RangeError("month and monthCode disagree");
+                        }
+                    } else {
+                        $m = $mVal;
+                    }
+                    if ($m < 1) {
+                        throw new RangeError("month {$m} out of range");
+                    }
+                    if ($overflow === 'constrain') {
+                        $m = min(12, $m);
+                    } elseif ($m > 12) {
+                        throw new RangeError("month {$m} out of range");
+                    }
+                    return self::createPlainYearMonthObject($y, $m, 1, $cal);
+                }
+                $result = self::toPlainYearMonth($item);
+                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                self::getOverflow($options);
+                return $result;
             }, 1),
             true,
             false,
@@ -2699,49 +2808,52 @@ class TemporalObject
             self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // Read partial fields from the item in alphabetical order.
-            $day = $item->get('day');
-            $month = $item->get('month');
-            $monthCode = $item->get('monthCode');
-            $year = $item->get('year');
-            if (
-                $monthCode instanceof JsUndefined
-                && $month instanceof JsUndefined
-                && $day instanceof JsUndefined
-                && $year instanceof JsUndefined
-            ) {
-                throw new TypeError(
-                    'At least one property must be provided'
-                );
+            // Read and convert partial fields immediately in alphabetical order.
+            $dayVal = $item->get('day');
+            $hasDay = !($dayVal instanceof JsUndefined);
+            $dNum = $hasDay ? TypeConversion::toNumber($dayVal) : null;
+            $monthVal = $item->get('month');
+            $hasMonth = !($monthVal instanceof JsUndefined);
+            $mNum = $hasMonth ? TypeConversion::toNumber($monthVal) : null;
+            $monthCodeVal = $item->get('monthCode');
+            $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
+            $mcStr = $hasMonthCode ? TypeConversion::toString($monthCodeVal) : null;
+            $yearVal = $item->get('year');
+            $hasYear = !($yearVal instanceof JsUndefined);
+            $yNum = $hasYear ? TypeConversion::toNumber($yearVal) : null;
+            if (!$hasDay && !$hasMonth && !$hasMonthCode && !$hasYear) {
+                throw new TypeError('At least one property must be provided');
             }
-            if (!($monthCode instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($monthCode);
-                $mcMonth = self::parseMonthCode($mc);
-                if (!($month instanceof JsUndefined)) {
-                    $n = TypeConversion::toNumber($month);
-                    if (!is_finite($n)) {
+            if ($hasMonthCode) {
+                $mcMonth = self::parseMonthCode($mcStr);
+                if ($hasMonth) {
+                    if (!is_finite($mNum)) {
                         throw new RangeError('month must be finite');
                     }
-                    if ((int) $n !== $mcMonth) {
+                    if ((int) $mNum !== $mcMonth) {
                         throw new RangeError('month and monthCode disagree');
                     }
                 }
                 $m = $mcMonth;
-            } elseif (!($month instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($month);
-                if (!is_finite($n)) {
+            } elseif ($hasMonth) {
+                if (!is_finite($mNum)) {
                     throw new RangeError('month must be finite');
                 }
-                $m = (int) $n;
+                $m = (int) $mNum;
             }
-            if (!($day instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($day);
-                if (!is_finite($n)) {
+            if ($hasDay) {
+                if (!is_finite($dNum)) {
                     throw new RangeError('day must be finite');
                 }
-                $dd = (int) $n;
+                $dd = (int) $dNum;
             }
-            // Read options AFTER fields per spec.
+            if ($hasYear && !is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $refY = $y;
+            if ($m < 1 || $m > 12 || $dd < 1 || $dd > 31) {
+                throw new RangeError('Invalid ISO date');
+            }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = 'constrain';
             if ($options instanceof JsObject) {
@@ -2753,16 +2865,7 @@ class TemporalObject
                     }
                 }
             }
-            // Year is read but NOT used to change the reference year.
-            $refY = $y; // Keep original reference year.
-            if (!($year instanceof JsUndefined)) {
-                $n = TypeConversion::toNumber($year);
-                if (!is_finite($n)) {
-                    throw new RangeError('year must be finite');
-                }
-                // Use for validation only, not for the stored reference year.
-            }
-            if ($overflow === 'constrain') {
+                        if ($overflow === 'constrain') {
                 $m = max(1, min(12, $m));
                 $dim = self::isoDaysInMonth($refY, $m);
                 $dd = max(1, min($dim, $dd));
@@ -2857,7 +2960,6 @@ class TemporalObject
                 $refYear = (int) $ryNum;
             }
             self::validateISODate($refYear, $m, $dd);
-            $this_->setPrototype($proto);
             self::setDateSlots($this_, $refYear, $m, $dd, $cal);
             $this_->defineOwnProperty('[[IsPlainMonthDay]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
@@ -5929,8 +6031,12 @@ class TemporalObject
             $ysD = min($d1, self::isoDaysInMonth($y1 + $years, $m1));
             $ysJd = self::isoToJulianDay($y1 + $years, $m1, $ysD);
             // yearEnd = ref + wholeYears + 1 year.
-            $yeD = min($d1, self::isoDaysInMonth($y1 + $years + 1, $m1));
-            $yeJd = self::isoToJulianDay($y1 + $years + 1, $m1, $yeD);
+            $yeYear = $y1 + $years + 1;
+            if ($yeYear > self::ISO_YEAR_MAX || $yeYear < self::ISO_YEAR_MIN) {
+                throw new RangeError('Date outside representable range during total calculation');
+            }
+            $yeD = min($d1, self::isoDaysInMonth($yeYear, $m1));
+            $yeJd = self::isoToJulianDay($yeYear, $m1, $yeD);
             $yearLengthDays = $yeJd - $ysJd;
             $remainDays = ($jd2 - $ysJd) + $fractionalDays;
             $frac = $yearLengthDays > 0 ? $remainDays / (float) $yearLengthDays : 0;
@@ -6272,7 +6378,7 @@ class TemporalObject
     // Helpers: type conversion
     // -----------------------------------------------------------------------
 
-    private static function toPlainDate(JsValue $item, string $overflow = 'constrain'): JsObject
+    private static function toPlainDate(JsValue $item, string $overflow = 'constrain', ?JsValue $rawOptions = null): JsObject
     {
         if ($item instanceof JsObject) {
             if (
@@ -7095,40 +7201,52 @@ class TemporalObject
             );
         }
         if ($item instanceof JsObject) {
-            $year = $item->get('year');
+            $cal = 'iso8601';
+            $calVal = $item->get('calendar');
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
             $month = $item->get('month');
+            $mVal = null;
+            if (!($month instanceof JsUndefined)) {
+                $mNum = TypeConversion::toNumber($month);
+                if (!is_finite($mNum)) {
+                    throw new RangeError('month must be finite');
+                }
+                $mVal = (int) $mNum;
+            }
             $monthCode = $item->get('monthCode');
+            $mcStr = null;
+            $mcParsed = null;
+            if (!($monthCode instanceof JsUndefined)) {
+                $mcStr = TypeConversion::toString($monthCode);
+                $mcParsed = self::parseMonthCodeSyntax($mcStr);
+            }
+            $year = $item->get('year');
             if ($year instanceof JsUndefined) {
                 throw new TypeError('missing required property: year');
-            }
-            if ($month instanceof JsUndefined && $monthCode instanceof JsUndefined) {
-                throw new TypeError('missing required property: month or monthCode');
             }
             $yNum = TypeConversion::toNumber($year);
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
             }
             $y = (int) $yNum;
-            if (!($monthCode instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($monthCode);
-                $m = self::parseMonthCode($mc);
-                if (!($month instanceof JsUndefined)) {
-                    $mVal = (int) TypeConversion::toNumber($month);
-                    if ($mVal !== $m) {
-                        throw new RangeError("month and monthCode disagree");
-                    }
-                }
-            } else {
-                $mNum = TypeConversion::toNumber($month);
-                if (!is_finite($mNum)) {
-                    throw new RangeError('month must be finite');
-                }
-                $m = (int) $mNum;
+            if ($mVal === null && $mcStr === null) {
+                throw new TypeError('missing required property: month or monthCode');
             }
-            $cal = 'iso8601';
-            $calVal = $item->get('calendar');
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
+            if ($mcParsed !== null) {
+                [$mcMonth, $mcLeap] = $mcParsed;
+                if ($mcMonth < 1 || $mcMonth > 12 || $mcLeap) {
+                    throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
+                }
+                $m = $mcMonth;
+                if ($mVal !== null && $mVal !== $m) {
+                    throw new RangeError("month and monthCode disagree");
+                }
+            } elseif ($mVal !== null) {
+                $m = $mVal;
+            } else {
+                throw new TypeError('missing required property: month or monthCode');
             }
             // Per spec: months < 1 always throw, even with constrain.
             if ($m < 1) {
@@ -8146,6 +8264,9 @@ class TemporalObject
             if (in_array($suFinal, ['year', 'month', 'week', 'day'], true)) {
                 return self::roundCalendarDuration($dur, $suFinal, $rmFinal, $riFinal, $largestUnit, $dt1);
             }
+            if ($suFinal !== 'nanosecond' || $riFinal !== 1) {
+                return self::roundCalendarDuration($dur, $suFinal, $rmFinal, $riFinal, $largestUnit, $dt1);
+            }
             return $dur;
         }
         // Apply rounding.
@@ -8164,6 +8285,12 @@ class TemporalObject
             $unitNs = $unitNsMap[$smallestUnit] ?? '1';
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
+            if ($smallestUnit === 'day' && $roundIncrement > 1) {
+                $absDiffNs = bccomp($diffNs, '0', 0) < 0 ? bcsub('0', $diffNs, 0) : $diffNs;
+                $absDays = bcdiv($absDiffNs, '86400000000000', 0);
+                $ceilDays = bcadd($absDays, (string) $roundIncrement, 0);
+                if (bccomp($ceilDays, '100000001', 0) >= 0) { throw new RangeError('Rounded date outside valid ISO date range'); }
+            }
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
     }
@@ -8233,7 +8360,10 @@ class TemporalObject
             $frac = $yearLengthDays > 0 ? ($remainDays + $timeFrac) / (float) $yearLengthDays : 0;
             $totalYears = $absYears + $frac;
             $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
-            return self::createDurationObject($sign * intdiv($rounded, 1000000), 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            $roundedYears = intdiv($rounded, 1000000);
+            $endYear = $refY + $roundedYears * $sign;
+            if ($endYear < -271821 || $endYear > 275760) { throw new RangeError('Rounded date outside valid ISO date range'); }
+            return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'month') {
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
@@ -8261,6 +8391,9 @@ class TemporalObject
             $totalMonths = $absYears * 12 + $absMonths + $frac;
             $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
             $rm = intdiv($rounded, 1000000);
+            $endTotalM = $refY * 12 + ($refM - 1) + $rm * $sign;
+            $endY = intdiv($endTotalM, 12);
+            if ($endY < -271821 || $endY > 275760) { throw new RangeError('Rounded date outside valid ISO date range'); }
             if ($largestUnit === 'year') {
                 return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
             }
@@ -8361,6 +8494,20 @@ class TemporalObject
         if ($largestUnit === 'week') {
             $finalWeeks += intdiv($finalDays, 7);
             $finalDays = $finalDays % 7;
+        }
+        if (in_array($largestUnit, ['year', 'month'], true) && $finalDays > 0 && $ref instanceof JsObject) {
+            $rY = $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
+            $rM = $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
+            $ctm = $rY * 12 + ($rM - 1) + ($finalYears * 12) + $finalMonths;
+            $cY = intdiv($ctm, 12); $cM = ($ctm % 12) + 1;
+            $dim = self::isoDaysInMonth($cY, $cM);
+            while ($finalDays >= $dim) {
+                $finalDays -= $dim; $finalMonths++;
+                if ($largestUnit === 'year' && $finalMonths >= 12) { $finalYears += intdiv($finalMonths, 12); $finalMonths = $finalMonths % 12; }
+                $ctm = $rY * 12 + ($rM - 1) + ($finalYears * 12) + $finalMonths;
+                $cY = intdiv($ctm, 12); $cM = ($ctm % 12) + 1;
+                $dim = self::isoDaysInMonth($cY, $cM);
+            }
         }
         return self::createDurationObject(
             $sign * $finalYears,
@@ -9005,6 +9152,38 @@ class TemporalObject
     }
 
     /**
+     * Round Instant epoch-nanoseconds per the Temporal spec RoundTemporalInstant.
+     */
+    private static function roundInstantNs(string $ns, string $incrementNs, string $mode): string
+    {
+        $truncQ = bcdiv($ns, $incrementNs, 0);
+        $truncR = bcsub($ns, bcmul($truncQ, $incrementNs, 0), 0);
+        if (bccomp($truncR, '0', 0) < 0) {
+            $floorQ = bcsub($truncQ, '1', 0);
+            $floorR = bcadd($truncR, $incrementNs, 0);
+        } else {
+            $floorQ = $truncQ;
+            $floorR = $truncR;
+        }
+        if ($floorR === '0') {
+            return $ns;
+        }
+        $doubled = bcmul($floorR, '2', 0);
+        $cmp = bccomp($doubled, $incrementNs, 0);
+        $rounded = match ($mode) {
+            'floor', 'trunc' => $floorQ,
+            'ceil', 'expand' => bcadd($floorQ, '1', 0),
+            'halfExpand' => $cmp >= 0 ? bcadd($floorQ, '1', 0) : $floorQ,
+            'halfTrunc', 'halfFloor' => $cmp > 0 ? bcadd($floorQ, '1', 0) : $floorQ,
+            'halfCeil' => $cmp >= 0 ? bcadd($floorQ, '1', 0) : $floorQ,
+            'halfEven' => ($cmp > 0 || ($cmp === 0 && bcmod($floorQ, '2') !== '0'))
+                ? bcadd($floorQ, '1', 0) : $floorQ,
+            default => $floorQ,
+        };
+        return bcmul($rounded, $incrementNs, 0);
+    }
+
+    /**
      * Round an ISO date-time (wall-clock) to the given increment.
      * Rounding is applied to the time-of-day nanoseconds, then carried into the date if needed.
      *
@@ -9239,6 +9418,9 @@ class TemporalObject
         $y2 = self::getSlotInt($ym2, '[[ISOYear]]');
         $m2 = self::getSlotInt($ym2, '[[ISOMonth]]');
         $largestUnit = 'year';
+        $riFinal = 1;
+        $rmFinal = 'trunc';
+        $suFinal = 'month';
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
@@ -9252,44 +9434,46 @@ class TemporalObject
                     throw new RangeError("Invalid largest unit for PlainYearMonth: {$largestUnit}");
                 }
             }
-            // Read remaining options for validation.
             $ri = $opts->get('roundingIncrement');
+            if (!($ri instanceof JsUndefined)) {
+                $riNum = TypeConversion::toNumber($ri);
+                if (!is_finite($riNum)) {
+                    throw new RangeError('roundingIncrement must be finite');
+                }
+                $riFinal = (int) $riNum;
+                if ($riFinal < 1 || $riFinal > 1_000_000_000) {
+                    throw new RangeError('roundingIncrement out of range');
+                }
+            }
             $rm = $opts->get('roundingMode');
             if (!($rm instanceof JsUndefined)) {
-                $rmStr = TypeConversion::toString($rm);
-                $validRM = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven'];
-                if (!in_array($rmStr, $validRM, true)) {
-                    throw new RangeError("Invalid roundingMode: {$rmStr}");
+                $rmFinal = TypeConversion::toString($rm);
+                $validRM = [
+                    'ceil', 'floor', 'expand', 'trunc',
+                    'halfCeil', 'halfFloor', 'halfExpand', 'halfTrunc', 'halfEven',
+                ];
+                if (!in_array($rmFinal, $validRM, true)) {
+                    throw new RangeError("Invalid roundingMode: {$rmFinal}");
                 }
             }
             $su = $opts->get('smallestUnit');
             if (!($su instanceof JsUndefined)) {
                 $suStr = TypeConversion::toString($su);
-                $suCanon = self::canonicalTemporalUnit($suStr);
-                if (!in_array($suCanon, ['year', 'month'], true)) {
-                    throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suCanon}");
+                $suFinal = self::canonicalTemporalUnit($suStr);
+                if (!in_array($suFinal, ['year', 'month'], true)) {
+                    throw new RangeError("Invalid smallest unit for PlainYearMonth: {$suFinal}");
                 }
             }
-            // Validate roundingIncrement per ToTemporalRoundingIncrement.
-            if (isset($ri) && !($ri instanceof JsUndefined)) {
-                $riNum = TypeConversion::toNumber($ri);
-                if (!is_finite($riNum)) {
-                    throw new RangeError('roundingIncrement must be finite');
-                }
-                $riInt = (int) $riNum;
-                if ($riInt < 1 || $riInt > 1_000_000_000) {
-                    throw new RangeError('roundingIncrement out of range');
-                }
+            $allU = ['year', 'month'];
+            $liIdx = array_search($largestUnit, $allU);
+            $siIdx = array_search($suFinal, $allU);
+            if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
+                throw new RangeError('largestUnit must be >= smallestUnit');
             }
-            // Validate largestUnit >= smallestUnit.
-            if (isset($suCanon)) {
-                $allU = ['year', 'month'];
-                $liIdx = array_search($largestUnit, $allU);
-                $siIdx = array_search($suCanon, $allU);
-                if ($liIdx !== false && $siIdx !== false && $liIdx > $siIdx) {
-                    throw new RangeError('largestUnit must be >= smallestUnit');
-                }
-            }
+        }
+        if ($y1 !== $y2 || $m1 !== $m2) {
+            self::validateISODate($y1, $m1, 1);
+            self::validateISODate($y2, $m2, 1);
         }
         $totalMonths = ($y2 * 12 + $m2) - ($y1 * 12 + $m1);
         if ($largestUnit === 'year') {
@@ -9298,13 +9482,6 @@ class TemporalObject
         } else {
             $years = 0;
             $months = $totalMonths;
-        }
-        // Apply rounding.
-        $suFinal = $suCanon ?? 'month';
-        $rmFinal = $rmStr ?? 'trunc';
-        $riFinal = 1;
-        if (isset($riInt)) {
-            $riFinal = $riInt;
         }
         if ($suFinal === 'year' && $months !== 0) {
             $sign = $totalMonths >= 0 ? 1 : -1;
@@ -9328,7 +9505,6 @@ class TemporalObject
             $years = $sign * intdiv($rounded, 1000000);
             $months = 0;
         } elseif ($suFinal === 'month' && $riFinal > 1) {
-            // Round months to increment.
             $sign = $totalMonths >= 0 ? 1 : -1;
             $absRm = $rmFinal;
             if ($sign < 0) {
@@ -9339,10 +9515,8 @@ class TemporalObject
                 };
             }
             if ($largestUnit === 'year') {
-                // Round only the months remainder, keep years intact.
                 $absMonths = abs($months);
                 $roundedMonths = self::roundToIncrement($absMonths, $riFinal, $absRm);
-                // Balance if rounded months >= 12 (cross unit boundary).
                 if ($roundedMonths >= 12) {
                     $years += $sign * intdiv($roundedMonths, 12);
                     $roundedMonths = $roundedMonths % 12;
@@ -9354,7 +9528,6 @@ class TemporalObject
                 $months = $sign * $rounded;
             }
         }
-        // Validate rounded result is in representable range.
         if ($riFinal > 1 || $suFinal === 'year') {
             $cY = $y1 + $years;
             $cM = $m1 + $months;
@@ -9368,8 +9541,29 @@ class TemporalObject
             }
             if (
                 $cY < self::ISO_YEAR_MIN || $cY > self::ISO_YEAR_MAX
-                || ($cY === self::ISO_YEAR_MIN && $cM < 5)
+                || ($cY === self::ISO_YEAR_MIN && $cM < 4)
                 || ($cY === self::ISO_YEAR_MAX && $cM > 9)
+            ) {
+                throw new RangeError('rounded date is outside the representable range');
+            }
+            $sign = $totalMonths >= 0 ? 1 : -1;
+            $endMonths = ($suFinal === 'year')
+                ? $sign * ((abs($years) + $riFinal) * 12)
+                : $sign * (abs($totalMonths) + $riFinal);
+            $eY = $y1;
+            $eM = $m1 + $endMonths;
+            while ($eM > 12) {
+                $eM -= 12;
+                $eY++;
+            }
+            while ($eM < 1) {
+                $eM += 12;
+                $eY--;
+            }
+            if (
+                $eY < self::ISO_YEAR_MIN || $eY > self::ISO_YEAR_MAX
+                || ($eY === self::ISO_YEAR_MIN && $eM < 4)
+                || ($eY === self::ISO_YEAR_MAX && $eM > 9)
             ) {
                 throw new RangeError('rounded date is outside the representable range');
             }
