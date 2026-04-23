@@ -10119,10 +10119,10 @@ class Interpreter
                 : TypeConversion::toString($value)));
             throw new \PhpJs\Exceptions\TypeError($typeName . ' is not iterable');
         }
+        // Per GetIteratorFromMethod, nextMethod is retrieved but not required
+        // to be callable here. The "next is not a function" TypeError surfaces
+        // later when we actually call next() during iteration.
         $nextMethod = $iterator->get('next');
-        if (!$nextMethod instanceof JsFunction) {
-            throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
-        }
         return [$iterator, $nextMethod];
     }
 
@@ -10130,10 +10130,14 @@ class Interpreter
      * Advance an iterator one step. Returns the value, or undefined when done.
      * Sets $done to true once the iterator reports done.
      */
-    private function iteratorNext(JsObject $iterator, JsFunction $nextMethod, bool &$done): JsValue
+    private function iteratorNext(JsObject $iterator, JsValue $nextMethod, bool &$done): JsValue
     {
         if ($done) {
             return JsUndefined::instance();
+        }
+        if (!$nextMethod instanceof JsFunction) {
+            $done = true;
+            throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
         }
         try {
             $result = $this->callFunction($nextMethod, $iterator, []);
@@ -10156,7 +10160,7 @@ class Interpreter
     /**
      * Collect all remaining iterator values into a JsArray.
      */
-    private function iteratorRest(JsObject $iterator, JsFunction $nextMethod, bool &$done): JsArray
+    private function iteratorRest(JsObject $iterator, JsValue $nextMethod, bool &$done): JsArray
     {
         $rest = [];
         while (!$done) {
@@ -10178,8 +10182,13 @@ class Interpreter
      */
     private function iteratorClose(JsObject $iterator, ?\Throwable $completion = null): void
     {
+        // Only abrupt THROW completions take precedence over innerResult per
+        // spec 7.4.6 step 7. GeneratorReturnSignal corresponds to a "return"
+        // completion, not a throw, so innerResult's errors still surface.
+        $completionIsThrow = $completion !== null
+            && !($completion instanceof \PhpJs\Runtime\GeneratorReturnSignal);
+
         $returnMethod = $iterator->get('return');
-        // Per spec: if return is undefined/null, just return completion.
         if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
             if ($completion !== null) {
                 throw $completion;
@@ -10202,13 +10211,18 @@ class Interpreter
         }
 
         // Step 7: if completion.[[type]] is throw, return Completion(completion).
-        if ($completion !== null) {
+        if ($completionIsThrow) {
             throw $completion;
         }
 
         // Step 8: if innerResult.[[type]] is throw, return Completion(innerResult).
         if ($innerException !== null) {
             throw $innerException;
+        }
+
+        // If we had a non-throw completion (e.g. return), propagate it now.
+        if ($completion !== null) {
+            throw $completion;
         }
 
         // Step 9: if Type(innerResult.[[value]]) is not Object, throw TypeError.
