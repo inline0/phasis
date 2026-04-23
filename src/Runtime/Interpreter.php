@@ -5331,20 +5331,21 @@ class Interpreter
      */
     private function evalImportExpression(ImportExpression $node, Environment $env): JsValue
     {
+        // Per spec, evaluation of the specifier (including GetValue which
+        // triggers accessors) propagates synchronously. Only once we have
+        // the value do we wrap subsequent errors (ToString, module
+        // resolution) into a rejected promise.
+        $sourceValue = $this->evaluate($node->source, $env);
+
         $promise = new \PhpJs\Value\JsPromise();
-
         try {
-            $sourceValue = $this->evaluate($node->source, $env);
             $specifier = TypeConversion::toString($sourceValue);
-
             $loader = $this->getModuleLoader();
             $namespace = $loader->loadModule($specifier, $this->currentModulePath);
-
             $promise->resolve($namespace);
         } catch (\PhpJs\Exceptions\JsThrowable $e) {
             $promise->reject($e->jsValue);
         } catch (\Throwable $e) {
-            // Convert PHP exceptions to JS error values for rejection.
             $errorObj = $this->phpExceptionToJsValue($e);
             $promise->reject($errorObj);
         }
