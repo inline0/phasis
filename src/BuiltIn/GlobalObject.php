@@ -263,7 +263,18 @@ class GlobalObject
             // global variables (per spec: "scope chain consisting of the
             // global object").
                 $interp = new Interpreter($env);
-                return $interp->execute($program);
+                $result = $interp->execute($program);
+                // Honor new.target.prototype for subclassed Function constructor.
+                if ($result instanceof JsFunction && $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
+                    $newTarget = $this_->get('[[NewTarget]]');
+                    if ($newTarget instanceof JsFunction) {
+                        $ntProto = $newTarget->get('prototype');
+                        if ($ntProto instanceof \PhpJs\Value\JsObject) {
+                            $result->setPrototype($ntProto);
+                        }
+                    }
+                }
+                return $result;
             },
             1,
         );
