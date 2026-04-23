@@ -7910,7 +7910,10 @@ class Interpreter
             }
             return $this->evaluate($exprs[$n - 1], $env);
         }
-        if ($node instanceof BinaryExpression && in_array($node->operator, ['&&', '||', '??'], true)) {
+        if (
+            $node instanceof \PhpJs\Ast\Expression\LogicalExpression
+            && in_array($node->operator, ['&&', '||', '??'], true)
+        ) {
             $left = $this->evaluate($node->left, $env);
             $takesRight = match ($node->operator) {
                 '&&' => TypeConversion::toBoolean($left),
