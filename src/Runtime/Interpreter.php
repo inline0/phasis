@@ -5086,6 +5086,15 @@ class Interpreter
             ? $this->evaluate($node->argument, $env)
             : JsUndefined::instance();
 
+        // Per spec AsyncGeneratorYield step 5: Await(value). If the awaited
+        // value rejects, the yield expression completes abruptly (throw),
+        // allowing enclosing try/catch to handle it and closing the
+        // generator otherwise.
+        $isAsyncGen = $env->getEnclosingFunctionKind() === 'async-generator';
+        if ($isAsyncGen) {
+            $value = $this->awaitValue($value);
+        }
+
         // Suspend the Fiber, yielding the value to JsGenerator::next().
         // The return value of suspend() is the value passed to the
         // subsequent next(value) call.
