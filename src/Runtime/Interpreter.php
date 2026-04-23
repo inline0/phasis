@@ -7460,6 +7460,11 @@ class Interpreter
             ) {
                 return null;
             }
+            // Private method calls (obj.#method()) resolve via the receiver's
+            // private-name slots; the regular call path handles this, so bail.
+            if ($node->callee->property instanceof PrivateIdentifier) {
+                return null;
+            }
             $obj = $this->evaluate($node->callee->object, $env);
             // Computed member with a Symbol key must not be stringified; fall back to
             // the regular call path (returning null) so getBySymbol is used correctly.
