@@ -165,17 +165,45 @@ class Reference
             return;
         }
 
-        // Primitive base: per PutValue, ToObject the primitive and call
-        // [[Set]] on the wrapper. Our internalSet requires an object
-        // receiver, so we pass the wrapper; from observer code the receiver
-        // distinction only matters when the user property happens to be
-        // defined on the primitive itself, which cannot occur here.
+        // Primitive base: per PutValue, ToObject the primitive and invoke
+        // [[Set]] on the wrapper. Receiver is the primitive itself so any
+        // write that would create a new own property on the primitive must
+        // fail; accessors (including proxy set traps) still run, observing
+        // the primitive as the receiver.
         $wrapper = \PhpJs\Spec\TypeConversion::toObject($this->base);
         if ($wrapper instanceof JsObject) {
-            $success = $wrapper->internalSet($this->resolvedName(), $value, $wrapper);
-            if (!$success && $this->strict) {
+            $name = $this->resolvedName();
+            $cursor = $wrapper;
+            $handled = false;
+            while ($cursor !== null) {
+                // Proxies intercept [[Set]] directly rather than exposing
+                // own property descriptors, so give them a turn at the chain.
+                if ($cursor instanceof \PhpJs\Value\JsProxy) {
+                    $handled = $cursor->internalSet($name, $value, $wrapper);
+                    break;
+                }
+                $desc = $cursor->getOwnPropertyDescriptor($name);
+                if ($desc === null) {
+                    $cursor = $cursor->getPrototype();
+                    continue;
+                }
+                if ($desc->isAccessorDescriptor()) {
+                    if ($desc->set instanceof \PhpJs\Value\JsFunction) {
+                        $desc->set->call($this->base, [$value]);
+                        $handled = true;
+                    }
+                    break;
+                }
+                // Data descriptor found in chain; the write would create a
+                // new own property on the primitive receiver, which fails.
+                break;
+            }
+            if ($handled) {
+                return;
+            }
+            if ($this->strict) {
                 throw new TypeError(
-                    "Cannot assign to read only property '{$this->resolvedName()}' of a primitive"
+                    "Cannot assign to read only property '{$name}' of a primitive"
                 );
             }
             return;
