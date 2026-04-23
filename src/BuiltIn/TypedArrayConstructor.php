@@ -1237,8 +1237,19 @@ class TypedArrayConstructor
 
                 $len = count($elements);
 
-                // TypedArrayCreate(C, [len]): construct via C.
+                // TypedArrayCreate(C, [len]): construct via C and then
+                // ValidateTypedArray on the result.
                 $targetObj = $this_->construct([new JsNumber((float) $len)]);
+                if (!$targetObj instanceof JsTypedArray) {
+                    throw new TypeError(
+                        'TypedArray.from: constructor did not return a TypedArray'
+                    );
+                }
+                if ($targetObj->getLength() < $len) {
+                    throw new TypeError(
+                        'TypedArray.from: constructor returned a smaller TypedArray'
+                    );
+                }
 
                 // Per spec step 12: for each element, map and Set individually.
                 for ($k = 0; $k < $len; $k++) {
