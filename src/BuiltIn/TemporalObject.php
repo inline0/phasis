@@ -568,6 +568,18 @@ class TemporalObject
                 $durNs = self::durationToTotalNs($this_);
                 $targetNs = bcadd($epochNs, $durNs, 0);
                 self::validateInstantRange($targetNs);
+                // When the algorithm needs day-boundary arithmetic (day largestUnit
+                // with sub-day smallestUnit, or smallestUnit=day) the next or previous
+                // day must also be representable (NudgeToDayOrTime in the spec).
+                $timeUnitsBelowDay = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+                $needsDayBoundary = ($largestUnit === 'day' && in_array($unit, $timeUnitsBelowDay, true))
+                    || $unit === 'day';
+                if ($needsDayBoundary) {
+                    $nsPerDay = '86400000000000';
+                    $sign = self::durationSign($this_);
+                    $direction = $sign < 0 ? bcsub($epochNs, $nsPerDay, 0) : bcadd($epochNs, $nsPerDay, 0);
+                    self::validateInstantRange($direction);
+                }
             } else {
                 // For PlainDate relativeTo, validate midnight is in PDT range when duration is non-zero.
                 self::validatePlainRelativeToRange($relativeTo, $this_);
@@ -5888,9 +5900,12 @@ class TemporalObject
         $hours = self::getDurationField($dur, 'hours');
         $minutes = self::getDurationField($dur, 'minutes');
         $seconds = self::getDurationField($dur, 'seconds');
-        $milliseconds = self::getDurationField($dur, 'milliseconds');
-        $microseconds = self::getDurationField($dur, 'microseconds');
-        $nanoseconds = self::getDurationField($dur, 'nanoseconds');
+        // Sub-second fields as strings to preserve precision for IEEE-754 floats
+        // beyond 2^53 (e.g., microseconds > 9e15 where int cast would lose digits).
+        $millisecondsStr = self::getDurationFieldStr($dur, 'milliseconds');
+        $microsecondsStr = self::getDurationFieldStr($dur, 'microseconds');
+        $nanosecondsStr = self::getDurationFieldStr($dur, 'nanoseconds');
+        $absBc = fn (string $s) => str_starts_with($s, '-') ? substr($s, 1) : $s;
 
         $sign = self::durationSign($dur);
         $prefix = $sign < 0 ? '-' : '';
@@ -5908,9 +5923,9 @@ class TemporalObject
         // Days are appended after carry calculation below.
 
         // Time part: balance sub-seconds using bcmath to avoid float overflow.
-        $bNs = (string) abs($nanoseconds);
-        $bUs = bcmul((string) abs($microseconds), '1000', 0);
-        $bMs = bcmul((string) abs($milliseconds), '1000000', 0);
+        $bNs = $absBc($nanosecondsStr);
+        $bUs = bcmul($absBc($microsecondsStr), '1000', 0);
+        $bMs = bcmul($absBc($millisecondsStr), '1000000', 0);
         $totalNsBig = bcadd(bcadd($bNs, $bUs, 0), $bMs, 0);
         // Apply rounding if fractionalSecondDigits < 9.
         if (is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
@@ -6168,10 +6183,15 @@ class TemporalObject
         $jd2 = self::isoToJulianDay($y2, $m2, $d2);
         $totalDays = ($jd2 - $jd1) + $fractionalDays;
         if ($unit === 'day') {
-            return $totalDays;
+            // Use exact bigint-ns division for float precision (spec: totalNs / nsPerDay).
+            $jdDiffNs = bcmul((string) ($jd2 - $jd1), '86400000000000', 0);
+            $totalNsExact = bcadd($jdDiffNs, $timeNs, 0);
+            return (float) bcdiv($totalNsExact, '86400000000000', 25);
         }
         if ($unit === 'week') {
-            return $totalDays / 7.0;
+            $jdDiffNs = bcmul((string) ($jd2 - $jd1), '86400000000000', 0);
+            $totalNsExact = bcadd($jdDiffNs, $timeNs, 0);
+            return (float) bcdiv($totalNsExact, '604800000000000', 25);
         }
         if ($unit === 'month') {
             // Whole months from date diff.
@@ -6212,8 +6232,15 @@ class TemporalObject
             $frac = $yearLengthDays > 0 ? $remainDays / (float) $yearLengthDays : 0;
             return $years + $frac;
         }
-        // For time units, just use ns total.
-        return self::durationTotalNs($dur, $unit);
+        // For time units with a calendar-unit duration, compute total ns as
+        // (endDate - startDate in ns) + time component, then divide by the unit.
+        $jdDiffNs = bcmul((string) ($jd2 - $jd1), '86400000000000', 0);
+        $totalNsExact = bcadd($jdDiffNs, $timeNs, 0);
+        $unitNs = self::temporalUnitToNs($unit);
+        if ($unitNs === '1') {
+            return (float) $totalNsExact;
+        }
+        return (float) bcdiv($totalNsExact, $unitNs, 25);
     }
 
     private static function durationTotalNs(JsValue $dur, string $unit): float
