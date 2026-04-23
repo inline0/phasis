@@ -198,8 +198,9 @@ class JsArray extends JsObject
             );
         }
 
-        // Only update length for valid array indices (0 to 2^32-2).
-        if ($success && $name !== 'length' && self::isArrayIndex($name)) {
+        // Only update length for valid array indices (0 to 2^32-2) when an
+        // actual own property was created; inherited setters don't add slots.
+        if ($success && $name !== 'length' && self::isArrayIndex($name) && $this->hasOwnProperty($name)) {
             $index = (int) $name;
             if ($index >= $this->length) {
                 $this->length = $index + 1;
@@ -211,7 +212,10 @@ class JsArray extends JsObject
     {
         if ($receiver === $this && $name !== 'length') {
             $result = parent::internalSet($name, $value, $receiver);
-            if ($result && self::isArrayIndex($name)) {
+            // Only bump length if the set produced an actual own array-index
+            // property. When an inherited accessor (setter) handled the write,
+            // no own slot is created and length must not advance.
+            if ($result && self::isArrayIndex($name) && $this->hasOwnProperty($name)) {
                 $index = (int) $name;
                 if ($index >= $this->length) {
                     $this->length = $index + 1;
