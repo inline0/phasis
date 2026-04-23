@@ -7876,11 +7876,23 @@ class Interpreter
             $callee = $obj instanceof JsObject ? $obj->get($propName) : null;
             $thisValue = $obj;
         } elseif ($node->callee instanceof Identifier) {
-            if ($node->callee->name === 'eval' || $node->callee->name === 'super') {
-                return null; // eval and super() are not eligible for TCO
+            // super() is not eligible for TCO.
+            if ($node->callee->name === 'super') {
+                return null;
             }
             if ($env->has($node->callee->name)) {
                 $callee = $env->get($node->callee->name);
+            }
+            // Direct eval (identifier 'eval' resolving to native %eval%) is
+            // not eligible; a user-shadowed 'eval' bound to a regular
+            // function still is (it's just a function call).
+            if (
+                $node->callee->name === 'eval'
+                && $callee instanceof JsFunction
+                && $callee->isNative()
+                && $callee->getName() === 'eval'
+            ) {
+                return null;
             }
         } else {
             $callee = $this->evaluate($node->callee, $env);
