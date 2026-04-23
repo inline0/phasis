@@ -262,6 +262,10 @@ class GlobalObject
             // body and validate strict-mode early errors (with statement,
             // duplicate params, etc.).
                 self::validateDynamicFunction($program, $params);
+                // Per spec step 30: AllPrivateIdentifiersValid fails because
+                // there is no enclosing class scope here — any #name reference
+                // is a SyntaxError.
+                self::rejectPrivateIdentifiersInProgram($program);
 
             // Use the global environment so the created function can see
             // global variables (per spec: "scope chain consisting of the
@@ -1483,6 +1487,66 @@ class GlobalObject
     public static function rejectYieldAwaitInParamsPublic(\PhpJs\Ast\Program $program): void
     {
         self::rejectYieldAwaitInParams($program);
+    }
+
+    /** Public wrapper for Engine.php to reach rejectPrivateIdentifiersInProgram. */
+    public static function rejectPrivateIdentifiersInProgramPublic(\PhpJs\Ast\Program $program): void
+    {
+        self::rejectPrivateIdentifiersInProgram($program);
+    }
+
+    /**
+     * Walk a dynamic-function Program for any PrivateIdentifier reference.
+     * Because dynamic functions are not part of a surrounding class body, any
+     * #name reference is invalid and must raise SyntaxError per spec.
+     */
+    private static function rejectPrivateIdentifiersInProgram(\PhpJs\Ast\Program $program): void
+    {
+        if (self::nodeContainsPrivateIdentifier($program)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Private identifiers are not allowed outside of a class body'
+            );
+        }
+    }
+
+    private static function nodeContainsPrivateIdentifier(?\PhpJs\Ast\Node $node): bool
+    {
+        if ($node === null) {
+            return false;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+            return true;
+        }
+        // Descend into class bodies too — a dynamic-function body may contain
+        // an inner class, and private identifiers inside that class's own
+        // scope are valid. We only reject unresolved references, so rely on
+        // the existing validateEvalPrivateNames-style logic by stopping at
+        // class boundaries where private name scope is introduced.
+        if (
+            $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            return false;
+        }
+        $reflection = new \ReflectionObject($node);
+        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof \PhpJs\Ast\Node) {
+                if (self::nodeContainsPrivateIdentifier($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if (
+                        $item instanceof \PhpJs\Ast\Node
+                        && self::nodeContainsPrivateIdentifier($item)
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
