@@ -239,6 +239,18 @@ class Interpreter
         }
         $this->validateSelfStrictFunctions($program->body);
 
+        // Per spec PerformEval: indirect eval creates a new declarative
+        // environment for its lexical declarations (step 10.a), while var
+        // declarations go to the global VariableEnvironment. Lexical
+        // declarations in indirect eval do not conflict with existing
+        // global lexical bindings.
+        if ($this->isEvalContext) {
+            $lexEnv = $this->globalEnv->createChild();
+            $this->hoistDeclarations($program->body, $this->globalEnv);
+            $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
+            return $this->executeStatements($program->body, $lexEnv);
+        }
+
         $this->validateGlobalLexDecls($program->body);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
