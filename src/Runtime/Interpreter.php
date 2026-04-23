@@ -5274,8 +5274,9 @@ class Interpreter
                     $rejected = $args[0] ?? JsUndefined::instance();
                     return JsUndefined::instance();
                 };
-                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                // CreateResolvingFunctions: anonymous built-ins per spec.
+                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
                 try {
                     $thenMethod->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {
@@ -7370,8 +7371,9 @@ class Interpreter
                     $rejected = $args[0] ?? JsUndefined::instance();
                     return JsUndefined::instance();
                 };
-                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                // CreateResolvingFunctions: anonymous built-ins per spec.
+                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
                 try {
                     $thenMethod->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {
