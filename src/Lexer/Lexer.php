@@ -154,9 +154,17 @@ class Lexer
             return $this->readRegExp($start);
         }
 
-        // Private identifier (#name) for class private fields/methods
-        if ($ch === '#' && $this->pos + 1 < $this->length && $this->isIdentifierStart($this->source[$this->pos + 1])) {
-            return $this->readPrivateIdentifier($start);
+        // Private identifier (#name) for class private fields/methods.
+        // Accept an IdentifierStart character, or a '\u' unicode escape that
+        // must eventually decode to one (readIdentifier will validate).
+        if ($ch === '#' && $this->pos + 1 < $this->length) {
+            $next = $this->source[$this->pos + 1];
+            $nextIsEscape = $next === '\\'
+                && $this->pos + 2 < $this->length
+                && $this->source[$this->pos + 2] === 'u';
+            if ($this->isIdentifierStart($next) || $nextIsEscape) {
+                return $this->readPrivateIdentifier($start);
+            }
         }
 
         // Punctuators
@@ -200,9 +208,20 @@ class Lexer
     {
         $this->advance(); // skip '#'
         $name = '';
-        while ($this->pos < $this->length && $this->isIdentifierPart($this->source[$this->pos])) {
-            $name .= $this->source[$this->pos];
-            $this->advance();
+        while ($this->pos < $this->length) {
+            $ch = $this->source[$this->pos];
+            if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
+                $this->advance();
+                $this->advance();
+                $name .= $this->readUnicodeEscape();
+                continue;
+            }
+            if ($this->isIdentifierPart($ch)) {
+                $name .= $ch;
+                $this->advance();
+                continue;
+            }
+            break;
         }
         return new Token(TokenType::PrivateIdentifier, '#' . $name, $start);
     }
