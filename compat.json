@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-23T20:38:15+00:00",
-    "updatedAt": "2026-04-23T20:38:15+00:00",
+    "generatedAt": "2026-04-23T20:38:55+00:00",
+    "updatedAt": "2026-04-23T20:38:55+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "08bf2d9",
+        "commit": "1b2004c",
         "isDirty": true
     },
     "environment": {
@@ -174,16 +174,16 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 30213,
-            "fail": 787,
+            "pass": 32957,
+            "fail": 793,
             "skip": 0,
             "blocked": 0,
-            "pending": 18756,
+            "pending": 16006,
             "running": 750,
-            "attempted": 31000,
-            "known": 31000,
+            "attempted": 33750,
+            "known": 33750,
             "total": 50506,
-            "passRate": 97.5
+            "passRate": 97.7
         },
         "areas": [
             {
@@ -203,16 +203,16 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 12321,
-                "fail": 179,
+                "pass": 13566,
+                "fail": 184,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 9479,
+                "pending": 8229,
                 "running": 750,
-                "attempted": 12500,
-                "known": 12500,
+                "attempted": 13750,
+                "known": 13750,
                 "total": 22729,
-                "passRate": 98.6
+                "passRate": 98.7
             },
             {
                 "name": "harness",
@@ -245,16 +245,16 @@
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 17242,
-                "fail": 258,
+                "pass": 18741,
+                "fail": 259,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 5884,
+                "pending": 4384,
                 "running": 0,
-                "attempted": 17500,
-                "known": 17500,
+                "attempted": 19000,
+                "known": 19000,
                 "total": 23384,
-                "passRate": 98.5
+                "passRate": 98.6
             },
             {
                 "name": "staging",
@@ -530,13 +530,13 @@
             {
                 "name": "built-ins/Array",
                 "area": "built-ins",
-                "status": "running",
+                "status": "incomplete",
                 "pass": 1233,
                 "fail": 17,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 1575,
-                "running": 250,
+                "pending": 1825,
+                "running": 0,
                 "attempted": 1250,
                 "known": 1250,
                 "total": 3075,
@@ -785,13 +785,13 @@
             {
                 "name": "built-ins/Function",
                 "area": "built-ins",
-                "status": "incomplete",
+                "status": "running",
                 "pass": 243,
                 "fail": 7,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 259,
-                "running": 0,
+                "pending": 9,
+                "running": 250,
                 "attempted": 250,
                 "known": 250,
                 "total": 509,
@@ -966,14 +966,14 @@
                 "name": "built-ins/Object",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 2750,
-                "fail": 0,
+                "pass": 3249,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 660,
+                "pending": 160,
                 "running": 0,
-                "attempted": 2750,
-                "known": 2750,
+                "attempted": 3250,
+                "known": 3250,
                 "total": 3410,
                 "passRate": 100
             },
@@ -1161,14 +1161,14 @@
                 "name": "built-ins/Temporal",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 3250,
+                "pass": 3750,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 915,
+                "pending": 415,
                 "running": 0,
-                "attempted": 3250,
-                "known": 3250,
+                "attempted": 3750,
+                "known": 3750,
                 "total": 4165,
                 "passRate": 100
             },
@@ -1206,16 +1206,16 @@
                 "name": "built-ins/TypedArrayConstructors",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 250,
-                "fail": 0,
+                "pass": 496,
+                "fail": 4,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 486,
+                "pending": 236,
                 "running": 0,
-                "attempted": 250,
-                "known": 250,
+                "attempted": 500,
+                "known": 500,
                 "total": 736,
-                "passRate": 100
+                "passRate": 99.2
             },
             {
                 "name": "built-ins/Uint8Array",
@@ -1881,16 +1881,16 @@
                 "name": "language/expressions",
                 "area": "language",
                 "status": "incomplete",
-                "pass": 8371,
-                "fail": 129,
+                "pass": 9120,
+                "fail": 130,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 2523,
+                "pending": 1773,
                 "running": 0,
-                "attempted": 8500,
-                "known": 8500,
+                "attempted": 9250,
+                "known": 9250,
                 "total": 11023,
-                "passRate": 98.5
+                "passRate": 98.6
             },
             {
                 "name": "language/function-code",
@@ -2121,16 +2121,16 @@
                 "name": "language/statements",
                 "area": "language",
                 "status": "incomplete",
-                "pass": 7238,
+                "pass": 7988,
                 "fail": 12,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 1904,
+                "pending": 1154,
                 "running": 0,
-                "attempted": 7250,
-                "known": 7250,
+                "attempted": 8000,
+                "known": 8000,
                 "total": 9154,
-                "passRate": 99.8
+                "passRate": 99.9
             },
             {
                 "name": "language/types",
@@ -2448,6 +2448,19 @@
                 ]
             },
             {
+                "group": "language/statements",
+                "kind": "normal",
+                "durationSec": 9.408,
+                "filesCount": 250,
+                "sampleFiles": [
+                    "test262/test/language/statements/switch/syntax/redeclaration/const-name-redeclaration-attempt-with-class.js",
+                    "test262/test/language/statements/switch/syntax/redeclaration/const-name-redeclaration-attempt-with-const.js",
+                    "...",
+                    "test262/test/language/statements/try/scope-catch-param-lex-close.js",
+                    "test262/test/language/statements/try/scope-catch-param-lex-open.js"
+                ]
+            },
+            {
                 "group": "built-ins/Temporal",
                 "kind": "normal",
                 "durationSec": 8.386,
@@ -2575,19 +2588,6 @@
                     "...",
                     "test262/test/built-ins/Temporal/PlainYearMonth/prototype/toStringTag/prop-desc.js",
                     "test262/test/built-ins/Temporal/PlainYearMonth/prototype/until/argument-casting.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 6.905,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-changes-value.js",
-                    "test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-parameters.js",
-                    "...",
-                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/resizable-buffer.js",
-                    "test262/test/built-ins/TypedArray/prototype/lastIndexOf/return-abrupt-from-this-out-of-bounds.js"
                 ]
             }
         ]

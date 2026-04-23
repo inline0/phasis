@@ -4,29 +4,29 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-23T20:38:15+00:00`
+- Snapshot time: `2026-04-23T20:38:55+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `137`
 - Test files: `50506`
-- Git: `main` @ `08bf2d9` (dirty)
+- Git: `main` @ `1b2004c` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 30213 | 787 | 0 | 0 | 18756 | 750 | 31000 | 31000 | 50506 | 97.5% |
+| 32957 | 793 | 0 | 0 | 16006 | 750 | 33750 | 33750 | 50506 | 97.7% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 250 | 0 | 0 | 0 | 829 | 0 | 100.0% |
-| built-ins | RUNNING | 12321 | 179 | 0 | 0 | 9479 | 750 | 98.6% |
+| built-ins | RUNNING | 13566 | 184 | 0 | 0 | 8229 | 750 | 98.7% |
 | harness | PENDING | 0 | 0 | 0 | 0 | 116 | 0 | n/a |
 | intl402 | INCOMPLETE | 178 | 322 | 0 | 0 | 1066 | 0 | 35.6% |
-| language | INCOMPLETE | 17242 | 258 | 0 | 0 | 5884 | 0 | 98.5% |
+| language | INCOMPLETE | 18741 | 259 | 0 | 0 | 4384 | 0 | 98.6% |
 | staging | INCOMPLETE | 222 | 28 | 0 | 0 | 1382 | 0 | 88.8% |
 
 ## Group Coverage
@@ -50,7 +50,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/literals | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | annexB/language/statements | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
 | built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| built-ins/Array | RUNNING | 1233 | 17 | 0 | 0 | 1575 | 250 | 98.6% |
+| built-ins/Array | INCOMPLETE | 1233 | 17 | 0 | 0 | 1825 | 0 | 98.6% |
 | built-ins/ArrayBuffer | PENDING | 0 | 0 | 0 | 0 | 192 | 0 | n/a |
 | built-ins/ArrayIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 27 | 0 | n/a |
 | built-ins/AsyncDisposableStack | PENDING | 0 | 0 | 0 | 0 | 52 | 0 | n/a |
@@ -67,7 +67,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/DisposableStack | PENDING | 0 | 0 | 0 | 0 | 52 | 0 | n/a |
 | built-ins/Error | PENDING | 0 | 0 | 0 | 0 | 53 | 0 | n/a |
 | built-ins/FinalizationRegistry | PENDING | 0 | 0 | 0 | 0 | 47 | 0 | n/a |
-| built-ins/Function | INCOMPLETE | 243 | 7 | 0 | 0 | 259 | 0 | 97.2% |
+| built-ins/Function | RUNNING | 243 | 7 | 0 | 0 | 9 | 250 | 97.2% |
 | built-ins/GeneratorFunction | PENDING | 0 | 0 | 0 | 0 | 23 | 0 | n/a |
 | built-ins/GeneratorPrototype | PENDING | 0 | 0 | 0 | 0 | 61 | 0 | n/a |
 | built-ins/Infinity | PENDING | 0 | 0 | 0 | 0 | 6 | 0 | n/a |
@@ -79,7 +79,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/NaN | PENDING | 0 | 0 | 0 | 0 | 6 | 0 | n/a |
 | built-ins/NativeErrors | PENDING | 0 | 0 | 0 | 0 | 139 | 0 | n/a |
 | built-ins/Number | INCOMPLETE | 250 | 0 | 0 | 0 | 85 | 0 | 100.0% |
-| built-ins/Object | INCOMPLETE | 2750 | 0 | 0 | 0 | 660 | 0 | 100.0% |
+| built-ins/Object | INCOMPLETE | 3249 | 1 | 0 | 0 | 160 | 0 | 100.0% |
 | built-ins/Promise | PENDING | 0 | 0 | 0 | 0 | 631 | 0 | n/a |
 | built-ins/Proxy | INCOMPLETE | 245 | 5 | 0 | 0 | 61 | 0 | 98.0% |
 | built-ins/Reflect | PENDING | 0 | 0 | 0 | 0 | 153 | 0 | n/a |
@@ -92,10 +92,10 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/String | INCOMPLETE | 993 | 7 | 0 | 0 | 212 | 0 | 99.3% |
 | built-ins/StringIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 7 | 0 | n/a |
 | built-ins/Symbol | PENDING | 0 | 0 | 0 | 0 | 94 | 0 | n/a |
-| built-ins/Temporal | INCOMPLETE | 3250 | 0 | 0 | 0 | 915 | 0 | 100.0% |
+| built-ins/Temporal | INCOMPLETE | 3750 | 0 | 0 | 0 | 415 | 0 | 100.0% |
 | built-ins/ThrowTypeError | PENDING | 0 | 0 | 0 | 0 | 14 | 0 | n/a |
 | built-ins/TypedArray | INCOMPLETE | 1212 | 38 | 0 | 0 | 176 | 0 | 97.0% |
-| built-ins/TypedArrayConstructors | INCOMPLETE | 250 | 0 | 0 | 0 | 486 | 0 | 100.0% |
+| built-ins/TypedArrayConstructors | INCOMPLETE | 496 | 4 | 0 | 0 | 236 | 0 | 99.2% |
 | built-ins/Uint8Array | PENDING | 0 | 0 | 0 | 0 | 64 | 0 | n/a |
 | built-ins/WeakMap | PENDING | 0 | 0 | 0 | 0 | 102 | 0 | n/a |
 | built-ins/WeakRef | PENDING | 0 | 0 | 0 | 0 | 29 | 0 | n/a |
@@ -140,7 +140,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/directive-prologue | PENDING | 0 | 0 | 0 | 0 | 62 | 0 | n/a |
 | language/eval-code | INCOMPLETE | 250 | 0 | 0 | 0 | 97 | 0 | 100.0% |
 | language/export | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| language/expressions | INCOMPLETE | 8371 | 129 | 0 | 0 | 2523 | 0 | 98.5% |
+| language/expressions | INCOMPLETE | 9120 | 130 | 0 | 0 | 1773 | 0 | 98.6% |
 | language/function-code | PENDING | 0 | 0 | 0 | 0 | 217 | 0 | n/a |
 | language/future-reserved-words | PENDING | 0 | 0 | 0 | 0 | 55 | 0 | n/a |
 | language/global-code | PENDING | 0 | 0 | 0 | 0 | 42 | 0 | n/a |
@@ -156,7 +156,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/rest-parameters | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
 | language/source-text | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | language/statementList | PENDING | 0 | 0 | 0 | 0 | 80 | 0 | n/a |
-| language/statements | INCOMPLETE | 7238 | 12 | 0 | 0 | 1904 | 0 | 99.8% |
+| language/statements | INCOMPLETE | 7988 | 12 | 0 | 0 | 1154 | 0 | 99.9% |
 | language/types | PENDING | 0 | 0 | 0 | 0 | 113 | 0 | n/a |
 | language/white-space | PENDING | 0 | 0 | 0 | 0 | 67 | 0 | n/a |
 | staging | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
@@ -184,6 +184,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/statements | NORMAL | 12.013s | 250 | `test262/test/language/statements/try/scope-catch-param-var-none.js`<br>`test262/test/language/statements/try/static-init-await-binding-invalid.js`<br>...<br>`test262/test/language/statements/with/S12.10_A1.10_T5.js`<br>`test262/test/language/statements/with/S12.10_A1.11_T1.js` |
 | built-ins/TypedArray | NORMAL | 10.656s | 250 | `test262/test/built-ins/TypedArray/Symbol.species/length.js`<br>`test262/test/built-ins/TypedArray/Symbol.species/name.js`<br>...<br>`test262/test/built-ins/TypedArray/prototype/every/values-are-not-cached.js`<br>`test262/test/built-ins/TypedArray/prototype/fill/BigInt/coerced-indexes.js` |
 | language/expressions | NORMAL | 10.408s | 250 | `test262/test/language/expressions/super/prop-expr-getsuperbase-before-topropertykey-putvalue.js`<br>`test262/test/language/expressions/super/prop-expr-obj-err.js`<br>...<br>`test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-done-no-value.js`<br>`test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-value-err.js` |
+| language/statements | NORMAL | 9.408s | 250 | `test262/test/language/statements/switch/syntax/redeclaration/const-name-redeclaration-attempt-with-class.js`<br>`test262/test/language/statements/switch/syntax/redeclaration/const-name-redeclaration-attempt-with-const.js`<br>...<br>`test262/test/language/statements/try/scope-catch-param-lex-close.js`<br>`test262/test/language/statements/try/scope-catch-param-lex-open.js` |
 | built-ins/Temporal | NORMAL | 8.386s | 250 | `test262/test/built-ins/Temporal/PlainTime/from/options-wrong-type.js`<br>`test262/test/built-ins/Temporal/PlainTime/from/order-of-operations.js`<br>...<br>`test262/test/built-ins/Temporal/PlainTime/prototype/toString/basic.js`<br>`test262/test/built-ins/Temporal/PlainTime/prototype/toString/branding.js` |
 | built-ins/Temporal | NORMAL | 7.861s | 250 | `test262/test/built-ins/Temporal/Duration/basic.js`<br>`test262/test/built-ins/Temporal/Duration/builtin.js`<br>...<br>`test262/test/built-ins/Temporal/Duration/prototype/round/roundingmode-floor.js`<br>`test262/test/built-ins/Temporal/Duration/prototype/round/roundingmode-halfCeil.js` |
 | built-ins/Temporal | NORMAL | 7.628s | 250 | `test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/not-a-constructor.js`<br>`test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/options-object.js`<br>...<br>`test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/not-a-constructor.js`<br>`test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/options-object.js` |
@@ -194,7 +195,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Temporal | NORMAL | 7.384s | 250 | `test262/test/built-ins/Temporal/PlainTime/prototype/toString/builtin.js`<br>`test262/test/built-ins/Temporal/PlainTime/prototype/toString/fractionalseconddigits-auto.js`<br>...<br>`test262/test/built-ins/Temporal/PlainYearMonth/name.js`<br>`test262/test/built-ins/Temporal/PlainYearMonth/negative-infinity-throws-rangeerror.js` |
 | built-ins/Temporal | NORMAL | 7.209s | 250 | `test262/test/built-ins/Temporal/PlainDate/compare/argument-string-multiple-time-zone.js`<br>`test262/test/built-ins/Temporal/PlainDate/compare/argument-string-time-separators.js`<br>...<br>`test262/test/built-ins/Temporal/PlainDate/prototype/since/prop-desc.js`<br>`test262/test/built-ins/Temporal/PlainDate/prototype/since/round-cross-unit-boundary.js` |
 | built-ins/Temporal | NORMAL | 7.194s | 250 | `test262/test/built-ins/Temporal/PlainYearMonth/prop-desc.js`<br>`test262/test/built-ins/Temporal/PlainYearMonth/prototype/add/argument-duration-max.js`<br>...<br>`test262/test/built-ins/Temporal/PlainYearMonth/prototype/toStringTag/prop-desc.js`<br>`test262/test/built-ins/Temporal/PlainYearMonth/prototype/until/argument-casting.js` |
-| built-ins/TypedArray | NORMAL | 6.905s | 250 | `test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-changes-value.js`<br>`test262/test/built-ins/TypedArray/prototype/findLastIndex/BigInt/predicate-call-parameters.js`<br>...<br>`test262/test/built-ins/TypedArray/prototype/lastIndexOf/resizable-buffer.js`<br>`test262/test/built-ins/TypedArray/prototype/lastIndexOf/return-abrupt-from-this-out-of-bounds.js` |
 
 ## Runner Caveats
 
