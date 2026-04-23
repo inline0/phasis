@@ -170,6 +170,21 @@ class JsTypedArray extends JsObject
         return $keys;
     }
 
+    /**
+     * Run the spec's ToNumber or ToBigInt coercion on a value that is about
+     * to be stored into a typed array element. This runs even when the
+     * index turns out to be invalid (out of bounds, fractional, detached)
+     * so a throwing valueOf still surfaces the error.
+     */
+    private function coerceTypedArrayValue(JsValue $value): void
+    {
+        if ($this->isBigInt) {
+            \PhpJs\Spec\TypeConversion::toBigInt($value);
+            return;
+        }
+        \PhpJs\Spec\TypeConversion::toNumber($value);
+    }
+
     public function delete(string $name, bool $strict = false): bool
     {
         if (self::isCanonicalNumericIndex($name)) {
@@ -477,19 +492,17 @@ class JsTypedArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        // Numeric index access: only for digit strings that round-trip
-        // through ToNumber/ToString. Very large digit strings like
-        // "1000000000000000000000" are NOT a canonical index and must be
-        // treated as ordinary string keys.
-        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
-            $index = (int) $name;
-            $this->setIndex($index, $value);
-            return;
-        }
-
-        // CanonicalNumericIndexString: intercept keys like "NaN", "-0", "1.5".
-        // Non-integer numeric indices are silently ignored.
+        // CanonicalNumericIndexString intercept per spec 10.4.5.5: even for
+        // invalid integer indices (fractional, NaN, OOB), ToNumber/ToBigInt
+        // runs BEFORE the validity check so a throwing valueOf surfaces.
         if (self::isCanonicalNumericIndex($name)) {
+            $this->coerceTypedArrayValue($value);
+            if (ctype_digit($name)) {
+                $index = (int) $name;
+                if ($index >= 0 && $index < $this->getLength()) {
+                    $this->setIndex($index, $value);
+                }
+            }
             return;
         }
 
@@ -507,6 +520,8 @@ class JsTypedArray extends JsObject
         if (self::isCanonicalNumericIndex($name)) {
             $isSelf = $receiver === $this;
             if ($isSelf) {
+                // Coerce value via ToNumber/ToBigInt before validity check.
+                $this->coerceTypedArrayValue($value);
                 if (ctype_digit($name)) {
                     $index = (int) $name;
                     if ($index >= 0 && $index < $this->getLength()) {
