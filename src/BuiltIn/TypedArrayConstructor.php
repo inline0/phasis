@@ -1284,9 +1284,23 @@ class TypedArrayConstructor
                         'TypedArray.of requires a constructor'
                     );
                 }
-                $arr = JsArray::fromArray($args);
-                // Use Construct to create the new typed array.
-                return $this_->construct([$arr]);
+                // TypedArrayCreate(C, [len]) + ValidateTypedArray.
+                $len = count($args);
+                $newObj = $this_->construct([new JsNumber((float) $len)]);
+                if (!$newObj instanceof JsTypedArray) {
+                    throw new TypeError(
+                        'TypedArray.of: constructor did not return a TypedArray'
+                    );
+                }
+                if ($newObj->getLength() < $len) {
+                    throw new TypeError(
+                        'TypedArray.of: constructor returned a smaller TypedArray'
+                    );
+                }
+                for ($i = 0; $i < $len; $i++) {
+                    $newObj->set((string) $i, $args[$i]);
+                }
+                return $newObj;
             },
             0,
         );
