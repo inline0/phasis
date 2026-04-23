@@ -428,11 +428,13 @@ class JsTypedArray extends JsObject
         if ($name === 'NaN' || $name === 'Infinity' || $name === '-Infinity') {
             return true;
         }
-        // Numeric strings: is_numeric covers integers and floats.
-        // Verify round-trip: the PHP string form of the float must match exactly.
+        // Numeric strings: is_numeric covers integers and floats. Verify
+        // round-trip using JS's ToString semantics (not PHP's (string)(float)
+        // which emits "1.0E+21" for 1e21 and "1.0E-6" for 1e-6).
         if (is_numeric($name)) {
             $f = (float) $name;
-            return (string) $f === $name;
+            $jsString = (new JsNumber($f))->toJsString();
+            return $jsString === $name;
         }
         return false;
     }
@@ -531,11 +533,13 @@ class JsTypedArray extends JsObject
         if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             $index = (int) $name;
             if ($index >= 0 && $index < $this->getLength()) {
+                // Per spec 10.4.5.1, TypedArray integer indices are
+                // writable, enumerable, and (since ES2023) configurable.
                 return \PhpJs\Object\PropertyDescriptor::data(
                     $this->getIndex($index),
                     true,
                     true,
-                    false,
+                    true,
                 );
             }
             return null;
@@ -576,10 +580,14 @@ class JsTypedArray extends JsObject
             if ($desc->isAccessorDescriptor()) {
                 return false;
             }
+            // Per spec 10.4.5.3 IntegerIndexedExoticObject.[[DefineOwnProperty]]:
+            // the new descriptor must be compatible with {writable: true,
+            // enumerable: true, configurable: true}. Explicit false attributes
+            // cause the define to fail.
             if (
                 $desc->writable === false
                 || $desc->enumerable === false
-                || $desc->configurable === true
+                || $desc->configurable === false
             ) {
                 return false;
             }
