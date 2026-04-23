@@ -424,11 +424,14 @@ class StringPrototype
             if (is_nan($posNum)) {
                 $index = 0;
             }
-            $len = mb_strlen($str, 'UTF-8');
+            // Per spec charAt uses UTF-16 code unit indices.
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $len = (int) (strlen($u16) / 2);
             if ($index < 0 || $index >= $len) {
                 return new JsString('');
             }
-            return new JsString(mb_substr($str, $index, 1, 'UTF-8'));
+            $codeUnit = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
+            return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
         };
     }
 
