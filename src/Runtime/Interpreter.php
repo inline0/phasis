@@ -1900,11 +1900,23 @@ class Interpreter
     /**
      * Public entry point for validating a parsed eval program. Throws a
      * SyntaxError for top-level break/continue/return and any nested free
-     * break/continue that escapes its target label set.
+     * break/continue that escapes its target label set. Also rejects
+     * new.target, super, and super() at the script top level (these are
+     * function-body-only constructs and indirect eval is always script code).
      */
     public function validateEvalProgram(\PhpJs\Ast\Program $program): void
     {
         $this->validateEvalBody($program->body);
+        if ($this->astContainsNewTarget($program->body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'new.target expression is not allowed here'
+            );
+        }
+        if ($this->astContainsSuper($program->body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                "'super' keyword unexpected here"
+            );
+        }
     }
 
     private function validateEvalBody(array $statements): void
