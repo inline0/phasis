@@ -3003,6 +3003,47 @@ class Interpreter
      * Initialize instance fields and private methods on a newly created object.
      * Per spec, field initializers are evaluated with `this` bound to the instance.
      */
+    /**
+     * Spec: CopyDataProperties for object rest destructuring. Iterates
+     * OrdinaryOwnPropertyKeys in order (integer indices, then string keys,
+     * then symbols) and copies enumerable own properties not already consumed
+     * by preceding destructuring properties.
+     *
+     * @param array<int,string|int> $usedStringKeys
+     * @param array<int,bool> $usedSymbolIds
+     */
+    private function copyRestDataProperties(
+        JsObject $source,
+        JsObject $target,
+        array $usedStringKeys,
+        array $usedSymbolIds,
+    ): void {
+        foreach ($source->ordinaryOwnPropertyKeys() as $propKey) {
+            if ($propKey instanceof JsSymbol) {
+                if (isset($usedSymbolIds[$propKey->getId()])) {
+                    continue;
+                }
+                $desc = $source->getSymbolPropertyDescriptor($propKey);
+                if ($desc === null || $desc->enumerable === false) {
+                    continue;
+                }
+                $target->setBySymbol($propKey, $source->getBySymbol($propKey));
+                continue;
+            }
+            $strKey = $propKey instanceof JsString
+                ? $propKey->value
+                : (string) $propKey;
+            if (in_array($strKey, $usedStringKeys, true)) {
+                continue;
+            }
+            $desc = $source->getOwnPropertyDescriptor($strKey);
+            if ($desc === null || $desc->enumerable === false) {
+                continue;
+            }
+            $target->defineOwnProperty($strKey, PropertyDescriptor::data($source->get($strKey)));
+        }
+    }
+
     public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
     {
         $ctorId = spl_object_id($ctor);
@@ -7197,16 +7238,12 @@ class Interpreter
                 );
             }
             $usedKeysApe = [];
+            $usedSymIdsApe = [];
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof RestElement) {
                     $restObjApe = new JsObject();
                     if ($value instanceof JsObject) {
-                        // Per spec: object rest only includes own enumerable properties.
-                        foreach ($value->getOwnEnumerableKeys() as $rk) {
-                            if (!in_array($rk, $usedKeysApe, true)) {
-                                $restObjApe->set($rk, $value->get($rk));
-                            }
-                        }
+                        $this->copyRestDataProperties($value, $restObjApe, $usedKeysApe, $usedSymIdsApe);
                     }
                     $restArgApe = $prop->argument;
                     if ($this->isDestructuringTarget($restArgApe)) {
@@ -7218,11 +7255,22 @@ class Interpreter
                     break;
                 }
                 if ($prop instanceof AssignmentProperty) {
-                    $key = $prop->computed
-                        ? TypeConversion::toString($this->evaluate($prop->key, $env))
-                        : ($prop->key instanceof Identifier
+                    if ($prop->computed) {
+                        $rawK = $this->evaluate($prop->key, $env);
+                        if ($rawK instanceof JsSymbol) {
+                            $usedSymIdsApe[$rawK->getId()] = true;
+                            $propValue = ($value instanceof JsObject)
+                                ? $value->getBySymbol($rawK)
+                                : JsUndefined::instance();
+                            $this->assignPatternToEnv($prop->value, $propValue, $env);
+                            continue;
+                        }
+                        $key = TypeConversion::toString($rawK);
+                    } else {
+                        $key = $prop->key instanceof Identifier
                             ? $prop->key->name
-                            : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                            : TypeConversion::toString($this->evaluate($prop->key, $env));
+                    }
                     $usedKeysApe[] = $key;
                     $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
                     $this->assignPatternToEnv($prop->value, $propValue, $env);
@@ -9647,16 +9695,11 @@ class Interpreter
             $objValue = $value instanceof JsObject ? $value : TypeConversion::toObject($value);
             $props = $target instanceof ObjectPattern ? $target->properties : $target->properties;
             $usedKeys = [];
+            $usedSymIds = [];
             foreach ($props as $prop) {
                 if ($prop instanceof RestElement || $prop instanceof SpreadElement) {
-                    // Collect all own enumerable properties not already consumed.
                     $restObj = new JsObject();
-                    // Per spec: object rest only includes own enumerable properties.
-                    foreach ($objValue->getOwnEnumerableKeys() as $rk) {
-                        if (!in_array($rk, $usedKeys, true)) {
-                            $restObj->set($rk, $objValue->get($rk));
-                        }
-                    }
+                    $this->copyRestDataProperties($objValue, $restObj, $usedKeys, $usedSymIds);
                     $restArg = $prop instanceof RestElement ? $prop->argument : $prop->argument;
                     if ($this->isDestructuringTarget($restArg)) {
                         $this->destructureAssign($restArg, $restObj, $env);
@@ -9668,14 +9711,29 @@ class Interpreter
                 }
                 $propNode = $prop instanceof AssignmentProperty ? $prop : $prop;
                 // Step 1: evaluate PropertyName to get the source key.
-                $key = ($propNode instanceof AssignmentProperty || $propNode instanceof Property)
-                    ? ($propNode->computed
-                        ? TypeConversion::toString($this->evaluate($propNode->key, $env))
-                        : ($propNode->key instanceof Identifier
+                $isSymKey = false;
+                $rawPropKey = null;
+                if ($propNode instanceof AssignmentProperty || $propNode instanceof Property) {
+                    if ($propNode->computed) {
+                        $rawPropKey = $this->evaluate($propNode->key, $env);
+                        if ($rawPropKey instanceof JsSymbol) {
+                            $isSymKey = true;
+                            $usedSymIds[$rawPropKey->getId()] = true;
+                            $key = '';
+                        } else {
+                            $key = TypeConversion::toString($rawPropKey);
+                        }
+                    } else {
+                        $key = $propNode->key instanceof Identifier
                             ? $propNode->key->name
-                            : TypeConversion::toString($this->evaluate($propNode->key, $env))))
-                    : '';
-                $usedKeys[] = $key;
+                            : TypeConversion::toString($this->evaluate($propNode->key, $env));
+                    }
+                } else {
+                    $key = '';
+                }
+                if (!$isSymKey) {
+                    $usedKeys[] = $key;
+                }
 
                 $valueNode = ($propNode instanceof AssignmentProperty || $propNode instanceof Property)
                     ? $propNode->value
@@ -9700,8 +9758,10 @@ class Interpreter
                     $ref = $this->resolveReference($realTarget, $env);
                 }
 
-                // Step 2: GetV(value, propertyName).
-                $propValue = $objValue->get($key);
+                // Step 2: GetV(value, propertyName). Symbol keys use getBySymbol.
+                $propValue = $isSymKey
+                    ? $objValue->getBySymbol($rawPropKey)
+                    : $objValue->get($key);
 
                 // Step 3: apply default if present and value is undefined.
                 if ($defaultNode2 !== null && $propValue instanceof JsUndefined) {
