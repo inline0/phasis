@@ -7381,6 +7381,14 @@ class Interpreter
         $thisValue = JsUndefined::instance();
 
         if ($node->callee instanceof MemberExpression) {
+            // super.method() needs special resolution via HomeObject; bail to the
+            // regular call path which knows how to handle it.
+            if (
+                $node->callee->object instanceof Identifier
+                && $node->callee->object->name === 'super'
+            ) {
+                return null;
+            }
             $obj = $this->evaluate($node->callee->object, $env);
             // Computed member with a Symbol key must not be stringified; fall back to
             // the regular call path (returning null) so getBySymbol is used correctly.
@@ -7398,8 +7406,8 @@ class Interpreter
             $callee = $obj instanceof JsObject ? $obj->get($propName) : null;
             $thisValue = $obj;
         } elseif ($node->callee instanceof Identifier) {
-            if ($node->callee->name === 'eval') {
-                return null; // eval is not eligible for TCO
+            if ($node->callee->name === 'eval' || $node->callee->name === 'super') {
+                return null; // eval and super() are not eligible for TCO
             }
             if ($env->has($node->callee->name)) {
                 $callee = $env->get($node->callee->name);
