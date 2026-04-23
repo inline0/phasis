@@ -1236,16 +1236,24 @@ class Interpreter
         }
 
         if ($node->operator === '=') {
-            $right = $this->evaluate($node->right, $env);
             // Function name inference per spec 13.15.2 step 1.e:
             // If IsAnonymousFunctionDefinition is true, then
             //   a. Let hasNameProperty be HasOwnProperty(rval, "name").
             //   b. If hasNameProperty is false, perform SetFunctionName(rval, lref).
-            // Note: JsFunction constructor always defines .name, so we check whether
-            // it was explicitly overridden (e.g. static name() in a class body).
             // Per spec, IsIdentifierRef returns false for parenthesized expressions
             // like (fn) = function() {}, so name inference must not apply.
             $isIdentRef = $node->left instanceof Identifier && !$node->leftParenthesized;
+            // For anonymous class expressions, use NamedEvaluation so static
+            // fields observe the binding name.
+            if (
+                $isIdentRef
+                && $node->right instanceof ClassExpression
+                && $node->right->id === null
+            ) {
+                $right = $this->evalClassExpression($node->right, $env, $node->left->name);
+            } else {
+                $right = $this->evaluate($node->right, $env);
+            }
             if (
                 $right instanceof JsFunction
                 && $isIdentRef
