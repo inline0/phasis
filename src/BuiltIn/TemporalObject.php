@@ -3798,7 +3798,29 @@ class TemporalObject
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::zonedDateTimeDifference($ns2, $ns1, $tz, $opts);
+            // Swap rounding modes for since (result will be negated).
+            $optsObj = $opts instanceof JsObject ? $opts : new JsObject();
+            $rmv = $optsObj->get('roundingMode');
+            if (!($rmv instanceof JsUndefined)) {
+                $rm = TypeConversion::toString($rmv);
+                $swapped = match ($rm) {
+                    'ceil' => 'floor', 'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor', 'halfFloor' => 'halfCeil',
+                    default => $rm,
+                };
+                $newOpts = new JsObject();
+                foreach (['largestUnit', 'smallestUnit', 'roundingIncrement'] as $k) {
+                    $v = $optsObj->get($k);
+                    if (!($v instanceof JsUndefined)) {
+                        $newOpts->set($k, $v);
+                    }
+                }
+                $newOpts->set('roundingMode', new JsString($swapped));
+                $optsObj = $newOpts;
+            }
+            // Compute until(this, other) then negate.
+            $dur = self::zonedDateTimeDifference($ns1, $ns2, $tz, $optsObj);
+            return self::negateDuration($dur);
         }, 1);
 
         $d('equals', function (JsValue $this_, array $args): JsValue {
