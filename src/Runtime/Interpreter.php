@@ -5432,7 +5432,7 @@ class Interpreter
         return $result;
     }
 
-    private function evalClassExpression(ClassExpression $node, Environment $env): JsValue
+    private function evalClassExpression(ClassExpression $node, Environment $env, ?string $nameHint = null): JsValue
     {
         // Per spec 15.7.14 ClassDefinitionEvaluation step 2-4:
         // If the class has a name, create a new lexical scope and bind the
@@ -5447,7 +5447,11 @@ class Interpreter
             // immutable binding so methods cannot reassign the class name.
             $classEnv->declareConst($node->id->name);
         }
-        $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $classEnv);
+        // For anonymous class expressions, NamedEvaluation passes the binding
+        // name down so static fields observe it. The explicit class name (if
+        // present) always wins.
+        $effectiveName = $node->id?->name ?? $nameHint;
+        $cls = $this->buildClass($effectiveName, $node->superClass, $node->body, $classEnv);
         // Bind the class name to the constructor in the class scope.
         if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
             $classEnv->initialize($node->id->name, $cls);
@@ -5804,9 +5808,22 @@ class Interpreter
                 }
             }
 
-            $init = $hasInit
-                ? $this->evaluate($declarator->init, $env)
-                : JsUndefined::instance();
+            // For anonymous class expressions, pass the binding name down
+            // into ClassDefinitionEvaluation so static fields observe the
+            // name (spec NamedEvaluation). Name inference for non-class
+            // anonymous functions is still handled after evaluation.
+            if (
+                $hasInit
+                && $declarator->init instanceof ClassExpression
+                && $declarator->init->id === null
+                && $declarator->id instanceof Identifier
+            ) {
+                $init = $this->evalClassExpression($declarator->init, $env, $declarator->id->name);
+            } else {
+                $init = $hasInit
+                    ? $this->evaluate($declarator->init, $env)
+                    : JsUndefined::instance();
+            }
 
             // Name inference per spec 14.3.2.1: only when IsAnonymousFunctionDefinition is true
             // and HasOwnProperty(value, "name") is false (i.e. not explicitly overridden).
