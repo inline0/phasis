@@ -619,13 +619,16 @@ class JsTypedArray extends JsObject
             ) {
                 return false;
             }
+            // Per spec step b.vi, the value coercion (ToNumber/ToBigInt) runs
+            // via IntegerIndexedElementSet, so valueOf side effects surface
+            // after the validity+descriptor checks succeed.
             if ($desc->value !== null) {
+                $this->coerceTypedArrayValue($desc->value);
                 $this->setIndex($index, $desc->value);
             }
             return true;
         }
 
-        // CanonicalNumericIndexString for non-integer numeric keys: reject.
         if (self::isCanonicalNumericIndex($name)) {
             return false;
         }
