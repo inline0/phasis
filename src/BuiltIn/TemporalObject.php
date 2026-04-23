@@ -8349,7 +8349,6 @@ class TemporalObject
             $unitNs = $unitNsMap[$smallestUnit] ?? '1';
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
-            // Day range validation removed - Duration values don't have range limits.
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
     }
