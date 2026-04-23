@@ -501,6 +501,11 @@ class Environment
         if (array_key_exists($name, $this->bindings)) {
             if (isset($this->deletable[$name])) {
                 unset($this->bindings[$name], $this->deletable[$name]);
+                // Mirror the delete to the linked global object, if any, so
+                // typeof/has lookups don't see the property after delete.
+                if ($this->linkedObject !== null) {
+                    $this->linkedObject->delete($name);
+                }
                 return true;
             }
             // Declared bindings are not deletable.
