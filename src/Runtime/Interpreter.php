@@ -3240,10 +3240,18 @@ class Interpreter
     ): JsValue|TailCallThunk {
         $this->callStack->push($fn->getName(), 0);
 
-        // Annex B Function.caller: track caller for non-strict functions.
+        // Annex B Function.caller: track caller only for non-strict, non-arrow
+        // ordinary functions. Per spec, methods, arrow functions, async
+        // functions, generators, and class constructors must not expose a
+        // 'caller' own property regardless of containing code's strict mode.
         $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
-        $setCallerProp = !$fn->isStrict() && !$fn->isArrow() && !$fn->isNative();
+        $setCallerProp = !$fn->isStrict()
+            && !$fn->isArrow()
+            && !$fn->isNative()
+            && !$fn->isAsync()
+            && !$fn->isGenerator()
+            && !$fn->isClassConstructor();
         $savedCaller = null;
         $callerIsStrict = false;
         if ($setCallerProp) {
