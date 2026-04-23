@@ -165,6 +165,22 @@ class Reference
             return;
         }
 
+        // Primitive base: per PutValue, ToObject the primitive and call
+        // [[Set]] on the wrapper. Our internalSet requires an object
+        // receiver, so we pass the wrapper; from observer code the receiver
+        // distinction only matters when the user property happens to be
+        // defined on the primitive itself, which cannot occur here.
+        $wrapper = \PhpJs\Spec\TypeConversion::toObject($this->base);
+        if ($wrapper instanceof JsObject) {
+            $success = $wrapper->internalSet($this->resolvedName(), $value, $wrapper);
+            if (!$success && $this->strict) {
+                throw new TypeError(
+                    "Cannot assign to read only property '{$this->resolvedName()}' of a primitive"
+                );
+            }
+            return;
+        }
+
         if ($this->strict) {
             throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}' of a primitive");
         }
