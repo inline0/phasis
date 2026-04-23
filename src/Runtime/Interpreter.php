@@ -10186,7 +10186,7 @@ class Interpreter
         // spec 7.4.6 step 7. GeneratorReturnSignal corresponds to a "return"
         // completion, not a throw, so innerResult's errors still surface.
         $completionIsThrow = $completion !== null
-            && !($completion instanceof \PhpJs\Runtime\GeneratorReturnSignal);
+            && !($completion instanceof \PhpJs\Value\GeneratorReturnSignal);
 
         $returnMethod = $iterator->get('return');
         if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
