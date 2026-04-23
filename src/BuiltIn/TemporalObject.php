@@ -1269,8 +1269,20 @@ class TemporalObject
                     self::getOverflow($options);
                     return $result;
                 }
-                // For objects (property bags): fields are read inside toPlainDate,
-                // then options are read after fields per spec order.
+                // For known Temporal types: convert first, then read options.
+                if ($item instanceof JsObject && (
+                    ($item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
+                        && !$item->has('[[IsPlainYearMonth]]') && !$item->has('[[IsPlainMonthDay]]')
+                        && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]'))
+                    || $item->has('[[IsPlainDateTime]]')
+                    || $item->has('[[IsZonedDateTime]]')
+                )) {
+                    $result = self::toPlainDate($item, 'constrain');
+                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
+                    self::getOverflow($options);
+                    return $result;
+                }
+                // For property bags: fields read inside toPlainDate, options read after.
                 return self::toPlainDate($item, 'constrain', $args[1] ?? JsUndefined::instance());
             }, 1),
             true,
@@ -2851,7 +2863,7 @@ class TemporalObject
                 throw new RangeError('year must be finite');
             }
             $refY = $y;
-            if ($m < 1 || $m > 12 || $dd < 1 || $dd > 31) {
+            if ($dd < 1 || $m < 1) {
                 throw new RangeError('Invalid ISO date');
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
@@ -6468,6 +6480,10 @@ class TemporalObject
             $cal = 'iso8601';
             if (!($calVal instanceof JsUndefined)) {
                 $cal = self::toCalendarSlotValue($calVal);
+            }
+            if ($rawOptions !== null) {
+                $options = self::getOptionsObject($rawOptions);
+                $overflow = self::getOverflow($options);
             }
             if ($overflow === 'constrain') {
                 [$y, $m, $d] = self::constrainISODate($y, $m, $d);
