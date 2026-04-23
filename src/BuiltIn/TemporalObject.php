@@ -492,8 +492,22 @@ class TemporalObject
             }
             // 2. relativeTo
             $relativeTo = null;
+            $zonedRelativeTo = null;
             $rtv = $roundTo->get('relativeTo');
             if (!($rtv instanceof JsUndefined)) {
+                // If string has bracket annotation, also parse as ZDT for validation.
+                if ($rtv instanceof JsString) {
+                    $rtStr = $rtv->value;
+                    if (preg_match('/\[[^\]]+\]/', $rtStr) && !preg_match('/\[u-ca=/', $rtStr)) {
+                        try {
+                            $zonedRelativeTo = self::parseZonedDateTimeString($rtStr);
+                        } catch (\Throwable) {
+                            // fall through to PlainDate parsing below
+                        }
+                    }
+                } elseif ($rtv instanceof JsObject && $rtv->has('[[IsZonedDateTime]]')) {
+                    $zonedRelativeTo = $rtv;
+                }
                 $relativeTo = self::toRelativeToPlainDate($rtv);
             }
             // 3. roundingIncrement
@@ -549,11 +563,14 @@ class TemporalObject
                 throw new RangeError('relativeTo is required for rounding durations with calendar units');
             }
             // Per spec: validate target epoch ns when ZonedDateTime relativeTo.
-            if ($rtv instanceof JsObject && $rtv->has('[[IsZonedDateTime]]')) {
-                $epochNs = self::getSlotString($rtv, '[[EpochNanoseconds]]');
+            if ($zonedRelativeTo !== null) {
+                $epochNs = self::getSlotString($zonedRelativeTo, '[[EpochNanoseconds]]');
                 $durNs = self::durationToTotalNs($this_);
                 $targetNs = bcadd($epochNs, $durNs, 0);
                 self::validateInstantRange($targetNs);
+            } else {
+                // For PlainDate relativeTo, validate midnight is in PDT range when duration is non-zero.
+                self::validatePlainRelativeToRange($relativeTo, $this_);
             }
             return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
         }, 1);
@@ -564,6 +581,7 @@ class TemporalObject
             if ($totalOf instanceof JsUndefined) {
                 throw new TypeError('total requires a string or options object');
             }
+            $plainRelativeToDate = null;
             if ($totalOf instanceof JsString) {
                 $unit = $totalOf->value;
                 $relativeTo = null;
@@ -580,13 +598,14 @@ class TemporalObject
                             try {
                                 $relativeTo = self::parseZonedDateTimeString($rtStr);
                             } catch (\Throwable) {
-                                $relativeTo = self::toRelativeToPlainDate($rtv);
+                                $plainRelativeToDate = self::toRelativeToPlainDate($rtv);
+                                $relativeTo = $plainRelativeToDate;
                             }
                         } else {
-                            self::toRelativeToPlainDate($relativeTo);
+                            $plainRelativeToDate = self::toRelativeToPlainDate($relativeTo);
                         }
                     } else {
-                        self::toRelativeToPlainDate($relativeTo);
+                        $plainRelativeToDate = self::toRelativeToPlainDate($relativeTo);
                     }
                 }
                 $u = $totalOf->get('unit');
@@ -606,12 +625,6 @@ class TemporalObject
             if (($hasCalUnit || in_array($unit, $calUnits, true)) && $relativeTo === null) {
                 throw new RangeError('relativeTo is required for calendar units');
             }
-            if ($relativeTo !== null && in_array($unit, $calUnits, true)) {
-                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
-            }
-            if ($relativeTo !== null && $hasCalUnit) {
-                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
-            }
             // Per spec: when zonedRelativeTo is defined, validate target epoch ns.
             if (
                 $relativeTo !== null
@@ -622,6 +635,16 @@ class TemporalObject
                 $durNs = self::durationToTotalNs($this_);
                 $targetNs = bcadd($epochNs, $durNs, 0);
                 self::validateInstantRange($targetNs);
+            } else {
+                // For PlainDate relativeTo, validate the midnight-of-relativeTo is in PDT range
+                // when the duration is non-zero (spec: RejectDateTimeRange before computing total).
+                self::validatePlainRelativeToRange($plainRelativeToDate, $this_);
+            }
+            if ($relativeTo !== null && in_array($unit, $calUnits, true)) {
+                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
+            }
+            if ($relativeTo !== null && $hasCalUnit) {
+                return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
             }
             return new JsNumber(self::durationTotalNs($this_, $unit));
         }, 1);
@@ -765,12 +788,45 @@ class TemporalObject
                     }
                     throw new RangeError('relativeTo is required for comparing durations with calendar units');
                 }
+                $refDate = null;
                 if ($relativeTo !== null) {
-                    // Validate and parse relativeTo even when not strictly needed.
-                    $refDate = self::toRelativeToPlainDate($relativeTo);
-                    // Per spec: validate target epoch ns for ZonedDateTime.
+                    // If string with bracketed annotation, parse as ZDT; otherwise as PlainDate.
+                    if ($relativeTo instanceof JsString) {
+                        $rtStr = $relativeTo->value;
+                        if (preg_match('/\[[^\]]+\]/', $rtStr) && !preg_match('/\[u-ca=/', $rtStr)) {
+                            try {
+                                $relativeTo = self::parseZonedDateTimeString($rtStr);
+                            } catch (\Throwable) {
+                                $refDate = self::toRelativeToPlainDate($relativeTo);
+                            }
+                        } else {
+                            $refDate = self::toRelativeToPlainDate($relativeTo);
+                        }
+                    } else {
+                        $refDate = self::toRelativeToPlainDate($relativeTo);
+                    }
+                    // If ZDT relativeTo, also build a refDate for the cal-unit branch below.
                     if (
-                        $relativeTo instanceof JsObject
+                        $refDate === null
+                        && $relativeTo instanceof JsObject
+                        && $relativeTo->has('[[IsZonedDateTime]]')
+                    ) {
+                        $parts = self::zonedDateTimeParts($relativeTo);
+                        $refDate = self::createPlainDateObject(
+                            $parts['year'],
+                            $parts['month'],
+                            $parts['day'],
+                            self::getSlotString($relativeTo, '[[Calendar]]'),
+                        );
+                    }
+                    // Per spec (sec-temporal.duration.compare step 12): ZDT validation
+                    // applies when either duration has a date unit (year/month/week/day).
+                    $hasDateUnit = $hasCalUnit
+                        || self::getDurationField($one, 'days') !== 0
+                        || self::getDurationField($two, 'days') !== 0;
+                    if (
+                        $hasDateUnit
+                        && $relativeTo instanceof JsObject
                         && $relativeTo->has('[[IsZonedDateTime]]')
                     ) {
                         $epochNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
@@ -6002,6 +6058,33 @@ class TemporalObject
             return number_format($v->value, 0, '.', '');
         }
         return '0';
+    }
+
+    /**
+     * For a non-zero duration with a PlainDate relativeTo, validate that the
+     * PlainDate at midnight UTC falls within the PlainDateTime representable
+     * range (|ns| <= NS_MAX + nsPerDay - 1). This is the "RejectDateTimeRange"
+     * check the spec applies inside DifferencePlainDateTimeWithTotal.
+     */
+    private static function validatePlainRelativeToRange(?JsObject $refDate, JsValue $dur): void
+    {
+        if ($refDate === null) {
+            return;
+        }
+        if (self::durationSign($dur) === 0) {
+            return;
+        }
+        $y = self::getSlotInt($refDate, '[[ISOYear]]');
+        $m = self::getSlotInt($refDate, '[[ISOMonth]]');
+        $d = self::getSlotInt($refDate, '[[ISODay]]');
+        $originNs = self::isoDateTimeToEpochNs($y, $m, $d, 0, 0, 0, 0, 0, 0, 'UTC');
+        $absNs = bccomp($originNs, '0', 0) < 0 ? bcsub('0', $originNs, 0) : $originNs;
+        $pdtMax = bcsub(bcadd(self::NS_MAX, '86400000000000', 0), '1', 0);
+        if (bccomp($absNs, $pdtMax, 0) > 0) {
+            throw new RangeError(
+                'relativeTo is outside the representable range for a relativeTo parameter after conversion to DateTime'
+            );
+        }
     }
 
     /** Compute Duration.total with a relativeTo reference point. */
