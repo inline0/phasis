@@ -2569,7 +2569,7 @@ class Parser
         $location = $this->expect(TokenType::Class_)->location;
         $startOffset = $location->offset;
         $id = null;
-        if ($this->check(TokenType::Identifier)) {
+        if ($this->canStartBindingIdentifier()) {
             $id = $this->parseIdentifier();
         }
         $superClass = null;
