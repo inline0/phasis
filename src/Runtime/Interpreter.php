@@ -4651,8 +4651,16 @@ class Interpreter
                 }
                 $obj->setBySymbol($rawKey, $value);
             } else {
-                // __proto__ assignment in object literal sets the prototype.
-                if (!$prop->computed && $key === '__proto__') {
+                // __proto__ assignment in object literal sets the prototype
+                // ONLY for the 'PropertyName : AssignmentExpression' form.
+                // Shorthand ({ __proto__ }) and method ({ __proto__() {} })
+                // create a regular own data/function property (Annex B B.3.1).
+                if (
+                    !$prop->computed
+                    && !$prop->shorthand
+                    && !$prop->method
+                    && $key === '__proto__'
+                ) {
                     if ($value instanceof JsObject) {
                         $obj->setPrototype($value);
                     } elseif ($value instanceof JsNull) {
