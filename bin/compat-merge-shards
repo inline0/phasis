@@ -1,0 +1,106 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Merges per-shard compat state dirs produced by the compat-matrix CI
+// workflow into a unified .compat-state directory and regenerates compat.json
+// + COMPAT.md.
+
+ini_set('memory_limit', '2G');
+
+$rootDir = dirname(__DIR__);
+$shardsDir = $argv[1] ?? '.compat-shards';
+if (!str_starts_with($shardsDir, '/')) {
+    $shardsDir = $rootDir . '/' . $shardsDir;
+}
+
+if (!is_dir($shardsDir)) {
+    fwrite(STDERR, "Shards directory not found: {$shardsDir}\n");
+    exit(1);
+}
+
+define('COMPAT_REPORT_LIB_ONLY', true);
+require $rootDir . '/bin/compat-report';
+
+$supportConfig = require $rootDir . '/config/support.php';
+$suiteDir = $rootDir . '/test262/test';
+
+$discovery = discoverCompatGroups($suiteDir, null);
+if ($discovery['groups'] === []) {
+    fwrite(STDERR, "No compat groups found\n");
+    exit(1);
+}
+
+$stateDir = $rootDir . '/.compat-state';
+if (is_dir($stateDir)) {
+    removeDirectory($stateDir);
+}
+ensureDirectory($stateDir);
+ensureDirectory($stateDir . '/results');
+ensureDirectory($stateDir . '/logs');
+ensureDirectory($stateDir . '/manifests');
+
+// Build a fresh base state as if starting from scratch, then overlay each
+// shard's chunk results onto it.
+$options = [
+    'jobs' => 4,
+    'match' => null,
+    'chunkSize' => 250,
+    'timeoutSec' => 300,
+    'stateDir' => '.compat-state',
+    'reset' => false,
+];
+$fingerprint = buildCompatFingerprint($rootDir, $options, $supportConfig, $discovery);
+$state = loadOrCreateCompatState(
+    $stateDir,
+    '.compat-state',
+    $rootDir,
+    $fingerprint,
+    $discovery,
+    $options,
+);
+
+$shardEntries = glob($shardsDir . '/compat-shard-*', GLOB_ONLYDIR) ?: [];
+fwrite(STDERR, "Merging " . count($shardEntries) . " shards...\n");
+
+$mergedChunks = 0;
+foreach ($shardEntries as $shardPath) {
+    $shardState = $shardPath . '/state.json';
+    if (!is_file($shardState)) {
+        fwrite(STDERR, "  skipping {$shardPath} (no state.json)\n");
+        continue;
+    }
+    $data = json_decode((string) file_get_contents($shardState), true);
+    if (!is_array($data) || !isset($data['chunks'])) {
+        continue;
+    }
+    foreach ($data['chunks'] as $chunkId => $chunk) {
+        if (!isset($state['chunks'][$chunkId])) {
+            $state['chunks'][$chunkId] = $chunk;
+            $mergedChunks++;
+            continue;
+        }
+        // Prefer the shard's complete record over a pending one.
+        $existing = $state['chunks'][$chunkId];
+        if ($existing['status'] !== 'complete' && ($chunk['status'] ?? null) === 'complete') {
+            $state['chunks'][$chunkId] = $chunk;
+            $mergedChunks++;
+        }
+    }
+}
+fwrite(STDERR, "Merged {$mergedChunks} chunk records.\n");
+
+$state['updatedAt'] = date('c');
+$state['completed'] = true;
+foreach ($state['chunks'] as $chunk) {
+    if (($chunk['status'] ?? 'pending') !== 'complete') {
+        $state['completed'] = false;
+        break;
+    }
+}
+
+writeCompatState($stateDir, $state);
+writeCompatArtifacts($rootDir, $state, $supportConfig, $state['completed']);
+
+fwrite(STDERR, "Done. compat.json + COMPAT.md written.\n");

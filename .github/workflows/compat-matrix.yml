@@ -1,0 +1,185 @@
+name: Compatibility Report (Matrix)
+
+# Shards test262 across multiple runners so the full compat pass finishes in
+# minutes instead of hours. Each shard runs ./bin/compat-report --match <prefix>
+# producing per-shard state; the merge job combines them into one
+# compat.json + COMPAT.md.
+#
+# IMPORTANT: the union of shard prefixes MUST cover every test262 top-level
+# category and the shards MUST NOT overlap. compat-report --match is a
+# startswith match on the group name (e.g. "built-ins/Array").
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: compat-matrix
+  cancel-in-progress: false
+
+jobs:
+  shard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          # Catch-all top-level sections (small).
+          - { id: 'annexB', prefix: 'annexB' }
+          - { id: 'harness', prefix: 'harness' }
+          - { id: 'intl402', prefix: 'intl402' }
+          - { id: 'staging', prefix: 'staging' }
+          # built-ins split by first letter so shards never overlap.
+          # Top-level built-ins start with: A B D E F G I J M N O P R S T U W
+          # plus lowercase: d e g i p u (which start lowercase top-levels like
+          # "decodeURIComponent", "encodeURI", "eval", "globalThis",
+          # "isFinite", "isNaN", "parseFloat", "parseInt", "undefined").
+          - { id: 'builtins-A', prefix: 'built-ins/A' }
+          - { id: 'builtins-Array', prefix: 'built-ins/Array' }
+          - { id: 'builtins-B', prefix: 'built-ins/B' }
+          - { id: 'builtins-D', prefix: 'built-ins/D' }
+          - { id: 'builtins-E', prefix: 'built-ins/E' }
+          - { id: 'builtins-F', prefix: 'built-ins/F' }
+          - { id: 'builtins-G', prefix: 'built-ins/G' }
+          - { id: 'builtins-I', prefix: 'built-ins/I' }
+          - { id: 'builtins-J', prefix: 'built-ins/J' }
+          - { id: 'builtins-M', prefix: 'built-ins/M' }
+          - { id: 'builtins-N', prefix: 'built-ins/N' }
+          - { id: 'builtins-O', prefix: 'built-ins/O' }
+          - { id: 'builtins-P', prefix: 'built-ins/P' }
+          - { id: 'builtins-R', prefix: 'built-ins/R' }
+          - { id: 'builtins-S', prefix: 'built-ins/S' }
+          - { id: 'builtins-Temporal', prefix: 'built-ins/Temporal' }
+          - { id: 'builtins-TypedArray', prefix: 'built-ins/TypedArray' }
+          - { id: 'builtins-ThrowTypeError', prefix: 'built-ins/ThrowTypeError' }
+          - { id: 'builtins-U', prefix: 'built-ins/U' }
+          - { id: 'builtins-W', prefix: 'built-ins/W' }
+          # Lowercase top-level built-ins.
+          - { id: 'builtins-lower-de', prefix: 'built-ins/d' }
+          - { id: 'builtins-lower-en', prefix: 'built-ins/e' }
+          - { id: 'builtins-lower-g', prefix: 'built-ins/g' }
+          - { id: 'builtins-lower-is', prefix: 'built-ins/i' }
+          - { id: 'builtins-lower-parse', prefix: 'built-ins/p' }
+          - { id: 'builtins-lower-undef', prefix: 'built-ins/u' }
+          # language/ is also split.
+          - { id: 'language-expressions', prefix: 'language/expressions' }
+          - { id: 'language-statements', prefix: 'language/statements' }
+          - { id: 'language-module-code', prefix: 'language/module-code' }
+          - { id: 'language-eval-code', prefix: 'language/eval-code' }
+          - { id: 'language-literals', prefix: 'language/literals' }
+          - { id: 'language-arguments', prefix: 'language/arguments-object' }
+          - { id: 'language-asi', prefix: 'language/asi' }
+          - { id: 'language-block-scope', prefix: 'language/block-scope' }
+          - { id: 'language-comments', prefix: 'language/comments' }
+          - { id: 'language-computed', prefix: 'language/computed-property-names' }
+          - { id: 'language-destructuring', prefix: 'language/destructuring' }
+          - { id: 'language-directive', prefix: 'language/directive-prologue' }
+          - { id: 'language-export-import', prefix: 'language/export' }
+          - { id: 'language-import', prefix: 'language/import' }
+          - { id: 'language-function-code', prefix: 'language/function-code' }
+          - { id: 'language-future-reserved', prefix: 'language/future-reserved-words' }
+          - { id: 'language-global-code', prefix: 'language/global-code' }
+          - { id: 'language-identifier', prefix: 'language/identifier' }
+          - { id: 'language-keywords', prefix: 'language/keywords' }
+          - { id: 'language-line-terminators', prefix: 'language/line-terminators' }
+          - { id: 'language-punctuators', prefix: 'language/punctuators' }
+          - { id: 'language-reserved-words', prefix: 'language/reserved-words' }
+          - { id: 'language-source-text', prefix: 'language/source-text' }
+          - { id: 'language-statements-list', prefix: 'language/statementList' }
+          - { id: 'language-types', prefix: 'language/types' }
+          - { id: 'language-white-space', prefix: 'language/white-space' }
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, bcmath, intl
+          coverage: none
+          ini-values: memory_limit=2G
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Run compat shard
+        run: |
+          mkdir -p .compat-state-${{ matrix.shard.id }}
+          ./bin/compat-report \
+            --match '${{ matrix.shard.prefix }}' \
+            --state-dir .compat-state-${{ matrix.shard.id }} \
+            --jobs 4 \
+            --timeout 30 \
+            --chunk-size 250 || true
+
+      - name: Upload shard state
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-shard-${{ matrix.shard.id }}
+          path: .compat-state-${{ matrix.shard.id }}
+
+  merge:
+    needs: shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, bcmath, intl
+          coverage: none
+          ini-values: memory_limit=2G
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Download all shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: compat-shard-*
+          path: .compat-shards
+
+      - name: Merge shard states into unified compat snapshot
+        run: php bin/compat-merge-shards .compat-shards
+
+      - name: Show summary
+        if: always()
+        run: |
+          if [ -f COMPAT.md ]; then
+            echo "## Compatibility Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            head -30 COMPAT.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload merged artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-report
+          path: |
+            COMPAT.md
+            compat.json
+
+      - name: Commit COMPAT.md
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add COMPAT.md compat.json
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Update COMPAT.md from CI [skip ci]"
+            git push
+          fi

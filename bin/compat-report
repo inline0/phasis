@@ -3,81 +3,90 @@
 
 declare(strict_types=1);
 
-ini_set('memory_limit', '1G');
-
-$options = parseCompatOptions($argv);
-$rootDir = dirname(__DIR__);
-$suiteDir = $rootDir . '/test262/test';
-$supportConfig = require $rootDir . '/config/support.php';
-$stateDir = str_starts_with($options['stateDir'], '/')
-    ? $options['stateDir']
-    : $rootDir . '/' . $options['stateDir'];
-$stateDirDisplay = displayCompatPath($stateDir, $rootDir);
-
-if (!is_dir($suiteDir)) {
-    fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
-    exit(1);
+// Top-level execution is guarded so other tools (e.g. compat-merge-shards)
+// can include this file and reuse its helpers without kicking off a run.
+if (!defined('COMPAT_REPORT_LIB_ONLY')) {
+    compatReportMain($argv);
 }
 
-if ($options['reset'] && is_dir($stateDir)) {
-    removeDirectory($stateDir);
+function compatReportMain(array $argv): void
+{
+    ini_set('memory_limit', '1G');
+
+    $options = parseCompatOptions($argv);
+    $rootDir = dirname(__DIR__);
+    $suiteDir = $rootDir . '/test262/test';
+    $supportConfig = require $rootDir . '/config/support.php';
+    $stateDir = str_starts_with($options['stateDir'], '/')
+        ? $options['stateDir']
+        : $rootDir . '/' . $options['stateDir'];
+    $stateDirDisplay = displayCompatPath($stateDir, $rootDir);
+
+    if (!is_dir($suiteDir)) {
+        fwrite(STDERR, "test262 suite not found. Run: git submodule update --init\n");
+        exit(1);
+    }
+
+    if ($options['reset'] && is_dir($stateDir)) {
+        removeDirectory($stateDir);
+    }
+
+    ensureDirectory($stateDir);
+    ensureDirectory($stateDir . '/results');
+    ensureDirectory($stateDir . '/logs');
+    ensureDirectory($stateDir . '/manifests');
+    clearDirectory($stateDir . '/manifests');
+
+    fwrite(STDERR, "Building full compatibility snapshot...\n");
+
+    $discovery = discoverCompatGroups($suiteDir, $options['match']);
+    if ($discovery['groups'] === []) {
+        fwrite(STDERR, "No compat groups found.\n");
+        exit(1);
+    }
+
+    $fingerprint = buildCompatFingerprint(
+        $rootDir,
+        $options,
+        $supportConfig,
+        $discovery,
+    );
+
+    $state = loadOrCreateCompatState(
+        $stateDir,
+        $stateDirDisplay,
+        $rootDir,
+        $fingerprint,
+        $discovery,
+        $options,
+    );
+
+    resetRunningChunksToPending($state);
+    writeCompatState($stateDir, $state);
+    writeCompatArtifacts($rootDir, $state, $supportConfig, false);
+
+    if (!$state['completed']) {
+        runCompatPass($rootDir, $stateDir, $state, $options, $supportConfig);
+    }
+
+    writeCompatArtifacts($rootDir, $state, $supportConfig, true);
+
+    $summary = compatOverallSummary($state);
+    echo "Compatibility snapshot written:\n";
+    echo "  - compat.json\n";
+    echo "  - COMPAT.md\n";
+    echo sprintf(
+        "Summary: %d/%d pass, %d fail, %d skip, %d blocked, %d pending, %d running across %d groups\n",
+        $summary['pass'],
+        $summary['attempted'],
+        $summary['fail'],
+        $summary['skip'],
+        $summary['blocked'],
+        $summary['pending'],
+        $summary['running'],
+        count($state['discovery']['groups']),
+    );
 }
-
-ensureDirectory($stateDir);
-ensureDirectory($stateDir . '/results');
-ensureDirectory($stateDir . '/logs');
-ensureDirectory($stateDir . '/manifests');
-clearDirectory($stateDir . '/manifests');
-
-fwrite(STDERR, "Building full compatibility snapshot...\n");
-
-$discovery = discoverCompatGroups($suiteDir, $options['match']);
-if ($discovery['groups'] === []) {
-    fwrite(STDERR, "No compat groups found.\n");
-    exit(1);
-}
-
-$fingerprint = buildCompatFingerprint(
-    $rootDir,
-    $options,
-    $supportConfig,
-    $discovery,
-);
-
-$state = loadOrCreateCompatState(
-    $stateDir,
-    $stateDirDisplay,
-    $rootDir,
-    $fingerprint,
-    $discovery,
-    $options,
-);
-
-resetRunningChunksToPending($state);
-writeCompatState($stateDir, $state);
-writeCompatArtifacts($rootDir, $state, $supportConfig, false);
-
-if (!$state['completed']) {
-    runCompatPass($rootDir, $stateDir, $state, $options, $supportConfig);
-}
-
-writeCompatArtifacts($rootDir, $state, $supportConfig, true);
-
-$summary = compatOverallSummary($state);
-echo "Compatibility snapshot written:\n";
-echo "  - compat.json\n";
-echo "  - COMPAT.md\n";
-echo sprintf(
-    "Summary: %d/%d pass, %d fail, %d skip, %d blocked, %d pending, %d running across %d groups\n",
-    $summary['pass'],
-    $summary['attempted'],
-    $summary['fail'],
-    $summary['skip'],
-    $summary['blocked'],
-    $summary['pending'],
-    $summary['running'],
-    count($state['discovery']['groups']),
-);
 
 /**
  * @return array{
