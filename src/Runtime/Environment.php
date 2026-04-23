@@ -30,6 +30,18 @@ class Environment
     private array $annexBHoisted = [];
 
     /**
+     * Detect the engine's internal "__XxxPrototype__" placeholders so they do
+     * not leak onto the global object. User identifiers like "__A", "__obj__",
+     * or "__cache" must not be treated as internal even though they share the
+     * double-underscore prefix/suffix.
+     */
+    private static function isInternalPrototypeName(string $name): bool
+    {
+        return str_starts_with($name, '__')
+            && str_ends_with($name, 'Prototype__');
+    }
+
+    /**
      * When set, var declarations and assignments in this environment
      * also create/update properties on the linked object. Used for
      * the global environment to keep globalThis in sync with var bindings.
@@ -124,7 +136,7 @@ class Environment
         if (
             $this->linkedObject !== null
             && $name !== 'this' && $name !== 'globalThis'
-            && !($name[0] === '_' && $name[1] === '_' && isset($name[2]) && ctype_upper($name[2]))
+            && !self::isInternalPrototypeName($name)
         ) {
             $this->linkedObject->defineOwnProperty(
                 $name,
@@ -274,7 +286,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
-                && !(isset($name[0], $name[1], $name[2]) && $name[0] === '_' && $name[1] === '_' && ctype_upper($name[2]))
+                && !self::isInternalPrototypeName($name)
             ) {
                 $this->linkedObject->defineOwnProperty(
                     $name,
@@ -391,7 +403,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
-                && !(isset($name[0], $name[1], $name[2]) && $name[0] === '_' && $name[1] === '_' && ctype_upper($name[2]))
+                && !self::isInternalPrototypeName($name)
                 && $this->linkedObject->hasOwnProperty($name)
             ) {
                 $desc = $this->linkedObject->getOwnPropertyDescriptor($name);

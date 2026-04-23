@@ -82,7 +82,7 @@ class Engine
             if (in_array($name, $skipKeys, true)) {
                 continue;
             }
-            if (str_starts_with($name, '__') && str_ends_with($name, '__')) {
+            if (str_starts_with($name, '__') && str_ends_with($name, 'Prototype__')) {
                 continue;
             }
             if (!$globalObj->hasOwnProperty($name)) {

@@ -3244,9 +3244,15 @@ class Interpreter
         // ordinary functions. Per spec, methods, arrow functions, async
         // functions, generators, and class constructors must not expose a
         // 'caller' own property regardless of containing code's strict mode.
+        // Also detect body-level "use strict" directives so they suppress the
+        // own 'caller' slot just like a strict flag at definition time.
         $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
+        $fnBody = $fn->getBody();
+        $hasBodyStrict = $fnBody instanceof BlockStatement
+            && $this->hasUseStrictDirective($fnBody->body);
         $setCallerProp = !$fn->isStrict()
+            && !$hasBodyStrict
             && !$fn->isArrow()
             && !$fn->isNative()
             && !$fn->isAsync()
