@@ -7845,25 +7845,16 @@ class Interpreter
     private function execReturnStatement(ReturnStatement $node, Environment $env): Completion
     {
         // Tail call optimization: in strict mode, if the return argument is a
-        // direct function call (not new, not part of a larger expression),
-        // create a TailCallThunk instead of evaluating the call immediately.
-        if ($this->strictMode && $node->argument instanceof CallExpression && $this->inTailPosition) {
-            $thunk = $this->evalTailCall($node->argument, $env);
-            if ($thunk !== null) {
-                return Completion::return($thunk);
-            }
-        }
-        // Tagged templates in tail position are also TCO candidates: the tag
-        // is called with (strings, ...exprValues), which is structurally a
-        // normal call.
-        if (
-            $this->strictMode
-            && $node->argument instanceof TaggedTemplate
-            && $this->inTailPosition
-        ) {
-            $thunk = $this->evalTaggedTemplateTailCall($node->argument, $env);
-            if ($thunk !== null) {
-                return Completion::return($thunk);
+        // direct function call (or reachable via a conditional / logical /
+        // comma expression whose operands are tail positions), create a
+        // TailCallThunk instead of evaluating the call immediately. The
+        // helper returns either a TailCallThunk or a JsValue (when the
+        // tail branch could be evaluated directly with its side-effecting
+        // prefix); we wrap accordingly.
+        if ($this->strictMode && $node->argument !== null && $this->inTailPosition) {
+            $result = $this->evalTailPositionExpr($node->argument, $env);
+            if ($result !== null) {
+                return Completion::return($result);
             }
         }
 
@@ -7877,6 +7868,68 @@ class Interpreter
      * Try to create a TailCallThunk for a call expression in tail position.
      * Returns null if the call cannot be optimized (e.g., super call, eval).
      */
+    /**
+     * Try to produce either a TailCallThunk or the final JsValue for an
+     * expression in tail position. Per HasCallInTailPosition, conditional,
+     * logical, comma, and parenthesized expressions propagate tail-position
+     * into their operands; this helper walks those structures, evaluating
+     * any side-effecting prefix so the caller can just wrap the result in
+     * Completion::return without re-running side effects.
+     *
+     * Returns null when the expression does not qualify for TCO reasoning
+     * (falls back to a normal evaluate in execReturnStatement).
+     */
+    private function evalTailPositionExpr(Node $node, Environment $env): TailCallThunk|JsValue|null
+    {
+        if ($node instanceof CallExpression) {
+            return $this->evalTailCall($node, $env);
+        }
+        if ($node instanceof TaggedTemplate) {
+            return $this->evalTaggedTemplateTailCall($node, $env);
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ConditionalExpression) {
+            $test = $this->evaluate($node->test, $env);
+            $branch = TypeConversion::toBoolean($test) ? $node->consequent : $node->alternate;
+            $result = $this->evalTailPositionExpr($branch, $env);
+            if ($result !== null) {
+                return $result;
+            }
+            return $this->evaluate($branch, $env);
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+            $exprs = $node->expressions;
+            if ($exprs === []) {
+                return null;
+            }
+            for ($i = 0, $n = count($exprs); $i < $n - 1; $i++) {
+                $this->evaluate($exprs[$i], $env);
+            }
+            $result = $this->evalTailPositionExpr($exprs[$n - 1], $env);
+            if ($result !== null) {
+                return $result;
+            }
+            return $this->evaluate($exprs[$n - 1], $env);
+        }
+        if ($node instanceof BinaryExpression && in_array($node->operator, ['&&', '||', '??'], true)) {
+            $left = $this->evaluate($node->left, $env);
+            $takesRight = match ($node->operator) {
+                '&&' => TypeConversion::toBoolean($left),
+                '||' => !TypeConversion::toBoolean($left),
+                '??' => $left instanceof JsNull || $left instanceof JsUndefined,
+                default => false,
+            };
+            if (!$takesRight) {
+                return $left;
+            }
+            $result = $this->evalTailPositionExpr($node->right, $env);
+            if ($result !== null) {
+                return $result;
+            }
+            return $this->evaluate($node->right, $env);
+        }
+        return null;
+    }
+
     /**
      * Try to create a TailCallThunk for a tagged template expression in tail
      * position. Returns null if the tag cannot be optimized.
