@@ -810,7 +810,7 @@ class GlobalObject
                             $returnFn instanceof \PhpJs\Value\JsUndefined
                             || $returnFn instanceof \PhpJs\Value\JsNull
                         ) {
-                            return \PhpJs\Value\JsPromise::resolve(
+                            return \PhpJs\Value\JsPromise::resolved(
                                 \PhpJs\Value\JsUndefined::instance()
                             );
                         }
@@ -820,7 +820,7 @@ class GlobalObject
                             );
                         }
                         $result = $returnFn->call($this_, []);
-                        return \PhpJs\Value\JsPromise::resolve($result);
+                        return \PhpJs\Value\JsPromise::resolved($result);
                     },
                     0,
                 ),
