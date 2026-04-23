@@ -3019,6 +3019,25 @@ class Interpreter
                 ? $this->evaluate($initNode, $fieldEnv)
                 : JsUndefined::instance();
 
+            // NamedEvaluation: if the initializer evaluates to an anonymous
+            // function, assign it the field's name (spec PropertyDefinition).
+            if ($value instanceof JsFunction && !$this->hasExplicitNameProperty($value)) {
+                $fieldName = null;
+                if ($isPrivate && is_string($key)) {
+                    // Strip the "@brandId" suffix from the mangled private name.
+                    $at = strpos($key, '@');
+                    $fieldName = $at === false ? $key : substr($key, 0, $at);
+                } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
+                    $desc = $key->getDescription();
+                    $fieldName = $desc !== null ? "[{$desc}]" : '';
+                } elseif (is_string($key)) {
+                    $fieldName = $key;
+                }
+                if ($fieldName !== null) {
+                    $value->setName($fieldName);
+                }
+            }
+
             if ($isPrivate) {
                 $instance->setPrivateField($key, $value);
             } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
@@ -6156,6 +6175,23 @@ class Interpreter
                 $fieldValue = $element->value !== null
                     ? $this->evaluate($element->value, $privateEnv)
                     : JsUndefined::instance();
+
+                // NamedEvaluation for static fields: assign the field's name to
+                // anonymous function-valued initializers.
+                if ($fieldValue instanceof JsFunction && !$this->hasExplicitNameProperty($fieldValue)) {
+                    $nameToUse = null;
+                    if ($isPrivate) {
+                        // Source-level private name, e.g. "#field".
+                        $nameToUse = $element->key instanceof PrivateIdentifier
+                            ? $element->key->name
+                            : $fieldKey;
+                    } elseif (is_string($fieldKey)) {
+                        $nameToUse = $fieldKey;
+                    }
+                    if ($nameToUse !== null) {
+                        $fieldValue->setName($nameToUse);
+                    }
+                }
 
                 if ($isPrivate) {
                     $constructor->setPrivateField($fieldKey, $fieldValue);
