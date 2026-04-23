@@ -196,8 +196,9 @@ class JsPromise extends JsObject
                     $this->reject($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
                 };
-                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                // Per CreateResolvingFunctions, these are anonymous built-ins.
+                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
+                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
                 try {
                     $then->call($value, [$resolveFn, $rejectFn]);
                 } catch (\Throwable $e) {

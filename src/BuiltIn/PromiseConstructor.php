@@ -59,13 +59,14 @@ class PromiseConstructor
                     $promise->resolve($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
                 };
-                $resolveFn = JsFunction::fromCallable('resolve', $resolveHandler, 1);
+                // Per CreateResolvingFunctions, these are anonymous built-ins.
+                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
 
                 $rejectHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
                     $promise->reject($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
                 };
-                $rejectFn = JsFunction::fromCallable('reject', $rejectHandler, 1);
+                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
 
                 try {
                     $executor->call(JsUndefined::instance(), [$resolveFn, $rejectFn]);
