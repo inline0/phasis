@@ -7526,6 +7526,17 @@ class Interpreter
             throw $generatorReturnSignal;
         }
 
+        // Per spec 14.15.1 step 4: return UpdateEmpty(C, undefined). If the
+        // try/catch/finally completion's value is empty (e.g. empty catch
+        // body), fill it with undefined so statement-list accumulation replaces
+        // any preceding expression value.
+        if ($completion->empty) {
+            return new Completion(
+                $completion->type,
+                JsUndefined::instance(),
+                $completion->target,
+            );
+        }
         return $completion;
     }
 
