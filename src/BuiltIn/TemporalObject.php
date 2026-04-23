@@ -38,6 +38,24 @@ class TemporalObject
     private const ISO_YEAR_MIN = -271821;
     private const ISO_YEAR_MAX = 275760;
 
+    /**
+     * Emulate OrdinaryCreateFromConstructor's prototype lookup: read the
+     * pre-allocated receiver's [[NewTarget]], get newTarget.prototype, and
+     * apply it to the receiver. Throws through to the caller if the getter
+     * throws. Falls back to $defaultProto when newTarget.prototype is not
+     * an object.
+     */
+    private static function applyNewTargetPrototype(JsObject $receiver, JsObject $defaultProto): void
+    {
+        $ntDesc = $receiver->getOwnPropertyDescriptor('[[NewTarget]]');
+        if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+            $ntProto = $ntDesc->value->get('prototype');
+            $receiver->setPrototype(
+                $ntProto instanceof JsObject ? $ntProto : $defaultProto,
+            );
+        }
+    }
+
     public static function install(Environment $env): void
     {
         $temporal = new JsObject();
@@ -246,6 +264,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.Instant must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $arg = $args[0] ?? JsUndefined::instance();
             $ns = self::toBigIntNsFromArg($arg);
             self::validateInstantRange($ns);
@@ -710,6 +729,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.Duration must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $fields = [];
             $names = ['years', 'months', 'weeks', 'days', 'hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds'];
             foreach ($names as $i => $name) {
@@ -1306,6 +1326,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainDate must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $yNum = TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
@@ -1636,6 +1657,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainTime must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $toInt = static function (JsValue $v, string $name): int {
                 $n = TypeConversion::toNumber($v);
                 if (!is_finite($n)) {
@@ -2279,6 +2301,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainDateTime must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $toInt = static function (JsValue $v, string $name): int {
                 $n = TypeConversion::toNumber($v);
                 if (!is_finite($n)) {
@@ -2655,6 +2678,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainYearMonth must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $yNum = TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
@@ -3025,6 +3049,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.PlainMonthDay must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $mNum = TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
             if (!is_finite($mNum)) {
                 throw new RangeError('month must be finite');
@@ -4051,6 +4076,7 @@ class TemporalObject
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Temporal.ZonedDateTime must be called with new');
             }
+            self::applyNewTargetPrototype($this_, $proto);
             $nsArg = $args[0] ?? JsUndefined::instance();
             if (!$nsArg instanceof JsBigInt) {
                 throw new TypeError('ZonedDateTime requires a BigInt epochNanoseconds');
