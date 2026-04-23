@@ -5358,8 +5358,9 @@ class Interpreter
         $classEnv = $env;
         if ($node->id !== null) {
             $classEnv = $env->createChild();
-            // Pre-declare as let so TDZ applies during class evaluation.
-            $classEnv->declareLet($node->id->name);
+            // Per spec, the class name binding inside the classScope is an
+            // immutable binding so methods cannot reassign the class name.
+            $classEnv->declareConst($node->id->name);
         }
         $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $classEnv);
         // Bind the class name to the constructor in the class scope.
@@ -5979,13 +5980,13 @@ class Interpreter
     {
         /** @var list<ClassMethod> $body */
         $body = $node->body;
-        // Per spec ClassDefinitionEvaluation: create an inner scope for the class name
-        // so that methods close over an immutable binding of the class name. The outer
-        // scope gets a separate mutable let binding.
+        // Per spec ClassDefinitionEvaluation: create an inner scope for the
+        // class name so that methods close over an immutable binding of the
+        // class name. The outer scope gets a separate mutable let binding.
         $classEnv = $env;
         if ($node->id !== null) {
             $classEnv = $env->createChild();
-            $classEnv->declareLet($node->id->name);
+            $classEnv->declareConst($node->id->name);
         }
         $cls = $this->buildClass($node->id?->name, $node->superClass, $body, $classEnv);
         if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
@@ -6466,8 +6467,13 @@ class Interpreter
         // Inheritance: set [[Prototype]] of constructor to super class.
         if ($superClass instanceof JsFunction) {
             $constructor->setCustomPrototype($superClass);
-            $constructor->setHomeObject($proto);
         }
+
+        // Per spec, the class constructor's [[HomeObject]] is the class
+        // prototype regardless of whether there is a superclass. This lets
+        // super.X property access inside the constructor body reach
+        // Object.prototype for non-derived classes.
+        $constructor->setHomeObject($proto);
 
         // Per spec ClassDefinitionEvaluation step 16: bind the class name in the
         // class scope BEFORE evaluating static fields and static blocks, so they
@@ -6554,6 +6560,11 @@ class Interpreter
                 // Per spec, static blocks have their own var scope (like function bodies).
                 $blockEnv->setFunctionKind('static-block');
                 $blockEnv->defineVar('this', $constructor);
+                // Per spec, the home object for a class static initialization
+                // block is the parent class (i.e. the class constructor), so
+                // super.X property access resolves against the constructor's
+                // [[Prototype]].
+                $blockEnv->defineVar('[[HomeObject]]', $constructor);
                 // Per spec, new.target is undefined inside static blocks.
                 $blockEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
                 $this->hoistDeclarations($element->body->body, $blockEnv);

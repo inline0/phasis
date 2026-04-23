@@ -746,7 +746,7 @@ class Parser
         $location = $this->expect(TokenType::Class_)->location;
         $startOffset = $location->offset;
         $id = null;
-        if ($this->check(TokenType::Identifier)) {
+        if ($this->canStartBindingIdentifier()) {
             $id = $this->parseIdentifier();
         }
         $superClass = null;
@@ -762,6 +762,22 @@ class Parser
             $this->extractSource($startOffset),
             $decorators,
         );
+    }
+
+    /**
+     * Check whether the current token can start a BindingIdentifier.
+     * Accepts plain Identifier plus contextual keywords allowed as identifiers.
+     */
+    private function canStartBindingIdentifier(): bool
+    {
+        $type = $this->current()->type;
+        return $type === TokenType::Identifier
+            || $type === TokenType::Let
+            || $type === TokenType::Static_
+            || $type === TokenType::Of
+            || $type === TokenType::Yield
+            || $type === TokenType::Await
+            || $type === TokenType::Async;
     }
 
     /**
@@ -953,6 +969,7 @@ class Parser
                 && $next->type !== TokenType::Equal
                 && $next->type !== TokenType::Semicolon
                 && $next->type !== TokenType::RightBrace
+                && $next->type !== TokenType::Star
             ) {
                 $this->advance();
                 $kind = 'get';
@@ -964,6 +981,7 @@ class Parser
                 && $next->type !== TokenType::Equal
                 && $next->type !== TokenType::Semicolon
                 && $next->type !== TokenType::RightBrace
+                && $next->type !== TokenType::Star
             ) {
                 $this->advance();
                 $kind = 'set';
