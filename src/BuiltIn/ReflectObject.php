@@ -68,6 +68,36 @@ class ReflectObject
                         self::ordinarySetSymbol($target, $propKey, $value, $receiver)
                     );
                 }
+                // Typed-array exotic [[Set]]: for a CanonicalNumericIndexString
+                // the spec short-circuits for invalid indices with return true
+                // and without calling valueOf on the value. Delegate to the
+                // typed array's [[Set]] when the receiver is the typed array
+                // itself; otherwise, if the index is invalid, return true.
+                if ($target instanceof \PhpJs\Value\JsTypedArray) {
+                    $indexStr = $propKey->toJsString();
+                    $isCanonical = $indexStr === '-0'
+                        || $indexStr === 'NaN'
+                        || $indexStr === 'Infinity'
+                        || $indexStr === '-Infinity'
+                        || (
+                            is_numeric($indexStr)
+                            && (new \PhpJs\Value\JsNumber((float) $indexStr))->toJsString() === $indexStr
+                        );
+                    if ($isCanonical) {
+                        $isValidIntegerIndex = ctype_digit($indexStr)
+                            && (int) $indexStr < $target->getLength()
+                            && !$target->getBuffer()->isDetached();
+                        if (!$isValidIntegerIndex) {
+                            return new JsBoolean(true);
+                        }
+                        if ($receiver === $target) {
+                            $target->set($indexStr, $value);
+                            return new JsBoolean(true);
+                        }
+                        // Valid index + different receiver: fall through.
+                    }
+                }
+
                 // Per spec, [[Set]] passes receiver through, even if it is not an object.
                 // OrdinarySetWithOwnDescriptor returns false when Type(Receiver) is not Object.
                 if (!$receiver instanceof JsObject) {

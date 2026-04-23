@@ -497,24 +497,37 @@ class JsTypedArray extends JsObject
     }
 
     /**
-     * Override internalSet for Reflect.set and spec-compliant [[Set]] on integer indices.
+     * Integer-Indexed exotic [[Set]] per spec 10.4.5.5. If the key is a
+     * CanonicalNumericIndexString, always intercept: when receiver is this
+     * typed array, call TypedArraySetElement; otherwise short-circuit return
+     * true for invalid indices and defer to OrdinarySet for valid ones.
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
-        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
-            $index = (int) $name;
-            if ($index >= 0 && $index < $this->getLength()) {
-                $this->setIndex($index, $value);
+        if (self::isCanonicalNumericIndex($name)) {
+            $isSelf = $receiver === $this;
+            if ($isSelf) {
+                if (ctype_digit($name)) {
+                    $index = (int) $name;
+                    if ($index >= 0 && $index < $this->getLength()) {
+                        $this->setIndex($index, $value);
+                        return true;
+                    }
+                }
+                // Invalid integer index with receiver==this: per TypedArraySetElement,
+                // return true but do not set anything.
                 return true;
             }
-            return false;
-        }
-
-        // CanonicalNumericIndexString: TypedArray exotic [[Set]] intercepts all
-        // such keys. If it is not a valid integer index, return false so the
-        // property is NOT created on the receiver.
-        if (self::isCanonicalNumericIndex($name)) {
-            return false;
+            // Receiver is not this typed array. Invalid indices short-circuit
+            // to true without performing any coercion or write.
+            if (ctype_digit($name)) {
+                $index = (int) $name;
+                if ($index >= 0 && $index < $this->getLength()) {
+                    // Valid index + different receiver: fall through to OrdinarySet.
+                    return parent::internalSet($name, $value, $receiver);
+                }
+            }
+            return true;
         }
 
         return parent::internalSet($name, $value, $receiver);
