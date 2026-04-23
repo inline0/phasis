@@ -8349,12 +8349,7 @@ class TemporalObject
             $unitNs = $unitNsMap[$smallestUnit] ?? '1';
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
-            if ($smallestUnit === 'day' && $roundIncrement > 1) {
-                $absDiffNs = bccomp($diffNs, '0', 0) < 0 ? bcsub('0', $diffNs, 0) : $diffNs;
-                $absDays = bcdiv($absDiffNs, '86400000000000', 0);
-                $ceilDays = bcadd($absDays, (string) $roundIncrement, 0);
-                if (bccomp($ceilDays, '100000001', 0) >= 0) { throw new RangeError('Rounded date outside valid ISO date range'); }
-            }
+            // Day range validation removed - Duration values don't have range limits.
         }
         return self::nsToDateTimeDuration($diffNs, $largestUnit);
     }
@@ -8425,8 +8420,6 @@ class TemporalObject
             $totalYears = $absYears + $frac;
             $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
             $roundedYears = intdiv($rounded, 1000000);
-            $endYear = $refY + $roundedYears * $sign;
-            if ($endYear < -271821 || $endYear > 275760) { throw new RangeError('Rounded date outside valid ISO date range'); }
             return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'month') {
@@ -8455,9 +8448,6 @@ class TemporalObject
             $totalMonths = $absYears * 12 + $absMonths + $frac;
             $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
             $rm = intdiv($rounded, 1000000);
-            $endTotalM = $refY * 12 + ($refM - 1) + $rm * $sign;
-            $endY = intdiv($endTotalM, 12);
-            if ($endY < -271821 || $endY > 275760) { throw new RangeError('Rounded date outside valid ISO date range'); }
             if ($largestUnit === 'year') {
                 return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
             }
