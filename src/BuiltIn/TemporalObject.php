@@ -8420,6 +8420,11 @@ class TemporalObject
             $totalYears = $absYears + $frac;
             $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
             $roundedYears = intdiv($rounded, 1000000);
+            // Validate the rounded endpoint is representable.
+            $endY = $refY + $roundedYears * $sign;
+            if ($endY < self::ISO_YEAR_MIN || $endY > self::ISO_YEAR_MAX) {
+                throw new RangeError('Rounded date outside valid ISO date range');
+            }
             return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'month') {
@@ -8448,6 +8453,12 @@ class TemporalObject
             $totalMonths = $absYears * 12 + $absMonths + $frac;
             $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
             $rm = intdiv($rounded, 1000000);
+            // Validate the rounded endpoint is representable.
+            $endTotalM = $refY * 12 + ($refM - 1) + $rm * $sign;
+            $endY = intdiv($endTotalM, 12);
+            if ($endY < self::ISO_YEAR_MIN || $endY > self::ISO_YEAR_MAX) {
+                throw new RangeError('Rounded date outside valid ISO date range');
+            }
             if ($largestUnit === 'year') {
                 return self::createDurationObject($sign * intdiv($rm, 12), $sign * ($rm % 12), 0, 0, 0, 0, 0, 0, 0, 0);
             }
