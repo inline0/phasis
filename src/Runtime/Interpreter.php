@@ -5742,7 +5742,9 @@ class Interpreter
             // They must NOT be visible as properties on the global object.
             $env->defineLet($node->id->name, $cls);
         }
-        return Completion::normal(JsUndefined::instance());
+        // Per spec 15.7.5: ClassDeclaration evaluates to empty so preceding
+        // statement-list values are not clobbered.
+        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
     }
 
     /**
