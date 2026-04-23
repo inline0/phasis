@@ -1142,8 +1142,9 @@ class TypedArrayConstructor
             PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
         );
 
-        // Static methods: from(), of() on each subtype constructor.
-        self::installTypedArrayStaticMethods($constructor, $typeName, $bpe, $proto);
+        // Static methods from()/of() live on %TypedArray% and are inherited
+        // by subtype constructors via the prototype chain; do not install
+        // an own copy on each subtype.
 
         // Uint8Array gets extra base64/hex methods not present on other typed arrays.
         if ($typeName === 'Uint8Array') {
