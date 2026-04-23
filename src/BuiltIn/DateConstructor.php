@@ -35,9 +35,9 @@ class DateConstructor
                 return new JsString(self::toDateString(self::nowMs()));
             }
 
-            // Called with new: construct a Date object.
+            // Called with new: construct a Date object. Do NOT override the prototype;
+            // Reflect.construct/subclass callers set it on $this_ via new.target.
             $timeValue = self::constructTimeValue($args);
-            $this_->setPrototype($proto);
             $this_->defineOwnProperty(
                 '[[DateValue]]',
                 PropertyDescriptor::data(new JsNumber($timeValue), true, false, true),

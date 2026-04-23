@@ -1753,7 +1753,9 @@ class ArrayConstructor
                     $iteratorMethod = $arrayLike->getBySymbol($iterSym);
                 }
 
-                if ($iteratorMethod instanceof JsFunction || $arrayLike instanceof JsString) {
+                $iterMethodCallable = $iteratorMethod instanceof JsFunction
+                    || $iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA;
+                if ($iterMethodCallable || $arrayLike instanceof JsString) {
                     // Create the result object.
                     if ($isConstructor) {
                         /** @var JsFunction $c */
@@ -1785,9 +1787,14 @@ class ArrayConstructor
                             $index++;
                         }
                     } else {
-                        // Use the iterator protocol.
-                        /** @var JsFunction $iteratorMethod */
-                        $iterator = $iteratorMethod->call($arrayLike, []);
+                        // Use the iterator protocol. HTMLDDA's [[Call]] returns null,
+                        // which fails the "iterator is not an object" check below.
+                        if ($iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                            $iterator = JsNull::instance();
+                        } else {
+                            /** @var JsFunction $iteratorMethod */
+                            $iterator = $iteratorMethod->call($arrayLike, []);
+                        }
                         if (!$iterator instanceof JsObject) {
                             throw new TypeError('Array.from: iterator is not an object');
                         }

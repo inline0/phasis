@@ -4807,12 +4807,16 @@ class Interpreter
                     // Per spec: if return is undefined, return Completion(received).
                     throw new GeneratorReturnSignal($receivedValue);
                 }
-                if (!$returnMethod instanceof JsFunction) {
+                if ($returnMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                    // HTMLDDA's [[Call]] returns null; fails the object check below.
+                    $innerResult = JsNull::instance();
+                } elseif (!$returnMethod instanceof JsFunction) {
                     throw new GeneratorReturnSignal($receivedValue);
-                }
-                $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
-                if ($isAsyncGen) {
-                    $innerResult = $this->awaitValue($innerResult);
+                } else {
+                    $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
+                    if ($isAsyncGen) {
+                        $innerResult = $this->awaitValue($innerResult);
+                    }
                 }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
@@ -6702,6 +6706,10 @@ class Interpreter
                 throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
             }
             return $iterator;
+        }
+        if ($asyncIterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+            // HTMLDDA's [[Call]] returns null, which fails the object check.
+            throw new TypeError('Result of the Symbol.asyncIterator method is not an object');
         }
 
         // Fall back to Symbol.iterator: wrap in AsyncFromSyncIterator.

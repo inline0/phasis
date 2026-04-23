@@ -760,6 +760,10 @@ class StringPrototype
                     if ($splitter instanceof JsFunction) {
                         return $splitter->call($separator, [$this_, $limitArg]);
                     }
+                    if ($splitter instanceof \PhpJs\Value\JsHTMLDDA) {
+                        // HTMLDDA's [[Call]] returns null.
+                        return JsNull::instance();
+                    }
                 }
             }
 
@@ -926,6 +930,9 @@ class StringPrototype
                     if (!$replacer instanceof JsUndefined && !$replacer instanceof JsNull) {
                         if ($replacer instanceof JsFunction) {
                             return $replacer->call($searchArg, [$this_, $replArg]);
+                        }
+                        if ($replacer instanceof \PhpJs\Value\JsHTMLDDA) {
+                            return JsNull::instance();
                         }
                         throw new \PhpJs\Exceptions\TypeError('Symbol.replace is not a function');
                     }
@@ -1429,6 +1436,9 @@ class StringPrototype
                         if ($replacer instanceof JsFunction) {
                             return $replacer->call($searchArg, [$this_, $replaceValue]);
                         }
+                        if ($replacer instanceof \PhpJs\Value\JsHTMLDDA) {
+                            return JsNull::instance();
+                        }
                         throw new \PhpJs\Exceptions\TypeError(
                             'Symbol.replace is not a function'
                         );
@@ -1708,6 +1718,9 @@ class StringPrototype
                         if ($searcher instanceof JsFunction) {
                             return $searcher->call($searchArg, [$this_]);
                         }
+                        if ($searcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                            return JsNull::instance();
+                        }
                         throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.search] is not a function');
                     }
                 }
@@ -1761,6 +1774,9 @@ class StringPrototype
                     if (!$matcher instanceof JsUndefined && !$matcher instanceof JsNull) {
                         if ($matcher instanceof JsFunction) {
                             return $matcher->call($searchArg, [$this_]);
+                        }
+                        if ($matcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                            return JsNull::instance();
                         }
                         throw new \PhpJs\Exceptions\TypeError('RegExp[Symbol.match] is not a function');
                     }
@@ -1947,6 +1963,9 @@ class StringPrototype
                     if (!$matcher instanceof JsUndefined && !$matcher instanceof JsNull) {
                         if ($matcher instanceof JsFunction) {
                             return $matcher->call($searchArg, [$this_]);
+                        }
+                        if ($matcher instanceof \PhpJs\Value\JsHTMLDDA) {
+                            return JsNull::instance();
                         }
                         throw new \PhpJs\Exceptions\TypeError('Symbol.matchAll is not a function');
                     }

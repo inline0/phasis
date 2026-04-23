@@ -1206,6 +1206,8 @@ class TypedArrayConstructor
                     $iterMethod = $source->getBySymbol($iterSym);
                     if ($iterMethod instanceof JsFunction) {
                         $elements = self::consumeIterator($iterMethod, $source);
+                    } elseif ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                        throw new TypeError('TypedArray.from: iterator is not an object');
                     } else {
                         $len = (int) TypeConversion::toNumber($source->get('length'));
                         for ($i = 0; $i < $len; $i++) {
@@ -1478,6 +1480,8 @@ class TypedArrayConstructor
                     $iterMethod = $source->getBySymbol($iterSym);
                     if ($iterMethod instanceof JsFunction) {
                         $elements = self::consumeIterator($iterMethod, $source);
+                    } elseif ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                        throw new TypeError('TypedArray.from: iterator is not an object');
                     } else {
                         $len = (int) TypeConversion::toNumber($source->get('length'));
                         for ($i = 0; $i < $len; $i++) {
