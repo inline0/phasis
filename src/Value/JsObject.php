@@ -595,9 +595,19 @@ class JsObject implements JsValue
     // Private fields and methods
     // -------------------------------------------------------------------------
 
-    /** Set a private field value on this object. */
+    /**
+     * Add a private field binding on this object (PrivateFieldAdd).
+     * Throws TypeError if the object already has the private name, per spec.
+     */
     public function setPrivateField(string $name, JsValue $value): void
     {
+        if (isset($this->privateFieldBrands[$name])) {
+            // Strip the internal brand suffix (@N) from the name for the error.
+            $displayName = preg_replace('/@\d+$/', '', $name);
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot initialize {$displayName} twice on the same object",
+            );
+        }
         $this->privateFields[$name] = $value;
         $this->privateFieldBrands[$name] = true;
     }

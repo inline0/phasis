@@ -2967,13 +2967,16 @@ class Interpreter
         // - If derived class constructor returned a non-Object non-undefined value, throw TypeError.
         // - Otherwise return newObj.
         // Clean up [[NewTarget]] internal marker so it does not leak to user code.
+        $ctorId = spl_object_id($callee);
         if ($result instanceof JsObject) {
             // For derived class constructors whose default constructor is a native
             // callable (bypasses the AST-level super() path), instance fields and
-            // private methods may not have been initialized yet. Do so now.
+            // private methods may not have been initialized yet. Skip if the AST
+            // super() already ran init for this constructor on the returned object.
             if (
                 $callee->isDerivedConstructor()
                 && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+                && !$result->areFieldsInitialized($ctorId)
             ) {
                 $this->initializeInstanceFields($callee, $result, $env);
             }
@@ -2984,10 +2987,11 @@ class Interpreter
             throw new TypeError('Derived constructors may only return object or undefined');
         }
         // For derived class constructors that returned undefined (falling through
-        // to use $newObj), also ensure fields are initialized.
+        // to use $newObj), also ensure fields are initialized (skip if already done).
         if (
             $callee->isDerivedConstructor()
             && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+            && !$newObj->areFieldsInitialized($ctorId)
         ) {
             $this->initializeInstanceFields($callee, $newObj, $env);
         }
@@ -3001,11 +3005,7 @@ class Interpreter
      */
     public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
     {
-        // Prevent double initialization (e.g. explicit super() already ran).
         $ctorId = spl_object_id($ctor);
-        if ($instance->areFieldsInitialized($ctorId)) {
-            return;
-        }
         $instance->markFieldsInitialized($ctorId);
 
         // Install private instance methods first (they are available in field initializers).
