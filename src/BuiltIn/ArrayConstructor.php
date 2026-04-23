@@ -1002,24 +1002,37 @@ class ArrayConstructor
                     if ($mapped instanceof JsArray) {
                         $innerLen = $mapped->getLength();
                         for ($j = 0; $j < $innerLen; $j++) {
-                            $a->defineOwnProperty(
+                            // CreateDataPropertyOrThrow: throw on failure.
+                            $ok = $a->defineOwnProperty(
                                 (string) $to,
                                 PropertyDescriptor::data($mapped->get((string) $j), true, true, true),
                             );
+                            if (!$ok) {
+                                throw new TypeError(
+                                    "Cannot define property '{$to}' on result object",
+                                );
+                            }
                             $to++;
                         }
                     } else {
-                        $a->defineOwnProperty(
+                        $ok = $a->defineOwnProperty(
                             (string) $to,
                             PropertyDescriptor::data($mapped, true, true, true),
                         );
+                        if (!$ok) {
+                            throw new TypeError(
+                                "Cannot define property '{$to}' on result object",
+                            );
+                        }
                         $to++;
                     }
                 }
+                // Native arrays auto-update length as indices are appended
+                // via defineOwnProperty; non-array targets are left with
+                // whatever length their custom constructor set (per spec,
+                // FlattenIntoArray does not write to length).
                 if ($a instanceof JsArray) {
                     $a->setLength($to);
-                } else {
-                    $a->set('length', new JsNumber((float) $to));
                 }
                 return $a;
             },
