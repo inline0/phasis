@@ -2280,14 +2280,9 @@ class TemporalObject
                     }
                     return $result;
                 }
-                // For property bags: read fields first, then options (per spec ordering).
-                $result = self::toPlainDateTime($item, 'constrain');
-                // Now read and validate options.
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                 $overflow = self::getOverflow($options);
-                // If reject, re-validate with the original values.
-                // Since constrain succeeded, reject only fails for out-of-range.
-                return $result;
+                return self::toPlainDateTime($item, $overflow);
             }, 1),
             true,
             false,
