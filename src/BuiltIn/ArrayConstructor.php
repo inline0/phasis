@@ -1759,12 +1759,26 @@ class ArrayConstructor
             $isConstructor = ($c instanceof JsFunction && $c->isConstructable());
 
             // Check for Symbol.iterator first (iterables take precedence over array-like).
-            if ($arrayLike instanceof JsObject || $arrayLike instanceof JsString) {
+            // Per spec GetV, primitives like Number look up Symbol.iterator on their
+            // wrapper prototype, so a prototype-installed iterator is observable.
+            if (
+                $arrayLike instanceof JsObject
+                || $arrayLike instanceof JsString
+                || $arrayLike instanceof JsNumber
+                || $arrayLike instanceof JsBoolean
+                || $arrayLike instanceof \PhpJs\Value\JsBigInt
+                || $arrayLike instanceof JsSymbol
+            ) {
                 $iterSym = SymbolConstructor::iterator();
                 $iteratorMethod = null;
 
                 if ($arrayLike instanceof JsObject) {
                     $iteratorMethod = $arrayLike->getBySymbol($iterSym);
+                } elseif (!$arrayLike instanceof JsString) {
+                    // Primitive (Number/Boolean/BigInt/Symbol): look up the method on
+                    // the wrapper prototype. Call it with the original primitive as this.
+                    $wrapper = TypeConversion::toObject($arrayLike);
+                    $iteratorMethod = $wrapper->getBySymbol($iterSym);
                 }
 
                 $iterMethodCallable = $iteratorMethod instanceof JsFunction
