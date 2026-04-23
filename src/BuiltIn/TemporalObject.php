@@ -572,7 +572,22 @@ class TemporalObject
                 $rtv = $totalOf->get('relativeTo');
                 $relativeTo = ($rtv instanceof JsUndefined) ? null : $rtv;
                 if ($relativeTo !== null) {
-                    self::toRelativeToPlainDate($relativeTo);
+                    // Parse and validate relativeTo. If it's a ZDT string, keep the ZDT.
+                    if ($relativeTo instanceof JsString) {
+                        $rtStr = $relativeTo->value;
+                        // Check if it's a ZDT string (has bracketed annotation).
+                        if (preg_match('/\[[^\]]+\]/', $rtStr) && !preg_match('/\[u-ca=/', $rtStr)) {
+                            try {
+                                $relativeTo = self::parseZonedDateTimeString($rtStr);
+                            } catch (\Throwable) {
+                                $relativeTo = self::toRelativeToPlainDate($rtv);
+                            }
+                        } else {
+                            self::toRelativeToPlainDate($relativeTo);
+                        }
+                    } else {
+                        self::toRelativeToPlainDate($relativeTo);
+                    }
                 }
                 $u = $totalOf->get('unit');
                 if ($u instanceof JsUndefined) {
@@ -6049,6 +6064,12 @@ class TemporalObject
         $absTimeNs = bccomp($timeNs, '0', 0) < 0 ? bcsub('0', $timeNs, 0) : $timeNs;
         if (bccomp($absTimeNs, self::NS_MAX, 0) > 0) {
             throw new RangeError('Duration time component exceeds representable range');
+        }
+        // Validate that endDate + timeNs produces a valid epoch ns.
+        $endDateNs = self::isoDateTimeToEpochNs($y2, $m2, $d2, 0, 0, 0, 0, 0, 0, 'UTC');
+        $endWithTimeNs = bcadd($endDateNs, $timeNs, 0);
+        if (bccomp($endWithTimeNs, self::NS_MAX, 0) > 0 || bccomp($endWithTimeNs, self::NS_MIN, 0) < 0) {
+            throw new RangeError('Duration result exceeds representable range');
         }
         $fractionalDays = (float) $timeNs / 86400000000000.0;
         $jd1 = self::isoToJulianDay($y1, $m1, $d1);
