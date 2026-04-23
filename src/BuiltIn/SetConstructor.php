@@ -338,13 +338,14 @@ class SetConstructor
 
 
         // Set.prototype.union(other)
-        $unionFn = JsFunction::fromCallable('union', function (JsValue $this_, array $args): JsValue {
+        $unionFn = JsFunction::fromCallable('union', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.union called on incompatible receiver');
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
-            $result = $this_->copy();
+            // Per spec, set-method results are plain Sets, not subclass instances.
+            $result = $this_->copy($proto);
             self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
                 $result->setAdd($value);
             });
@@ -354,13 +355,13 @@ class SetConstructor
         $proto->defineOwnProperty('union', PropertyDescriptor::data($unionFn, true, false, true));
 
         // Set.prototype.intersection(other)
-        $intersectionFn = JsFunction::fromCallable('intersection', function (JsValue $this_, array $args): JsValue {
+        $intersectionFn = JsFunction::fromCallable('intersection', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.intersection called on incompatible receiver');
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
-            $result = new JsSet($this_->getPrototype());
+            $result = new JsSet($proto);
             $thisSize = $this_->setSize();
             if ($thisSize <= $rec['size']) {
                 foreach ($this_->setValues() as $value) {
@@ -382,13 +383,13 @@ class SetConstructor
         $proto->defineOwnProperty('intersection', PropertyDescriptor::data($intersectionFn, true, false, true));
 
         // Set.prototype.difference(other)
-        $differenceFn = JsFunction::fromCallable('difference', function (JsValue $this_, array $args): JsValue {
+        $differenceFn = JsFunction::fromCallable('difference', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.difference called on incompatible receiver');
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
-            $result = $this_->copy();
+            $result = $this_->copy($proto);
             $thisSize = $this_->setSize();
             if ($thisSize <= $rec['size']) {
                 foreach ($result->setValues() as $value) {
@@ -414,13 +415,13 @@ class SetConstructor
         //   - If NOT in original AND NOT in result: append to result.
         //   - Otherwise: do nothing. This preserves slots for values deleted
         //     and later re-checked, matching test262's order expectations.
-        $symmetricDifferenceFn = JsFunction::fromCallable('symmetricDifference', function (JsValue $this_, array $args): JsValue {
+        $symmetricDifferenceFn = JsFunction::fromCallable('symmetricDifference', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.symmetricDifference called on incompatible receiver');
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
-            $result = $this_->copy();
+            $result = $this_->copy($proto);
             self::iterateSetRecord($rec, function (JsValue $value) use ($this_, $result): void {
                 $inOriginal = $this_->setHas($value);
                 $inResult = $result->setHas($value);

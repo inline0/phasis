@@ -123,12 +123,14 @@ class JsSet extends JsObject
 
 
     /**
-     * Create a shallow copy of this Set with the same prototype.
+     * Create a shallow copy of this Set. By default the copy shares the
+     * receiver's [[Prototype]]; pass $proto to force a specific prototype
+     * (used by Set.prototype methods that must always return a plain Set).
      * Only live (non-deleted) entries are copied, producing a compact list.
      */
-    public function copy(): self
+    public function copy(?JsObject $proto = null): self
     {
-        $clone = new self($this->getPrototype());
+        $clone = new self($proto ?? $this->getPrototype());
         foreach ($this->values as $value) {
             if ($value !== null) {
                 $clone->values[] = $value;
