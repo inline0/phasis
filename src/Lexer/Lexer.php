@@ -1126,8 +1126,12 @@ class Lexer
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
-            // Exclude Unicode whitespace and line terminators.
+            // Exclude Unicode whitespace, line terminators, and Format-category
+            // code points that are not part of the ID_Start set (e.g. U+180E).
             if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
+                return false;
+            }
+            if ($this->isNonIdentFormatChar()) {
                 return false;
             }
             return true;
@@ -1139,13 +1143,34 @@ class Lexer
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
-            // Exclude Unicode whitespace and line terminators.
+            // Exclude Unicode whitespace, line terminators, and Format-category
+            // code points that are not ZWJ/ZWNJ (spec ID_Continue).
             if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
+                return false;
+            }
+            if ($this->isNonIdentFormatChar()) {
                 return false;
             }
             return true;
         }
         return ctype_alnum($ch) || $ch === '_' || $ch === '$';
+    }
+
+    /**
+     * Detect Format-category code points that must not be treated as identifier
+     * characters even though they are non-ASCII. Currently handles U+180E, the
+     * Mongolian Vowel Separator, which was removed from the Space_Separator
+     * category but is also not in ID_Continue.
+     */
+    private function isNonIdentFormatChar(): bool
+    {
+        if ($this->pos + 2 >= $this->length) {
+            return false;
+        }
+        // U+180E encodes as E1 A0 8E.
+        return ord($this->source[$this->pos]) === 0xE1
+            && ord($this->source[$this->pos + 1]) === 0xA0
+            && ord($this->source[$this->pos + 2]) === 0x8E;
     }
 
     private function isDigitOrSeparator(): bool
