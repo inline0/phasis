@@ -38,8 +38,16 @@ class ObjectConstructor
                 // Per spec: If NewTarget is neither undefined nor the active function,
                 // return OrdinaryCreateFromConstructor(NewTarget, %Object.prototype%).
                 // When our interpreter sets up the new-call, $this_ is already an empty
-                // object with NewTarget's prototype — just return it, ignoring the value arg.
+                // object; set its prototype from newTarget so subclass construction
+                // (e.g. `class O extends Object {}`) observes O.prototype.
                 if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                    if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                        $ntProto = $ntDesc->value->get('prototype');
+                        $this_->setPrototype(
+                            $ntProto instanceof JsObject ? $ntProto : $proto,
+                        );
+                    }
                     $newTarget = $this_->get('[[NewTarget]]');
                     if ($newTarget !== $constructor) {
                         return $this_;
