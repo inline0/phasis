@@ -495,7 +495,7 @@ class TemporalObject
             $relativeTo = null;
             $rtv = $roundTo->get('relativeTo');
             if (!($rtv instanceof JsUndefined)) {
-                $relativeTo = $rtv;
+                $relativeTo = self::toRelativeToPlainDate($rtv);
             }
             // 3. roundingIncrement
             $increment = self::getRoundingIncrement($roundTo);
@@ -562,9 +562,12 @@ class TemporalObject
                 $unit = $totalOf->value;
                 $relativeTo = null;
             } elseif ($totalOf instanceof JsObject) {
-                // Read relativeTo first per spec.
+                // Per spec: read relativeTo, resolve it, THEN read unit.
                 $rtv = $totalOf->get('relativeTo');
                 $relativeTo = ($rtv instanceof JsUndefined) ? null : $rtv;
+                if ($relativeTo !== null) {
+                    self::toRelativeToPlainDate($relativeTo);
+                }
                 $u = $totalOf->get('unit');
                 if ($u instanceof JsUndefined) {
                     throw new RangeError('unit is required');
@@ -574,10 +577,6 @@ class TemporalObject
                 throw new TypeError('total requires a string or options object');
             }
             $unit = self::canonicalTemporalUnit($unit);
-            // Always validate relativeTo if provided.
-            if ($relativeTo !== null) {
-                self::toRelativeToPlainDate($relativeTo);
-            }
             // Calendar units require relativeTo.
             $calUnits = ['year', 'month', 'week'];
             $hasCalUnit = self::getDurationField($this_, 'years') !== 0
@@ -666,7 +665,9 @@ class TemporalObject
                 }
             }
             self::validateDurationFields($fields, true);
-            $this_->setPrototype($proto);
+            if (!self::objectInheritsFrom($this_, $proto)) {
+                $this_->setPrototype($proto);
+            }
             foreach ($names as $i => $name) {
                 $this_->defineOwnProperty("[[{$name}]]", PropertyDescriptor::data(
                     new JsNumber((float) $fields[$i]),
@@ -1240,10 +1241,9 @@ class TemporalObject
                     self::getOverflow($options);
                     return $result;
                 }
-                // For objects (property bags): read options after fields.
-                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = self::getOverflow($options);
-                return self::toPlainDate($item, $overflow);
+                // For objects (property bags): fields are read inside toPlainDate,
+                // then options are read after fields per spec order.
+                return self::toPlainDate($item, 'constrain', $args[1] ?? JsUndefined::instance());
             }, 1),
             true,
             false,
@@ -2017,7 +2017,7 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::plainDateTimeDifference($other, $this_, $opts);
+            return self::negateDuration(self::plainDateTimeDifference($this_, $other, $opts));
         }, 1);
 
         $d('round', function (JsValue $this_, array $args): JsValue {
@@ -2533,7 +2533,14 @@ class TemporalObject
                 $cal = self::toCalendarSlotValue($args[2], false);
             }
             $refDay = isset($args[3]) && !($args[3] instanceof JsUndefined) ? (int) TypeConversion::toNumber($args[3]) : 1;
-            self::validateISODate($y, $m, $refDay);
+            // PYM constructor: validate month+day but NOT full ISO date range.
+            // PYM allows boundary months that contain some valid dates.
+            if ($m < 1 || $m > 12) {
+                throw new RangeError("Invalid month: {$m}");
+            }
+            if ($refDay < 1 || $refDay > self::isoDaysInMonth($y, $m)) {
+                throw new RangeError("Invalid day: {$refDay}");
+            }
             $this_->setPrototype($proto);
             self::setDateSlots($this_, $y, $m, $refDay, $cal);
             $this_->defineOwnProperty('[[IsPlainYearMonth]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
@@ -3652,7 +3659,7 @@ class TemporalObject
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::zonedDateTimeDifference($ns2, $ns1, $tz, $opts);
+            return self::negateDuration(self::zonedDateTimeDifference($ns1, $ns2, $tz, $opts));
         }, 1);
 
         $d('equals', function (JsValue $this_, array $args): JsValue {
@@ -5282,6 +5289,19 @@ class TemporalObject
         return $obj;
     }
 
+    /** Check whether $obj's prototype chain includes $proto. */
+    private static function objectInheritsFrom(JsObject $obj, JsObject $proto): bool
+    {
+        $p = $obj->getPrototype();
+        while ($p instanceof JsObject) {
+            if ($p === $proto) {
+                return true;
+            }
+            $p = $p->getPrototype();
+        }
+        return false;
+    }
+
     // -----------------------------------------------------------------------
     // Helpers: Duration
     // -----------------------------------------------------------------------
@@ -6088,10 +6108,7 @@ class TemporalObject
             $largestUnit = $unit;
         }
 
-        // Always validate relativeTo if provided (even for non-calendar rounding).
-        if ($relativeTo !== null) {
-            self::toRelativeToPlainDate($relativeTo);
-        }
+        // relativeTo is already resolved by the caller.
 
         // Calendar-aware rounding is needed when:
         // (a) the smallestUnit or largestUnit is a calendar unit (year/month/week), OR
@@ -6102,7 +6119,7 @@ class TemporalObject
             || in_array($largestUnit, $calUnits, true)
             || $hasCalUnit;
         if ($needsCalendar && $relativeTo !== null) {
-            $refDate = self::toRelativeToPlainDate($relativeTo);
+            $refDate = $relativeTo;
             // Balance time into whole days + sub-day remainder.
             $tNsBc = self::durationToTotalNs(self::createDurationObject(
                 0,
@@ -6287,66 +6304,71 @@ class TemporalObject
                     self::getSlotString($item, '[[Calendar]]'),
                 );
             }
-            // Property bag: read in ALPHABETICAL order per spec.
+            // Property bag: read and convert fields in ALPHABETICAL order per spec.
+            // Each field is get + valueOf/toString immediately.
             $calVal = $item->get('calendar');
-            $day = $item->get('day');
-            $month = $item->get('month');
-            $monthCode = $item->get('monthCode');
-            $year = $item->get('year');
-            // Required: year, month (or monthCode), day.
-            if ($year instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
-            }
-            if ($day instanceof JsUndefined) {
+            $dayVal = $item->get('day');
+            if ($dayVal instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
-            if ($month instanceof JsUndefined) {
-                if ($monthCode instanceof JsUndefined) {
-                    throw new TypeError('missing required property: month');
-                }
-                $mc = TypeConversion::toString($monthCode);
-                $month = new JsNumber((float) self::parseMonthCode($mc));
-            } elseif (!($monthCode instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($monthCode);
-                $mcMonth = self::parseMonthCode($mc);
-                $mVal = (int) TypeConversion::toNumber($month);
-                if ($mcMonth !== $mVal) {
-                    throw new RangeError(
-                        "month and monthCode must agree"
-                    );
-                }
+            $dNum = TypeConversion::toNumber($dayVal);
+            $monthVal = $item->get('month');
+            $hasMonth = !($monthVal instanceof JsUndefined);
+            $mNum = $hasMonth ? TypeConversion::toNumber($monthVal) : null;
+            $monthCodeVal = $item->get('monthCode');
+            $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
+            $mcStr = $hasMonthCode ? TypeConversion::toString($monthCodeVal) : null;
+            // Validate monthCode syntax early (before year conversion).
+            if ($hasMonthCode) {
+                self::parseMonthCodeSyntax($mcStr);
             }
-            if (true) {
-                $yNum = TypeConversion::toNumber($year);
-                if (!is_finite($yNum)) {
-                    throw new RangeError('year must be finite');
+            $yearVal = $item->get('year');
+            if ($yearVal instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            $yNum = TypeConversion::toNumber($yearVal);
+            // Now validate and resolve fields.
+            if (!$hasMonth && !$hasMonthCode) {
+                throw new TypeError('missing required property: month');
+            }
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
+                throw new RangeError('reject minus zero as extended year');
+            }
+            $y = (int) $yNum;
+            if ($hasMonthCode) {
+                $mcMonth = self::parseMonthCode($mcStr);
+                if ($hasMonth) {
+                    if (!is_finite($mNum)) {
+                        throw new RangeError('month must be finite');
+                    }
+                    if ((int) $mNum !== $mcMonth) {
+                        throw new RangeError('month and monthCode must agree');
+                    }
                 }
-                $y = (int) $yNum;
-                $mNum = TypeConversion::toNumber($month);
+                $m = $mcMonth;
+            } else {
                 if (!is_finite($mNum)) {
                     throw new RangeError('month must be finite');
                 }
                 $m = (int) $mNum;
-                $dNum = TypeConversion::toNumber($day);
-                if (!is_finite($dNum)) {
-                    throw new RangeError('day must be finite');
-                }
-                $d = (int) $dNum;
-                $cal = 'iso8601';
-                if (!($calVal instanceof JsUndefined)) {
-                    $cal = self::toCalendarSlotValue($calVal);
-                }
-                // Check for -0 year.
-                if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
-                    throw new RangeError('reject minus zero as extended year');
-                }
-                if ($overflow === 'constrain') {
-                    [$y, $m, $d] = self::constrainISODate($y, $m, $d);
-                } else {
-                    self::validateISODate($y, $m, $d);
-                }
-                return self::createPlainDateObject($y, $m, $d, $cal);
             }
+            if (!is_finite($dNum)) {
+                throw new RangeError('day must be finite');
+            }
+            $d = (int) $dNum;
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
+            if ($overflow === 'constrain') {
+                [$y, $m, $d] = self::constrainISODate($y, $m, $d);
+            } else {
+                self::validateISODate($y, $m, $d);
+            }
+            return self::createPlainDateObject($y, $m, $d, $cal);
         }
         // Per spec: reject non-string, non-object types directly.
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
@@ -6493,8 +6515,21 @@ class TemporalObject
                     throw new RangeError("nanosecond must be finite");
                 }
             }
-            // offset
+            // offset: convert with ToString inline per spec.
             $offsetVal = $item->get('offset');
+            $offStr = null;
+            if (!($offsetVal instanceof JsUndefined)) {
+                if (
+                    $offsetVal instanceof JsNull || $offsetVal instanceof JsNumber
+                    || $offsetVal instanceof JsBoolean || $offsetVal instanceof \PhpJs\Value\JsBigInt
+                ) {
+                    throw new TypeError("offset must be a string");
+                }
+                if ($offsetVal instanceof \PhpJs\Value\JsSymbol) {
+                    throw new TypeError("Cannot convert a Symbol to a string");
+                }
+                $offStr = ($offsetVal instanceof JsString) ? $offsetVal->value : TypeConversion::toString($offsetVal);
+            }
             // second
             $secVal = $item->get('second');
             if (!($secVal instanceof JsUndefined)) {
@@ -6518,18 +6553,8 @@ class TemporalObject
             $hasTz = !($tzVal instanceof JsUndefined);
             if ($hasTz) {
                 self::toTemporalTimeZoneIdentifier($tzVal);
-                // Validate offset when timeZone is present.
-                if (!($offsetVal instanceof JsUndefined)) {
-                    if (
-                        $offsetVal instanceof JsNull || $offsetVal instanceof JsNumber
-                        || $offsetVal instanceof JsBoolean || $offsetVal instanceof \PhpJs\Value\JsBigInt
-                    ) {
-                        throw new TypeError("offset must be a string");
-                    }
-                    if ($offsetVal instanceof \PhpJs\Value\JsSymbol) {
-                        throw new TypeError("Cannot convert a Symbol to a string");
-                    }
-                    $offStr = ($offsetVal instanceof JsString) ? $offsetVal->value : TypeConversion::toString($offsetVal);
+                // Validate offset format (already converted above).
+                if ($offStr !== null) {
                     if (!preg_match('/^[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:\.\d{1,9})?)?)?$/', $offStr)) {
                         throw new RangeError("{$offStr} is not a valid offset string");
                     }
@@ -8392,8 +8417,8 @@ class TemporalObject
             return self::nsToTimeDuration($diffNs, 'hour');
         }
         $sign = $cmp > 0 ? 1 : -1;
-        // Always compute in positive direction (sml < lrg), anchor on smaller date.
-        $anchorDay = $sign > 0 ? $d1 : $d2;
+        // Always anchor on date1 (dt1) per the Temporal spec (tc39/proposal-temporal#2820).
+        $anchorDay = $d1;
         if ($sign < 0) {
             [$sY, $sM, $sD, $eY, $eM, $eD] = [$y2, $m2, $d2, $y1, $m1, $d1];
             $smlDt = $dt2;
@@ -8408,22 +8433,54 @@ class TemporalObject
         $weeks = 0;
         $days = 0;
         if ($largestUnit === 'year' || $largestUnit === 'month') {
-            $totalMonths = ($eY * 12 + $eM) - ($sY * 12 + $sM);
-            if ($eD < $anchorDay) {
-                $totalMonths--;
-            }
-            $mt = $sY * 12 + ($sM - 1) + $totalMonths;
-            $midMY = intdiv($mt, 12);
-            $midMM = ($mt % 12) + 1;
-            $midD = min($anchorDay, self::isoDaysInMonth($midMY, $midMM));
-            $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY, $midMM, $midD);
-            if ($days < 0) {
-                $totalMonths--;
+            if ($sign > 0) {
+                // Forward: date1 < date2. Add months from date1 toward date2.
+                $totalMonths = ($eY * 12 + $eM) - ($sY * 12 + $sM);
+                if ($eD < $anchorDay) {
+                    $totalMonths--;
+                }
                 $mt = $sY * 12 + ($sM - 1) + $totalMonths;
                 $midMY = intdiv($mt, 12);
                 $midMM = ($mt % 12) + 1;
                 $midD = min($anchorDay, self::isoDaysInMonth($midMY, $midMM));
                 $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY, $midMM, $midD);
+                if ($days < 0) {
+                    $totalMonths--;
+                    $mt = $sY * 12 + ($sM - 1) + $totalMonths;
+                    $midMY = intdiv($mt, 12);
+                    $midMM = ($mt % 12) + 1;
+                    $midD = min($anchorDay, self::isoDaysInMonth($midMY, $midMM));
+                    $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY, $midMM, $midD);
+                }
+            } else {
+                // Backward: date1(eY,eM,eD) > date2(sY,sM,sD). Subtract months from date1.
+                $totalMonths = ($eY * 12 + $eM) - ($sY * 12 + $sM);
+                if ($sD > $anchorDay) {
+                    $totalMonths--;
+                }
+                // Midpoint = date1 - totalMonths months.
+                $mt = $eY * 12 + ($eM - 1) - $totalMonths;
+                $midMY = intdiv($mt, 12);
+                $midMM = ($mt % 12) + 1;
+                if ($midMM < 1) {
+                    $midMM += 12;
+                    $midMY--;
+                }
+                $midD = min($anchorDay, self::isoDaysInMonth($midMY, $midMM));
+                // Days from midpoint backward to date2.
+                $days = self::isoToJulianDay($midMY, $midMM, $midD) - self::isoToJulianDay($sY, $sM, $sD);
+                if ($days < 0) {
+                    $totalMonths--;
+                    $mt = $eY * 12 + ($eM - 1) - $totalMonths;
+                    $midMY = intdiv($mt, 12);
+                    $midMM = ($mt % 12) + 1;
+                    if ($midMM < 1) {
+                        $midMM += 12;
+                        $midMY--;
+                    }
+                    $midD = min($anchorDay, self::isoDaysInMonth($midMY, $midMM));
+                    $days = self::isoToJulianDay($midMY, $midMM, $midD) - self::isoToJulianDay($sY, $sM, $sD);
+                }
             }
             if ($largestUnit === 'year') {
                 $years = intdiv($totalMonths, 12);
@@ -8458,28 +8515,60 @@ class TemporalObject
                 $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
             } elseif ($months > 0) {
                 $months--;
-                $mt2 = $sY * 12 + ($sM - 1) + ($years * 12) + $months;
-                $midMY2 = intdiv($mt2, 12);
-                $midMM2 = ($mt2 % 12) + 1;
-                $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
-                $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
+                if ($sign > 0) {
+                    // Forward: recompute midpoint from sml + months.
+                    $mt2 = $sY * 12 + ($sM - 1) + ($years * 12) + $months;
+                    $midMY2 = intdiv($mt2, 12);
+                    $midMM2 = ($mt2 % 12) + 1;
+                    $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
+                    $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
+                } else {
+                    // Backward: recompute midpoint from date1 - months.
+                    $mt2 = $eY * 12 + ($eM - 1) - ($years * 12) - $months;
+                    $midMY2 = intdiv($mt2, 12);
+                    $midMM2 = ($mt2 % 12) + 1;
+                    if ($midMM2 < 1) {
+                        $midMM2 += 12;
+                        $midMY2--;
+                    }
+                    $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
+                    $days = self::isoToJulianDay($midMY2, $midMM2, $midD2) - self::isoToJulianDay($sY, $sM, $sD);
+                }
                 if ($days > 0) {
                     $days--;
                 }
                 $timeDiffNs = (string) ($timeNs2 - $timeNs1 + 86400000000000);
             } elseif ($years > 0) {
                 $years--;
-                $tempY = $sY + $years;
-                $totalM = ($eY * 12 + $eM) - ($tempY * 12 + $sM);
-                if ($eD < $anchorDay) {
-                    $totalM--;
+                if ($sign > 0) {
+                    $tempY = $sY + $years;
+                    $totalM = ($eY * 12 + $eM) - ($tempY * 12 + $sM);
+                    if ($eD < $anchorDay) {
+                        $totalM--;
+                    }
+                    $months = $totalM;
+                    $mt2 = $tempY * 12 + ($sM - 1) + $months;
+                    $midMY2 = intdiv($mt2, 12);
+                    $midMM2 = ($mt2 % 12) + 1;
+                    $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
+                    $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
+                } else {
+                    // Backward: years borrow.
+                    $remMonths = ($eY * 12 + $eM) - ($sY * 12 + $sM) - ($years * 12);
+                    if ($sD > $anchorDay) {
+                        $remMonths--;
+                    }
+                    $months = $remMonths;
+                    $mt2 = $eY * 12 + ($eM - 1) - ($years * 12) - $months;
+                    $midMY2 = intdiv($mt2, 12);
+                    $midMM2 = ($mt2 % 12) + 1;
+                    if ($midMM2 < 1) {
+                        $midMM2 += 12;
+                        $midMY2--;
+                    }
+                    $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
+                    $days = self::isoToJulianDay($midMY2, $midMM2, $midD2) - self::isoToJulianDay($sY, $sM, $sD);
                 }
-                $months = $totalM;
-                $mt2 = $tempY * 12 + ($sM - 1) + $months;
-                $midMY2 = intdiv($mt2, 12);
-                $midMM2 = ($mt2 % 12) + 1;
-                $midD2 = min($anchorDay, self::isoDaysInMonth($midMY2, $midMM2));
-                $days = self::isoToJulianDay($eY, $eM, $eD) - self::isoToJulianDay($midMY2, $midMM2, $midD2);
                 if ($days > 0) {
                     $days--;
                 }
@@ -10006,7 +10095,7 @@ class TemporalObject
 
     private static function getFractionalSecondDigits(JsValue $options): string|int
     {
-        if (!$options instanceof JsObject || !$options->has('fractionalSecondDigits')) {
+        if (!$options instanceof JsObject) {
             return 'auto';
         }
         $v = $options->get('fractionalSecondDigits');
