@@ -31,11 +31,21 @@ class ObjectConstructor
         JsObject::resetGlobalPrototype();
         $proto = self::createPrototype();
 
+        $constructor = null;
         $constructor = JsFunction::fromCallable(
             'Object',
-            function (JsValue $this_, array $args) use ($proto, $env): JsValue {
+            function (JsValue $this_, array $args) use ($proto, $env, &$constructor): JsValue {
+                // Per spec: If NewTarget is neither undefined nor the active function,
+                // return OrdinaryCreateFromConstructor(NewTarget, %Object.prototype%).
+                // When our interpreter sets up the new-call, $this_ is already an empty
+                // object with NewTarget's prototype — just return it, ignoring the value arg.
+                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                    $newTarget = $this_->get('[[NewTarget]]');
+                    if ($newTarget !== $constructor) {
+                        return $this_;
+                    }
+                }
                 if (empty($args) || $args[0] instanceof JsUndefined || $args[0] instanceof JsNull) {
-                    // When called via new with no arg / null / undefined, create new object
                     if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                         return $this_;
                     }
@@ -68,6 +78,7 @@ class ObjectConstructor
                 }
                 return $wrapper;
             },
+            1,
         );
         $constructor->setConstructable();
 

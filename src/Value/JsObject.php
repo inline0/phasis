@@ -960,7 +960,10 @@ class JsObject implements JsValue
                     }
                 }
             }
-            $obj = $obj->prototype;
+            // Use getPrototype() (not the raw field) so subclasses with a
+            // lazily-wired prototype (e.g., JsFunction → Function.prototype)
+            // walk the correct chain.
+            $obj = $obj->getPrototype();
         }
         return $keys;
     }
