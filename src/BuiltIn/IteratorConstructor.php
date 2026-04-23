@@ -168,8 +168,19 @@ class IteratorConstructor
         return [$obj, $obj->get('next')];
     }
 
-    private static function createIteratorHelper(JsObject $ui, JsValue $un, \Closure $step): JsObject
-    {
+    /**
+     * Create an Iterator helper.
+     *
+     * @param ?\Closure $onReturn Optional callback invoked before closing
+     *     the underlying iterator; used by flatMap to also forward return()
+     *     to the currently-active inner iterator.
+     */
+    private static function createIteratorHelper(
+        JsObject $ui,
+        JsValue $un,
+        \Closure $step,
+        ?\Closure $onReturn = null,
+    ): JsObject {
         $helper = new JsObject(self::$iteratorHelperPrototype);
         $done = false;
         $alive = true;
@@ -195,13 +206,17 @@ class IteratorConstructor
             return $result;
         }, 0);
 
-        $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($ui, &$done, &$alive, &$running): JsValue {
+        $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($ui, &$done, &$alive, &$running, $onReturn): JsValue {
             if ($running) {
                 throw new TypeError('Cannot call return on a running iterator helper');
             }
             $alive = false;
             if (!$done) {
                 $done = true;
+                // Forward return() to any active inner iterator (e.g. flatMap).
+                if ($onReturn !== null) {
+                    $onReturn();
+                }
                 $returnMethod = $ui->get('return');
                 if ($returnMethod instanceof JsFunction) {
                     return $returnMethod->call($ui, []);
@@ -521,7 +536,16 @@ class IteratorConstructor
                         $innerNx = $nxMethod;
                         $innerDone = false;
                     }
-                }
+                },
+                // onReturn: close the currently-active inner iterator first.
+                function () use (&$innerIt, &$innerDone): void {
+                    if ($innerIt !== null && !$innerDone) {
+                        $ii = $innerIt;
+                        $innerIt = null;
+                        $innerDone = true;
+                        self::closeIterator($ii, true);
+                    }
+                },
             );
         };
     }
