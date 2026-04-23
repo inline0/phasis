@@ -2058,7 +2058,7 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::negateDuration(self::plainDateTimeDifference($this_, $other, $opts));
+            return self::plainDateTimeDifference($other, $this_, $opts);
         }, 1);
 
         $d('round', function (JsValue $this_, array $args): JsValue {
@@ -3773,7 +3773,7 @@ class TemporalObject
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::negateDuration(self::zonedDateTimeDifference($ns1, $ns2, $tz, $opts));
+            return self::zonedDateTimeDifference($ns2, $ns1, $tz, $opts);
         }, 1);
 
         $d('equals', function (JsValue $this_, array $args): JsValue {
