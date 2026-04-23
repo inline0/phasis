@@ -1249,19 +1249,31 @@ class ArrayConstructor
                 if (!$this_ instanceof JsObject) {
                     throw new \PhpJs\Exceptions\TypeError('Cannot convert undefined or null to object');
                 }
+                // Per spec: pass exactly (locales, options) through to each element's
+                // toLocaleString. Skip undefined/null elements (they contribute "").
+                $locales = $args[0] ?? JsUndefined::instance();
+                $options = $args[1] ?? JsUndefined::instance();
+                $forward = [$locales, $options];
                 $len = self::getLen($this_);
                 $parts = [];
                 for ($i = 0; $i < $len; $i++) {
                     $elem = $this_->get((string) $i);
                     if ($elem instanceof JsUndefined || $elem instanceof JsNull) {
                         $parts[] = '';
-                    } elseif ($elem instanceof JsObject) {
+                        continue;
+                    }
+                    if ($elem instanceof JsObject) {
                         $fn = $elem->get('toLocaleString');
                         if ($fn instanceof JsFunction) {
-                            $parts[] = TypeConversion::toString($fn->call($elem, []));
-                        } else {
-                            $parts[] = TypeConversion::toString($elem);
+                            $parts[] = TypeConversion::toString($fn->call($elem, $forward));
+                            continue;
                         }
+                    }
+                    // Primitives coerce to an object wrapper and invoke its toLocaleString.
+                    $wrapper = TypeConversion::toObject($elem);
+                    $fn = $wrapper->get('toLocaleString');
+                    if ($fn instanceof JsFunction) {
+                        $parts[] = TypeConversion::toString($fn->call($wrapper, $forward));
                     } else {
                         $parts[] = TypeConversion::toString($elem);
                     }
