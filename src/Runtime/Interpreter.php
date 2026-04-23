@@ -3910,8 +3910,33 @@ class Interpreter
         if ($this->isNonSimpleParameterList($fn->getParams())) {
             $fnEnv->setHasNonSimpleParams(true);
         }
+        // Per spec OrdinaryCallBindThis: in sloppy mode, null/undefined `this`
+        // is substituted with the global object and primitives are boxed;
+        // in strict mode `this` is passed as-is.
+        $body = $fn->getBody();
+        $fnStrict = $fn->isStrict()
+            || ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body));
+        if (!$fn->isArrow() && !$fnStrict) {
+            if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
+                $thisValue = $this->getGlobalObject();
+            } elseif (
+                !$thisValue instanceof JsObject
+                && ($thisValue instanceof JsNumber
+                    || $thisValue instanceof JsString
+                    || $thisValue instanceof JsBoolean
+                    || $thisValue instanceof JsSymbol)
+            ) {
+                $thisValue = TypeConversion::toObject($thisValue);
+            }
+        }
         $fnEnv->defineVar('this', $thisValue);
-        $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
+        // Bind [[HomeObject]] so super property access inside generator
+        // methods resolves against the method's home object's prototype.
+        $homeObject = $fn->getHomeObject();
+        if ($homeObject !== null) {
+            $fnEnv->defineVar('[[HomeObject]]', $homeObject);
+        }
+        $unmapped = $fnStrict || $this->isNonSimpleParameterList($fn->getParams());
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
         $this->bindParameters($fn->getParams(), $args, $fnEnv);
@@ -3950,6 +3975,12 @@ class Interpreter
             $fnEnv->setHasNonSimpleParams(true);
         }
         $fnEnv->defineVar('this', $thisValue);
+        // Bind [[HomeObject]] so super property access inside async generator
+        // methods resolves against the method's home object's prototype.
+        $homeObject = $fn->getHomeObject();
+        if ($homeObject !== null) {
+            $fnEnv->defineVar('[[HomeObject]]', $homeObject);
+        }
         $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
@@ -4943,11 +4974,15 @@ class Interpreter
                 }
                 // Method shorthand: set [[HomeObject]] for super references.
                 // Per spec, method definitions are not constructable and
-                // do not have a .prototype property.
+                // do not have a .prototype property, EXCEPT generator and
+                // async-generator methods which keep their .prototype (it
+                // controls the prototype of the returned generator).
                 if ($prop->method && $value instanceof JsFunction) {
                     $value->setHomeObject($obj);
                     $value->setNonConstructable();
-                    $value->forceDelete('prototype');
+                    if (!$value->isGenerator() && !$value->isAsync()) {
+                        $value->forceDelete('prototype');
+                    }
                 }
                 // Per spec 13.2.5.5 PropertyDefinitionEvaluation: call
                 // CreateDataPropertyOrThrow which uses [[DefineOwnProperty]],
@@ -5108,15 +5143,16 @@ class Interpreter
                 // Step 5b: received is throw.
                 $throwMethod = $iterator->get('throw');
                 if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
-                    // Per spec: if throw is undefined, throw a TypeError and also
-                    // IteratorClose the iterator (close via return method if present).
-                    try {
-                        $returnMethod = $iterator->get('return');
-                        if ($returnMethod instanceof JsFunction) {
-                            $this->callFunction($returnMethod, $iterator, []);
+                    // Per spec: if throw is undefined, IteratorClose the
+                    // iterator then throw TypeError. If IteratorClose itself
+                    // throws (e.g. the return getter or call throws), that
+                    // error propagates instead of the TypeError.
+                    $returnMethod = $iterator->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        $closeResult = $this->callFunction($returnMethod, $iterator, []);
+                        if (!($closeResult instanceof JsObject)) {
+                            throw new TypeError('Iterator result is not an object');
                         }
-                    } catch (\Throwable) {
-                        // Ignore close errors per spec.
                     }
                     throw new TypeError('The iterator does not provide a throw method');
                 }

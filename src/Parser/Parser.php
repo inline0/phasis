@@ -2145,6 +2145,10 @@ class Parser
         $location = $this->expect(TokenType::LeftBracket)->location;
         $elements = [];
 
+        // Inside an array literal, `in` is always allowed as a binary operator
+        // even if noIn is set by a surrounding for-header context.
+        $savedNoIn = $this->noIn;
+        $this->noIn = false;
         while (!$this->check(TokenType::RightBracket) && !$this->isAtEnd()) {
             if ($this->check(TokenType::Comma)) {
                 $elements[] = null; // elision
@@ -2162,6 +2166,7 @@ class Parser
                 $this->expect(TokenType::Comma);
             }
         }
+        $this->noIn = $savedNoIn;
 
         $this->expect(TokenType::RightBracket);
         return new ArrayExpression($location, $elements);
@@ -2172,6 +2177,10 @@ class Parser
         $location = $this->expect(TokenType::LeftBrace)->location;
         $properties = [];
 
+        // Inside an object literal, `in` is always allowed even if noIn is
+        // set by a surrounding for-header context.
+        $savedNoIn = $this->noIn;
+        $this->noIn = false;
         while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
             if ($this->check(TokenType::Ellipsis)) {
                 $properties[] = $this->parseSpreadElement();
@@ -2183,6 +2192,7 @@ class Parser
                 $this->expect(TokenType::Comma);
             }
         }
+        $this->noIn = $savedNoIn;
 
         $this->expect(TokenType::RightBrace);
         return new ObjectExpression($location, $properties);
