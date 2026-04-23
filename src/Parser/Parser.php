@@ -84,6 +84,7 @@ class Parser
     private bool $inGenerator = false;
     private bool $inAsync = false;
     private bool $topLevel = true;
+    private bool $strictMode = false;
     private string $source = '';
 
     /** Tracks nodes that were wrapped in parentheses, for IsIdentifierRef checks. */
@@ -95,6 +96,18 @@ class Parser
         $this->parenthesized = new \SplObjectStorage();
         $lexer = new Lexer($source);
         $this->tokens = $lexer->tokenize();
+    }
+
+    /**
+     * Pre-seed strict mode for this parser. Callers that know their caller's
+     * context (e.g. direct eval inside strict code) should set this so
+     * strict-mode early errors (legacy octal literals, reserved identifiers,
+     * etc.) are enforced even when the source has no own "use strict"
+     * directive.
+     */
+    public function setStrictMode(bool $strict): void
+    {
+        $this->strictMode = $strict;
     }
 
     /**
@@ -113,11 +126,49 @@ class Parser
         $location = $this->current()->location;
         $body = [];
 
+        // Scan the directive prologue for "use strict" so downstream parsing
+        // can enforce strict-mode early errors (e.g. legacy octal literals).
+        // Preserve any strict mode already set by the caller (direct eval in
+        // strict code, strict modules, etc.).
+        if (!$this->strictMode) {
+            $this->strictMode = $this->hasUseStrictPrologue();
+        }
+
         while (!$this->isAtEnd()) {
             $body[] = $this->parseStatementOrDeclaration();
         }
 
         return new Program($location, $body);
+    }
+
+    /**
+     * Check for a "use strict" directive in the leading Directive Prologue.
+     * Only non-escaped string literals ("use strict" or 'use strict' without
+     * any \-escapes) count as a directive per spec 10.2.1.
+     */
+    private function hasUseStrictPrologue(): bool
+    {
+        $i = $this->pos;
+        while ($i < count($this->tokens)) {
+            $t = $this->tokens[$i];
+            if ($t->type !== TokenType::String) {
+                return false;
+            }
+            $raw = $t->value;
+            // Skip over the string token and the optional semicolon.
+            $i++;
+            if ($i < count($this->tokens) && $this->tokens[$i]->type === TokenType::Semicolon) {
+                $i++;
+            }
+            // The unparsed raw form of the string includes its original quotes
+            // and any escapes; a literal "use strict" must be exactly that
+            // with no escapes. Our lexer stores only the decoded value, so
+            // check it against the decoded text.
+            if ($raw === 'use strict') {
+                return true;
+            }
+        }
+        return false;
     }
 
     // -------------------------------------------------------------------------
@@ -1770,6 +1821,15 @@ class Parser
             $value = hexdec($raw);
         } elseif (str_starts_with($raw, '0o') || str_starts_with($raw, '0O')) {
             $value = octdec(substr($raw, 2));
+        } elseif (str_starts_with($raw, '0lo')) {
+            // Annex B legacy octal integer literal. Forbidden in strict code.
+            if ($this->strictMode) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Octal literals are not allowed in strict mode',
+                    $token->location,
+                );
+            }
+            $value = octdec(substr($raw, 3));
         } elseif (str_starts_with($raw, '0b') || str_starts_with($raw, '0B')) {
             $value = bindec(substr($raw, 2));
         } else {

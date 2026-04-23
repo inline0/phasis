@@ -1707,6 +1707,10 @@ class Interpreter
                 throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
             }
             $parser = new \PhpJs\Parser\Parser($arg->value);
+            // Direct eval inherits strict mode from its surrounding context.
+            if ($this->strictMode) {
+                $parser->setStrictMode(true);
+            }
             $program = $parser->parse();
 
             // Validate: return, break, and continue are not allowed at the top

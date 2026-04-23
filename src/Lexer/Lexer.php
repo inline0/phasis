@@ -342,9 +342,11 @@ class Lexer
                     }
                 }
                 if ($isLegacyOctal) {
-                    // Emit as 0o-prefixed so the parser uses octdec().
+                    // Emit with a 0lo prefix so the parser can distinguish
+                    // legacy octals (Annex B, forbidden in strict mode) from
+                    // the explicit 0o notation. The value is still octal.
                     $this->advance(); // skip leading 0
-                    $result = '0o';
+                    $result = '0lo';
                     while (
                         $this->pos < $this->length
                         && $this->source[$this->pos] >= '0'
