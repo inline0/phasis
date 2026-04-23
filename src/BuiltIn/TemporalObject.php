@@ -1243,7 +1243,6 @@ class TemporalObject
                 $cal = self::toCalendarSlotValue($args[3], false);
             }
             self::validateISODate($y, $m, $dd);
-            $this_->setPrototype($proto);
             self::setDateSlots($this_, $y, $m, $dd, $cal);
             $this_->defineOwnProperty('[[IsPlainDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
@@ -2108,7 +2107,10 @@ class TemporalObject
             );
             $roundingMode = self::getRoundingMode($roundTo, 'halfExpand');
             $increment = self::getRoundingIncrement($roundTo);
-            if ($increment > 1 && $unit !== 'day') {
+            if ($increment > 1) {
+                if ($unit === 'day') {
+                    throw new RangeError('roundingIncrement for day must be 1');
+                }
                 self::validateRoundingIncrement($unit, $increment);
             }
             // Convert to nanoseconds from midnight, round, convert back.
@@ -2244,8 +2246,7 @@ class TemporalObject
                 $ns,
                 $cal,
             );
-            // Copy slots to $this_ for proper prototype chain.
-            $this_->setPrototype($proto);
+            // Copy slots to $this_.
             self::setDateSlots($this_, $y, $m, $dd, $cal);
             self::setTimeSlots($this_, $h, $min, $s, $ms, $us, $ns);
             $this_->defineOwnProperty('[[IsPlainDateTime]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
@@ -4045,7 +4046,6 @@ class TemporalObject
             if (isset($args[2]) && !($args[2] instanceof JsUndefined)) {
                 $cal = self::toCalendarSlotValue($args[2], false);
             }
-            $this_->setPrototype($proto);
             $this_->defineOwnProperty('[[EpochNanoseconds]]', PropertyDescriptor::data(new JsString($ns), false, false, false));
             $this_->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(new JsString($timeZone), false, false, false));
             $this_->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(new JsString($cal), false, false, false));
