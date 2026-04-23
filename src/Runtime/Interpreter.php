@@ -5225,13 +5225,23 @@ class Interpreter
             // Not done: yield the inner result to the outer caller.
             // For sync yield*, GeneratorYield passes the iterator-result object
             // through directly. For async yield*, the spec reads the value
-            // property (triggering the getter), awaits it, then yields that
-            // awaited value via AsyncGeneratorYield.
+            // property (triggering the getter, which may throw) and yields
+            // it via AsyncGeneratorYield; AsyncGeneratorYield does NOT await
+            // the value when the iterator is an async iterator proper, so
+            // promises pass through unwrapped.
             if ($isAsyncGen) {
+                // Per spec, async yield* reads the value (triggering the
+                // getter) but the async iterator pathway does NOT await or
+                // re-wrap the yielded value. Build an iterator result object
+                // manually and suspend with YieldDelegateResult so the
+                // JsAsyncGenerator consumer returns it as-is without piping
+                // through asyncGeneratorYieldResult's await logic.
                 $yieldValue = $innerResult->get('value');
-                $yieldValue = $this->awaitValue($yieldValue);
+                $resultObj = new JsObject();
+                $resultObj->set('value', $yieldValue);
+                $resultObj->set('done', new \PhpJs\Value\JsBoolean(false));
                 try {
-                    $received = \Fiber::suspend($yieldValue);
+                    $received = \Fiber::suspend(new \PhpJs\Value\YieldDelegateResult($resultObj));
                     $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
                     $receivedType = 'normal';
                 } catch (GeneratorThrowSignal $e) {
