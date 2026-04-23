@@ -326,15 +326,24 @@ class ReflectObject
                 }
 
                 // Per spec 9.1.13 OrdinaryCreateFromConstructor: Get newTarget.prototype
-                // and use it as the prototype for the new object. This must happen
-                // BEFORE the constructor runs so that Object.getPrototypeOf(this)
-                // inside the constructor body sees the correct prototype.
-                $ntProto = $newTarget->get('prototype');
-                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
-                if ($useProto === null) {
-                    // Fall back to target's prototype when newTarget.prototype is not an object.
+                // and use it as the prototype for the new object. For user-defined
+                // (AST) constructors we do this eagerly so Object.getPrototypeOf(this)
+                // inside the body observes the correct prototype. For native built-in
+                // constructors that validate arguments before OrdinaryCreateFromConstructor
+                // (e.g. ArrayBuffer), accessing newTarget.prototype here would happen
+                // too early; the native callable performs the access itself via
+                // [[NewTarget]] after its own validation.
+                $targetIsNative = $target instanceof JsFunction && $target->isNative();
+                if ($targetIsNative) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                } else {
+                    $ntProto = $newTarget->get('prototype');
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                    if ($useProto === null) {
+                        $targetProto = $target->get('prototype');
+                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    }
                 }
                 $newObj = new JsObject($useProto);
                 $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
