@@ -649,6 +649,10 @@ class TypedArrayConstructor
         $constructor = JsFunction::fromCallable(
             'DataView',
             function (JsValue $this_, array $args) use ($proto): JsValue {
+                // Step 1: NewTarget undefined → TypeError, checked before any arg coercion.
+                if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
+                    throw new TypeError('Constructor DataView requires \'new\'');
+                }
                 $buffer = $args[0] ?? JsUndefined::instance();
                 if (!$buffer instanceof JsArrayBuffer) {
                     throw new TypeError(
@@ -774,7 +778,11 @@ class TypedArrayConstructor
             'constructor',
             PropertyDescriptor::data($constructor, true, false, true),
         );
-        $constructor->set('prototype', $proto);
+        // Per spec, DataView.prototype is non-writable, non-enumerable, non-configurable.
+        $constructor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($proto, false, false, false),
+        );
 
         $env->defineVar('DataView', $constructor);
     }
