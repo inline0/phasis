@@ -4292,6 +4292,8 @@ class TemporalObject
         if ($offOptStr !== 'ignore') {
             $result = self::parseZonedDateTimeString($str, $offOptStr);
         }
+        // Wall-clock range validation for prefer/reject is handled by the
+        // parseZonedDateTimeString + validateInstantRange chain.
         return $result;
     }
 
