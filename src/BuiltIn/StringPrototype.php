@@ -630,7 +630,10 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $len = mb_strlen($str, 'UTF-8');
+            // Per spec, String.prototype.slice indices are UTF-16 code unit
+            // offsets, not code point offsets, so work on the UTF-16LE form.
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $len = (int) (strlen($u16) / 2);
 
             // Per spec 22.1.3.22: intStart = ToIntegerOrInfinity(start).
             $startArg = $args[0] ?? JsUndefined::instance();
@@ -664,7 +667,8 @@ class StringPrototype
                 return new JsString('');
             }
 
-            return new JsString(mb_substr($str, $from, $to - $from, 'UTF-8'));
+            $sliceBytes = substr($u16, $from * 2, ($to - $from) * 2);
+            return new JsString(JsString::utf16LEToUtf8($sliceBytes));
         };
     }
 
