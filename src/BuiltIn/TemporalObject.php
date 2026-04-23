@@ -1352,13 +1352,15 @@ class TemporalObject
                     return $result;
                 }
                 // For known Temporal types: convert first, then read options.
-                if ($item instanceof JsObject && (
+                if (
+                    $item instanceof JsObject && (
                     ($item->has('[[ISOYear]]') && !$item->has('[[IsPlainTime]]') && !$item->has('[[IsPlainDateTime]]')
                         && !$item->has('[[IsPlainYearMonth]]') && !$item->has('[[IsPlainMonthDay]]')
                         && !$item->has('[[IsZonedDateTime]]') && !$item->has('[[IsDuration]]') && !$item->has('[[EpochNanoseconds]]'))
                     || $item->has('[[IsPlainDateTime]]')
                     || $item->has('[[IsZonedDateTime]]')
-                )) {
+                    )
+                ) {
                     $result = self::toPlainDate($item, 'constrain');
                     $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                     self::getOverflow($options);
@@ -1665,9 +1667,11 @@ class TemporalObject
                     return self::toPlainTime($item);
                 }
                 // For strings/PlainTime/PlainDateTime/ZonedDateTime: convert first, then validate options.
-                if ($item instanceof JsString || ($item instanceof JsObject && (
+                if (
+                    $item instanceof JsString || ($item instanceof JsObject && (
                     $item->has('[[IsPlainTime]]') || $item->has('[[IsPlainDateTime]]') || $item->has('[[IsZonedDateTime]]')
-                ))) {
+                    ))
+                ) {
                     $result = self::toPlainTime($item);
                     $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
                     self::getOverflow($options);
@@ -2969,7 +2973,7 @@ class TemporalObject
                     }
                 }
             }
-                        if ($overflow === 'constrain') {
+            if ($overflow === 'constrain') {
                 $m = max(1, min(12, $m));
                 $dim = self::isoDaysInMonth($refY, $m);
                 $dd = max(1, min($dim, $dd));
@@ -8749,13 +8753,19 @@ class TemporalObject
             $rY = $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
             $rM = $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
             $ctm = $rY * 12 + ($rM - 1) + ($finalYears * 12) + $finalMonths;
-            $cY = intdiv($ctm, 12); $cM = ($ctm % 12) + 1;
+            $cY = intdiv($ctm, 12);
+            $cM = ($ctm % 12) + 1;
             $dim = self::isoDaysInMonth($cY, $cM);
             while ($finalDays >= $dim) {
-                $finalDays -= $dim; $finalMonths++;
-                if ($largestUnit === 'year' && $finalMonths >= 12) { $finalYears += intdiv($finalMonths, 12); $finalMonths = $finalMonths % 12; }
+                $finalDays -= $dim;
+                $finalMonths++;
+                if ($largestUnit === 'year' && $finalMonths >= 12) {
+                    $finalYears += intdiv($finalMonths, 12);
+                    $finalMonths = $finalMonths % 12;
+                }
                 $ctm = $rY * 12 + ($rM - 1) + ($finalYears * 12) + $finalMonths;
-                $cY = intdiv($ctm, 12); $cM = ($ctm % 12) + 1;
+                $cY = intdiv($ctm, 12);
+                $cM = ($ctm % 12) + 1;
                 $dim = self::isoDaysInMonth($cY, $cM);
             }
         }
@@ -8774,8 +8784,13 @@ class TemporalObject
     }
 
     /** Calendar-aware difference for year/month/week largestUnit. */
-    private static function calendarDateTimeDifference(JsValue $dt1, JsValue $dt2, string $largestUnit, int $signParam = 1, ?JsValue $anchorDt = null): JsObject
-    {
+    private static function calendarDateTimeDifference(
+        JsValue $dt1,
+        JsValue $dt2,
+        string $largestUnit,
+        int $signParam = 1,
+        ?JsValue $anchorDt = null,
+    ): JsObject {
         $y1 = self::getSlotInt($dt1, '[[ISOYear]]');
         $m1 = self::getSlotInt($dt1, '[[ISOMonth]]');
         $d1 = self::getSlotInt($dt1, '[[ISODay]]');
