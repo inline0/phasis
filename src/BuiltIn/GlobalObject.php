@@ -710,30 +710,11 @@ class GlobalObject
                     $body = array_pop($stringArgs);
                     $params = implode(',', $stringArgs);
                 }
-                // Per spec step 20: if parameters Contains YieldExpression, throw SyntaxError.
-                // Detect yield in parameters by parsing as a generator and checking params.
-                if ($params !== '') {
-                    // Parse as a regular function to detect yield in params.
-                    // If `yield` appears in params and is not inside the body,
-                    // it should throw SyntaxError.
-                    try {
-                        $testSource = "(function({$params}\n) {})";
-                        $testParser = new \PhpJs\Parser\Parser($testSource);
-                        $testParser->parse();
-                    } catch (\Throwable $e) {
-                        throw new \PhpJs\Exceptions\SyntaxError($e->getMessage());
-                    }
-                    // Check if params contain `yield` as keyword (not inside a string).
-                    // Parse as generator to see if yield is treated as expression in params.
-                    if (preg_match('/\byield\b/', $params)) {
-                        throw new \PhpJs\Exceptions\SyntaxError(
-                            'Yield expression is not allowed in formal parameters'
-                        );
-                    }
-                }
                 $source = "(function* anonymous({$params}\n) {\n{$body}\n})";
                 $parser = new \PhpJs\Parser\Parser($source);
                 $program = $parser->parse();
+                // Per spec step 20: parameters Contains YieldExpression must throw.
+                self::rejectYieldAwaitInParams($program);
                 $interp = new Interpreter($env);
                 $fn = $interp->execute($program);
                 return $fn;
@@ -917,6 +898,10 @@ class GlobalObject
                 $source = "(async function* anonymous({$params}\n) {\n{$body}\n})";
                 $parser = new \PhpJs\Parser\Parser($source);
                 $program = $parser->parse();
+                // Per spec: params for async generator cannot contain YieldExpression
+                // or AwaitExpression. The main parse already allows yield/await in
+                // async-generator params, so reject them with a post-parse scan.
+                self::rejectYieldAwaitInParams($program);
                 $interp = new Interpreter($env);
                 return $interp->execute($program);
             },
@@ -1494,6 +1479,83 @@ class GlobalObject
      *
      * @throws \PhpJs\Exceptions\SyntaxError
      */
+    /** Public wrapper for Engine.php to reach rejectYieldAwaitInParams. */
+    public static function rejectYieldAwaitInParamsPublic(\PhpJs\Ast\Program $program): void
+    {
+        self::rejectYieldAwaitInParams($program);
+    }
+
+    /**
+     * Walk the formal parameters of a parsed dynamic-function Program looking
+     * for YieldExpression or AwaitExpression nodes. The dynamic
+     * AsyncGeneratorFunction and GeneratorFunction constructors must reject
+     * such expressions in their parameter lists per spec CreateDynamicFunction
+     * step 28/29.
+     */
+    private static function rejectYieldAwaitInParams(\PhpJs\Ast\Program $program): void
+    {
+        foreach ($program->body as $stmt) {
+            if (
+                !($stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement)
+                || !($stmt->expression instanceof \PhpJs\Ast\Expression\FunctionExpression)
+            ) {
+                continue;
+            }
+            foreach ($stmt->expression->params as $param) {
+                if ($param === null) {
+                    continue;
+                }
+                if (self::nodeContainsYieldOrAwait($param)) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        'YieldExpression or AwaitExpression not permitted in parameters'
+                    );
+                }
+            }
+            return;
+        }
+    }
+
+    private static function nodeContainsYieldOrAwait(?\PhpJs\Ast\Node $node): bool
+    {
+        if ($node === null) {
+            return false;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\YieldExpression
+            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression
+        ) {
+            return true;
+        }
+        // Stop descending into nested functions/classes; their own params are
+        // their own scope.
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            return false;
+        }
+        // Walk public properties of the node looking for Node children/arrays.
+        $reflection = new \ReflectionObject($node);
+        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof \PhpJs\Ast\Node) {
+                if (self::nodeContainsYieldOrAwait($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof \PhpJs\Ast\Node && self::nodeContainsYieldOrAwait($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static function validateDynamicFunction(\PhpJs\Ast\Program $program, string $params): void
     {
         // The parsed program should contain a single ExpressionStatement

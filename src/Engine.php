@@ -760,6 +760,10 @@ class Engine
             $source = "(async function anonymous({$paramStr}) {\n{$bodyStr}\n})";
             $parser = new Parser($source);
             $ast = $parser->parse();
+            // Per spec 25.7.1 step 29: params for async functions must not
+            // contain AwaitExpression. YieldExpression is also rejected since
+            // it's never a valid binding initializer.
+            \PhpJs\BuiltIn\GlobalObject::rejectYieldAwaitInParamsPublic($ast);
 
             return $interp->execute($ast);
         }, 1);
