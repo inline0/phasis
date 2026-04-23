@@ -1833,6 +1833,15 @@ class Parser
             $token = $this->current();
         }
 
+        // Decorators on class expressions: @dec class { ... }.
+        if ($token->type === TokenType::At) {
+            $decorators = $this->parseDecoratorList();
+            if ($this->check(TokenType::Class_)) {
+                return $this->parseClassExpression($decorators);
+            }
+            throw new ParseError('Expected class expression after decorator list', $this->current());
+        }
+
         return match ($token->type) {
             TokenType::Number => $this->parseNumericLiteral(),
             TokenType::String => $this->parseStringLiteral(),
