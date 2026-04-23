@@ -7078,29 +7078,37 @@ class TemporalObject
                 throw new TypeError('missing required property: year');
             }
             $monthCode = $item->get('monthCode');
-            if ($month instanceof JsUndefined) {
+            $mcParsedMonth = null;
+            $monthExplicit = !($month instanceof JsUndefined);
+            $monthValForConflict = $monthExplicit ? (int) TypeConversion::toNumber($month) : null;
+            if (!$monthExplicit) {
                 if ($monthCode instanceof JsUndefined) {
                     throw new TypeError('missing required property: month');
                 }
                 $mc = TypeConversion::toString($monthCode);
-                $month = new JsNumber((float) self::parseMonthCode($mc));
+                [$mcParsedMonth] = self::parseMonthCodeSyntax($mc);
+                $month = new JsNumber((float) $mcParsedMonth);
             } elseif (!($monthCode instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCode);
-                $mcMonth = self::parseMonthCode($mc);
-                $mVal = (int) TypeConversion::toNumber($month);
-                if ($mcMonth !== $mVal) {
-                    throw new RangeError('month and monthCode must agree');
-                }
+                [$mcParsedMonth] = self::parseMonthCodeSyntax($mc);
             }
             if ($day instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
+            // Read year BEFORE validating monthCode suitability.
             if (true) {
                 $yNum = TypeConversion::toNumber($year);
                 if (!is_finite($yNum)) {
                     throw new RangeError('year must be finite');
                 }
                 $y = (int) $yNum;
+                // Now validate monthCode suitability (after year type check).
+                if ($mcParsedMonth !== null && isset($mc)) {
+                    $validatedMonth = self::parseMonthCode($mc);
+                    if ($monthValForConflict !== null && $monthValForConflict !== $validatedMonth) {
+                        throw new RangeError('month and monthCode must agree');
+                    }
+                }
                 $mNum = TypeConversion::toNumber($month);
                 if (!is_finite($mNum)) {
                     throw new RangeError('month must be finite');
