@@ -7313,11 +7313,19 @@ class Interpreter
 
         if ($node->callee instanceof MemberExpression) {
             $obj = $this->evaluate($node->callee->object, $env);
-            $propName = $node->callee->computed
-                ? TypeConversion::toString($this->evaluate($node->callee->property, $env))
-                : ($node->callee->property instanceof Identifier
+            // Computed member with a Symbol key must not be stringified; fall back to
+            // the regular call path (returning null) so getBySymbol is used correctly.
+            if ($node->callee->computed) {
+                $propVal = $this->evaluate($node->callee->property, $env);
+                if ($propVal instanceof \PhpJs\Value\JsSymbol) {
+                    return null;
+                }
+                $propName = TypeConversion::toString($propVal);
+            } else {
+                $propName = $node->callee->property instanceof Identifier
                     ? $node->callee->property->name
-                    : TypeConversion::toString($this->evaluate($node->callee->property, $env)));
+                    : TypeConversion::toString($this->evaluate($node->callee->property, $env));
+            }
             $callee = $obj instanceof JsObject ? $obj->get($propName) : null;
             $thisValue = $obj;
         } elseif ($node->callee instanceof Identifier) {
