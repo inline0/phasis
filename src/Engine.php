@@ -756,16 +756,24 @@ class Engine
             }
             $paramStr = implode(',', $paramParts);
             $bodyStr = TypeConversion::toString($bodyArg);
-            // Parse as an expression so we get the function value directly.
-            $source = "(async function anonymous({$paramStr}) {\n{$bodyStr}\n})";
-            $parser = new Parser($source);
+            // Per Function.prototype.toString spec, dynamic-function source is
+            // formatted exactly as: `async function anonymous(<params>\n) {\n<body>\n}`.
+            $source = "async function anonymous({$paramStr}\n) {\n{$bodyStr}\n}";
+            // Parse by wrapping in parentheses so the function expression
+            // is the whole program result.
+            $parseSource = "(" . $source . ")";
+            $parser = new Parser($parseSource);
             $ast = $parser->parse();
             // Per spec 25.7.1 step 29: params for async functions must not
             // contain AwaitExpression. YieldExpression is also rejected since
             // it's never a valid binding initializer.
             \PhpJs\BuiltIn\GlobalObject::rejectYieldAwaitInParamsPublic($ast);
 
-            return $interp->execute($ast);
+            $fn = $interp->execute($ast);
+            if ($fn instanceof JsFunction) {
+                $fn->setSourceText($source);
+            }
+            return $fn;
         }, 1);
         $asyncFuncCtor->setConstructable();
 
