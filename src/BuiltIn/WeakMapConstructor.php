@@ -57,6 +57,18 @@ class WeakMapConstructor
      *
      * @param list<JsValue> $args
      */
+    /** Spec: CanBeHeldWeakly — JsObject or non-registered Symbol. */
+    private static function canBeHeldWeakly(JsValue $key): bool
+    {
+        if ($key instanceof JsObject) {
+            return true;
+        }
+        if ($key instanceof \PhpJs\Value\JsSymbol && !SymbolConstructor::isRegisteredSymbol($key)) {
+            return true;
+        }
+        return false;
+    }
+
     private static function populateFromArgs(JsWeakMap $map, array $args): void
     {
         if (empty($args)) {
@@ -192,7 +204,7 @@ class WeakMapConstructor
                 throw new TypeError('Method WeakMap.prototype.getOrInsert called on incompatible receiver');
             }
             $key = $args[0] ?? JsUndefined::instance();
-            if (!$key instanceof JsObject) {
+            if (!self::canBeHeldWeakly($key)) {
                 throw new TypeError('Invalid value used as weak map key');
             }
             $value = $args[1] ?? JsUndefined::instance();
@@ -210,7 +222,7 @@ class WeakMapConstructor
                 throw new TypeError('Method WeakMap.prototype.getOrInsertComputed called on incompatible receiver');
             }
             $key = $args[0] ?? JsUndefined::instance();
-            if (!$key instanceof JsObject) {
+            if (!self::canBeHeldWeakly($key)) {
                 throw new TypeError('Invalid value used as weak map key');
             }
             $callbackfn = $args[1] ?? JsUndefined::instance();
