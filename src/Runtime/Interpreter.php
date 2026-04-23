@@ -1384,6 +1384,17 @@ class Interpreter
                 }
             }
             try {
+                // If super is a base-class constructor (not itself derived),
+                // initialize its instance fields on the receiver before its
+                // body evaluates so default-param expressions like
+                // `constructor(o = this.#x)` can see the fields.
+                if (
+                    $superCtor->isClassConstructor()
+                    && !$superCtor->isDerivedConstructor()
+                    && $currentThis instanceof JsObject
+                ) {
+                    $this->initializeInstanceFields($superCtor, $currentThis, $env);
+                }
                 $result = $this->callFunction($superCtor, $currentThis, $args);
             } finally {
                 if ($currentThis instanceof JsObject && !$superHadNT) {
