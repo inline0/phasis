@@ -274,7 +274,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
-                && !($name[0] === '_' && $name[1] === '_' && isset($name[2]) && ctype_upper($name[2]))
+                && !(isset($name[0], $name[1], $name[2]) && $name[0] === '_' && $name[1] === '_' && ctype_upper($name[2]))
             ) {
                 $this->linkedObject->defineOwnProperty(
                     $name,
@@ -391,7 +391,7 @@ class Environment
             if (
                 $this->linkedObject !== null
                 && $name !== 'this' && $name !== 'globalThis'
-                && !($name[0] === '_' && $name[1] === '_' && isset($name[2]) && ctype_upper($name[2]))
+                && !(isset($name[0], $name[1], $name[2]) && $name[0] === '_' && $name[1] === '_' && ctype_upper($name[2]))
                 && $this->linkedObject->hasOwnProperty($name)
             ) {
                 $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
