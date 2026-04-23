@@ -355,14 +355,15 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec 9.1.13 OrdinaryCreateFromConstructor: Get newTarget.prototype
-                // and use it as the prototype for the new object. For user-defined
-                // (AST) constructors we do this eagerly so Object.getPrototypeOf(this)
-                // inside the body observes the correct prototype. For native built-in
-                // constructors that validate arguments before OrdinaryCreateFromConstructor
-                // (e.g. ArrayBuffer), accessing newTarget.prototype here would happen
-                // too early; the native callable performs the access itself via
-                // [[NewTarget]] after its own validation.
+                // Per spec 9.1.13 OrdinaryCreateFromConstructor: for user-
+                // defined constructors we eagerly access newTarget.prototype
+                // so Object.getPrototypeOf(this) inside the body observes
+                // the correct prototype. Native built-in constructors
+                // perform that access themselves at the spec-mandated time
+                // (often after argument validation, as in ArrayBuffer), so
+                // we pre-allocate with the target's own prototype and let
+                // the native body fix up the prototype and propagate any
+                // getter error itself.
                 $targetIsNative = $target instanceof JsFunction && $target->isNative();
                 if ($targetIsNative) {
                     $targetProto = $target->get('prototype');

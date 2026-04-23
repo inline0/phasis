@@ -76,9 +76,18 @@ class DisposableStackConstructor
     {
         $proto = new JsObject();
 
-        $ctor = JsFunction::fromCallable('DisposableStack', function (JsValue $this_, array $args): JsValue {
+        $ctor = JsFunction::fromCallable('DisposableStack', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Constructor DisposableStack requires \'new\'');
+            }
+            // OrdinaryCreateFromConstructor: fetch newTarget.prototype and
+            // apply it to this_ (so prototype getters throw through us).
+            $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+            if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                $ntProto = $ntDesc->value->get('prototype');
+                $this_->setPrototype(
+                    $ntProto instanceof JsObject ? $ntProto : $proto,
+                );
             }
             $this_->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                 new JsString('pending'),
@@ -261,9 +270,18 @@ class DisposableStackConstructor
     {
         $proto = new JsObject();
 
-        $ctor = JsFunction::fromCallable('AsyncDisposableStack', function (JsValue $this_, array $args): JsValue {
+        $ctor = JsFunction::fromCallable('AsyncDisposableStack', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
                 throw new TypeError('Constructor AsyncDisposableStack requires \'new\'');
+            }
+            // OrdinaryCreateFromConstructor: fetch newTarget.prototype and
+            // apply it to this_ (so prototype getters throw through us).
+            $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+            if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                $ntProto = $ntDesc->value->get('prototype');
+                $this_->setPrototype(
+                    $ntProto instanceof JsObject ? $ntProto : $proto,
+                );
             }
             $this_->defineOwnProperty('[[DisposableState]]', PropertyDescriptor::data(
                 new JsString('pending'),
