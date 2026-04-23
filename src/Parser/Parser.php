@@ -1705,6 +1705,8 @@ class Parser
         // For yield* (delegate), the AssignmentExpression is required and a line
         // terminator between * and the expression does NOT trigger ASI. For plain
         // yield, a line terminator before the next token means no argument (ASI).
+        // Template middle/tail tokens (after ${...}) also terminate the yield
+        // argument because the closing '}' is part of the template literal.
         if (
             !$this->check(TokenType::Semicolon)
             && !$this->check(TokenType::RightBrace)
@@ -1712,6 +1714,8 @@ class Parser
             && !$this->check(TokenType::RightBracket)
             && !$this->check(TokenType::Comma)
             && !$this->check(TokenType::Colon)
+            && !$this->check(TokenType::TemplateMiddle)
+            && !$this->check(TokenType::TemplateTail)
             && !$this->isAtEnd()
             && ($delegate || !$this->current()->lineTerminatorBefore)
         ) {

@@ -7063,6 +7063,27 @@ class Interpreter
             return $iterator;
         }
 
+        // For non-string primitives, GetMethod(V, @@iterator) looks up on the
+        // wrapper prototype; an installed Symbol.iterator there must be called
+        // with the primitive as its receiver.
+        if (
+            $iterable instanceof JsNumber
+            || $iterable instanceof JsBoolean
+            || $iterable instanceof \PhpJs\Value\JsBigInt
+            || $iterable instanceof JsSymbol
+        ) {
+            $wrapper = TypeConversion::toObject($iterable);
+            $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
+            $method = $wrapper->getBySymbol($iterSym);
+            if (!$method instanceof JsFunction) {
+                return null;
+            }
+            $result = $this->callFunction($method, $iterable, []);
+            if (!$result instanceof JsObject) {
+                throw new TypeError('Iterator method did not return an object');
+            }
+            return $result;
+        }
         if (!$iterable instanceof JsObject) {
             return null;
         }
