@@ -49,7 +49,16 @@ class MapConstructor
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor Map requires \'new\'');
                 }
-                $map = new JsMap($proto);
+                // Use the subclass's prototype when new.target is not Map itself.
+                $effectiveProto = $proto;
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ntProto = $newTarget->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $effectiveProto = $ntProto;
+                    }
+                }
+                $map = new JsMap($effectiveProto);
                 self::populateFromArgs($map, $args);
                 return $map;
             },

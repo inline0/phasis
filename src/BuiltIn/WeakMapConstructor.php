@@ -36,7 +36,15 @@ class WeakMapConstructor
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor WeakMap requires \'new\'');
                 }
-                $map = new JsWeakMap($proto);
+                $effectiveProto = $proto;
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ntProto = $newTarget->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $effectiveProto = $ntProto;
+                    }
+                }
+                $map = new JsWeakMap($effectiveProto);
                 self::populateFromArgs($map, $args);
                 return $map;
             },

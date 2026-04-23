@@ -35,7 +35,15 @@ class WeakSetConstructor
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor WeakSet requires \'new\'');
                 }
-                $set = new JsWeakSet($proto);
+                $effectiveProto = $proto;
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ntProto = $newTarget->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $effectiveProto = $ntProto;
+                    }
+                }
+                $set = new JsWeakSet($effectiveProto);
                 self::populateFromArgs($set, $args);
                 return $set;
             },

@@ -38,6 +38,18 @@ class ArrayConstructor
             $iteratorPrototype instanceof JsObject ? $iteratorPrototype : null,
         );
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
+            // Resolve the prototype to install on the new array: subclasses carry a
+            // [[NewTarget]] slot whose prototype should be used.
+            $protoToUse = null;
+            if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction) {
+                    $ntProto = $newTarget->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $protoToUse = $ntProto;
+                    }
+                }
+            }
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
                 $n = $args[0]->value;
                 $len = (int) $n;
@@ -45,11 +57,15 @@ class ArrayConstructor
                 if ((float) $len !== $n || $len < 0 || $len > 0xFFFFFFFF) {
                     throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
-                $arr = new JsArray();
+                $arr = new JsArray([], $protoToUse);
                 $arr->setLength($len);
                 return $arr;
             }
-            return JsArray::fromArray($args);
+            $arr = JsArray::fromArray($args);
+            if ($protoToUse !== null) {
+                $arr->setPrototype($protoToUse);
+            }
+            return $arr;
         }, 1);
         $constructor->setConstructable();
 

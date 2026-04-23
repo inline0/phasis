@@ -690,7 +690,17 @@ class TypedArrayConstructor
                     }
                 }
 
-                return new JsDataView($buffer, $byteOffset, $byteLength, $proto);
+                $effectiveProto = $proto;
+                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                    $newTarget = $this_->get('[[NewTarget]]');
+                    if ($newTarget instanceof JsFunction) {
+                        $ntProto = $newTarget->get('prototype');
+                        if ($ntProto instanceof JsObject) {
+                            $effectiveProto = $ntProto;
+                        }
+                    }
+                }
+                return new JsDataView($buffer, $byteOffset, $byteLength, $effectiveProto);
             },
             1,
         );
