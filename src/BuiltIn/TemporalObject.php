@@ -6043,6 +6043,11 @@ class TemporalObject
                 self::getDurationField($dur, 'nanoseconds'),
             )
         );
+        // Validate time component doesn't exceed representable range.
+        $absTimeNs = bccomp($timeNs, '0', 0) < 0 ? bcsub('0', $timeNs, 0) : $timeNs;
+        if (bccomp($absTimeNs, self::NS_MAX, 0) > 0) {
+            throw new RangeError('Duration time component exceeds representable range');
+        }
         $fractionalDays = (float) $timeNs / 86400000000000.0;
         $jd1 = self::isoToJulianDay($y1, $m1, $d1);
         $jd2 = self::isoToJulianDay($y2, $m2, $d2);
