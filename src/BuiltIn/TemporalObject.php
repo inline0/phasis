@@ -1756,11 +1756,12 @@ class TemporalObject
         $d('toString', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $options = self::getOptionsObject($args[0] ?? JsUndefined::instance());
-            $fractionalSecondDigits = self::getFractionalSecondDigits($options);
-            $roundingMode = self::getRoundingMode($options, 'trunc');
             $calendarName = 'auto';
+            $fractionalSecondDigits = 'auto';
+            $roundingMode = 'trunc';
             $smallestUnit = null;
             if ($options instanceof JsObject) {
+                // Read alphabetical: calendarName, fractionalSecondDigits, roundingMode, smallestUnit.
                 $cn = $options->get('calendarName');
                 if (!($cn instanceof JsUndefined)) {
                     $calendarName = TypeConversion::toString($cn);
@@ -1768,6 +1769,8 @@ class TemporalObject
                         throw new RangeError("Invalid calendarName: {$calendarName}");
                     }
                 }
+                $fractionalSecondDigits = self::getFractionalSecondDigits($options);
+                $roundingMode = self::getRoundingMode($options, 'trunc');
                 $su = $options->get('smallestUnit');
                 if (!($su instanceof JsUndefined)) {
                     $smallestUnit = TypeConversion::toString($su);
@@ -2065,38 +2068,16 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::plainDateTimeDifference($this_, $other, $opts);
+            $newOpts = self::readDifferenceOptionsAlphabetical($opts, false);
+            return self::plainDateTimeDifference($this_, $other, $newOpts);
         }, 1);
 
         $d('since', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            // For since: compute until(this, other) with swapped rounding mode, then negate.
-            // Swap directional modes because the result will be negated.
-            $optsObj = $opts instanceof JsObject ? $opts : new JsObject();
-            $rmv = $optsObj->get('roundingMode');
-            if (!($rmv instanceof JsUndefined)) {
-                $rm = TypeConversion::toString($rmv);
-                $swapped = match ($rm) {
-                    'ceil' => 'floor',
-                    'floor' => 'ceil',
-                    'halfCeil' => 'halfFloor',
-                    'halfFloor' => 'halfCeil',
-                    default => $rm,
-                };
-                $newOpts = new JsObject();
-                // Copy all properties.
-                foreach (['largestUnit', 'smallestUnit', 'roundingIncrement'] as $k) {
-                    $v = $optsObj->get($k);
-                    if (!($v instanceof JsUndefined)) {
-                        $newOpts->set($k, $v);
-                    }
-                }
-                $newOpts->set('roundingMode', new JsString($swapped));
-                $optsObj = $newOpts;
-            }
-            $dur = self::plainDateTimeDifference($this_, $other, $optsObj, 1, $this_);
+            $newOpts = self::readDifferenceOptionsAlphabetical($opts, true);
+            $dur = self::plainDateTimeDifference($this_, $other, $newOpts, 1, $this_);
             return self::negateDuration($dur);
         }, 1);
 
@@ -2272,6 +2253,7 @@ class TemporalObject
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
             JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
+                $rawOptions = $args[1] ?? JsUndefined::instance();
                 // Type check primitives BEFORE reading options per spec.
                 if (
                     $item instanceof JsUndefined || $item instanceof JsNull
@@ -2282,8 +2264,7 @@ class TemporalObject
                 }
                 if ($item instanceof JsString) {
                     $result = self::toPlainDateTime($item);
-                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                    // Validate overflow even for strings.
+                    $options = self::getOptionsObject($rawOptions);
                     if ($options instanceof JsObject) {
                         $ov = $options->get('overflow');
                         if (!($ov instanceof JsUndefined)) {
@@ -2295,9 +2276,20 @@ class TemporalObject
                     }
                     return $result;
                 }
-                $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = self::getOverflow($options);
-                return self::toPlainDateTime($item, $overflow);
+                if (
+                    $item instanceof JsObject
+                    && (
+                        $item->has('[[IsPlainDateTime]]')
+                        || $item->has('[[IsPlainDate]]')
+                        || $item->has('[[IsZonedDateTime]]')
+                    )
+                ) {
+                    $result = self::toPlainDateTime($item);
+                    $options = self::getOptionsObject($rawOptions);
+                    self::getOverflow($options);
+                    return $result;
+                }
+                return self::toPlainDateTime($item, 'constrain', $rawOptions);
             }, 1),
             true,
             false,
@@ -3795,7 +3787,8 @@ class TemporalObject
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::zonedDateTimeDifference($ns1, $ns2, $tz, $opts);
+            $newOpts = self::readDifferenceOptionsAlphabetical($opts, false);
+            return self::zonedDateTimeDifference($ns1, $ns2, $tz, $newOpts);
         }, 1);
 
         $d('since', function (JsValue $this_, array $args): JsValue {
@@ -3805,28 +3798,8 @@ class TemporalObject
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            // Swap rounding modes for since (result will be negated).
-            $optsObj = $opts instanceof JsObject ? $opts : new JsObject();
-            $rmv = $optsObj->get('roundingMode');
-            if (!($rmv instanceof JsUndefined)) {
-                $rm = TypeConversion::toString($rmv);
-                $swapped = match ($rm) {
-                    'ceil' => 'floor', 'floor' => 'ceil',
-                    'halfCeil' => 'halfFloor', 'halfFloor' => 'halfCeil',
-                    default => $rm,
-                };
-                $newOpts = new JsObject();
-                foreach (['largestUnit', 'smallestUnit', 'roundingIncrement'] as $k) {
-                    $v = $optsObj->get($k);
-                    if (!($v instanceof JsUndefined)) {
-                        $newOpts->set($k, $v);
-                    }
-                }
-                $newOpts->set('roundingMode', new JsString($swapped));
-                $optsObj = $newOpts;
-            }
-            // Compute until(this, other) then negate.
-            $dur = self::zonedDateTimeDifference($ns1, $ns2, $tz, $optsObj);
+            $newOpts = self::readDifferenceOptionsAlphabetical($opts, true);
+            $dur = self::zonedDateTimeDifference($ns1, $ns2, $tz, $newOpts);
             return self::negateDuration($dur);
         }, 1);
 
@@ -4405,13 +4378,19 @@ class TemporalObject
                         throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
                     }
                 }
-                if ($offsetOption === 'use' || $offsetOption === 'prefer') {
-                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                    $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
-                } else {
-                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                    $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                if ($offsetOption === 'prefer' || $offsetOption === 'reject') {
+                    // The wall-clock time must produce an epoch ns that, interpreted via the
+                    // timezone, resolves to an instant in valid range. For fixed-offset zones
+                    // this means wall-ns must lie in [NS_MIN, NS_MAX + nsPerDay - 1].
+                    $wallUtcNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
+                    $nsPerDayMinusOne = bcsub('86400000000000', '1', 0);
+                    $upperBound = bcadd(self::NS_MAX, $nsPerDayMinusOne, 0);
+                    if (bccomp($wallUtcNs, self::NS_MIN, 0) < 0 || bccomp($wallUtcNs, $upperBound, 0) > 0) {
+                        throw new RangeError("wall-clock time of \"{$str}\" is outside the representable range of ZonedDateTime");
+                    }
                 }
+                $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
             }
         } else {
             // No offset or ignore: use wall time in the annotation timezone.
@@ -7223,6 +7202,10 @@ class TemporalObject
                 $m = $validatedMonth;
             } elseif (!$monthExplicit) {
                 throw new TypeError('missing required property: month');
+            }
+            if ($rawOptions !== null) {
+                $options = self::getOptionsObject($rawOptions);
+                $overflow = self::getOverflow($options);
             }
             if (true) {
                 if ($overflow === 'constrain') {
@@ -10444,6 +10427,51 @@ class TemporalObject
             return $options;
         }
         throw new TypeError('options must be an object');
+    }
+
+    /**
+     * Read difference options (since/until) in alphabetical order and return a
+     * fresh options object with coerced primitive values. If $swapRoundingMode
+     * is true, invert directional rounding modes for since()'s negate-after-compute
+     * pattern. Reading each option in strict alphabetical order, with coercion
+     * inline, is required by spec order-of-operations tests.
+     */
+    private static function readDifferenceOptionsAlphabetical(JsValue $options, bool $swapRoundingMode): JsObject
+    {
+        $newOpts = new JsObject();
+        if (!$options instanceof JsObject) {
+            return $newOpts;
+        }
+        $lu = $options->get('largestUnit');
+        if (!($lu instanceof JsUndefined)) {
+            $luStr = TypeConversion::toString($lu);
+            $newOpts->set('largestUnit', new JsString($luStr));
+        }
+        $ri = $options->get('roundingIncrement');
+        if (!($ri instanceof JsUndefined)) {
+            $riNum = TypeConversion::toNumber($ri);
+            $newOpts->set('roundingIncrement', new JsNumber($riNum));
+        }
+        $rm = $options->get('roundingMode');
+        if (!($rm instanceof JsUndefined)) {
+            $rmStr = TypeConversion::toString($rm);
+            if ($swapRoundingMode) {
+                $rmStr = match ($rmStr) {
+                    'ceil' => 'floor',
+                    'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor',
+                    'halfFloor' => 'halfCeil',
+                    default => $rmStr,
+                };
+            }
+            $newOpts->set('roundingMode', new JsString($rmStr));
+        }
+        $su = $options->get('smallestUnit');
+        if (!($su instanceof JsUndefined)) {
+            $suStr = TypeConversion::toString($su);
+            $newOpts->set('smallestUnit', new JsString($suStr));
+        }
+        return $newOpts;
     }
 
     private static function getFractionalSecondDigits(JsValue $options): string|int
