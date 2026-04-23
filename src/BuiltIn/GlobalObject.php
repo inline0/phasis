@@ -1085,11 +1085,11 @@ class GlobalObject
     private static function stringConstructor(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
-            // Per spec 22.1.1.1 step 2, if the argument is a Symbol,
-            // return the symbol's description string (SymbolDescriptiveString).
-            // This is special-cased before the abstract ToString operation,
-            // which would throw TypeError for symbols.
-            if (!empty($args) && $args[0] instanceof \PhpJs\Value\JsSymbol) {
+            // Per spec 22.1.1.1 step 2: when called as a function (no new.target),
+            // a Symbol argument becomes its descriptive string. When called as a
+            // constructor (new String(sym)), ToString(sym) still throws TypeError.
+            $isConstruct = $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]');
+            if (!empty($args) && $args[0] instanceof \PhpJs\Value\JsSymbol && !$isConstruct) {
                 $str = $args[0]->display();
             } else {
                 $str = empty($args) ? '' : TypeConversion::toString($args[0]);
