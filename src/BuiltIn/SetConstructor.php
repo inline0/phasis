@@ -400,7 +400,13 @@ class SetConstructor
         $differenceFn->setNonConstructable();
         $proto->defineOwnProperty('difference', PropertyDescriptor::data($differenceFn, true, false, true));
 
-        // Set.prototype.symmetricDifference(other)
+        // Set.prototype.symmetricDifference(other).
+        // Per spec: for each value from other.keys(), look up membership both in
+        // the ORIGINAL Set (live, not a snapshot) and in resultSetData:
+        //   - If in original AND in result: set result slot to empty.
+        //   - If NOT in original AND NOT in result: append to result.
+        //   - Otherwise: do nothing. This preserves slots for values deleted
+        //     and later re-checked, matching test262's order expectations.
         $symmetricDifferenceFn = JsFunction::fromCallable('symmetricDifference', function (JsValue $this_, array $args): JsValue {
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method Set.prototype.symmetricDifference called on incompatible receiver');
@@ -408,10 +414,14 @@ class SetConstructor
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
             $result = $this_->copy();
-            self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
-                if ($result->setHas($value)) {
-                    $result->setDelete($value);
-                } else {
+            self::iterateSetRecord($rec, function (JsValue $value) use ($this_, $result): void {
+                $inOriginal = $this_->setHas($value);
+                $inResult = $result->setHas($value);
+                if ($inOriginal) {
+                    if ($inResult) {
+                        $result->setDelete($value);
+                    }
+                } elseif (!$inResult) {
                     $result->setAdd($value);
                 }
             });
@@ -427,11 +437,17 @@ class SetConstructor
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
-            $thisSize = $this_->setSize();
-            if ($thisSize > $rec['size']) {
+            if ($this_->setSize() > $rec['size']) {
                 return new JsBoolean(false);
             }
-            foreach ($this_->setValues() as $value) {
+            // Iterate by slot index so entries deleted during the callback are skipped.
+            $index = 0;
+            while ($index < $this_->slotCount()) {
+                $value = $this_->getSlot($index);
+                $index++;
+                if ($value === null) {
+                    continue;
+                }
                 $inOther = $rec['has']->call($rec['obj'], [$value]);
                 if (!TypeConversion::toBoolean($inOther)) {
                     return new JsBoolean(false);
@@ -475,7 +491,13 @@ class SetConstructor
             $rec = self::getSetRecord($other);
             $thisSize = $this_->setSize();
             if ($thisSize <= $rec['size']) {
-                foreach ($this_->setValues() as $value) {
+                $index = 0;
+                while ($index < $this_->slotCount()) {
+                    $value = $this_->getSlot($index);
+                    $index++;
+                    if ($value === null) {
+                        continue;
+                    }
                     $inOther = $rec['has']->call($rec['obj'], [$value]);
                     if (TypeConversion::toBoolean($inOther)) {
                         return new JsBoolean(false);
