@@ -2280,18 +2280,14 @@ class TemporalObject
                     }
                     return $result;
                 }
+                // For property bags: read fields first, then options (per spec ordering).
+                $result = self::toPlainDateTime($item, 'constrain');
+                // Now read and validate options.
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                $overflow = 'constrain';
-                if ($options instanceof JsObject) {
-                    $ov = $options->get('overflow');
-                    if (!($ov instanceof JsUndefined)) {
-                        $overflow = TypeConversion::toString($ov);
-                        if ($overflow !== 'constrain' && $overflow !== 'reject') {
-                            throw new RangeError("Invalid overflow: {$overflow}");
-                        }
-                    }
-                }
-                return self::toPlainDateTime($item, $overflow);
+                $overflow = self::getOverflow($options);
+                // If reject, re-validate with the original values.
+                // Since constrain succeeded, reject only fails for out-of-range.
+                return $result;
             }, 1),
             true,
             false,
@@ -7037,7 +7033,7 @@ class TemporalObject
         return self::createPlainTimeObject($h, $min, $s, $ms, $us, $ns);
     }
 
-    private static function toPlainDateTime(JsValue $item, string $overflow = 'constrain'): JsObject
+    private static function toPlainDateTime(JsValue $item, string $overflow = 'constrain', ?JsValue $rawOptions = null): JsObject
     {
         if ($item instanceof JsObject && $item->has('[[IsPlainDateTime]]')) {
             // Return a copy per spec.
