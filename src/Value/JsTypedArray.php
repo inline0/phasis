@@ -880,38 +880,6 @@ class JsTypedArray extends JsObject
         return $result;
     }
 
-    /** Install Symbol.iterator for for-of support. */
-    private function installSymbolIterator(): void
-    {
-        $ta = $this;
-        $iterSym = SymbolConstructor::iterator();
-        $factory = function () use ($ta, $iterSym): JsValue {
-            $index = 0;
-            $iterator = new JsObject();
-            $nextFn = function () use ($ta, &$index): JsValue {
-                $result = new JsObject();
-                if ($index < $ta->getLength()) {
-                    $result->set('value', $ta->getIndex($index));
-                    $result->set('done', new JsBoolean(false));
-                    $index++;
-                } else {
-                    $result->set('value', JsUndefined::instance());
-                    $result->set('done', new JsBoolean(true));
-                }
-                return $result;
-            };
-            $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-            $iterator->setBySymbol($iterSym, JsFunction::fromCallable(
-                '[Symbol.iterator]',
-                function (JsValue $self_): JsValue {
-                    return $self_;
-                },
-            ));
-            return $iterator;
-        };
-        $this->setBySymbol($iterSym, JsFunction::fromCallable('[Symbol.iterator]', $factory));
-    }
-
     /** Strict equality comparison for indexOf. */
     private function strictEquals(JsValue $a, JsValue $b): bool
     {
