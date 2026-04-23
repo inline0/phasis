@@ -6240,6 +6240,14 @@ class Interpreter
             $env->initialize($name, $constructor);
         }
 
+        // Per spec, static field initializers have `this` bound to the
+        // constructor and an implicit [[HomeObject]] pointing at it. Create a
+        // scoped environment so inner expressions (and eval) observe `this`.
+        $staticEnv = $privateEnv->createChild();
+        $staticEnv->defineVar('this', $constructor);
+        $staticEnv->defineVar('[[HomeObject]]', $constructor);
+        $staticEnv->defineVar('[[ClassFieldInitializer]]', new JsBoolean(true));
+
         // Evaluate static fields and static blocks at class definition time.
         foreach ($elements as $i => $element) {
             if ($element instanceof ClassProperty && $element->static) {
@@ -6251,7 +6259,7 @@ class Interpreter
                     if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                         $constructor->definePropertyBySymbol($keyVal, PropertyDescriptor::data(
                             $element->value !== null
-                                ? $this->evaluate($element->value, $privateEnv)
+                                ? $this->evaluate($element->value, $staticEnv)
                                 : JsUndefined::instance(),
                             true,
                             true,
@@ -6267,7 +6275,7 @@ class Interpreter
                 }
 
                 $fieldValue = $element->value !== null
-                    ? $this->evaluate($element->value, $privateEnv)
+                    ? $this->evaluate($element->value, $staticEnv)
                     : JsUndefined::instance();
 
                 // NamedEvaluation for static fields: assign the field's name to
