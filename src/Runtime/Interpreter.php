@@ -3251,13 +3251,17 @@ class Interpreter
         $fnBody = $fn->getBody();
         $hasBodyStrict = $fnBody instanceof BlockStatement
             && $this->hasUseStrictDirective($fnBody->body);
+        // Only ordinary constructable functions (e.g. 'function f(){}') track
+        // caller via Annex B. Methods, arrow functions, async functions,
+        // generators, class constructors, and built-ins are all excluded.
         $setCallerProp = !$fn->isStrict()
             && !$hasBodyStrict
             && !$fn->isArrow()
             && !$fn->isNative()
             && !$fn->isAsync()
             && !$fn->isGenerator()
-            && !$fn->isClassConstructor();
+            && !$fn->isClassConstructor()
+            && $fn->isConstructable();
         $savedCaller = null;
         $callerIsStrict = false;
         if ($setCallerProp) {
