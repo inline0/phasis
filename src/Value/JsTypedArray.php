@@ -78,8 +78,10 @@ class JsTypedArray extends JsObject
         $this->buffer = $buffer;
         $this->byteOffset = $byteOffset;
         $this->length = $length;
-
-        $this->installSymbolIterator();
+        // Symbol.iterator is installed on %TypedArray%.prototype by the
+        // constructor setup (pointing at values()). Do not install a
+        // per-instance copy here: that would leak the symbol into the
+        // object's own keys, breaking Reflect.ownKeys and enumeration.
     }
 
     /**
@@ -132,6 +134,42 @@ class JsTypedArray extends JsObject
      * valid integer index (out of bounds, negative, fractional, or "-0")
      * and false otherwise. Non-numeric keys delegate to ordinary delete.
      */
+    /**
+     * Integer-Indexed exotic [[OwnPropertyKeys]] per spec 10.4.5.6.
+     *
+     * Returns all integer indices (as strings) in ascending order, then any
+     * string-keyed own properties in insertion order, then symbol-keyed own
+     * properties in insertion order.
+     *
+     * @return list<\PhpJs\Value\JsValue>
+     */
+    public function ordinaryOwnPropertyKeys(): array
+    {
+        $keys = [];
+        if (!$this->buffer->isDetached() && !$this->isOutOfBounds()) {
+            $len = $this->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $keys[] = new \PhpJs\Value\JsString((string) $i);
+            }
+        }
+        // Ordinary string/symbol keys follow; filter out any that collide
+        // with the integer indices already emitted (e.g. stale properties).
+        $rest = parent::ordinaryOwnPropertyKeys();
+        foreach ($rest as $k) {
+            if ($k instanceof \PhpJs\Value\JsString) {
+                if (
+                    ctype_digit($k->value)
+                    && self::isCanonicalNumericIndex($k->value)
+                    && (int) $k->value < $this->getLength()
+                ) {
+                    continue;
+                }
+            }
+            $keys[] = $k;
+        }
+        return $keys;
+    }
+
     public function delete(string $name, bool $strict = false): bool
     {
         if (self::isCanonicalNumericIndex($name)) {
