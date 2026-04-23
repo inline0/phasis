@@ -4008,33 +4008,8 @@ class TemporalObject
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
 
-        $d('toPlainYearMonth', function (JsValue $this_): JsValue {
-            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
-            $tz = self::getSlotString($this_, '[[TimeZone]]');
-            $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
-            return self::createPlainYearMonthObject(
-                $parts['year'],
-                $parts['month'],
-                $parts['day'],
-                $cal,
-            );
-        }, 0);
-
-        $d('toPlainMonthDay', function (JsValue $this_): JsValue {
-            self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
-            $tz = self::getSlotString($this_, '[[TimeZone]]');
-            $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
-            return self::createPlainMonthDayObject(
-                $parts['month'],
-                $parts['day'],
-                $parts['year'],
-                $cal,
-            );
-        }, 0);
+        // ZonedDateTime.prototype.toPlainYearMonth / toPlainMonthDay were
+        // removed from the Temporal proposal in the June 2024 TC39 meeting.
 
         $d('getTimeZoneTransition', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -6203,17 +6178,24 @@ class TemporalObject
             if ($d2 < $d1) {
                 $totalMonths--;
             }
-            // Remaining days as fraction of the last month.
+            // Per spec: fractional part is (days beyond midpoint) /
+            // (days in the month spanning the midpoint through the next month
+            // boundary anchored at d1). Compute midStart (refDate +
+            // wholeMonths, constrained) and midEnd (refDate + wholeMonths + 1
+            // month, constrained); monthLength is midEnd - midStart.
             $midTotalM = $y1 * 12 + ($m1 - 1) + $totalMonths;
             $midMY = intdiv($midTotalM, 12);
             $midMM = ($midTotalM % 12) + 1;
             $midD = min($d1, self::isoDaysInMonth($midMY, $midMM));
-            $remainDays = ($jd2 - self::isoToJulianDay($midMY, $midMM, $midD)) + $fractionalDays;
-            // Next month length for fractional calculation.
-            $nextMM = $midMM === 12 ? 1 : $midMM + 1;
-            $nextMY = $midMM === 12 ? $midMY + 1 : $midMY;
-            $daysInNextMonth = self::isoDaysInMonth($nextMY, $nextMM);
-            return $totalMonths + $remainDays / $daysInNextMonth;
+            $midStartJd = self::isoToJulianDay($midMY, $midMM, $midD);
+            $nextTotalM = $midTotalM + 1;
+            $nextMY = intdiv($nextTotalM, 12);
+            $nextMM = ($nextTotalM % 12) + 1;
+            $nextD = min($d1, self::isoDaysInMonth($nextMY, $nextMM));
+            $midEndJd = self::isoToJulianDay($nextMY, $nextMM, $nextD);
+            $monthLength = $midEndJd - $midStartJd;
+            $remainDays = ($jd2 - $midStartJd) + $fractionalDays;
+            return $totalMonths + ($monthLength > 0 ? $remainDays / $monthLength : 0);
         }
         if ($unit === 'year') {
             $years = $y2 - $y1;
@@ -6717,7 +6699,9 @@ class TemporalObject
             throw new RangeError("Extended year requires + or - prefix: {$str}");
         }
         // YYYY-MM-DD or YYYYMMDD with optional time, offset, and annotations.
-        $timeOpt = '(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?(?:[+-]\d{2}(?::?\d{2})?)?)?';
+        // UTC offset accepts hh / hh:mm / hh:mm:ss / hh:mm:ss.sss (extended or basic).
+        $offsetOpt = '(?:[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
+        $timeOpt = "(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?{$offsetOpt})?";
         $pattern = "/^([+-]?\\d{4,6})-?(\\d{2})-?(\\d{2}){$timeOpt}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             throw new RangeError("Invalid PlainDate string: {$str}");
@@ -7373,7 +7357,8 @@ class TemporalObject
         }
         $datePart = '([+-]?\d{4,6})-?(\d{2})-?(\d{2})';
         $timePart = '(\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,](\d{1,9}))?)?)?';
-        $tzPart = '(?:[+-]\d{2}(?::?\d{2})?)?';
+        // UTC offset can include seconds and fractional seconds (extended format).
+        $tzPart = '(?:[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
         $pattern = "/^{$datePart}[Tt ]{$timePart}{$tzPart}(?:\\[.*?\\])*\$/";
         if (!preg_match($pattern, $str, $m)) {
             // Fallback: date only (with or without dashes).
@@ -7545,7 +7530,9 @@ class TemporalObject
         if (!$hasTime && $cal !== 'iso8601') {
             throw new RangeError("non-iso8601 calendar annotation requires a date-time string");
         }
-        $tp = '(?:[Tt ](\\d{2})(?::?(\\d{2})(?::?(\\d{2})(?:[.,]\\d{1,9})?)?)?(?:[+-]\\d{2}(?::?\\d{2})?)?)?';
+        // Time part with optional UTC offset in extended form (hh[:mm[:ss[.fff]]]).
+        $offsetOpt = '(?:[+-]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?)?';
+        $tp = "(?:[Tt ](\\d{2})(?::?(\\d{2})(?::?(\\d{2})(?:[.,]\\d{1,9})?)?)?{$offsetOpt})?";
         $matched = false;
         if (!$matched && preg_match("/^([+-]\\d{6})-(\\d{2})(?:-(\\d{2}))?{$tp}(?:\\[.*?\\])*\$/", $str, $m)) {
             $matched = true;
@@ -7958,7 +7945,9 @@ class TemporalObject
         }
 
         // Full ISO date with optional time (captured for validation).
-        $timeOpt = '(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?(?:[+-]\d{2}(?::?\d{2})?)?)?';
+        // UTC offset may include seconds and fractional seconds (extended format).
+        $offsetOpt = '(?:[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d{1,9})?)?)?)?';
+        $timeOpt = "(?:[Tt ](\d{2})(?::?(\d{2})(?::?(\d{2})(?:[.,]\d{1,9})?)?)?{$offsetOpt})?";
         $pattern2 = "/^([+-]?\\d{4,6})-?(\\d{2})-?(\\d{2}){$timeOpt}\$/";
         if (preg_match($pattern2, $cleanStr, $m)) {
             // Validate time if present.

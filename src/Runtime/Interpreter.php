@@ -6779,13 +6779,15 @@ class Interpreter
         $syncNext = $syncIterator->get('next');
 
         $nextFn = function (JsValue $this_, array $args) use ($syncIterator, $syncNext, $interpreter): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
-            return $interpreter->asyncFromSyncNext($syncIterator, $syncNext, $value);
+            // Per spec: forward the argument only if one was passed.
+            $forward = array_key_exists(0, $args) ? [$args[0]] : [];
+            return $interpreter->asyncFromSyncNext($syncIterator, $syncNext, $forward);
         };
         $wrapper->set('next', JsFunction::fromCallable('next', $nextFn, 1));
 
         $returnFn = function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
+            $hasValue = array_key_exists(0, $args);
+            $value = $hasValue ? $args[0] : JsUndefined::instance();
             $returnMethod = $syncIterator->get('return');
             if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
                 $result = new JsObject();
@@ -6796,12 +6798,14 @@ class Interpreter
             if (!$returnMethod instanceof JsFunction) {
                 throw new TypeError('return is not a function');
             }
-            return $interpreter->asyncFromSyncMethod($syncIterator, $returnMethod, $value);
+            $forward = $hasValue ? [$value] : [];
+            return $interpreter->asyncFromSyncMethod($syncIterator, $returnMethod, $forward);
         };
         $wrapper->set('return', JsFunction::fromCallable('return', $returnFn, 1));
 
         $throwFn = function (JsValue $this_, array $args) use ($syncIterator, $interpreter): JsValue {
-            $value = $args[0] ?? JsUndefined::instance();
+            $hasValue = array_key_exists(0, $args);
+            $value = $hasValue ? $args[0] : JsUndefined::instance();
             $throwMethod = $syncIterator->get('throw');
             if ($throwMethod instanceof JsUndefined || $throwMethod instanceof JsNull) {
                 // Per spec 27.1.4.4 step 7: close the iterator, then reject with TypeError.
@@ -6820,49 +6824,67 @@ class Interpreter
                 );
                 return \PhpJs\Value\JsPromise::rejected($err);
             }
-            return $interpreter->asyncFromSyncMethod($syncIterator, $throwMethod, $value);
+            $forward = $hasValue ? [$value] : [];
+            return $interpreter->asyncFromSyncMethod($syncIterator, $throwMethod, $forward);
         };
         $wrapper->set('throw', JsFunction::fromCallable('throw', $throwFn, 1));
 
         return $wrapper;
     }
 
-    /** AsyncFromSyncIterator next: call sync next, unwrap value. */
+    /**
+     * AsyncFromSyncIterator next: call sync next, unwrap value.
+     *
+     * @param list<JsValue> $forwardedArgs
+     */
     private function asyncFromSyncNext(
         JsObject $syncIterator,
         JsValue $syncNext,
-        JsValue $value,
+        array $forwardedArgs,
     ): JsValue {
         if (!$syncNext instanceof JsFunction) {
             throw new TypeError('Iterator next is not a function');
         }
         try {
-            $syncResult = $this->callFunction($syncNext, $syncIterator, [$value]);
+            $syncResult = $this->callFunction($syncNext, $syncIterator, $forwardedArgs);
         } catch (\Throwable $e) {
             $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable ? $e->jsValue : $this->phpExceptionToJsValue($e);
             return \PhpJs\Value\JsPromise::rejected($jsErr);
         }
         if (!$syncResult instanceof JsObject) {
-            throw new TypeError('Iterator result is not an object');
+            // Per spec 27.1.4.2 step 8: AsyncFromSyncIteratorContinuation's
+            // IteratorComplete sees a non-Object result and rejects the promise
+            // rather than letting the call throw at the host boundary.
+            $err = $this->phpExceptionToJsValue(
+                new TypeError('Iterator result is not an object')
+            );
+            return \PhpJs\Value\JsPromise::rejected($err);
         }
         return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
     }
 
-    /** AsyncFromSyncIterator method: call sync method, unwrap value. */
+    /**
+     * AsyncFromSyncIterator method: call sync method, unwrap value.
+     *
+     * @param list<JsValue> $forwardedArgs
+     */
     private function asyncFromSyncMethod(
         JsObject $syncIterator,
         JsFunction $method,
-        JsValue $value,
+        array $forwardedArgs,
     ): JsValue {
         try {
-            $syncResult = $this->callFunction($method, $syncIterator, [$value]);
+            $syncResult = $this->callFunction($method, $syncIterator, $forwardedArgs);
         } catch (\Throwable $e) {
             $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
                 ? $e->jsValue : $this->phpExceptionToJsValue($e);
             return \PhpJs\Value\JsPromise::rejected($jsErr);
         }
         if (!$syncResult instanceof JsObject) {
-            throw new TypeError('Iterator result is not an object');
+            $err = $this->phpExceptionToJsValue(
+                new TypeError('Iterator result is not an object')
+            );
+            return \PhpJs\Value\JsPromise::rejected($err);
         }
         return $this->asyncFromSyncUnwrapResult($syncResult, $syncIterator);
     }
