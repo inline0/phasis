@@ -5223,10 +5223,26 @@ class Interpreter
             }
 
             // Not done: yield the inner result to the outer caller.
-            // Per spec GeneratorYield(innerResult): the entire result object is
-            // yielded without accessing its "value" property (the caller sees it).
-            // We use YieldDelegateResult so JsGenerator::next() returns the inner
-            // result directly instead of wrapping it in a new {value, done} object.
+            // For sync yield*, GeneratorYield passes the iterator-result object
+            // through directly. For async yield*, the spec reads the value
+            // property (triggering the getter), awaits it, then yields that
+            // awaited value via AsyncGeneratorYield.
+            if ($isAsyncGen) {
+                $yieldValue = $innerResult->get('value');
+                $yieldValue = $this->awaitValue($yieldValue);
+                try {
+                    $received = \Fiber::suspend($yieldValue);
+                    $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
+                    $receivedType = 'normal';
+                } catch (GeneratorThrowSignal $e) {
+                    $receivedValue = $e->jsValue;
+                    $receivedType = 'throw';
+                } catch (GeneratorReturnSignal $e) {
+                    $receivedValue = $e->value;
+                    $receivedType = 'return';
+                }
+                continue;
+            }
             try {
                 $received = \Fiber::suspend(new \PhpJs\Value\YieldDelegateResult($innerResult));
                 $receivedValue = $received instanceof JsValue ? $received : JsUndefined::instance();
