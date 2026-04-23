@@ -984,6 +984,26 @@ class Parser
             }
         }
 
+        // Auto-accessor field: `accessor name[;| = init]`. We accept the
+        // syntax and evaluate it as a plain field declaration; the
+        // accessor/decorator semantics are not fully implemented.
+        if (
+            !$isAsync
+            && $this->checkContextual('accessor')
+        ) {
+            $next = $this->peek();
+            if (
+                !$next->lineTerminatorBefore
+                && $next->type !== TokenType::LeftParen
+                && $next->type !== TokenType::Equal
+                && $next->type !== TokenType::Semicolon
+                && $next->type !== TokenType::RightBrace
+                && $next->type !== TokenType::Star
+            ) {
+                $this->advance();
+            }
+        }
+
         if ($this->eat(TokenType::Star)) {
             $isGenerator = true;
         }
