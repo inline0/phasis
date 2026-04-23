@@ -670,16 +670,18 @@ class ArrayConstructor
         $proto->defineOwnProperty('reduce', PropertyDescriptor::data(JsFunction::fromCallable(
             'reduce',
             function (JsValue $this_, array $args): JsValue {
+                // Per spec: read length BEFORE validating the callback so the
+                // length getter's side effects run even when the callback check throws.
                 $o = self::toObject($this_);
+                $len = self::getLen($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduce callback is not a function');
                 }
-                $len = self::getLen($o);
-                $initial = $args[1] ?? null;
-                $acc = $initial;
+                $hasInitial = array_key_exists(1, $args);
+                $acc = $hasInitial ? $args[1] : null;
                 $start = 0;
-                if ($acc === null) {
+                if (!$hasInitial) {
                     if ($len === 0) {
                         throw new TypeError('Reduce of empty array with no initial value');
                     }

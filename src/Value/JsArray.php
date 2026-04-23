@@ -174,6 +174,17 @@ class JsArray extends JsObject
         return parent::getWithReceiver($name, $receiver);
     }
 
+    public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
+    {
+        // When this JsArray is encountered while walking another object's
+        // prototype chain, the length slot must still be reported or the
+        // inherited lookup will miss it (no descriptor sits in $properties).
+        if ($name === 'length') {
+            return new JsNumber((float) $this->length);
+        }
+        return parent::getWithValueReceiver($name, $receiver);
+    }
+
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
         // All properties including "length" go through the standard set path,
