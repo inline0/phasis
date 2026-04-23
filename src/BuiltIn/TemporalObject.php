@@ -2058,7 +2058,32 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $other = self::toPlainDateTime($args[0] ?? JsUndefined::instance());
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            return self::plainDateTimeDifference($other, $this_, $opts);
+            // For since: compute until(this, other) with swapped rounding mode, then negate.
+            // Swap directional modes because the result will be negated.
+            $optsObj = $opts instanceof JsObject ? $opts : new JsObject();
+            $rmv = $optsObj->get('roundingMode');
+            if (!($rmv instanceof JsUndefined)) {
+                $rm = TypeConversion::toString($rmv);
+                $swapped = match ($rm) {
+                    'ceil' => 'floor',
+                    'floor' => 'ceil',
+                    'halfCeil' => 'halfFloor',
+                    'halfFloor' => 'halfCeil',
+                    default => $rm,
+                };
+                $newOpts = new JsObject();
+                // Copy all properties.
+                foreach (['largestUnit', 'smallestUnit', 'roundingIncrement'] as $k) {
+                    $v = $optsObj->get($k);
+                    if (!($v instanceof JsUndefined)) {
+                        $newOpts->set($k, $v);
+                    }
+                }
+                $newOpts->set('roundingMode', new JsString($swapped));
+                $optsObj = $newOpts;
+            }
+            $dur = self::plainDateTimeDifference($this_, $other, $optsObj, 1, $this_);
+            return self::negateDuration($dur);
         }, 1);
 
         $d('round', function (JsValue $this_, array $args): JsValue {
@@ -8187,6 +8212,7 @@ class TemporalObject
         JsValue $dt2,
         JsValue $options,
         int $sign = 1,
+        ?JsValue $anchor = null,
     ): JsObject {
         $ns1 = self::isoDateTimeToEpochNs(
             self::getSlotInt($dt1, '[[ISOYear]]'),
@@ -8272,7 +8298,7 @@ class TemporalObject
         // For calendar units (year, month, week), compute using date components.
         $calendarUnits = ['year', 'month', 'week'];
         if (in_array($largestUnit, $calendarUnits, true)) {
-            $dur = self::calendarDateTimeDifference($dt1, $dt2, $largestUnit);
+            $dur = self::calendarDateTimeDifference($dt1, $dt2, $largestUnit, 1, $anchor);
             // Apply rounding if smallestUnit is a calendar unit.
             $suFinal = $smallestUnit ?? 'nanosecond';
             $rmFinal = $rmStr ?? 'trunc';
@@ -8540,7 +8566,7 @@ class TemporalObject
     }
 
     /** Calendar-aware difference for year/month/week largestUnit. */
-    private static function calendarDateTimeDifference(JsValue $dt1, JsValue $dt2, string $largestUnit, int $signParam = 1): JsObject
+    private static function calendarDateTimeDifference(JsValue $dt1, JsValue $dt2, string $largestUnit, int $signParam = 1, ?JsValue $anchorDt = null): JsObject
     {
         $y1 = self::getSlotInt($dt1, '[[ISOYear]]');
         $m1 = self::getSlotInt($dt1, '[[ISOMonth]]');
@@ -8580,8 +8606,10 @@ class TemporalObject
             return self::nsToTimeDuration($diffNs, 'hour');
         }
         $sign = $cmp > 0 ? 1 : -1;
-        // Always anchor on date1 (dt1) per the Temporal spec (tc39/proposal-temporal#2820).
-        $anchorDay = $d1;
+        // Anchor on the provided anchor date, or dt1 by default.
+        $anchorDay = $anchorDt !== null
+            ? self::getSlotInt($anchorDt, '[[ISODay]]')
+            : $d1;
         if ($sign < 0) {
             [$sY, $sM, $sD, $eY, $eM, $eD] = [$y2, $m2, $d2, $y1, $m1, $d1];
             $smlDt = $dt2;
