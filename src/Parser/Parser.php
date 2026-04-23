@@ -849,7 +849,7 @@ class Parser
             } else {
                 $prop = $this->parsePropertyName();
             }
-            $expr = new MemberExpression($location, $expr, $prop, false);
+            $expr = new MemberExpression($location, $expr, $prop, false, false);
         }
 
         // Optional call: @foo(args) or @foo.bar(args)
