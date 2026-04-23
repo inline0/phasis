@@ -254,7 +254,7 @@ class TypedArrayConstructor
         $resizableGetter = JsFunction::fromCallable(
             'get resizable',
             function (JsValue $this_): JsValue {
-                if (!$this_ instanceof JsArrayBuffer) {
+                if (!$this_ instanceof JsArrayBuffer || $this_ instanceof JsSharedArrayBuffer) {
                     throw new TypeError(
                         'Method get ArrayBuffer.prototype.resizable called on incompatible receiver'
                     );

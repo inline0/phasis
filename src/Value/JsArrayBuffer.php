@@ -290,17 +290,24 @@ class JsArrayBuffer extends JsObject
 
     public function get(string $name): JsValue
     {
-        if ($name === 'byteLength') {
-            return new JsNumber((float) $this->byteLength);
-        }
-        if ($name === 'maxByteLength') {
-            return new JsNumber((float) $this->getMaxByteLength());
-        }
-        if ($name === 'resizable') {
-            return new JsBoolean($this->isResizable());
-        }
-        if ($name === 'detached') {
-            return new JsBoolean($this->detached);
+        // User-defined own property descriptors (e.g. installed via
+        // Object.defineProperty) must take precedence over the built-in
+        // slots, so only use the internal fast paths when no own
+        // descriptor has been set.
+        $ownDesc = $this->properties->get($name);
+        if ($ownDesc === null) {
+            if ($name === 'byteLength') {
+                return new JsNumber((float) $this->byteLength);
+            }
+            if ($name === 'maxByteLength') {
+                return new JsNumber((float) $this->getMaxByteLength());
+            }
+            if ($name === 'resizable') {
+                return new JsBoolean($this->isResizable());
+            }
+            if ($name === 'detached') {
+                return new JsBoolean($this->detached);
+            }
         }
 
         return parent::get($name);
