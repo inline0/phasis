@@ -126,6 +126,41 @@ class JsTypedArray extends JsObject
     }
 
     /**
+     * Integer-Indexed exotic [[Delete]] per spec 10.4.5.7.
+     *
+     * For canonical numeric index keys, return true if the index is not a
+     * valid integer index (out of bounds, negative, fractional, or "-0")
+     * and false otherwise. Non-numeric keys delegate to ordinary delete.
+     */
+    public function delete(string $name, bool $strict = false): bool
+    {
+        if (self::isCanonicalNumericIndex($name)) {
+            // CanonicalNumericIndexString but maybe not a valid integer index.
+            if ($name === '-0' || $name === 'NaN' || $name === 'Infinity' || $name === '-Infinity') {
+                return true;
+            }
+            $num = (float) $name;
+            if (
+                $num >= 0
+                && $num === floor($num)
+                && !is_infinite($num)
+                && $num < $this->getLength()
+                && !$this->buffer->isDetached()
+            ) {
+                if ($strict) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot delete property '{$name}' of TypedArray",
+                    );
+                }
+                return false; // Valid index: cannot delete.
+            }
+            return true; // Numeric but invalid: delete succeeds silently.
+        }
+        // Non-canonical key: ordinary delete path.
+        return parent::delete($name, $strict);
+    }
+
+    /**
      * Create a typed array from a length (allocates a new buffer).
      */
     public static function fromLength(
@@ -386,8 +421,8 @@ class JsTypedArray extends JsObject
             return new JsNumber((float) $this->bytesPerElement);
         }
 
-        // Numeric index access (digit-only fast path).
-        if (ctype_digit($name)) {
+        // Numeric index access: only round-trippable digit strings.
+        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             return $this->getIndex((int) $name);
         }
 
@@ -402,8 +437,11 @@ class JsTypedArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        // Numeric index access.
-        if (ctype_digit($name)) {
+        // Numeric index access: only for digit strings that round-trip
+        // through ToNumber/ToString. Very large digit strings like
+        // "1000000000000000000000" are NOT a canonical index and must be
+        // treated as ordinary string keys.
+        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             $index = (int) $name;
             $this->setIndex($index, $value);
             return;
@@ -423,7 +461,7 @@ class JsTypedArray extends JsObject
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
-        if (ctype_digit($name)) {
+        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             $index = (int) $name;
             if ($index >= 0 && $index < $this->getLength()) {
                 $this->setIndex($index, $value);
@@ -452,7 +490,7 @@ class JsTypedArray extends JsObject
     public function getOwnPropertyDescriptor(
         string $name,
     ): ?\PhpJs\Object\PropertyDescriptor {
-        if (ctype_digit($name)) {
+        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
             $index = (int) $name;
             if ($index >= 0 && $index < $this->getLength()) {
                 return \PhpJs\Object\PropertyDescriptor::data(
@@ -484,7 +522,15 @@ class JsTypedArray extends JsObject
         string $name,
         \PhpJs\Object\PropertyDescriptor $desc,
     ): bool {
-        if (ctype_digit($name)) {
+        // ctype_digit catches only round-trippable small integer strings.
+        // Very large digit strings like "1000000000000000000000" are NOT a
+        // CanonicalNumericIndexString per spec (ToString(ToNumber(x)) !== x
+        // because JS renders 1e21 in scientific form) so they must be
+        // treated as ordinary string keys.
+        if (
+            ctype_digit($name)
+            && self::isCanonicalNumericIndex($name)
+        ) {
             $index = (int) $name;
             if ($index < 0 || $index >= $this->getLength()) {
                 return false;
@@ -505,7 +551,7 @@ class JsTypedArray extends JsObject
             return true;
         }
 
-        // CanonicalNumericIndexString: return false for non-integer numeric keys.
+        // CanonicalNumericIndexString for non-integer numeric keys: reject.
         if (self::isCanonicalNumericIndex($name)) {
             return false;
         }
@@ -522,7 +568,11 @@ class JsTypedArray extends JsObject
             return true;
         }
 
-        if (ctype_digit($name) && (int) $name < $this->getLength()) {
+        if (
+            ctype_digit($name)
+            && self::isCanonicalNumericIndex($name)
+            && (int) $name < $this->getLength()
+        ) {
             return true;
         }
 
