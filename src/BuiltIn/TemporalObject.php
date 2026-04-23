@@ -7069,83 +7069,113 @@ class TemporalObject
             );
         }
         if ($item instanceof JsObject) {
-            // Property bag.
-            $year = $item->get('year');
-            $month = $item->get('month');
-            $day = $item->get('day');
-            // Per spec: object must have required temporal properties.
-            if ($year instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
+            // Property bag: read ALL fields in ALPHABETICAL order per spec.
+            // Each field is immediately coerced via valueOf/toString.
+            $calVal = $item->get('calendar');
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
             }
-            $monthCode = $item->get('monthCode');
-            $mcParsedMonth = null;
-            $monthExplicit = !($month instanceof JsUndefined);
-            $monthValForConflict = $monthExplicit ? (int) TypeConversion::toNumber($month) : null;
-            if (!$monthExplicit) {
-                if ($monthCode instanceof JsUndefined) {
-                    throw new TypeError('missing required property: month');
-                }
-                $mc = TypeConversion::toString($monthCode);
-                [$mcParsedMonth] = self::parseMonthCodeSyntax($mc);
-                $month = new JsNumber((float) $mcParsedMonth);
-            } elseif (!($monthCode instanceof JsUndefined)) {
-                $mc = TypeConversion::toString($monthCode);
-                [$mcParsedMonth] = self::parseMonthCodeSyntax($mc);
-            }
-            if ($day instanceof JsUndefined) {
+            $dayVal = $item->get('day');
+            if ($dayVal instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
-            // Read year BEFORE validating monthCode suitability.
-            if (true) {
-                $yNum = TypeConversion::toNumber($year);
-                if (!is_finite($yNum)) {
-                    throw new RangeError('year must be finite');
+            $dNum = TypeConversion::toNumber($dayVal);
+            if (!is_finite($dNum)) {
+                throw new RangeError('day must be finite');
+            }
+            $d = (int) $dNum;
+            // Read time fields (for PlainDateTime path).
+            $h = 0;
+            $min = 0;
+            $s = 0;
+            $ms = 0;
+            $us = 0;
+            $ns = 0;
+            $hVal = $item->get('hour');
+            if (!($hVal instanceof JsUndefined)) {
+                $hNum = TypeConversion::toNumber($hVal);
+                if (!is_finite($hNum)) {
+                    throw new RangeError('hour must be finite');
                 }
-                $y = (int) $yNum;
-                // Now validate monthCode suitability (after year type check).
-                if ($mcParsedMonth !== null && isset($mc)) {
-                    $validatedMonth = self::parseMonthCode($mc);
-                    if ($monthValForConflict !== null && $monthValForConflict !== $validatedMonth) {
-                        throw new RangeError('month and monthCode must agree');
-                    }
+                $h = (int) $hNum;
+            }
+            $usVal = $item->get('microsecond');
+            if (!($usVal instanceof JsUndefined)) {
+                $usNum = TypeConversion::toNumber($usVal);
+                if (!is_finite($usNum)) {
+                    throw new RangeError('microsecond must be finite');
                 }
-                $mNum = TypeConversion::toNumber($month);
+                $us = (int) $usNum;
+            }
+            $msVal = $item->get('millisecond');
+            if (!($msVal instanceof JsUndefined)) {
+                $msNum = TypeConversion::toNumber($msVal);
+                if (!is_finite($msNum)) {
+                    throw new RangeError('millisecond must be finite');
+                }
+                $ms = (int) $msNum;
+            }
+            $minVal = $item->get('minute');
+            if (!($minVal instanceof JsUndefined)) {
+                $minNum = TypeConversion::toNumber($minVal);
+                if (!is_finite($minNum)) {
+                    throw new RangeError('minute must be finite');
+                }
+                $min = (int) $minNum;
+            }
+            $monthVal = $item->get('month');
+            $monthExplicit = !($monthVal instanceof JsUndefined);
+            $m = 0;
+            if ($monthExplicit) {
+                $mNum = TypeConversion::toNumber($monthVal);
                 if (!is_finite($mNum)) {
                     throw new RangeError('month must be finite');
                 }
                 $m = (int) $mNum;
-                $dNum = TypeConversion::toNumber($day);
-                if (!is_finite($dNum)) {
-                    throw new RangeError('day must be finite');
+            }
+            $monthCodeVal = $item->get('monthCode');
+            $mcStr = null;
+            if (!($monthCodeVal instanceof JsUndefined)) {
+                $mcStr = TypeConversion::toString($monthCodeVal);
+                self::parseMonthCodeSyntax($mcStr);
+            }
+            $nsVal = $item->get('nanosecond');
+            if (!($nsVal instanceof JsUndefined)) {
+                $nsNum = TypeConversion::toNumber($nsVal);
+                if (!is_finite($nsNum)) {
+                    throw new RangeError('nanosecond must be finite');
                 }
-                $d = (int) $dNum;
-                $h = 0;
-                $min = 0;
-                $s = 0;
-                $ms = 0;
-                $us = 0;
-                $ns = 0;
-                $dtBag = [
-                    'hour' => &$h, 'minute' => &$min,
-                    'second' => &$s, 'millisecond' => &$ms,
-                    'microsecond' => &$us, 'nanosecond' => &$ns,
-                ];
-                foreach ($dtBag as $name => &$ref) {
-                    $v = $item->get($name);
-                    if (!($v instanceof JsUndefined)) {
-                        $n = TypeConversion::toNumber($v);
-                        if (!is_finite($n)) {
-                            throw new RangeError("{$name} must be finite");
-                        }
-                        $ref = (int) $n;
-                    }
+                $ns = (int) $nsNum;
+            }
+            $sVal = $item->get('second');
+            if (!($sVal instanceof JsUndefined)) {
+                $sNum = TypeConversion::toNumber($sVal);
+                if (!is_finite($sNum)) {
+                    throw new RangeError('second must be finite');
                 }
-                unset($ref);
-                $cal = 'iso8601';
-                $calVal = $item->get('calendar');
-                if (!($calVal instanceof JsUndefined)) {
-                    $cal = self::toCalendarSlotValue($calVal);
+                $s = (int) $sNum;
+            }
+            $yearVal = $item->get('year');
+            if ($yearVal instanceof JsUndefined) {
+                throw new TypeError('missing required property: year');
+            }
+            $yNum = TypeConversion::toNumber($yearVal);
+            if (!is_finite($yNum)) {
+                throw new RangeError('year must be finite');
+            }
+            $y = (int) $yNum;
+            // Now validate monthCode suitability (after year type check).
+            if ($mcStr !== null) {
+                $validatedMonth = self::parseMonthCode($mcStr);
+                if ($monthExplicit && $m !== $validatedMonth) {
+                    throw new RangeError('month and monthCode must agree');
                 }
+                $m = $validatedMonth;
+            } elseif (!$monthExplicit) {
+                throw new TypeError('missing required property: month');
+            }
+            if (true) {
                 if ($overflow === 'constrain') {
                     [$y, $m, $d] = self::constrainISODate($y, $m, $d);
                     $h = max(0, min(23, $h));
