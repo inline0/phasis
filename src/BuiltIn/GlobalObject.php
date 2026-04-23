@@ -103,7 +103,11 @@ class GlobalObject
             }
             $parser = new \PhpJs\Parser\Parser($code->value);
             $program = $parser->parse();
+            // Per spec: top-level break/continue/return in eval code is a
+            // SyntaxError. Delegate to the interpreter's shared validator so
+            // indirect and direct eval share the same early-error surface.
             $interp = new Interpreter($env);
+            $interp->validateEvalProgram($program);
             $interp->setEvalContext(true);
             return $interp->execute($program);
         }, 1);

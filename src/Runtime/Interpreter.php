@@ -1893,6 +1893,16 @@ class Interpreter
      *
      * @param Node[] $statements
      */
+    /**
+     * Public entry point for validating a parsed eval program. Throws a
+     * SyntaxError for top-level break/continue/return and any nested free
+     * break/continue that escapes its target label set.
+     */
+    public function validateEvalProgram(\PhpJs\Ast\Program $program): void
+    {
+        $this->validateEvalBody($program->body);
+    }
+
     private function validateEvalBody(array $statements): void
     {
         foreach ($statements as $stmt) {
