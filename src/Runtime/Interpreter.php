@@ -7828,6 +7828,19 @@ class Interpreter
                 return Completion::return($thunk);
             }
         }
+        // Tagged templates in tail position are also TCO candidates: the tag
+        // is called with (strings, ...exprValues), which is structurally a
+        // normal call.
+        if (
+            $this->strictMode
+            && $node->argument instanceof TaggedTemplate
+            && $this->inTailPosition
+        ) {
+            $thunk = $this->evalTaggedTemplateTailCall($node->argument, $env);
+            if ($thunk !== null) {
+                return Completion::return($thunk);
+            }
+        }
 
         $value = $node->argument !== null
             ? $this->evaluate($node->argument, $env)
@@ -7839,6 +7852,104 @@ class Interpreter
      * Try to create a TailCallThunk for a call expression in tail position.
      * Returns null if the call cannot be optimized (e.g., super call, eval).
      */
+    /**
+     * Try to create a TailCallThunk for a tagged template expression in tail
+     * position. Returns null if the tag cannot be optimized.
+     */
+    private function evalTaggedTemplateTailCall(TaggedTemplate $node, Environment $env): ?TailCallThunk
+    {
+        $tag = null;
+        $thisValue = JsUndefined::instance();
+        if ($node->tag instanceof MemberExpression) {
+            if (
+                $node->tag->object instanceof Identifier
+                && $node->tag->object->name === 'super'
+            ) {
+                return null;
+            }
+            if ($node->tag->property instanceof PrivateIdentifier) {
+                return null;
+            }
+            $obj = $this->evaluate($node->tag->object, $env);
+            $propName = $node->tag->computed
+                ? TypeConversion::toString($this->evaluate($node->tag->property, $env))
+                : ($node->tag->property instanceof Identifier
+                    ? $node->tag->property->name
+                    : TypeConversion::toString($this->evaluate($node->tag->property, $env)));
+            $tag = $obj instanceof JsObject ? $obj->get($propName) : null;
+            $thisValue = $obj;
+        } elseif ($node->tag instanceof Identifier) {
+            if ($node->tag->name === 'super') {
+                return null;
+            }
+            if ($env->has($node->tag->name)) {
+                $tag = $env->get($node->tag->name);
+            }
+        } else {
+            $tag = $this->evaluate($node->tag, $env);
+        }
+        if (!$tag instanceof JsFunction) {
+            return null;
+        }
+        if ($tag->getNativeCallable() !== null || $tag->isGenerator() || $tag->isAsync()) {
+            return null;
+        }
+
+        // Build the arguments list (strings array + expression values).
+        $cacheKey = spl_object_id($node->quasi);
+        if (isset($this->templateObjectCache[$cacheKey])) {
+            $strings = $this->templateObjectCache[$cacheKey];
+        } else {
+            $strings = new JsArray();
+            $raw = new JsArray();
+            $count = count($node->quasi->quasis);
+            foreach ($node->quasi->quasis as $i => $quasi) {
+                $cookedVal = $quasi->cookedValue === null
+                    ? JsUndefined::instance()
+                    : new JsString($quasi->cookedValue);
+                $strings->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    $cookedVal,
+                    false,
+                    true,
+                    false,
+                ));
+                $raw->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
+                    new JsString($quasi->rawValue),
+                    false,
+                    true,
+                    false,
+                ));
+            }
+            $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                new JsNumber((float) $count),
+                false,
+                false,
+                false,
+            ));
+            $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
+                new JsNumber((float) $count),
+                false,
+                false,
+                false,
+            ));
+            $raw->preventExtensions();
+            $strings->defineOwnProperty('raw', \PhpJs\Object\PropertyDescriptor::data(
+                $raw,
+                false,
+                false,
+                false,
+            ));
+            $strings->preventExtensions();
+            $this->templateObjectCache[$cacheKey] = $strings;
+        }
+        $args = [$strings];
+        foreach ($node->quasi->expressions as $expr) {
+            $args[] = $this->evaluate($expr, $env);
+        }
+
+        return new TailCallThunk($tag, $thisValue, $args);
+    }
+
     private function evalTailCall(CallExpression $node, Environment $env): ?TailCallThunk
     {
         // Resolve the callee and its this-binding.
