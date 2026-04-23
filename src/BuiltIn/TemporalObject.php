@@ -8420,9 +8420,9 @@ class TemporalObject
             $totalYears = $absYears + $frac;
             $rounded = self::roundToIncrement((int) round($totalYears * 1000000), $increment * 1000000, $absRoundingMode);
             $roundedYears = intdiv($rounded, 1000000);
-            // Validate the rounded endpoint is representable.
-            $endY = $refY + $roundedYears * $sign;
-            if ($endY < self::ISO_YEAR_MIN || $endY > self::ISO_YEAR_MAX) {
+            // Validate the ceil endpoint (rounded + increment) is representable.
+            $ceilY = $refY + ($roundedYears + $increment) * $sign;
+            if ($ceilY < self::ISO_YEAR_MIN || $ceilY > self::ISO_YEAR_MAX) {
                 throw new RangeError('Rounded date outside valid ISO date range');
             }
             return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -8453,10 +8453,11 @@ class TemporalObject
             $totalMonths = $absYears * 12 + $absMonths + $frac;
             $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
             $rm = intdiv($rounded, 1000000);
-            // Validate the rounded endpoint is representable.
-            $endTotalM = $refY * 12 + ($refM - 1) + $rm * $sign;
-            $endY = intdiv($endTotalM, 12);
-            if ($endY < self::ISO_YEAR_MIN || $endY > self::ISO_YEAR_MAX) {
+            // Validate both the rounded endpoint and ceil endpoint are representable.
+            $ceilM = $rm + $increment;
+            $ceilTotalM = $refY * 12 + ($refM - 1) + $ceilM * $sign;
+            $ceilY = intdiv($ceilTotalM, 12);
+            if ($ceilY < self::ISO_YEAR_MIN || $ceilY > self::ISO_YEAR_MAX) {
                 throw new RangeError('Rounded date outside valid ISO date range');
             }
             if ($largestUnit === 'year') {
