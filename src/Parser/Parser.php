@@ -84,6 +84,7 @@ class Parser
     private bool $inGenerator = false;
     private bool $inAsync = false;
     private bool $topLevel = true;
+    private bool $moduleMode = false;
     private bool $strictMode = false;
     private string $source = '';
 
@@ -105,6 +106,16 @@ class Parser
      * etc.) are enforced even when the source has no own "use strict"
      * directive.
      */
+    /**
+     * Enable module-goal parsing semantics. In script mode `await` at the top
+     * level is an identifier; in module mode it is a reserved word / the
+     * top-level-await keyword.
+     */
+    public function setModuleMode(bool $module): void
+    {
+        $this->moduleMode = $module;
+    }
+
     public function setStrictMode(bool $strict): void
     {
         $this->strictMode = $strict;
@@ -1667,8 +1678,12 @@ class Parser
             return new UnaryExpression($token->location, $token->value, $argument, true);
         }
 
-        // await (inside async functions or at the top level per top-level-await)
-        if ($token->type === TokenType::Await && ($this->inAsync || $this->topLevel)) {
+        // await (inside async functions or at the top level of a module per
+        // top-level-await). In script top-level, `await` is an identifier.
+        if (
+            $token->type === TokenType::Await
+            && ($this->inAsync || ($this->topLevel && $this->moduleMode))
+        ) {
             $this->advance();
             $argument = $this->parseUnaryExpression();
             return new AwaitExpression($token->location, $argument);

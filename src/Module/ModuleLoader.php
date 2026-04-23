@@ -94,6 +94,7 @@ class ModuleLoader
 
         try {
             $parser = new Parser($source);
+            $parser->setModuleMode(true);
             $program = $parser->parse();
 
             // Create a fresh module environment linked to the global environment.
