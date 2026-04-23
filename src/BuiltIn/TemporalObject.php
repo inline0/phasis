@@ -4676,7 +4676,21 @@ class TemporalObject
             if (isset($smallestUnit)) {
                 $resolvedOpts->set('smallestUnit', new JsString($smallestUnit));
             }
-            return self::plainDateTimeDifference($dt1, $dt2, $resolvedOpts);
+            $dur = self::plainDateTimeDifference($dt1, $dt2, $resolvedOpts);
+            // Validate ceiling for day-level increments.
+            if (isset($riNum) && $riNum > 1 && ($smallestUnit === 'day' || $smallestUnit === 'days')) {
+                $incrNsForCheck = bcmul((string) $riNum, '86400000000000', 0);
+                $ceilPos = bcadd($ns1, $incrNsForCheck, 0);
+                $ceilNeg = bcsub($ns1, $incrNsForCheck, 0);
+                $diffSign = bccomp($ns2, $ns1, 0);
+                if ($diffSign >= 0 && bccomp($ceilPos, self::NS_MAX, 0) > 0) {
+                    throw new RangeError('Rounded date outside valid ISO date range');
+                }
+                if ($diffSign <= 0 && bccomp($ceilNeg, self::NS_MIN, 0) < 0) {
+                    throw new RangeError('Rounded date outside valid ISO date range');
+                }
+            }
+            return $dur;
         }
         // Time-only difference using epoch ns.
         $diffNs = bcsub($ns2, $ns1, 0);
@@ -4694,6 +4708,22 @@ class TemporalObject
             ];
             $unitNs = $unitNsMap[$suFinal] ?? '1';
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
+            // Validate ceiling based on diff direction.
+            $diffSign = bccomp($diffNs, '0', 0);
+            if ($diffSign >= 0) {
+                // Positive diff: check ns1 + increment.
+                $ceil = bcadd($ns1, $incrementNs, 0);
+                if (bccomp($ceil, self::NS_MAX, 0) > 0) {
+                    throw new RangeError('Rounded date outside valid ISO date range');
+                }
+            }
+            if ($diffSign <= 0) {
+                // Negative diff: check ns1 - increment.
+                $ceil = bcsub($ns1, $incrementNs, 0);
+                if (bccomp($ceil, self::NS_MIN, 0) < 0) {
+                    throw new RangeError('Rounded date outside valid ISO date range');
+                }
+            }
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
         return self::nsToTimeDuration($diffNs, $largestUnit);
@@ -8549,6 +8579,11 @@ class TemporalObject
             $incrNs = $dayNs * $increment;
             $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $incrNs, $roundingMode);
             $rounded = (int) (abs((int) $roundedNs) / $dayNs);
+            // Validate ceiling (rounded + increment) doesn't exceed 100M days.
+            $ceilDays = $rounded + $increment;
+            if ($ceilDays > 100000000) {
+                throw new RangeError('Rounded date outside valid ISO date range');
+            }
             if ($largestUnit === 'week') {
                 return self::createDurationObject(
                     $sign * $absYears,
