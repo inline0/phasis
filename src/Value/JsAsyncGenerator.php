@@ -595,7 +595,17 @@ class JsAsyncGenerator extends JsObject
     private function asyncGeneratorYieldResult(JsValue $value): JsPromise
     {
         if (!($value instanceof JsPromise)) {
-            return JsPromise::resolved($this->makeResult($value, false));
+            // Per AsyncGeneratorYield step 5, Await(value) runs. For thenables
+            // this triggers PromiseResolve which chains via .then; for plain
+            // values there is still a microtask tick. Wrap via Promise.resolve
+            // semantics so thenables are properly awaited.
+            if ($value instanceof JsObject) {
+                $promise = new JsPromise();
+                $promise->resolve($value);
+                $value = $promise;
+            } else {
+                return JsPromise::resolved($this->makeResult($value, false));
+            }
         }
 
         if ($value->getState() === JsPromise::STATE_FULFILLED) {
