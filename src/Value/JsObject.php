@@ -700,9 +700,20 @@ class JsObject implements JsValue
         $this->privateFieldBrands[$name] = true;
     }
 
-    /** Install a private method (read-only, no setter). */
+    /**
+     * Install a private method (read-only, no setter).
+     * Per PrivateMethodOrAccessorAdd, throws TypeError if the brand is
+     * already present on the object (e.g. when super-returns an already
+     * initialized object).
+     */
     public function setPrivateMethod(string $name, JsFunction $method): void
     {
+        if (isset($this->privateFieldBrands[$name])) {
+            $displayName = preg_replace('/@\d+$/', '', $name);
+            throw new \PhpJs\Exceptions\TypeError(
+                "Cannot initialize {$displayName} twice on the same object",
+            );
+        }
         $this->privateFields[$name] = $method;
         $this->privateFieldBrands[$name] = true;
         $this->privateMethods[$name] = true;

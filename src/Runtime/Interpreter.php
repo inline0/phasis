@@ -1720,24 +1720,35 @@ class Interpreter
             // Per 18.2.1.1.1: super is a SyntaxError in eval unless the
             // direct eval is inside a method (environment has [[HomeObject]]).
             // Per 18.2.1.1.2: super() (SuperCall) is additionally restricted
-            // to constructor methods only.
+            // to constructor methods only. Class field initializers have
+            // HomeObject so super property access is allowed, but they are
+            // NOT constructor methods so SuperCall is forbidden.
+            // Checks are transparent through arrow functions since arrows
+            // inherit super binding from their enclosing scope.
             $inMethod = $env->has('[[HomeObject]]');
-            $inConstructor = $env->has('[[ActiveFunction]]');
-            if (!$inMethod && $this->astContainsSuper($program->body)) {
+            $inConstructor = $env->has('[[ActiveFunction]]')
+                && !$env->has('[[ClassFieldInitializer]]');
+            if (!$inMethod && $this->astContainsSuperTransparent($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
-            if ($inMethod && !$inConstructor && $this->astContainsSuperCall($program->body)) {
+            if ($inMethod && !$inConstructor && $this->astContainsSuperCallTransparent($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
 
             // Per spec 15.1.1: new.target in eval is a SyntaxError unless
             // the direct eval is contained in function code that is not an
             // ArrowFunction.
+            // Per sec-performeval-rules-in-initializer, eval inside a class
+            // field initializer (including static blocks) is treated as being
+            // inside a function: the "outside functions" early errors that
+            // would forbid new.target do not apply.
             if ($this->astContainsNewTarget($program->body)) {
                 $funcKind = $env->getEnclosingFunctionKind();
-                // Allowed only if inside a regular function, generator, or async function.
-                // Not allowed in global code or arrow functions.
-                if ($funcKind === null || $funcKind === 'arrow') {
+                $inClassInit = $env->has('[[ClassFieldInitializer]]');
+                // Allowed if inside a class field initializer, regular function,
+                // generator, or async function. Not allowed in global code or
+                // arrow functions.
+                if (!$inClassInit && ($funcKind === null || $funcKind === 'arrow')) {
                     throw new \PhpJs\Exceptions\SyntaxError("new.target expression is not allowed here");
                 }
             }
@@ -1907,16 +1918,176 @@ class Interpreter
     public function validateEvalProgram(\PhpJs\Ast\Program $program): void
     {
         $this->validateEvalBody($program->body);
-        if ($this->astContainsNewTarget($program->body)) {
+        // For indirect eval (script context), new.target inside arrow functions
+        // also refers to the eval program context since arrows inherit it from
+        // their enclosing scope. Walk into arrow bodies to find them.
+        if ($this->astContainsNewTargetTransparent($program->body)) {
             throw new \PhpJs\Exceptions\SyntaxError(
                 'new.target expression is not allowed here'
             );
         }
-        if ($this->astContainsSuper($program->body)) {
+        // Super is also transparent through arrows: an arrow inherits super
+        // binding from its enclosing scope, which for indirect eval is the
+        // script (no home object).
+        if ($this->astContainsSuperTransparent($program->body)) {
             throw new \PhpJs\Exceptions\SyntaxError(
                 "'super' keyword unexpected here"
             );
         }
+    }
+
+    /**
+     * @param Node[] $statements
+     */
+    private function astContainsSuperCallTransparent(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsSuperCallTransparent($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsSuperCallTransparent(Node $node): bool
+    {
+        if ($node instanceof CallExpression && $node->callee instanceof Identifier && $node->callee->name === 'super') {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        if ($node instanceof ArrowFunction) {
+            if ($node->body instanceof BlockStatement) {
+                return $this->astContainsSuperCallTransparent($node->body->body);
+            }
+            return $this->nodeContainsSuperCallTransparent($node->body);
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if ($this->nodeContainsSuperCallTransparent($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsSuperCallTransparent($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param Node[] $statements
+     */
+    private function astContainsSuperTransparent(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsSuperTransparent($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsSuperTransparent(Node $node): bool
+    {
+        if ($node instanceof CallExpression && $node->callee instanceof Identifier && $node->callee->name === 'super') {
+            return true;
+        }
+        if ($node instanceof MemberExpression && $node->object instanceof Identifier && $node->object->name === 'super') {
+            return true;
+        }
+        if ($node instanceof Identifier && $node->name === 'super') {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        if ($node instanceof ArrowFunction) {
+            if ($node->body instanceof BlockStatement) {
+                return $this->astContainsSuperTransparent($node->body->body);
+            }
+            return $this->nodeContainsSuperTransparent($node->body);
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if ($this->nodeContainsSuperTransparent($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsSuperTransparent($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Like astContainsNewTarget but walks into ArrowFunction bodies (arrows
+     * inherit new.target from the enclosing scope). Stops at non-arrow
+     * function and class boundaries.
+     *
+     * @param Node[] $statements
+     */
+    private function astContainsNewTargetTransparent(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsNewTargetTransparent($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsNewTargetTransparent(Node $node): bool
+    {
+        if ($node instanceof Identifier && $node->name === '[[NewTarget]]') {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        if ($node instanceof ArrowFunction) {
+            if ($node->body instanceof BlockStatement) {
+                return $this->astContainsNewTargetTransparent($node->body->body);
+            }
+            return $this->nodeContainsNewTargetTransparent($node->body);
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if ($this->nodeContainsNewTargetTransparent($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsNewTargetTransparent($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private function validateEvalBody(array $statements): void
@@ -2981,14 +3152,20 @@ class Interpreter
         // Clean up [[NewTarget]] internal marker so it does not leak to user code.
         $ctorId = spl_object_id($callee);
         if ($result instanceof JsObject) {
-            // For derived class constructors whose default constructor is a native
-            // callable (bypasses the AST-level super() path), instance fields and
-            // private methods may not have been initialized yet. Skip if the AST
-            // super() already ran init for this constructor on the returned object.
+            // For derived class constructors whose default constructor is a
+            // native callable (bypasses the AST-level super() path), instance
+            // fields and private methods were never initialized by the body
+            // itself. The post-call fallback only applies to native derived
+            // constructors: user-written derived constructors run their fields
+            // at the AST super() site (line 1442). Running it here for AST
+            // constructors would double-init. Per spec PrivateMethodOrAccessorAdd,
+            // a subsequent install of a private method on the same object
+            // throws TypeError at install time, so we do not rely on
+            // areFieldsInitialized here.
             if (
                 $callee->isDerivedConstructor()
+                && $callee->isNative()
                 && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
-                && !$result->areFieldsInitialized($ctorId)
             ) {
                 $this->initializeInstanceFields($callee, $result, $env);
             }
@@ -2998,12 +3175,14 @@ class Interpreter
         if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
             throw new TypeError('Derived constructors may only return object or undefined');
         }
-        // For derived class constructors that returned undefined (falling through
-        // to use $newObj), also ensure fields are initialized (skip if already done).
+        // For derived class constructors that returned undefined (falling
+        // through to use $newObj), only native default constructors need
+        // post-call init here; user-written constructors already handled it
+        // at the AST super() site.
         if (
             $callee->isDerivedConstructor()
+            && $callee->isNative()
             && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
-            && !$newObj->areFieldsInitialized($ctorId)
         ) {
             $this->initializeInstanceFields($callee, $newObj, $env);
         }
@@ -3062,11 +3241,22 @@ class Interpreter
         $instance->markFieldsInitialized($ctorId);
 
         // Install private instance methods first (they are available in field initializers).
+        // Per PrivateMethodOrAccessorAdd, installing a second time on the
+        // same object is a TypeError. Track which keys were installed in
+        // this pass so we can still merge a same-class getter with a
+        // same-class setter without false double-init errors.
+        $installedThisPass = [];
         foreach ($ctor->getPrivateMethodEntries() as [$name, $fn, $kind]) {
             if ($kind === 'get' || $kind === 'set') {
-                $existing = $instance->hasPrivateField($name)
-                    ? $instance->getPrivateFieldRaw($name)
-                    : null;
+                $alreadyHad = $instance->hasPrivateField($name);
+                $existing = $alreadyHad ? $instance->getPrivateFieldRaw($name) : null;
+                $mergingInPass = isset($installedThisPass[$name]);
+                if ($alreadyHad && !$mergingInPass) {
+                    $displayName = preg_replace('/@\d+$/', '', $name);
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot initialize {$displayName} twice on the same object",
+                    );
+                }
                 if ($kind === 'get') {
                     $setter = is_array($existing) ? $existing[1] : null;
                     $instance->setPrivateAccessor($name, [$fn, $setter]);
@@ -3074,8 +3264,10 @@ class Interpreter
                     $getter = is_array($existing) ? $existing[0] : null;
                     $instance->setPrivateAccessor($name, [$getter, $fn]);
                 }
+                $installedThisPass[$name] = true;
             } else {
                 $instance->setPrivateMethod($name, $fn);
+                $installedThisPass[$name] = true;
             }
         }
 
@@ -3092,6 +3284,9 @@ class Interpreter
         }
         // Mark as field initializer context so eval knows to restrict `arguments`.
         $fieldEnv->defineVar('[[ClassFieldInitializer]]', new JsBoolean(true));
+        // Per spec, class field initializers have an implicit [[NewTarget]]
+        // of undefined (they run as a synthetic function call, not construct).
+        $fieldEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
         foreach ($ctor->getInstanceFieldInitializers() as [$key, $initNode, $computed, $isPrivate]) {
             $value = $initNode !== null
                 ? $this->evaluate($initNode, $fieldEnv)
@@ -3119,19 +3314,31 @@ class Interpreter
             if ($isPrivate) {
                 $instance->setPrivateField($key, $value);
             } elseif ($key instanceof \PhpJs\Value\JsSymbol) {
-                $instance->definePropertyBySymbol($key, PropertyDescriptor::data(
+                $ok = $instance->definePropertyBySymbol($key, PropertyDescriptor::data(
                     $value,
                     true,
                     true,
                     true,
                 ));
+                if ($ok === false) {
+                    $desc = $key->getDescription();
+                    $shown = $desc !== null ? "Symbol({$desc})" : 'Symbol()';
+                    throw new TypeError(
+                        "Cannot create property '{$shown}' on object",
+                    );
+                }
             } else {
-                $instance->defineOwnProperty($key, PropertyDescriptor::data(
+                $ok = $instance->defineOwnProperty((string) $key, PropertyDescriptor::data(
                     $value,
                     true,
                     true,
                     true,
                 ));
+                if ($ok === false) {
+                    throw new TypeError(
+                        "Cannot create property '{$key}' on object",
+                    );
+                }
             }
         }
     }
@@ -5930,7 +6137,7 @@ class Interpreter
             if ($isPrivate) {
                 $key = $privateNameMap[$method->key->name] ?? $method->key->name;
             } elseif (isset($computedKeys[$i])) {
-                $keyVal = $computedKeys[$i];
+                $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
                 if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                     $symbolKey = $keyVal;
                     $key = '';
@@ -6000,6 +6207,23 @@ class Interpreter
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
                     function (JsValue $thisVal, array $args) use ($superClass, $self) {
+                        // Spec default derived constructor: super(...args). The AST
+                        // SuperCall path initializes the super class's own instance
+                        // fields before its body runs when the super is a base
+                        // class. Mirror that here so field initializers in a base
+                        // class still execute when invoked via a derived default
+                        // constructor.
+                        if (
+                            $thisVal instanceof JsObject
+                            && $superClass->isClassConstructor()
+                            && !$superClass->isDerivedConstructor()
+                        ) {
+                            $self->initializeInstanceFields(
+                                $superClass,
+                                $thisVal,
+                                $superClass->getPrivateEnv() ?? $self->getGlobalEnv(),
+                            );
+                        }
                         return $self->callFunction($superClass, $thisVal, $args);
                     },
                 )->setConstructable();
@@ -6205,7 +6429,7 @@ class Interpreter
                     true,
                 );
             } elseif (isset($computedKeys[$idx])) {
-                $keyVal = $computedKeys[$idx];
+                $keyVal = TypeConversion::toPropertyKey($computedKeys[$idx]);
                 if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                     $constructor->addInstanceFieldInitializer($keyVal, $field->value, true, false);
                 } else {
@@ -6259,6 +6483,9 @@ class Interpreter
         $staticEnv->defineVar('this', $constructor);
         $staticEnv->defineVar('[[HomeObject]]', $constructor);
         $staticEnv->defineVar('[[ClassFieldInitializer]]', new JsBoolean(true));
+        // Per spec, static field initializers have an implicit [[NewTarget]]
+        // of undefined (they run at class-definition time, not construct).
+        $staticEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
 
         // Evaluate static fields and static blocks at class definition time.
         foreach ($elements as $i => $element) {
@@ -6267,7 +6494,7 @@ class Interpreter
                 if ($isPrivate) {
                     $fieldKey = $privateNameMap[$element->key->name] ?? $element->key->name;
                 } elseif (isset($computedKeys[$i])) {
-                    $keyVal = $computedKeys[$i];
+                    $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
                     if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
                         $constructor->definePropertyBySymbol($keyVal, PropertyDescriptor::data(
                             $element->value !== null

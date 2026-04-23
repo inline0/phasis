@@ -1317,6 +1317,7 @@ class Lexer
         // Value-producing tokens:
         if (
             $prev->type === TokenType::Identifier
+            || $prev->type === TokenType::PrivateIdentifier
             || $prev->type === TokenType::Number
             || $prev->type === TokenType::String
             || $prev->type === TokenType::RegExp
