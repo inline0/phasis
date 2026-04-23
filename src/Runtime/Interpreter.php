@@ -10220,14 +10220,15 @@ class Interpreter
             throw $innerException;
         }
 
-        // If we had a non-throw completion (e.g. return), propagate it now.
-        if ($completion !== null) {
-            throw $completion;
-        }
-
         // Step 9: if Type(innerResult.[[value]]) is not Object, throw TypeError.
         if (!$innerResult instanceof JsObject) {
             throw new TypeError('Iterator return result is not an object');
+        }
+
+        // Propagate non-throw abrupt completions (e.g. generator return signal)
+        // after the innerResult validation.
+        if ($completion !== null) {
+            throw $completion;
         }
     }
 
