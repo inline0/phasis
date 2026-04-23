@@ -375,6 +375,13 @@ class Parser
      */
     private function parseImportDeclaration(): ImportDeclaration
     {
+        // Static import declarations only appear in module code.
+        if (!$this->moduleMode) {
+            throw new ParseError(
+                "'import' is only valid in module code",
+                $this->current(),
+            );
+        }
         $location = $this->expect(TokenType::Import)->location;
         $specifiers = [];
 
@@ -475,6 +482,14 @@ class Parser
      */
     private function parseExportDeclaration(): ExportDeclaration
     {
+        // Per spec, export declarations only appear in module code; in script
+        // code (including eval) they are an early error.
+        if (!$this->moduleMode) {
+            throw new ParseError(
+                "'export' is only valid in module code",
+                $this->current(),
+            );
+        }
         $location = $this->expect(TokenType::Export)->location;
 
         // export default ...
