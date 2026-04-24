@@ -557,11 +557,16 @@ final class TypeConversion
         }
 
         if ($value instanceof JsString) {
-            // String wrapper objects expose each character as an indexed enumerable property.
+            // String exotic objects expose each UTF-16 code unit as an indexed
+            // enumerable property (spec §10.4.3) — surrogate pairs decompose
+            // into two distinct items so Array.from(string) without an
+            // @@iterator returns each code unit separately.
             $str = $value->value;
-            $len = mb_strlen($str, 'UTF-8');
+            $u16 = JsString::utf8ToUtf16LE($str);
+            $len = (int) (strlen($u16) / 2);
             for ($i = 0; $i < $len; $i++) {
-                $ch = mb_substr($str, $i, 1, 'UTF-8');
+                $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+                $ch = JsString::utf16CodeUnitToUtf8($codeUnit);
                 $wrapper->defineOwnProperty((string) $i, \PhpJs\Object\PropertyDescriptor::data(
                     new JsString($ch),
                     false,

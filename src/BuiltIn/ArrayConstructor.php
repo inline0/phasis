@@ -1931,6 +1931,8 @@ class ArrayConstructor
             // Check for Symbol.iterator first (iterables take precedence over array-like).
             // Per spec GetV, primitives like Number look up Symbol.iterator on their
             // wrapper prototype, so a prototype-installed iterator is observable.
+            // Strings go through the same path so deleting String.prototype[@@iterator]
+            // makes Array.from fall back to the array-like (UTF-16 code unit) path.
             if (
                 $arrayLike instanceof JsObject
                 || $arrayLike instanceof JsString
@@ -1944,16 +1946,16 @@ class ArrayConstructor
 
                 if ($arrayLike instanceof JsObject) {
                     $iteratorMethod = $arrayLike->getBySymbol($iterSym);
-                } elseif (!$arrayLike instanceof JsString) {
-                    // Primitive (Number/Boolean/BigInt/Symbol): look up the method on
-                    // the wrapper prototype. Call it with the original primitive as this.
+                } else {
+                    // Primitive (String/Number/Boolean/BigInt/Symbol): look up
+                    // @@iterator on the wrapper's prototype chain.
                     $wrapper = TypeConversion::toObject($arrayLike);
                     $iteratorMethod = $wrapper->getBySymbol($iterSym);
                 }
 
                 $iterMethodCallable = $iteratorMethod instanceof JsFunction
                     || $iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA;
-                if ($iterMethodCallable || $arrayLike instanceof JsString) {
+                if ($iterMethodCallable) {
                     // Create the result object.
                     if ($isConstructor) {
                         /** @var JsFunction $c */
@@ -1963,36 +1965,14 @@ class ArrayConstructor
                     }
                     $index = 0;
 
-                    if ($arrayLike instanceof JsString) {
-                        // Iterate string code points.
-                        $str = $arrayLike->value;
-                        $len = mb_strlen($str, 'UTF-8');
-                        for ($i = 0; $i < $len; $i++) {
-                            $val = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
-                            if ($mapFn !== null) {
-                                $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $index)]);
-                            }
-                            // CreateDataPropertyOrThrow per spec.
-                            $success = $a->defineOwnProperty(
-                                (string) $index,
-                                PropertyDescriptor::data($val, true, true, true),
-                            );
-                            if (!$success) {
-                                throw new TypeError(
-                                    'Cannot define property ' . $index . ' on result object'
-                                );
-                            }
-                            $index++;
-                        }
+                    // Use the iterator protocol. HTMLDDA's [[Call]] returns null,
+                    // which fails the "iterator is not an object" check below.
+                    if ($iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                        $iterator = JsNull::instance();
                     } else {
-                        // Use the iterator protocol. HTMLDDA's [[Call]] returns null,
-                        // which fails the "iterator is not an object" check below.
-                        if ($iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA) {
-                            $iterator = JsNull::instance();
-                        } else {
-                            /** @var JsFunction $iteratorMethod */
-                            $iterator = $iteratorMethod->call($arrayLike, []);
-                        }
+                        /** @var JsFunction $iteratorMethod */
+                        $iterator = $iteratorMethod->call($arrayLike, []);
+                    }
                         if (!$iterator instanceof JsObject) {
                             throw new TypeError('Array.from: iterator is not an object');
                         }
@@ -2050,7 +2030,6 @@ class ArrayConstructor
                             }
                             $index++;
                         }
-                    }
 
                     $a->set('length', new JsNumber((float) $index));
                     if ($a instanceof JsArray) {
@@ -2060,10 +2039,15 @@ class ArrayConstructor
                 }
             }
 
-            // Fall back to array-like handling (length property).
-            $lenVal = ($arrayLike instanceof JsObject)
-                ? $arrayLike->get('length')
-                : JsUndefined::instance();
+            // Fall back to array-like handling (length property). Spec step 7
+            // wraps the input via ToObject; for a primitive string this gives
+            // a String exotic that exposes length and per-UTF-16-code-unit
+            // index properties, so deleting String.prototype[@@iterator] makes
+            // Array.from(string) split surrogate pairs as expected.
+            $arrayLikeObj = ($arrayLike instanceof JsObject)
+                ? $arrayLike
+                : TypeConversion::toObject($arrayLike);
+            $lenVal = $arrayLikeObj->get('length');
             // Spec step 5.b uses LengthOfArrayLike → ToLength, which clamps
             // Infinity/large values to 2^53 - 1 instead of truncating to 0.
             $len = TypeConversion::toLength($lenVal);
@@ -2081,9 +2065,7 @@ class ArrayConstructor
             }
 
             for ($i = 0; $i < $len; $i++) {
-                $val = ($arrayLike instanceof JsObject)
-                    ? $arrayLike->get((string) $i)
-                    : JsUndefined::instance();
+                $val = $arrayLikeObj->get((string) $i);
                 if ($mapFn !== null) {
                     $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
                 }
