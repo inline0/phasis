@@ -445,15 +445,32 @@ class PromiseConstructor
                     return $promise;
                 }
 
+                // Per §27.2.4.3.1 step 4.j: Invoke(nextPromise, "then",
+                // [resultCapability.[[Resolve]], resultCapability.[[Reject]]]).
+                // Invoking then lets a racing resolve/reject win; settled
+                // promises still resolve/reject synchronously via their
+                // own then implementation, and pending promises register
+                // the capability handlers.
+                $thenMethod = $nextPromise instanceof JsObject ? $nextPromise->get('then') : null;
+                if ($thenMethod instanceof JsFunction) {
+                    try {
+                        $thenMethod->call($nextPromise, [$resolve, $reject]);
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::closeIterator($iterator);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
+                    continue;
+                }
+
+                // Non-thenable non-promise: coerce and resolve immediately.
                 $coerced = $nextPromise instanceof JsPromise
                     ? $nextPromise
                     : self::coerceToPromise($nextPromise);
-
                 if ($coerced->getState() === JsPromise::STATE_FULFILLED) {
                     $resolve->call(JsUndefined::instance(), [$coerced->getResolvedValue()]);
                     return $promise;
                 }
-
                 if ($coerced->getState() === JsPromise::STATE_REJECTED) {
                     $reject->call(JsUndefined::instance(), [$coerced->getResolvedValue()]);
                     return $promise;
