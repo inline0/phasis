@@ -984,55 +984,60 @@ class ObjectConstructor
      */
     public static function toPropertyDescriptor(JsObject $obj): PropertyDescriptor
     {
-        $hasValue    = $obj->has('value');
-        $hasWritable = $obj->has('writable');
-        $hasGet      = $obj->has('get');
-        $hasSet      = $obj->has('set');
+        // Spec §6.2.5.5 ToPropertyDescriptor walks fields in this order:
+        // enumerable, configurable, value, writable, get, set. Each field
+        // does HasProperty followed by Get if present. Order is observable
+        // through proxy has/get traps, so honor it strictly.
+        $hasEnumerable = $obj->has('enumerable');
+        $enumerable = $hasEnumerable ? TypeConversion::toBoolean($obj->get('enumerable')) : null;
 
-        // Mixed data + accessor descriptor is invalid.
+        $hasConfigurable = $obj->has('configurable');
+        $configurable = $hasConfigurable ? TypeConversion::toBoolean($obj->get('configurable')) : null;
+
+        $hasValue = $obj->has('value');
+        $value = $hasValue ? $obj->get('value') : null;
+
+        $hasWritable = $obj->has('writable');
+        $writable = $hasWritable ? TypeConversion::toBoolean($obj->get('writable')) : null;
+
+        $hasGet = $obj->has('get');
+        $getter = null;
+        if ($hasGet) {
+            $g = $obj->get('get');
+            if ($g instanceof JsFunction) {
+                $getter = $g;
+            } elseif (!$g instanceof JsUndefined) {
+                throw new TypeError('Getter must be a function or undefined');
+            }
+        }
+
+        $hasSet = $obj->has('set');
+        $setter = null;
+        if ($hasSet) {
+            $s = $obj->get('set');
+            if ($s instanceof JsFunction) {
+                $setter = $s;
+            } elseif (!$s instanceof JsUndefined) {
+                throw new TypeError('Setter must be a function or undefined');
+            }
+        }
+
+        // Mixed data + accessor descriptor is invalid (spec step 22).
         if (($hasValue || $hasWritable) && ($hasGet || $hasSet)) {
             throw new TypeError('Invalid property descriptor: cannot specify both accessor and data properties');
         }
 
-        $enumerable  = $obj->has('enumerable') ? TypeConversion::toBoolean($obj->get('enumerable')) : null;
-        $configurable = $obj->has('configurable') ? TypeConversion::toBoolean($obj->get('configurable')) : null;
-
         if ($hasGet || $hasSet) {
-            $getter = null;
-            $setter = null;
-
-            if ($hasGet) {
-                $g = $obj->get('get');
-                if ($g instanceof JsFunction) {
-                    $getter = $g;
-                } elseif (!$g instanceof JsUndefined) {
-                    throw new TypeError('Getter must be a function or undefined');
-                }
-            }
-
-            if ($hasSet) {
-                $s = $obj->get('set');
-                if ($s instanceof JsFunction) {
-                    $setter = $s;
-                } elseif (!$s instanceof JsUndefined) {
-                    throw new TypeError('Setter must be a function or undefined');
-                }
-            }
-
             $desc = PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,
                 enumerable: $enumerable,
                 configurable: $configurable,
             );
-            // Track which fields were explicitly present in the source object.
             $desc->hasGet = $hasGet;
             $desc->hasSet = $hasSet;
             return $desc;
         }
-
-        $value   = $hasValue ? $obj->get('value') : null;
-        $writable = $hasWritable ? TypeConversion::toBoolean($obj->get('writable')) : null;
 
         return new PropertyDescriptor(
             value: $value,
