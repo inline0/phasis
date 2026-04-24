@@ -952,7 +952,10 @@ class IteratorConstructor
             if (!$nextMethod instanceof JsFunction) {
                 throw new TypeError('Iterator next is not a function');
             }
-            $result = $nextMethod->call($iterator, $args);
+            // Spec WrapForValidIteratorPrototype.next: invoke the inner next
+            // method with no arguments; the wrapper's caller-supplied args
+            // are discarded ("next argument is ignored" semantic).
+            $result = $nextMethod->call($iterator, []);
             if (!$result instanceof JsObject) {
                 throw new TypeError('Iterator result is not an object');
             }
