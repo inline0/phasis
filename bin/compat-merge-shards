@@ -47,7 +47,11 @@ $options = [
     'jobs' => 4,
     'match' => null,
     'exclude' => [],
-    'chunkSize' => 250,
+    // Match the shard's chunk size so chunk IDs (sha1(group + files)) line
+    // up with the shards' state — otherwise the merge's placeholder chunks
+    // and the shards' completed chunks coexist with different IDs and the
+    // resulting compat.json double-counts test files.
+    'chunkSize' => 25,
     'timeoutSec' => 300,
     'stateDir' => '.compat-state',
     'reset' => false,
