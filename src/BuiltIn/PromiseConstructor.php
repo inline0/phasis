@@ -373,6 +373,22 @@ class PromiseConstructor
             }
 
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+            // Per §27.2.4.3 step 3: GetPromiseResolve(C) runs before
+            // iterable is touched. If the lookup throws or returns a
+            // non-callable, reject synchronously.
+            try {
+                $resolveMethod = $this_->get('resolve');
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            }
+            if (!$resolveMethod instanceof JsFunction) {
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue(
+                    new TypeError('Promise.race resolve is not a function'),
+                )]);
+                return $promise;
+            }
+
             $iterable = $args[0] ?? JsUndefined::instance();
             $iterSym = SymbolConstructor::iterator();
 
@@ -414,10 +430,6 @@ class PromiseConstructor
                 $nextValue = $step->get('value');
 
                 try {
-                    $resolveMethod = $this_->get('resolve');
-                    if (!$resolveMethod instanceof JsFunction) {
-                        throw new TypeError('Promise resolve is not a function');
-                    }
                     $nextPromise = $resolveMethod->call($this_, [$nextValue]);
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
                     self::closeIterator($iterator);
