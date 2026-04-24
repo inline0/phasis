@@ -576,11 +576,7 @@ class PromiseConstructor
                                     foreach ($errors as $r) {
                                         $arr[] = $r;
                                     }
-                                    $err = new JsObject();
-                                    $err->set('name', new JsString('AggregateError'));
-                                    $err->set('message', new JsString('All promises were rejected'));
-                                    $err->set('errors', JsArray::fromArray($arr));
-                                    $reject->call(JsUndefined::instance(), [$err]);
+                                    $reject->call(JsUndefined::instance(), [self::makeAggregateError($arr)]);
                                 }
                                 return JsUndefined::instance();
                             },
@@ -600,11 +596,7 @@ class PromiseConstructor
                 }
                 $remaining--;
                 if (!$started) {
-                    $err = new JsObject();
-                    $err->set('name', new JsString('AggregateError'));
-                    $err->set('message', new JsString('All promises were rejected'));
-                    $err->set('errors', JsArray::fromArray([]));
-                    $reject->call(JsUndefined::instance(), [$err]);
+                    $reject->call(JsUndefined::instance(), [self::makeAggregateError([])]);
                 } elseif ($remaining === 0) {
                     // All items already rejected synchronously during
                     // iteration; emit the AggregateError now.
@@ -612,11 +604,7 @@ class PromiseConstructor
                     foreach ($errors as $r) {
                         $arr[] = $r;
                     }
-                    $err = new JsObject();
-                    $err->set('name', new JsString('AggregateError'));
-                    $err->set('message', new JsString('All promises were rejected'));
-                    $err->set('errors', JsArray::fromArray($arr));
-                    $reject->call(JsUndefined::instance(), [$err]);
+                    $reject->call(JsUndefined::instance(), [self::makeAggregateError($arr)]);
                 }
                 return $promise;
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
@@ -817,6 +805,51 @@ class PromiseConstructor
      *
      * @return list<JsValue>
      */
+    /**
+     * Create a real AggregateError instance (with the right prototype
+     * chain for `e instanceof AggregateError`) by invoking the
+     * AggregateError constructor out of the active realm. Falls back to
+     * a plain JsObject shape if the constructor cannot be resolved.
+     *
+     * @param list<JsValue> $errorsList
+     */
+    private static function makeAggregateError(array $errorsList, string $message = 'All promises were rejected'): JsValue
+    {
+        $interp = JsFunction::getInterpreterInstance();
+        if ($interp !== null) {
+            try {
+                $ctor = $interp->getGlobalEnv()->get('AggregateError');
+            } catch (\Throwable) {
+                $ctor = null;
+            }
+            if ($ctor instanceof JsFunction) {
+                try {
+                    // Mirror the prologue of evalNewExpression: build a
+                    // new object off ctor.prototype, plant [[NewTarget]],
+                    // and run the constructor body with it as `this`.
+                    $proto = $ctor->get('prototype');
+                    $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+                    $newObj->defineOwnProperty(
+                        '[[NewTarget]]',
+                        \PhpJs\Object\PropertyDescriptor::data($ctor, false, false, false),
+                    );
+                    $errorsArg = JsArray::fromArray($errorsList);
+                    $messageArg = new JsString($message);
+                    $result = $ctor->call($newObj, [$errorsArg, $messageArg]);
+                    $newObj->forceDelete('[[NewTarget]]');
+                    return $result instanceof JsObject ? $result : $newObj;
+                } catch (\Throwable) {
+                    // fall through
+                }
+            }
+        }
+        $obj = new JsObject();
+        $obj->set('name', new JsString('AggregateError'));
+        $obj->set('message', new JsString($message));
+        $obj->set('errors', JsArray::fromArray($errorsList));
+        return $obj;
+    }
+
     /**
      * Convert a PHP RuntimeError (TypeError, RangeError, etc.) to its JS
      * counterpart via the active interpreter so `instanceof TypeError`
