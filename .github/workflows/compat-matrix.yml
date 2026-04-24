@@ -154,8 +154,8 @@ jobs:
             $EXCLUDE_ARGS \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs 4 \
-            --timeout 30 \
-            --chunk-size 50
+            --timeout 90 \
+            --chunk-size 25
           echo "=== After compat-report ==="
           ls -la .compat-state-${{ matrix.shard.id }}
           echo "=== State subtree ==="

@@ -9,8 +9,12 @@ set_time_limit(1800);
 // Bound PCRE backtracking so pathological test262 regex patterns fail fast
 // instead of hanging the worker. set_time_limit() does not interrupt
 // preg_match native calls, so without this a single hanging test can freeze
-// a whole chunk and eat the shard budget.
-ini_set('pcre.backtrack_limit', '500000');
+// a whole chunk and eat the shard budget. 200k is low enough to catch
+// catastrophic backtracking within a second while still handling any
+// reasonable non-pathological pattern (empirically, tests that legitimately
+// need more than 200k backtracks are the ones that blow past the whole
+// shard timeout anyway).
+ini_set('pcre.backtrack_limit', '200000');
 ini_set('pcre.recursion_limit', '100000');
 
 require __DIR__ . '/../vendor/autoload.php';
