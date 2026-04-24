@@ -1259,17 +1259,18 @@ class StringPrototype
     {
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
-            $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-            // Use UTF-16 code unit length, same as String.length.
+            // Spec requires ToIntegerOrInfinity so infinite indices fail
+            // the bounds check instead of coercing to 0.
+            $relative = isset($args[0])
+                ? TypeConversion::toIntegerOrInfinity($args[0])
+                : 0.0;
             $u16 = JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
-            if ($index < 0) {
-                $index = $len + $index;
-            }
-            if ($index < 0 || $index >= $len) {
+            $k = $relative >= 0 ? $relative : $len + $relative;
+            if ($k < 0 || $k >= $len) {
                 return JsUndefined::instance();
             }
-            // Get the UTF-16 code unit at the index and convert back to UTF-8.
+            $index = (int) $k;
             $codeUnit = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
             return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
         };

@@ -193,13 +193,19 @@ class JsTypedArray extends JsObject
      * index turns out to be invalid (out of bounds, fractional, detached)
      * so a throwing valueOf still surfaces the error.
      */
-    private function coerceTypedArrayValue(JsValue $value): void
+    /**
+     * Run the spec-mandated ToNumber/ToBigInt coercion that happens before
+     * the validity check in TypedArraySetElement, and return the coerced
+     * value wrapped so setIndex() does not re-coerce (avoiding a duplicate
+     * valueOf/Symbol.toPrimitive call).
+     */
+    private function coerceTypedArrayValue(JsValue $value): JsValue
     {
         if ($this->isBigInt) {
-            \PhpJs\Spec\TypeConversion::toBigInt($value);
-            return;
+            return \PhpJs\Spec\TypeConversion::toBigInt($value);
         }
-        \PhpJs\Spec\TypeConversion::toNumber($value);
+        $num = \PhpJs\Spec\TypeConversion::toNumber($value);
+        return new \PhpJs\Value\JsNumber($num);
     }
 
     public function delete(string $name, bool $strict = false): bool
@@ -524,11 +530,11 @@ class JsTypedArray extends JsObject
         // invalid integer indices (fractional, NaN, OOB), ToNumber/ToBigInt
         // runs BEFORE the validity check so a throwing valueOf surfaces.
         if (self::isCanonicalNumericIndex($name)) {
-            $this->coerceTypedArrayValue($value);
+            $coerced = $this->coerceTypedArrayValue($value);
             if (ctype_digit($name)) {
                 $index = (int) $name;
                 if ($index >= 0 && $index < $this->getLength()) {
-                    $this->setIndex($index, $value);
+                    $this->setIndex($index, $coerced);
                 }
             }
             return;
@@ -549,11 +555,11 @@ class JsTypedArray extends JsObject
             $isSelf = $receiver === $this;
             if ($isSelf) {
                 // Coerce value via ToNumber/ToBigInt before validity check.
-                $this->coerceTypedArrayValue($value);
+                $coerced = $this->coerceTypedArrayValue($value);
                 if (ctype_digit($name)) {
                     $index = (int) $name;
                     if ($index >= 0 && $index < $this->getLength()) {
-                        $this->setIndex($index, $value);
+                        $this->setIndex($index, $coerced);
                         return true;
                     }
                 }
@@ -651,8 +657,8 @@ class JsTypedArray extends JsObject
             // via IntegerIndexedElementSet, so valueOf side effects surface
             // after the validity+descriptor checks succeed.
             if ($desc->value !== null) {
-                $this->coerceTypedArrayValue($desc->value);
-                $this->setIndex($index, $desc->value);
+                $coerced = $this->coerceTypedArrayValue($desc->value);
+                $this->setIndex($index, $coerced);
             }
             return true;
         }

@@ -511,10 +511,12 @@ class ArrayConstructor
             'join',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
-                $sep = isset($args[0]) && !$args[0] instanceof JsUndefined
-                ? TypeConversion::toString($args[0]) : ',';
-                $parts = [];
+                // Spec §23.1.3.15 reads length BEFORE coercing separator, so
+                // observable length.valueOf() fires before separator.toString().
                 $len = self::getLen($this_);
+                $sep = isset($args[0]) && !$args[0] instanceof JsUndefined
+                    ? TypeConversion::toString($args[0]) : ',';
+                $parts = [];
                 for ($i = 0; $i < $len; $i++) {
                     $v = $this_->get((string) $i);
                     $parts[] = ($v instanceof JsUndefined || $v instanceof JsNull)
@@ -1109,6 +1111,11 @@ class ArrayConstructor
         $proto->defineOwnProperty('fill', PropertyDescriptor::data(JsFunction::fromCallable(
             'fill',
             function (JsValue $this_, array $args): JsValue {
+                // Spec §23.1.3.7 uses Set(O, Pk, value, true) — failure throws
+                // TypeError (getter-only/read-only/non-extensible).
+                if ($this_ instanceof JsNull || $this_ instanceof JsUndefined) {
+                    throw new TypeError('Array.prototype.fill called on null or undefined');
+                }
                 $this_ = self::toObject($this_);
                 $len = self::lengthOfArrayLike($this_);
                 $value = $args[0] ?? JsUndefined::instance();
@@ -1118,7 +1125,7 @@ class ArrayConstructor
                 $start = self::normalizeRelativeIndex($relStart, $len);
                 $end = self::normalizeRelativeIndex($relEnd, $len);
                 for ($i = $start; $i < $end; $i++) {
-                    $this_->set((string) $i, $value);
+                    $this_->set((string) $i, $value, true);
                 }
                 return $this_;
             },
@@ -1293,14 +1300,14 @@ class ArrayConstructor
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
                 $len = self::getLen($this_);
-                $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                if ($index < 0) {
-                    $index = $len + $index;
-                }
-                if ($index < 0 || $index >= $len) {
+                $relative = isset($args[0])
+                    ? TypeConversion::toIntegerOrInfinity($args[0])
+                    : 0.0;
+                $k = $relative >= 0 ? $relative : $len + $relative;
+                if ($k < 0 || $k >= $len) {
                     return JsUndefined::instance();
                 }
-                return $this_->get((string) $index);
+                return $this_->get((string) (int) $k);
             },
             1
         ), true, false, true));
@@ -1487,7 +1494,7 @@ class ArrayConstructor
                 $result = new JsArray();
                 for ($k = 0; $k < $len; $k++) {
                     $from = (string) ($len - $k - 1);
-                    $result->set((string) $k, $o->get($from));
+                    $result->defineOwnProperty((string) $k, PropertyDescriptor::data($o->get($from), true, true, true));
                 }
                 $result->setLength($len);
                 return $result;
@@ -1545,7 +1552,7 @@ class ArrayConstructor
                 });
                 $result = new JsArray();
                 for ($k = 0; $k < $len; $k++) {
-                    $result->set((string) $k, $items[$k]);
+                    $result->defineOwnProperty((string) $k, PropertyDescriptor::data($items[$k], true, true, true));
                 }
                 $result->setLength($len);
                 return $result;
@@ -1586,17 +1593,17 @@ class ArrayConstructor
                 $r = 0;
                 // Copy elements before start.
                 for ($i = 0; $i < $actualStart; $i++) {
-                    $result->set((string) $r, $o->get((string) $i));
+                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($o->get((string) $i), true, true, true));
                     $r++;
                 }
                 // Insert new items.
                 foreach ($insertItems as $item) {
-                    $result->set((string) $r, $item);
+                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($item, true, true, true));
                     $r++;
                 }
                 // Copy elements after the deleted range.
                 for ($i = $actualStart + $actualDeleteCount; $i < $len; $i++) {
-                    $result->set((string) $r, $o->get((string) $i));
+                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($o->get((string) $i), true, true, true));
                     $r++;
                 }
                 $result->setLength($newLen);
@@ -1629,11 +1636,10 @@ class ArrayConstructor
                 }
                 $result = new JsArray();
                 for ($k = 0; $k < $len; $k++) {
-                    if ($k === $actualIndex) {
-                        $result->set((string) $k, $value);
-                    } else {
-                        $result->set((string) $k, $o->get((string) $k));
-                    }
+                    $v = ($k === $actualIndex) ? $value : $o->get((string) $k);
+                    // CreateDataPropertyOrThrow bypasses [[Set]] traps/setters
+                    // on the receiver's prototype chain.
+                    $result->defineOwnProperty((string) $k, PropertyDescriptor::data($v, true, true, true));
                 }
                 $result->setLength($len);
                 return $result;
@@ -2058,14 +2064,19 @@ class ArrayConstructor
             $lenVal = ($arrayLike instanceof JsObject)
                 ? $arrayLike->get('length')
                 : JsUndefined::instance();
-            $lenNum = TypeConversion::toNumber($lenVal);
-            $len = is_nan($lenNum) || $lenNum < 0 ? 0 : (int) $lenNum;
+            // Spec step 5.b uses LengthOfArrayLike → ToLength, which clamps
+            // Infinity/large values to 2^53 - 1 instead of truncating to 0.
+            $len = TypeConversion::toLength($lenVal);
 
             // Create result: use constructor if available.
             if ($isConstructor) {
                 /** @var JsFunction $c */
                 $a = self::constructWith($c, [new JsNumber((float) $len)]);
             } else {
+                // ArrayCreate(len): length must fit in a canonical array index.
+                if ($len > 4294967295) {
+                    throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                }
                 $a = new JsArray();
             }
 
