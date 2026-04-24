@@ -126,8 +126,13 @@ class JsPromise extends JsObject
             return;
         }
 
-        // If value is a JsPromise, adopt its state or subscribe to it.
-        if ($value instanceof self) {
+        // If value is a JsPromise with an untouched `then` property, we can
+        // shortcut the thenable path. If its `then` has been overridden as an
+        // own property, fall through so the overridden then fires via the
+        // PromiseResolveThenableJob path (spec §27.2.1.3.2 steps 8–12 don't
+        // short-circuit for IsPromise — only the `then` method's identity
+        // decides behavior).
+        if ($value instanceof self && $value->getOwnPropertyDescriptor('then') === null) {
             if ($value->state === self::STATE_FULFILLED) {
                 $this->state = self::STATE_FULFILLED;
                 $this->value = $value->value;

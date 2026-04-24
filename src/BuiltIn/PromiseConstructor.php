@@ -28,6 +28,18 @@ use PhpJs\Object\PropertyDescriptor;
  */
 class PromiseConstructor
 {
+    /**
+     * The intrinsic %Promise% constructor, captured at install time so
+     * Promise.prototype.then can implement SpeciesConstructor without having
+     * to plumb the constructor through every call site.
+     */
+    private static ?JsFunction $intrinsicPromise = null;
+
+    public static function getIntrinsicPromise(): ?JsFunction
+    {
+        return self::$intrinsicPromise;
+    }
+
     public static function install(Environment $env): void
     {
         $proto = self::createPrototype();
@@ -734,6 +746,7 @@ class PromiseConstructor
             ),
         );
 
+        self::$intrinsicPromise = $constructor;
         $env->defineVar('Promise', $constructor);
     }
 
@@ -746,16 +759,25 @@ class PromiseConstructor
             if (!$this_ instanceof JsPromise) {
                 throw new TypeError('Method Promise.prototype.then called on incompatible receiver');
             }
-            // Per spec (Promise.prototype.then step 3):
-            //   Let C be ? SpeciesConstructor(promise, %Promise%).
-            // If promise.constructor is non-undefined and non-object, throw
-            // TypeError here rather than silently falling back to %Promise%.
-            $ctor = $this_->get('constructor');
-            if (
-                !($ctor instanceof JsUndefined)
-                && !($ctor instanceof JsObject)
-            ) {
-                throw new TypeError('Promise constructor is not an object');
+            // SpeciesConstructor(promise, %Promise%) per spec §27.2.5.4 step 3.
+            // If the species constructor is not the intrinsic Promise, spin up
+            // a fresh capability via NewPromiseCapability(C) so subclass
+            // observation (e.g. custom constructor invocation count, species
+            // throws) is preserved.
+            $C = self::speciesConstructor($this_);
+            $intrinsic = self::$intrinsicPromise;
+            if ($C !== null && $intrinsic !== null && $C !== $intrinsic) {
+                [$derived, $resolve, $reject] = self::newPromiseCapability($C);
+                $onFulfilled = $args[0] ?? JsUndefined::instance();
+                $onRejected = $args[1] ?? JsUndefined::instance();
+                self::performPromiseThen(
+                    $this_,
+                    $onFulfilled instanceof JsFunction ? $onFulfilled : null,
+                    $onRejected instanceof JsFunction ? $onRejected : null,
+                    $resolve,
+                    $reject,
+                );
+                return $derived;
             }
             return $this_->then($args);
         }, 2);
@@ -1077,6 +1099,92 @@ class PromiseConstructor
         if ($returnMethod instanceof JsFunction) {
             $returnMethod->call($iterator, []);
         }
+    }
+
+    /**
+     * SpeciesConstructor(O, defaultConstructor) per spec §7.3.20.
+     * Returns the constructor to use for derived objects. If the promise
+     * has no .constructor or its constructor has no [@@species], fall back
+     * to the intrinsic Promise (returned as null so the caller short-circuits).
+     */
+    private static function speciesConstructor(JsObject $O): ?JsFunction
+    {
+        $C = $O->get('constructor');
+        if ($C instanceof JsUndefined) {
+            return self::$intrinsicPromise;
+        }
+        if (!$C instanceof JsObject) {
+            throw new TypeError('Promise constructor is not an object');
+        }
+        $species = $C->getBySymbol(SymbolConstructor::species());
+        if ($species instanceof JsUndefined || $species instanceof JsNull) {
+            return self::$intrinsicPromise;
+        }
+        if (!$species instanceof JsFunction || !$species->isConstructable()) {
+            throw new TypeError('Promise @@species is not a constructor');
+        }
+        return $species;
+    }
+
+    /**
+     * PerformPromiseThen(promise, onFulfilled, onRejected, resultCapability)
+     * per spec §27.2.5.4.1. Wires this promise's settlement to the provided
+     * capability's resolve/reject so a derived subclass promise settles
+     * correctly. Rejection handler identity preservation matches the default
+     * %Promise% `.then` behavior.
+     */
+    private static function performPromiseThen(
+        JsPromise $source,
+        ?JsFunction $onFulfilled,
+        ?JsFunction $onRejected,
+        JsFunction $capabilityResolve,
+        JsFunction $capabilityReject,
+    ): void {
+        // Build a wrapping fulfill/reject pair: if the user callback throws,
+        // reject the derived capability; otherwise resolve with its return.
+        $fulfillWrap = JsFunction::fromCallable(
+            '',
+            function (JsValue $this_, array $args) use ($onFulfilled, $capabilityResolve, $capabilityReject): JsValue {
+                $value = $args[0] ?? JsUndefined::instance();
+                try {
+                    $result = $onFulfilled !== null
+                        ? $onFulfilled->call(JsUndefined::instance(), [$value])
+                        : $value;
+                    $capabilityResolve->call(JsUndefined::instance(), [$result]);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $capabilityReject->call(JsUndefined::instance(), [$e->jsValue]);
+                } catch (\Throwable $e) {
+                    $capabilityReject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        $rejectWrap = JsFunction::fromCallable(
+            '',
+            function (JsValue $this_, array $args) use ($onRejected, $capabilityResolve, $capabilityReject): JsValue {
+                $reason = $args[0] ?? JsUndefined::instance();
+                try {
+                    if ($onRejected !== null) {
+                        $result = $onRejected->call(JsUndefined::instance(), [$reason]);
+                        $capabilityResolve->call(JsUndefined::instance(), [$result]);
+                    } else {
+                        $capabilityReject->call(JsUndefined::instance(), [$reason]);
+                    }
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $capabilityReject->call(JsUndefined::instance(), [$e->jsValue]);
+                } catch (\Throwable $e) {
+                    $capabilityReject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        );
+        // JsPromise::then is designed around native [fulfill, reject, child]
+        // handler tuples. Use it with undefined callbacks and attach our
+        // wrappers via a second-level handler list push. The cleanest path
+        // is to call then([]) with our wrappers as callbacks directly.
+        $source->then([$fulfillWrap, $rejectWrap]);
     }
 
     /**
