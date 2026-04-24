@@ -1276,20 +1276,29 @@ class JsProxy extends JsObject
         return $keys;
     }
 
-    /** Convert a PropertyDescriptor to a JsObject for passing to traps. */
+    /**
+     * Convert a PropertyDescriptor to a JsObject for passing to traps.
+     * Mirrors spec FromPropertyDescriptor §6.2.5.4: only attaches the fields
+     * the source descriptor actually had (uses hasGet / hasSet to distinguish
+     * "explicitly undefined" from "not present"). Property insertion order
+     * follows the spec sequence (value, writable, get, set, enumerable,
+     * configurable), which is observable via Object.getOwnPropertyNames on
+     * the trap argument.
+     */
     private static function descriptorToObject(PropertyDescriptor $desc): JsObject
     {
         $obj = new JsObject();
-        if ($desc->isAccessorDescriptor()) {
+        if ($desc->value !== null) {
+            $obj->set('value', $desc->value);
+        }
+        if ($desc->writable !== null) {
+            $obj->set('writable', new JsBoolean($desc->writable));
+        }
+        if ($desc->hasGet) {
             $obj->set('get', $desc->get ?? JsUndefined::instance());
+        }
+        if ($desc->hasSet) {
             $obj->set('set', $desc->set ?? JsUndefined::instance());
-        } else {
-            if ($desc->value !== null) {
-                $obj->set('value', $desc->value);
-            }
-            if ($desc->writable !== null) {
-                $obj->set('writable', new JsBoolean($desc->writable));
-            }
         }
         if ($desc->enumerable !== null) {
             $obj->set('enumerable', new JsBoolean($desc->enumerable));
