@@ -392,29 +392,41 @@ class PromiseConstructor
             $iterable = $args[0] ?? JsUndefined::instance();
             $iterSym = SymbolConstructor::iterator();
 
-            if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-                throw new TypeError(
-                    "Cannot read properties of " . TypeConversion::toString($iterable)
-                    . " (reading 'Symbol(Symbol.iterator)')",
-                );
-            }
-
-            if (!$iterable instanceof JsObject) {
+            // Per spec IfAbruptRejectPromise: any abrupt completion from
+            // GetIterator rejects the result promise. Build the iterator
+            // with a try/catch so null/undefined/non-iterable arguments
+            // surface as a rejection, not a thrown exception.
+            $iterator = null;
+            $nextMethod = null;
+            try {
+                if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+                    throw new TypeError(
+                        "Cannot read properties of " . TypeConversion::toString($iterable)
+                        . " (reading 'Symbol(Symbol.iterator)')",
+                    );
+                }
+                if (!$iterable instanceof JsObject) {
+                    throw new TypeError('argument is not iterable');
+                }
+                $iteratorMethod = $iterable->getBySymbol($iterSym);
+                if (!$iteratorMethod instanceof JsFunction) {
+                    throw new TypeError('argument is not iterable');
+                }
+                $iteratorCandidate = $iteratorMethod->call($iterable, []);
+                if (!$iteratorCandidate instanceof JsObject) {
+                    throw new TypeError('Result of the Symbol.iterator method is not an object');
+                }
+                $nextMethodCandidate = $iteratorCandidate->get('next');
+                if (!$nextMethodCandidate instanceof JsFunction) {
+                    throw new TypeError('iterator.next is not a function');
+                }
+                $iterator = $iteratorCandidate;
+                $nextMethod = $nextMethodCandidate;
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
-            }
-
-            $iteratorMethod = $iterable->getBySymbol($iterSym);
-            if (!$iteratorMethod instanceof JsFunction) {
-                return $promise;
-            }
-
-            $iterator = $iteratorMethod->call($iterable, []);
-            if (!$iterator instanceof JsObject) {
-                throw new TypeError('Result of the Symbol.iterator method is not an object');
-            }
-
-            $nextMethod = $iterator->get('next');
-            if (!$nextMethod instanceof JsFunction) {
+            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                 return $promise;
             }
 
