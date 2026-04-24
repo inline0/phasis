@@ -1446,12 +1446,12 @@ class ArrayConstructor
                         }
                     }
                     // Per spec Invoke(V, P, args) = Call(GetV(V, P), V, args):
-                    // primitives use the wrapper for property lookup only;
-                    // the primitive itself is passed as thisArg so strict-mode
-                    // receivers observe the primitive value (non-strict
-                    // functions will still box it per OrdinaryCallBindThis).
+                    // GetV(V, P) does ToObject(V).[[Get]](P, V) so a getter on
+                    // the prototype is called with the original primitive as
+                    // receiver. The looked-up function is then called with V
+                    // as thisArg.
                     $wrapper = TypeConversion::toObject($elem);
-                    $fn = $wrapper->get('toLocaleString');
+                    $fn = $wrapper->getWithValueReceiver('toLocaleString', $elem);
                     if ($fn instanceof JsFunction) {
                         $parts[] = TypeConversion::toString($fn->call($elem, $forward));
                     } else {
