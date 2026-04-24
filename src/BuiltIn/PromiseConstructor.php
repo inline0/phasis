@@ -151,10 +151,12 @@ class PromiseConstructor
                 return $promise;
             }
             if (!$resolveMethod instanceof JsFunction) {
-                $err = new JsObject();
-                $err->set('name', new JsString('TypeError'));
-                $err->set('message', new JsString('Promise.all resolve is not a function'));
-                $reject->call(JsUndefined::instance(), [$err]);
+                // Use phpErrorToJsValue so the rejection value is a real
+                // TypeError instance (with proper prototype chain for
+                // `error instanceof TypeError`).
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue(
+                    new TypeError('Promise.all resolve is not a function'),
+                )]);
                 return $promise;
             }
             // Iterate lazily and invoke C.resolve per item. If the iterator
@@ -254,10 +256,9 @@ class PromiseConstructor
                 return $promise;
             }
             if (!$resolveMethod instanceof JsFunction) {
-                $err = new JsObject();
-                $err->set('name', new JsString('TypeError'));
-                $err->set('message', new JsString('Promise.allSettled resolve is not a function'));
-                $reject->call(JsUndefined::instance(), [$err]);
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue(
+                    new TypeError('Promise.allSettled resolve is not a function'),
+                )]);
                 return $promise;
             }
             try {
@@ -464,10 +465,9 @@ class PromiseConstructor
                 return $promise;
             }
             if (!$resolveMethod instanceof JsFunction) {
-                $err = new JsObject();
-                $err->set('name', new JsString('TypeError'));
-                $err->set('message', new JsString('Promise.any resolve is not a function'));
-                $reject->call(JsUndefined::instance(), [$err]);
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue(
+                    new TypeError('Promise.any resolve is not a function'),
+                )]);
                 return $promise;
             }
             try {
