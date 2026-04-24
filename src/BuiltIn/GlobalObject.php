@@ -273,7 +273,11 @@ class GlobalObject
             // Per spec steps 17-18, params are parsed first as FormalParameters
             // (no preceding line terminator, so --> in params is a SyntaxError).
             // The body gets line feeds per step 41 so AnnexB HTML comments work.
-                $source = "(function anonymous({$params}\n) {\n{$body}\n})";
+            // The function is anonymous (no named binding visible in scope) —
+            // we set .name = "anonymous" after creation rather than parsing
+            // as `function anonymous(){...}`, since the latter would make
+            // "anonymous" a self-reference inside the body.
+                $source = "(function ({$params}\n) {\n{$body}\n})";
                 $parser = new \PhpJs\Parser\Parser($source);
                 $program = $parser->parse();
 
@@ -313,6 +317,21 @@ class GlobalObject
                             $result->setPrototype($ntProto);
                         }
                     }
+                }
+                // Spec §20.2.1.1 step 31: SetFunctionName(F, "anonymous").
+                // The body never sees "anonymous" as an identifier binding;
+                // it is purely the .name property. Set the source text so
+                // Function.prototype.toString returns the spec-mandated form
+                // (`function anonymous(params) { body }`) even though the
+                // function was parsed as an unnamed expression.
+                if ($result instanceof JsFunction) {
+                    $result->defineOwnProperty('name', \PhpJs\Object\PropertyDescriptor::data(
+                        new JsString('anonymous'),
+                        false,
+                        false,
+                        true,
+                    ));
+                    $result->setSourceText("function anonymous({$params}\n) {\n{$body}\n}");
                 }
                 return $result;
             },
