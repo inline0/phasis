@@ -1329,9 +1329,15 @@ class Interpreter
             '+' => $value instanceof JsBigInt
                 ? throw new TypeError('Cannot convert a BigInt value to a number')
                 : new JsNumber(TypeConversion::toNumber($value)),
-            '~' => $value instanceof JsBigInt
-                ? new JsBigInt((string) (~(int) $value->value))
-                : new JsNumber((float) (~TypeConversion::toInt32($value))),
+            '~' => (function () use ($value) {
+                // Per §13.5.6.1 step 2: ToNumeric unboxes wrappers (e.g.
+                // Object(1n) → 1n) and distinguishes BigInt from Number.
+                $numeric = TypeConversion::toNumeric($value);
+                if ($numeric instanceof JsBigInt) {
+                    return new JsBigInt(self::bigIntBitwiseNot($numeric->value));
+                }
+                return new JsNumber((float) (~TypeConversion::toInt32($numeric)));
+            })(),
             'void' => JsUndefined::instance(),
             default => throw new InternalError("Unknown unary operator: {$node->operator}"),
         };
@@ -13152,6 +13158,43 @@ class Interpreter
     private static function bigStrBcAdd(string $a, string $b): string
     {
         return self::bigStrAddSigned($a, $b);
+    }
+
+    /**
+     * BigInt::bitwiseNOT per §6.1.6.2.2: return -x - 1 as an arbitrary-
+     * precision decimal string. Accepts hex/octal/binary BigInt literal
+     * forms that may arrive from JsBigInt::value (e.g. "0xff").
+     */
+    private static function bigIntBitwiseNot(string $value): string
+    {
+        $value = self::bigIntLiteralToDecimal($value);
+        // -x - 1 = -(x + 1)
+        $xPlus1 = self::bigStrAddSigned($value, '1');
+        if ($xPlus1 === '0') {
+            return '0';
+        }
+        return $xPlus1[0] === '-' ? substr($xPlus1, 1) : '-' . $xPlus1;
+    }
+
+    /** Convert a JsBigInt value string (possibly hex/oct/bin-prefixed) to decimal. */
+    private static function bigIntLiteralToDecimal(string $value): string
+    {
+        $negative = false;
+        $v = $value;
+        if ($v !== '' && $v[0] === '-') {
+            $negative = true;
+            $v = substr($v, 1);
+        }
+        if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $v, $m) === 1) {
+            $dec = self::baseStringToDecimal($m[1], 16);
+        } elseif (preg_match('/^0[oO]([0-7]+)$/', $v, $m) === 1) {
+            $dec = self::baseStringToDecimal($m[1], 8);
+        } elseif (preg_match('/^0[bB]([01]+)$/', $v, $m) === 1) {
+            $dec = self::baseStringToDecimal($m[1], 2);
+        } else {
+            $dec = $v;
+        }
+        return $negative ? '-' . $dec : $dec;
     }
 
     /** Signed BigInt subtract (replaces bcsub). */
