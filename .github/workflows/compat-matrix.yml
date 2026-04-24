@@ -106,21 +106,38 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
+      - name: Check test262 submodule
+        run: |
+          echo "test262 directory:"
+          ls -la test262 | head -5
+          echo "Harness files:"
+          ls test262/harness 2>&1 | head -5
+          echo "Test dir:"
+          ls test262/test 2>&1 | head -5
+
       - name: Run compat shard
         run: |
+          set -x
           mkdir -p .compat-state-${{ matrix.shard.id }}
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs 4 \
             --timeout 30 \
-            --chunk-size 250 || true
+            --chunk-size 250
+          echo "=== After compat-report ==="
+          ls -la .compat-state-${{ matrix.shard.id }}
+          echo "=== State subtree ==="
+          find .compat-state-${{ matrix.shard.id }} -type f | head -20
 
       - name: Upload shard state
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: compat-shard-${{ matrix.shard.id }}
           path: .compat-state-${{ matrix.shard.id }}
+          if-no-files-found: warn
+          include-hidden-files: true
 
   merge:
     needs: shard
