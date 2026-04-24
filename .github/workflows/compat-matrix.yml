@@ -52,8 +52,8 @@ jobs:
           - { id: 'builtins-O', prefix: 'built-ins/O' }
           - { id: 'builtins-P', prefix: 'built-ins/P' }
           # RegExp alone has 1800+ tests and can hang on PCRE infinite
-          # loops; keep it in its own shard so Reflect isn't held up.
-          # The RegExp prefix also covers RegExpStringIteratorPrototype.
+          # loops. Keep Reflect separate so it doesn't get blocked. The
+          # RegExp prefix also covers RegExpStringIteratorPrototype.
           - { id: 'builtins-Reflect', prefix: 'built-ins/Reflect' }
           - { id: 'builtins-RegExp', prefix: 'built-ins/RegExp' }
           - { id: 'builtins-S', prefix: 'built-ins/S' }
@@ -126,12 +126,16 @@ jobs:
         run: |
           set -x
           mkdir -p .compat-state-${{ matrix.shard.id }}
+          # Smaller chunks with a tighter per-chunk timeout so a single
+          # hanging test (PCRE infinite loop etc.) only loses 30s and up
+          # to 50 sibling tests in the same chunk, not a quarter of the
+          # shard.
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs 4 \
             --timeout 30 \
-            --chunk-size 250
+            --chunk-size 50
           echo "=== After compat-report ==="
           ls -la .compat-state-${{ matrix.shard.id }}
           echo "=== State subtree ==="
@@ -208,5 +212,11 @@ jobs:
             echo "No changes"
           else
             git commit -m "Update COMPAT.md from CI [skip ci]"
+            # The workflow can run for an hour+; rebase onto whatever main
+            # has moved to so the push does not fail on a conflict with
+            # unrelated commits. If rebase fails the artifact is still
+            # uploaded and we can commit manually.
+            git fetch origin main
+            git rebase origin/main || { git rebase --abort; exit 0; }
             git push
           fi
