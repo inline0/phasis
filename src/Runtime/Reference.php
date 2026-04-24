@@ -55,8 +55,10 @@ class Reference
 
     /**
      * Resolve the deferred property key to a string name.
-     * Performs ToPropertyKey on the stored raw key. The result is
-     * cached so that ToString is called at most once per reference.
+     * Performs ToPropertyKey on the stored raw key (so a Symbol wrapper's
+     * @@toPrimitive returning the unboxed Symbol promotes the reference
+     * into a Symbol-keyed reference). The result is cached so that the
+     * ToPrimitive/ToString sequence runs at most once per reference.
      */
     private function resolvedName(): string
     {
@@ -64,7 +66,15 @@ class Reference
             return $this->resolvedNameCache;
         }
         if ($this->rawKey !== null) {
-            $this->resolvedNameCache = TypeConversion::toString($this->rawKey);
+            $key = TypeConversion::toPropertyKey($this->rawKey);
+            if ($key instanceof JsSymbol) {
+                $this->symbolKey = $key;
+                $this->rawKey = null;
+                $this->resolvedNameCache = '';
+                return '';
+            }
+            $this->resolvedNameCache = TypeConversion::toString($key);
+            $this->rawKey = null;
             return $this->resolvedNameCache;
         }
         return $this->name;
@@ -96,6 +106,9 @@ class Reference
         }
 
         if ($this->base instanceof JsObject) {
+            // Resolve the deferred raw key first so a Symbol wrapper key is
+            // promoted to symbolKey before we branch on it.
+            $name = $this->resolvedName();
             // For super references, use the actual `this` as the receiver so that
             // getters are invoked with the correct `this` (spec §6.2.4.4 step 5b).
             if ($this->symbolKey !== null) {
@@ -105,9 +118,9 @@ class Reference
                 return $this->base->getBySymbol($this->symbolKey);
             }
             if ($this->thisValue !== null) {
-                return $this->base->internalGet($this->resolvedName(), $this->thisValue);
+                return $this->base->internalGet($name, $this->thisValue);
             }
-            return $this->base->get($this->resolvedName());
+            return $this->base->get($name);
         }
 
         return JsUndefined::instance();
@@ -141,6 +154,9 @@ class Reference
         }
 
         if ($this->base instanceof JsObject) {
+            // Resolve any deferred raw key now so symbolKey is populated
+            // for Symbol-wrapper keys before we branch.
+            $name = $this->resolvedName();
             // For super references, use the actual `this` as the receiver so that
             // [[Set]] stores the property on `this`, not on the super base
             // (spec §6.2.4.5 step 6b: base.[[Set]](name, value, GetThisValue(V))).
@@ -148,20 +164,20 @@ class Reference
                 $receiver = $this->thisValue ?? $this->base;
                 $success = $this->base->internalSetBySymbol($this->symbolKey, $value, $receiver);
                 if (!$success && $this->strict) {
-                    throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}'");
+                    throw new TypeError("Cannot assign to read only property");
                 }
                 return;
             }
             if ($this->thisValue !== null) {
-                $success = $this->base->internalSet($this->resolvedName(), $value, $this->thisValue);
+                $success = $this->base->internalSet($name, $value, $this->thisValue);
                 if (!$success && $this->strict) {
                     throw new TypeError(
-                        "Cannot assign to read only property '{$this->resolvedName()}' of object '#<Object>'"
+                        "Cannot assign to read only property '{$name}' of object '#<Object>'"
                     );
                 }
                 return;
             }
-            $this->base->set($this->resolvedName(), $value, $this->strict);
+            $this->base->set($name, $value, $this->strict);
             return;
         }
 

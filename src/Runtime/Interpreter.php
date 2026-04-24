@@ -1275,15 +1275,22 @@ class Interpreter
         if (!$right instanceof JsObject) {
             throw new TypeError(
                 'Cannot use "in" operator to search for "'
-                . TypeConversion::toString($left) . '" in ' . TypeConversion::toString($right)
+                . (
+                    $left instanceof JsSymbol
+                        ? $left->toString()
+                        : TypeConversion::toString($left)
+                )
+                . '" in ' . TypeConversion::toString($right)
             );
         }
-        // Per spec, the key can be a Symbol (property key).
-        if ($left instanceof JsSymbol) {
-            return new JsBoolean($right->hasBySymbol($left));
+        // Spec §13.10.2 step 5: the key goes through ToPropertyKey, which
+        // returns the unboxed Symbol for a Symbol wrapper instead of
+        // attempting ToString on it.
+        $propKey = TypeConversion::toPropertyKey($left);
+        if ($propKey instanceof JsSymbol) {
+            return new JsBoolean($right->hasBySymbol($propKey));
         }
-        $key = TypeConversion::toString($left);
-        return new JsBoolean($right->has($key));
+        return new JsBoolean($right->has(TypeConversion::toString($propKey)));
     }
 
     private function evalLogicalExpression(LogicalExpression $node, Environment $env): JsValue
@@ -4986,9 +4993,16 @@ class Interpreter
             throw new TypeError("Cannot read properties of {$baseDesc} (reading '{$keyDesc}')");
         }
 
+        // Spec ToPropertyKey: a JsSymbol stays a Symbol key; everything else
+        // funnels through ToPrimitive(value, "string") then ToString. A
+        // Symbol wrapper object's @@toPrimitive returns the unboxed Symbol,
+        // so the key still ends up as a Symbol (not "Symbol(...)").
+        if ($node->computed) {
+            $rawKey = TypeConversion::toPropertyKey($rawKey);
+        }
         $isSymbolKey = $rawKey instanceof JsSymbol;
         $key = $isSymbolKey ? '' : ($node->computed
-            ? TypeConversion::toString($rawKey)
+            ? ($rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey))
             : ($node->property instanceof Identifier ? $node->property->name : ''));
 
         // Symbol-keyed access on strings: only Symbol.iterator is meaningful.
