@@ -783,15 +783,12 @@ class PromiseConstructor
         }, 2);
         $proto->defineOwnProperty('then', PropertyDescriptor::data($thenFn, true, false, true));
 
-        // catch(onRejected) — invokes this.then(undefined, onRejected).
+        // catch(onRejected). Per §27.2.5.1 this is Invoke(this, "then",
+        // « undefined, onRejected »). Going through Get("then") — even for
+        // native JsPromise receivers — preserves overridden `then` methods,
+        // which is observable via rejected-observable-then-calls and
+        // resolved-observable-then-calls.
         $catchFn = JsFunction::fromCallable('catch', function (JsValue $this_, array $args): JsValue {
-            if ($this_ instanceof JsPromise) {
-                return $this_->catchHandler($args);
-            }
-            // Per spec §27.2.5.1: Promise.prototype.catch invokes
-            // Invoke(this, "then", «undefined, onRejected»). Invoke uses
-            // GetV which coerces `this` via ToObject. So boolean/number/
-            // string receivers see their prototype's `then`.
             $obj = \PhpJs\Spec\TypeConversion::toObject($this_);
             $thenMethod = $obj->get('then');
             if (!$thenMethod instanceof JsFunction) {
@@ -815,21 +812,50 @@ class PromiseConstructor
             if (!$onFinally instanceof JsFunction) {
                 return $thenMethod->call($this_, [$onFinally, $onFinally]);
             }
+            // Spec §27.2.5.3 step 3: the derived Promise used by thenFinally
+            // / catchFinally is obtained via SpeciesConstructor(promise, %Promise%).
+            // When the species is a subclass, each PromiseResolve(C, result)
+            // inside thenFinally creates a new subclass instance, which is
+            // why subclass-resolve-count expects a higher instance count than
+            // the default implementation would produce.
+            $C = self::speciesConstructor($this_);
             $thenFulfilled = JsFunction::fromCallable(
                 '',
-                function (JsValue $this_, array $args) use ($onFinally): JsValue {
+                function (JsValue $this_, array $args) use ($onFinally, $C): JsValue {
                     $value = $args[0] ?? JsUndefined::instance();
-                    $onFinally->call(JsUndefined::instance(), []);
-                    return $value;
+                    $result = $onFinally->call(JsUndefined::instance(), []);
+                    $valueThunk = JsFunction::fromCallable(
+                        '',
+                        static fn(JsValue $t, array $a): JsValue => $value,
+                        0,
+                    );
+                    $promise = self::promiseResolve($C, $result);
+                    $thenMethod = $promise instanceof JsObject ? $promise->get('then') : null;
+                    if (!$thenMethod instanceof JsFunction) {
+                        return $value;
+                    }
+                    return $thenMethod->call($promise, [$valueThunk]);
                 },
                 1,
             );
             $thenRejected = JsFunction::fromCallable(
                 '',
-                function (JsValue $this_, array $args) use ($onFinally): JsValue {
+                function (JsValue $this_, array $args) use ($onFinally, $C): JsValue {
                     $reason = $args[0] ?? JsUndefined::instance();
-                    $onFinally->call(JsUndefined::instance(), []);
-                    throw new \PhpJs\Exceptions\JsThrowable($reason);
+                    $result = $onFinally->call(JsUndefined::instance(), []);
+                    $thrower = JsFunction::fromCallable(
+                        '',
+                        static function (JsValue $t, array $a) use ($reason): JsValue {
+                            throw new \PhpJs\Exceptions\JsThrowable($reason);
+                        },
+                        0,
+                    );
+                    $promise = self::promiseResolve($C, $result);
+                    $thenMethod = $promise instanceof JsObject ? $promise->get('then') : null;
+                    if (!$thenMethod instanceof JsFunction) {
+                        throw new \PhpJs\Exceptions\JsThrowable($reason);
+                    }
+                    return $thenMethod->call($promise, [$thrower]);
                 },
                 1,
             );
@@ -1099,6 +1125,34 @@ class PromiseConstructor
         if ($returnMethod instanceof JsFunction) {
             $returnMethod->call($iterator, []);
         }
+    }
+
+    /**
+     * PromiseResolve(C, x) per spec §27.2.4.7. Used by finally to build the
+     * intermediate promise that awaits the onFinally return value under the
+     * derived constructor.
+     */
+    private static function promiseResolve(?JsFunction $C, JsValue $x): JsValue
+    {
+        $intrinsic = self::$intrinsicPromise;
+        if ($C === null) {
+            $C = $intrinsic;
+        }
+        // If x is a Promise whose constructor === C, return x.
+        if ($x instanceof JsPromise) {
+            $xCtor = $x->get('constructor');
+            if ($xCtor === $C) {
+                return $x;
+            }
+        }
+        if ($C === null) {
+            return JsPromise::resolved($x);
+        }
+        [$promise, $resolve] = self::newPromiseCapability($C);
+        if ($resolve !== null) {
+            $resolve->call(JsUndefined::instance(), [$x]);
+        }
+        return $promise;
     }
 
     /**

@@ -126,13 +126,23 @@ class JsPromise extends JsObject
             return;
         }
 
-        // If value is a JsPromise with an untouched `then` property, we can
-        // shortcut the thenable path. If its `then` has been overridden as an
-        // own property, fall through so the overridden then fires via the
-        // PromiseResolveThenableJob path (spec §27.2.1.3.2 steps 8–12 don't
-        // short-circuit for IsPromise — only the `then` method's identity
-        // decides behavior).
-        if ($value instanceof self && $value->getOwnPropertyDescriptor('then') === null) {
+        // If value is a JsPromise whose `then` method resolves to the
+        // intrinsic Promise.prototype.then (walking the prototype chain), we
+        // can shortcut. If `then` has been overridden on the instance or on
+        // any prototype in the chain, fall through so the overridden method
+        // fires via the PromiseResolveThenableJob path (spec §27.2.1.3.2
+        // steps 8–12 don't short-circuit for IsPromise — only the `then`
+        // method's identity decides behavior).
+        if ($value instanceof self) {
+            $thenLookup = $value->get('then');
+            $intrinsicThen = self::$promisePrototype !== null
+                ? self::$promisePrototype->getOwnPropertyDescriptor('then')?->value
+                : null;
+            $thenUnchanged = $intrinsicThen !== null && $thenLookup === $intrinsicThen;
+        } else {
+            $thenUnchanged = false;
+        }
+        if ($value instanceof self && $thenUnchanged) {
             if ($value->state === self::STATE_FULFILLED) {
                 $this->state = self::STATE_FULFILLED;
                 $this->value = $value->value;
