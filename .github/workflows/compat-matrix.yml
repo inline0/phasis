@@ -19,7 +19,10 @@ concurrency:
 jobs:
   shard:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # 45 minutes is enough for every shard we have today; the longest
+    # single shard under the cap is ~30 min. If a shard hits the wall,
+    # GH kills it and the merge job still runs.
+    timeout-minutes: 45
 
     strategy:
       fail-fast: false
@@ -48,7 +51,11 @@ jobs:
           - { id: 'builtins-N', prefix: 'built-ins/N' }
           - { id: 'builtins-O', prefix: 'built-ins/O' }
           - { id: 'builtins-P', prefix: 'built-ins/P' }
-          - { id: 'builtins-R', prefix: 'built-ins/R' }
+          # RegExp alone has 1800+ tests and can hang on PCRE infinite
+          # loops; keep it in its own shard so Reflect isn't held up.
+          # The RegExp prefix also covers RegExpStringIteratorPrototype.
+          - { id: 'builtins-Reflect', prefix: 'built-ins/Reflect' }
+          - { id: 'builtins-RegExp', prefix: 'built-ins/RegExp' }
           - { id: 'builtins-S', prefix: 'built-ins/S' }
           - { id: 'builtins-Temporal', prefix: 'built-ins/Temporal' }
           - { id: 'builtins-TypedArray', prefix: 'built-ins/TypedArray' }
@@ -141,6 +148,9 @@ jobs:
 
   merge:
     needs: shard
+    # Run even when a shard fails (typically RegExp timing out) so we
+    # still produce a compat snapshot from whatever succeeded.
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
