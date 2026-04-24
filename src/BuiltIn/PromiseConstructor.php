@@ -188,7 +188,13 @@ class PromiseConstructor
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
-                    $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    try {
+                        $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     if ($thenMethod instanceof JsFunction) {
                         $resolveElement = JsFunction::fromCallable(
                             '',
@@ -284,7 +290,13 @@ class PromiseConstructor
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
-                    $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    try {
+                        $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     if ($thenMethod instanceof JsFunction) {
                         $onFulfilled = JsFunction::fromCallable(
                             '',
@@ -510,7 +522,13 @@ class PromiseConstructor
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
-                    $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    try {
+                        $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     if ($thenMethod instanceof JsFunction) {
                         $onRejected = JsFunction::fromCallable(
                             '',
