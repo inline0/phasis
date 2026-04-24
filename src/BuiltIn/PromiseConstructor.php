@@ -389,39 +389,12 @@ class PromiseConstructor
                 return $promise;
             }
 
-            $iterable = $args[0] ?? JsUndefined::instance();
-            $iterSym = SymbolConstructor::iterator();
-
-            // Per spec IfAbruptRejectPromise: any abrupt completion from
-            // GetIterator rejects the result promise. Build the iterator
-            // with a try/catch so null/undefined/non-iterable arguments
-            // surface as a rejection, not a thrown exception.
-            $iterator = null;
-            $nextMethod = null;
+            // Per IfAbruptRejectPromise: any abrupt completion from
+            // GetIterator rejects the result promise. openIterator already
+            // handles JsString (char-wise iteration) and throws TypeError
+            // for null/undefined/non-iterable arguments.
             try {
-                if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-                    throw new TypeError(
-                        "Cannot read properties of " . TypeConversion::toString($iterable)
-                        . " (reading 'Symbol(Symbol.iterator)')",
-                    );
-                }
-                if (!$iterable instanceof JsObject) {
-                    throw new TypeError('argument is not iterable');
-                }
-                $iteratorMethod = $iterable->getBySymbol($iterSym);
-                if (!$iteratorMethod instanceof JsFunction) {
-                    throw new TypeError('argument is not iterable');
-                }
-                $iteratorCandidate = $iteratorMethod->call($iterable, []);
-                if (!$iteratorCandidate instanceof JsObject) {
-                    throw new TypeError('Result of the Symbol.iterator method is not an object');
-                }
-                $nextMethodCandidate = $iteratorCandidate->get('next');
-                if (!$nextMethodCandidate instanceof JsFunction) {
-                    throw new TypeError('iterator.next is not a function');
-                }
-                $iterator = $iteratorCandidate;
-                $nextMethod = $nextMethodCandidate;
+                $iter = self::openIterator($args[0] ?? JsUndefined::instance());
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
                 $reject->call(JsUndefined::instance(), [$e->jsValue]);
                 return $promise;
@@ -431,51 +404,54 @@ class PromiseConstructor
             }
 
             while (true) {
-                $step = $nextMethod->call($iterator, []);
-                if (!$step instanceof JsObject) {
+                // Per §27.2.4.3.1 step 4.d-g: a throwing iterator.next or
+                // IteratorValue sets iteratorRecord.[[done]] true, so
+                // IteratorClose does not run. iteratorStep already wraps
+                // the next() call; value-getter throws surface here as an
+                // exception from iteratorStep.
+                try {
+                    $nextValue = self::iteratorStep($iter);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                    return $promise;
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                    return $promise;
+                }
+                if ($nextValue === null) {
                     break;
                 }
-                if (TypeConversion::toBoolean($step->get('done'))) {
-                    break;
-                }
-
-                $nextValue = $step->get('value');
 
                 try {
                     $nextPromise = $resolveMethod->call($this_, [$nextValue]);
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    self::closeIterator($iterator);
+                    self::iteratorCloseIgnore($iter);
                     $reject->call(JsUndefined::instance(), [$e->jsValue]);
                     return $promise;
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    self::closeIterator($iterator);
-                    $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                    self::iteratorCloseIgnore($iter);
+                    $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
                     return $promise;
                 } catch (\Throwable $e) {
-                    self::closeIterator($iterator);
+                    self::iteratorCloseIgnore($iter);
                     $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
                     return $promise;
                 }
 
                 // Per §27.2.4.3.1 step 4.j: Invoke(nextPromise, "then",
                 // [resultCapability.[[Resolve]], resultCapability.[[Reject]]]).
-                // Invoking then lets a racing resolve/reject win; settled
-                // promises still resolve/reject synchronously via their
-                // own then implementation, and pending promises register
-                // the capability handlers.
                 $thenMethod = $nextPromise instanceof JsObject ? $nextPromise->get('then') : null;
                 if ($thenMethod instanceof JsFunction) {
                     try {
                         $thenMethod->call($nextPromise, [$resolve, $reject]);
                     } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                        self::closeIterator($iterator);
+                        self::iteratorCloseIgnore($iter);
                         $reject->call(JsUndefined::instance(), [$e->jsValue]);
                         return $promise;
                     }
                     continue;
                 }
 
-                // Non-thenable non-promise: coerce and resolve immediately.
                 $coerced = $nextPromise instanceof JsPromise
                     ? $nextPromise
                     : self::coerceToPromise($nextPromise);
