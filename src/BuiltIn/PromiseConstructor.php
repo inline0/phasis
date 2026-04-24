@@ -203,15 +203,20 @@ class PromiseConstructor
                     if ($thenMethod instanceof JsFunction) {
                         // Per §27.2.4.1.2, each Promise.all Resolve Element
                         // function tracks an [[AlreadyCalled]] slot and is
-                        // a no-op on subsequent invocations.
-                        $alreadyCalled = false;
+                        // a no-op on subsequent invocations. Use a per-
+                        // iteration stdClass so each closure gets an
+                        // independent slot — a reused `$alreadyCalled`
+                        // variable in the outer scope would be shared
+                        // across every element's closure by reference.
+                        $alreadyCalled = new \stdClass();
+                        $alreadyCalled->v = false;
                         $resolveElement = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
-                                if ($alreadyCalled) {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, $alreadyCalled): JsValue {
+                                if ($alreadyCalled->v) {
                                     return JsUndefined::instance();
                                 }
-                                $alreadyCalled = true;
+                                $alreadyCalled->v = true;
                                 $results[$i] = $args[0] ?? JsUndefined::instance();
                                 $remaining--;
                                 if ($remaining === 0) {
@@ -316,14 +321,18 @@ class PromiseConstructor
                     if ($thenMethod instanceof JsFunction) {
                         // Each (onFulfilled, onRejected) pair shares an
                         // [[AlreadyCalled]] slot per §27.2.4.2.2/.3.
-                        $alreadyCalled = false;
+                        // Use stdClass so each pair gets its own slot
+                        // (a reused local variable would be shared by
+                        // reference across all closures in the loop).
+                        $alreadyCalled = new \stdClass();
+                        $alreadyCalled->v = false;
                         $onFulfilled = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
-                                if ($alreadyCalled) {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, $alreadyCalled): JsValue {
+                                if ($alreadyCalled->v) {
                                     return JsUndefined::instance();
                                 }
-                                $alreadyCalled = true;
+                                $alreadyCalled->v = true;
                                 $value = $args[0] ?? JsUndefined::instance();
                                 $r = new JsObject();
                                 $r->set('status', new JsString('fulfilled'));
@@ -343,11 +352,11 @@ class PromiseConstructor
                         );
                         $onRejected = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
-                                if ($alreadyCalled) {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, $alreadyCalled): JsValue {
+                                if ($alreadyCalled->v) {
                                     return JsUndefined::instance();
                                 }
-                                $alreadyCalled = true;
+                                $alreadyCalled->v = true;
                                 $reason = $args[0] ?? JsUndefined::instance();
                                 $r = new JsObject();
                                 $r->set('status', new JsString('rejected'));
@@ -566,15 +575,18 @@ class PromiseConstructor
                     }
                     if ($thenMethod instanceof JsFunction) {
                         // Per §27.2.4.4.3, Reject Element tracks
-                        // [[AlreadyCalled]] separately per element.
-                        $alreadyCalled = false;
+                        // [[AlreadyCalled]] separately per element. Use
+                        // stdClass so each closure holds an independent
+                        // slot.
+                        $alreadyCalled = new \stdClass();
+                        $alreadyCalled->v = false;
                         $onRejected = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$errors, &$remaining, $reject, &$alreadyCalled): JsValue {
-                                if ($alreadyCalled) {
+                            function (JsValue $this_, array $args) use ($i, &$errors, &$remaining, $reject, $alreadyCalled): JsValue {
+                                if ($alreadyCalled->v) {
                                     return JsUndefined::instance();
                                 }
-                                $alreadyCalled = true;
+                                $alreadyCalled->v = true;
                                 $errors[$i] = $args[0] ?? JsUndefined::instance();
                                 $remaining--;
                                 if ($remaining === 0) {
