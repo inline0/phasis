@@ -88,10 +88,21 @@ class JsPromise extends JsObject
 
     /** Promise.prototype: the shared prototype for all JsPromise instances. */
     private static ?JsObject $promisePrototype = null;
+    /**
+     * The intrinsic Promise.prototype.then captured at install time. Used to
+     * decide whether JsPromise::resolve can take the fast adopt-state path
+     * or must go through the spec's PromiseResolveThenableJob (which runs
+     * whatever `then` now resolves to, including overrides).
+     */
+    private static ?JsValue $intrinsicThen = null;
 
     public static function setPromisePrototype(JsObject $proto): void
     {
         self::$promisePrototype = $proto;
+        // Snapshot the then value at install. Anything that later replaces
+        // Promise.prototype.then is observable via our shortcut check.
+        $descriptor = $proto->getOwnPropertyDescriptor('then');
+        self::$intrinsicThen = $descriptor?->value;
     }
 
     public function __construct(?JsObject $prototype = null)
@@ -135,10 +146,7 @@ class JsPromise extends JsObject
         // method's identity decides behavior).
         if ($value instanceof self) {
             $thenLookup = $value->get('then');
-            $intrinsicThen = self::$promisePrototype !== null
-                ? self::$promisePrototype->getOwnPropertyDescriptor('then')?->value
-                : null;
-            $thenUnchanged = $intrinsicThen !== null && $thenLookup === $intrinsicThen;
+            $thenUnchanged = self::$intrinsicThen !== null && $thenLookup === self::$intrinsicThen;
         } else {
             $thenUnchanged = false;
         }

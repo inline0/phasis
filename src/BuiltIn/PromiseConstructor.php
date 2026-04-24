@@ -67,14 +67,28 @@ class PromiseConstructor
                 }
                 $promise = new JsPromise($useProto);
 
-                $resolveHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
+                // Per spec CreateResolvingFunctions §27.2.1.3 the resolve/
+                // reject pair share an [[AlreadyResolved]] slot. The first
+                // call wins; subsequent calls (including the reject path
+                // taken when the executor throws AFTER calling resolve)
+                // must be no-ops.
+                $alreadyResolved = new \stdClass();
+                $alreadyResolved->v = false;
+                $resolveHandler = function (JsValue $this_, array $args) use ($promise, $alreadyResolved): JsValue {
+                    if ($alreadyResolved->v) {
+                        return JsUndefined::instance();
+                    }
+                    $alreadyResolved->v = true;
                     $promise->resolve($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
                 };
-                // Per CreateResolvingFunctions, these are anonymous built-ins.
                 $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
 
-                $rejectHandler = function (JsValue $this_, array $args) use ($promise): JsValue {
+                $rejectHandler = function (JsValue $this_, array $args) use ($promise, $alreadyResolved): JsValue {
+                    if ($alreadyResolved->v) {
+                        return JsUndefined::instance();
+                    }
+                    $alreadyResolved->v = true;
                     $promise->reject($args[0] ?? JsUndefined::instance());
                     return JsUndefined::instance();
                 };
@@ -83,11 +97,20 @@ class PromiseConstructor
                 try {
                     $executor->call(JsUndefined::instance(), [$resolveFn, $rejectFn]);
                 } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    $promise->reject($e->jsValue);
+                    if (!$alreadyResolved->v) {
+                        $alreadyResolved->v = true;
+                        $promise->reject($e->jsValue);
+                    }
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    $promise->reject(new JsString($e->getMessage()));
+                    if (!$alreadyResolved->v) {
+                        $alreadyResolved->v = true;
+                        $promise->reject(new JsString($e->getMessage()));
+                    }
                 } catch (\Throwable $e) {
-                    $promise->reject(new JsString($e->getMessage()));
+                    if (!$alreadyResolved->v) {
+                        $alreadyResolved->v = true;
+                        $promise->reject(new JsString($e->getMessage()));
+                    }
                 }
 
                 return $promise;
