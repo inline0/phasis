@@ -946,26 +946,45 @@ class IteratorConstructor
     private static function createWrapForValidIterator(JsObject $iterator): JsObject
     {
         $wrapper = new JsObject(self::$wrapForValidIteratorPrototype);
+        // Spec WrapForValidIteratorPrototype methods require an [[Iterated]]
+        // internal slot. Mark the wrapper with a non-enumerable, non-configurable
+        // slot so the next/return methods can verify `this` is a proper wrap.
+        $wrapper->defineOwnProperty(
+            '[[WrapForValidIterator]]',
+            PropertyDescriptor::data($iterator, false, false, false),
+        );
         $nextMethod = $iterator->get('next');
 
-        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($iterator, $nextMethod): JsValue {
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($nextMethod): JsValue {
+            // Validate `this` has [[WrapForValidIterator]] (set on creation).
+            if (!$this_ instanceof JsObject || $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]') === null) {
+                throw new TypeError('Iterator wrap method called on incompatible receiver');
+            }
             if (!$nextMethod instanceof JsFunction) {
                 throw new TypeError('Iterator next is not a function');
             }
+            $iter = $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]')->value;
             // Spec WrapForValidIteratorPrototype.next: invoke the inner next
             // method with no arguments; the wrapper's caller-supplied args
             // are discarded ("next argument is ignored" semantic).
-            $result = $nextMethod->call($iterator, []);
+            $result = $nextMethod->call($iter, []);
             if (!$result instanceof JsObject) {
                 throw new TypeError('Iterator result is not an object');
             }
             return $result;
         }, 0);
 
-        $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($iterator): JsValue {
-            $returnMethod = $iterator->get('return');
+        $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args): JsValue {
+            if (!$this_ instanceof JsObject || $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]') === null) {
+                throw new TypeError('Iterator wrap method called on incompatible receiver');
+            }
+            $iter = $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]')->value;
+            if (!$iter instanceof JsObject) {
+                return self::iterResult(JsUndefined::instance(), true);
+            }
+            $returnMethod = $iter->get('return');
             if ($returnMethod instanceof JsFunction) {
-                return $returnMethod->call($iterator, []);
+                return $returnMethod->call($iter, []);
             }
             return self::iterResult(JsUndefined::instance(), true);
         }, 0);
