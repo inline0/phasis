@@ -1958,10 +1958,12 @@ class ArrayConstructor
                 if ($arrayLike instanceof JsObject) {
                     $iteratorMethod = $arrayLike->getBySymbol($iterSym);
                 } else {
-                    // Primitive (String/Number/Boolean/BigInt/Symbol): look up
-                    // @@iterator on the wrapper's prototype chain.
+                    // Primitive (String/Number/Boolean/BigInt/Symbol): GetV
+                    // does ToObject for the lookup but keeps the original
+                    // primitive as the receiver so a getter on the prototype
+                    // observes the unboxed `this` value.
                     $wrapper = TypeConversion::toObject($arrayLike);
-                    $iteratorMethod = $wrapper->getBySymbol($iterSym);
+                    $iteratorMethod = $wrapper->getBySymbolWithReceiver($iterSym, $arrayLike);
                 }
 
                 $iterMethodCallable = $iteratorMethod instanceof JsFunction
