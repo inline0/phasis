@@ -473,6 +473,17 @@ class JsTypedArray extends JsObject
 
     public function get(string $name): JsValue
     {
+        // Per spec, `length`, `byteLength`, `byteOffset`, `buffer`, and
+        // `BYTES_PER_ELEMENT` live as getters on %TypedArrayPrototype% (or
+        // constructor). An own property installed via Object.defineProperty
+        // must shadow them, so check own properties first.
+        if (
+            ($name === 'length' || $name === 'byteLength' || $name === 'byteOffset'
+            || $name === 'buffer' || $name === 'BYTES_PER_ELEMENT')
+            && $this->hasOwnProperty($name)
+        ) {
+            return parent::get($name);
+        }
         if ($name === 'length') {
             return new JsNumber((float) $this->getLength());
         }

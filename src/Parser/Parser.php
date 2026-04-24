@@ -6699,12 +6699,29 @@ class Parser
 
     private function parseNewExpression(): Node
     {
-        $location = $this->expect(TokenType::New)->location;
+        $newToken = $this->expect(TokenType::New);
+        $location = $newToken->location;
+        // Per §12.7.2, the `new` keyword itself must not contain Unicode
+        // escapes — `new.target` and `new Foo()` are syntax errors.
+        if ($newToken->rawValue === 'escaped') {
+            throw new ParseError(
+                "Keyword 'new' must not contain escaped characters",
+                $newToken,
+            );
+        }
 
         // new.target: meta-property, resolves to the [[NewTarget]] env binding.
         if ($this->eat(TokenType::Dot)) {
             $token = $this->current();
             if ($token->type === TokenType::Identifier && $token->value === 'target') {
+                // Per §12.7.2, `target` in new.target is a reserved terminal
+                // and must appear literally.
+                if ($token->rawValue === 'escaped') {
+                    throw new ParseError(
+                        "'target' in new.target must not contain escaped characters",
+                        $token,
+                    );
+                }
                 $this->advance();
                 return new Identifier($location, '[[NewTarget]]');
             }

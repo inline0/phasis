@@ -1384,6 +1384,12 @@ class Interpreter
         // Delete on an identifier reference.
         if ($argument instanceof Identifier) {
             $name = $argument->name;
+            // MetaProperty (new.target, import.meta) evaluates to a value,
+            // not a Reference, so `delete (new.target)` returns true per
+            // §13.5.1.2: "If ref is not a Reference Record, return true."
+            if ($name === '[[NewTarget]]' || $name === '[[ImportMeta]]') {
+                return new JsBoolean(true);
+            }
             if ($this->strictMode) {
                 // In strict mode, `delete identifier` is a SyntaxError, but since
                 // we get here at runtime we throw it as a SyntaxError-like error.
