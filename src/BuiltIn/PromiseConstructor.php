@@ -168,7 +168,12 @@ class PromiseConstructor
                 $iterable = $args[0] ?? JsUndefined::instance();
                 $iter = self::openIterator($iterable);
                 $results = [];
-                $remaining = 0;
+                // Per §27.2.4.1.1 PerformPromiseAll step 1: start
+                // remainingElementsCount at 1 so resolve() cannot fire
+                // during iteration even if a synchronous thenable calls
+                // onFulfilled immediately. The final decrement happens
+                // after the loop, matching step 7.b-c.
+                $remaining = 1;
                 $index = 0;
                 $started = false;
                 while (true) {
@@ -196,9 +201,17 @@ class PromiseConstructor
                         return $promise;
                     }
                     if ($thenMethod instanceof JsFunction) {
+                        // Per §27.2.4.1.2, each Promise.all Resolve Element
+                        // function tracks an [[AlreadyCalled]] slot and is
+                        // a no-op on subsequent invocations.
+                        $alreadyCalled = false;
                         $resolveElement = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve): JsValue {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
+                                if ($alreadyCalled) {
+                                    return JsUndefined::instance();
+                                }
+                                $alreadyCalled = true;
                                 $results[$i] = $args[0] ?? JsUndefined::instance();
                                 $remaining--;
                                 if ($remaining === 0) {
@@ -228,6 +241,8 @@ class PromiseConstructor
                     $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
                     return $promise;
                 }
+                // Final decrement offsets the initial 1.
+                $remaining--;
                 if ($remaining === 0) {
                     $arr = [];
                     foreach ($results as $r) {
@@ -270,7 +285,8 @@ class PromiseConstructor
             try {
                 $iter = self::openIterator($args[0] ?? JsUndefined::instance());
                 $results = [];
-                $remaining = 0;
+                // Initial 1 + final decrement per §27.2.4.2.1 step 1/7.
+                $remaining = 1;
                 $index = 0;
                 $started = false;
                 while (true) {
@@ -298,9 +314,16 @@ class PromiseConstructor
                         return $promise;
                     }
                     if ($thenMethod instanceof JsFunction) {
+                        // Each (onFulfilled, onRejected) pair shares an
+                        // [[AlreadyCalled]] slot per §27.2.4.2.2/.3.
+                        $alreadyCalled = false;
                         $onFulfilled = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve): JsValue {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
+                                if ($alreadyCalled) {
+                                    return JsUndefined::instance();
+                                }
+                                $alreadyCalled = true;
                                 $value = $args[0] ?? JsUndefined::instance();
                                 $r = new JsObject();
                                 $r->set('status', new JsString('fulfilled'));
@@ -320,7 +343,11 @@ class PromiseConstructor
                         );
                         $onRejected = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve): JsValue {
+                            function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, &$alreadyCalled): JsValue {
+                                if ($alreadyCalled) {
+                                    return JsUndefined::instance();
+                                }
+                                $alreadyCalled = true;
                                 $reason = $args[0] ?? JsUndefined::instance();
                                 $r = new JsObject();
                                 $r->set('status', new JsString('rejected'));
@@ -353,6 +380,7 @@ class PromiseConstructor
                         $remaining--;
                     }
                 }
+                $remaining--;
                 if (!$started) {
                     $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
                     return $promise;
@@ -502,7 +530,8 @@ class PromiseConstructor
             try {
                 $iter = self::openIterator($args[0] ?? JsUndefined::instance());
                 $errors = [];
-                $remaining = 0;
+                // Initial 1 + final decrement per §27.2.4.4.1.
+                $remaining = 1;
                 $index = 0;
                 $started = false;
                 while (true) {
@@ -530,9 +559,16 @@ class PromiseConstructor
                         return $promise;
                     }
                     if ($thenMethod instanceof JsFunction) {
+                        // Per §27.2.4.4.3, Reject Element tracks
+                        // [[AlreadyCalled]] separately per element.
+                        $alreadyCalled = false;
                         $onRejected = JsFunction::fromCallable(
                             '',
-                            function (JsValue $this_, array $args) use ($i, &$errors, &$remaining, $reject): JsValue {
+                            function (JsValue $this_, array $args) use ($i, &$errors, &$remaining, $reject, &$alreadyCalled): JsValue {
+                                if ($alreadyCalled) {
+                                    return JsUndefined::instance();
+                                }
+                                $alreadyCalled = true;
                                 $errors[$i] = $args[0] ?? JsUndefined::instance();
                                 $remaining--;
                                 if ($remaining === 0) {
@@ -562,11 +598,24 @@ class PromiseConstructor
                         return $promise;
                     }
                 }
+                $remaining--;
                 if (!$started) {
                     $err = new JsObject();
                     $err->set('name', new JsString('AggregateError'));
                     $err->set('message', new JsString('All promises were rejected'));
                     $err->set('errors', JsArray::fromArray([]));
+                    $reject->call(JsUndefined::instance(), [$err]);
+                } elseif ($remaining === 0) {
+                    // All items already rejected synchronously during
+                    // iteration; emit the AggregateError now.
+                    $arr = [];
+                    foreach ($errors as $r) {
+                        $arr[] = $r;
+                    }
+                    $err = new JsObject();
+                    $err->set('name', new JsString('AggregateError'));
+                    $err->set('message', new JsString('All promises were rejected'));
+                    $err->set('errors', JsArray::fromArray($arr));
                     $reject->call(JsUndefined::instance(), [$err]);
                 }
                 return $promise;
