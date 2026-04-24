@@ -141,32 +141,39 @@ class PromiseConstructor
                 throw new TypeError('Promise.all called on non-object');
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+            // Iterate lazily and invoke C.resolve per item. If the iterator
+            // protocol throws — including the error-close test where
+            // Promise.resolve is monkey-patched to throw — run IteratorClose
+            // and reject. Doing this inline avoids collecting a
+            // never-terminating iterable into memory first.
             try {
-                $items = self::iterableToArray($args[0] ?? JsUndefined::instance());
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                $reject->call(JsUndefined::instance(), [$e->jsValue]);
-                return $promise;
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
-                return $promise;
-            } catch (\Throwable $e) {
-                $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
-                return $promise;
-            }
-            if (empty($items)) {
-                $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
-                return $promise;
-            }
-            $results = [];
-            $remaining = count($items);
-            foreach ($items as $i => $item) {
-                $results[$i] = JsUndefined::instance();
-                try {
-                    $resolveMethod = $this_->get('resolve');
-                    if (!$resolveMethod instanceof JsFunction) {
-                        throw new TypeError('Promise resolve is not a function');
+                $iterable = $args[0] ?? JsUndefined::instance();
+                $iter = self::openIterator($iterable);
+                $results = [];
+                $remaining = 0;
+                $index = 0;
+                $started = false;
+                while (true) {
+                    $step = self::iteratorStep($iter);
+                    if ($step === null) {
+                        break;
                     }
-                    $itemPromise = $resolveMethod->call($this_, [$item]);
+                    $started = true;
+                    $value = $step;
+                    $i = $index++;
+                    $results[$i] = JsUndefined::instance();
+                    $remaining++;
+                    try {
+                        $resolveMethod = $this_->get('resolve');
+                        if (!$resolveMethod instanceof JsFunction) {
+                            throw new TypeError('Promise resolve is not a function');
+                        }
+                        $itemPromise = $resolveMethod->call($this_, [$value]);
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
                     if ($thenMethod instanceof JsFunction) {
                         $resolveElement = JsFunction::fromCallable(
@@ -185,25 +192,40 @@ class PromiseConstructor
                             },
                             1,
                         );
-                        $thenMethod->call($itemPromise, [$resolveElement, $reject]);
+                        try {
+                            $thenMethod->call($itemPromise, [$resolveElement, $reject]);
+                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                            self::iteratorCloseIgnore($iter);
+                            $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                            return $promise;
+                        }
                     } else {
-                        // Non-thenable; treat as already-resolved.
                         $results[$i] = $itemPromise;
                         $remaining--;
                     }
-                } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                }
+                if (!$started) {
+                    $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
                     return $promise;
                 }
-            }
-            if ($remaining === 0) {
-                $arr = [];
-                foreach ($results as $r) {
-                    $arr[] = $r;
+                if ($remaining === 0) {
+                    $arr = [];
+                    foreach ($results as $r) {
+                        $arr[] = $r;
+                    }
+                    $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
                 }
-                $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
+                return $promise;
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                return $promise;
+            } catch (\Throwable $e) {
+                $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                return $promise;
             }
-            return $promise;
         }, 1);
         $constructor->defineOwnProperty('all', PropertyDescriptor::data($allFn, true, false, true));
 
@@ -658,6 +680,115 @@ class PromiseConstructor
         $obj->set('name', new JsString($name));
         $obj->set('message', new JsString($e->getMessage()));
         return $obj;
+    }
+
+    /**
+     * Open an iterator over an iterable. Returns an array with the next
+     * method and iterator object so iteratorStep and iteratorCloseIgnore
+     * can drive it step-by-step.
+     *
+     * @return array{iterator:JsObject,next:JsFunction,arrayFallback:?array<int,JsValue>}
+     */
+    private static function openIterator(JsValue $iterable): array
+    {
+        if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
+            $str = TypeConversion::toString($iterable);
+            throw new TypeError(
+                "Cannot read properties of {$str} (reading 'Symbol(Symbol.iterator)')",
+            );
+        }
+        if ($iterable instanceof JsObject) {
+            $iterSym = SymbolConstructor::iterator();
+            $iteratorMethod = $iterable->getBySymbol($iterSym);
+            if ($iteratorMethod instanceof JsFunction) {
+                $iterator = $iteratorMethod->call($iterable, []);
+                if ($iterator instanceof JsObject) {
+                    $nextMethod = $iterator->get('next');
+                    if ($nextMethod instanceof JsFunction) {
+                        return [
+                            'iterator' => $iterator,
+                            'next' => $nextMethod,
+                            'arrayFallback' => null,
+                        ];
+                    }
+                }
+                throw new TypeError('object is not iterable');
+            }
+        }
+        if ($iterable instanceof JsString) {
+            $values = [];
+            $u16 = \PhpJs\Value\JsString::utf8ToUtf16LE($iterable->value);
+            $len = (int) (strlen($u16) / 2);
+            for ($i = 0; $i < $len; $i++) {
+                $codeUnit = ord($u16[$i * 2]) | (ord($u16[$i * 2 + 1]) << 8);
+                $values[] = new JsString(\PhpJs\Value\JsString::utf16CodeUnitToUtf8($codeUnit));
+            }
+            return self::syntheticArrayIterator($values);
+        }
+        throw new TypeError('object is not iterable');
+    }
+
+    /**
+     * @param list<JsValue> $values
+     * @return array{iterator:JsObject,next:JsFunction,arrayFallback:?array<int,JsValue>}
+     */
+    private static function syntheticArrayIterator(array $values): array
+    {
+        $iterator = new JsObject();
+        $stub = JsFunction::fromCallable('next', static function (): JsValue {
+            return new JsObject();
+        }, 0);
+        return [
+            'iterator' => $iterator,
+            'next' => $stub,
+            'arrayFallback' => $values,
+        ];
+    }
+
+    /**
+     * Advance the iterator one step. Returns the next value, or null when
+     * the iterator is exhausted.
+     *
+     * @param array{iterator:JsObject,next:JsFunction,arrayFallback:?array<int,JsValue>} $iter
+     */
+    private static function iteratorStep(array &$iter): ?JsValue
+    {
+        if ($iter['arrayFallback'] !== null) {
+            if ($iter['arrayFallback'] === []) {
+                return null;
+            }
+            return array_shift($iter['arrayFallback']);
+        }
+        $ir = $iter['next']->call($iter['iterator'], []);
+        if (!$ir instanceof JsObject) {
+            throw new TypeError('iterator result is not an object');
+        }
+        if (TypeConversion::toBoolean($ir->get('done'))) {
+            return null;
+        }
+        return $ir->get('value');
+    }
+
+    /**
+     * Per §7.4.7 IteratorClose(iterator, completion): invoke the iterator's
+     * `return` method if present. Swallow any error — the caller already
+     * owns the originating error.
+     *
+     * @param array{iterator:JsObject,next:JsFunction,arrayFallback:?array<int,JsValue>} $iter
+     */
+    private static function iteratorCloseIgnore(array $iter): void
+    {
+        if ($iter['arrayFallback'] !== null) {
+            return;
+        }
+        try {
+            $return = $iter['iterator']->get('return');
+            if ($return instanceof JsFunction) {
+                $return->call($iter['iterator'], []);
+            }
+        } catch (\Throwable) {
+            // Ignore — original error wins.
+        }
     }
 
     private static function iterableToArray(JsValue $iterable): array
