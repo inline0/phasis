@@ -255,20 +255,29 @@ class JsPromise extends JsObject
     {
         $handlers = $this->pendingHandlers;
         $this->pendingHandlers = [];
+        $self = $this;
         foreach ($handlers as [$onFulfilled, $onRejected, $child]) {
             if ($child === null) {
-                // Subscription-only handler (no child promise).
+                // Subscription-only handler (no child promise). Still runs as
+                // a microtask so handler order matches spec PromiseReactions.
                 $handler = $this->state === self::STATE_FULFILLED ? $onFulfilled : $onRejected;
                 if ($handler instanceof JsFunction) {
-                    try {
-                        $handler->call(JsUndefined::instance(), [$this->value]);
-                    } catch (\Throwable) {
-                        // Ignore errors in subscription handlers.
-                    }
+                    $value = $this->value;
+                    self::scheduleCallback(static function () use ($handler, $value): void {
+                        try {
+                            $handler->call(JsUndefined::instance(), [$value]);
+                        } catch (\Throwable) {
+                            // Ignore errors in subscription handlers.
+                        }
+                    });
                 }
                 continue;
             }
-            $this->runHandler($onFulfilled, $onRejected, $child);
+            // Queue each handler as its own microtask so long .then() chains
+            // interleave with siblings per spec PromiseReactions enqueue order.
+            self::scheduleCallback(static function () use ($self, $onFulfilled, $onRejected, $child): void {
+                $self->runHandler($onFulfilled, $onRejected, $child);
+            });
         }
     }
 
