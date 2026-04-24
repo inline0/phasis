@@ -411,8 +411,50 @@ class GlobalObject
             array $args,
             ?\PhpJs\Runtime\Interpreter $interp = null,
         ): JsValue {
-            if (!$this_ instanceof JsFunction) {
+            // Spec §20.2.3.2 step 1 only requires IsCallable(Target). A Proxy
+            // whose target has [[Call]] qualifies as callable, even though our
+            // engine represents it as JsProxy rather than JsFunction. Only
+            // throw when the receiver is genuinely non-callable.
+            $isCallable = $this_ instanceof JsFunction
+                || ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable());
+            if (!$isCallable) {
                 throw new \PhpJs\Exceptions\TypeError('bind called on non-function');
+            }
+            if (!$this_ instanceof JsFunction) {
+                // Wrap the callable proxy in a JsFunction shim so the rest of
+                // the bind path (which manipulates length/name/prototype) can
+                // operate uniformly. The shim forwards [[Call]] / [[Construct]]
+                // to the proxy.
+                $proxy = $this_;
+                $shim = JsFunction::fromCallable('', function (JsValue $thisArg, array $cargs) use ($proxy): JsValue {
+                    return $proxy->apply($thisArg, $cargs);
+                });
+                if ($proxy->isConstructable()) {
+                    $shim->setConstructable();
+                }
+                // Mirror length / name from the proxy so bind's spec steps 5-9
+                // observe the proxy's own values.
+                try {
+                    $proxyLen = $proxy->get('length');
+                    $shim->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
+                        value: $proxyLen,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                } catch (\Throwable) {
+                }
+                try {
+                    $proxyName = $proxy->get('name');
+                    $shim->defineOwnProperty('name', new \PhpJs\Object\PropertyDescriptor(
+                        value: $proxyName,
+                        writable: false,
+                        enumerable: false,
+                        configurable: true,
+                    ));
+                } catch (\Throwable) {
+                }
+                $this_ = $shim;
             }
             $boundThis = $args[0] ?? JsUndefined::instance();
             $boundArgs = array_slice($args, 1);
