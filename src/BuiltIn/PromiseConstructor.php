@@ -236,25 +236,32 @@ class PromiseConstructor
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
-                $items = self::iterableToArray($args[0] ?? JsUndefined::instance());
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
-                return $promise;
-            }
-            if (empty($items)) {
-                $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
-                return $promise;
-            }
-            $results = [];
-            $remaining = count($items);
-            foreach ($items as $i => $item) {
-                $results[$i] = JsUndefined::instance();
-                try {
-                    $resolveMethod = $this_->get('resolve');
-                    if (!$resolveMethod instanceof JsFunction) {
-                        throw new TypeError('Promise resolve is not a function');
+                $iter = self::openIterator($args[0] ?? JsUndefined::instance());
+                $results = [];
+                $remaining = 0;
+                $index = 0;
+                $started = false;
+                while (true) {
+                    $step = self::iteratorStep($iter);
+                    if ($step === null) {
+                        break;
                     }
-                    $itemPromise = $resolveMethod->call($this_, [$item]);
+                    $started = true;
+                    $value = $step;
+                    $i = $index++;
+                    $results[$i] = JsUndefined::instance();
+                    $remaining++;
+                    try {
+                        $resolveMethod = $this_->get('resolve');
+                        if (!$resolveMethod instanceof JsFunction) {
+                            throw new TypeError('Promise resolve is not a function');
+                        }
+                        $itemPromise = $resolveMethod->call($this_, [$value]);
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
                     if ($thenMethod instanceof JsFunction) {
                         $onFulfilled = JsFunction::fromCallable(
@@ -297,7 +304,13 @@ class PromiseConstructor
                             },
                             1,
                         );
-                        $thenMethod->call($itemPromise, [$onFulfilled, $onRejected]);
+                        try {
+                            $thenMethod->call($itemPromise, [$onFulfilled, $onRejected]);
+                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                            self::iteratorCloseIgnore($iter);
+                            $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                            return $promise;
+                        }
                     } else {
                         $r = new JsObject();
                         $r->set('status', new JsString('fulfilled'));
@@ -305,19 +318,29 @@ class PromiseConstructor
                         $results[$i] = $r;
                         $remaining--;
                     }
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                }
+                if (!$started) {
+                    $resolve->call(JsUndefined::instance(), [JsArray::fromArray([])]);
                     return $promise;
                 }
-            }
-            if ($remaining === 0) {
-                $arr = [];
-                foreach ($results as $r) {
-                    $arr[] = $r;
+                if ($remaining === 0) {
+                    $arr = [];
+                    foreach ($results as $r) {
+                        $arr[] = $r;
+                    }
+                    $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
                 }
-                $resolve->call(JsUndefined::instance(), [JsArray::fromArray($arr)]);
+                return $promise;
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                return $promise;
+            } catch (\Throwable $e) {
+                $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                return $promise;
             }
-            return $promise;
         }, 1);
         $constructor->defineOwnProperty('allSettled', PropertyDescriptor::data($allSettledFn, true, false, true));
 
@@ -414,29 +437,32 @@ class PromiseConstructor
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
-                $items = self::iterableToArray($args[0] ?? JsUndefined::instance());
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
-                return $promise;
-            }
-            if (empty($items)) {
-                $err = new JsObject();
-                $err->set('name', new JsString('AggregateError'));
-                $err->set('message', new JsString('All promises were rejected'));
-                $err->set('errors', JsArray::fromArray([]));
-                $reject->call(JsUndefined::instance(), [$err]);
-                return $promise;
-            }
-            $errors = [];
-            $remaining = count($items);
-            foreach ($items as $i => $item) {
-                $errors[$i] = JsUndefined::instance();
-                try {
-                    $resolveMethod = $this_->get('resolve');
-                    if (!$resolveMethod instanceof JsFunction) {
-                        throw new TypeError('Promise resolve is not a function');
+                $iter = self::openIterator($args[0] ?? JsUndefined::instance());
+                $errors = [];
+                $remaining = 0;
+                $index = 0;
+                $started = false;
+                while (true) {
+                    $step = self::iteratorStep($iter);
+                    if ($step === null) {
+                        break;
                     }
-                    $itemPromise = $resolveMethod->call($this_, [$item]);
+                    $started = true;
+                    $value = $step;
+                    $i = $index++;
+                    $errors[$i] = JsUndefined::instance();
+                    $remaining++;
+                    try {
+                        $resolveMethod = $this_->get('resolve');
+                        if (!$resolveMethod instanceof JsFunction) {
+                            throw new TypeError('Promise resolve is not a function');
+                        }
+                        $itemPromise = $resolveMethod->call($this_, [$value]);
+                    } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                        self::iteratorCloseIgnore($iter);
+                        $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                        return $promise;
+                    }
                     $thenMethod = $itemPromise instanceof JsObject ? $itemPromise->get('then') : null;
                     if ($thenMethod instanceof JsFunction) {
                         $onRejected = JsFunction::fromCallable(
@@ -459,18 +485,36 @@ class PromiseConstructor
                             },
                             1,
                         );
-                        $thenMethod->call($itemPromise, [$resolve, $onRejected]);
+                        try {
+                            $thenMethod->call($itemPromise, [$resolve, $onRejected]);
+                        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                            self::iteratorCloseIgnore($iter);
+                            $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                            return $promise;
+                        }
                     } else {
-                        // Non-thenable resolves directly.
                         $resolve->call(JsUndefined::instance(), [$itemPromise]);
                         return $promise;
                     }
-                } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
-                    return $promise;
                 }
+                if (!$started) {
+                    $err = new JsObject();
+                    $err->set('name', new JsString('AggregateError'));
+                    $err->set('message', new JsString('All promises were rejected'));
+                    $err->set('errors', JsArray::fromArray([]));
+                    $reject->call(JsUndefined::instance(), [$err]);
+                }
+                return $promise;
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                $reject->call(JsUndefined::instance(), [self::phpErrorToJsValue($e)]);
+                return $promise;
+            } catch (\Throwable $e) {
+                $reject->call(JsUndefined::instance(), [new JsString($e->getMessage())]);
+                return $promise;
             }
-            return $promise;
         }, 1);
         $constructor->defineOwnProperty('any', PropertyDescriptor::data($anyFn, true, false, true));
 
