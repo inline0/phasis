@@ -1316,13 +1316,16 @@ class ArrayConstructor
             'sort',
             function (JsValue $this_, array $args): JsValue {
                 // Per spec, if comparefn is not undefined and not callable, throw TypeError
-                // before accessing the object's length.
+                // before accessing the object's length. Callable includes JsFunction
+                // and a JsProxy whose target has a [[Call]] slot.
                 $compareFnArg = $args[0] ?? JsUndefined::instance();
-                if (!$compareFnArg instanceof JsUndefined && !$compareFnArg instanceof JsFunction) {
+                $isCallableCompareFn = $compareFnArg instanceof JsFunction
+                    || ($compareFnArg instanceof \PhpJs\Value\JsProxy && $compareFnArg->isCallable());
+                if (!$compareFnArg instanceof JsUndefined && !$isCallableCompareFn) {
                     throw new TypeError($compareFnArg->display() . ' is not a function');
                 }
                 $this_ = self::toObject($this_);
-                $compareFn = $compareFnArg instanceof JsFunction ? $compareFnArg : null;
+                $compareFn = $isCallableCompareFn ? $compareFnArg : null;
                 $len = self::getLen($this_);
                 // Collect only existing (non-hole) elements, per spec SortIndexedProperties.
                 $items = [];
@@ -1346,7 +1349,11 @@ class ArrayConstructor
                         return -1;
                     }
                     if ($compareFn !== null) {
-                        $result = $compareFn->call(JsUndefined::instance(), [$a, $b]);
+                        if ($compareFn instanceof \PhpJs\Value\JsProxy) {
+                            $result = $compareFn->apply(JsUndefined::instance(), [$a, $b]);
+                        } else {
+                            $result = $compareFn->call(JsUndefined::instance(), [$a, $b]);
+                        }
                         $num = TypeConversion::toNumber($result);
                         if (is_nan($num)) {
                             return 0;
@@ -1506,7 +1513,9 @@ class ArrayConstructor
             'toSorted',
             function (JsValue $this_, array $args): JsValue {
                 $compareFnArg = $args[0] ?? JsUndefined::instance();
-                if (!$compareFnArg instanceof JsUndefined && !$compareFnArg instanceof JsFunction) {
+                $isCallableCompareFn = $compareFnArg instanceof JsFunction
+                    || ($compareFnArg instanceof \PhpJs\Value\JsProxy && $compareFnArg->isCallable());
+                if (!$compareFnArg instanceof JsUndefined && !$isCallableCompareFn) {
                     throw new TypeError($compareFnArg->display() . ' is not a function');
                 }
                 $o = self::toObject($this_);
@@ -1514,7 +1523,7 @@ class ArrayConstructor
                 if ($len > 4294967295) {
                     throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
-                $compareFn = $compareFnArg instanceof JsFunction ? $compareFnArg : null;
+                $compareFn = $isCallableCompareFn ? $compareFnArg : null;
                 // Collect all elements (no holes: toSorted reads every index).
                 $items = [];
                 for ($k = 0; $k < $len; $k++) {
@@ -1533,7 +1542,9 @@ class ArrayConstructor
                         return -1;
                     }
                     if ($compareFn !== null) {
-                        $result = $compareFn->call(JsUndefined::instance(), [$a, $b]);
+                        $result = $compareFn instanceof \PhpJs\Value\JsProxy
+                            ? $compareFn->apply(JsUndefined::instance(), [$a, $b])
+                            : $compareFn->call(JsUndefined::instance(), [$a, $b]);
                         $num = TypeConversion::toNumber($result);
                         if (is_nan($num)) {
                             return 0;
