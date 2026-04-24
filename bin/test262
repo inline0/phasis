@@ -6,6 +6,12 @@ declare(strict_types=1);
 ini_set('memory_limit', '1G');
 // Safety net: no single test262 invocation should run longer than 30 min.
 set_time_limit(1800);
+// Bound PCRE backtracking so pathological test262 regex patterns fail fast
+// instead of hanging the worker. set_time_limit() does not interrupt
+// preg_match native calls, so without this a single hanging test can freeze
+// a whole chunk and eat the shard budget.
+ini_set('pcre.backtrack_limit', '500000');
+ini_set('pcre.recursion_limit', '100000');
 
 require __DIR__ . '/../vendor/autoload.php';
 

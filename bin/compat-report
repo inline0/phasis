@@ -39,7 +39,7 @@ function compatReportMain(array $argv): void
 
     fwrite(STDERR, "Building full compatibility snapshot...\n");
 
-    $discovery = discoverCompatGroups($suiteDir, $options['match']);
+    $discovery = discoverCompatGroups($suiteDir, $options['match'], $options['exclude']);
     if ($discovery['groups'] === []) {
         fwrite(STDERR, "No compat groups found.\n");
         exit(1);
@@ -103,6 +103,7 @@ function parseCompatOptions(array $argv): array
     $options = [
         'jobs' => 4,
         'match' => null,
+        'exclude' => [],
         'chunkSize' => 250,
         'timeoutSec' => 300,
         'stateDir' => '.compat-state',
@@ -117,6 +118,12 @@ function parseCompatOptions(array $argv): array
                 break;
             case '--match':
                 $options['match'] = $args[++$i] ?? null;
+                break;
+            case '--exclude':
+                $exclude = $args[++$i] ?? null;
+                if ($exclude !== null && $exclude !== '') {
+                    $options['exclude'][] = $exclude;
+                }
                 break;
             case '--chunk-size':
                 $options['chunkSize'] = max(1, (int) ($args[++$i] ?? 250));
@@ -142,9 +149,10 @@ function parseCompatOptions(array $argv): array
 }
 
 /**
+ * @param list<string> $exclude
  * @return array{groups: array<string, list<string>>, testFileCount: int}
  */
-function discoverCompatGroups(string $suiteDir, ?string $match): array
+function discoverCompatGroups(string $suiteDir, ?string $match, array $exclude = []): array
 {
     fwrite(STDERR, "  - discovering categories\n");
 
@@ -170,6 +178,18 @@ function discoverCompatGroups(string $suiteDir, ?string $match): array
         }
         if ($match !== null && !str_starts_with($group, $match)) {
             continue;
+        }
+        if ($exclude !== []) {
+            $skip = false;
+            foreach ($exclude as $ex) {
+                if (str_starts_with($group, $ex)) {
+                    $skip = true;
+                    break;
+                }
+            }
+            if ($skip) {
+                continue;
+            }
         }
 
         if (!isset($groups[$group])) {
@@ -198,10 +218,14 @@ function compatGroupForDirectory(string $relativeDir): ?string
     }
 
     $parts = explode('/', $relativeDir);
-    $depth = match ($parts[0]) {
-        'annexB' => min(count($parts), 3),
-        default => min(count($parts), 2),
-    };
+    // built-ins/RegExp and built-ins/Temporal have huge flat subdirectories that
+    // are expensive to run. Group at depth 3 so CI shards can parallelise across
+    // subgroups (e.g. built-ins/RegExp/prototype, built-ins/RegExp/property-escapes)
+    // without any one shard having to handle the full set.
+    $isDeep = $parts[0] === 'annexB'
+        || ($parts[0] === 'built-ins' && ($parts[1] ?? '') === 'RegExp')
+        || ($parts[0] === 'built-ins' && ($parts[1] ?? '') === 'Temporal');
+    $depth = $isDeep ? min(count($parts), 3) : min(count($parts), 2);
 
     return implode('/', array_slice($parts, 0, $depth));
 }
@@ -229,6 +253,7 @@ function buildCompatFingerprint(
     return sha1(json_encode([
         'version' => 2,
         'match' => $options['match'],
+        'exclude' => $options['exclude'] ?? [],
         'chunkSize' => $options['chunkSize'],
         'supportConfig' => sha1(json_encode($supportConfig)),
         'compatReportHash' => hashFileOrEmpty($rootDir . '/bin/compat-report'),

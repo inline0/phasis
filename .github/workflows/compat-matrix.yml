@@ -7,7 +7,8 @@ name: Compatibility Report (Matrix)
 #
 # IMPORTANT: the union of shard prefixes MUST cover every test262 top-level
 # category and the shards MUST NOT overlap. compat-report --match is a
-# startswith match on the group name (e.g. "built-ins/Array").
+# startswith match on the group name (e.g. "built-ins/Array"); --exclude
+# (also startswith) carves overlapping subgroups out.
 
 on:
   workflow_dispatch:
@@ -15,6 +16,9 @@ on:
 concurrency:
   group: compat-matrix
   cancel-in-progress: false
+
+permissions:
+  contents: write
 
 jobs:
   shard:
@@ -29,76 +33,88 @@ jobs:
       matrix:
         shard:
           # Catch-all top-level sections (small).
-          - { id: 'annexB', prefix: 'annexB' }
-          - { id: 'harness', prefix: 'harness' }
-          - { id: 'intl402', prefix: 'intl402' }
-          - { id: 'staging', prefix: 'staging' }
+          - { id: 'annexB', prefix: 'annexB', exclude: '' }
+          - { id: 'harness', prefix: 'harness', exclude: '' }
+          - { id: 'intl402', prefix: 'intl402', exclude: '' }
+          - { id: 'staging', prefix: 'staging', exclude: '' }
           # built-ins split by first letter so shards never overlap.
           # Top-level built-ins start with: A B D E F G I J M N O P R S T U W
           # plus lowercase: d e g i p u (which start lowercase top-levels like
           # "decodeURIComponent", "encodeURI", "eval", "globalThis",
           # "isFinite", "isNaN", "parseFloat", "parseInt", "undefined").
-          - { id: 'builtins-A', prefix: 'built-ins/A' }
-          - { id: 'builtins-Array', prefix: 'built-ins/Array' }
-          - { id: 'builtins-B', prefix: 'built-ins/B' }
-          - { id: 'builtins-D', prefix: 'built-ins/D' }
-          - { id: 'builtins-E', prefix: 'built-ins/E' }
-          - { id: 'builtins-F', prefix: 'built-ins/F' }
-          - { id: 'builtins-G', prefix: 'built-ins/G' }
-          - { id: 'builtins-I', prefix: 'built-ins/I' }
-          - { id: 'builtins-J', prefix: 'built-ins/J' }
-          - { id: 'builtins-M', prefix: 'built-ins/M' }
-          - { id: 'builtins-N', prefix: 'built-ins/N' }
-          - { id: 'builtins-O', prefix: 'built-ins/O' }
-          - { id: 'builtins-P', prefix: 'built-ins/P' }
-          # RegExp alone has 1800+ tests and can hang on PCRE infinite
-          # loops. Keep Reflect separate so it doesn't get blocked. The
-          # RegExp prefix also covers RegExpStringIteratorPrototype.
-          - { id: 'builtins-Reflect', prefix: 'built-ins/Reflect' }
-          - { id: 'builtins-RegExp', prefix: 'built-ins/RegExp' }
-          - { id: 'builtins-S', prefix: 'built-ins/S' }
-          - { id: 'builtins-Temporal', prefix: 'built-ins/Temporal' }
-          - { id: 'builtins-TypedArray', prefix: 'built-ins/TypedArray' }
-          - { id: 'builtins-ThrowTypeError', prefix: 'built-ins/ThrowTypeError' }
-          - { id: 'builtins-U', prefix: 'built-ins/U' }
-          - { id: 'builtins-W', prefix: 'built-ins/W' }
+          - { id: 'builtins-A', prefix: 'built-ins/A', exclude: '' }
+          - { id: 'builtins-Array', prefix: 'built-ins/Array', exclude: '' }
+          - { id: 'builtins-B', prefix: 'built-ins/B', exclude: '' }
+          - { id: 'builtins-D', prefix: 'built-ins/D', exclude: '' }
+          - { id: 'builtins-E', prefix: 'built-ins/E', exclude: '' }
+          - { id: 'builtins-F', prefix: 'built-ins/F', exclude: '' }
+          - { id: 'builtins-G', prefix: 'built-ins/G', exclude: '' }
+          - { id: 'builtins-I', prefix: 'built-ins/I', exclude: '' }
+          - { id: 'builtins-J', prefix: 'built-ins/J', exclude: '' }
+          - { id: 'builtins-M', prefix: 'built-ins/M', exclude: '' }
+          - { id: 'builtins-N', prefix: 'built-ins/N', exclude: '' }
+          - { id: 'builtins-O', prefix: 'built-ins/O', exclude: '' }
+          - { id: 'builtins-P', prefix: 'built-ins/P', exclude: '' }
+          - { id: 'builtins-Reflect', prefix: 'built-ins/Reflect', exclude: '' }
+          # RegExp has 1867 tests with several PCRE-hanging patterns.
+          # Split into three shards so any one shard fits well under the
+          # 45-min cap. compat-report groups RegExp at depth 3 so these
+          # subprefixes resolve to distinct groups.
+          - { id: 'builtins-RegExp-prototype', prefix: 'built-ins/RegExp/prototype', exclude: '' }
+          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: '' }
+          - { id: 'builtins-RegExp-rest', prefix: 'built-ins/RegExp', exclude: 'built-ins/RegExp/prototype built-ins/RegExp/property-escapes' }
+          - { id: 'builtins-S', prefix: 'built-ins/S', exclude: '' }
+          # Temporal has 4165 tests; split by top-level type.
+          - { id: 'builtins-Temporal-Duration', prefix: 'built-ins/Temporal/Duration', exclude: '' }
+          - { id: 'builtins-Temporal-Instant', prefix: 'built-ins/Temporal/Instant', exclude: '' }
+          - { id: 'builtins-Temporal-PlainDate', prefix: 'built-ins/Temporal/PlainDate', exclude: 'built-ins/Temporal/PlainDateTime' }
+          - { id: 'builtins-Temporal-PlainDateTime', prefix: 'built-ins/Temporal/PlainDateTime', exclude: '' }
+          - { id: 'builtins-Temporal-PlainTime', prefix: 'built-ins/Temporal/PlainTime', exclude: '' }
+          - { id: 'builtins-Temporal-PlainYearMonth', prefix: 'built-ins/Temporal/PlainYearMonth', exclude: '' }
+          - { id: 'builtins-Temporal-PlainMonthDay', prefix: 'built-ins/Temporal/PlainMonthDay', exclude: '' }
+          - { id: 'builtins-Temporal-ZonedDateTime', prefix: 'built-ins/Temporal/ZonedDateTime', exclude: '' }
+          - { id: 'builtins-Temporal-rest', prefix: 'built-ins/Temporal', exclude: 'built-ins/Temporal/Duration built-ins/Temporal/Instant built-ins/Temporal/PlainDate built-ins/Temporal/PlainTime built-ins/Temporal/PlainYearMonth built-ins/Temporal/PlainMonthDay built-ins/Temporal/ZonedDateTime' }
+          - { id: 'builtins-TypedArray', prefix: 'built-ins/TypedArray', exclude: '' }
+          - { id: 'builtins-ThrowTypeError', prefix: 'built-ins/ThrowTypeError', exclude: '' }
+          - { id: 'builtins-U', prefix: 'built-ins/U', exclude: '' }
+          - { id: 'builtins-W', prefix: 'built-ins/W', exclude: '' }
           # Lowercase top-level built-ins.
-          - { id: 'builtins-lower-de', prefix: 'built-ins/d' }
-          - { id: 'builtins-lower-en', prefix: 'built-ins/e' }
-          - { id: 'builtins-lower-g', prefix: 'built-ins/g' }
-          - { id: 'builtins-lower-is', prefix: 'built-ins/i' }
-          - { id: 'builtins-lower-parse', prefix: 'built-ins/p' }
-          - { id: 'builtins-lower-undef', prefix: 'built-ins/u' }
+          - { id: 'builtins-lower-de', prefix: 'built-ins/d', exclude: '' }
+          - { id: 'builtins-lower-en', prefix: 'built-ins/e', exclude: '' }
+          - { id: 'builtins-lower-g', prefix: 'built-ins/g', exclude: '' }
+          - { id: 'builtins-lower-is', prefix: 'built-ins/i', exclude: '' }
+          - { id: 'builtins-lower-parse', prefix: 'built-ins/p', exclude: '' }
+          - { id: 'builtins-lower-undef', prefix: 'built-ins/u', exclude: '' }
           # language/ is also split.
-          - { id: 'language-expressions', prefix: 'language/expressions' }
-          - { id: 'language-statements', prefix: 'language/statements' }
-          - { id: 'language-module-code', prefix: 'language/module-code' }
-          - { id: 'language-eval-code', prefix: 'language/eval-code' }
-          - { id: 'language-literals', prefix: 'language/literals' }
-          - { id: 'language-arguments', prefix: 'language/arguments-object' }
-          - { id: 'language-asi', prefix: 'language/asi' }
-          - { id: 'language-block-scope', prefix: 'language/block-scope' }
-          - { id: 'language-comments', prefix: 'language/comments' }
-          - { id: 'language-computed', prefix: 'language/computed-property-names' }
-          - { id: 'language-destructuring', prefix: 'language/destructuring' }
-          - { id: 'language-directive', prefix: 'language/directive-prologue' }
-          - { id: 'language-export-import', prefix: 'language/export' }
-          - { id: 'language-import', prefix: 'language/import' }
-          - { id: 'language-function-code', prefix: 'language/function-code' }
-          - { id: 'language-future-reserved', prefix: 'language/future-reserved-words' }
-          - { id: 'language-global-code', prefix: 'language/global-code' }
-          - { id: 'language-identifier', prefix: 'language/identifier' }
-          - { id: 'language-keywords', prefix: 'language/keywords' }
-          - { id: 'language-line-terminators', prefix: 'language/line-terminators' }
-          - { id: 'language-punctuators', prefix: 'language/punctuators' }
-          - { id: 'language-reserved-words', prefix: 'language/reserved-words' }
-          - { id: 'language-source-text', prefix: 'language/source-text' }
-          - { id: 'language-statements-list', prefix: 'language/statementList' }
-          - { id: 'language-types', prefix: 'language/types' }
-          - { id: 'language-white-space', prefix: 'language/white-space' }
+          - { id: 'language-expressions', prefix: 'language/expressions', exclude: '' }
+          - { id: 'language-statements', prefix: 'language/statements', exclude: '' }
+          - { id: 'language-module-code', prefix: 'language/module-code', exclude: '' }
+          - { id: 'language-eval-code', prefix: 'language/eval-code', exclude: '' }
+          - { id: 'language-literals', prefix: 'language/literals', exclude: '' }
+          - { id: 'language-arguments', prefix: 'language/arguments-object', exclude: '' }
+          - { id: 'language-asi', prefix: 'language/asi', exclude: '' }
+          - { id: 'language-block-scope', prefix: 'language/block-scope', exclude: '' }
+          - { id: 'language-comments', prefix: 'language/comments', exclude: '' }
+          - { id: 'language-computed', prefix: 'language/computed-property-names', exclude: '' }
+          - { id: 'language-destructuring', prefix: 'language/destructuring', exclude: '' }
+          - { id: 'language-directive', prefix: 'language/directive-prologue', exclude: '' }
+          - { id: 'language-export-import', prefix: 'language/export', exclude: '' }
+          - { id: 'language-import', prefix: 'language/import', exclude: '' }
+          - { id: 'language-function-code', prefix: 'language/function-code', exclude: '' }
+          - { id: 'language-future-reserved', prefix: 'language/future-reserved-words', exclude: '' }
+          - { id: 'language-global-code', prefix: 'language/global-code', exclude: '' }
+          - { id: 'language-identifier', prefix: 'language/identifier', exclude: '' }
+          - { id: 'language-keywords', prefix: 'language/keywords', exclude: '' }
+          - { id: 'language-line-terminators', prefix: 'language/line-terminators', exclude: '' }
+          - { id: 'language-punctuators', prefix: 'language/punctuators', exclude: '' }
+          - { id: 'language-reserved-words', prefix: 'language/reserved-words', exclude: '' }
+          - { id: 'language-source-text', prefix: 'language/source-text', exclude: '' }
+          - { id: 'language-statements-list', prefix: 'language/statementList', exclude: '' }
+          - { id: 'language-types', prefix: 'language/types', exclude: '' }
+          - { id: 'language-white-space', prefix: 'language/white-space', exclude: '' }
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -126,12 +142,16 @@ jobs:
         run: |
           set -x
           mkdir -p .compat-state-${{ matrix.shard.id }}
-          # Smaller chunks with a tighter per-chunk timeout so a single
-          # hanging test (PCRE infinite loop etc.) only loses 30s and up
-          # to 50 sibling tests in the same chunk, not a quarter of the
-          # shard.
+          # Build --exclude args from the whitespace-separated list in the
+          # matrix entry. Tight per-chunk timeout bounds how much a hanging
+          # test can steal from the shard budget.
+          EXCLUDE_ARGS=""
+          for ex in ${{ matrix.shard.exclude }}; do
+            EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude $ex"
+          done
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
+            $EXCLUDE_ARGS \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs 4 \
             --timeout 30 \
@@ -143,7 +163,7 @@ jobs:
 
       - name: Upload shard state
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compat-shard-${{ matrix.shard.id }}
           path: .compat-state-${{ matrix.shard.id }}
@@ -157,12 +177,17 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Fetch full history so rebase-onto-main succeeds even when main
+          # has advanced since the workflow started.
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -176,7 +201,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist
 
       - name: Download all shard artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: compat-shard-*
           path: .compat-shards
@@ -195,7 +220,7 @@ jobs:
 
       - name: Upload merged artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compat-report
           path: |
@@ -205,18 +230,26 @@ jobs:
       - name: Commit COMPAT.md
         if: success()
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add COMPAT.md compat.json
           if git diff --cached --quiet; then
-            echo "No changes"
-          else
-            git commit -m "Update COMPAT.md from CI [skip ci]"
-            # The workflow can run for an hour+; rebase onto whatever main
-            # has moved to so the push does not fail on a conflict with
-            # unrelated commits. If rebase fails the artifact is still
-            # uploaded and we can commit manually.
-            git fetch origin main
-            git rebase origin/main || { git rebase --abort; exit 0; }
-            git push
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Update COMPAT.md from CI [skip ci]"
+          # The workflow can run for an hour+; rebase onto whatever main
+          # has moved to so the push does not fail on a conflict with
+          # unrelated commits. If rebase fails we bail gracefully; the
+          # artifact upload still carries the snapshot for manual commit.
+          git fetch origin main
+          if ! git rebase origin/main; then
+            git rebase --abort
+            echo "Rebase conflict; snapshot is in the compat-report artifact."
+            exit 0
+          fi
+          if ! git push origin HEAD:main; then
+            echo "Push failed; snapshot is in the compat-report artifact."
+            exit 0
           fi

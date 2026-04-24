@@ -26,7 +26,7 @@ require $rootDir . '/bin/compat-report';
 $supportConfig = require $rootDir . '/config/support.php';
 $suiteDir = $rootDir . '/test262/test';
 
-$discovery = discoverCompatGroups($suiteDir, null);
+$discovery = discoverCompatGroups($suiteDir, null, []);
 if ($discovery['groups'] === []) {
     fwrite(STDERR, "No compat groups found\n");
     exit(1);
@@ -46,6 +46,7 @@ ensureDirectory($stateDir . '/manifests');
 $options = [
     'jobs' => 4,
     'match' => null,
+    'exclude' => [],
     'chunkSize' => 250,
     'timeoutSec' => 300,
     'stateDir' => '.compat-state',
