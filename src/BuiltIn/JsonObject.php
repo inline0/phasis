@@ -224,7 +224,9 @@ class JsonObject
                 return new JsNumber(-0.0);
             }
 
-            $decoded = json_decode($text, true);
+            // Decode objects to stdClass so we can distinguish {} from [];
+            // both decode to PHP's empty array under assoc=true.
+            $decoded = json_decode($text);
 
             if ($decoded === null && $trimmed !== 'null') {
                 if (json_last_error() !== JSON_ERROR_NONE) {
@@ -657,21 +659,23 @@ class JsonObject
         if (is_string($value)) {
             return new JsString($value);
         }
-        if (is_array($value)) {
-            if (array_is_list($value)) {
-                $items = array_map(fn(mixed $v) => self::phpToJsValue($v), $value);
-                return JsArray::fromArray($items);
-            }
+        if ($value instanceof \stdClass) {
             $obj = new JsObject();
             foreach ($value as $key => $val) {
-                // Use defineOwnProperty to avoid triggering inherited setters
-                // (e.g., __proto__ accessor on Object.prototype).
                 $obj->defineOwnProperty(
                     (string) $key,
                     PropertyDescriptor::data(self::phpToJsValue($val), true, true, true),
                 );
             }
             return $obj;
+        }
+        if (is_array($value)) {
+            // Note: PHP's json_decode($text, true) collapses both [] and {}
+            // to []; we rely on json_decode($text) (no assoc flag) so empty
+            // JSON objects come back as stdClass instances above. Any plain
+            // PHP array reaching this branch comes from JSON arrays.
+            $items = array_map(fn(mixed $v) => self::phpToJsValue($v), $value);
+            return JsArray::fromArray($items);
         }
         return JsNull::instance();
     }
