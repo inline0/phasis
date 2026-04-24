@@ -141,6 +141,22 @@ class PromiseConstructor
                 throw new TypeError('Promise.all called on non-object');
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
+            // Per §27.2.4.1 Promise.all step 3: GetPromiseResolve(C) runs
+            // BEFORE the iterable is opened. If Get(C, "resolve") throws or
+            // returns a non-callable, reject without touching the iterable.
+            try {
+                $resolveMethod = $this_->get('resolve');
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            }
+            if (!$resolveMethod instanceof JsFunction) {
+                $err = new JsObject();
+                $err->set('name', new JsString('TypeError'));
+                $err->set('message', new JsString('Promise.all resolve is not a function'));
+                $reject->call(JsUndefined::instance(), [$err]);
+                return $promise;
+            }
             // Iterate lazily and invoke C.resolve per item. If the iterator
             // protocol throws — including the error-close test where
             // Promise.resolve is monkey-patched to throw — run IteratorClose
@@ -164,10 +180,6 @@ class PromiseConstructor
                     $results[$i] = JsUndefined::instance();
                     $remaining++;
                     try {
-                        $resolveMethod = $this_->get('resolve');
-                        if (!$resolveMethod instanceof JsFunction) {
-                            throw new TypeError('Promise resolve is not a function');
-                        }
                         $itemPromise = $resolveMethod->call($this_, [$value]);
                     } catch (\PhpJs\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
@@ -236,6 +248,19 @@ class PromiseConstructor
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
+                $resolveMethod = $this_->get('resolve');
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            }
+            if (!$resolveMethod instanceof JsFunction) {
+                $err = new JsObject();
+                $err->set('name', new JsString('TypeError'));
+                $err->set('message', new JsString('Promise.allSettled resolve is not a function'));
+                $reject->call(JsUndefined::instance(), [$err]);
+                return $promise;
+            }
+            try {
                 $iter = self::openIterator($args[0] ?? JsUndefined::instance());
                 $results = [];
                 $remaining = 0;
@@ -252,10 +277,6 @@ class PromiseConstructor
                     $results[$i] = JsUndefined::instance();
                     $remaining++;
                     try {
-                        $resolveMethod = $this_->get('resolve');
-                        if (!$resolveMethod instanceof JsFunction) {
-                            throw new TypeError('Promise resolve is not a function');
-                        }
                         $itemPromise = $resolveMethod->call($this_, [$value]);
                     } catch (\PhpJs\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
@@ -437,6 +458,19 @@ class PromiseConstructor
             }
             [$promise, $resolve, $reject] = self::newPromiseCapability($this_);
             try {
+                $resolveMethod = $this_->get('resolve');
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                return $promise;
+            }
+            if (!$resolveMethod instanceof JsFunction) {
+                $err = new JsObject();
+                $err->set('name', new JsString('TypeError'));
+                $err->set('message', new JsString('Promise.any resolve is not a function'));
+                $reject->call(JsUndefined::instance(), [$err]);
+                return $promise;
+            }
+            try {
                 $iter = self::openIterator($args[0] ?? JsUndefined::instance());
                 $errors = [];
                 $remaining = 0;
@@ -453,10 +487,6 @@ class PromiseConstructor
                     $errors[$i] = JsUndefined::instance();
                     $remaining++;
                     try {
-                        $resolveMethod = $this_->get('resolve');
-                        if (!$resolveMethod instanceof JsFunction) {
-                            throw new TypeError('Promise resolve is not a function');
-                        }
                         $itemPromise = $resolveMethod->call($this_, [$value]);
                     } catch (\PhpJs\Exceptions\JsThrowable $e) {
                         self::iteratorCloseIgnore($iter);
