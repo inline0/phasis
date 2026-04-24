@@ -480,7 +480,13 @@ class PromiseConstructor
 
                 // Per §27.2.4.3.1 step 4.j: Invoke(nextPromise, "then",
                 // [resultCapability.[[Resolve]], resultCapability.[[Reject]]]).
-                $thenMethod = $nextPromise instanceof JsObject ? $nextPromise->get('then') : null;
+                try {
+                    $thenMethod = $nextPromise instanceof JsObject ? $nextPromise->get('then') : null;
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    self::iteratorCloseIgnore($iter);
+                    $reject->call(JsUndefined::instance(), [$e->jsValue]);
+                    return $promise;
+                }
                 if ($thenMethod instanceof JsFunction) {
                     try {
                         $thenMethod->call($nextPromise, [$resolve, $reject]);
