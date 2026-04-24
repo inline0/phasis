@@ -224,7 +224,15 @@ class NumberConstructor
                 return new JsString(self::numberToDecimalString($numValue));
             }
 
-            return new JsString(number_format($numValue, $digits, '.', ''));
+            // PHP's number_format drops the sign for negative values that
+            // round to zero, but spec §21.1.3.3 step 12 prepends "-" when
+            // x < 0 (signed-zero semantics: -0 stays "0"; tiny negative
+            // values like -Number.MIN_VALUE rounded to 0 still get "-").
+            $formatted = number_format(abs($numValue), $digits, '.', '');
+            if ($numValue < 0) {
+                $formatted = '-' . $formatted;
+            }
+            return new JsString($formatted);
         };
     }
 
