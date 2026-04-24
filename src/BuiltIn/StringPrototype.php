@@ -456,29 +456,44 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $strLen = mb_strlen($str, 'UTF-8');
 
-            // Step 4: pos = ToIntegerOrInfinity(position). NaN becomes 0.
+            // Per §22.1.3.9 String.prototype.indexOf: positions are UTF-16
+            // code unit offsets. Convert both haystack and needle to UTF-16LE
+            // byte strings and search by byte, then divide by 2. Using
+            // mb_strpos with UTF-8 counts codepoints which misaligns for
+            // strings that contain surrogate pairs (chars above U+FFFF).
+            $hayU16 = JsString::utf8ToUtf16LE($str);
+            $needleU16 = JsString::utf8ToUtf16LE($search);
+            $hayLen = strlen($hayU16) / 2;
+
             $posFloat = isset($args[1])
                 ? TypeConversion::toIntegerOrInfinity($args[1])
                 : 0.0;
-
-            // Step 5: clamp to [0, len]
             if (is_nan($posFloat)) {
                 $posFloat = 0.0;
             }
-            $fromIndex = (int) max(0, min($posFloat === INF ? $strLen : $posFloat, $strLen));
+            $fromIndex = (int) max(0, min($posFloat === INF ? $hayLen : $posFloat, $hayLen));
 
-            // Guard: if fromIndex exceeds string length, only empty search can match.
-            if ($fromIndex >= $strLen) {
-                if ($search === '' && $fromIndex === $strLen) {
-                    return new JsNumber((float) $strLen);
+            if ($fromIndex >= $hayLen) {
+                if ($search === '' && $fromIndex === (int) $hayLen) {
+                    return new JsNumber((float) $hayLen);
                 }
                 return new JsNumber(-1.0);
             }
 
-            $pos = mb_strpos($str, $search, $fromIndex, 'UTF-8');
-            return new JsNumber($pos === false ? -1.0 : (float) $pos);
+            // strpos over UTF-16LE bytes could in principle match at an
+            // odd byte offset (misaligned with the code-unit grid) when a
+            // needle's byte pattern coincidentally appears across code
+            // units. Keep advancing past odd matches.
+            $start = $fromIndex * 2;
+            $byteOffset = strpos($hayU16, $needleU16, $start);
+            while ($byteOffset !== false && ($byteOffset & 1) !== 0) {
+                $byteOffset = strpos($hayU16, $needleU16, $byteOffset + 1);
+            }
+            if ($byteOffset === false) {
+                return new JsNumber(-1.0);
+            }
+            return new JsNumber((float) ($byteOffset / 2));
         };
     }
 
@@ -487,7 +502,10 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $search = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            $strLen = mb_strlen($str, 'UTF-8');
+            // Work in UTF-16 code units per §22.1.3.11.
+            $hayU16 = JsString::utf8ToUtf16LE($str);
+            $needleU16 = JsString::utf8ToUtf16LE($search);
+            $strLen = (int) (strlen($hayU16) / 2);
             if (isset($args[1])) {
                 $numPos = TypeConversion::toNumber($args[1]);
                 // Per spec: if numPos is NaN, let pos be +Infinity (search entire string).
@@ -495,23 +513,32 @@ class StringPrototype
             } else {
                 $fromIndex = $strLen;
             }
+            $fromIndex = max(0, min($fromIndex, $strLen));
 
             if ($search === '') {
-                return new JsNumber((float) min($fromIndex, mb_strlen($str, 'UTF-8')));
+                return new JsNumber((float) $fromIndex);
             }
 
-            $pos = mb_strrpos($str, $search, 0, 'UTF-8');
-            if ($pos === false) {
+            $needleLen = (int) (strlen($needleU16) / 2);
+            // strrpos-on-bytes with a limited search slice, then align to
+            // even byte offsets to stay on UTF-16 code-unit boundaries.
+            $searchLimit = ($fromIndex + $needleLen) * 2;
+            $slice = substr($hayU16, 0, $searchLimit);
+            $byteOffset = strrpos($slice, $needleU16);
+            while ($byteOffset !== false && ($byteOffset & 1) !== 0) {
+                if ($byteOffset === 0) {
+                    $byteOffset = false;
+                    break;
+                }
+                $slice2 = substr($slice, 0, $byteOffset);
+                $byteOffset = strrpos($slice2, $needleU16);
+            }
+            if ($byteOffset === false) {
                 return new JsNumber(-1.0);
             }
-            // Only consider positions up to fromIndex.
+            $pos = (int) ($byteOffset / 2);
             if ($pos > $fromIndex) {
-                // Search again in the limited range.
-                $sub = mb_substr($str, 0, $fromIndex + mb_strlen($search, 'UTF-8'), 'UTF-8');
-                $pos = mb_strrpos($sub, $search, 0, 'UTF-8');
-                if ($pos === false) {
-                    return new JsNumber(-1.0);
-                }
+                return new JsNumber(-1.0);
             }
             return new JsNumber((float) $pos);
         };

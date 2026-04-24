@@ -514,9 +514,15 @@ class RegExpPrototype
                 // Apply ES-compliant fixes for repeated groups if needed.
                 $matches = self::applyRepeatedGroupFixes($this_, $matches, $str, $pcrePattern);
 
-                $matchCharPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
+                // Per spec, regex match index is a UTF-16 code-unit offset,
+                // not a codepoint count — characters outside the BMP count as
+                // two units. PCRE gives us a byte offset; convert through
+                // UTF-16LE length.
+                $matchCharPos = (int) (strlen(
+                    JsString::utf8ToUtf16LE(substr($str, 0, $matches[0][1]))
+                ) / 2);
                 $matchStr = $matches[0][0];
-                $matchCharLen = mb_strlen($matchStr, 'UTF-8');
+                $matchCharLen = (int) (strlen(JsString::utf8ToUtf16LE($matchStr)) / 2);
 
                 if ($isGlobal || $isSticky) {
                     $this_->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
