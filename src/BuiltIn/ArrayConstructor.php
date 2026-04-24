@@ -2044,9 +2044,13 @@ class ArrayConstructor
                             $index++;
                         }
 
-                    $a->set('length', new JsNumber((float) $index));
+                    // Per spec §23.1.2.1 step 7.h: Set(A, "length", index, true).
+                    // Strict-mode set surfaces TypeError when the result has
+                    // a read-only or non-extensible length.
                     if ($a instanceof JsArray) {
                         $a->setLength($index);
+                    } else {
+                        $a->set('length', new JsNumber((float) $index), true);
                     }
                     return $a;
                 }
@@ -2094,9 +2098,13 @@ class ArrayConstructor
                 }
             }
 
-            $a->set('length', new JsNumber((float) $len));
+            // Spec §23.1.2.1 step 8.f.ii: Set(A, "length", len, true). Strict
+            // failure surfaces TypeError for inextensible / read-only-length
+            // result objects.
             if ($a instanceof JsArray) {
                 $a->setLength($len);
+            } else {
+                $a->set('length', new JsNumber((float) $len), true);
             }
             return $a;
         };
