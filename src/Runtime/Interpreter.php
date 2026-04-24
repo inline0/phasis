@@ -4677,6 +4677,18 @@ class Interpreter
             if ($param instanceof AssignmentPattern) {
                 if ($value instanceof JsUndefined) {
                     $value = $this->evaluate($param->right, $env);
+                    // Spec §10.2.1.2 step 8: when a single-name parameter
+                    // initializer is an anonymous function definition, infer
+                    // the parameter name onto the function. Mirrors the
+                    // assignment / binding paths that already do this.
+                    if (
+                        $param->left instanceof Identifier
+                        && $value instanceof JsFunction
+                        && $this->isAnonymousFunctionDefinitionNode($param->right)
+                        && !$this->hasExplicitNameProperty($value)
+                    ) {
+                        $value->setName($param->left->name);
+                    }
                 }
                 $this->bindPattern($param->left, $value, $env);
                 continue;
