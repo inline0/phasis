@@ -330,28 +330,45 @@ class ShadowRealmConstructor
      */
     private static function copyWrappedProperties(JsFunction $wrapped, JsObject $target): void
     {
-        // Per spec: length = target.[[GetOwnProperty]]("length").
-        // If Get throws, use 0. Value must be a non-negative integer.
+        // Per spec CopyNameAndLength: Get(target, "length") is observable.
+        // If it throws, WrappedFunctionCreate must throw a TypeError in the
+        // caller realm (step 8). Value handling: +Infinity → +Infinity,
+        // -Infinity → 0, otherwise ToIntegerOrInfinity clamped to >= 0.
         try {
             $targetLength = $target->get('length');
-            if ($targetLength instanceof JsNumber && is_finite($targetLength->value) && $targetLength->value >= 0) {
-                $len = new JsNumber(floor($targetLength->value));
-            } else {
+        } catch (\PhpJs\Exceptions\JsThrowable) {
+            throw new TypeError('WrappedFunctionCreate: target length getter threw');
+        } catch (\Throwable $e) {
+            throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());
+        }
+        if ($targetLength instanceof JsNumber) {
+            $v = $targetLength->value;
+            if (is_nan($v)) {
                 $len = new JsNumber(0.0);
+            } elseif ($v === INF) {
+                $len = new JsNumber(INF);
+            } elseif ($v === -INF) {
+                $len = new JsNumber(0.0);
+            } else {
+                $intLen = ($v >= 0 ? 1 : -1) * floor(abs($v));
+                $len = new JsNumber(max(0.0, $intLen));
             }
-        } catch (\Throwable) {
+        } else {
             $len = new JsNumber(0.0);
         }
         $wrapped->defineOwnProperty('length', PropertyDescriptor::data($len, false, false, true));
 
-        // Per spec: name = target.[[GetOwnProperty]]("name").
-        // If Get throws, use "". Value must be a string.
+        // Per spec: name = ? Get(target, "name"). A throwing name getter also
+        // surfaces as a TypeError in the caller realm (CopyNameAndLength step
+        // 7 is ? Get, propagated by WrappedFunctionCreate step 8).
         try {
             $targetName = $target->get('name');
-            $name = $targetName instanceof JsString ? $targetName : new JsString('');
-        } catch (\Throwable) {
-            $name = new JsString('');
+        } catch (\PhpJs\Exceptions\JsThrowable) {
+            throw new TypeError('WrappedFunctionCreate: target name getter threw');
+        } catch (\Throwable $e) {
+            throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());
         }
+        $name = $targetName instanceof JsString ? $targetName : new JsString('');
         $wrapped->defineOwnProperty('name', PropertyDescriptor::data($name, false, false, true));
 
         // Wrapped functions should not have a .prototype property.
