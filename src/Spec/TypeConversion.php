@@ -65,9 +65,14 @@ final class TypeConversion
                 return $result;
             }
 
-            // For Date objects the default hint is "string"; for everything else it is "number".
+            // Spec OrdinaryToPrimitive (§7.1.1.1): when called from ToPrimitive
+            // with a "default" hint and no @@toPrimitive method, treat hint as
+            // "number". Date's "default → string" behavior comes from its own
+            // @@toPrimitive (handled above), not from OrdinaryToPrimitive — so
+            // deleting Date.prototype[@@toPrimitive] flips Date addition to
+            // valueOf-first, matching V8.
             if ($hint === 'default') {
-                $hint = \PhpJs\BuiltIn\DateConstructor::isDateObject($value) ? 'string' : 'number';
+                $hint = 'number';
             }
 
             $methodNames = $hint === 'string'
