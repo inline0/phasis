@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-24T22:57:21+00:00",
-    "updatedAt": "2026-04-24T22:57:21+00:00",
+    "generatedAt": "2026-04-24T23:01:18+00:00",
+    "updatedAt": "2026-04-24T23:01:18+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "e8f85f9",
+        "commit": "77a3c1e",
         "isDirty": true
     },
     "environment": {
@@ -195,45 +195,45 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 48040,
-            "fail": 1982,
-            "skip": 7,
-            "blocked": 44,
-            "pending": 50289,
-            "running": 12,
-            "attempted": 50022,
-            "known": 50073,
-            "total": 100374,
-            "passRate": 96
+            "pass": 14861,
+            "fail": 1188,
+            "skip": 2,
+            "blocked": 0,
+            "pending": 63783,
+            "running": 667,
+            "attempted": 16049,
+            "known": 16051,
+            "total": 80501,
+            "passRate": 92.6
         },
         "areas": [
             {
                 "name": "annexB",
-                "status": "incomplete",
-                "pass": 1067,
-                "fail": 12,
+                "status": "running",
+                "pass": 1046,
+                "fail": 8,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 954,
-                "running": 0,
-                "attempted": 1079,
-                "known": 1079,
+                "running": 25,
+                "attempted": 1054,
+                "known": 1054,
                 "total": 1079,
-                "passRate": 98.9
+                "passRate": 99.2
             },
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 21662,
-                "fail": 614,
-                "skip": 7,
-                "blocked": 24,
-                "pending": 22860,
-                "running": 12,
-                "attempted": 22276,
-                "known": 22307,
+                "pass": 10886,
+                "fail": 303,
+                "skip": 2,
+                "blocked": 0,
+                "pending": 27748,
+                "running": 467,
+                "attempted": 11189,
+                "known": 11191,
                 "total": 22729,
-                "passRate": 97.2
+                "passRate": 97.3
             },
             {
                 "name": "harness",
@@ -252,44 +252,44 @@
             {
                 "name": "intl402",
                 "status": "incomplete",
-                "pass": 684,
-                "fail": 882,
+                "pass": 635,
+                "fail": 844,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 1492,
+                "pending": 1579,
                 "running": 0,
-                "attempted": 1566,
-                "known": 1566,
+                "attempted": 1479,
+                "known": 1479,
                 "total": 1566,
-                "passRate": 43.7
+                "passRate": 42.9
             },
             {
                 "name": "language",
-                "status": "incomplete",
-                "pass": 23234,
-                "fail": 139,
+                "status": "running",
+                "pass": 2133,
+                "fail": 3,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 23265,
-                "running": 0,
-                "attempted": 23373,
-                "known": 23373,
+                "pending": 30327,
+                "running": 75,
+                "attempted": 2136,
+                "known": 2136,
                 "total": 23384,
-                "passRate": 99.4
+                "passRate": 99.9
             },
             {
                 "name": "staging",
-                "status": "incomplete",
-                "pass": 1279,
-                "fail": 333,
+                "status": "running",
+                "pass": 47,
+                "fail": 28,
                 "skip": 0,
-                "blocked": 20,
-                "pending": 1602,
-                "running": 0,
-                "attempted": 1612,
-                "known": 1632,
+                "blocked": 0,
+                "pending": 3059,
+                "running": 100,
+                "attempted": 75,
+                "known": 75,
                 "total": 1632,
-                "passRate": 79.3
+                "passRate": 62.7
             }
         ],
         "groups": [
@@ -356,17 +356,17 @@
             {
                 "name": "annexB/built-ins/RegExp",
                 "area": "annexB",
-                "status": "incomplete",
-                "pass": 54,
-                "fail": 8,
+                "status": "running",
+                "pass": 33,
+                "fail": 4,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 62,
-                "running": 0,
-                "attempted": 62,
-                "known": 62,
+                "running": 25,
+                "attempted": 37,
+                "known": 37,
                 "total": 62,
-                "passRate": 87.1
+                "passRate": 89.2
             },
             {
                 "name": "annexB/built-ins/String",
@@ -536,15 +536,15 @@
             {
                 "name": "built-ins/AbstractModuleSource",
                 "area": "built-ins",
-                "status": "fail",
+                "status": "pending",
                 "pass": 0,
-                "fail": 8,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 8,
                 "running": 0,
-                "attempted": 8,
-                "known": 8,
+                "attempted": 0,
+                "known": 0,
                 "total": 8,
                 "passRate": 0
             },
@@ -552,151 +552,151 @@
                 "name": "built-ins/Array",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 3019,
-                "fail": 55,
+                "pass": 1693,
+                "fail": 32,
                 "skip": 0,
-                "blocked": 1,
-                "pending": 3075,
+                "blocked": 0,
+                "pending": 4425,
                 "running": 0,
-                "attempted": 3074,
-                "known": 3075,
+                "attempted": 1725,
+                "known": 1725,
                 "total": 3075,
-                "passRate": 98.2
+                "passRate": 98.1
             },
             {
                 "name": "built-ins/ArrayBuffer",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 191,
+                "pass": 149,
                 "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 192,
+                "pending": 234,
                 "running": 0,
-                "attempted": 192,
-                "known": 192,
+                "attempted": 150,
+                "known": 150,
                 "total": 192,
-                "passRate": 99.5
+                "passRate": 99.3
             },
             {
                 "name": "built-ins/ArrayIteratorPrototype",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 27,
+                "pass": 25,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 27,
+                "pending": 29,
                 "running": 0,
-                "attempted": 27,
-                "known": 27,
+                "attempted": 25,
+                "known": 25,
                 "total": 27,
                 "passRate": 100
             },
             {
                 "name": "built-ins/AsyncDisposableStack",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 52,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 52,
+                "pending": 104,
                 "running": 0,
-                "attempted": 52,
-                "known": 52,
+                "attempted": 0,
+                "known": 0,
                 "total": 52,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/AsyncFromSyncIteratorPrototype",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 35,
-                "fail": 3,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 38,
+                "pending": 76,
                 "running": 0,
-                "attempted": 38,
-                "known": 38,
+                "attempted": 0,
+                "known": 0,
                 "total": 38,
-                "passRate": 92.1
+                "passRate": 0
             },
             {
                 "name": "built-ins/AsyncFunction",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 18,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 18,
                 "running": 0,
-                "attempted": 18,
-                "known": 18,
+                "attempted": 0,
+                "known": 0,
                 "total": 18,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/AsyncGeneratorFunction",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 22,
-                "fail": 1,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 23,
                 "running": 0,
-                "attempted": 23,
-                "known": 23,
+                "attempted": 0,
+                "known": 0,
                 "total": 23,
-                "passRate": 95.7
+                "passRate": 0
             },
             {
                 "name": "built-ins/AsyncGeneratorPrototype",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 45,
+                "pass": 22,
                 "fail": 3,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 48,
+                "pending": 71,
                 "running": 0,
-                "attempted": 48,
-                "known": 48,
+                "attempted": 25,
+                "known": 25,
                 "total": 48,
-                "passRate": 93.8
+                "passRate": 88
             },
             {
                 "name": "built-ins/AsyncIteratorPrototype",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 10,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 10,
                 "running": 0,
-                "attempted": 10,
-                "known": 10,
+                "attempted": 0,
+                "known": 0,
                 "total": 10,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Atomics",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 282,
-                "fail": 73,
-                "skip": 7,
-                "blocked": 14,
-                "pending": 376,
-                "running": 0,
-                "attempted": 355,
-                "known": 376,
+                "status": "running",
+                "pass": 37,
+                "fail": 11,
+                "skip": 2,
+                "blocked": 0,
+                "pending": 652,
+                "running": 50,
+                "attempted": 48,
+                "known": 50,
                 "total": 376,
-                "passRate": 79.4
+                "passRate": 77.1
             },
             {
                 "name": "built-ins/BigInt",
@@ -791,32 +791,32 @@
             {
                 "name": "built-ins/FinalizationRegistry",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 47,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 47,
                 "running": 0,
-                "attempted": 47,
-                "known": 47,
+                "attempted": 0,
+                "known": 0,
                 "total": 47,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Function",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 500,
-                "fail": 9,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 500,
+                "pending": 509,
                 "running": 0,
-                "attempted": 509,
-                "known": 509,
+                "attempted": 0,
+                "known": 0,
                 "total": 509,
-                "passRate": 98.2
+                "passRate": 0
             },
             {
                 "name": "built-ins/GeneratorFunction",
@@ -896,137 +896,137 @@
             {
                 "name": "built-ins/Map",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 171,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 171,
                 "running": 0,
-                "attempted": 171,
-                "known": 171,
+                "attempted": 0,
+                "known": 0,
                 "total": 171,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/MapIteratorPrototype",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 11,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 11,
                 "running": 0,
-                "attempted": 11,
-                "known": 11,
+                "attempted": 0,
+                "known": 0,
                 "total": 11,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Math",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 327,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 327,
                 "running": 0,
-                "attempted": 327,
-                "known": 327,
+                "attempted": 0,
+                "known": 0,
                 "total": 327,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/NaN",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 6,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 6,
                 "running": 0,
-                "attempted": 6,
-                "known": 6,
+                "attempted": 0,
+                "known": 0,
                 "total": 6,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/NativeErrors",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 139,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 139,
                 "running": 0,
-                "attempted": 139,
-                "known": 139,
+                "attempted": 0,
+                "known": 0,
                 "total": 139,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Number",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 335,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 335,
                 "running": 0,
-                "attempted": 335,
-                "known": 335,
+                "attempted": 0,
+                "known": 0,
                 "total": 335,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Object",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 3410,
+                "status": "running",
+                "pass": 1250,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3410,
-                "running": 0,
-                "attempted": 3410,
-                "known": 3410,
+                "pending": 5495,
+                "running": 75,
+                "attempted": 1250,
+                "known": 1250,
                 "total": 3410,
                 "passRate": 100
             },
             {
                 "name": "built-ins/Promise",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 623,
-                "fail": 8,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 631,
                 "running": 0,
-                "attempted": 631,
-                "known": 631,
+                "attempted": 0,
+                "known": 0,
                 "total": 631,
-                "passRate": 98.7
+                "passRate": 0
             },
             {
                 "name": "built-ins/Proxy",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 304,
-                "fail": 7,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 311,
                 "running": 0,
-                "attempted": 311,
-                "known": 311,
+                "attempted": 0,
+                "known": 0,
                 "total": 311,
-                "passRate": 97.7
+                "passRate": 0
             },
             {
                 "name": "built-ins/Reflect",
@@ -1061,17 +1061,17 @@
             {
                 "name": "built-ins/RegExp/CharacterClassEscapes",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 6,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 6,
+                "blocked": 0,
                 "pending": 12,
                 "running": 0,
-                "attempted": 6,
-                "known": 12,
+                "attempted": 0,
+                "known": 0,
                 "total": 12,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/RegExp/Symbol.species",
@@ -1167,31 +1167,31 @@
                 "name": "built-ins/RegExp/property-escapes",
                 "area": "built-ins",
                 "status": "running",
-                "pass": 12,
-                "fail": 168,
+                "pass": 0,
+                "fail": 75,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 1012,
-                "running": 12,
-                "attempted": 180,
-                "known": 180,
+                "pending": 1029,
+                "running": 100,
+                "attempted": 75,
+                "known": 75,
                 "total": 602,
-                "passRate": 6.7
+                "passRate": 0
             },
             {
                 "name": "built-ins/RegExp/prototype",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 421,
-                "fail": 65,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
-                "blocked": 1,
+                "blocked": 0,
                 "pending": 487,
                 "running": 0,
-                "attempted": 486,
-                "known": 487,
+                "attempted": 0,
+                "known": 0,
                 "total": 487,
-                "passRate": 86.6
+                "passRate": 0
             },
             {
                 "name": "built-ins/RegExp/regexp-modifiers",
@@ -1241,107 +1241,107 @@
             {
                 "name": "built-ins/Set",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 381,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 381,
                 "running": 0,
-                "attempted": 381,
-                "known": 381,
+                "attempted": 0,
+                "known": 0,
                 "total": 381,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/SetIteratorPrototype",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 11,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 11,
                 "running": 0,
-                "attempted": 11,
-                "known": 11,
+                "attempted": 0,
+                "known": 0,
                 "total": 11,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/ShadowRealm",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 52,
-                "fail": 12,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 64,
                 "running": 0,
-                "attempted": 64,
-                "known": 64,
+                "attempted": 0,
+                "known": 0,
                 "total": 64,
-                "passRate": 81.3
+                "passRate": 0
             },
             {
                 "name": "built-ins/SharedArrayBuffer",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 104,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 104,
                 "running": 0,
-                "attempted": 104,
-                "known": 104,
+                "attempted": 0,
+                "known": 0,
                 "total": 104,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/String",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 1207,
-                "fail": 5,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 1212,
                 "running": 0,
-                "attempted": 1212,
-                "known": 1212,
+                "attempted": 0,
+                "known": 0,
                 "total": 1212,
-                "passRate": 99.6
+                "passRate": 0
             },
             {
                 "name": "built-ins/StringIteratorPrototype",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 7,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 7,
                 "running": 0,
-                "attempted": 7,
-                "known": 7,
+                "attempted": 0,
+                "known": 0,
                 "total": 7,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Symbol",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 92,
-                "fail": 2,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 94,
                 "running": 0,
-                "attempted": 94,
-                "known": 94,
+                "attempted": 0,
+                "known": 0,
                 "total": 94,
-                "passRate": 97.9
+                "passRate": 0
             },
             {
                 "name": "built-ins/Temporal",
@@ -1406,32 +1406,32 @@
             {
                 "name": "built-ins/Temporal/PlainDate",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 592,
+                "status": "running",
+                "pass": 550,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 592,
-                "running": 0,
-                "attempted": 592,
-                "known": 592,
+                "running": 42,
+                "attempted": 550,
+                "known": 550,
                 "total": 592,
                 "passRate": 100
             },
             {
                 "name": "built-ins/Temporal/PlainDateTime",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 684,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 684,
                 "running": 0,
-                "attempted": 684,
-                "known": 684,
+                "attempted": 0,
+                "known": 0,
                 "total": 684,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/Temporal/PlainMonthDay",
@@ -1526,15 +1526,15 @@
             {
                 "name": "built-ins/TypedArray",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 1399,
-                "fail": 27,
+                "status": "running",
+                "pass": 760,
+                "fail": 15,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 1426,
-                "running": 0,
-                "attempted": 1426,
-                "known": 1426,
+                "pending": 1977,
+                "running": 100,
+                "attempted": 775,
+                "known": 775,
                 "total": 1426,
                 "passRate": 98.1
             },
@@ -1542,31 +1542,31 @@
                 "name": "built-ins/TypedArrayConstructors",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 733,
+                "pass": 447,
                 "fail": 3,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 736,
+                "pending": 1022,
                 "running": 0,
-                "attempted": 736,
-                "known": 736,
+                "attempted": 450,
+                "known": 450,
                 "total": 736,
-                "passRate": 99.6
+                "passRate": 99.3
             },
             {
                 "name": "built-ins/Uint8Array",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 63,
-                "fail": 1,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 64,
                 "running": 0,
-                "attempted": 64,
-                "known": 64,
+                "attempted": 0,
+                "known": 0,
                 "total": 64,
-                "passRate": 98.4
+                "passRate": 0
             },
             {
                 "name": "built-ins/WeakMap",
@@ -1616,167 +1616,167 @@
             {
                 "name": "built-ins/decodeURI",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 54,
+                "status": "running",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
-                "pending": 55,
-                "running": 0,
-                "attempted": 54,
-                "known": 55,
+                "blocked": 0,
+                "pending": 60,
+                "running": 50,
+                "attempted": 0,
+                "known": 0,
                 "total": 55,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/decodeURIComponent",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 55,
+                "status": "running",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
-                "blocked": 1,
-                "pending": 56,
-                "running": 0,
-                "attempted": 55,
-                "known": 56,
+                "blocked": 0,
+                "pending": 62,
+                "running": 50,
+                "attempted": 0,
+                "known": 0,
                 "total": 56,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/encodeURI",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 31,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 31,
                 "running": 0,
-                "attempted": 31,
-                "known": 31,
+                "attempted": 0,
+                "known": 0,
                 "total": 31,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/encodeURIComponent",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 31,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 31,
                 "running": 0,
-                "attempted": 31,
-                "known": 31,
+                "attempted": 0,
+                "known": 0,
                 "total": 31,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/eval",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 10,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 10,
                 "running": 0,
-                "attempted": 10,
-                "known": 10,
+                "attempted": 0,
+                "known": 0,
                 "total": 10,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/global",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 29,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 29,
                 "running": 0,
-                "attempted": 29,
-                "known": 29,
+                "attempted": 0,
+                "known": 0,
                 "total": 29,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/isFinite",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 17,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 17,
                 "running": 0,
-                "attempted": 17,
-                "known": 17,
+                "attempted": 0,
+                "known": 0,
                 "total": 17,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/isNaN",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 17,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 17,
                 "running": 0,
-                "attempted": 17,
-                "known": 17,
+                "attempted": 0,
+                "known": 0,
                 "total": 17,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/parseFloat",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 59,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 59,
                 "running": 0,
-                "attempted": 59,
-                "known": 59,
+                "attempted": 0,
+                "known": 0,
                 "total": 59,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/parseInt",
                 "area": "built-ins",
-                "status": "incomplete",
-                "pass": 60,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 60,
                 "running": 0,
-                "attempted": 60,
-                "known": 60,
+                "attempted": 0,
+                "known": 0,
                 "total": 60,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "built-ins/undefined",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 8,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 8,
                 "running": 0,
-                "attempted": 8,
-                "known": 8,
+                "attempted": 0,
+                "known": 0,
                 "total": 8,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "harness",
@@ -1796,47 +1796,47 @@
             {
                 "name": "intl402",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 8,
-                "fail": 14,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 22,
                 "running": 0,
-                "attempted": 22,
-                "known": 22,
+                "attempted": 0,
+                "known": 0,
                 "total": 22,
-                "passRate": 36.4
+                "passRate": 0
             },
             {
                 "name": "intl402/Array",
                 "area": "intl402",
-                "status": "pass",
-                "pass": 2,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 2,
                 "running": 0,
-                "attempted": 2,
-                "known": 2,
+                "attempted": 0,
+                "known": 0,
                 "total": 2,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "intl402/BigInt",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 6,
-                "fail": 5,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 11,
                 "running": 0,
-                "attempted": 11,
-                "known": 11,
+                "attempted": 0,
+                "known": 0,
                 "total": 11,
-                "passRate": 54.5
+                "passRate": 0
             },
             {
                 "name": "intl402/Collator",
@@ -1856,17 +1856,17 @@
             {
                 "name": "intl402/Date",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 10,
-                "fail": 2,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 12,
                 "running": 0,
-                "attempted": 12,
-                "known": 12,
+                "attempted": 0,
+                "known": 0,
                 "total": 12,
-                "passRate": 83.3
+                "passRate": 0
             },
             {
                 "name": "intl402/DateTimeFormat",
@@ -1887,29 +1887,29 @@
                 "name": "intl402/DisplayNames",
                 "area": "intl402",
                 "status": "incomplete",
-                "pass": 41,
-                "fail": 16,
+                "pass": 37,
+                "fail": 13,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 57,
+                "pending": 64,
                 "running": 0,
-                "attempted": 57,
-                "known": 57,
+                "attempted": 50,
+                "known": 50,
                 "total": 57,
-                "passRate": 71.9
+                "passRate": 74
             },
             {
                 "name": "intl402/DurationFormat",
                 "area": "intl402",
                 "status": "incomplete",
                 "pass": 0,
-                "fail": 110,
+                "fail": 100,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 110,
+                "pending": 120,
                 "running": 0,
-                "attempted": 110,
-                "known": 110,
+                "attempted": 100,
+                "known": 100,
                 "total": 110,
                 "passRate": 0
             },
@@ -1932,16 +1932,16 @@
                 "name": "intl402/ListFormat",
                 "area": "intl402",
                 "status": "incomplete",
-                "pass": 37,
+                "pass": 31,
                 "fail": 44,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 81,
+                "pending": 87,
                 "running": 0,
-                "attempted": 81,
-                "known": 81,
+                "attempted": 75,
+                "known": 75,
                 "total": 81,
-                "passRate": 45.7
+                "passRate": 41.3
             },
             {
                 "name": "intl402/Locale",
@@ -1961,32 +1961,32 @@
             {
                 "name": "intl402/Number",
                 "area": "intl402",
-                "status": "partial",
-                "pass": 5,
-                "fail": 2,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 7,
                 "running": 0,
-                "attempted": 7,
-                "known": 7,
+                "attempted": 0,
+                "known": 0,
                 "total": 7,
-                "passRate": 71.4
+                "passRate": 0
             },
             {
                 "name": "intl402/NumberFormat",
                 "area": "intl402",
                 "status": "incomplete",
                 "pass": 103,
-                "fail": 149,
+                "fail": 147,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 250,
+                "pending": 252,
                 "running": 0,
-                "attempted": 252,
-                "known": 252,
+                "attempted": 250,
+                "known": 250,
                 "total": 252,
-                "passRate": 40.9
+                "passRate": 41.2
             },
             {
                 "name": "intl402/PluralRules",
@@ -2007,31 +2007,31 @@
                 "name": "intl402/RelativeTimeFormat",
                 "area": "intl402",
                 "status": "incomplete",
-                "pass": 41,
+                "pass": 37,
                 "fail": 38,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 79,
+                "pending": 83,
                 "running": 0,
-                "attempted": 79,
-                "known": 79,
+                "attempted": 75,
+                "known": 75,
                 "total": 79,
-                "passRate": 51.9
+                "passRate": 49.3
             },
             {
                 "name": "intl402/Segmenter",
                 "area": "intl402",
                 "status": "incomplete",
-                "pass": 50,
+                "pass": 47,
                 "fail": 28,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 78,
+                "pending": 81,
                 "running": 0,
-                "attempted": 78,
-                "known": 78,
+                "attempted": 75,
+                "known": 75,
                 "total": 78,
-                "passRate": 64.1
+                "passRate": 62.7
             },
             {
                 "name": "intl402/String",
@@ -2066,317 +2066,317 @@
             {
                 "name": "intl402/TypedArray",
                 "area": "intl402",
-                "status": "pass",
-                "pass": 1,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1,
-                "known": 1,
+                "attempted": 0,
+                "known": 0,
                 "total": 1,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/arguments-object",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 263,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 250,
+                "pending": 263,
                 "running": 0,
-                "attempted": 263,
-                "known": 263,
+                "attempted": 0,
+                "known": 0,
                 "total": 263,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/asi",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 102,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 102,
                 "running": 0,
-                "attempted": 102,
-                "known": 102,
+                "attempted": 0,
+                "known": 0,
                 "total": 102,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/block-scope",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 145,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 145,
                 "running": 0,
-                "attempted": 145,
-                "known": 145,
+                "attempted": 0,
+                "known": 0,
                 "total": 145,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/comments",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 52,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 52,
                 "running": 0,
-                "attempted": 52,
-                "known": 52,
+                "attempted": 0,
+                "known": 0,
                 "total": 52,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/computed-property-names",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 48,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 48,
                 "running": 0,
-                "attempted": 48,
-                "known": 48,
+                "attempted": 0,
+                "known": 0,
                 "total": 48,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/destructuring",
                 "area": "language",
-                "status": "pass",
-                "pass": 19,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 19,
                 "running": 0,
-                "attempted": 19,
-                "known": 19,
+                "attempted": 0,
+                "known": 0,
                 "total": 19,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/directive-prologue",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 62,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 62,
                 "running": 0,
-                "attempted": 62,
-                "known": 62,
+                "attempted": 0,
+                "known": 0,
                 "total": 62,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/eval-code",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 346,
-                "fail": 1,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 347,
                 "running": 0,
-                "attempted": 347,
-                "known": 347,
+                "attempted": 0,
+                "known": 0,
                 "total": 347,
-                "passRate": 99.7
+                "passRate": 0
             },
             {
                 "name": "language/export",
                 "area": "language",
-                "status": "pass",
-                "pass": 3,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 3,
                 "running": 0,
-                "attempted": 3,
-                "known": 3,
+                "attempted": 0,
+                "known": 0,
                 "total": 3,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/expressions",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 10974,
-                "fail": 49,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 11000,
+                "pending": 11023,
                 "running": 0,
-                "attempted": 11023,
-                "known": 11023,
+                "attempted": 0,
+                "known": 0,
                 "total": 11023,
-                "passRate": 99.6
+                "passRate": 0
             },
             {
                 "name": "language/function-code",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 217,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 217,
                 "running": 0,
-                "attempted": 217,
-                "known": 217,
+                "attempted": 0,
+                "known": 0,
                 "total": 217,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/future-reserved-words",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 55,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 55,
                 "running": 0,
-                "attempted": 55,
-                "known": 55,
+                "attempted": 0,
+                "known": 0,
                 "total": 55,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/global-code",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 42,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 42,
                 "running": 0,
-                "attempted": 42,
-                "known": 42,
+                "attempted": 0,
+                "known": 0,
                 "total": 42,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/identifier-resolution",
                 "area": "language",
-                "status": "pass",
-                "pass": 14,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 14,
                 "running": 0,
-                "attempted": 14,
-                "known": 14,
+                "attempted": 0,
+                "known": 0,
                 "total": 14,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/identifiers",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 260,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 250,
+                "pending": 260,
                 "running": 0,
-                "attempted": 260,
-                "known": 260,
+                "attempted": 0,
+                "known": 0,
                 "total": 260,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/import",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 19,
-                "fail": 66,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 85,
                 "running": 0,
-                "attempted": 85,
-                "known": 85,
+                "attempted": 0,
+                "known": 0,
                 "total": 85,
-                "passRate": 22.4
+                "passRate": 0
             },
             {
                 "name": "language/keywords",
                 "area": "language",
-                "status": "pass",
-                "pass": 25,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 25,
                 "running": 0,
-                "attempted": 25,
-                "known": 25,
+                "attempted": 0,
+                "known": 0,
                 "total": 25,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/line-terminators",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 41,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 41,
                 "running": 0,
-                "attempted": 41,
-                "known": 41,
+                "attempted": 0,
+                "known": 0,
                 "total": 41,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/literals",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 531,
-                "fail": 3,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 534,
                 "running": 0,
-                "attempted": 534,
-                "known": 534,
+                "attempted": 0,
+                "known": 0,
                 "total": 534,
-                "passRate": 99.4
+                "passRate": 0
             },
             {
                 "name": "language/module-code",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 577,
-                "fail": 6,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 583,
                 "running": 0,
-                "attempted": 583,
-                "known": 583,
+                "attempted": 0,
+                "known": 0,
                 "total": 583,
-                "passRate": 99
+                "passRate": 0
             },
             {
                 "name": "language/punctuators",
@@ -2396,17 +2396,17 @@
             {
                 "name": "language/reserved-words",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 27,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 27,
                 "running": 0,
-                "attempted": 27,
-                "known": 27,
+                "attempted": 0,
+                "known": 0,
                 "total": 27,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/rest-parameters",
@@ -2426,877 +2426,504 @@
             {
                 "name": "language/source-text",
                 "area": "language",
-                "status": "pass",
-                "pass": 1,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1,
-                "known": 1,
+                "attempted": 0,
+                "known": 0,
                 "total": 1,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/statementList",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 80,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 80,
                 "running": 0,
-                "attempted": 80,
-                "known": 80,
+                "attempted": 0,
+                "known": 0,
                 "total": 80,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "language/statements",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 9142,
-                "fail": 12,
+                "status": "running",
+                "pass": 2122,
+                "fail": 3,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 9154,
-                "running": 0,
-                "attempted": 9154,
-                "known": 9154,
+                "pending": 16108,
+                "running": 75,
+                "attempted": 2125,
+                "known": 2125,
                 "total": 9154,
                 "passRate": 99.9
             },
             {
                 "name": "language/types",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 111,
-                "fail": 2,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 113,
                 "running": 0,
-                "attempted": 113,
-                "known": 113,
+                "attempted": 0,
+                "known": 0,
                 "total": 113,
-                "passRate": 98.2
+                "passRate": 0
             },
             {
                 "name": "language/white-space",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 67,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 67,
                 "running": 0,
-                "attempted": 67,
-                "known": 67,
+                "attempted": 0,
+                "known": 0,
                 "total": 67,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging",
                 "area": "staging",
-                "status": "pass",
-                "pass": 3,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 3,
                 "running": 0,
-                "attempted": 3,
-                "known": 3,
+                "attempted": 0,
+                "known": 0,
                 "total": 3,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging/Intl402",
                 "area": "staging",
-                "status": "incomplete",
-                "pass": 2,
-                "fail": 47,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 49,
+                "pending": 98,
                 "running": 0,
-                "attempted": 49,
-                "known": 49,
+                "attempted": 0,
+                "known": 0,
                 "total": 49,
-                "passRate": 4.1
+                "passRate": 0
             },
             {
                 "name": "staging/Temporal",
                 "area": "staging",
-                "status": "pass",
-                "pass": 12,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 12,
                 "running": 0,
-                "attempted": 12,
-                "known": 12,
+                "attempted": 0,
+                "known": 0,
                 "total": 12,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging/Uint8Array",
                 "area": "staging",
-                "status": "pass",
-                "pass": 1,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1,
-                "known": 1,
+                "attempted": 0,
+                "known": 0,
                 "total": 1,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging/built-ins",
                 "area": "staging",
-                "status": "partial",
-                "pass": 3,
-                "fail": 4,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 7,
                 "running": 0,
-                "attempted": 7,
-                "known": 7,
+                "attempted": 0,
+                "known": 0,
                 "total": 7,
-                "passRate": 42.9
+                "passRate": 0
             },
             {
                 "name": "staging/decorators",
                 "area": "staging",
-                "status": "partial",
-                "pass": 2,
-                "fail": 1,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 3,
                 "running": 0,
-                "attempted": 3,
-                "known": 3,
+                "attempted": 0,
+                "known": 0,
                 "total": 3,
-                "passRate": 66.7
+                "passRate": 0
             },
             {
                 "name": "staging/explicit-resource-management",
                 "area": "staging",
-                "status": "incomplete",
-                "pass": 51,
-                "fail": 3,
+                "status": "pending",
+                "pass": 0,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 54,
+                "pending": 108,
                 "running": 0,
-                "attempted": 54,
-                "known": 54,
+                "attempted": 0,
+                "known": 0,
                 "total": 54,
-                "passRate": 94.4
+                "passRate": 0
             },
             {
                 "name": "staging/set-methods",
                 "area": "staging",
-                "status": "pass",
-                "pass": 3,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 3,
                 "running": 0,
-                "attempted": 3,
-                "known": 3,
+                "attempted": 0,
+                "known": 0,
                 "total": 3,
-                "passRate": 100
+                "passRate": 0
             },
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "incomplete",
-                "pass": 1131,
-                "fail": 277,
+                "status": "running",
+                "pass": 47,
+                "fail": 28,
                 "skip": 0,
-                "blocked": 20,
-                "pending": 1428,
-                "running": 0,
-                "attempted": 1408,
-                "known": 1428,
+                "blocked": 0,
+                "pending": 2681,
+                "running": 100,
+                "attempted": 75,
+                "known": 75,
                 "total": 1428,
-                "passRate": 80.3
+                "passRate": 62.7
             },
             {
                 "name": "staging/source-phase-imports",
                 "area": "staging",
-                "status": "fail",
+                "status": "pending",
                 "pass": 0,
-                "fail": 1,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 1,
                 "running": 0,
-                "attempted": 1,
-                "known": 1,
+                "attempted": 0,
+                "known": 0,
                 "total": 1,
                 "passRate": 0
             },
             {
                 "name": "staging/upsert",
                 "area": "staging",
-                "status": "incomplete",
-                "pass": 71,
+                "status": "pending",
+                "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 71,
+                "pending": 142,
                 "running": 0,
-                "attempted": 71,
-                "known": 71,
+                "attempted": 0,
+                "known": 0,
                 "total": 71,
-                "passRate": 100
+                "passRate": 0
             }
         ],
-        "blockedChunks": [
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 14",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/notify/undefined-index-defaults-to-zero.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/b521b6a22b5b07b86af45b842bcab64d6e2fa4fa.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 511",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/good-views.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/f1043b0fe4b011e742a413d3395f878303d2f15a.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 205",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/bigint/symbol-for-timeout-throws-agent.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/9bc9d5619ee56dab49f658e05131197bfe34738f.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/good-views.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/fb55eceac30d4e4532498548409b56cd137a08ec.log"
-            },
-            {
-                "group": "built-ins/Array",
-                "kind": "oom",
-                "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 134217736 bytes) in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 21",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Array/fromAsync/asyncitems-arraylike-too-long.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/8bef7a42348d0e516acb60d05acdb3bf47665f19.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/waiterlist-order-of-operations-is-fifo.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/360a317ad81d289e0cd8ebe98e5093483b257f5e.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 4153",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/bigint/good-views.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/990225c3d82151a30e1f9a2c54f94c5bcdbcf193.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/bigint/waiterlist-order-of-operations-is-fifo.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/99f77a68e9d23feea9bbb8897a391d4dac0b435e.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1147",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/poisoned-object-for-timeout-throws-agent.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/8d48063e4c57bcaf3ff34c19c4b43955c31a6970.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 200",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/symbol-for-timeout-throws-agent.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/9067da206278e759cb52a70362b23d1ba3f0244b.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/waiterlist-block-indexedposition-wake.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/719251ba1739eb43675043a70858942e6cf8878b.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArrayBuffer.php on line 84",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/notify/notify-in-order-one-time.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/54aae61a2773839e29cc71d012c368aeeca4d8d3.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 820",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/notify/notify-in-order.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/b30c96a538d7753a383fdb8be79dace311695074.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 820",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/bigint/waiterlist-block-indexedposition-wake.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/36bfbedbf5f5c5fc50092061495dec07da13500a.log"
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArgumentsObject.php on line 149",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/bigint/poisoned-object-for-timeout-throws-agent.js"
-                ],
-                "logFile": ".compat-state-builtins-A/logs/d2c0bf60ecc0c23543f011c04bf66bce8b5d6042.log"
-            },
-            {
-                "group": "built-ins/RegExp/prototype",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsBoolean.php on line 26",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/prototype/Symbol.split/str-coerce-lastindex.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-prototype/logs/402e0291ddcd8c8e6994ba9784bc4c9dd4157ac8.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArray.php on line 355",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/722abcc8bbca8f22a6f4e5029b251630a2d88ff7.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 1501",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/04ddd46937901b97333e1bad5a7183629e181178.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1008",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/5af0de9dd6d6784c7156b505489408bfaf27e665.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 274",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/f0ebbf279665e1ee7193d8369fb48c919e0422c2.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Completion.php on line 48",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/f81d5d8efb2c4dd1df1c2faa058ff85302c5855b.log"
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 5014",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log"
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1145",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/6687624bd5fb87a6a4ff167cd35af4b69d14f50d.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Engine.php on line 395",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/BigInt/large-bit-length.js"
-                ],
-                "logFile": ".compat-state-staging/logs/384b2e0bfc2b466c4c57a4a23d7c3f82c656ddac.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 8969",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f77d96875630465a6823161d465877fc4c60f9ae.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArgumentsObject.php on line 120",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/expressions/nullish-coalescing.js"
-                ],
-                "logFile": ".compat-state-staging/logs/fad83b5e2409a84effda05416199c0acf9fa5248.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 501",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
-                ],
-                "logFile": ".compat-state-staging/logs/59f611b1d8f6087de2cf8dd8fc9a3ce8ba03416e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1136",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Array/toSpliced-dense.js"
-                ],
-                "logFile": ".compat-state-staging/logs/1d8bc8ec59afa4977eac427273dcca4bb1c34b5e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 3746",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f31cff08aae8050007f42d47f3ce1d7c29321ebb.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArgumentsObject.php on line 120",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f1232104e4d338c7c76a723ace84621f84895ca1.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 359",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/dd2d25d5cc94da8b81ed7a27013584a93402ab8e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 26",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/c58e8146c6f3a001cf0781adbce015d2d9682c2d.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 19",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f72507a466dd0056e8a719c4d2fad7b060dc5a34.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 265",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/42df9b8c4fc0d995dcf4cb51158e13f63ab55e1e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "oom",
-                "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 803209248 bytes) in /home/runner/work/php-js/php-js/src/BuiltIn/StringPrototype.php on line 1415",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/String/replace-math.js"
-                ],
-                "logFile": ".compat-state-staging/logs/05d8c12e9055c0e405b4fc8ebd3aee35b95f8c6f.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 999",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/String/fromCodePoint.js"
-                ],
-                "logFile": ".compat-state-staging/logs/b7a6467e0fd7aca48f43b52e9e2e76feff030b05.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsFunction.php on line 505",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_modifications.js"
-                ],
-                "logFile": ".compat-state-staging/logs/ea3a9224766eb7444ed6f90eb1c8f521ae9dc56c.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 708",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/fc434724163390adbcf5051f147ab7c4fd54a93b.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1145",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/931d7d3921a965471071a964166aad45b1d595f4.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "oom",
-                "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 20480 bytes) in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 863",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/regress/regress-567152.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f2fc29f0b2ecc140a7956dac1e2335e2f3b2da5e.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 16",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
-                ],
-                "logFile": ".compat-state-staging/logs/af18b1bdadaf3999fb864b5776bc2b53ed5c7dcb.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 749",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Proxy/ownkeys-linear.js"
-                ],
-                "logFile": ".compat-state-staging/logs/a263da00063883c2fe17b886920ad7c7186a6463.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArrayBuffer.php on line 74",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
-                ],
-                "logFile": ".compat-state-staging/logs/655e0e3f8baf6b2fbdfb85776837eb8131d920b4.log"
-            }
-        ],
+        "blockedChunks": [],
         "slowChunks": [
             {
-                "group": "built-ins/decodeURIComponent",
+                "group": "built-ins/Array",
                 "kind": "normal",
-                "durationSec": 79.878,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 74.328,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 68.038,
+                "durationSec": 21.133,
                 "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/String/string-pad-start-end.js",
-                    "test262/test/staging/sm/String/string-space-trim.js",
+                    "test262/test/built-ins/Array/prototype/concat/Array.prototype.concat_large-typed-array.js",
+                    "test262/test/built-ins/Array/prototype/concat/Array.prototype.concat_length-throws.js",
                     "...",
-                    "test262/test/staging/sm/Symbol/property-reflection.js",
-                    "test262/test/staging/sm/Symbol/realms.js"
+                    "test262/test/built-ins/Array/prototype/concat/S15.4.4.4_A3_T2.js",
+                    "test262/test/built-ins/Array/prototype/concat/S15.4.4.4_A3_T3.js"
+                ]
+            },
+            {
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 17.645,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached-prototype.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/coerced-values-end-detached.js",
+                    "...",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/prop-desc.js",
+                    "test262/test/built-ins/TypedArray/prototype/copyWithin/resizable-buffer.js"
+                ]
+            },
+            {
+                "group": "annexB/built-ins/String",
+                "kind": "normal",
+                "durationSec": 16.969,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/annexB/built-ins/String/prototype/strike/this-val-tostring-err.js",
+                    "test262/test/annexB/built-ins/String/prototype/sub/B.2.3.13.js",
+                    "...",
+                    "test262/test/annexB/built-ins/String/prototype/sup/length.js",
+                    "test262/test/annexB/built-ins/String/prototype/sup/name.js"
+                ]
+            },
+            {
+                "group": "language/statements",
+                "kind": "normal",
+                "durationSec": 13.745,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/language/statements/await-using/throws-if-initializer-not-object.js",
+                    "test262/test/language/statements/block/12.1-1.js",
+                    "...",
+                    "test262/test/language/statements/break/S12.8_A1_T1.js",
+                    "test262/test/language/statements/break/S12.8_A1_T2.js"
                 ]
             },
             {
                 "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.832,
-                "filesCount": 1,
+                "kind": "normal",
+                "durationSec": 10.044,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
+                    "test262/test/staging/sm/Date/fractions.js",
+                    "test262/test/staging/sm/Date/makeday-year-month-is-infinity.js",
+                    "...",
+                    "test262/test/staging/sm/Function/15.3.4.3-01.js",
+                    "test262/test/staging/sm/Function/Function-prototype.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.555,
-                "filesCount": 1,
+                "group": "intl402/Segmenter",
+                "kind": "normal",
+                "durationSec": 9.759,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                    "test262/test/intl402/Segmenter/prototype/resolvedOptions/order.js",
+                    "test262/test/intl402/Segmenter/prototype/resolvedOptions/prop-desc.js",
+                    "...",
+                    "test262/test/intl402/Segmenter/prototype/segment/segment-sentence-iterable.js",
+                    "test262/test/intl402/Segmenter/prototype/segment/segment-tostring.js"
                 ]
             },
             {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 61.4,
-                "filesCount": 1,
+                "group": "intl402/NumberFormat",
+                "kind": "normal",
+                "durationSec": 9.694,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/Atomics/wait/good-views.js"
+                    "test262/test/intl402/NumberFormat/prototype/format/format-rounding-increment-20.js",
+                    "test262/test/intl402/NumberFormat/prototype/format/format-rounding-increment-200.js",
+                    "...",
+                    "test262/test/intl402/NumberFormat/prototype/format/format-significant-digits.js",
+                    "test262/test/intl402/NumberFormat/prototype/format/length.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.304,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/ZonedDateTime",
+                "kind": "normal",
+                "durationSec": 9.299,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/prop-desc.js",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/reversibility-of-differences.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/same-epoch-nanoseconds.js",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/since/since-until.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.275,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/ZonedDateTime",
+                "kind": "normal",
+                "durationSec": 8.773,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/rounding-increments.js",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/roundingincrement-addition-out-of-range.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/smallestunit-undefined.js",
+                    "test262/test/built-ins/Temporal/ZonedDateTime/prototype/until/smallestunit-wrong-type.js"
                 ]
             },
             {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 61.203,
-                "filesCount": 1,
+                "group": "intl402/Intl",
+                "kind": "normal",
+                "durationSec": 7.644,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/good-views.js"
+                    "test262/test/intl402/Intl/getCanonicalLocales/preferred-variant.js",
+                    "test262/test/intl402/Intl/getCanonicalLocales/returned-object-is-an-array.js",
+                    "...",
+                    "test262/test/intl402/Intl/supportedValuesOf/currencies-accepted-by-DisplayNames.js",
+                    "test262/test/intl402/Intl/supportedValuesOf/currencies-accepted-by-NumberFormat.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.112,
-                "filesCount": 1,
+                "group": "language/statements",
+                "kind": "normal",
+                "durationSec": 6.94,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_modifications.js"
+                    "test262/test/language/statements/do-while/decl-fun.js",
+                    "test262/test/language/statements/do-while/decl-gen.js",
+                    "...",
+                    "test262/test/language/statements/for-await-of/async-func-decl-dstr-array-elem-init-yield-ident-valid.js",
+                    "test262/test/language/statements/for-await-of/async-func-decl-dstr-array-elem-iter-nrml-close.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.072,
-                "filesCount": 1,
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 6.911,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                    "test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-on-tointeger-offset-throws.js",
+                    "test262/test/built-ins/TypedArray/prototype/set/array-arg-targetbuffer-detached-throws.js",
+                    "...",
+                    "test262/test/built-ins/TypedArray/prototype/set/typedarray-arg-set-values-diff-buffer-other-type-conversions.js",
+                    "test262/test/built-ins/TypedArray/prototype/set/typedarray-arg-set-values-diff-buffer-other-type-sab.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.015,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainTime",
+                "kind": "normal",
+                "durationSec": 6.668,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/until/roundingincrement-milliseconds.js",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/until/roundingincrement-minutes.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/until/smallestunit-undefined.js",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/until/smallestunit-wrong-type.js"
                 ]
             },
             {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 61.003,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainDate",
+                "kind": "normal",
+                "durationSec": 6.281,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/Atomics/notify/undefined-index-defaults-to-zero.js"
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/largestunit-undefined.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/largestunit-week.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/roundingmode-halfCeil.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/roundingmode-halfEven.js"
                 ]
             },
             {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 60.973,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/Duration",
+                "kind": "normal",
+                "durationSec": 5.957,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/bigint/symbol-for-timeout-throws-agent.js"
+                    "test262/test/built-ins/Temporal/Duration/prototype/round/relativeto-string-limits.js",
+                    "test262/test/built-ins/Temporal/Duration/prototype/round/relativeto-string-plaindatetime.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/Duration/prototype/round/roundingmode-floor.js",
+                    "test262/test/built-ins/Temporal/Duration/prototype/round/roundingmode-halfCeil.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 60.966,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainDate",
+                "kind": "normal",
+                "durationSec": 5.87,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/expressions/nullish-coalescing.js"
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/since/prop-desc.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/since/round-cross-unit-boundary.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/since/smallestunit-plurals-accepted.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/since/smallestunit-undefined.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.894,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainDate",
+                "kind": "normal",
+                "durationSec": 5.781,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/argument-string-limits.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/argument-string-minus-sign.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/largestunit-plurals-accepted.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/until/largestunit-smallestunit-mismatch.js"
                 ]
             },
             {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.822,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainDate",
+                "kind": "normal",
+                "durationSec": 5.752,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
+                    "test262/test/built-ins/Temporal/PlainDate/from/prop-desc.js",
+                    "test262/test/built-ins/Temporal/PlainDate/from/subclassing-ignored.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/add/add-years.js",
+                    "test262/test/built-ins/Temporal/PlainDate/prototype/add/argument-duration-max.js"
                 ]
             },
             {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 60.819,
-                "filesCount": 1,
+                "group": "built-ins/Temporal/PlainTime",
+                "kind": "normal",
+                "durationSec": 5.688,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/built-ins/Atomics/notify/notify-in-order.js"
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/since/roundingincrement-non-integer.js",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/since/roundingincrement-out-of-range.js",
+                    "...",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/subtract/argument-duration-out-of-range.js",
+                    "test262/test/built-ins/Temporal/PlainTime/prototype/subtract/argument-duration-precision-exact-numerical-values.js"
                 ]
             },
             {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 60.713,
-                "filesCount": 1,
+                "group": "built-ins/TypedArray",
+                "kind": "normal",
+                "durationSec": 5.684,
+                "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ]
-            },
-            {
-                "group": "built-ins/Atomics",
-                "kind": "crash",
-                "durationSec": 60.561,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/Atomics/waitAsync/poisoned-object-for-timeout-throws-agent.js"
+                    "test262/test/built-ins/TypedArray/prototype/sort/BigInt/comparefn-call-throws.js",
+                    "test262/test/built-ins/TypedArray/prototype/sort/BigInt/comparefn-calls.js",
+                    "...",
+                    "test262/test/built-ins/TypedArray/prototype/sort/prop-desc.js",
+                    "test262/test/built-ins/TypedArray/prototype/sort/resizable-buffer-default-comparator.js"
                 ]
             }
         ]
