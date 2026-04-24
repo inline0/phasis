@@ -128,25 +128,44 @@ class Test262Runner
         }
 
         try {
-            if (!$isRaw) {
-                $this->loadHarness($engine, 'sta.js');
-                $this->loadHarness($engine, 'assert.js');
-                foreach ($includes as $include) {
-                    $this->loadHarness($engine, $include);
-                }
-            }
-
             $testSource = preg_replace('/\/\*---.*?---\*\//s', '', $source);
-            if ($mode === 'strict') {
-                $testSource = '"use strict";' . "\n" . $testSource;
-            }
 
             if ($mode === 'module') {
-                // Module tests are executed as ES modules (always strict,
-                // import/export declarations are processed).
+                if (!$isRaw) {
+                    $this->loadHarness($engine, 'sta.js');
+                    $this->loadHarness($engine, 'assert.js');
+                    foreach ($includes as $include) {
+                        $this->loadHarness($engine, $include);
+                    }
+                }
                 $modulePath = ($realTestPath !== false) ? $realTestPath : $testPath;
                 $engine->evalAsModule($testSource, $modulePath);
+            } elseif (!$isRaw) {
+                // Concatenate harness + test source so lexical (let/const)
+                // bindings in the harness remain visible to the test body.
+                // Each eval call creates its own lexical environment that
+                // is discarded on return, so running harness separately
+                // would drop const declarations like
+                // `const assertToStringOrNativeFunction = ...`.
+                //
+                // For strict mode, the directive must appear at the very
+                // start of the source so it takes effect for the whole
+                // program (including the harness prologue).
+                $harnessSrc = '';
+                $harnessSrc .= $this->getHarnessSource('sta.js');
+                $harnessSrc .= $this->getHarnessSource('assert.js');
+                foreach ($includes as $include) {
+                    $harnessSrc .= $this->getHarnessSource($include);
+                }
+                $combined = $harnessSrc . "\n" . $testSource;
+                if ($mode === 'strict') {
+                    $combined = '"use strict";' . "\n" . $combined;
+                }
+                $engine->eval($combined);
             } else {
+                if ($mode === 'strict') {
+                    $testSource = '"use strict";' . "\n" . $testSource;
+                }
                 $engine->eval($testSource);
             }
 
@@ -177,9 +196,13 @@ class Test262Runner
             return new TestResult($testPath, TestStatus::Pass);
         } catch (\PhpJs\Exceptions\SyntaxError $e) {
             if ($negative !== null) {
-                $phase = $negative['phase'] ?? 'runtime';
                 $type = $negative['type'] ?? 'Error';
-                if (($phase === 'parse' || $phase === 'early') && $type === 'SyntaxError') {
+                // Whether the test declares parse/early or runtime phase, a
+                // SyntaxError from the PHP parser still satisfies the
+                // expectation. Indirect eval of invalid source, for example,
+                // surfaces as a runtime SyntaxError but originates from
+                // our parser when the eval() call evaluates its argument.
+                if ($type === 'SyntaxError') {
                     return new TestResult($testPath, TestStatus::Pass);
                 }
             }
@@ -187,11 +210,36 @@ class Test262Runner
         } catch (\PhpJs\Exceptions\RuntimeError $e) {
             if ($negative !== null) {
                 $type = $negative['type'] ?? 'Error';
+                $jsName = null;
+                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                    $jv = $e->jsValue;
+                    if ($jv instanceof \PhpJs\Value\JsObject) {
+                        $n = $jv->get('name');
+                        if ($n instanceof \PhpJs\Value\JsString) {
+                            $jsName = $n->value;
+                        }
+                        // Fall back to constructor.name (e.g. Test262Error
+                        // defined in harness as constructor function without
+                        // an own `name` property on prototype).
+                        if ($jsName === null) {
+                            $ctor = $jv->get('constructor');
+                            if ($ctor instanceof \PhpJs\Value\JsFunction) {
+                                $cn = $ctor->get('name');
+                                if ($cn instanceof \PhpJs\Value\JsString && $cn->value !== '') {
+                                    $jsName = $cn->value;
+                                }
+                            }
+                        }
+                    }
+                }
                 $match = match ($type) {
-                    'TypeError' => $e instanceof \PhpJs\Exceptions\TypeError,
-                    'RangeError' => $e instanceof \PhpJs\Exceptions\RangeError,
-                    'ReferenceError' => $e instanceof \PhpJs\Exceptions\ReferenceError,
-                    default => true,
+                    'TypeError' => $e instanceof \PhpJs\Exceptions\TypeError || $jsName === 'TypeError',
+                    'RangeError' => $e instanceof \PhpJs\Exceptions\RangeError || $jsName === 'RangeError',
+                    'ReferenceError' => $e instanceof \PhpJs\Exceptions\ReferenceError || $jsName === 'ReferenceError',
+                    'SyntaxError' => $jsName === 'SyntaxError',
+                    'URIError' => $jsName === 'URIError',
+                    'Error' => true,
+                    default => $jsName === $type,
                 };
                 if ($match) {
                     return new TestResult($testPath, TestStatus::Pass);
@@ -266,11 +314,33 @@ try {
 } catch (PhpJs\Exceptions\RuntimeError \$e) {
     if (\$negative) {
         \$type = \$negative['type'] ?? 'Error';
+        \$jsName = null;
+        if (\$e instanceof PhpJs\Exceptions\JsThrowable) {
+            \$jv = \$e->jsValue;
+            if (\$jv instanceof PhpJs\Value\JsObject) {
+                \$n = \$jv->get('name');
+                if (\$n instanceof PhpJs\Value\JsString) {
+                    \$jsName = \$n->value;
+                }
+                if (\$jsName === null) {
+                    \$ctor = \$jv->get('constructor');
+                    if (\$ctor instanceof PhpJs\Value\JsFunction) {
+                        \$cn = \$ctor->get('name');
+                        if (\$cn instanceof PhpJs\Value\JsString && \$cn->value !== '') {
+                            \$jsName = \$cn->value;
+                        }
+                    }
+                }
+            }
+        }
         \$match = match(\$type) {
-            'TypeError' => \$e instanceof PhpJs\Exceptions\TypeError,
-            'RangeError' => \$e instanceof PhpJs\Exceptions\RangeError,
-            'ReferenceError' => \$e instanceof PhpJs\Exceptions\ReferenceError,
-            default => true,
+            'TypeError' => \$e instanceof PhpJs\Exceptions\TypeError || \$jsName === 'TypeError',
+            'RangeError' => \$e instanceof PhpJs\Exceptions\RangeError || \$jsName === 'RangeError',
+            'ReferenceError' => \$e instanceof PhpJs\Exceptions\ReferenceError || \$jsName === 'ReferenceError',
+            'SyntaxError' => \$jsName === 'SyntaxError',
+            'URIError' => \$jsName === 'URIError',
+            'Error' => true,
+            default => \$jsName === \$type,
         };
         if (\$match) { echo "PASS"; exit(0); }
     }
@@ -495,17 +565,7 @@ PHP;
 
     private function loadHarness(Engine $engine, string $filename): void
     {
-        if (!isset($this->harnessCache[$filename])) {
-            $path = $this->harnessDir . '/' . $filename;
-            if (!file_exists($path)) {
-                $this->harnessCache[$filename] = '';
-                return;
-            }
-            $src = file_get_contents($path);
-            $this->harnessCache[$filename] = preg_replace('/\/\*---.*?---\*\//s', '', $src) ?? '';
-        }
-
-        $src = $this->harnessCache[$filename];
+        $src = $this->getHarnessSource($filename);
         if ($src === '') {
             return;
         }
@@ -514,6 +574,21 @@ PHP;
         } catch (\Throwable) {
             // Silently skip harness files that fail to load
         }
+    }
+
+    /** Load and cache harness source text without executing it. */
+    private function getHarnessSource(string $filename): string
+    {
+        if (!isset($this->harnessCache[$filename])) {
+            $path = $this->harnessDir . '/' . $filename;
+            if (!file_exists($path)) {
+                $this->harnessCache[$filename] = '';
+                return '';
+            }
+            $src = file_get_contents($path);
+            $this->harnessCache[$filename] = preg_replace('/\/\*---.*?---\*\//s', '', $src) ?? '';
+        }
+        return $this->harnessCache[$filename];
     }
 
     /** @return array{description?: string, features?: list<string>, includes?: list<string>, flags?: list<string>, negative?: array{type: string, phase: string}} */
@@ -525,6 +600,11 @@ PHP;
 
         $yaml = $matches[1];
         $meta = [];
+
+        // Normalize line endings so test files using CR-only or CRLF
+        // terminators (e.g. Function.prototype.toString CR tests) parse
+        // their frontmatter correctly.
+        $yaml = str_replace(["\r\n", "\r"], "\n", $yaml);
 
         // Simple YAML parser for test262 frontmatter
         $lines = explode("\n", $yaml);

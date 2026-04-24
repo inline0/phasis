@@ -106,6 +106,23 @@ class JsTypedArray extends JsObject
     }
 
     /**
+     * Integer-Indexed exotic [[PreventExtensions]] per spec 10.4.5.2.
+     *
+     * Per the integer-indexed exotic invariants, preventing extensions on a
+     * TypedArray backed by a resizable buffer must always fail: future
+     * resizes could add or invalidate integer index descriptors, which would
+     * otherwise be an invariant violation on a non-extensible view.
+     * SharedArrayBuffers that are growable have the same property.
+     */
+    public function preventExtensions(): bool
+    {
+        if ($this->buffer->isResizable()) {
+            return false;
+        }
+        return parent::preventExtensions();
+    }
+
+    /**
      * Whether this TypedArray's view is out of bounds for its buffer.
      * Only relevant for fixed-length views on resizable buffers.
      */
@@ -800,12 +817,16 @@ class JsTypedArray extends JsObject
     /**
      * TypedArray.prototype.fill(value, start, end).
      */
-    public function fillTyped(JsValue $value, int $start = 0, ?int $end = null): self
+    public function fillTyped(JsValue $value, int $start = 0, ?int $end = null, ?int $capturedLen = null): self
     {
-        $len = $this->getLength();
+        // Per spec fill uses the length captured BEFORE argument coercion
+        // for bounds clamping. Writes outside the current buffer bounds
+        // silently no-op (IntegerIndexedElementSet invalidates).
+        $len = $capturedLen ?? $this->getLength();
         if ($start < 0) {
             $start = max(0, $len + $start);
         }
+        $start = min($start, $len);
         if ($end === null) {
             $end = $len;
         } elseif ($end < 0) {
@@ -1073,12 +1094,21 @@ class JsTypedArray extends JsObject
         $shift = -14 - $unbiasedExp;
         $fullSignificand = $f64frac | (1 << 52);
         $totalShift = 42 + $shift;
-        if ($totalShift >= 53) {
+        // For very small values (exp much below -24) the result rounds to
+        // zero — but values just above 2^-25 must still round up to the
+        // smallest subnormal. Handle totalShift up to 63 by treating the
+        // whole significand as a remainder against the halfway bit.
+        if ($totalShift >= 64) {
             return $sign << 15;
         }
-        $halfFrac = (int) ($fullSignificand >> $totalShift);
-        $mask = (1 << $totalShift) - 1;
-        $remainder = (int) ($fullSignificand & $mask);
+        $halfFrac = $totalShift >= 63 ? 0 : (int) ($fullSignificand >> $totalShift);
+        if ($totalShift < 63) {
+            $mask = (1 << $totalShift) - 1;
+            $remainder = (int) ($fullSignificand & $mask);
+        } else {
+            $mask = (1 << 63) - 1;
+            $remainder = $fullSignificand;
+        }
         $halfway = 1 << ($totalShift - 1);
         if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
             $halfFrac++;

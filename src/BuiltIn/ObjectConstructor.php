@@ -297,7 +297,9 @@ class ObjectConstructor
         $proto->defineOwnProperty('hasOwnProperty', PropertyDescriptor::data(JsFunction::fromCallable(
             'hasOwnProperty',
             function (JsValue $this_, array $args): JsValue {
-                // Per spec: 1. Let P = ToPropertyKey(V). 2. Let O = ToObject(this).
+                // Per spec §20.1.3.2 + §7.3.12 HasOwnProperty: delegates to
+                // [[GetOwnProperty]], which for module namespaces calls [[Get]]
+                // and can throw ReferenceError for uninitialized TDZ bindings.
                 $key = $args[0] ?? JsUndefined::instance();
                 $propKey = TypeConversion::toPropertyKey($key);
                 $obj = TypeConversion::toObject($this_);
@@ -306,7 +308,9 @@ class ObjectConstructor
                         $obj->getSymbolPropertyDescriptor($propKey) !== null,
                     );
                 }
-                return new JsBoolean($obj->hasOwnProperty($propKey->toJsString()));
+                $name = $propKey->toJsString();
+                $desc = $obj->getOwnPropertyDescriptor($name);
+                return new JsBoolean($desc !== null);
             },
             1,
         ), true, false, true));
@@ -339,17 +343,20 @@ class ObjectConstructor
                 $o = ($this_ instanceof JsObject) ? $this_ : TypeConversion::toObject($this_);
 
                 // Step 4-14: Determine builtinTag based on internal slots.
+                // Proxies (aside from IsArray, which recursively unwraps)
+                // always get 'Object'; internal-slot checks are direct.
+                $isProxy = $o instanceof JsProxy;
                 if ($primitiveTag !== null) {
                     $builtinTag = $primitiveTag;
                 } elseif (self::isArrayForToString($o)) {
                     $builtinTag = 'Array';
-                } elseif ($o->hasOwnProperty('[[IsArguments]]')) {
+                } elseif (!$isProxy && $o->hasOwnProperty('[[IsArguments]]')) {
                     $builtinTag = 'Arguments';
                 } elseif (self::isCallableForToString($o)) {
                     $builtinTag = 'Function';
-                } elseif ($o->hasOwnProperty('[[ErrorData]]')) {
+                } elseif (!$isProxy && $o->hasOwnProperty('[[ErrorData]]')) {
                     $builtinTag = 'Error';
-                } elseif ($o->has('[[PrimitiveValue]]')) {
+                } elseif (!$isProxy && $o->has('[[PrimitiveValue]]')) {
                     $prim = $o->get('[[PrimitiveValue]]');
                     if ($prim instanceof JsBoolean) {
                         $builtinTag = 'Boolean';
@@ -360,9 +367,9 @@ class ObjectConstructor
                     } else {
                         $builtinTag = 'Object';
                     }
-                } elseif ($o->has('[[IsDate]]')) {
+                } elseif (!$isProxy && $o->hasOwnProperty('[[IsDate]]')) {
                     $builtinTag = 'Date';
-                } elseif ($o->hasOwnProperty('[[PCREPattern]]')) {
+                } elseif (!$isProxy && $o->hasOwnProperty('[[PCREPattern]]')) {
                     $builtinTag = 'RegExp';
                 } else {
                     $builtinTag = 'Object';
@@ -787,11 +794,13 @@ class ObjectConstructor
                 return $obj;
             }
             // Per spec SetIntegrityLevel(O, "frozen"):
-            // 1. preventExtensions
+            // 1. status = preventExtensions(O); if status is false, throw TypeError.
             // 2. Get all keys via [[OwnPropertyKeys]]
             // 3. For each key, get descriptor via [[GetOwnProperty]]
             // 4. DefinePropertyOrThrow with partial descriptor
-            $obj->preventExtensions();
+            if (!$obj->preventExtensions()) {
+                throw new \PhpJs\Exceptions\TypeError('Cannot freeze object');
+            }
 
             $allKeys = $obj->ordinaryOwnPropertyKeys();
             foreach ($allKeys as $keyVal) {
@@ -817,14 +826,22 @@ class ObjectConstructor
                         continue;
                     }
                     if ($desc->isDataDescriptor()) {
-                        $obj->defineOwnProperty($key, new PropertyDescriptor(
+                        $ok = $obj->defineOwnProperty($key, new PropertyDescriptor(
                             writable: false,
                             configurable: false,
                         ));
                     } else {
-                        $obj->defineOwnProperty($key, new PropertyDescriptor(
+                        $ok = $obj->defineOwnProperty($key, new PropertyDescriptor(
                             configurable: false,
                         ));
+                    }
+                    // Per spec SetIntegrityLevel uses DefinePropertyOrThrow,
+                    // which throws on failure. Module namespace exotic rejects
+                    // these calls, producing a TypeError.
+                    if (!$ok) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot redefine property: {$key}",
+                        );
                     }
                 }
             }
@@ -1173,10 +1190,12 @@ class ObjectConstructor
                 return $obj;
             }
             // Per spec SetIntegrityLevel(O, "sealed"):
-            // 1. preventExtensions
+            // 1. status = preventExtensions(O); if status is false, throw TypeError.
             // 2. Get all keys via [[OwnPropertyKeys]]
             // 3. For each key: DefinePropertyOrThrow(O, k, {[[Configurable]]: false})
-            $obj->preventExtensions();
+            if (!$obj->preventExtensions()) {
+                throw new \PhpJs\Exceptions\TypeError('Cannot seal object');
+            }
 
             $allKeys = $obj->ordinaryOwnPropertyKeys();
             foreach ($allKeys as $keyVal) {

@@ -16,6 +16,8 @@ readonly class ExportSpecifier extends Node
         SourceLocation $location,
         public string $local,
         public string $exported,
+        public bool $localIsString = false,
+        public bool $exportedIsString = false,
     ) {
         parent::__construct($location);
     }

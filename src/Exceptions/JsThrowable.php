@@ -20,6 +20,10 @@ class JsThrowable extends RuntimeError
         public readonly JsValue $jsValue,
         string $message = '',
     ) {
-        parent::__construct($message !== '' ? $message : $jsValue->toJsString());
+        // Use display() rather than toJsString() to avoid a secondary
+        // exception when the thrown value is a Symbol or other primitive
+        // whose String conversion is spec-disallowed. The message is for
+        // PHP-side diagnostics only; JS code sees the raw $jsValue.
+        parent::__construct($message !== '' ? $message : $jsValue->display());
     }
 }

@@ -206,24 +206,28 @@ class IteratorConstructor
             return $result;
         }, 0);
 
-        $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args) use ($ui, &$done, &$alive, &$running, $onReturn): JsValue {
-            if ($running) {
-                throw new TypeError('Cannot call return on a running iterator helper');
-            }
-            $alive = false;
-            if (!$done) {
-                $done = true;
-                // Forward return() to any active inner iterator (e.g. flatMap).
-                if ($onReturn !== null) {
-                    $onReturn();
+        $returnFn = JsFunction::fromCallable(
+            'return',
+            function (JsValue $this_, array $args) use ($ui, &$done, &$alive, &$running, $onReturn): JsValue {
+                if ($running) {
+                    throw new TypeError('Cannot call return on a running iterator helper');
                 }
-                $returnMethod = $ui->get('return');
-                if ($returnMethod instanceof JsFunction) {
-                    return $returnMethod->call($ui, []);
+                $alive = false;
+                if (!$done) {
+                    $done = true;
+                    // Forward return() to any active inner iterator (e.g. flatMap).
+                    if ($onReturn !== null) {
+                        $onReturn();
+                    }
+                    $returnMethod = $ui->get('return');
+                    if ($returnMethod instanceof JsFunction) {
+                        return $returnMethod->call($ui, []);
+                    }
                 }
-            }
-            return self::iterResult(JsUndefined::instance(), true);
-        }, 0);
+                return self::iterResult(JsUndefined::instance(), true);
+            },
+            0,
+        );
 
         $helper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
         $helper->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
@@ -736,18 +740,28 @@ class IteratorConstructor
     {
         return function (JsValue $this_, array $args) use ($iteratorPrototype): JsValue {
             $obj = $args[0] ?? JsUndefined::instance();
+
+            // Per Iterator.from spec: GetIteratorFlattenable(O, iterate-string-primitives).
+            // For String primitives, @@iterator is looked up on String.prototype
+            // with the primitive as the receiver (so getters observe typeof this === 'string').
+            // For other primitives (Number, etc.), throw TypeError.
+            $iterSym = SymbolConstructor::iterator();
             if ($obj instanceof JsString) {
-                $obj = TypeConversion::toObject($obj);
+                $stringProto = \PhpJs\Value\JsString::getStringPrototype();
+                $iterMethod = $stringProto !== null
+                    ? $stringProto->getBySymbolWithReceiver($iterSym, $obj)
+                    : JsUndefined::instance();
+                $receiver = $obj;
             } elseif (!$obj instanceof JsObject) {
                 throw new TypeError('Iterator.from requires an object');
+            } else {
+                $iterMethod = $obj->getBySymbol($iterSym);
+                $receiver = $obj;
             }
-
-            $iterSym = SymbolConstructor::iterator();
-            $iterMethod = $obj->getBySymbol($iterSym);
 
             if (!($iterMethod instanceof JsUndefined) && !($iterMethod instanceof JsNull)) {
                 if ($iterMethod instanceof JsFunction) {
-                    $iterator = $iterMethod->call($obj, []);
+                    $iterator = $iterMethod->call($receiver, []);
                     if (!$iterator instanceof JsObject) {
                         throw new TypeError('Symbol.iterator result is not an object');
                     }
@@ -759,6 +773,11 @@ class IteratorConstructor
                 throw new TypeError('Symbol.iterator is not a function');
             }
 
+            // If obj was a primitive string with no @@iterator, coerce to String wrapper
+            // and wrap that as an iterator (step 5 of GetIteratorFlattenable).
+            if ($obj instanceof JsString) {
+                $obj = TypeConversion::toObject($obj);
+            }
             return self::createWrapForValidIterator($obj);
         };
     }

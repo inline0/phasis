@@ -35,8 +35,16 @@ class DateConstructor
                 return new JsString(self::toDateString(self::nowMs()));
             }
 
-            // Called with new: construct a Date object. Do NOT override the prototype;
-            // Reflect.construct/subclass callers set it on $this_ via new.target.
+            // Called with new: construct a Date object.
+            // Per §9.1.13 OrdinaryCreateFromConstructor, the prototype must
+            // come from newTarget.prototype (fall back to %Date.prototype%
+            // if newTarget.prototype is not an object).
+            $newTarget = $this_->get('[[NewTarget]]');
+            if ($newTarget instanceof JsObject) {
+                $ntProto = $newTarget->get('prototype');
+                $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;
+                $this_->setPrototype($useProto);
+            }
             $timeValue = self::constructTimeValue($args);
             $this_->defineOwnProperty(
                 '[[DateValue]]',
@@ -974,10 +982,11 @@ class DateConstructor
             true,
         ));
 
-        // Set Symbol.toStringTag so Object.prototype.toString returns "[object Date]".
-        $toStringTagSym = SymbolConstructor::toStringTag();
-        $proto->setBySymbol($toStringTagSym, new JsString('Date'));
-
+        // Per spec: Date.prototype does NOT have Symbol.toStringTag; the
+        // "[object Date]" tag comes from the [[DateValue]]/[[IsDate]]
+        // internal slot check in Object.prototype.toString (§20.1.3.6
+        // step 15). Do not set @@toStringTag here — doing so would incorrectly
+        // surface "Date" when the receiver is a Proxy wrapping a Date.
         return $proto;
     }
 

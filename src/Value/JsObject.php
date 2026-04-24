@@ -41,6 +41,25 @@ class JsObject implements JsValue
     /** @var array<string, mixed> Internal properties not visible to JS. */
     private array $internalSlots = [];
 
+    /**
+     * Module namespace exotic mode: when set, [[GetOwnProperty]] materializes
+     * data descriptors ({value, writable:true, enumerable:true, configurable:false})
+     * for each export name by invoking the underlying accessor getter. Per
+     * §10.4.6, module namespace exports appear as data properties even though
+     * they are backed by live bindings.
+     */
+    protected bool $isModuleNamespace = false;
+
+    public function markAsModuleNamespace(): void
+    {
+        $this->isModuleNamespace = true;
+    }
+
+    public function isModuleNamespace(): bool
+    {
+        return $this->isModuleNamespace;
+    }
+
     /** Mark that a constructor has initialized its fields on this object. */
     public function markFieldsInitialized(int $ctorId): void
     {
@@ -103,9 +122,10 @@ class JsObject implements JsValue
         return $this->extensible;
     }
 
-    public function preventExtensions(): void
+    public function preventExtensions(): bool
     {
         $this->extensible = false;
+        return true;
     }
 
     public function setImmutablePrototype(bool $immutable = true): void
@@ -238,6 +258,10 @@ class JsObject implements JsValue
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
+        // Module namespace exotic [[Set]] always returns false (per §10.4.6.6).
+        if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
+            return false;
+        }
         $ownDesc = $this->getOwnPropertyDescriptor($name);
         return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
     }
@@ -311,13 +335,16 @@ class JsObject implements JsValue
      * Symbol property lookup with explicit receiver for getter invocation.
      * Used by super references to pass the correct `this` to getters.
      */
-    public function getBySymbolWithReceiver(JsSymbol $symbol, JsObject $receiver): JsValue
+    public function getBySymbolWithReceiver(JsSymbol $symbol, JsValue $receiver): JsValue
     {
         $id = $symbol->getId();
         if (isset($this->symbolProperties[$id])) {
             $desc = $this->symbolProperties[$id];
             if ($desc->get !== null) {
-                return $desc->get->call($receiver, []);
+                // Per spec OrdinaryGet, the getter is called with the original
+                // receiver (may be a primitive for primitive-base refs).
+                $recv = $receiver instanceof JsValue ? $receiver : $this;
+                return $desc->get->call($recv, []);
             }
             return $desc->value ?? JsUndefined::instance();
         }
@@ -768,7 +795,29 @@ class JsObject implements JsValue
 
     public function getOwnPropertyDescriptor(string $name): ?PropertyDescriptor
     {
-        return $this->properties->get($name);
+        $desc = $this->properties->get($name);
+        if ($desc === null) {
+            return null;
+        }
+        // Module namespace exotic [[GetOwnProperty]]: materialize data
+        // descriptors for string-keyed exports (per spec §10.4.6.4).
+        if (
+            $this->isModuleNamespace
+            && $desc->isAccessorDescriptor()
+            && $desc->get !== null
+            && !self::isInternalSlot($name)
+        ) {
+            // Propagate any exception from GetBindingValue (e.g. TDZ
+            // ReferenceError for uninitialized exports) — spec requires it.
+            $value = $desc->get->call($this, []);
+            return new PropertyDescriptor(
+                value: $value,
+                writable: true,
+                enumerable: true,
+                configurable: false,
+            );
+        }
+        return $desc;
     }
 
     public function hasOwnProperty(string $name): bool
@@ -816,6 +865,26 @@ class JsObject implements JsValue
         }
 
         usort($integerIndices, fn(string $a, string $b) => (int) $a <=> (int) $b);
+
+        // Per §10.4.6.7, a Module Namespace Object's [[OwnPropertyKeys]]
+        // returns its exported names sorted as if by Array.prototype.sort
+        // using undefined comparefn (UTF-16 code-unit order), followed by
+        // integer indices (none for namespaces) and Symbol-keyed entries.
+        if ($this->isModuleNamespace) {
+            usort($nonIndexStrings, static function (string $a, string $b): int {
+                $ua = \PhpJs\Value\JsString::utf8ToUtf16LE($a);
+                $ub = \PhpJs\Value\JsString::utf8ToUtf16LE($b);
+                $len = min(strlen($ua), strlen($ub));
+                for ($i = 0; $i < $len; $i += 2) {
+                    $ca = ord($ua[$i]) | (ord($ua[$i + 1]) << 8);
+                    $cb = ord($ub[$i]) | (ord($ub[$i + 1]) << 8);
+                    if ($ca !== $cb) {
+                        return $ca - $cb;
+                    }
+                }
+                return strlen($ua) - strlen($ub);
+            });
+        }
 
         return array_merge($integerIndices, $nonIndexStrings);
     }
@@ -893,6 +962,25 @@ class JsObject implements JsValue
         // Sort integer indices numerically (ascending).
         usort($integerIndices, fn(string $a, string $b) => (int) $a <=> (int) $b);
         $sortedIndices = array_map(fn(string $k) => new JsString($k), $integerIndices);
+
+        // Per §10.4.6.7, module namespace objects sort their string-keyed
+        // exports as if by Array.prototype.sort with undefined comparefn
+        // (i.e. lexicographic by UTF-16 code unit).
+        if ($this->isModuleNamespace) {
+            usort($nonIndexStrings, static function (JsString $a, JsString $b): int {
+                $ua = \PhpJs\Value\JsString::utf8ToUtf16LE($a->value);
+                $ub = \PhpJs\Value\JsString::utf8ToUtf16LE($b->value);
+                $len = min(strlen($ua), strlen($ub));
+                for ($i = 0; $i < $len; $i += 2) {
+                    $ca = ord($ua[$i]) | (ord($ua[$i + 1]) << 8);
+                    $cb = ord($ub[$i]) | (ord($ub[$i + 1]) << 8);
+                    if ($ca !== $cb) {
+                        return $ca - $cb;
+                    }
+                }
+                return strlen($ua) - strlen($ub);
+            });
+        }
 
         // Symbol keys in insertion order (symbolOrder preserves insertion order).
         $symbolKeys = [];
@@ -998,6 +1086,46 @@ class JsObject implements JsValue
      */
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
+        // Module namespace exotic [[DefineOwnProperty]] (§10.4.6.5): once the
+        // namespace is fully assembled, string-keyed exports can be only
+        // trivially re-defined with matching descriptors and never mutated.
+        // Symbol-keyed definitions and internal slot definitions are not
+        // subject to this restriction (used internally to install toStringTag
+        // and to build up the namespace before freezing).
+        if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
+            $current = $this->properties->get($name);
+            if ($current === null) {
+                return false;
+            }
+            if ($desc->isAccessorDescriptor()) {
+                return false;
+            }
+            if ($desc->configurable === true) {
+                return false;
+            }
+            if ($desc->enumerable === false) {
+                return false;
+            }
+            if ($desc->writable === false) {
+                return false;
+            }
+            if ($desc->value !== null) {
+                $currentValue = $current->isAccessorDescriptor() && $current->get !== null
+                    ? (function () use ($current): JsValue {
+                        try {
+                            return $current->get->call($this, []);
+                        } catch (\Throwable) {
+                            return JsUndefined::instance();
+                        }
+                    })()
+                    : ($current->value ?? JsUndefined::instance());
+                if (!\PhpJs\Spec\AbstractOperations::sameValue($currentValue, $desc->value)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         $current = $this->properties->get($name);
 
         if ($current === null) {

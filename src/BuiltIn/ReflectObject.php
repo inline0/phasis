@@ -222,13 +222,10 @@ class ReflectObject
         $reflect->defineOwnProperty('preventExtensions', PropertyDescriptor::data(
             JsFunction::fromCallable('preventExtensions', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.preventExtensions');
-                // For Proxy objects, call internalPreventExtensions which returns bool.
-                // For regular objects, call preventExtensions (always succeeds).
                 if ($target instanceof JsProxy) {
                     return new JsBoolean($target->internalPreventExtensions());
                 }
-                $target->preventExtensions();
-                return new JsBoolean(true);
+                return new JsBoolean($target->preventExtensions());
             }, 1),
             true,
             false,
@@ -377,7 +374,9 @@ class ReflectObject
                     }
                 }
                 $newObj = new JsObject($useProto);
-                $ntValue = $newTarget instanceof JsFunction ? $newTarget : $target;
+                $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
+                    ? $newTarget
+                    : $target;
                 $newObj->defineOwnProperty(
                     '[[NewTarget]]',
                     PropertyDescriptor::data($ntValue, false, false, false),

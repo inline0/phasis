@@ -29,6 +29,9 @@ class Engine
 
     public function __construct()
     {
+        // Clear any cached intrinsic prototypes from prior Engine instances
+        // so each realm gets its own wired object graph.
+        self::resetStaticIntrinsics();
         $this->callStack = new CallStack();
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
@@ -158,6 +161,20 @@ class Engine
                         if ($boolProto instanceof JsObject && $boolProto->getPrototype() === null) {
                             $boolProto->setPrototype($objProto);
                         }
+                    }
+                }
+                // %IteratorPrototype% -> Object.prototype (per spec 27.1.2)
+                if ($this->globalEnv->has('__IteratorPrototype__')) {
+                    $iterProto = $this->globalEnv->get('__IteratorPrototype__');
+                    if ($iterProto instanceof JsObject && $iterProto->getPrototype() === null) {
+                        $iterProto->setPrototype($objProto);
+                    }
+                }
+                // %AsyncIteratorPrototype% -> Object.prototype (per spec 27.1.3)
+                if ($this->globalEnv->has('__AsyncIteratorPrototype__')) {
+                    $aiProto = $this->globalEnv->get('__AsyncIteratorPrototype__');
+                    if ($aiProto instanceof JsObject && $aiProto->getPrototype() === null) {
+                        $aiProto->setPrototype($objProto);
                     }
                 }
             }
@@ -1046,6 +1063,7 @@ class Engine
     public function reset(): void
     {
         \PhpJs\Value\JsPromise::clearMicrotasks();
+        self::resetStaticIntrinsics();
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
         $this->callStack = new CallStack();
@@ -1053,6 +1071,16 @@ class Engine
         self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
+    }
+
+    /**
+     * Reset cached intrinsic prototypes shared across BuiltIn classes.
+     * Each new Engine instance must rebuild its own prototype graph so
+     * test262 cross-realm tests see fresh object identities.
+     */
+    private static function resetStaticIntrinsics(): void
+    {
+        \PhpJs\BuiltIn\RegExpPrototype::resetStringIteratorProto();
     }
 
     /**

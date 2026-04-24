@@ -245,16 +245,261 @@ class Interpreter
         // declarations in indirect eval do not conflict with existing
         // global lexical bindings.
         if ($this->isEvalContext) {
+            // Per PerformEval step 10: if the eval source is strict, create a
+            // new declarative VariableEnvironment so var/function declarations
+            // do not leak into the global scope. Otherwise var declarations
+            // go into the caller's VariableEnvironment (globalEnv here).
+            if ($this->strictMode) {
+                $varEnv = $this->globalEnv->createChild();
+                $lexEnv = $varEnv->createChild();
+                $this->hoistDeclarations($program->body, $varEnv);
+                $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
+                return $this->executeStatements($program->body, $lexEnv);
+            }
             $lexEnv = $this->globalEnv->createChild();
-            $this->hoistDeclarations($program->body, $this->globalEnv);
+            // Per EvalDeclarationInstantiation step 15/18: non-strict indirect
+            // eval at global scope creates function/var bindings with D=true,
+            // so they are configurable. Use the eval-specific hoist path that
+            // matches direct eval at global scope.
+            if ($this->globalEnv->getLinkedObject() !== null) {
+                $this->hoistEvalGlobalDeclarations($program->body, $this->globalEnv);
+            } else {
+                $this->hoistDeclarations($program->body, $this->globalEnv);
+            }
             $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
             return $this->executeStatements($program->body, $lexEnv);
         }
 
         $this->validateGlobalLexDecls($program->body);
+        // Early-error check: Script top-level must not contain bare return,
+        // break, or continue (§16.1.1), or super/new.target/private
+        // identifiers outside a class body. Reuses the eval-body/program
+        // validators and the dynamic-function private-name rejecter.
+        $this->validateEvalBody($program->body);
+        if ($this->astContainsNewTargetTransparent($program->body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'new.target expression is not allowed here'
+            );
+        }
+        if ($this->astContainsSuperTransparent($program->body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                "'super' keyword unexpected here"
+            );
+        }
+        \PhpJs\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic($program);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
         return $this->executeStatements($program->body, $this->globalEnv);
+    }
+
+    /**
+     * Per ModuleDeclarationInstantiation: the LexicallyDeclaredNames of
+     * the ModuleBody must be unique, and the ExportedNames (union across
+     * all export declarations, including `export default` and `export *`
+     * with alias) must also be unique. Duplicate declarations at module
+     * top level are parse-time SyntaxErrors.
+     *
+     * @param Node[] $body
+     */
+    private function validateModuleTopLevelDuplicateBindings(array $body): void
+    {
+        $names = [];
+        $varNames = [];
+        $exportNames = [];
+        $addExport = function (string $name) use (&$exportNames): void {
+            if (isset($exportNames[$name])) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Duplicate export of '{$name}'",
+                );
+            }
+            $exportNames[$name] = true;
+        };
+        foreach ($body as $stmt) {
+            // Track export names for each export declaration.
+            if ($stmt instanceof ExportDeclaration) {
+                if ($stmt->isDefault) {
+                    $addExport('default');
+                }
+                foreach ($stmt->specifiers ?? [] as $spec) {
+                    $addExport($spec->exported ?? $spec->local);
+                }
+                if ($stmt->isAll && $stmt->allAs !== null) {
+                    $addExport($stmt->allAs);
+                }
+                if ($stmt->declaration !== null) {
+                    $inner = $stmt->declaration;
+                    if (
+                        $inner instanceof FunctionDeclaration
+                        || $inner instanceof ClassDeclaration
+                    ) {
+                        if ($inner->id !== null) {
+                            $addExport($inner->id->name);
+                        }
+                    } elseif ($inner instanceof VariableDeclaration) {
+                        foreach ($inner->declarations as $d) {
+                            foreach ($this->patternBoundNames($d->id) as $n) {
+                                $addExport($n);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Track locally-bound lexical declarations.
+            $inner = $stmt instanceof ExportDeclaration ? $stmt->declaration : $stmt;
+            if ($inner === null) {
+                continue;
+            }
+            $collected = [];
+            if (
+                $inner instanceof VariableDeclaration && (
+                $inner->kind === 'let' || $inner->kind === 'const'
+                || $inner->kind === 'using' || $inner->kind === 'await using'
+                )
+            ) {
+                foreach ($inner->declarations as $d) {
+                    foreach ($this->patternBoundNames($d->id) as $n) {
+                        $collected[] = $n;
+                    }
+                }
+            } elseif (
+                ($inner instanceof FunctionDeclaration || $inner instanceof ClassDeclaration)
+                && $inner->id !== null
+            ) {
+                $collected[] = $inner->id->name;
+            } elseif (
+                $inner instanceof VariableDeclaration && $inner->kind === 'var'
+            ) {
+                foreach ($inner->declarations as $d) {
+                    foreach ($this->patternBoundNames($d->id) as $n) {
+                        $varNames[$n] = true;
+                    }
+                }
+            }
+            foreach ($collected as $n) {
+                if (isset($names[$n])) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Identifier '{$n}' has already been declared",
+                    );
+                }
+                $names[$n] = true;
+            }
+        }
+        // Per §16.1.7: every ExportedBinding from `export { name }` (no
+        // `from`) must be declared locally — either lex or var.
+        $exportedBindings = [];
+        $importBindings = [];
+        foreach ($body as $stmt) {
+            if ($stmt instanceof ExportDeclaration && $stmt->source === null) {
+                foreach ($stmt->specifiers ?? [] as $spec) {
+                    $exportedBindings[$spec->local] = true;
+                }
+            }
+            if ($stmt instanceof ImportDeclaration) {
+                foreach ($stmt->specifiers ?? [] as $spec) {
+                    $importBindings[$spec->local] = true;
+                }
+            }
+        }
+        // Now flag any exported binding not declared locally.
+        $allLocal = $names + $varNames + $importBindings;
+        foreach (array_keys($exportedBindings) as $bound) {
+            if (!isset($allLocal[$bound])) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Export of unknown binding '{$bound}'",
+                );
+            }
+        }
+        // Modules apply the lex-vs-var overlap rule with no Annex B
+        // function-to-var hoisting. Also collect nested var-declared names
+        // (from nested blocks) at module-top-level.
+        foreach ($body as $stmt) {
+            $this->collectModuleVarDeclaredNames($stmt, $varNames);
+        }
+        foreach (array_keys($names) as $n) {
+            if (isset($varNames[$n])) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Identifier '{$n}' has already been declared",
+                );
+            }
+        }
+    }
+
+    /**
+     * Walk into nested block-like statements but not into functions/classes,
+     * collecting `var` declarations at module top-level.
+     *
+     * @param array<string,bool> $out
+     */
+    private function collectModuleVarDeclaredNames(Node $node, array &$out): void
+    {
+        if ($node instanceof VariableDeclaration && $node->kind === 'var') {
+            foreach ($node->declarations as $d) {
+                foreach ($this->patternBoundNames($d->id) as $n) {
+                    $out[$n] = true;
+                }
+            }
+            return;
+        }
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $s) {
+                $this->collectModuleVarDeclaredNames($s, $out);
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\IfStatement) {
+            $this->collectModuleVarDeclaredNames($node->consequent, $out);
+            if ($node->alternate !== null) {
+                $this->collectModuleVarDeclaredNames($node->alternate, $out);
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\ForStatement) {
+            if ($node->init instanceof Node) {
+                $this->collectModuleVarDeclaredNames($node->init, $out);
+            }
+            $this->collectModuleVarDeclaredNames($node->body, $out);
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Statement\ForInStatement
+            || $node instanceof \PhpJs\Ast\Statement\ForOfStatement
+        ) {
+            if ($node->left instanceof VariableDeclaration) {
+                $this->collectModuleVarDeclaredNames($node->left, $out);
+            }
+            $this->collectModuleVarDeclaredNames($node->body, $out);
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof \PhpJs\Ast\Statement\DoWhileStatement
+        ) {
+            $this->collectModuleVarDeclaredNames($node->body, $out);
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
+            foreach ($node->cases as $case) {
+                foreach ($case->consequent as $s) {
+                    $this->collectModuleVarDeclaredNames($s, $out);
+                }
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+            $this->collectModuleVarDeclaredNames($node->block, $out);
+            if ($node->handler !== null) {
+                $this->collectModuleVarDeclaredNames($node->handler->body, $out);
+            }
+            if ($node->finalizer !== null) {
+                $this->collectModuleVarDeclaredNames($node->finalizer, $out);
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+            $this->collectModuleVarDeclaredNames($node->body, $out);
+            return;
+        }
     }
 
     /**
@@ -272,7 +517,9 @@ class Interpreter
 
         // Collect lexical names (let/const/class declarations).
         $lexNames = [];
+        $seenLex = [];
         foreach ($body as $stmt) {
+            $newNames = [];
             if (
                 $stmt instanceof VariableDeclaration && (
                 $stmt->kind === 'let' || $stmt->kind === 'const'
@@ -281,11 +528,22 @@ class Interpreter
             ) {
                 foreach ($stmt->declarations as $decl) {
                     foreach ($this->patternBoundNames($decl->id) as $n) {
-                        $lexNames[] = $n;
+                        $newNames[] = $n;
                     }
                 }
             } elseif ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
-                $lexNames[] = $stmt->id->name;
+                $newNames[] = $stmt->id->name;
+            }
+            foreach ($newNames as $n) {
+                // Per §16.1.1: LexicallyDeclaredNames of script body
+                // cannot have duplicates.
+                if (isset($seenLex[$n])) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Identifier '{$n}' has already been declared",
+                    );
+                }
+                $seenLex[$n] = true;
+                $lexNames[] = $n;
             }
         }
 
@@ -1652,24 +1910,18 @@ class Interpreter
             $thisValue = $obj;
             $isMethodCall = true;
         } else {
-            $callee = $this->evaluate($node->callee, $env);
             // Per spec 12.3.4.1 step 4.b: if the callee is an identifier resolved
             // via an Object Environment Record (with statement), thisValue =
-            // envRec.WithBaseObject(). Walk the scope chain to find the with-object.
+            // envRec.WithBaseObject(). Use Environment::get's out-param so the
+            // proxy HasProperty trap does not fire a second time.
             if ($node->callee instanceof Identifier && !empty($this->withEnvObjects)) {
-                $name = $node->callee->name;
-                $walkEnv = $env;
-                while ($walkEnv !== null) {
-                    $envId = spl_object_id($walkEnv);
-                    if (isset($this->withEnvObjects[$envId])) {
-                        $withObj = $this->withEnvObjects[$envId];
-                        if ($withObj->has($name)) {
-                            $thisValue = $withObj;
-                            break;
-                        }
-                    }
-                    $walkEnv = $walkEnv->getParent();
+                $resolvedWithBase = null;
+                $callee = $env->get($node->callee->name, false, $resolvedWithBase);
+                if ($resolvedWithBase !== null) {
+                    $thisValue = $resolvedWithBase;
                 }
+            } else {
+                $callee = $this->evaluate($node->callee, $env);
             }
         }
 
@@ -1730,6 +1982,15 @@ class Interpreter
             // Direct eval inherits strict mode from its surrounding context.
             if ($this->strictMode) {
                 $parser->setStrictMode(true);
+            }
+            // Allow `super` references at parse time when the direct eval is
+            // inside a method-like context (method body, class field
+            // initializer, or static block). The runtime checks below enforce
+            // the spec's distinction between SuperProperty and SuperCall;
+            // without this flag the parser would reject super before runtime
+            // context inspection.
+            if ($env->has('[[HomeObject]]')) {
+                $parser->setInMethodLike(true);
             }
             $program = $parser->parse();
 
@@ -2042,6 +2303,27 @@ class Interpreter
             }
             return $this->nodeContainsSuperTransparent($node->body);
         }
+        // Property key positions are IdentifierName, not IdentifierReference;
+        // they may legally be `super` without it being a SuperExpression.
+        if ($node instanceof Property) {
+            if ($node->computed && $this->nodeContainsSuperTransparent($node->key)) {
+                return true;
+            }
+            if ($node->value !== null && $this->nodeContainsSuperTransparent($node->value)) {
+                return true;
+            }
+            return false;
+        }
+        if ($node instanceof MemberExpression) {
+            if ($this->nodeContainsSuperTransparent($node->object)) {
+                return true;
+            }
+            // The .property side is an IdentifierName, not a reference.
+            if ($node->computed && $this->nodeContainsSuperTransparent($node->property)) {
+                return true;
+            }
+            return false;
+        }
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
                 if ($this->nodeContainsSuperTransparent($value)) {
@@ -2123,6 +2405,71 @@ class Interpreter
                 throw new \PhpJs\Exceptions\SyntaxError('Illegal continue statement');
             }
             $this->validateEvalNoFreeJumps($stmt, []);
+            $this->validateNoTopLevelReturn($stmt);
+        }
+    }
+
+    /**
+     * `return` is never allowed at script/eval top level, even inside
+     * loops or switches (which validateEvalNoFreeJumps stops at because
+     * break/continue would be valid there).
+     */
+    private function validateNoTopLevelReturn(Node $node): void
+    {
+        if ($node instanceof \PhpJs\Ast\Statement\ReturnStatement) {
+            throw new \PhpJs\Exceptions\SyntaxError('Illegal return statement');
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+        ) {
+            return;
+        }
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $s) {
+                $this->validateNoTopLevelReturn($s);
+            }
+            return;
+        }
+        if (
+            $node instanceof ForStatement
+            || $node instanceof ForInStatement
+            || $node instanceof ForOfStatement
+            || $node instanceof \PhpJs\Ast\Statement\WhileStatement
+            || $node instanceof DoWhileStatement
+            || $node instanceof \PhpJs\Ast\Statement\WithStatement
+            || $node instanceof LabeledStatement
+        ) {
+            $this->validateNoTopLevelReturn($node->body);
+            return;
+        }
+        if ($node instanceof IfStatement) {
+            $this->validateNoTopLevelReturn($node->consequent);
+            if ($node->alternate !== null) {
+                $this->validateNoTopLevelReturn($node->alternate);
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\SwitchStatement) {
+            foreach ($node->cases as $case) {
+                foreach ($case->consequent as $s) {
+                    $this->validateNoTopLevelReturn($s);
+                }
+            }
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+            $this->validateNoTopLevelReturn($node->block);
+            if ($node->handler !== null) {
+                $this->validateNoTopLevelReturn($node->handler->body);
+            }
+            if ($node->finalizer !== null) {
+                $this->validateNoTopLevelReturn($node->finalizer);
+            }
+            return;
         }
     }
 
@@ -2175,6 +2522,16 @@ class Interpreter
             $this->validateEvalNoFreeJumps($node->consequent, $labels);
             if ($node->alternate !== null) {
                 $this->validateEvalNoFreeJumps($node->alternate, $labels);
+            }
+        }
+
+        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+            $this->validateEvalNoFreeJumps($node->block, $labels);
+            if ($node->handler !== null) {
+                $this->validateEvalNoFreeJumps($node->handler->body, $labels);
+            }
+            if ($node->finalizer !== null) {
+                $this->validateEvalNoFreeJumps($node->finalizer, $labels);
             }
         }
 
@@ -3081,6 +3438,10 @@ class Interpreter
     private function hoistEvalLexicalDeclarations(array $statements, Environment $env): void
     {
         foreach ($statements as $stmt) {
+            // Unwrap `export let/const/class ...` to hoist the inner TDZ binding.
+            if ($stmt instanceof ExportDeclaration && $stmt->declaration !== null) {
+                $stmt = $stmt->declaration;
+            }
             if ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
                 $env->declareLet($stmt->id->name);
             }
@@ -4490,27 +4851,38 @@ class Interpreter
             );
         }
         $usedKeys = [];
+        $usedSymIds = [];
         foreach ($pattern->properties as $prop) {
             if ($prop instanceof RestElement) {
                 $restObj = new JsObject();
                 if ($value instanceof JsObject) {
-                    // Per spec: object rest only includes own enumerable properties.
-                    foreach ($value->getOwnEnumerableKeys() as $key) {
-                        if (!in_array($key, $usedKeys, true)) {
-                            $restObj->set($key, $value->get($key));
-                        }
-                    }
+                    // Per §14.3.3.1 RestBindingInitialization: delegate to
+                    // CopyDataProperties so Proxy ownKeys traps fire, string
+                    // and symbol keys are both copied, and prior destructuring
+                    // captures are excluded.
+                    $this->copyRestDataProperties($value, $restObj, $usedKeys, $usedSymIds);
                 }
                 $this->bindPattern($prop->argument, $restObj, $env);
                 continue;
             }
 
             if ($prop instanceof AssignmentProperty) {
-                $key = $prop->computed
-                    ? TypeConversion::toString($this->evaluate($prop->key, $env))
-                    : ($prop->key instanceof Identifier
+                if ($prop->computed) {
+                    $rawKey = $this->evaluate($prop->key, $env);
+                    if ($rawKey instanceof JsSymbol) {
+                        $usedSymIds[$rawKey->getId()] = true;
+                        $propValue = ($value instanceof JsObject)
+                            ? $value->getBySymbol($rawKey)
+                            : JsUndefined::instance();
+                        $this->bindPattern($prop->value, $propValue, $env);
+                        continue;
+                    }
+                    $key = TypeConversion::toString($rawKey);
+                } else {
+                    $key = $prop->key instanceof Identifier
                         ? $prop->key->name
-                        : TypeConversion::toString($this->evaluate($prop->key, $env)));
+                        : TypeConversion::toString($this->evaluate($prop->key, $env));
+                }
                 $usedKeys[] = $key;
                 $propValue = ($value instanceof JsObject)
                     ? $value->get($key)
@@ -5286,8 +5658,14 @@ class Interpreter
     {
         $value = $this->evaluate($node->argument, $env);
 
-        // If awaiting a JsPromise, extract its state.
+        // If awaiting a JsPromise, extract its state. Top-level await and
+        // awaits in our synchronous interpreter don't suspend execution, so
+        // drain pending microtasks to let chained .then handlers settle the
+        // awaited promise before we inspect it.
         if ($value instanceof \PhpJs\Value\JsPromise) {
+            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                \PhpJs\Value\JsPromise::drainMicrotasks();
+            }
             if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
                 $this->throwJsValue($value->getResolvedValue());
             }
@@ -5339,13 +5717,68 @@ class Interpreter
      */
     private function evalImportExpression(ImportExpression $node, Environment $env): JsValue
     {
-        // Per spec, evaluation of the specifier (including GetValue which
-        // triggers accessors) propagates synchronously. Only once we have
-        // the value do we wrap subsequent errors (ToString, module
-        // resolution) into a rejected promise.
+        // Per spec EvaluateImportCall, both the specifier and options
+        // expressions are evaluated synchronously; any throw from evaluating
+        // either propagates out of import() directly (not via rejection).
         $sourceValue = $this->evaluate($node->source, $env);
+        $optionsValue = null;
+        if ($node->options !== null) {
+            $optionsValue = $this->evaluate($node->options, $env);
+        }
 
         $promise = new \PhpJs\Value\JsPromise();
+
+        // Validate options: per spec, if options is not undefined, it must
+        // be an Object. Otherwise reject with TypeError.
+        if ($optionsValue !== null && !($optionsValue instanceof JsUndefined)) {
+            if (!($optionsValue instanceof JsObject)) {
+                $err = $this->phpExceptionToJsValue(
+                    new TypeError('import() options must be an object')
+                );
+                $promise->reject($err);
+                return $promise;
+            }
+            // If options has a "with" property, it must be an object. Then
+            // its entries must be string-valued.
+            try {
+                $withVal = $optionsValue->get('with');
+                if (!($withVal instanceof JsUndefined)) {
+                    if (!($withVal instanceof JsObject)) {
+                        $err = $this->phpExceptionToJsValue(
+                            new TypeError('import() "with" attribute must be an object')
+                        );
+                        $promise->reject($err);
+                        return $promise;
+                    }
+                    // Enumerate own enumerable string keys and ensure values are strings.
+                    $keys = [];
+                    foreach ($withVal->getOwnPropertyNames() as $k) {
+                        $d = $withVal->getOwnPropertyDescriptor($k);
+                        if ($d !== null && $d->enumerable) {
+                            $keys[] = $k;
+                        }
+                    }
+                    foreach ($keys as $k) {
+                        $v = $withVal->get($k);
+                        if (!($v instanceof JsString)) {
+                            $err = $this->phpExceptionToJsValue(
+                                new TypeError('import() attribute value must be a string')
+                            );
+                            $promise->reject($err);
+                            return $promise;
+                        }
+                    }
+                }
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $promise->reject($e->jsValue);
+                return $promise;
+            } catch (\Throwable $e) {
+                $errorObj = $this->phpExceptionToJsValue($e);
+                $promise->reject($errorObj);
+                return $promise;
+            }
+        }
+
         try {
             $specifier = TypeConversion::toString($sourceValue);
             $loader = $this->getModuleLoader();
@@ -5396,11 +5829,111 @@ class Interpreter
                 && !($node->declaration instanceof ExpressionStatement)
             ) {
                 $value = $this->evaluate($node->declaration, $env);
+                // Per spec: if the AssignmentExpression is an anonymous
+                // function definition (or anonymous class), set its name
+                // to "default". If the class/function defines its own
+                // `name` member (e.g. static name method, getter), keep
+                // that — only override the implicit empty-string name.
+                if (
+                    $value instanceof JsFunction
+                    && ($value->getName() === '' || $value->getName() === '(anonymous)')
+                ) {
+                    $hasOwnName = $value->getOwnPropertyDescriptor('name') !== null;
+                    $existing = $hasOwnName ? $value->get('name') : null;
+                    $isImplicitEmpty = $existing instanceof JsString && $existing->value === '';
+                    if (!$hasOwnName || $isImplicitEmpty) {
+                        $value->setName('default');
+                    }
+                }
+                // Populate the synthetic __default__ slot so the namespace
+                // live binding sees the computed value.
+                $this->storeDefaultExportSlot($env, $value);
+                return Completion::normal($value);
+            }
+            // Anonymous export default function/class: evaluate as expression
+            // and stash into __default__ slot.
+            if (
+                $node->isDefault
+                && (
+                    ($node->declaration instanceof FunctionDeclaration && $node->declaration->id === null)
+                    || ($node->declaration instanceof ClassDeclaration && $node->declaration->id === null)
+                )
+            ) {
+                $value = $this->evaluateAnonymousDefault($node->declaration, $env);
+                // Per spec: anonymous function/class default exports get
+                // their `name` set to "default".
+                if (
+                    $value instanceof JsFunction
+                    && ($value->getName() === '' || $value->getName() === '(anonymous)')
+                ) {
+                    $hasOwnName = $value->getOwnPropertyDescriptor('name') !== null;
+                    $existing = $hasOwnName ? $value->get('name') : null;
+                    $isImplicitEmpty = $existing instanceof JsString && $existing->value === '';
+                    if (!$hasOwnName || $isImplicitEmpty) {
+                        $value->setName('default');
+                    }
+                }
+                $this->storeDefaultExportSlot($env, $value);
                 return Completion::normal($value);
             }
             return $this->executeStatement($node->declaration, $env);
         }
         return Completion::normal(JsUndefined::instance());
+    }
+
+    private function storeDefaultExportSlot(Environment $env, JsValue $value): void
+    {
+        // Walk up from the current env to find the module env that declared
+        // __default__ via declareLet. Initialize or reassign it there.
+        $cur = $env;
+        while ($cur !== null) {
+            if ($cur->hasOwnBinding('__default__')) {
+                if ($cur->isInTdz('__default__')) {
+                    $cur->initialize('__default__', $value);
+                } else {
+                    $cur->defineLet('__default__', $value);
+                }
+                return;
+            }
+            $cur = $cur->getParent();
+        }
+    }
+
+    private function evaluateAnonymousDefault(Node $node, Environment $env): JsValue
+    {
+        if ($node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
+            $expr = new \PhpJs\Ast\Expression\FunctionExpression(
+                $node->location,
+                null,
+                $node->params,
+                $node->body,
+                $node->generator,
+                $node->async,
+                $node->sourceText,
+            );
+            $fn = $this->evaluate($expr, $env);
+            // Per §16.2.3.7 for ExportDefault of an anonymous function:
+            // the function's [[Name]] internal slot is set to "default".
+            if ($fn instanceof JsFunction && ($fn->getName() === '' || $fn->getName() === '(anonymous)')) {
+                $fn->setName('default');
+            }
+            return $fn;
+        }
+        if ($node instanceof ClassDeclaration) {
+            $expr = new ClassExpression(
+                $node->location,
+                $node->id,
+                $node->superClass,
+                $node->body,
+                $node->sourceText,
+                $node->decorators,
+            );
+            // Per §16.2.3.7: for an anonymous class in `export default`, the
+            // class name used by static field initializers and by the final
+            // `name` property is "default". Use the nameHint path.
+            return $this->evalClassExpression($expr, $env, 'default');
+        }
+        return $this->evaluate($node, $env);
     }
 
     /**
@@ -5409,18 +5942,118 @@ class Interpreter
      *
      * @param Node[] $body
      */
-    public function executeModuleBody(array $body, Environment $moduleEnv): JsValue
+    /**
+     * Perform function/var hoisting and TDZ declarations for a module body.
+     * The module loader calls this separately so that exported hoisted bindings
+     * are visible in the namespace before imports (including self-imports) are
+     * resolved.
+     *
+     * @param Node[] $body
+     */
+    public function hoistModuleDeclarations(array $body, Environment $moduleEnv): void
+    {
+        $prev = $this->strictMode;
+        $this->strictMode = true;
+        try {
+            $this->hoistDeclarations($body, $moduleEnv);
+            // Create TDZ bindings for top-level let/const/class declarations
+            // (including those inside export declarations) so `typeof x` before
+            // the binding's initialization throws ReferenceError per spec.
+            $this->hoistEvalLexicalDeclarations($body, $moduleEnv);
+            // Per spec: `export default function() {}` and
+            // `export default function* () {}` are hoisted like any other
+            // function declaration, with name "default". Pre-evaluate the
+            // anonymous function and store into the synthetic __default__
+            // slot so same-module self-imports see its value.
+            foreach ($body as $stmt) {
+                if (
+                    $stmt instanceof ExportDeclaration
+                    && $stmt->isDefault
+                    && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+                    && $stmt->declaration->id === null
+                ) {
+                    $decl = $stmt->declaration;
+                    $fn = new \PhpJs\Value\JsFunction(
+                        'default',
+                        $decl->params,
+                        $decl->body,
+                        $moduleEnv,
+                        isGenerator: $decl->generator,
+                        isAsync: $decl->async,
+                        strict: true,
+                    );
+                    if ($decl->sourceText !== null) {
+                        $fn->setSourceText($decl->sourceText);
+                    }
+                    $this->installFunctionPrototype($fn, $decl->generator, $decl->async);
+                    if (!$moduleEnv->hasOwnBinding('__default__')) {
+                        $moduleEnv->defineLet('__default__', $fn);
+                    } else {
+                        $this->storeDefaultExportSlot($moduleEnv, $fn);
+                    }
+                }
+            }
+        } finally {
+            $this->strictMode = $prev;
+        }
+    }
+
+    public function executeModuleBody(array $body, Environment $moduleEnv, bool $alreadyHoisted = false): JsValue
     {
         $prevStrict = $this->strictMode;
         // Modules are always strict per spec.
         $this->strictMode = true;
 
-        $this->hoistDeclarations($body, $moduleEnv);
+        // Per §9.4.1 ModuleEnvironmentRecord.GetThisBinding returns
+        // undefined. Bind `this` explicitly so it shadows the global env.
+        if (!$moduleEnv->hasOwnBinding('this')) {
+            $moduleEnv->defineConst('this', JsUndefined::instance());
+        }
+
+        if (!$alreadyHoisted) {
+            $this->hoistDeclarations($body, $moduleEnv);
+            $this->hoistEvalLexicalDeclarations($body, $moduleEnv);
+        }
+
+        // Module top-level early errors — return/break/continue not in a
+        // function/loop, super/new.target outside a method/constructor,
+        // unbound private identifiers, and duplicate lexical names.
+        $this->validateEvalBody($body);
+        $this->validateModuleTopLevelDuplicateBindings($body);
+        if ($this->astContainsNewTargetTransparent($body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'new.target expression is not allowed here'
+            );
+        }
+        if ($this->astContainsSuperTransparent($body)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                "'super' keyword unexpected here"
+            );
+        }
+        \PhpJs\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic(
+            new \PhpJs\Ast\Program(
+                $body[0]->location ?? new \PhpJs\Lexer\SourceLocation(0, 0, 0),
+                $body,
+            ),
+        );
 
         $result = JsUndefined::instance();
         foreach ($body as $stmt) {
             // Import declarations are already processed by the module loader.
             if ($stmt instanceof ImportDeclaration) {
+                continue;
+            }
+            // Skip re-executing function declarations at top-level — they
+            // were already instantiated during hoisting. Running their
+            // statement form would replace the hoisted binding with a new
+            // function instance and invalidate already-snapshotted imports.
+            if ($stmt instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
+                continue;
+            }
+            if (
+                $stmt instanceof ExportDeclaration
+                && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            ) {
                 continue;
             }
             $completion = $this->executeStatement($stmt, $moduleEnv);
@@ -5921,27 +6554,39 @@ class Interpreter
                 );
             }
             $usedKeysAvb = [];
+            $usedSymIdsAvb = [];
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof RestElement) {
                     $restObjAvb = new JsObject();
                     if ($value instanceof JsObject) {
-                        // Per spec: object rest only includes own enumerable properties.
-                        foreach ($value->getOwnEnumerableKeys() as $rk) {
-                            if (!in_array($rk, $usedKeysAvb, true)) {
-                                $restObjAvb->set($rk, $value->get($rk));
-                            }
-                        }
+                        // Delegate to CopyDataProperties so Proxy ownKeys
+                        // trap fires and both string and symbol keys are
+                        // copied (§14.3.3.1 RestBindingInitialization).
+                        $this->copyRestDataProperties($value, $restObjAvb, $usedKeysAvb, $usedSymIdsAvb);
                     }
                     $this->assignVarBinding($prop->argument, $restObjAvb, $env);
                     break;
                 }
                 if ($prop instanceof AssignmentProperty) {
-                    $key = $prop->computed
-                        ? TypeConversion::toString($this->evaluate($prop->key, $env))
-                        : ($prop->key instanceof Identifier
+                    // Resolve the property name. Computed keys may evaluate to
+                    // a Symbol, in which case we track it under the symbol
+                    // exclusion set and skip the string-key conversion.
+                    $symKey = null;
+                    if ($prop->computed) {
+                        $rawKey = $this->evaluate($prop->key, $env);
+                        if ($rawKey instanceof JsSymbol) {
+                            $symKey = $rawKey;
+                            $usedSymIdsAvb[$rawKey->getId()] = true;
+                        } else {
+                            $key = TypeConversion::toString($rawKey);
+                            $usedKeysAvb[] = $key;
+                        }
+                    } else {
+                        $key = $prop->key instanceof Identifier
                             ? $prop->key->name
-                            : TypeConversion::toString($this->evaluate($prop->key, $env)));
-                    $usedKeysAvb[] = $key;
+                            : TypeConversion::toString($this->evaluate($prop->key, $env));
+                        $usedKeysAvb[] = $key;
+                    }
 
                     // Per spec 14.3.3.3 KeyedBindingInitialization:
                     // Step 2: ResolveBinding(bindingId) BEFORE GetV.
@@ -5960,7 +6605,15 @@ class Interpreter
                         }
                     }
 
-                    $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
+                    if ($symKey !== null) {
+                        $propValue = ($value instanceof JsObject)
+                            ? $value->getBySymbol($symKey)
+                            : JsUndefined::instance();
+                    } else {
+                        $propValue = ($value instanceof JsObject)
+                            ? $value->get($key)
+                            : JsUndefined::instance();
+                    }
 
                     if ($resolvedBindingEnv !== null) {
                         $this->assignVarBindingResolved($prop->value, $propValue, $env, $resolvedBindingEnv);
@@ -7405,6 +8058,24 @@ class Interpreter
     private function awaitValue(JsValue $value): JsValue
     {
         if ($value instanceof \PhpJs\Value\JsPromise) {
+            // If the promise is still pending (e.g. produced by a .then()
+            // chain), drain queued microtasks until it settles so the
+            // top-level await observes a resolved value.
+            $guard = 0;
+            while (
+                $value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
+                && $guard++ < 100000
+            ) {
+                \PhpJs\Value\JsPromise::drainMicrotasks();
+                if ($value->getState() !== \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    break;
+                }
+                // Give up if no microtask drain changed state — no further
+                // progress is possible in our single-tick interpreter.
+                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    break;
+                }
+            }
             if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
                 $this->throwJsValue($value->getResolvedValue());
             }
@@ -8674,6 +9345,33 @@ class Interpreter
     {
         $globalObj = $env->getLinkedObject();
         $isExtensible = $globalObj !== null ? $globalObj->isExtensible() : true;
+
+        // Per EvalDeclarationInstantiation step 5.a.i: for each var name in
+        // the eval code, if the global env already has a lexical binding of
+        // that name, throw SyntaxError. This prevents `let x; eval('var x')`.
+        $allVarNames = [];
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
+                foreach ($stmt->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $n) {
+                        $allVarNames[$n] = true;
+                    }
+                }
+            } elseif ($stmt instanceof FunctionDeclaration && $stmt->id !== null) {
+                $allVarNames[$stmt->id->name] = true;
+            }
+        }
+        foreach (array_keys($allVarNames) as $vn) {
+            if ($env->hasLexicalBinding($vn)) {
+                $this->throwJsValue(
+                    $this->phpExceptionToJsValue(
+                        new \PhpJs\Exceptions\SyntaxError(
+                            "Identifier '{$vn}' has already been declared",
+                        ),
+                    ),
+                );
+            }
+        }
 
         // Per EvalDeclarationInstantiation step 8: collect function declarations
         // in reverse order (last wins) and perform CanDeclareGlobalFunction.
@@ -10525,7 +11223,10 @@ class Interpreter
     {
         // Always use JsThrowable to preserve the original JS value.
         // execTryStatement catches JsThrowable and extracts jsValue for the catch block.
-        throw new \PhpJs\Exceptions\JsThrowable($value, TypeConversion::toString($value));
+        // Use display() rather than ToString so that throwing a Symbol or
+        // other non-stringifiable primitive does not raise a secondary
+        // TypeError that replaces the original throw value.
+        throw new \PhpJs\Exceptions\JsThrowable($value, $value->display());
     }
 
     public function getCallStack(): CallStack
@@ -10684,10 +11385,22 @@ class Interpreter
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
 
-        // Detect duplicate named groups and enable PCRE's J modifier (ES2025).
+        // Detect duplicate named groups (ES2025 "Duplicate named capture groups"):
+        //   - within the same alternative → SyntaxError per spec.
+        //   - in separate alternatives → allowed; enable PCRE's J modifier.
+        if (self::hasDuplicateNamedGroupsInSameAlternative($pattern)) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                "Invalid regular expression: /{$pattern}/: Duplicate capture group name"
+            );
+        }
         if (self::hasDuplicateNamedGroups($pattern)) {
             $pcreFlags .= 'J';
         }
+
+        // Per ES2024 "RegExp Modifiers" (§22.2.1.6 early errors):
+        //   (?addFlags-removeFlags:Disjunction) must not have any flag
+        //   appearing in both sides, and neither side may repeat a flag.
+        self::validateRegExpModifierGroups($pattern);
 
         // Escape unescaped forward slashes for the PCRE delimiter.
         // Already-escaped slashes (\/) must not be double-escaped.
@@ -13519,6 +14232,215 @@ class Interpreter
         }
 
         return $matches;
+    }
+
+    /**
+     * Validate (?addFlags-removeFlags:...) modifier groups. Per spec, the
+     * allowed flags are `i`, `m`, `s` and both sides combined must be
+     * non-empty and non-overlapping, with no flag repeated on either side.
+     */
+    public static function validateRegExpModifierGroups(string $pattern): void
+    {
+        $len = strlen($pattern);
+        $i = 0;
+        $inClass = false;
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $ch === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($inClass) {
+                if ($ch === ']') {
+                    $inClass = false;
+                }
+                $i++;
+                continue;
+            }
+            if ($ch === '(' && $i + 1 < $len && $pattern[$i + 1] === '?') {
+                // Distinguish `(?:`, `(?=`, `(?!`, `(?<=`, `(?<!`, `(?<name>`
+                // from a modifier group `(?flags-flags:`. Modifier groups
+                // start with i/m/s or `-`.
+                if ($i + 2 < $len) {
+                    $first = $pattern[$i + 2];
+                    if (
+                        !in_array($first, ['i', 'm', 's', '-'], true)
+                    ) {
+                        $i += 2;
+                        continue;
+                    }
+                }
+                // Scan flag characters after `(?`.
+                $j = $i + 2;
+                $add = '';
+                $remove = '';
+                $phase = 'add';
+                $hasMinus = false;
+                $hasColon = false;
+                while ($j < $len) {
+                    $c = $pattern[$j];
+                    if ($c === '-' && $phase === 'add' && !$hasMinus) {
+                        $phase = 'remove';
+                        $hasMinus = true;
+                        $j++;
+                        continue;
+                    }
+                    if ($c === ':') {
+                        $hasColon = true;
+                        break;
+                    }
+                    if ($c === ')') {
+                        break;
+                    }
+                    if (!in_array($c, ['i', 'm', 's'], true)) {
+                        // Invalid character in modifier group.
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Invalid modifier flag"
+                        );
+                    }
+                    if ($phase === 'add') {
+                        $add .= $c;
+                    } else {
+                        $remove .= $c;
+                    }
+                    $j++;
+                }
+                if (!$hasColon) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /{$pattern}/: Modifier group requires colon"
+                    );
+                }
+                if ($add === '' && $remove === '') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /{$pattern}/: Modifier group has no flags"
+                    );
+                }
+                // Repeated flag on either side → SyntaxError.
+                if (strlen(count_chars($add, 3)) !== strlen($add)) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
+                    );
+                }
+                if (strlen(count_chars($remove, 3)) !== strlen($remove)) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /{$pattern}/: Repeated flag in modifier"
+                    );
+                }
+                // Overlap between add and remove → SyntaxError.
+                for ($k = 0; $k < strlen($add); $k++) {
+                    if (str_contains($remove, $add[$k])) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Flag in both add and remove modifiers"
+                        );
+                    }
+                }
+                $i = $j + 1;
+                continue;
+            }
+            $i++;
+        }
+    }
+
+    /**
+     * Detect duplicate named capture groups declared within the same
+     * Alternative (i.e. not separated by a top-level `|`). Per spec, this
+     * is a SyntaxError even under the duplicate-named-capture-groups
+     * proposal — duplicates are only allowed across disjoint alternatives.
+     */
+    public static function hasDuplicateNamedGroupsInSameAlternative(string $pattern): bool
+    {
+        // Collect declared names per alternative, descending into groups but
+        // restarting the "seen" set on every top-level `|`. Groups themselves
+        // introduce their own alternative scope (their internal `|` splits
+        // the inner names, independent of the outer set).
+        $len = strlen($pattern);
+        $i = 0;
+        // Stack of "seen-name" sets, one per nested alternative scope.
+        $stack = [[]];
+        $topIndex = 0;
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if ($ch === '[') {
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                $i++;
+                continue;
+            }
+            if ($ch === '|') {
+                // New alternative at the current nesting: reset its seen set.
+                $stack[$topIndex] = [];
+                $i++;
+                continue;
+            }
+            if (
+                $ch === '('
+                && $i + 1 < $len
+                && $pattern[$i + 1] === '?'
+            ) {
+                // Is it a named capture (?<name>..) — not lookbehind (?<=..) or (?<!..)?
+                if (
+                    $i + 3 < $len
+                    && $pattern[$i + 2] === '<'
+                    && $pattern[$i + 3] !== '='
+                    && $pattern[$i + 3] !== '!'
+                ) {
+                    $nameStart = $i + 3;
+                    $nameEnd = $nameStart;
+                    while ($nameEnd < $len && $pattern[$nameEnd] !== '>') {
+                        $nameEnd++;
+                    }
+                    if ($nameEnd < $len) {
+                        $name = substr($pattern, $nameStart, $nameEnd - $nameStart);
+                        if (isset($stack[$topIndex][$name])) {
+                            return true;
+                        }
+                        $stack[$topIndex][$name] = true;
+                        $i = $nameEnd + 1;
+                        // Enter a new alternative scope for the group body.
+                        $stack[] = [];
+                        $topIndex++;
+                        continue;
+                    }
+                }
+                // Non-capturing or other (?...) group — push scope.
+                $stack[] = [];
+                $topIndex++;
+                $i += 2;
+                continue;
+            }
+            if ($ch === '(') {
+                // Plain capturing group — push scope.
+                $stack[] = [];
+                $topIndex++;
+                $i++;
+                continue;
+            }
+            if ($ch === ')') {
+                // Pop scope.
+                if ($topIndex > 0) {
+                    array_pop($stack);
+                    $topIndex--;
+                }
+                $i++;
+                continue;
+            }
+            $i++;
+        }
+        return false;
     }
 
     /**

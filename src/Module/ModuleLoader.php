@@ -37,6 +37,17 @@ class ModuleLoader
     /** @var array<string, true> Set of modules currently being evaluated (cycle detection). */
     private array $evaluating = [];
 
+    /** @var list<string> Module paths whose bodies are awaiting execution, in link order. */
+    private array $bodyQueue = [];
+
+    /** True while a linking pass is in progress. Nested loadModule calls
+     *  issued during linking (static imports or re-exports) add to the
+     *  current batch and defer to the outer call for validation and body
+     *  execution. Nested loads issued from inside a body (dynamic import)
+     *  start a fresh batch, so the imported module is fully evaluated
+     *  before the awaiter sees its namespace. */
+    private bool $linking = false;
+
     private Interpreter $interpreter;
     private Environment $globalEnv;
 
@@ -67,15 +78,67 @@ class ModuleLoader
             throw new \PhpJs\Exceptions\TypeError("Cannot find module '{$specifier}'");
         }
 
-        return $this->evaluateModule($resolved, $source);
+        // Nested loads issued during linking (from finalizeExports /
+        // processImports) just link and return; the outer call owns
+        // validation and body execution for the whole graph.
+        if ($this->linking) {
+            return $this->linkModule($resolved, $source);
+        }
+
+        $this->linking = true;
+        try {
+            $namespace = $this->linkModule($resolved, $source);
+            $this->finalizeStarReExports();
+            $this->lockDownNamespaces();
+            $this->validateIndirectExports();
+            // Clear the linking flag before draining so dynamic imports
+            // issued from a body can start their own link/validate/drain
+            // cycles.
+            $this->linking = false;
+            $this->drainBodyQueue();
+            return $namespace;
+        } finally {
+            $this->linking = false;
+        }
     }
 
     /**
      * Evaluate module source text and return its namespace object.
+     * Kept as a thin wrapper around linkModule + drainBodyQueue for callers
+     * that bypass loadModule (e.g. the test runner that already holds source).
      */
     public function evaluateModule(string $absolutePath, string $source): JsObject
     {
-        // Return cached if available.
+        if (isset($this->modules[$absolutePath])) {
+            return $this->modules[$absolutePath]->namespace;
+        }
+
+        if ($this->linking) {
+            return $this->linkModule($absolutePath, $source);
+        }
+
+        $this->linking = true;
+        try {
+            $namespace = $this->linkModule($absolutePath, $source);
+            $this->finalizeStarReExports();
+            $this->lockDownNamespaces();
+            $this->validateIndirectExports();
+            $this->linking = false;
+            $this->drainBodyQueue();
+            return $namespace;
+        } finally {
+            $this->linking = false;
+        }
+    }
+
+    /**
+     * Parse a module, populate its namespace with export bindings, resolve
+     * its imports against dependency namespaces, and queue its body for
+     * later execution. Does NOT execute the body. The caller is responsible
+     * for draining the body queue at the top of the load graph.
+     */
+    private function linkModule(string $absolutePath, string $source): JsObject
+    {
         if (isset($this->modules[$absolutePath])) {
             return $this->modules[$absolutePath]->namespace;
         }
@@ -92,6 +155,7 @@ class ModuleLoader
         }
         $this->evaluating[$absolutePath] = true;
 
+        $prevModulePath = $this->interpreter->getCurrentModulePath();
         try {
             $parser = new Parser($source);
             $parser->setModuleMode(true);
@@ -99,20 +163,41 @@ class ModuleLoader
 
             // Create a fresh module environment linked to the global environment.
             $moduleEnv = new Environment($this->globalEnv);
+            $this->interpreter->setCurrentModulePath($absolutePath);
 
-            // First pass: collect exports and process import declarations.
-            $this->processDeclarations($program->body, $moduleEnv, $absolutePath, $namespace);
-
-            // Execute the module body.
-            $this->interpreter->executeModuleBody($program->body, $moduleEnv);
-
-            // Second pass: populate namespace with final export values.
+            // Pre-hoist function/var declarations and TDZ bindings into
+            // moduleEnv, then install live namespace bindings for all exports.
+            // This makes hoisted exports visible in the module's own namespace
+            // before imports are resolved, so same-module self-imports and
+            // circular imports see them correctly per spec.
+            $this->interpreter->hoistModuleDeclarations($program->body, $moduleEnv);
+            // Per §16.2.1.6.2 InitializeEnvironment step 9 and §16.2.1.5.2
+            // InnerModuleLinking: requested modules are resolved in
+            // source-text order so body evaluation follows the post-order
+            // traversal of the requestedModules graph. Pre-load dependencies
+            // here so the body queue order reflects source order, regardless
+            // of whether each reference is an import or export-from.
+            $this->preloadRequestedModules($program->body, $absolutePath);
             $this->finalizeExports($program->body, $moduleEnv, $absolutePath, $namespace);
+            $record->exportsFinalized = true;
 
-            // Module namespace objects have a null prototype per spec.
+            // Per §16.2.1.9 GetModuleNamespace: names that are ambiguously
+            // exported via multiple `export *` sources are excluded from the
+            // namespace. Remove any bindings we provisionally installed for
+            // such names.
+            foreach (array_keys($record->ambiguousNames) as $ambiguousName) {
+                // Indirect bindings are non-configurable, so use forceDelete
+                // to bypass the configurability check.
+                $namespace->forceDelete($ambiguousName);
+            }
+
+            // Install Symbol.toStringTag = "Module". markAsModuleNamespace
+            // and preventExtensions are deferred to lockDownNamespaces so
+            // finalizeStarReExports can still add indirect bindings after
+            // the graph is fully linked. Module namespace exotic
+            // [[DefineOwnProperty]] rejects new properties, so the flag must
+            // not be set while we are still building the namespace.
             $namespace->setPrototype(null);
-
-            // Symbol.toStringTag = "Module" per spec.
             $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
             if ($toStringTagSym !== null) {
                 $namespace->definePropertyBySymbol(
@@ -121,13 +206,262 @@ class ModuleLoader
                 );
             }
 
-            // Module namespace objects are not extensible per spec.
-            $namespace->preventExtensions();
+            // Resolve imports against now-populated namespace accessors.
+            $this->processDeclarations($program->body, $moduleEnv, $absolutePath, $namespace);
+
+            // Queue the body for later execution. Post-order against dependency
+            // links is approximated by the order linkModule completes linking.
+            $record->pendingBody = [
+                'program' => $program,
+                'moduleEnv' => $moduleEnv,
+                'prevModulePath' => $prevModulePath,
+            ];
+            $this->bodyQueue[] = $absolutePath;
         } finally {
             unset($this->evaluating[$absolutePath]);
+            // Restore prior module path so the enclosing module continues to
+            // resolve relative paths against its own location during linking.
+            $this->interpreter->setCurrentModulePath($prevModulePath);
         }
 
         return $namespace;
+    }
+
+    /**
+     * Execute every module body that was queued by linkModule, in link order.
+     * Each body runs with its own moduleEnv; the interpreter's currentModulePath
+     * is set to the module's path before the body runs and restored after.
+     */
+    private function drainBodyQueue(): void
+    {
+        while ($this->bodyQueue !== []) {
+            $path = array_shift($this->bodyQueue);
+            $record = $this->modules[$path] ?? null;
+            if ($record === null || $record->pendingBody === null) {
+                continue;
+            }
+            $pending = $record->pendingBody;
+            $record->pendingBody = null;
+            $prevModulePath = $this->interpreter->getCurrentModulePath();
+            $this->interpreter->setCurrentModulePath($path);
+            try {
+                $this->interpreter->executeModuleBody(
+                    $pending['program']->body,
+                    $pending['moduleEnv'],
+                    alreadyHoisted: true,
+                );
+            } finally {
+                $this->interpreter->setCurrentModulePath($prevModulePath);
+            }
+        }
+    }
+
+    /**
+     * Prevent extensions on every module namespace in the graph. Called
+     * after finalizeStarReExports so all star re-export bindings are
+     * installed before the namespace is frozen.
+     */
+    private function lockDownNamespaces(): void
+    {
+        foreach ($this->modules as $record) {
+            $record->namespace->markAsModuleNamespace();
+            $record->namespace->preventExtensions();
+        }
+    }
+
+    /**
+     * Per §16.2.1.6.2 GetExportedNames with cycle-safe star traversal:
+     * for each module with `export * from 'src'` requests, copy each
+     * re-exported name (minus default) into its namespace as an indirect
+     * binding resolved via the source namespace. Runs after the whole
+     * module graph is linked, so partial-namespace snapshots during
+     * cycles no longer matter. Names contributed by multiple distinct
+     * sources become ambiguous and are removed from the namespace.
+     */
+    private function finalizeStarReExports(): void
+    {
+        foreach ($this->modules as $path => $record) {
+            if ($record->starExportRequests === []) {
+                continue;
+            }
+            foreach ($record->starExportRequests as $sourcePath) {
+                $names = $this->getExportedNames($sourcePath, [$path => true]);
+                foreach ($names as $name) {
+                    if ($name === 'default') {
+                        continue;
+                    }
+                    // Direct exports and explicit indirect re-exports of
+                    // this module win over star re-exports.
+                    if (
+                        $record->namespace->hasOwnProperty($name)
+                        && !isset($record->starExportSources[$name])
+                    ) {
+                        continue;
+                    }
+                    if (isset($record->ambiguousNames[$name])) {
+                        continue;
+                    }
+                    if (isset($record->starExportSources[$name])) {
+                        if ($record->starExportSources[$name] !== $sourcePath) {
+                            $record->ambiguousNames[$name] = true;
+                            $record->namespace->forceDelete($name);
+                        }
+                        continue;
+                    }
+                    $sourceRecord = $this->modules[$sourcePath] ?? null;
+                    if ($sourceRecord === null) {
+                        continue;
+                    }
+                    $record->starExportSources[$name] = $sourcePath;
+                    $this->installIndirectBinding(
+                        $record->namespace,
+                        $name,
+                        $sourceRecord->namespace,
+                        $name,
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Cycle-aware GetExportedNames (§16.2.1.6.2). Returns the list of names
+     * a module exposes (direct exports + transitive star re-exports).
+     *
+     * @param array<string, true> $exportStarSet Modules already visited in this traversal.
+     * @return list<string>
+     */
+    private function getExportedNames(string $modulePath, array $exportStarSet): array
+    {
+        if (isset($exportStarSet[$modulePath])) {
+            return [];
+        }
+        $exportStarSet[$modulePath] = true;
+        $record = $this->modules[$modulePath] ?? null;
+        if ($record === null) {
+            return [];
+        }
+        $names = [];
+        foreach ($record->namespace->getOwnPropertyNames() as $name) {
+            $names[$name] = true;
+        }
+        foreach (array_keys($record->indirectExports) as $name) {
+            $names[$name] = true;
+        }
+        foreach ($record->starExportRequests as $source) {
+            foreach ($this->getExportedNames($source, $exportStarSet) as $n) {
+                if ($n === 'default') {
+                    continue;
+                }
+                $names[$n] = true;
+            }
+        }
+        return array_keys($names);
+    }
+
+    /**
+     * Per §16.2.1.6.3 ResolveExport: validate that every indirect re-export
+     * entry across the linked module graph resolves to a concrete binding
+     * (not null, not ambiguous). Runs once after the entire dependency graph
+     * is linked, before any body executes.
+     */
+    private function validateIndirectExports(): void
+    {
+        foreach ($this->modules as $path => $record) {
+            foreach ($record->indirectExports as $exportName => $_) {
+                $resolution = $this->resolveExport($path, $exportName, []);
+                if ($resolution === null) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Indirect re-export '{$exportName}' in module '{$path}' does not resolve",
+                    );
+                }
+                if ($resolution === 'ambiguous') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Indirect re-export '{$exportName}' in module '{$path}' is ambiguous",
+                    );
+                }
+            }
+            foreach ($record->importEntries as $entry) {
+                $resolution = $this->resolveExport($entry['source'], $entry['exportName'], []);
+                if ($resolution === null) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Module '{$entry['source']}' does not export '{$entry['exportName']}'",
+                    );
+                }
+                if ($resolution === 'ambiguous') {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Ambiguous import '{$entry['exportName']}' from '{$entry['source']}'",
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Spec §16.2.1.6.3 ResolveExport.
+     * Returns ['module' => path, 'bindingName' => name] for a resolved
+     * binding, 'ambiguous' if the name is reached through multiple
+     * distinct sources, or null if the name cannot be resolved (including
+     * cyclic re-exports with no concrete origin).
+     *
+     * @param list<array{module:string, exportName:string}> $resolveSet
+     * @return array{module:string,bindingName:string}|'ambiguous'|null
+     */
+    private function resolveExport(string $modulePath, string $exportName, array $resolveSet): array|string|null
+    {
+        foreach ($resolveSet as $r) {
+            if ($r['module'] === $modulePath && $r['exportName'] === $exportName) {
+                return null;
+            }
+        }
+        $resolveSet[] = ['module' => $modulePath, 'exportName' => $exportName];
+
+        $record = $this->modules[$modulePath] ?? null;
+        if ($record === null) {
+            return null;
+        }
+
+        // Indirect re-export: recurse through the source module.
+        if (isset($record->indirectExports[$exportName])) {
+            $entry = $record->indirectExports[$exportName];
+            return $this->resolveExport($entry['source'], $entry['localName'], $resolveSet);
+        }
+
+        // Direct export on this module: the namespace carries a live accessor
+        // whose source module is this one. Distinguish from indirect bindings
+        // copied in via star-re-exports by consulting starExportSources.
+        if (
+            $record->namespace->hasOwnProperty($exportName)
+            && !isset($record->starExportSources[$exportName])
+        ) {
+            return ['module' => $modulePath, 'bindingName' => $exportName];
+        }
+
+        // Star re-exports: search transitively and detect ambiguity.
+        $starResolution = null;
+        foreach ($record->starExportRequests as $starSource) {
+            if ($exportName === 'default') {
+                continue;
+            }
+            $candidate = $this->resolveExport($starSource, $exportName, $resolveSet);
+            if ($candidate === null) {
+                continue;
+            }
+            if ($candidate === 'ambiguous') {
+                return 'ambiguous';
+            }
+            if ($starResolution === null) {
+                $starResolution = $candidate;
+                continue;
+            }
+            if (
+                $starResolution['module'] !== $candidate['module']
+                || $starResolution['bindingName'] !== $candidate['bindingName']
+            ) {
+                return 'ambiguous';
+            }
+        }
+        return $starResolution;
     }
 
     /**
@@ -180,6 +514,27 @@ class ModuleLoader
     }
 
     /**
+     * Pre-load every module referenced by an import or export-from
+     * declaration, in source-code order. Ensures the body queue is
+     * populated in the order required by the spec's post-DFS evaluation
+     * traversal of [[RequestedModules]].
+     *
+     * @param Node[] $body
+     */
+    private function preloadRequestedModules(array $body, string $modulePath): void
+    {
+        foreach ($body as $node) {
+            if ($node instanceof ImportDeclaration && $node->source !== null) {
+                $this->loadModule($node->source, $modulePath);
+                continue;
+            }
+            if ($node instanceof ExportDeclaration && $node->source !== null) {
+                $this->loadModule($node->source, $modulePath);
+            }
+        }
+    }
+
+    /**
      * First pass: process import and export declarations to set up bindings.
      *
      * @param Node[] $body
@@ -203,15 +558,35 @@ class ModuleLoader
         string $modulePath,
     ): void {
         $importedNs = $this->loadModule($node->source, $modulePath);
+        $resolved = $this->resolve($node->source, $modulePath);
+        $currentRecord = $this->modules[$modulePath] ?? null;
 
         foreach ($node->specifiers as $spec) {
-            $value = match ($spec->specType) {
-                'default' => $importedNs->get('default'),
-                'namespace' => $importedNs,
-                'named' => $importedNs->get($spec->imported ?? $spec->local),
-                default => JsUndefined::instance(),
+            if ($spec->specType === 'namespace') {
+                // Namespace imports snapshot the namespace object itself.
+                $moduleEnv->defineConst($spec->local, $importedNs);
+                continue;
+            }
+            // Install a live indirect binding that resolves the imported name
+            // on each read. This matches spec semantics for import bindings
+            // (live, read-only) and supports circular/self imports and TDZ.
+            $exportName = $spec->specType === 'default'
+                ? 'default'
+                : ($spec->imported ?? $spec->local);
+            // Record the entry so validateImports can run ResolveExport
+            // after the whole graph is linked (including star re-exports
+            // contributed by finalizeStarReExports). A hasOwnProperty check
+            // here would race with star-re-export installation.
+            if ($currentRecord !== null) {
+                $currentRecord->importEntries[] = [
+                    'source' => $resolved,
+                    'exportName' => $exportName,
+                ];
+            }
+            $resolver = static function () use ($importedNs, $exportName): JsValue {
+                return $importedNs->get($exportName);
             };
-            $moduleEnv->defineConst($spec->local, $value);
+            $moduleEnv->defineImportBinding($spec->local, $resolver);
         }
     }
 
@@ -242,9 +617,9 @@ class ModuleLoader
         // export default expr
         if ($node->isDefault) {
             if ($node->declaration !== null) {
-                $value = $this->getDeclarationValue($node->declaration, $moduleEnv);
-                // Default exports use a snapshot value per spec (not a live binding),
-                // unless the declaration is a named function/class (which uses the name binding).
+                // Named function/class default exports use a live binding
+                // keyed on the declared name. Avoid reading the value now
+                // (the class binding may still be in TDZ at install time).
                 if ($node->declaration instanceof FunctionDeclaration && $node->declaration->id !== null) {
                     $bindingName = $node->declaration->id->name;
                     $this->installLiveBinding($namespace, 'default', $moduleEnv, $bindingName);
@@ -252,10 +627,14 @@ class ModuleLoader
                     $bindingName = $node->declaration->id->name;
                     $this->installLiveBinding($namespace, 'default', $moduleEnv, $bindingName);
                 } else {
-                    $namespace->defineOwnProperty(
-                        'default',
-                        PropertyDescriptor::data($value, true, true, false),
-                    );
+                    // Anonymous default export (function/class) or expression.
+                    // Install a live binding pointing at a synthetic slot in
+                    // moduleEnv that will be populated during body execution.
+                    $slotName = '__default__';
+                    if (!$moduleEnv->hasOwnBinding($slotName)) {
+                        $moduleEnv->declareLet($slotName);
+                    }
+                    $this->installLiveBinding($namespace, 'default', $moduleEnv, $slotName);
                 }
             }
             return;
@@ -264,27 +643,51 @@ class ModuleLoader
         // export * from 'source' or export * as ns from 'source'
         if ($node->isAll && $node->source !== null) {
             $reExportNs = $this->loadModule($node->source, $modulePath);
+            $sourceResolved = $this->resolve($node->source, $modulePath);
+            $currentRecord = $this->modules[$modulePath] ?? null;
             if ($node->allAs !== null) {
                 $namespace->defineOwnProperty(
                     $node->allAs,
                     PropertyDescriptor::data($reExportNs, true, true, false),
                 );
-            } else {
-                // Re-export all named exports (except default) as live bindings.
-                foreach ($reExportNs->getOwnPropertyNames() as $name) {
-                    if ($name === 'default') {
-                        continue;
-                    }
-                    $this->installIndirectBinding($namespace, $name, $reExportNs, $name);
-                }
+                return;
             }
+            // Record the star-re-export for later resolution. Populating the
+            // namespace here would snapshot the source's partial namespace
+            // during cycles and miss names added by later links. The actual
+            // indirect bindings are installed by finalizeStarReExports once
+            // the whole graph is linked.
+            if ($currentRecord !== null) {
+                $currentRecord->starExportRequests[] = $sourceResolved;
+            }
+            return;
+        }
+
+        // Per §16.2.2.2: `export {} from 'src'` with no specifiers still
+        // contributes to [[RequestedModules]], so the source module must
+        // be loaded (triggering its parse/resolution errors).
+        if ($node->source !== null && $node->specifiers === []) {
+            $this->loadModule($node->source, $modulePath);
             return;
         }
 
         // export { a, b as c } from 'source'
         if ($node->source !== null && $node->specifiers !== []) {
             $reExportNs = $this->loadModule($node->source, $modulePath);
+            $resolved = $this->resolve($node->source, $modulePath);
+            $currentRecord = $this->modules[$modulePath] ?? null;
             foreach ($node->specifiers as $spec) {
+                // Record the indirect export entry so ResolveExport can
+                // validate it across the fully-linked graph. Graph-wide
+                // validation catches circular re-exports with no concrete
+                // origin, which a local hasOwnProperty check cannot detect
+                // because indirect bindings are always installed lazily.
+                if ($currentRecord !== null) {
+                    $currentRecord->indirectExports[$spec->exported] = [
+                        'source' => $resolved,
+                        'localName' => $spec->local,
+                    ];
+                }
                 $this->installIndirectBinding($namespace, $spec->exported, $reExportNs, $spec->local);
             }
             return;
@@ -375,12 +778,35 @@ class ModuleLoader
             if ($name !== null && $env->has($name)) {
                 return $env->get($name);
             }
+            // Anonymous `export default function() {}` — treat as a function
+            // expression so it evaluates to the function value.
+            $fnExpr = new \PhpJs\Ast\Expression\FunctionExpression(
+                $node->location,
+                null,
+                $node->params,
+                $node->body,
+                $node->generator,
+                $node->async,
+                $node->sourceText,
+            );
+            return $this->interpreter->evaluate($fnExpr, $env);
         }
         if ($node instanceof ClassDeclaration) {
             $name = $node->id?->name;
             if ($name !== null && $env->has($name)) {
                 return $env->get($name);
             }
+            // Anonymous `export default class ...` — treat as a class expression
+            // so the superclass (which may contain await/fn calls) is evaluated.
+            $classExpr = new \PhpJs\Ast\Expression\ClassExpression(
+                $node->location,
+                $node->id,
+                $node->superClass,
+                $node->body,
+                $node->sourceText,
+                $node->decorators,
+            );
+            return $this->interpreter->evaluate($classExpr, $env);
         }
         if ($node instanceof VariableDeclaration) {
             $last = end($node->declarations);
@@ -412,11 +838,48 @@ class ModuleLoader
         if ($node instanceof VariableDeclaration) {
             $names = [];
             foreach ($node->declarations as $decl) {
-                if ($decl->id instanceof \PhpJs\Ast\Expression\Identifier) {
-                    $names[] = $decl->id->name;
-                }
+                $names = array_merge($names, $this->collectBindingPatternNames($decl->id));
             }
             return $names;
+        }
+        return [];
+    }
+
+    /**
+     * Collect identifier names from a binding pattern (or simple identifier).
+     *
+     * @return string[]
+     */
+    private function collectBindingPatternNames(Node $pattern): array
+    {
+        if ($pattern instanceof \PhpJs\Ast\Expression\Identifier) {
+            return [$pattern->name];
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+            $out = [];
+            foreach ($pattern->elements as $elem) {
+                if ($elem !== null) {
+                    $out = array_merge($out, $this->collectBindingPatternNames($elem));
+                }
+            }
+            return $out;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+            $out = [];
+            foreach ($pattern->properties as $p) {
+                if ($p instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                    $out = array_merge($out, $this->collectBindingPatternNames($p->value));
+                } elseif ($p instanceof \PhpJs\Ast\Pattern\RestElement) {
+                    $out = array_merge($out, $this->collectBindingPatternNames($p->argument));
+                }
+            }
+            return $out;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+            return $this->collectBindingPatternNames($pattern->left);
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\RestElement) {
+            return $this->collectBindingPatternNames($pattern->argument);
         }
         return [];
     }
@@ -428,5 +891,7 @@ class ModuleLoader
     {
         $this->modules = [];
         $this->evaluating = [];
+        $this->bodyQueue = [];
+        $this->linking = false;
     }
 }

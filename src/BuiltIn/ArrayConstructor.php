@@ -166,25 +166,31 @@ class ArrayConstructor
      */
     private static function arraySpeciesCreate(JsObject $originalArray, int $length): JsObject
     {
+        $makeArray = static function (int $len): JsArray {
+            // The Array constructor with a single numeric arg rejects lengths
+            // that exceed 2^32 - 1 with a RangeError. Match that here so the
+            // non-Array fallback surfaces the same error before we try to
+            // iterate a gargantuan length.
+            if ($len < 0 || $len > 4294967295) {
+                throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+            }
+            $arr = new JsArray();
+            $arr->setLength($len);
+            return $arr;
+        };
         // Per spec 7.3.20 step 3: IsArray(originalArray), walks through Proxy.
         if (!self::isArrayValue($originalArray)) {
-            $arr = new JsArray();
-            $arr->setLength($length);
-            return $arr;
+            return $makeArray($length);
         }
         $c = $originalArray->get('constructor');
         if ($c instanceof JsUndefined) {
-            $arr = new JsArray();
-            $arr->setLength($length);
-            return $arr;
+            return $makeArray($length);
         }
         if ($c instanceof JsObject) {
             $speciesSym = SymbolConstructor::species();
             $species = $c->getBySymbol($speciesSym);
             if ($species instanceof JsNull || $species instanceof JsUndefined) {
-                $arr = new JsArray();
-                $arr->setLength($length);
-                return $arr;
+                return $makeArray($length);
             }
             $c = $species;
         }
@@ -196,6 +202,20 @@ class ArrayConstructor
             throw new TypeError('Species constructor did not return an object');
         }
         return $result;
+    }
+
+    /**
+     * Convert a float array index to its canonical string property key.
+     * Values within int range format as integers; larger integral floats
+     * format without scientific notation so property lookup matches the
+     * keys used by the test's getters.
+     */
+    private static function floatIndexToKey(float $f): string
+    {
+        if ($f >= PHP_INT_MIN && $f <= PHP_INT_MAX && (float) (int) $f === $f) {
+            return (string) (int) $f;
+        }
+        return rtrim(rtrim(number_format($f, 0, '.', ''), '0'), '.');
     }
 
     private static function getLen(JsValue $obj): int
@@ -259,12 +279,14 @@ class ArrayConstructor
                     throw new TypeError('Array.prototype.push: length would exceed 2^53 - 1');
                 }
                 foreach ($args as $arg) {
-                    $o->set((string) $len, $arg);
+                    // Per §23.1.3.22 step 5.a: Set(O, ToString(len), E, true).
+                    // Throw=true causes a TypeError when the assignment fails
+                    // (e.g. frozen receiver, non-writable element).
+                    $o->set((string) $len, $arg, true);
                     $len++;
                 }
-                // Always go through the property set path so JsArray validates the
-                // new length (e.g. throws RangeError when exceeding 2^32 - 1).
-                $o->set('length', new JsNumber((float) $len));
+                // Per §23.1.3.22 step 6: Set(O, "length", 𝔽(len), true).
+                $o->set('length', new JsNumber((float) $len), true);
                 return new JsNumber((float) $len);
             },
             1
@@ -323,21 +345,41 @@ class ArrayConstructor
             'unshift',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                // Per §23.1.3.34 step 2: len = ToLength(Get(O, "length")).
+                $len = TypeConversion::toLength($o->get('length'));
                 $count = count($args);
-                for ($i = $len - 1; $i >= 0; $i--) {
-                    $from = (string) $i;
-                    $to = (string) ($i + $count);
-                    if ($o->has($from)) {
-                        $o->set($to, $o->get($from));
-                    } else {
-                        $o->delete($to);
+                // Per §23.1.3.34: reject if new length would exceed 2^53-1.
+                if ($count > 0 && ($len + $count) > 9007199254740991) {
+                    throw new TypeError(
+                        'Array.prototype.unshift: length would exceed 2^53 - 1',
+                    );
+                }
+                $deleteOrThrow = static function (JsObject $obj, string $key): void {
+                    if (!$obj->delete($key, true)) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot delete property '{$key}'",
+                        );
+                    }
+                };
+                // Only shift and insert if argCount > 0. With no args, spec
+                // skips the loop and just sets length = ToLength(len) back,
+                // which clamps values above 2^53-1 to 2^53-1.
+                if ($count > 0) {
+                    for ($k = $len - 1; $k >= 0; $k--) {
+                        $from = self::floatIndexToKey((float) $k);
+                        $to = self::floatIndexToKey((float) ($k + $count));
+                        if ($o->has($from)) {
+                            // Per §23.1.3.34 step 7.c: Set(O, to, fromValue, true).
+                            $o->set($to, $o->get($from), true);
+                        } else {
+                            $deleteOrThrow($o, $to);
+                        }
+                    }
+                    foreach ($args as $i => $arg) {
+                        // Per §23.1.3.34 step 7.d.i: Set(O, toString(j), E, true).
+                        $o->set((string) $i, $arg, true);
                     }
                 }
-                foreach ($args as $i => $arg) {
-                    $o->set((string) $i, $arg);
-                }
-                // Per spec, Set(O, "length", len + argCount, true).
                 $newLen = $len + $count;
                 $o->set('length', new JsNumber((float) $newLen), true);
                 return new JsNumber((float) $newLen);
@@ -435,7 +477,9 @@ class ArrayConstructor
             'includes',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                // Per §23.1.3.13 step 2: `Let len be ? LengthOfArrayLike(O)`
+                // which returns ToLength (up to 2^53-1). Don't clamp to 2^32-1.
+                $len = TypeConversion::toLength($o->get('length'));
                 if ($len === 0) {
                     return new JsBoolean(false);
                 }
@@ -505,10 +549,16 @@ class ArrayConstructor
                 for ($i = $start; $i < $end; $i++, $n++) {
                     $from = (string) $i;
                     if ($this_->has($from)) {
-                        $a->defineOwnProperty(
+                        // Per §23.1.3.28 step 11.c.iii: CreateDataPropertyOrThrow.
+                        $ok = $a->defineOwnProperty(
                             (string) $n,
                             PropertyDescriptor::data($this_->get($from), true, true, true),
                         );
+                        if (!$ok) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                "Cannot define property '{$n}' on target",
+                            );
+                        }
                     }
                 }
                 if ($a instanceof JsArray) {
@@ -595,26 +645,48 @@ class ArrayConstructor
             'reverse',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
-                $middle = (int) floor($len / 2);
-                for ($lower = 0; $lower < $middle; $lower++) {
-                    $upper = $len - $lower - 1;
-                    $lowerKey = (string) $lower;
-                    $upperKey = (string) $upper;
+                // Per §23.1.3.23: LengthOfArrayLike (ToLength, up to 2^53-1).
+                // getLen clamps at 2^32-1 which misses sparse indices beyond
+                // that range — breaks tests that probe getters near 2^53.
+                $lenF = TypeConversion::toLength($o->get('length'));
+                // Swap positions from both ends. Use float to index-string so
+                // keys beyond PHP_INT_MAX stringify correctly for HasProperty
+                // and Get. Iterate until lower>=upper which handles the
+                // middle-exclusive boundary without an explicit floor(len/2).
+                // Per §23.1.3.23, each loop iteration performs the steps
+                // in strict order: HasProperty(lower), if present Get(lower),
+                // HasProperty(upper), if present Get(upper), then swap or
+                // delete. Reading lower can mutate the object (e.g. via a
+                // side-effectful getter) so the upper HasProperty must be
+                // re-evaluated after reading lower.
+                $lower = 0.0;
+                while ($lower < $lenF - 1 - $lower) {
+                    $upper = $lenF - 1 - $lower;
+                    $lowerKey = self::floatIndexToKey($lower);
+                    $upperKey = self::floatIndexToKey($upper);
                     $lowerExists = $o->has($lowerKey);
+                    $lowerVal = $lowerExists ? $o->get($lowerKey) : null;
                     $upperExists = $o->has($upperKey);
+                    $upperVal = $upperExists ? $o->get($upperKey) : null;
                     if ($lowerExists && $upperExists) {
-                        $lowerVal = $o->get($lowerKey);
-                        $upperVal = $o->get($upperKey);
-                        $o->set($lowerKey, $upperVal);
-                        $o->set($upperKey, $lowerVal);
-                    } elseif ($upperExists) {
-                        $o->set($lowerKey, $o->get($upperKey));
-                        $o->delete($upperKey);
-                    } elseif ($lowerExists) {
-                        $o->set($upperKey, $o->get($lowerKey));
-                        $o->delete($lowerKey);
+                        $o->set($lowerKey, $upperVal, true);
+                        $o->set($upperKey, $lowerVal, true);
+                    } elseif (!$lowerExists && $upperExists) {
+                        $o->set($lowerKey, $upperVal, true);
+                        if (!$o->delete($upperKey)) {
+                            throw new TypeError(
+                                "Cannot delete property '{$upperKey}'",
+                            );
+                        }
+                    } elseif ($lowerExists && !$upperExists) {
+                        if (!$o->delete($lowerKey)) {
+                            throw new TypeError(
+                                "Cannot delete property '{$lowerKey}'",
+                            );
+                        }
+                        $o->set($upperKey, $lowerVal, true);
                     }
+                    $lower++;
                 }
                 return $o;
             },
@@ -625,7 +697,11 @@ class ArrayConstructor
             'map',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::getLen($o);
+                // Per §23.1.3.15 step 2: `Let len be ? LengthOfArrayLike(O)`.
+                // LengthOfArrayLike returns ToLength (up to 2^53-1), not the
+                // 2^32-1-clamped getLen. arraySpeciesCreate will surface a
+                // RangeError for lengths that exceed the Array max.
+                $len = TypeConversion::toLength($o->get('length'));
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('map callback is not a function');
@@ -637,7 +713,16 @@ class ArrayConstructor
                     if ($o->has($key)) {
                         $val = $o->get($key);
                         $mapped = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
-                        $result->defineOwnProperty($key, PropertyDescriptor::data($mapped, true, true, true));
+                        // Per §23.1.3.15 step 4.c.iii.3: CreateDataPropertyOrThrow.
+                        $ok = $result->defineOwnProperty(
+                            $key,
+                            PropertyDescriptor::data($mapped, true, true, true),
+                        );
+                        if (!$ok) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                "Cannot define property '{$key}' on target",
+                            );
+                        }
                     }
                 }
                 return $result;
@@ -649,6 +734,10 @@ class ArrayConstructor
             'filter',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
+                // Per §23.1.3.8 step 2: ToLength(length) runs before the
+                // IsCallable(callback) check — observe length-getter side
+                // effects even when the callback is invalid.
+                $len = TypeConversion::toLength($o->get('length'));
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('filter callback is not a function');
@@ -657,7 +746,6 @@ class ArrayConstructor
                 // ArraySpeciesCreate(O, 0) per spec.
                 $a = self::arraySpeciesCreate($o, 0);
                 $to = 0;
-                $len = self::getLen($o);
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
                     if (!$o->has($key)) {
@@ -666,10 +754,16 @@ class ArrayConstructor
                     $val = $o->get($key);
                     $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
                     if (TypeConversion::toBoolean($keep)) {
-                        $a->defineOwnProperty(
+                        // Per §23.1.3.8 step 4.c.iii.3: CreateDataPropertyOrThrow.
+                        $ok = $a->defineOwnProperty(
                             (string) $to,
                             PropertyDescriptor::data($val, true, true, true),
                         );
+                        if (!$ok) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                "Cannot define property '{$to}' on target",
+                            );
+                        }
                         $to++;
                     }
                 }
@@ -732,11 +826,15 @@ class ArrayConstructor
             'reduceRight',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
+                // Per §23.1.3.24 steps 1-3: ToObject(this) then ToLength(length)
+                // is read before IsCallable(callback) — the length getter's
+                // side effects must be observable even if the callback isn't
+                // a function.
+                $len = self::lengthOfArrayLike($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('reduceRight callback is not a function');
                 }
-                $len = self::lengthOfArrayLike($o);
                 $hasInitial = array_key_exists(1, $args);
                 $acc = $hasInitial ? $args[1] : null;
                 $start = $len - 1;
@@ -814,12 +912,15 @@ class ArrayConstructor
             'find',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
+                // Per §23.1.3.9 step 2: LengthOfArrayLike before the
+                // IsCallable check, so a throwing length getter or valueOf
+                // surfaces before the "not a function" TypeError.
+                $len = TypeConversion::toLength($this_->get('length'));
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('find callback is not a function');
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
                     $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
@@ -983,56 +1084,22 @@ class ArrayConstructor
             'flatMap',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
-                $len = self::lengthOfArrayLike($o);
+                $sourceLen = self::lengthOfArrayLike($o);
                 $callback = $args[0] ?? null;
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('flatMap callback is not a function');
                 }
-                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
-                // ArraySpeciesCreate(O, 0) per spec.
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
+                    ? $args[1]
+                    : JsUndefined::instance();
+                // Per §23.1.3.12 Array.prototype.flatMap: delegate to
+                // FlattenIntoArray with depth=1 and the mapper function.
+                // This routes through the shared IsArray check so Proxy
+                // wrappers of arrays are flattened like native arrays.
                 $a = self::arraySpeciesCreate($o, 0);
-                $to = 0;
-                for ($i = 0; $i < $len; $i++) {
-                    $key = (string) $i;
-                    if (!$o->has($key)) {
-                        continue;
-                    }
-                    $val = $o->get($key);
-                    $mapped = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
-                    if ($mapped instanceof JsArray) {
-                        $innerLen = $mapped->getLength();
-                        for ($j = 0; $j < $innerLen; $j++) {
-                            // CreateDataPropertyOrThrow: throw on failure.
-                            $ok = $a->defineOwnProperty(
-                                (string) $to,
-                                PropertyDescriptor::data($mapped->get((string) $j), true, true, true),
-                            );
-                            if (!$ok) {
-                                throw new TypeError(
-                                    "Cannot define property '{$to}' on result object",
-                                );
-                            }
-                            $to++;
-                        }
-                    } else {
-                        $ok = $a->defineOwnProperty(
-                            (string) $to,
-                            PropertyDescriptor::data($mapped, true, true, true),
-                        );
-                        if (!$ok) {
-                            throw new TypeError(
-                                "Cannot define property '{$to}' on result object",
-                            );
-                        }
-                        $to++;
-                    }
-                }
-                // Native arrays auto-update length as indices are appended
-                // via defineOwnProperty; non-array targets are left with
-                // whatever length their custom constructor set (per spec,
-                // FlattenIntoArray does not write to length).
+                $finalIndex = self::specFlattenIntoArray($a, $o, $sourceLen, 0, 1, $callback, $thisArg);
                 if ($a instanceof JsArray) {
-                    $a->setLength($to);
+                    $a->setLength($finalIndex);
                 }
                 return $a;
             },
@@ -1071,6 +1138,16 @@ class ArrayConstructor
                 $start = self::normalizeRelativeIndex($relStart, $len);
                 $end = self::normalizeRelativeIndex($relEnd, $len);
                 $count = min($end - $start, $len - $target);
+                // Per §23.1.3.4 Array.prototype.copyWithin: when the source
+                // slot is absent, DeletePropertyOrThrow is used — it throws
+                // TypeError if [[Delete]] returns false (e.g. non-configurable).
+                $deleteOrThrow = static function (JsObject $o, string $key): void {
+                    if (!$o->delete($key, true)) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot delete property '{$key}'",
+                        );
+                    }
+                };
                 // Copy in correct direction to handle overlapping ranges.
                 if ($start < $target && $target < $start + $count) {
                     for ($i = $count - 1; $i >= 0; $i--) {
@@ -1079,7 +1156,7 @@ class ArrayConstructor
                         if ($this_->has($from)) {
                             $this_->set($to, $this_->get($from));
                         } else {
-                            $this_->delete($to);
+                            $deleteOrThrow($this_, $to);
                         }
                     }
                 } else {
@@ -1089,7 +1166,7 @@ class ArrayConstructor
                         if ($this_->has($from)) {
                             $this_->set($to, $this_->get($from));
                         } else {
-                            $this_->delete($to);
+                            $deleteOrThrow($this_, $to);
                         }
                     }
                 }
@@ -1106,60 +1183,102 @@ class ArrayConstructor
                 $relativeStart = isset($args[0]) ? TypeConversion::toIntegerOrInfinity($args[0]) : 0.0;
                 $start = self::normalizeRelativeIndex($relativeStart, $len);
 
-                if (isset($args[1])) {
+                // Per §23.1.3.26 steps 5-7: splice argument count changes
+                // actualDeleteCount. Zero args → 0. One arg → len-start.
+                // Two+ args → clamp arg[1] to [0, len-start].
+                $argCount = count($args);
+                if ($argCount === 0) {
+                    $deleteCount = 0;
+                } elseif ($argCount === 1) {
+                    $deleteCount = $len - $start;
+                } else {
                     $relativeDeleteCount = TypeConversion::toIntegerOrInfinity($args[1]);
                     if ($relativeDeleteCount === INF) {
                         $deleteCount = $len - $start;
                     } else {
                         $deleteCount = max(0, (int) $relativeDeleteCount);
                     }
-                } else {
-                    $deleteCount = $len - $start;
+                    $deleteCount = min($deleteCount, $len - $start);
                 }
-                $deleteCount = min($deleteCount, $len - $start);
                 $insertItems = array_slice($args, 2);
+
+                $insertCount = count($insertItems);
+                // Per spec step 4: length + insertCount - actualDeleteCount
+                // must not exceed 2^53-1.
+                if ($len + $insertCount - $deleteCount > 9007199254740991) {
+                    throw new \PhpJs\Exceptions\TypeError('Array length exceeds the supported limit');
+                }
 
                 // ArraySpeciesCreate(O, actualDeleteCount) per spec.
                 $removed = self::arraySpeciesCreate($this_, $deleteCount);
                 for ($i = 0; $i < $deleteCount; $i++) {
                     $from = (string) ($start + $i);
                     if ($this_->has($from)) {
-                        $removed->set((string) $i, $this_->get($from));
+                        $fromValue = $this_->get($from);
+                        // CreateDataPropertyOrThrow(A, ToString(i), fromValue).
+                        $ok = $removed->defineOwnProperty(
+                            (string) $i,
+                            PropertyDescriptor::data($fromValue, true, true, true),
+                        );
+                        if (!$ok) {
+                            throw new TypeError(
+                                "Cannot define property '{$i}' on result object",
+                            );
+                        }
                     }
                 }
-                if ($removed instanceof JsArray) {
-                    $removed->setLength($deleteCount);
-                } else {
-                    $removed->set('length', new JsNumber((float) $deleteCount));
-                }
+                // Per spec step 8: Set(A, "length", actualDeleteCount, true).
+                $removed->set('length', new JsNumber((float) $deleteCount), true);
 
-                $insertCount = count($insertItems);
                 $diff = $insertCount - $deleteCount;
                 $newLen = $len + $diff;
 
-                if ($newLen > 9007199254740991) {
-                    throw new \PhpJs\Exceptions\TypeError('Array length exceeds the supported limit');
-                }
-
                 if ($diff > 0) {
-                    // Shift elements right.
-                    for ($i = $len - 1; $i >= $start + $deleteCount; $i--) {
-                        $this_->set((string) ($i + $diff), $this_->get((string) $i));
+                    // Shift elements right. Iterate from (len-deleteCount)-1
+                    // down to start, placing at position k+insertCount-1.
+                    for ($k = $len - $deleteCount; $k > $start; $k--) {
+                        $from = (string) ($k + $deleteCount - 1);
+                        $to = (string) ($k + $insertCount - 1);
+                        if ($this_->has($from)) {
+                            $this_->set($to, $this_->get($from), true);
+                        } else {
+                            // DeletePropertyOrThrow.
+                            if (!$this_->delete($to)) {
+                                throw new TypeError(
+                                    "Cannot delete property '{$to}'",
+                                );
+                            }
+                        }
                     }
                 } elseif ($diff < 0) {
-                    // Shift elements left.
-                    for ($i = $start + $deleteCount; $i < $len; $i++) {
-                        $this_->set((string) ($i + $diff), $this_->get((string) $i));
+                    // Shift elements left. Per spec §23.1.3.26 step 11.
+                    for ($k = $start; $k < $len - $deleteCount; $k++) {
+                        $from = (string) ($k + $deleteCount);
+                        $to = (string) ($k + $insertCount);
+                        if ($this_->has($from)) {
+                            $this_->set($to, $this_->get($from), true);
+                        } else {
+                            if (!$this_->delete($to)) {
+                                throw new TypeError(
+                                    "Cannot delete property '{$to}'",
+                                );
+                            }
+                        }
                     }
-                    // Delete trailing slots.
-                    for ($i = $len + $diff; $i < $len; $i++) {
-                        $this_->delete((string) $i);
+                    // Delete trailing slots (indices newLen..len-1).
+                    for ($k = $len; $k > $newLen; $k--) {
+                        $idx = (string) ($k - 1);
+                        if (!$this_->delete($idx)) {
+                            throw new TypeError(
+                                "Cannot delete property '{$idx}'",
+                            );
+                        }
                     }
                 }
 
-            // Insert new items.
+                // Insert new items at $start..$start+insertCount-1.
                 foreach ($insertItems as $idx => $item) {
-                    $this_->set((string) ($start + $idx), $item);
+                    $this_->set((string) ($start + $idx), $item, true);
                 }
 
                 // Per spec, Set(O, "length", newLen, true): throw on failure.
@@ -1252,21 +1371,33 @@ class ArrayConstructor
             1
         ), true, false, true));
 
+        // Capture a reference to the intrinsic %Object.prototype.toString%
+        // at install time. Per §23.1.3.33 step 3, Array.prototype.toString
+        // falls back to this intrinsic — not a lookup on the receiver —
+        // which means the fallback must survive user deletion of
+        // Object.prototype.toString.
+        $intrinsicObjectToString = null;
+        $objProtoIntrinsic = JsObject::getGlobalPrototype();
+        if ($objProtoIntrinsic !== null) {
+            $val = $objProtoIntrinsic->get('toString');
+            if ($val instanceof JsFunction) {
+                $intrinsicObjectToString = $val;
+            }
+        }
         $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
             'toString',
-            function (JsValue $this_, array $args): JsValue {
+            function (JsValue $this_, array $args) use ($intrinsicObjectToString): JsValue {
                 $array = self::toObject($this_);
                 $join = $array->get('join');
                 if ($join instanceof JsFunction) {
                     return new JsString(TypeConversion::toString($join->call($array, [])));
                 }
-                // Fall back to Object.prototype.toString per spec.
-                $objProto = JsObject::getGlobalPrototype();
-                if ($objProto !== null) {
-                    $objToStr = $objProto->get('toString');
-                    if ($objToStr instanceof JsFunction) {
-                        return new JsString(TypeConversion::toString($objToStr->call($array, [])));
-                    }
+                // Fall back to the captured %Object.prototype.toString%
+                // intrinsic — not a live lookup — per §23.1.3.33.
+                if ($intrinsicObjectToString !== null) {
+                    return new JsString(TypeConversion::toString(
+                        $intrinsicObjectToString->call($array, []),
+                    ));
                 }
                 return new JsString('[object Array]');
             },
@@ -1300,11 +1431,15 @@ class ArrayConstructor
                             continue;
                         }
                     }
-                    // Primitives coerce to an object wrapper and invoke its toLocaleString.
+                    // Per spec Invoke(V, P, args) = Call(GetV(V, P), V, args):
+                    // primitives use the wrapper for property lookup only;
+                    // the primitive itself is passed as thisArg so strict-mode
+                    // receivers observe the primitive value (non-strict
+                    // functions will still box it per OrdinaryCallBindThis).
                     $wrapper = TypeConversion::toObject($elem);
                     $fn = $wrapper->get('toLocaleString');
                     if ($fn instanceof JsFunction) {
-                        $parts[] = TypeConversion::toString($fn->call($wrapper, $forward));
+                        $parts[] = TypeConversion::toString($fn->call($elem, $forward));
                     } else {
                         $parts[] = TypeConversion::toString($elem);
                     }
@@ -2227,10 +2362,18 @@ class ArrayConstructor
                 $a = new JsArray();
             }
             for ($k = 0; $k < $len; $k++) {
-                $a->defineOwnProperty(
+                // Per §23.1.2.2 Array.of, CreateDataPropertyOrThrow is used,
+                // which throws TypeError if [[DefineOwnProperty]] returns
+                // false (e.g. on a non-extensible or non-configurable target).
+                $ok = $a->defineOwnProperty(
                     (string) $k,
                     PropertyDescriptor::data($args[$k], true, true, true),
                 );
+                if (!$ok) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot define property '{$k}' on target",
+                    );
+                }
             }
             if ($a instanceof JsArray) {
                 $a->setLength($len);

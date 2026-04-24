@@ -89,7 +89,14 @@ class JsFunction extends JsObject
 
     public static function setInterpreterCallback(callable $callback): void
     {
-        self::$interpreterCallback = $callback;
+        self::$interpreterCallback = $callback instanceof \Closure
+            ? $callback
+            : \Closure::fromCallable($callback);
+    }
+
+    public static function getInterpreterCallback(): ?\Closure
+    {
+        return self::$interpreterCallback;
     }
 
     /** @var list<mixed> AST param nodes or empty for native. */

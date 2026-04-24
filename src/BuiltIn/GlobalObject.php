@@ -102,14 +102,33 @@ class GlobalObject
                 throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
             }
             $parser = new \PhpJs\Parser\Parser($code->value);
+            // Allow `super` references at parse time: we can't statically
+            // tell whether the eval is direct (inside a method) or indirect
+            // (script top-level). The runtime raises a ReferenceError when
+            // [[HomeObject]] is missing, so the invalid case is still caught.
+            $parser->setInMethodLike(true);
             $program = $parser->parse();
             // Per spec: top-level break/continue/return in eval code is a
             // SyntaxError. Delegate to the interpreter's shared validator so
             // indirect and direct eval share the same early-error surface.
+            // Save/restore JsFunction's interpreter statics so this sub-
+            // interpreter does not clobber the outer one (e.g. its
+            // currentModulePath used for relative module resolution).
+            $prevInstance = JsFunction::getInterpreterInstance();
+            $prevCallback = JsFunction::getInterpreterCallback();
             $interp = new Interpreter($env);
-            $interp->validateEvalProgram($program);
-            $interp->setEvalContext(true);
-            return $interp->execute($program);
+            try {
+                $interp->validateEvalProgram($program);
+                $interp->setEvalContext(true);
+                return $interp->execute($program);
+            } finally {
+                if ($prevInstance !== null) {
+                    JsFunction::setInterpreterInstance($prevInstance);
+                }
+                if ($prevCallback !== null) {
+                    JsFunction::setInterpreterCallback($prevCallback);
+                }
+            }
         }, 1);
         $env->defineVar('eval', $evalFn);
 
@@ -269,9 +288,22 @@ class GlobalObject
 
             // Use the global environment so the created function can see
             // global variables (per spec: "scope chain consisting of the
-            // global object").
+            // global object"). Creating a sub-Interpreter would clobber
+            // the shared JsFunction interpreter instance/callback statics,
+            // so save and restore them around the dynamic execution.
+                $prevInstance = JsFunction::getInterpreterInstance();
+                $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
-                $result = $interp->execute($program);
+                try {
+                    $result = $interp->execute($program);
+                } finally {
+                    if ($prevInstance !== null) {
+                        JsFunction::setInterpreterInstance($prevInstance);
+                    }
+                    if ($prevCallback !== null) {
+                        JsFunction::setInterpreterCallback($prevCallback);
+                    }
+                }
                 // Honor new.target.prototype for subclassed Function constructor.
                 if ($result instanceof JsFunction && $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
                     $newTarget = $this_->get('[[NewTarget]]');
@@ -424,6 +456,11 @@ class GlobalObject
 
             // Always pass 0 to fromCallable to avoid array_fill crash for large lengths;
             // the length property is always overridden explicitly below.
+            // Use a box to hold a self-reference so the closure can compare
+            // its own JsFunction identity against the active newTarget per
+            // §10.4.1.2 step 4 (SameValue(F, newTarget) → use bound target).
+            $selfRef = new \stdClass();
+            $selfRef->fn = null;
             $boundFn = JsFunction::fromCallable(
                 $boundName,
                 function (
@@ -434,7 +471,8 @@ class GlobalObject
                     $target,
                     $boundThis,
                     $boundArgs,
-                    $isConstructable
+                    $isConstructable,
+                    $selfRef
                 ): JsValue {
                     $mergedArgs = array_merge($boundArgs, $callArgs);
                     // Detect if called as constructor (th has [[NewTarget]]).
@@ -444,13 +482,33 @@ class GlobalObject
                         && !($th->get('[[NewTarget]]') instanceof JsUndefined)
                     ) {
                         if ($innerInterp !== null) {
-                            // Called via new with interpreter: construct the target with merged args.
-                            $proto = $target->get('prototype');
-                            $protoObj = $proto instanceof \PhpJs\Value\JsObject ? $proto : null;
-                            $newObj = new \PhpJs\Value\JsObject($protoObj);
+                            // Per §10.4.1.2 [[Construct]] for BoundFunction:
+                            // step 4. If SameValue(F, newTarget) is true, set
+                            // newTarget to target. This causes `new B()` where
+                            // `B = A.bind()` to pass newTarget=A to A's body.
+                            $activeNewTarget = $th->get('[[NewTarget]]');
+                            if (
+                                $selfRef->fn !== null
+                                && $activeNewTarget === $selfRef->fn
+                            ) {
+                                $activeNewTarget = $target;
+                            }
+                            // Forward the (possibly replaced) newTarget so a
+                            // subclass constructor's prototype takes effect
+                            // (e.g. `class C extends bound {}`).
+                            $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
+                                ? $activeNewTarget
+                                : $target;
+                            $ntProto = $ntObj->get('prototype');
+                            $useProto = $ntProto instanceof \PhpJs\Value\JsObject
+                                ? $ntProto
+                                : ($target->get('prototype') instanceof \PhpJs\Value\JsObject
+                                    ? $target->get('prototype')
+                                    : null);
+                            $newObj = new \PhpJs\Value\JsObject($useProto);
                             $newObj->defineOwnProperty(
                                 '[[NewTarget]]',
-                                \PhpJs\Object\PropertyDescriptor::data($target, false, false, false),
+                                \PhpJs\Object\PropertyDescriptor::data($ntObj, false, false, false),
                             );
                             $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
                             return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
@@ -463,6 +521,7 @@ class GlobalObject
                 },
                 0,
             );
+            $selfRef->fn = $boundFn;
 
             // Always override the length property with the computed bound length.
             $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
@@ -719,9 +778,19 @@ class GlobalObject
                 $program = $parser->parse();
                 // Per spec step 20: parameters Contains YieldExpression must throw.
                 self::rejectYieldAwaitInParams($program);
+                $prevInstance = JsFunction::getInterpreterInstance();
+                $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
-                $fn = $interp->execute($program);
-                return $fn;
+                try {
+                    return $interp->execute($program);
+                } finally {
+                    if ($prevInstance !== null) {
+                        JsFunction::setInterpreterInstance($prevInstance);
+                    }
+                    if ($prevCallback !== null) {
+                        JsFunction::setInterpreterCallback($prevCallback);
+                    }
+                }
             },
             1,
         );
@@ -906,8 +975,19 @@ class GlobalObject
                 // or AwaitExpression. The main parse already allows yield/await in
                 // async-generator params, so reject them with a post-parse scan.
                 self::rejectYieldAwaitInParams($program);
+                $prevInstance = JsFunction::getInterpreterInstance();
+                $prevCallback = JsFunction::getInterpreterCallback();
                 $interp = new Interpreter($env);
-                return $interp->execute($program);
+                try {
+                    return $interp->execute($program);
+                } finally {
+                    if ($prevInstance !== null) {
+                        JsFunction::setInterpreterInstance($prevInstance);
+                    }
+                    if ($prevCallback !== null) {
+                        JsFunction::setInterpreterCallback($prevCallback);
+                    }
+                }
             },
             1,
         );
@@ -1496,17 +1576,92 @@ class GlobalObject
     }
 
     /**
-     * Walk a dynamic-function Program for any PrivateIdentifier reference.
-     * Because dynamic functions are not part of a surrounding class body, any
-     * #name reference is invalid and must raise SyntaxError per spec.
+     * Validate AllPrivateIdentifiersValid for a Program: every PrivateName
+     * reference must be lexically enclosed by a class that declares (in
+     * itself or an enclosing class) that private name.
      */
     private static function rejectPrivateIdentifiersInProgram(\PhpJs\Ast\Program $program): void
     {
-        if (self::nodeContainsPrivateIdentifier($program)) {
+        $stack = [];
+        self::validatePrivateIdentifiersInNode($program, $stack);
+    }
+
+    /**
+     * @param array<int,array<string,bool>> $stack
+     */
+    private static function validatePrivateIdentifiersInNode(?\PhpJs\Ast\Node $node, array $stack): void
+    {
+        if ($node === null) {
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+            // Top-level (outside any class) reference is always invalid.
+            if (empty($stack)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Private identifiers are not allowed outside of a class body'
+                );
+            }
+            // Look up the chain of enclosing class private-name sets.
+            $name = ltrim($node->name, '#');
+            foreach (array_reverse($stack) as $names) {
+                if (isset($names[$name])) {
+                    return;
+                }
+            }
             throw new \PhpJs\Exceptions\SyntaxError(
-                'Private identifiers are not allowed outside of a class body'
+                "Private field '#{$name}' must be declared in an enclosing class"
             );
         }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            $declared = self::collectDeclaredPrivateNames($node);
+            $stack[] = $declared;
+            // Walk superclass with parent stack (it is parsed outside this
+            // class body's scope).
+            if ($node->superClass !== null) {
+                self::validatePrivateIdentifiersInNode($node->superClass, array_slice($stack, 0, -1));
+            }
+            // Walk class body with this class's names visible.
+            foreach ($node->body as $element) {
+                self::validatePrivateIdentifiersInNode($element, $stack);
+            }
+            return;
+        }
+        $reflection = new \ReflectionObject($node);
+        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof \PhpJs\Ast\Node) {
+                self::validatePrivateIdentifiersInNode($value, $stack);
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof \PhpJs\Ast\Node) {
+                        self::validatePrivateIdentifiersInNode($item, $stack);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Collect all PrivateName names declared as elements of the given
+     * class body (own scope only — does not descend into nested classes).
+     *
+     * @return array<string,bool>
+     */
+    private static function collectDeclaredPrivateNames(\PhpJs\Ast\Node $classNode): array
+    {
+        $names = [];
+        $body = $classNode->body ?? [];
+        foreach ($body as $element) {
+            // MethodDefinition / FieldDefinition / etc. carry a `key` field
+            // that can be a PrivateIdentifier when the member is private.
+            if (isset($element->key) && $element->key instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
+                $names[ltrim($element->key->name, '#')] = true;
+            }
+        }
+        return $names;
     }
 
     private static function nodeContainsPrivateIdentifier(?\PhpJs\Ast\Node $node): bool

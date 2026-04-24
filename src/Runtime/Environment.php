@@ -30,6 +30,16 @@ class Environment
     private array $annexBHoisted = [];
 
     /**
+     * Import bindings: indirect references to other module namespaces.
+     * Each value is a closure that returns the current value of the imported
+     * binding at the time of read. Per spec, imports are live — writing to
+     * an import throws TypeError in strict mode.
+     *
+     * @var array<string, \Closure(): JsValue>
+     */
+    private array $importBindings = [];
+
+    /**
      * Detect the engine's internal "__XxxPrototype__" placeholders so they do
      * not leak onto the global object. User identifiers like "__A", "__obj__",
      * or "__cache" must not be treated as internal even though they share the
@@ -110,7 +120,20 @@ class Environment
     /** Check whether a binding exists in this scope only (not parents). */
     public function hasOwnBinding(string $name): bool
     {
-        return array_key_exists($name, $this->bindings);
+        return array_key_exists($name, $this->bindings)
+            || array_key_exists($name, $this->importBindings);
+    }
+
+    /**
+     * Install an immutable indirect import binding. Reads resolve via the
+     * provided closure at access time; writes throw TypeError (per spec,
+     * imports are read-only).
+     */
+    public function defineImportBinding(string $name, \Closure $resolver): void
+    {
+        $this->importBindings[$name] = $resolver;
+        $this->lexical[$name] = true;
+        $this->constants[$name] = true;
     }
 
     /** Check whether a binding is currently in the temporal dead zone. */
@@ -304,9 +327,17 @@ class Environment
      * behavior for Object Environment Records (with statements):
      * when true, a missing binding throws ReferenceError per spec
      * 9.1.1.2.6 step 3a.
+     * The optional $resolvedWithBase out-param receives the with-env's
+     * binding object if the binding resolves via an Object Environment
+     * Record (with statement). Callers use this to determine the
+     * CallExpression this-value (WithBaseObject) without re-running
+     * the HasProperty trap.
      */
-    public function get(string $name, bool $strict = false): JsValue
-    {
+    public function get(
+        string $name,
+        bool $strict = false,
+        ?\PhpJs\Value\JsObject &$resolvedWithBase = null,
+    ): JsValue {
         // "with" object environment record: HasBinding + GetBindingValue.
         if ($this->withObject !== null) {
             // HasBinding: HasProperty then @@unscopables.
@@ -315,13 +346,18 @@ class Environment
                 // is required per spec. The @@unscopables getter above can
                 // have side effects (e.g. deleting the property), and Proxy
                 // traps must fire independently for each spec step.
+                $resolvedWithBase = $this->withObject;
                 return $this->getBindingValueFromWith($name, $strict);
             }
             // Not found or unscopable: fall through to parent.
             if ($this->parent !== null) {
-                return $this->parent->get($name, $strict);
+                return $this->parent->get($name, $strict, $resolvedWithBase);
             }
             throw new ReferenceError("{$name} is not defined");
+        }
+
+        if (array_key_exists($name, $this->importBindings)) {
+            return ($this->importBindings[$name])();
         }
 
         if (array_key_exists($name, $this->bindings)) {
@@ -349,7 +385,7 @@ class Environment
         }
 
         if ($this->parent !== null) {
-            return $this->parent->get($name, $strict);
+            return $this->parent->get($name, $strict, $resolvedWithBase);
         }
 
         // At the global (root) environment. If a linked global object exists,
@@ -384,6 +420,14 @@ class Environment
             }
             if ($strict) {
                 throw new ReferenceError("{$name} is not defined");
+            }
+            return;
+        }
+
+        if (array_key_exists($name, $this->importBindings)) {
+            // Imports are immutable indirect bindings.
+            if ($strict) {
+                throw new TypeError("Assignment to constant variable.");
             }
             return;
         }
@@ -475,7 +519,10 @@ class Environment
             return false;
         }
 
-        if (array_key_exists($name, $this->bindings)) {
+        if (
+            array_key_exists($name, $this->bindings)
+            || array_key_exists($name, $this->importBindings)
+        ) {
             return true;
         }
 

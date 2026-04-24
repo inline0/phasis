@@ -1110,23 +1110,26 @@ class TypedArrayConstructor
                         "Constructor {$typeName} requires 'new'"
                     );
                 }
-                // Per spec (AllocateTypedArray): use GetPrototypeFromConstructor
-                // to determine the prototype. When called via Reflect.construct
-                // with a custom newTarget, use newTarget's prototype.
-                $actualProto = $proto;
+                // Per §23.2.5.1 TypedArray ( ...args ): the argument validation
+                // (e.g. Symbol/BigInt argument TypeError for `new T(sym)`) must
+                // happen BEFORE GetPrototypeFromConstructor is called. Pass a
+                // deferred proto resolver so constructTypedArray performs proto
+                // access only after args are validated.
                 $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
-                if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
-                    $nt = $ntDesc->value;
-                    // Only resolve custom proto when newTarget differs from the
-                    // typed array constructor itself.
-                    if ($ctorRef !== null && $nt !== $ctorRef) {
+                $nt = ($ntDesc !== null && $ntDesc->value instanceof JsFunction)
+                    ? $ntDesc->value
+                    : null;
+                $defaultProto = $proto;
+                $protoResolver = static function () use ($nt, $defaultProto, $ctorRef): JsObject {
+                    if ($nt !== null && $ctorRef !== null && $nt !== $ctorRef) {
                         $ntProto = $nt->get('prototype');
                         if ($ntProto instanceof JsObject) {
-                            $actualProto = $ntProto;
+                            return $ntProto;
                         }
                     }
-                }
-                return self::constructTypedArray($typeName, $bpe, $actualProto, $args);
+                    return $defaultProto;
+                };
+                return self::constructTypedArray($typeName, $bpe, $protoResolver, $args);
             },
             3,
         );
@@ -1318,19 +1321,30 @@ class TypedArrayConstructor
     private static function constructTypedArray(
         string $typeName,
         int $bpe,
-        JsObject $proto,
+        JsObject|\Closure $protoOrResolver,
         array $args,
     ): JsTypedArray {
+        $getProto = static function () use (&$protoOrResolver): JsObject {
+            if ($protoOrResolver instanceof \Closure) {
+                $resolved = ($protoOrResolver)();
+                $protoOrResolver = $resolved;
+                return $resolved;
+            }
+            return $protoOrResolver;
+        };
         if (empty($args) || $args[0] instanceof JsUndefined) {
-            return JsTypedArray::fromLength($typeName, 0, $proto);
+            return JsTypedArray::fromLength($typeName, 0, $getProto());
         }
 
         $arg0 = $args[0];
 
         // new TypedArray(length): non-object first arg uses ToIndex.
         if (!$arg0 instanceof JsObject) {
+            // Per §23.2.5.1 step 5 / §23.2.4.3: ToIndex must run before
+            // the constructor prototype is accessed. ToIndex throws a
+            // TypeError for Symbol/BigInt arguments; that happens here.
             $len = TypeConversion::toIndex($arg0);
-            return JsTypedArray::fromLength($typeName, $len, $proto);
+            return JsTypedArray::fromLength($typeName, $len, $getProto());
         }
 
         // new TypedArray(buffer, byteOffset, length).
@@ -1381,7 +1395,7 @@ class TypedArrayConstructor
                 $length = (int) ($remaining / $bpe);
             }
 
-            $ta = new JsTypedArray($typeName, $arg0, $byteOffset, $length, $proto);
+            $ta = new JsTypedArray($typeName, $arg0, $byteOffset, $length, $getProto());
             if ($isResizable && !$lengthExplicit) {
                 $ta->setAutoLength(true);
             }
@@ -1391,7 +1405,7 @@ class TypedArrayConstructor
         // new TypedArray(typedArray): copy elements.
         if ($arg0 instanceof JsTypedArray) {
             $srcLen = $arg0->getLength();
-            $result = JsTypedArray::fromLength($typeName, $srcLen, $proto);
+            $result = JsTypedArray::fromLength($typeName, $srcLen, $getProto());
             for ($i = 0; $i < $srcLen; $i++) {
                 $result->setIndex($i, $arg0->getIndex($i));
             }
@@ -1408,7 +1422,7 @@ class TypedArrayConstructor
             $iterMethod = $arg0->getBySymbol($iterSym);
             if ($iterMethod instanceof JsFunction) {
                 $elements = self::consumeIterator($iterMethod, $arg0);
-                return JsTypedArray::fromArray($typeName, $elements, $proto);
+                return JsTypedArray::fromArray($typeName, $elements, $getProto());
             }
             // Per spec: if @@iterator is not undefined/null but not callable, throw.
             if (
@@ -1422,19 +1436,19 @@ class TypedArrayConstructor
             $lenVal = $arg0->get('length');
             if (!$lenVal instanceof JsUndefined) {
                 $len = (int) TypeConversion::toNumber($lenVal);
-                $result = JsTypedArray::fromLength($typeName, $len, $proto);
+                $result = JsTypedArray::fromLength($typeName, $len, $getProto());
                 for ($i = 0; $i < $len; $i++) {
                     $result->setIndex($i, $arg0->get((string) $i));
                 }
                 return $result;
             }
 
-            return JsTypedArray::fromLength($typeName, 0, $proto);
+            return JsTypedArray::fromLength($typeName, 0, $getProto());
         }
 
         // Single primitive value: treat as length via ToIndex.
         $len = TypeConversion::toIndex($arg0);
-        return JsTypedArray::fromLength($typeName, $len, $proto);
+        return JsTypedArray::fromLength($typeName, $len, $getProto());
     }
 
     /**
@@ -2512,6 +2526,15 @@ class TypedArrayConstructor
                 $end = isset($args[1]) && !$args[1] instanceof JsUndefined
                     ? self::toInteger($args[1])
                     : null;
+                // Per spec: after argument coercion, re-validate that the
+                // TypedArray is not detached and is not out of bounds on
+                // its (possibly resized) buffer.
+                $this_->validateNotDetached();
+                if ($this_->isOutOfBounds()) {
+                    throw new TypeError(
+                        "{$typeName}.prototype.slice: typed array is out of bounds"
+                    );
+                }
 
                 // Resolve begin/end per spec.
                 if ($begin < 0) {
@@ -2524,19 +2547,23 @@ class TypedArrayConstructor
                     $end = max(0, $len + $end);
                 }
                 $end = min($end, $len);
+                // Re-clamp against the current length in case the buffer was
+                // shrunk by argument coercion.
+                $currentLen = $this_->getLength();
+                $effectiveEnd = min($end, $currentLen);
+                $effectiveBegin = min($begin, $currentLen);
                 $count = max(0, $end - $begin);
+                $copyCount = max(0, $effectiveEnd - $effectiveBegin);
 
                 // TypedArraySpeciesCreate via SpeciesConstructor.
                 $result = self::typedArraySpeciesCreate($this_, $count);
 
-                // Per spec: if count > 0, check if buffer was detached
-                // (may happen during species constructor or start/end coercion).
                 if ($count > 0) {
                     $this_->validateNotDetached();
                 }
 
-                for ($i = 0; $i < $count; $i++) {
-                    $result->setIndex($i, $this_->getIndex($begin + $i));
+                for ($i = 0; $i < $copyCount; $i++) {
+                    $result->setIndex($i, $this_->getIndex($effectiveBegin + $i));
                 }
                 return $result;
             },
@@ -2576,12 +2603,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.fill called on incompatible receiver");
                 }
+                // Per spec %TypedArray%.prototype.fill (ES2024+):
+                //   2. ValidateTypedArray; 3. len = TypedArrayLength(taRecord).
+                //   4. Coerce value (ToBigInt / ToNumber) — may resize buffer.
+                //   6-13. Start/end resolved against captured len.
+                //   14-17. IntegerIndexedElementSet silently no-ops on invalid indices.
                 $this_->validateNotDetached();
+                $initialLen = $this_->getLength();
                 $value = $args[0] ?? JsUndefined::instance();
 
-            // Per spec: coerce value to numeric type ONCE before start/end evaluation.
-            // If ContentType is BigInt, set value to ToBigInt(value).
-            // Otherwise, set value to ToNumber(value).
                 if ($this_->isBigIntArray()) {
                     if ($value instanceof \PhpJs\Value\JsBigInt) {
                         $coerced = $value;
@@ -2595,11 +2625,11 @@ class TypedArrayConstructor
 
                 $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
                 $end = isset($args[2]) && !$args[2] instanceof JsUndefined
-                ? self::toInteger($args[2])
-                : null;
+                    ? self::toInteger($args[2])
+                    : null;
                 // Per spec: check detached AGAIN after value/start/end coercion.
                 $this_->validateNotDetached();
-                return $this_->fillTyped($coerced, $start, $end);
+                return $this_->fillTyped($coerced, $start, $end, $initialLen);
             },
             1
         );
@@ -2940,13 +2970,36 @@ class TypedArrayConstructor
                     throw new TypeError("Method {$typeName}.prototype.includes called on incompatible receiver");
                 }
                 $this_->validateNotDetached();
-                // Per spec: if length is 0, return false before ToInteger(fromIndex).
-                if ($this_->getLength() === 0) {
+                // Per spec: len is captured BEFORE fromIndex coercion. If
+                // the buffer is detached (or shrunk) during coercion, the
+                // loop that follows observes Get returning undefined for
+                // out-of-bounds indices, so a search for `undefined` still
+                // returns true at those positions.
+                $len = $this_->getLength();
+                if ($len === 0) {
                     return new JsBoolean(false);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
-                return new JsBoolean($this_->includesTyped($search, $fromIndex));
+                if ($fromIndex < 0) {
+                    $fromIndex = max(0, $len + $fromIndex);
+                }
+                $isUndefined = $search instanceof JsUndefined;
+                for ($k = $fromIndex; $k < $len; $k++) {
+                    if ($this_->getBuffer()->isDetached() || $k >= $this_->getLength()) {
+                        // Get returns undefined for OOB; matches only if
+                        // the searchElement is undefined.
+                        if ($isUndefined) {
+                            return new JsBoolean(true);
+                        }
+                        continue;
+                    }
+                    $element = $this_->getIndex($k);
+                    if (\PhpJs\Spec\AbstractOperations::sameValueZero($search, $element)) {
+                        return new JsBoolean(true);
+                    }
+                }
+                return new JsBoolean(false);
             },
             1
         );
@@ -2959,18 +3012,29 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.join called on incompatible receiver");
                 }
-                // Per spec: ValidateTypedArray first (throws if detached).
+                // Per spec %TypedArray%.prototype.join:
+                //   2. ValidateTypedArray, 3. Let len = TypedArrayLength.
+                //   4. Coerce separator (may resize/detach buffer).
+                //   5-8. For k in 0..len-1: if Get(O,k) is undefined, next = ""
+                //        else next = ToString(element).
+                // Coercion can resize the underlying buffer, so the captured
+                // len is used to iterate but each element Get is subject to
+                // the current (possibly shrunk) buffer bounds.
                 self::validateTypedArray($this_);
-                // Capture length before separator toString (which may detach buffer).
                 $len = $this_->getLength();
                 $separator = isset($args[0]) && !$args[0] instanceof JsUndefined
-                ? TypeConversion::toString($args[0])
-                : ',';
-                // If buffer was detached during separator toString, return commas.
-                if ($this_->getBuffer()->isDetached()) {
-                    return new JsString($len > 0 ? str_repeat($separator, $len - 1) : '');
+                    ? TypeConversion::toString($args[0])
+                    : ',';
+                $parts = [];
+                $currentLen = $this_->getLength();
+                for ($i = 0; $i < $len; $i++) {
+                    if ($this_->getBuffer()->isDetached() || $i >= $currentLen) {
+                        $parts[] = '';
+                    } else {
+                        $parts[] = $this_->getIndex($i)->toJsString();
+                    }
                 }
-                return new JsString($this_->joinTyped($separator));
+                return new JsString(implode($separator, $parts));
             },
             1
         );
@@ -3297,14 +3361,22 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.with called on incompatible receiver"
                     );
                 }
+                // Per spec %TypedArray%.prototype.with (ES2023+):
+                //   4. Let len be TypedArrayLength(taRecord).
+                //   5. Let relativeIndex be ? ToIntegerOrInfinity(index).
+                //   ...
+                //   8-9. numericValue = ToBigInt(value) or ToNumber(value).
+                //   10. If IsValidIntegerIndex(O, F(actualIndex)) is false, throw.
+                //   11. Let A be ? TypedArrayCreateSameType(O, « F(len) »).
+                // Coercion of index/value may resize a resizable buffer; the
+                // IsValidIntegerIndex check at step 10 uses the current
+                // buffer length, while A is still sized by the captured len.
                 $len = $this_->getLength();
                 $relativeIndex = isset($args[0])
                     ? self::toInteger($args[0])
                     : 0;
                 $value = $args[1] ?? JsUndefined::instance();
 
-                // Per spec: coerce value to the typed array's numeric type
-                // BEFORE resolving the index, so type errors are thrown first.
                 if ($this_->isBigIntArray()) {
                     $coerced = TypeConversion::toBigInt($value);
                 } else {
@@ -3312,12 +3384,15 @@ class TypedArrayConstructor
                     $coerced = new JsNumber($numVal);
                 }
 
-                // Resolve relative index.
+                // Resolve relative index (against the captured len, per spec).
                 $actualIndex = $relativeIndex >= 0
                     ? $relativeIndex
                     : $len + $relativeIndex;
 
-                if ($actualIndex < 0 || $actualIndex >= $len) {
+                // IsValidIntegerIndex is checked against the current buffer
+                // length (post any resize triggered by coercion above).
+                $currentLen = $this_->getLength();
+                if ($actualIndex < 0 || $actualIndex >= $currentLen) {
                     throw new RangeError('Invalid index');
                 }
 
@@ -3329,9 +3404,11 @@ class TypedArrayConstructor
                 for ($i = 0; $i < $len; $i++) {
                     if ($i === $actualIndex) {
                         $result->setIndex($i, $coerced);
-                    } else {
+                    } elseif ($i < $currentLen) {
                         $result->setIndex($i, $this_->getIndex($i));
                     }
+                    // else: out-of-bounds read from resized buffer → leave
+                    // new element at its default (zero) value.
                 }
                 return $result;
             },

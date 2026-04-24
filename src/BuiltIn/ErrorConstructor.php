@@ -187,6 +187,14 @@ class ErrorConstructor
             // Determine target object.
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 $obj = $this_;
+                // Per §9.1.13 OrdinaryCreateFromConstructor, set the prototype
+                // from newTarget.prototype (fall back to intrinsicDefaultProto).
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsObject) {
+                    $ntProto = $newTarget->get('prototype');
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;
+                    $obj->setPrototype($useProto);
+                }
             } else {
                 $obj = new JsObject($proto);
             }
@@ -415,6 +423,14 @@ class ErrorConstructor
 
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 $obj = $this_;
+                // Per §9.1.13 OrdinaryCreateFromConstructor, set prototype
+                // from newTarget.prototype.
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsObject) {
+                    $ntProto = $newTarget->get('prototype');
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : $proto;
+                    $obj->setPrototype($useProto);
+                }
             } else {
                 $obj = new JsObject($proto);
             }

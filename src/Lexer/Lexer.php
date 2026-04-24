@@ -18,6 +18,12 @@ class Lexer
     /** @var int[] Brace depth stack: one entry per active template expression. */
     private array $templateBraceDepth = [];
 
+    /**
+     * When true, Annex B syntax extensions (HTML-like comments `<!--`, `-->`)
+     * are not recognized — per spec, module source text is Annex-B free.
+     */
+    private bool $moduleMode = false;
+
     /** @var Token[] */
     private array $tokens = [];
 
@@ -25,6 +31,11 @@ class Lexer
     {
         $this->source = $source;
         $this->length = strlen($source);
+    }
+
+    public function setModuleMode(bool $moduleMode): void
+    {
+        $this->moduleMode = $moduleMode;
     }
 
     /** @return Token[] */
@@ -182,6 +193,13 @@ class Lexer
                 $this->advance(); // skip backslash
                 $this->advance(); // skip 'u'
                 $decoded = $this->readUnicodeEscape();
+                // Per §12.7.1: decoded char must be an IdentifierPart.
+                if (!$this->isIdentifierPart($decoded)) {
+                    throw new SyntaxError(
+                        "Invalid Unicode escape '{$decoded}' in identifier",
+                        $start,
+                    );
+                }
                 $result .= $decoded;
                 continue;
             }
@@ -201,24 +219,46 @@ class Lexer
             return new Token($keyword, $result, $start, rawValue: $rawValue);
         }
 
-        return new Token(TokenType::Identifier, $result, $start);
+        // Non-keyword identifiers also need to preserve the escape signal so
+        // the parser can reject contextual keywords (`get`, `set`, `async`,
+        // `from`, `as`, `of`, `let`, `static`, ...) spelled with unicode
+        // escapes — the spec requires the literal form.
+        $rawValue = $hasEscape ? 'escaped' : null;
+        return new Token(TokenType::Identifier, $result, $start, rawValue: $rawValue);
     }
 
     private function readPrivateIdentifier(SourceLocation $start): Token
     {
         $this->advance(); // skip '#'
         $name = '';
+        $first = true;
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
             if ($ch === '\\' && $this->pos + 1 < $this->length && $this->source[$this->pos + 1] === 'u') {
                 $this->advance();
                 $this->advance();
-                $name .= $this->readUnicodeEscape();
+                $decoded = $this->readUnicodeEscape();
+                if ($first) {
+                    if (!$this->isIdentifierStart($decoded)) {
+                        throw new SyntaxError(
+                            "Invalid Unicode escape '{$decoded}' at start of private identifier",
+                            $start,
+                        );
+                    }
+                } elseif (!$this->isIdentifierPart($decoded)) {
+                    throw new SyntaxError(
+                        "Invalid Unicode escape '{$decoded}' in private identifier",
+                        $start,
+                    );
+                }
+                $name .= $decoded;
+                $first = false;
                 continue;
             }
-            if ($this->isIdentifierPart($ch)) {
+            if ($first ? $this->isIdentifierStart($ch) : $this->isIdentifierPart($ch)) {
                 $name .= $ch;
                 $this->advance();
+                $first = false;
                 continue;
             }
             break;
@@ -234,6 +274,15 @@ class Lexer
         $this->advance(); // skip backslash
         $this->advance(); // skip 'u'
         $decoded = $this->readUnicodeEscape();
+        // The decoded character must be a valid IdentifierStart (per
+        // §12.7.1). Encoding `#` or other non-identifier characters via
+        // \u escape is a SyntaxError.
+        if (!$this->isIdentifierStart($decoded)) {
+            throw new SyntaxError(
+                "Invalid Unicode escape '{$decoded}' at start of identifier",
+                $start,
+            );
+        }
         $result .= $decoded;
 
         // Continue reading identifier parts (including more escapes)
@@ -262,7 +311,10 @@ class Lexer
             return new Token($keyword, $result, $start, rawValue: 'escaped');
         }
 
-        return new Token(TokenType::Identifier, $result, $start);
+        // Non-keyword identifiers that originated from an escape must still
+        // report `rawValue: 'escaped'` so parser rules that forbid escaped
+        // contextual keywords (`from`, `as`, `of`, etc.) can reject them.
+        return new Token(TokenType::Identifier, $result, $start, rawValue: 'escaped');
     }
 
     private function readNumber(SourceLocation $start): Token
@@ -281,11 +333,22 @@ class Lexer
                 if ($this->pos >= $this->length || !ctype_xdigit($this->source[$this->pos])) {
                     throw new SyntaxError('Invalid hex literal', $start);
                 }
+                $prevSep = false;
                 while ($this->pos < $this->length && $this->isHexDigitOrSeparator()) {
-                    if ($this->source[$this->pos] !== '_') {
-                        $result .= $this->source[$this->pos];
+                    $cc = $this->source[$this->pos];
+                    if ($cc === '_') {
+                        if ($prevSep) {
+                            throw new SyntaxError('Consecutive numeric separators', $start);
+                        }
+                        $prevSep = true;
+                    } else {
+                        $prevSep = false;
+                        $result .= $cc;
                     }
                     $this->advance();
+                }
+                if ($prevSep) {
+                    throw new SyntaxError('Numeric separator must be between digits', $start);
                 }
                 // BigInt suffix
                 if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
@@ -303,11 +366,22 @@ class Lexer
                 if ($this->pos >= $this->length || $this->source[$this->pos] < '0' || $this->source[$this->pos] > '7') {
                     throw new SyntaxError('Invalid octal literal', $start);
                 }
+                $prevSep = false;
                 while ($this->pos < $this->length && $this->isOctalDigitOrSeparator()) {
-                    if ($this->source[$this->pos] !== '_') {
-                        $result .= $this->source[$this->pos];
+                    $cc = $this->source[$this->pos];
+                    if ($cc === '_') {
+                        if ($prevSep) {
+                            throw new SyntaxError('Consecutive numeric separators', $start);
+                        }
+                        $prevSep = true;
+                    } else {
+                        $prevSep = false;
+                        $result .= $cc;
                     }
                     $this->advance();
+                }
+                if ($prevSep) {
+                    throw new SyntaxError('Numeric separator must be between digits', $start);
                 }
                 // BigInt suffix
                 if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
@@ -326,11 +400,22 @@ class Lexer
                 if ($ch2 !== '0' && $ch2 !== '1') {
                     throw new SyntaxError('Invalid binary literal', $start);
                 }
+                $prevSep = false;
                 while ($this->pos < $this->length && $this->isBinaryDigitOrSeparator()) {
-                    if ($this->source[$this->pos] !== '_') {
-                        $result .= $this->source[$this->pos];
+                    $cc = $this->source[$this->pos];
+                    if ($cc === '_') {
+                        if ($prevSep) {
+                            throw new SyntaxError('Consecutive numeric separators', $start);
+                        }
+                        $prevSep = true;
+                    } else {
+                        $prevSep = false;
+                        $result .= $cc;
                     }
                     $this->advance();
+                }
+                if ($prevSep) {
+                    throw new SyntaxError('Numeric separator must be between digits', $start);
                 }
                 // BigInt suffix
                 if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
@@ -379,23 +464,57 @@ class Lexer
             }
         }
 
-        // Decimal (including leading dot)
+        // Decimal (including leading dot). Per §12.9.3.1, a numeric
+        // separator may not appear immediately after a leading 0 (which
+        // could be ambiguous with legacy octals), and may not appear in
+        // a NonOctalDecimalIntegerLiteral (a literal starting with `0`
+        // followed by other digits).
+        $prevSep = false;
+        $startsWithZero = ($this->pos < $this->length && $this->source[$this->pos] === '0');
         while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
-            if ($this->source[$this->pos] !== '_') {
-                $result .= $this->source[$this->pos];
+            $cc = $this->source[$this->pos];
+            if ($cc === '_') {
+                if ($prevSep) {
+                    throw new SyntaxError('Consecutive numeric separators', $start);
+                }
+                if ($startsWithZero) {
+                    throw new SyntaxError('Numeric separator not allowed in literal starting with 0', $start);
+                }
+                $prevSep = true;
+            } else {
+                $prevSep = false;
+                $result .= $cc;
             }
             $this->advance();
+        }
+        if ($prevSep) {
+            throw new SyntaxError('Numeric separator must be between digits', $start);
         }
 
         // Decimal point
         if ($this->pos < $this->length && $this->source[$this->pos] === '.') {
             $result .= '.';
             $this->advance();
+            // Separator may not appear immediately after the decimal point.
+            if ($this->pos < $this->length && $this->source[$this->pos] === '_') {
+                throw new SyntaxError('Numeric separator not allowed after decimal point', $start);
+            }
+            $prevSep = false;
             while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
-                if ($this->source[$this->pos] !== '_') {
-                    $result .= $this->source[$this->pos];
+                $cc = $this->source[$this->pos];
+                if ($cc === '_') {
+                    if ($prevSep) {
+                        throw new SyntaxError('Consecutive numeric separators', $start);
+                    }
+                    $prevSep = true;
+                } else {
+                    $prevSep = false;
+                    $result .= $cc;
                 }
                 $this->advance();
+            }
+            if ($prevSep) {
+                throw new SyntaxError('Numeric separator must be between digits', $start);
             }
         }
 
@@ -416,21 +535,83 @@ class Lexer
             if ($this->pos >= $this->length || !ctype_digit($this->source[$this->pos])) {
                 throw new SyntaxError('Invalid exponent', $start);
             }
+            $prevSep = false;
             while ($this->pos < $this->length && $this->isDigitOrSeparator()) {
-                if ($this->source[$this->pos] !== '_') {
-                    $result .= $this->source[$this->pos];
+                $cc = $this->source[$this->pos];
+                if ($cc === '_') {
+                    if ($prevSep) {
+                        throw new SyntaxError('Consecutive numeric separators', $start);
+                    }
+                    $prevSep = true;
+                } else {
+                    $prevSep = false;
+                    $result .= $cc;
                 }
                 $this->advance();
+            }
+            if ($prevSep) {
+                throw new SyntaxError('Numeric separator must be between digits', $start);
             }
         }
 
         // BigInt suffix
         if ($this->pos < $this->length && $this->source[$this->pos] === 'n') {
+            // BigInt has stricter syntax: no decimal point, no exponent,
+            // no leading zero (except for the literal `0n`), and no
+            // numeric separator adjacent to the suffix.
+            if (str_contains($result, '.') || stripos($result, 'e') !== false) {
+                throw new SyntaxError('Invalid BigInt literal', $start);
+            }
+            // The character immediately before `n` in the source must be
+            // a digit, never an underscore.
+            if ($this->pos > 0 && $this->source[$this->pos - 1] === '_') {
+                throw new SyntaxError('Numeric separator must be between digits', $start);
+            }
+            if (strlen($result) > 1 && $result[0] === '0') {
+                throw new SyntaxError('Invalid BigInt literal: leading zero', $start);
+            }
             $result .= 'n';
             $this->advance();
         }
 
-        return new Token(TokenType::Number, $result, $start);
+        // Numeric literal cannot be immediately followed by IdentifierStart
+        // or by a DecimalDigit (per §12.9.3.1). Whitespace and line
+        // terminators are fine. Non-ASCII bytes can be either Unicode
+        // identifier-start characters or whitespace (e.g. U+00A0 NBSP),
+        // so we only flag ASCII identifier characters here.
+        if (
+            $this->pos < $this->length
+            && $this->isIdentifierStart($this->source[$this->pos])
+        ) {
+            throw new SyntaxError(
+                "Identifier '{$this->source[$this->pos]}' cannot follow numeric literal",
+                $start,
+            );
+        }
+
+        // Tag non-octal-decimal-integer-literals (e.g. `08`, `09`) so the
+        // parser can reject them in strict mode (Annex B only allows them
+        // in sloppy code). These have a leading `0`, are pure integer
+        // (no `.` or `e`), and are not BigInt.
+        $rawValue = null;
+        if (
+            strlen($result) > 1
+            && $result[0] === '0'
+            && substr($result, 0, 2) !== '0x'
+            && substr($result, 0, 2) !== '0X'
+            && substr($result, 0, 2) !== '0o'
+            && substr($result, 0, 2) !== '0O'
+            && substr($result, 0, 2) !== '0b'
+            && substr($result, 0, 2) !== '0B'
+            && substr($result, 0, 3) !== '0lo'
+            && !str_contains($result, '.')
+            && stripos($result, 'e') === false
+            && substr($result, -1) !== 'n'
+        ) {
+            $rawValue = 'nonoctaldecimal';
+        }
+
+        return new Token(TokenType::Number, $result, $start, rawValue: $rawValue);
     }
 
     private function readString(SourceLocation $start): Token
@@ -439,15 +620,21 @@ class Lexer
         $this->advance();
         $result = '';
         $hasEscape = false;
+        $hasLegacyOctal = false;
 
         while ($this->pos < $this->length) {
             $ch = $this->source[$this->pos];
 
             if ($ch === $quote) {
                 $this->advance();
-                // rawValue 'true' means verbatim (no escape sequences); used to recognise
-                // directive prologues: "use strict" is only a directive if it has no escapes.
-                return new Token(TokenType::String, $result, $start, rawValue: $hasEscape ? 'escaped' : 'verbatim');
+                // rawValue 'legacy-octal' means the string contains a legacy
+                // octal escape (\1-\7, \00-\77, \8, or \9). Parser rejects in
+                // strict mode. 'verbatim' means no escapes at all (directive
+                // candidates). 'escaped' means escapes without legacy octal.
+                $raw = $hasLegacyOctal
+                    ? 'legacy-octal'
+                    : ($hasEscape ? 'escaped' : 'verbatim');
+                return new Token(TokenType::String, $result, $start, rawValue: $raw);
             }
 
             if ($ch === '\\') {
@@ -455,6 +642,17 @@ class Lexer
                 $this->advance();
                 if ($this->pos >= $this->length) {
                     throw new SyntaxError('Unterminated string literal', $start);
+                }
+                // Detect legacy octal escape sequences (\1-\7, or \0 followed
+                // by a digit, or \8/\9) which are prohibited in strict mode.
+                $peek = $this->source[$this->pos] ?? '';
+                if ($peek >= '1' && $peek <= '9') {
+                    $hasLegacyOctal = true;
+                } elseif ($peek === '0') {
+                    $next = $this->source[$this->pos + 1] ?? '';
+                    if ($next >= '0' && $next <= '9') {
+                        $hasLegacyOctal = true;
+                    }
                 }
                 $result .= $this->readEscapeSequence();
                 continue;
@@ -1035,9 +1233,12 @@ class Lexer
                 continue;
             }
 
-            // AnnexB: SingleLineHTMLOpenComment (<!-- treated as single-line comment)
+            // AnnexB: SingleLineHTMLOpenComment (<!-- treated as single-line
+            // comment). Only recognized in Script code — Module code rejects
+            // it as a normal tokenization error per spec §B.1.2.
             if (
-                $ch === '<'
+                !$this->moduleMode
+                && $ch === '<'
                 && $this->pos + 3 < $this->length
                 && $this->source[$this->pos + 1] === '!'
                 && $this->source[$this->pos + 2] === '-'
@@ -1049,9 +1250,10 @@ class Lexer
                 continue;
             }
 
-            // AnnexB: SingleLineHTMLCloseComment (--> at start of line)
+            // AnnexB: SingleLineHTMLCloseComment (--> at start of line).
             if (
-                $ch === '-'
+                !$this->moduleMode
+                && $ch === '-'
                 && $lineTerminatorInPass
                 && $this->pos + 2 < $this->length
                 && $this->source[$this->pos + 1] === '-'
@@ -1068,8 +1270,10 @@ class Lexer
                 && $this->pos + 1 < $this->length
                 && $this->source[$this->pos + 1] === '*';
             if ($isBlockComment) {
+                $commentStart = new SourceLocation($this->line, $this->column, $this->pos);
                 $this->pos += 2;
                 $this->column += 2;
+                $closed = false;
                 while ($this->pos < $this->length) {
                     $isEnd = $this->source[$this->pos] === '*'
                         && $this->pos + 1 < $this->length
@@ -1077,6 +1281,7 @@ class Lexer
                     if ($isEnd) {
                         $this->pos += 2;
                         $this->column += 2;
+                        $closed = true;
                         break;
                     }
                     if ($this->source[$this->pos] === "\n") {
@@ -1106,6 +1311,9 @@ class Lexer
                         $this->pos++;
                         $this->column++;
                     }
+                }
+                if (!$closed) {
+                    throw new SyntaxError('Unterminated multi-line comment', $commentStart);
                 }
                 continue;
             }
@@ -1147,6 +1355,32 @@ class Lexer
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
+            // ZWJ (U+200D) and ZWNJ (U+200C) are IdentifierPart but NOT
+            // IdentifierStart. UTF-8 of both starts with 0xE2 0x80 0x8C/8D.
+            $b0 = $ord;
+            $b1 = strlen($ch) >= 2 ? ord($ch[1]) : (
+                $this->pos + 1 < $this->length ? ord($this->source[$this->pos + 1]) : 0
+            );
+            $b2 = strlen($ch) >= 3 ? ord($ch[2]) : (
+                $this->pos + 2 < $this->length ? ord($this->source[$this->pos + 2]) : 0
+            );
+            if ($b0 === 0xE2 && $b1 === 0x80 && ($b2 === 0x8C || $b2 === 0x8D)) {
+                return false;
+            }
+            // Line terminator code points (U+2028, U+2029) and NBSP/other
+            // whitespace are never IdentifierStart. Check the passed-in
+            // character directly so decoded Unicode escapes are classified
+            // correctly.
+            if ($b0 === 0xE2 && $b1 === 0x80 && ($b2 === 0xA8 || $b2 === 0xA9)) {
+                return false;
+            }
+            // U+2E2F Vertical Tilde is Pattern_Syntax — not in ID_Start.
+            if ($b0 === 0xE2 && $b1 === 0xB8 && $b2 === 0xAF) {
+                return false;
+            }
+            if ($this->isWhitespaceChar($ch)) {
+                return false;
+            }
             // Exclude Unicode whitespace, line terminators, and Format-category
             // code points that are not part of the ID_Start set (e.g. U+180E).
             if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
@@ -1160,10 +1394,75 @@ class Lexer
         return ctype_alpha($ch) || $ch === '_' || $ch === '$';
     }
 
+    /**
+     * Check whether the given UTF-8 character is whitespace (by value, not
+     * by current lexer position). Used when classifying decoded escape
+     * sequences rather than source text.
+     */
+    private function isWhitespaceChar(string $ch): bool
+    {
+        $len = strlen($ch);
+        if ($len === 1) {
+            $o = ord($ch);
+            return $o === 0x20 || $o === 0x09 || $o === 0x0B || $o === 0x0C;
+        }
+        if ($len === 2) {
+            // U+00A0 NBSP = C2 A0; U+0085 NEL not in JS whitespace.
+            return ord($ch[0]) === 0xC2 && ord($ch[1]) === 0xA0;
+        }
+        if ($len === 3) {
+            $b0 = ord($ch[0]);
+            $b1 = ord($ch[1]);
+            $b2 = ord($ch[2]);
+            // U+1680 OGHAM = E1 9A 80
+            if ($b0 === 0xE1 && $b1 === 0x9A && $b2 === 0x80) {
+                return true;
+            }
+            // U+2000..U+200A (various spaces) = E2 80 80..8A
+            if ($b0 === 0xE2 && $b1 === 0x80 && $b2 >= 0x80 && $b2 <= 0x8A) {
+                return true;
+            }
+            // U+202F NNBSP = E2 80 AF, U+205F MMSP = E2 81 9F
+            if ($b0 === 0xE2 && $b1 === 0x80 && $b2 === 0xAF) {
+                return true;
+            }
+            if ($b0 === 0xE2 && $b1 === 0x81 && $b2 === 0x9F) {
+                return true;
+            }
+            // U+3000 IDSP = E3 80 80
+            if ($b0 === 0xE3 && $b1 === 0x80 && $b2 === 0x80) {
+                return true;
+            }
+            // U+FEFF ZWNBSP = EF BB BF
+            if ($b0 === 0xEF && $b1 === 0xBB && $b2 === 0xBF) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function isIdentifierPart(string $ch): bool
     {
         $ord = ord($ch);
         if ($ord >= 0x80) {
+            // Line terminator / Unicode whitespace check: classify by the
+            // passed-in character, not the current lexer position, so
+            // decoded Unicode escapes are handled correctly.
+            if (strlen($ch) === 3) {
+                $b0 = ord($ch[0]);
+                $b1 = ord($ch[1]);
+                $b2 = ord($ch[2]);
+                if ($b0 === 0xE2 && $b1 === 0x80 && ($b2 === 0xA8 || $b2 === 0xA9)) {
+                    return false;
+                }
+                // U+2E2F Vertical Tilde is Pattern_Syntax — not ID_Continue.
+                if ($b0 === 0xE2 && $b1 === 0xB8 && $b2 === 0xAF) {
+                    return false;
+                }
+            }
+            if ($this->isWhitespaceChar($ch)) {
+                return false;
+            }
             // Exclude Unicode whitespace, line terminators, and Format-category
             // code points that are not ZWJ/ZWNJ (spec ID_Continue).
             if ($this->isUnicodeLineTerminator() || $this->isUnicodeWhitespace()) {
@@ -1179,19 +1478,27 @@ class Lexer
 
     /**
      * Detect Format-category code points that must not be treated as identifier
-     * characters even though they are non-ASCII. Currently handles U+180E, the
-     * Mongolian Vowel Separator, which was removed from the Space_Separator
-     * category but is also not in ID_Continue.
+     * characters even though they are non-ASCII. Currently handles:
+     *   U+180E (Mongolian Vowel Separator, Cf).
+     *   U+2E2F (Vertical Tilde, Pattern_Syntax — not in ID_Start/ID_Continue).
      */
     private function isNonIdentFormatChar(): bool
     {
         if ($this->pos + 2 >= $this->length) {
             return false;
         }
+        $b0 = ord($this->source[$this->pos]);
+        $b1 = ord($this->source[$this->pos + 1]);
+        $b2 = ord($this->source[$this->pos + 2]);
         // U+180E encodes as E1 A0 8E.
-        return ord($this->source[$this->pos]) === 0xE1
-            && ord($this->source[$this->pos + 1]) === 0xA0
-            && ord($this->source[$this->pos + 2]) === 0x8E;
+        if ($b0 === 0xE1 && $b1 === 0xA0 && $b2 === 0x8E) {
+            return true;
+        }
+        // U+2E2F (Vertical Tilde) encodes as E2 B8 AF.
+        if ($b0 === 0xE2 && $b1 === 0xB8 && $b2 === 0xAF) {
+            return true;
+        }
+        return false;
     }
 
     private function isDigitOrSeparator(): bool

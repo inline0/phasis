@@ -27,6 +27,15 @@ class RegExpPrototype
 {
     private static ?JsObject $regExpStringIteratorProto = null;
 
+    /**
+     * Clear the cached %RegExpStringIteratorPrototype% so fresh realms get a
+     * prototype whose [[Prototype]] points at the realm's own %IteratorPrototype%.
+     */
+    public static function resetStringIteratorProto(): void
+    {
+        self::$regExpStringIteratorProto = null;
+    }
+
     /** %RegExpStringIteratorPrototype%: inherits from %IteratorPrototype%. */
     private static function getRegExpStringIteratorProto(): JsObject
     {
@@ -106,6 +115,64 @@ class RegExpPrototype
         return $proto;
     }
 
+    /**
+     * §22.2.6.13 EscapeRegExpPattern: escape `/` and LineTerminator code
+     * points in a regexp source so `/` + src + `/` forms a valid literal.
+     * Escaping inside character classes differs per spec (char classes may
+     * contain `/` unescaped), but V8 and SpiderMonkey escape them anyway
+     * and test262 checks the round-trip not the specific form.
+     */
+    private static function escapeRegExpPattern(string $source): string
+    {
+        $out = '';
+        $len = strlen($source);
+        $inClass = false;
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $source[$i];
+            if ($ch === '\\' && $i + 1 < $len) {
+                $out .= $ch . $source[$i + 1];
+                $i++;
+                continue;
+            }
+            if ($ch === '[') {
+                $inClass = true;
+                $out .= $ch;
+                continue;
+            }
+            if ($ch === ']') {
+                $inClass = false;
+                $out .= $ch;
+                continue;
+            }
+            if ($ch === '/' && !$inClass) {
+                $out .= '\\/';
+                continue;
+            }
+            // Line terminators LF / CR in pattern must be escaped.
+            if ($ch === "\n") {
+                $out .= '\\n';
+                continue;
+            }
+            if ($ch === "\r") {
+                $out .= '\\r';
+                continue;
+            }
+            // U+2028 / U+2029 as UTF-8 sequences.
+            if (
+                $ch === "\xE2"
+                && $i + 2 < $len
+                && $source[$i + 1] === "\x80"
+                && ($source[$i + 2] === "\xA8" || $source[$i + 2] === "\xA9")
+            ) {
+                $out .= $source[$i + 2] === "\xA8" ? '\\u2028' : '\\u2029';
+                $i += 2;
+                continue;
+            }
+            $out .= $ch;
+        }
+        return $out;
+    }
+
     private static function iterResult(JsValue $value, bool $done): JsObject
     {
         $obj = new JsObject();
@@ -180,12 +247,18 @@ class RegExpPrototype
                     if (!$this_ instanceof JsObject) {
                         throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
                     }
-                    // Per spec: if R does not have [[OriginalFlags]], then:
-                    //   - If R is RegExp.prototype, return undefined.
+                    // Per spec §22.2.6: if R does not have [[OriginalFlags]]:
+                    //   - If R is %RegExp.prototype% and propName is 'source',
+                    //     return "(?:)".
+                    //   - Otherwise, if R is %RegExp.prototype% and propName
+                    //     is a flag getter, return undefined.
                     //   - Otherwise throw TypeError.
                     $origFlagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
                     if ($origFlagsDesc === null) {
                         if ($this_ === $proto) {
+                            if ($propName === 'source') {
+                                return new JsString('(?:)');
+                            }
                             return JsUndefined::instance();
                         }
                         throw new \PhpJs\Exceptions\TypeError(
@@ -197,11 +270,17 @@ class RegExpPrototype
                             ? $origFlagsDesc->value->value : '';
                         return new JsBoolean(str_contains($origFlags, $flagChar));
                     }
-                    // source
+                    // source: per §22.2.6.13 / EscapeRegExpPattern, `/` and
+                    // LineTerminator code points in the pattern must be escaped
+                    // so the resulting string can round-trip through
+                    // `/` + source + `/` + flags.
                     $srcDesc = $this_->getOwnPropertyDescriptor('[[OriginalSource]]');
                     if ($srcDesc && $srcDesc->value instanceof JsString) {
                         $src = $srcDesc->value->value;
-                        return new JsString($src === '' ? '(?:)' : $src);
+                        if ($src === '') {
+                            return new JsString('(?:)');
+                        }
+                        return new JsString(self::escapeRegExpPattern($src));
                     }
                     return new JsString('(?:)');
                 },
@@ -616,8 +695,17 @@ class RegExpPrototype
             }
 
             // Global: iterate all matches.
-            $fullUnicode = str_contains($flags, 'u')
-                || str_contains($flags, 'v');
+            // Per §22.2.7.3.3 fullUnicode is determined from the internal
+            // [[OriginalFlags]] slot, not via Get(R, "unicode"). Override
+            // tests (`Object.defineProperty(r, 'unicode', ...)`) must not
+            // affect iteration.
+            $origFlags = '';
+            $origDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+            if ($origDesc !== null && $origDesc->value instanceof JsString) {
+                $origFlags = $origDesc->value->value;
+            }
+            $fullUnicode = str_contains($origFlags, 'u')
+                || str_contains($origFlags, 'v');
 
             // Per spec: Set(rx, "lastIndex", +0, Throw=true).
             $this_->set('lastIndex', new JsNumber(0.0), true);

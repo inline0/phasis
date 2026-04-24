@@ -253,6 +253,12 @@ class JsProxy extends JsObject
      */
     private function validateGetInvariants(string $name, JsValue $trapResult): void
     {
+        // A revoked proxy has a null target; the caller should have already
+        // thrown TypeError before invoking a trap, but guard defensively so a
+        // stale trap invocation doesn't crash the PHP runtime.
+        if ($this->target === null) {
+            return;
+        }
         $targetDesc = $this->target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
@@ -1035,12 +1041,13 @@ class JsProxy extends JsObject
         return true;
     }
 
-    public function preventExtensions(): void
+    public function preventExtensions(): bool
     {
         $success = $this->internalPreventExtensions();
         if (!$success) {
             throw new TypeError('\'preventExtensions\' on proxy: trap returned falsish');
         }
+        return true;
     }
 
     // -- hasOwnProperty --

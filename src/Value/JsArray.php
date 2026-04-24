@@ -49,13 +49,22 @@ class JsArray extends JsObject
      */
     public static function installSymbolIteratorOnPrototype(JsObject $proto): void
     {
+        // Per §23.1.3.37: Array.prototype[@@iterator] is the same function
+        // object as Array.prototype.values, with descriptor
+        // {writable, configurable, not enumerable}.
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
-        $factory = function (JsValue $this_): JsValue {
-            $array = $this_ instanceof JsObject ? $this_ : new JsObject();
-            return \PhpJs\BuiltIn\ArrayConstructor::createArrayIteratorFromSymbol($array, 'value');
-        };
-        $iteratorFn = JsFunction::fromCallable('values', $factory);
-        $proto->setBySymbol($iterSym, $iteratorFn);
+        $valuesFn = $proto->get('values');
+        if (!$valuesFn instanceof JsFunction) {
+            // Fall back to a fresh function if values isn't installed yet.
+            $valuesFn = JsFunction::fromCallable('values', function (JsValue $this_): JsValue {
+                $array = $this_ instanceof JsObject ? $this_ : new JsObject();
+                return \PhpJs\BuiltIn\ArrayConstructor::createArrayIteratorFromSymbol($array, 'value');
+            });
+        }
+        $proto->definePropertyBySymbol(
+            $iterSym,
+            \PhpJs\Object\PropertyDescriptor::data($valuesFn, true, false, true),
+        );
     }
 
     public function getLength(): int

@@ -179,38 +179,47 @@ class JsPromise extends JsObject
                 return;
             }
             if ($then instanceof JsFunction) {
-                $resolved = false;
-                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
-                    if ($resolved) {
-                        return JsUndefined::instance();
-                    }
-                    $resolved = true;
-                    $this->resolve($args[0] ?? JsUndefined::instance());
-                    return JsUndefined::instance();
-                };
-                $rejectHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
-                    if ($resolved) {
-                        return JsUndefined::instance();
-                    }
-                    $resolved = true;
-                    $this->reject($args[0] ?? JsUndefined::instance());
-                    return JsUndefined::instance();
-                };
-                // Per CreateResolvingFunctions, these are anonymous built-ins.
-                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
-                try {
-                    $then->call($value, [$resolveFn, $rejectFn]);
-                } catch (\Throwable $e) {
-                    if (!$resolved) {
+                // Per spec, thenable resolution is a PromiseResolveThenableJob
+                // that is enqueued on the microtask queue rather than run
+                // synchronously. This ensures `.then()` on the outer promise
+                // observes correct tick ordering relative to other handlers.
+                $promise = $this;
+                $thenRef = $then;
+                $valueRef = $value;
+                self::scheduleCallback(static function () use ($promise, $thenRef, $valueRef): void {
+                    $resolved = false;
+                    $resolveHandler = function (JsValue $this_, array $args) use (&$resolved, $promise): JsValue {
+                        if ($resolved) {
+                            return JsUndefined::instance();
+                        }
                         $resolved = true;
-                        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
-                            $this->reject($e->jsValue);
-                        } else {
-                            $this->reject(new JsString($e->getMessage()));
+                        $promise->resolve($args[0] ?? JsUndefined::instance());
+                        return JsUndefined::instance();
+                    };
+                    $rejectHandler = function (JsValue $this_, array $args) use (&$resolved, $promise): JsValue {
+                        if ($resolved) {
+                            return JsUndefined::instance();
+                        }
+                        $resolved = true;
+                        $promise->reject($args[0] ?? JsUndefined::instance());
+                        return JsUndefined::instance();
+                    };
+                    // Per CreateResolvingFunctions, these are anonymous built-ins.
+                    $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
+                    $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
+                    try {
+                        $thenRef->call($valueRef, [$resolveFn, $rejectFn]);
+                    } catch (\Throwable $e) {
+                        if (!$resolved) {
+                            $resolved = true;
+                            if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                                $promise->reject($e->jsValue);
+                            } else {
+                                $promise->reject(new JsString($e->getMessage()));
+                            }
                         }
                     }
-                }
+                });
                 return;
             }
         }
@@ -483,10 +492,11 @@ class JsPromise extends JsObject
 
     public function get(string $name): JsValue
     {
-        // Check own properties first.
-        $own = parent::get($name);
-        if (!$own instanceof JsUndefined) {
-            return $own;
+        // If the property exists anywhere on the chain (own or inherited),
+        // honor that value. Specifically, an own-undefined shadow set via
+        // `p.then = undefined` must not fall through to the synthetic method.
+        if ($this->has($name)) {
+            return parent::get($name);
         }
 
         $promise = $this;
@@ -530,6 +540,18 @@ class JsPromise extends JsObject
      */
     private static function createTypeError(string $message): JsObject
     {
+        // Prefer using the active interpreter's TypeError constructor so the
+        // returned error is an instanceof TypeError with the right prototype
+        // chain (per spec, selfResolutionError is a newly created TypeError).
+        $interp = JsFunction::getInterpreterInstance();
+        if ($interp !== null) {
+            $err = $interp->phpExceptionToJsValue(
+                new \PhpJs\Exceptions\TypeError($message),
+            );
+            if ($err instanceof JsObject) {
+                return $err;
+            }
+        }
         $err = new JsObject();
         $err->set('name', new JsString('TypeError'));
         $err->set('message', new JsString($message));
