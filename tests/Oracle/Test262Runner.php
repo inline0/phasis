@@ -445,22 +445,37 @@ PHP;
         var $262 = {};
         JS);
 
-        // $262.createRealm() - create a fresh Engine and return its $262
+        // $262.createRealm() - create a fresh Engine and return an
+        // object describing the new realm: { global, $262 }.
         $engine->setGlobal('__262_createRealm', function () use ($runner) {
             $realm = new Engine();
             $realm->setLimit('maxLoopIterations', 2_000_000);
             $runner->install262HostObject($realm);
-            // Load standard harness in the new realm
             try {
                 $runner->loadHarnessPublic($realm, 'sta.js');
                 $runner->loadHarnessPublic($realm, 'assert.js');
             } catch (\Throwable) {
             }
-            return $realm->eval('$262');
+            // Expose the realm's globalThis (its own JsObject) and its
+            // $262 host object. Cross-realm accesses through `global`
+            // resolve via the new Engine's intrinsics, so e.g.
+            // otherGlobal.TypeError !== TypeError.
+            $newGlobal = $realm->eval('globalThis');
+            $new262 = $realm->eval('$262');
+            $result = new \PhpJs\Value\JsObject();
+            $result->defineOwnProperty(
+                'global',
+                \PhpJs\Object\PropertyDescriptor::data($newGlobal, true, true, true),
+            );
+            $result->defineOwnProperty(
+                '$262',
+                \PhpJs\Object\PropertyDescriptor::data($new262, true, true, true),
+            );
+            return $result;
         });
         $engine->eval(<<<'JS'
         $262.createRealm = function() {
-            return { global: globalThis, $262: __262_createRealm() };
+            return __262_createRealm();
         };
         JS);
 
