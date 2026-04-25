@@ -4300,6 +4300,13 @@ class Parser
             }
 
             if ($token->type === TokenType::LeftBracket) {
+                // Per spec, an ArrowFunction is at AssignmentExpression
+                // level — `()=>{}` cannot be extended directly with member
+                // access. Parens force LHS shape: `(()=>{})[0]` is valid.
+                if ($left instanceof ArrowFunction && !$this->parenthesized->contains($left)) {
+                    $this->pos--;
+                    return $left;
+                }
                 $property = $this->parseExpression();
                 $this->expect(TokenType::RightBracket);
                 $left = new MemberExpression($left->location, $left, $property, true, false);
@@ -4307,6 +4314,10 @@ class Parser
             }
 
             if ($token->type === TokenType::LeftParen) {
+                if ($left instanceof ArrowFunction && !$this->parenthesized->contains($left)) {
+                    $this->pos--;
+                    return $left;
+                }
                 $args = $this->parseArguments();
                 $left = new CallExpression($left->location, $left, $args, false);
                 continue;
@@ -4479,7 +4490,19 @@ class Parser
     {
         $expr = $this->parsePrimaryExpression();
 
+        // Per spec, ArrowFunction and ClassExpression / FunctionExpression
+        // with body are AssignmentExpression-level — they cannot be extended
+        // with member/call/optional chains directly. To do so the source
+        // must wrap them in parens, which marks them as parenthesized
+        // (and therefore valid LHS continuations). The existing tests we
+        // care about wrap arrows in parens before extending.
+        $isUnparenthesizedArrow = $expr instanceof ArrowFunction
+            && !$this->parenthesized->contains($expr);
+
         while (true) {
+            if ($isUnparenthesizedArrow) {
+                break;
+            }
             if ($this->check(TokenType::Dot) && !$this->current()->lineTerminatorBefore) {
                 $this->advance();
                 $property = $this->parseIdentifierOrKeyword();
