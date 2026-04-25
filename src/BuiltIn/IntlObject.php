@@ -2608,8 +2608,8 @@ class IntlObject
             if ($len === 1) {
                 // Singleton extension introducer. Must be unique and
                 // followed by at least one extension subtag of length
-                // 2-8. Singleton 'x' switches to private use; anything
-                // after is unrestricted alphanum 1-8.
+                // 2-8. Singleton 'x' switches to private use; everything
+                // after `x-` is alphanum{1,8} until the end of the tag.
                 $key = strtolower($p);
                 if (isset($extensionsSeen[$key])) {
                     return true;
@@ -2623,7 +2623,10 @@ class IntlObject
                 while ($i < $count) {
                     $sub = $parts[$i];
                     $subLen = strlen($sub);
-                    if ($subLen === 1) {
+                    // Inside non-private extensions a length-1 subtag
+                    // starts a new singleton; private use consumes
+                    // length-1 subtags as part of its body.
+                    if (!$isPrivate && $subLen === 1) {
                         break;
                     }
                     if ($subLen < $minSubLen || $subLen > $maxSubLen) {
@@ -2680,7 +2683,7 @@ class IntlObject
         if (extension_loaded('intl')) {
             $icuTag = str_replace('-', '_', $tag);
             $parsed = \Locale::parseLocale($icuTag);
-            if ($parsed === null) {
+            if ($parsed === null || empty($parsed)) {
                 // Try to at least extract the language.
                 if (preg_match('/^([a-zA-Z]{2,8})/', $tag, $m)) {
                     $parsed = ['language' => strtolower($m[1])];
@@ -2690,6 +2693,12 @@ class IntlObject
             }
 
             $result = ['language' => strtolower($parsed['language'] ?? '')];
+            // ICU drops `und` instead of treating it as the explicit
+            // undetermined code; keep it so `new Intl.Locale("und")`
+            // round-trips to "und".
+            if ($result['language'] === '' && preg_match('/^([a-zA-Z]{2,8})/', $tag, $m)) {
+                $result['language'] = strtolower($m[1]);
+            }
             if (isset($parsed['script']) && $parsed['script'] !== '') {
                 $result['script'] = ucfirst(strtolower($parsed['script']));
             }
