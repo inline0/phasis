@@ -1465,13 +1465,15 @@ class TypedArrayConstructor
     private static function consumeIterator(JsFunction $iterMethod, JsObject $obj): array
     {
         $iterator = $iterMethod->call($obj, []);
+        // Per spec GetIteratorFromMethod step 4: if iterator is not an
+        // object, throw TypeError.
         if (!$iterator instanceof JsObject) {
-            return [];
+            throw new TypeError('Symbol.iterator method must return an object');
         }
 
         $nextMethod = $iterator->get('next');
         if (!$nextMethod instanceof JsFunction) {
-            return [];
+            throw new TypeError('Iterator next is not a function');
         }
 
         $elements = [];
