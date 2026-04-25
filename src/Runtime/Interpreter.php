@@ -2045,8 +2045,12 @@ class Interpreter
             // initializer, or static block). The runtime checks below enforce
             // the spec's distinction between SuperProperty and SuperCall;
             // without this flag the parser would reject super before runtime
-            // context inspection.
-            if ($env->has('[[HomeObject]]')) {
+            // context inspection. isInMethodLikeContext walks past arrow
+            // frames but stops at the first non-arrow function frame so a
+            // nested non-arrow function inside a method does not inherit
+            // super privileges from the outer method.
+            $inMethodLike = $env->isInMethodLikeContext();
+            if ($inMethodLike) {
                 $parser->setInMethodLike(true);
             }
             $program = $parser->parse();
@@ -2063,13 +2067,12 @@ class Interpreter
             // NOT constructor methods so SuperCall is forbidden.
             // Checks are transparent through arrow functions since arrows
             // inherit super binding from their enclosing scope.
-            $inMethod = $env->has('[[HomeObject]]');
             $inConstructor = $env->has('[[ActiveFunction]]')
                 && !$env->has('[[ClassFieldInitializer]]');
-            if (!$inMethod && $this->astContainsSuperTransparent($program->body)) {
+            if (!$inMethodLike && $this->astContainsSuperTransparent($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
-            if ($inMethod && !$inConstructor && $this->astContainsSuperCallTransparent($program->body)) {
+            if ($inMethodLike && !$inConstructor && $this->astContainsSuperCallTransparent($program->body)) {
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
 
@@ -4382,6 +4385,11 @@ class Interpreter
         if ($homeObject !== null) {
             $fnEnv->defineVar('[[HomeObject]]', $homeObject);
         }
+        // Per spec, generators are not [[Construct]]able so new.target inside
+        // a generator body is always undefined. Bind it explicitly so
+        // `new.target` and `eval('new.target')` resolve without walking up
+        // and finding the caller's frame.
+        $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
         $unmapped = $fnStrict || $this->isNonSimpleParameterList($fn->getParams());
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
@@ -4427,6 +4435,9 @@ class Interpreter
         if ($homeObject !== null) {
             $fnEnv->defineVar('[[HomeObject]]', $homeObject);
         }
+        // Per spec, async generators are not [[Construct]]able so new.target
+        // inside the body is always undefined.
+        $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
         $unmapped = $this->strictMode || $this->isNonSimpleParameterList($fn->getParams());
         $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
         $fnEnv->defineVar('arguments', $argsObj);
@@ -4978,6 +4989,15 @@ class Interpreter
             } catch (\Throwable) {
                 $homeObject = null;
             }
+            // Per spec 12.3.5.1: for super[expr], evaluate the property
+            // expression FIRST, then call GetSuperBase. The home object's
+            // [[Prototype]] may be mutated by the expression (e.g. via
+            // Object.setPrototypeOf), and GetSuperBase must observe the
+            // post-evaluation value.
+            $rawKey = null;
+            if ($node->computed) {
+                $rawKey = $this->evaluate($node->property, $env);
+            }
             $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
             // RequireObjectCoercible: if superBase is null, throw TypeError (spec §12.3.5.3 step 5).
             if ($superBase === null) {
@@ -4991,7 +5011,6 @@ class Interpreter
             $superThisRead = $env->get('this');
             $superRecvRead = $superThisRead instanceof JsObject ? $superThisRead : $superBase;
             if ($node->computed) {
-                $rawKey = $this->evaluate($node->property, $env);
                 if ($rawKey instanceof JsSymbol) {
                     return $superBase->getBySymbolWithReceiver($rawKey, $superRecvRead);
                 }

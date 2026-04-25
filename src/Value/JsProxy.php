@@ -1198,23 +1198,26 @@ class JsProxy extends JsObject
             return $this->target->construct($args, $nt);
         }
         if ($this->target instanceof JsFunction && $this->target->isConstructable()) {
-            // When newTarget is the proxy itself, the proxy is transparent.
-            // Use the target directly as the construct target.
+            // Resolve prototype by reading "prototype" through the newTarget
+            // (which may itself be the proxy). When nt is the proxy, this
+            // routes through the [[Get]] trap and validates spec invariants —
+            // notably, returning a non-object/null for a non-configurable
+            // non-writable target prototype property must throw TypeError.
+            // Walk through proxy chains for non-self newTargets per
+            // GetPrototypeFromConstructor semantics.
             if ($nt === $this) {
-                // Simple case: `new proxy(args)`. Delegate directly to target.construct().
-                return $this->target->construct($args);
-            }
-            // Reflect.construct case with a custom newTarget.
-            // Resolve prototype from the newTarget (walking through proxy chains).
-            $protoSource = $nt;
-            if ($protoSource instanceof self) {
-                $inner = $protoSource;
-                while ($inner instanceof self && !$inner->isRevoked()) {
-                    $inner = $inner->target;
+                $proto = $this->get('prototype');
+            } else {
+                $protoSource = $nt;
+                if ($protoSource instanceof self) {
+                    $inner = $protoSource;
+                    while ($inner instanceof self && !$inner->isRevoked()) {
+                        $inner = $inner->target;
+                    }
+                    $protoSource = $inner;
                 }
-                $protoSource = $inner;
+                $proto = ($protoSource instanceof JsFunction) ? $protoSource->get('prototype') : null;
             }
-            $proto = ($protoSource instanceof JsFunction) ? $protoSource->get('prototype') : null;
             if (!$proto instanceof JsObject) {
                 $proto = $this->target->get('prototype');
             }

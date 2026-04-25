@@ -705,6 +705,36 @@ class Environment
     }
 
     /**
+     * Whether the nearest non-arrow function frame has [[HomeObject]] as
+     * an own binding. Per spec, super references are valid only inside
+     * methods, getters/setters, class field initializers, and class
+     * constructors — all of which install [[HomeObject]] on their own
+     * function frame. Regular nested functions have their own frame
+     * without [[HomeObject]], even if an outer method has one.
+     *
+     * Used to validate `eval('super.x')` at parse time: walk past arrow
+     * frames (which inherit super), then check if the first non-arrow
+     * function frame is a method-like context.
+     */
+    public function isInMethodLikeContext(): bool
+    {
+        $env = $this;
+        while ($env !== null) {
+            if ($env->functionKind !== null && $env->functionKind !== 'arrow') {
+                return $env->hasOwnBinding('[[HomeObject]]');
+            }
+            // Arrow frame or non-function frame: check own binding before
+            // walking up — class field initializers and static blocks
+            // install [[HomeObject]] on a non-function frame.
+            if ($env->hasOwnBinding('[[HomeObject]]')) {
+                return true;
+            }
+            $env = $env->parent;
+        }
+        return false;
+    }
+
+    /**
      * Find the nearest variable environment (function scope or global scope).
      * Per spec, the VariableEnvironment is the enclosing function scope or
      * the global scope. Block scopes (if, for, try, etc.) are lexical
