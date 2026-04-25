@@ -2848,7 +2848,11 @@ class IntlObject
                             if ($mapped === 'numeric') {
                                 $result[$mapped] = ($val === 'true');
                             } else {
-                                $result[$mapped] = $val;
+                                // UTS35: a value of "true" canonicalizes to
+                                // the empty string, which renders as the
+                                // bare key in toString and is reflected by
+                                // the corresponding getter.
+                                $result[$mapped] = ($val === 'true') ? '' : $val;
                             }
                         }
                         $i += ($val !== 'true' || (isset($extParts[$i + 1]) && strlen($extParts[$i + 1]) > 2)) ? 2 : 1;
@@ -2934,7 +2938,11 @@ class IntlObject
                     }
                 } else {
                     $extensions[] = $uKey;
-                    $extensions[] = (string) $val;
+                    // The empty value (canonical "true") renders as the
+                    // bare key with no value subtag.
+                    if ($val !== '') {
+                        $extensions[] = (string) $val;
+                    }
                 }
             }
         }
