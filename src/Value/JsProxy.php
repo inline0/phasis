@@ -1218,15 +1218,23 @@ class JsProxy extends JsObject
             if (!$proto instanceof JsObject) {
                 $proto = $this->target->get('prototype');
             }
-            // Use the target's construct to properly handle bound functions
-            // and class constructors. Construct the object, then fix its
-            // prototype to match the newTarget.
-            $result = $this->target->construct($args);
-            // Fix prototype to match newTarget's prototype.
-            if ($proto instanceof JsObject) {
-                $result->setPrototype($proto);
+            // Construct manually so [[NewTarget]] is the user-supplied
+            // newTarget rather than the underlying target. Mirrors what
+            // OrdinaryCallBindThis observes inside the body, so new.target
+            // matches the spec for `super()` from a derived class extending
+            // a Proxy.
+            $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+            $newObj->defineOwnProperty(
+                '[[NewTarget]]',
+                \PhpJs\Object\PropertyDescriptor::data($nt, false, false, false),
+            );
+            $result = $this->target->call($newObj, $args);
+            if ($result instanceof JsObject) {
+                $result->forceDelete('[[NewTarget]]');
+                return $result;
             }
-            return $result;
+            $newObj->forceDelete('[[NewTarget]]');
+            return $newObj;
         }
         throw new TypeError('proxy target is not a constructor');
     }
