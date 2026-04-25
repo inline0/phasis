@@ -12448,8 +12448,10 @@ class Interpreter
                     $i += 2;
                     continue;
                 }
-                // \u{XXXXXX} ES2015 unicode escape with braces.
-                if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                // \u{XXXXXX} ES2015 unicode escape with braces — only in
+                // u/v mode. In non-unicode mode `\u` followed by `{` is an
+                // identity escape for `u` plus a quantifier `{N}`.
+                if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{' && $isUnicodeMode) {
                     $end = strpos($pattern, '}', $i + 3);
                     if ($end !== false) {
                         $hex = substr($pattern, $i + 3, $end - ($i + 3));
