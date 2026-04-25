@@ -4565,6 +4565,31 @@ class Parser
             $argument = $this->parseUnaryExpression();
             return new AwaitExpression($token->location, $argument);
         }
+        // In non-async script code, `await` is normally an identifier — but
+        // V8 / SpiderMonkey detect `await ExpressionStart` and throw a
+        // dedicated SyntaxError so users see the actual problem rather than
+        // a "missing ;" generic message. Only fire when no LineTerminator
+        // separates `await` from the following token (otherwise ASI applies
+        // and `await` is a valid bare identifier-statement).
+        if ($token->type === TokenType::Await) {
+            $next = $this->peek();
+            $nextStartsExpr = match ($next->type) {
+                TokenType::Number, TokenType::String,
+                TokenType::NoSubstitutionTemplate, TokenType::TemplateHead,
+                TokenType::Identifier, TokenType::PrivateIdentifier,
+                TokenType::True, TokenType::False, TokenType::Null,
+                TokenType::This, TokenType::Function_, TokenType::New,
+                TokenType::LeftBrace, TokenType::LeftBracket, TokenType::LeftParen,
+                TokenType::RegExp, TokenType::Class, TokenType::Async => true,
+                default => false,
+            };
+            if ($nextStartsExpr && !$next->lineTerminatorBefore) {
+                throw new ParseError(
+                    'await is only valid in async functions and the top level bodies of modules',
+                    $token,
+                );
+            }
+        }
 
         // YieldExpression used to live here, but per spec it is an
         // AssignmentExpression — not a UnaryExpression — so recognize
