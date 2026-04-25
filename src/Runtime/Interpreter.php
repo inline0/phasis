@@ -1629,16 +1629,18 @@ class Interpreter
         // Super call: super(args) inside a class constructor.
         // Calls the super class constructor with the current this and args.
         if ($node->callee instanceof Identifier && $node->callee->name === 'super') {
-            $args = $this->evaluateArguments($node->arguments, $env);
-            // Get the active function (the constructor being executed).
+            // Spec §13.3.7.1 SuperCall: GetSuperConstructor (a [[GetPrototypeOf]]
+            // on the active function) is captured BEFORE evaluating arguments,
+            // so an arg expression that mutates the class's [[Prototype]] cannot
+            // change which super-constructor we end up calling.
             try {
                 $activeFunc = $env->get('[[ActiveFunction]]');
             } catch (\Throwable) {
                 $activeFunc = null;
             }
-            // Super constructor is [[GetPrototypeOf]](activeFunction).
             $superCtor = $activeFunc instanceof JsFunction ? $activeFunc->getPrototype() : null;
             $isDerived = $activeFunc instanceof JsFunction && $activeFunc->isDerivedConstructor();
+            $args = $this->evaluateArguments($node->arguments, $env);
 
             // Per spec: check IsConstructor after evaluating arguments. A
             // JsProxy wrapping a constructable target also passes IsConstructor.
