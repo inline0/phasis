@@ -10253,6 +10253,10 @@ class Interpreter
                 $stmt->alternate,
             ]),
             $stmt instanceof LabeledStatement => [$stmt->body],
+            // Per Annex B.3.3.4, a function declaration directly inside a
+            // `with` body still hoists to the enclosing variable scope —
+            // the with object's binding is irrelevant to the hoist target.
+            $stmt instanceof \PhpJs\Ast\Statement\WithStatement => [$stmt->body],
             default => [],
         };
 
