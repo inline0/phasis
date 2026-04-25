@@ -3756,6 +3756,20 @@ class Parser
                         );
                     }
                     $seen[$n] = true;
+                    // Strict mode: catch parameter cannot bind 'eval' or
+                    // 'arguments' anywhere in its (possibly destructured)
+                    // shape. Identifier-form catch params are already
+                    // validated by parseIdentifier; this catches the
+                    // destructured cases like `catch ([eval])` or
+                    // `catch ({x: arguments})`.
+                    if (
+                        $this->strictMode
+                        && ($n === 'eval' || $n === 'arguments')
+                    ) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Binding identifier '{$n}' may not be used in strict mode",
+                        );
+                    }
                 }
             }
             $handlerBody = $this->parseBlockStatement();
