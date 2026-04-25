@@ -6714,6 +6714,13 @@ class Interpreter
                     $result = $method->call($resource, []);
                     if ($isAsync && $result instanceof \PhpJs\Value\JsPromise) {
                         \PhpJs\Value\JsPromise::drainMicrotasks();
+                        // Propagate a rejected dispose promise as a thrown
+                        // value so it gets chained into a SuppressedError if
+                        // an outer error is already pending, or surfaces as
+                        // the error otherwise.
+                        if ($result->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                            throw new \PhpJs\Exceptions\JsThrowable($result->getResolvedValue());
+                        }
                     }
                 } else {
                     throw new TypeError('Property [Symbol.dispose] is not a function.');

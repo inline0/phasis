@@ -48,8 +48,11 @@ return [
     ],
     'test262_skipped_features' => [
         // Module proposals not implemented. Tests for these features
-        // dynamic-import all variants of import.defer / import.source.
+        // dynamic-import all variants of import.defer / import.source /
+        // import-attributes / JSON modules.
         'import-defer',
         'source-phase-imports',
+        'import-attributes',
+        'json-modules',
     ],
 ];
