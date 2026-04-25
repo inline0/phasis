@@ -740,8 +740,11 @@ class IntlObject
             JsValue $this_,
             array $args,
         ) use ($compareFn): JsValue {
-            if (!$this_ instanceof JsObject) {
-                throw new TypeError('Intl.Collator.prototype.compare called on non-object');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedCollator]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.Collator.prototype.compare called on non-Collator');
             }
             // Return a bound compare function.
             $boundCompare = JsFunction::fromCallable('compare', function (
@@ -766,31 +769,35 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
         ): JsValue {
-            $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
-                $result->set('locale', new JsString($locale));
-                $result->set('usage', new JsString(
-                    self::extractInternalString($this_, '[[Usage]]', 'sort'),
-                ));
-                $result->set('sensitivity', new JsString(
-                    self::extractInternalString($this_, '[[Sensitivity]]', 'variant'),
-                ));
-                $ipVal = $this_->get('[[IgnorePunctuation]]');
-                $result->set('ignorePunctuation', new JsBoolean(
-                    $ipVal instanceof JsBoolean ? $ipVal->toBoolean() : false,
-                ));
-                $result->set('collation', new JsString(
-                    self::extractInternalString($this_, '[[Collation]]', 'default'),
-                ));
-                $numVal = $this_->get('[[Numeric]]');
-                $result->set('numeric', new JsBoolean(
-                    $numVal instanceof JsBoolean ? $numVal->toBoolean() : false,
-                ));
-                $result->set('caseFirst', new JsString(
-                    self::extractInternalString($this_, '[[CaseFirst]]', 'false'),
-                ));
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedCollator]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.Collator.prototype.resolvedOptions called on non-Collator');
             }
+            $result = new JsObject();
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $result->set('locale', new JsString($locale));
+            $result->set('usage', new JsString(
+                self::extractInternalString($this_, '[[Usage]]', 'sort'),
+            ));
+            $result->set('sensitivity', new JsString(
+                self::extractInternalString($this_, '[[Sensitivity]]', 'variant'),
+            ));
+            $ipVal = $this_->get('[[IgnorePunctuation]]');
+            $result->set('ignorePunctuation', new JsBoolean(
+                $ipVal instanceof JsBoolean ? $ipVal->toBoolean() : false,
+            ));
+            $result->set('collation', new JsString(
+                self::extractInternalString($this_, '[[Collation]]', 'default'),
+            ));
+            $numVal = $this_->get('[[Numeric]]');
+            $result->set('numeric', new JsBoolean(
+                $numVal instanceof JsBoolean ? $numVal->toBoolean() : false,
+            ));
+            $result->set('caseFirst', new JsString(
+                self::extractInternalString($this_, '[[CaseFirst]]', 'false'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
@@ -1324,6 +1331,12 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.NumberFormat.prototype.resolvedOptions called on non-NumberFormat');
+            }
             $result = new JsObject();
             if ($this_ instanceof JsObject) {
                 $result->set('locale', new JsString(
@@ -1780,6 +1793,12 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.DateTimeFormat.prototype.resolvedOptions called on non-DateTimeFormat');
+            }
             $result = new JsObject();
             if ($this_ instanceof JsObject) {
                 $result->set('locale', new JsString(
