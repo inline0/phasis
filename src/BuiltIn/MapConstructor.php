@@ -273,12 +273,18 @@ class MapConstructor
             throw new TypeError('Map.prototype.set is not a function');
         }
 
-        // Per spec, get the iterator. Must throw TypeError if Symbol.iterator is not callable.
+        // Per spec GetIterator: ToObject the value for the lookup but pass
+        // the original primitive as the call's `this`. This makes
+        // Number.prototype[@@iterator] receive a number primitive rather
+        // than a Number wrapper.
         $iterSym = SymbolConstructor::iterator();
         if ($iterable instanceof JsObject) {
             $iteratorMethod = $iterable->getBySymbol($iterSym);
+            $thisArg = $iterable;
         } else {
-            throw new TypeError('object is not iterable');
+            $wrapper = TypeConversion::toObject($iterable);
+            $iteratorMethod = $wrapper->getBySymbolWithReceiver($iterSym, $iterable);
+            $thisArg = $iterable;
         }
 
         if ($iteratorMethod instanceof JsUndefined || $iteratorMethod instanceof JsNull) {
@@ -288,7 +294,7 @@ class MapConstructor
             throw new TypeError('object is not iterable');
         }
 
-        $iterator = $iteratorMethod->call($iterable, []);
+        $iterator = $iteratorMethod->call($thisArg, []);
         if (!$iterator instanceof JsObject) {
             throw new TypeError('object is not iterable');
         }
