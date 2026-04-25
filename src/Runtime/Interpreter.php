@@ -12381,6 +12381,13 @@ class Interpreter
             $pattern = $this->transformVFlagPattern($pattern);
         }
 
+        // In non-unicode mode, Annex B B.1.4.1.1 says a range `A-B` where
+        // either side isn't a single character must be treated as the union
+        // of A, literal `-`, and B. Rewrite such ranges so PCRE accepts them.
+        if (!$isUnicodeMode) {
+            $pattern = $this->rewriteAnnexBClassRanges($pattern);
+        }
+
         // Count capturing groups for backreference validation (Annex B).
         $numGroups = $this->countCapturingGroups($pattern);
         $result = '';
@@ -12638,18 +12645,29 @@ class Interpreter
                     continue;
                 }
                 // \c escape: In ECMAScript, \cX where X is a letter A-Z/a-z
-                // produces a control character. If X is NOT a letter, Annex B
-                // says treat \c as a literal backslash followed by 'c' (the
-                // remaining chars are parsed normally).
+                // produces a control character. Annex B B.1.4 extends the set
+                // of ClassControlLetter inside a character class to include
+                // DecimalDigit and `_`. Outside a class (or in u-mode), only
+                // letters are valid; when invalid, treat \c as literal in
+                // non-u mode (Annex B).
                 if ($next === 'c') {
                     if ($i + 2 < $len) {
                         $controlChar = $pattern[$i + 2];
-                        if (
-                            ($controlChar >= 'A' && $controlChar <= 'Z')
-                            || ($controlChar >= 'a' && $controlChar <= 'z')
-                        ) {
+                        $isLetter = ($controlChar >= 'A' && $controlChar <= 'Z')
+                            || ($controlChar >= 'a' && $controlChar <= 'z');
+                        if ($isLetter) {
                             // Valid \cX: pass through as PCRE handles it.
                             $result .= $ch . $next . $controlChar;
+                            $i += 3;
+                            continue;
+                        }
+                        $isAnnexBClassLetter = !$isUnicodeMode && $inCharClass
+                            && (($controlChar >= '0' && $controlChar <= '9') || $controlChar === '_');
+                        if ($isAnnexBClassLetter) {
+                            // Annex B: emit the control character whose value
+                            // is `ord(controlChar) % 32`.
+                            $cp = ord($controlChar) % 32;
+                            $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
                             $i += 3;
                             continue;
                         }
@@ -13031,7 +13049,8 @@ class Interpreter
                     $hex = substr($name, $i + 2, 4);
                     if (strlen($hex) === 4 && ctype_xdigit($hex)) {
                         $cp = (int) hexdec($hex);
-                        if ($cp >= 0xD800 && $cp <= 0xDBFF
+                        if (
+                            $cp >= 0xD800 && $cp <= 0xDBFF
                             && $i + 11 < $len
                             && $name[$i + 6] === '\\' && $name[$i + 7] === 'u'
                         ) {
@@ -13448,6 +13467,183 @@ class Interpreter
             return $name;
         }
         return null;
+    }
+
+    /**
+     * Annex B B.1.4.1.1: in non-unicode mode, when one side of a class range
+     * `A-B` is not a single character (e.g. `\d`, `\w`, `[...]` etc.), the
+     * `-` is treated as a literal hyphen and the whole expression is the
+     * union of A, `-`, and B. PCRE rejects such ranges with "Internal error",
+     * so we walk each character class and escape problematic hyphens.
+     */
+    private function rewriteAnnexBClassRanges(string $pattern): string
+    {
+        $result = '';
+        $len = strlen($pattern);
+        $i = 0;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === '\\' && $i + 1 < $len) {
+                $result .= $c . $pattern[$i + 1];
+                $i += 2;
+                continue;
+            }
+            if ($c !== '[') {
+                $result .= $c;
+                $i++;
+                continue;
+            }
+            // Find the matching ] (respecting backslash escapes).
+            $end = $i + 1;
+            // Skip a leading ^ and a leading ] (literal first char).
+            if ($end < $len && $pattern[$end] === '^') {
+                $end++;
+            }
+            if ($end < $len && $pattern[$end] === ']') {
+                $end++;
+            }
+            while ($end < $len && $pattern[$end] !== ']') {
+                if ($pattern[$end] === '\\' && $end + 1 < $len) {
+                    $end += 2;
+                    continue;
+                }
+                $end++;
+            }
+            if ($end >= $len) {
+                $result .= $c;
+                $i++;
+                continue;
+            }
+            $classBody = substr($pattern, $i, $end - $i + 1);
+            $result .= $this->fixAnnexBHyphensInClass($classBody);
+            $i = $end + 1;
+        }
+        return $result;
+    }
+
+    /**
+     * Walk a class body `[…]` and escape any `-` that appears between two
+     * atoms where at least one isn't a single character.
+     */
+    private function fixAnnexBHyphensInClass(string $classBody): string
+    {
+        $len = strlen($classBody);
+        if ($len < 2 || $classBody[0] !== '[' || $classBody[$len - 1] !== ']') {
+            return $classBody;
+        }
+        $body = substr($classBody, 1, $len - 2);
+        $prefix = '[';
+        if ($body !== '' && $body[0] === '^') {
+            $prefix .= '^';
+            $body = substr($body, 1);
+        }
+
+        $atoms = [];
+        $bodyLen = strlen($body);
+        $j = 0;
+        while ($j < $bodyLen) {
+            $c = $body[$j];
+            if ($c === '\\' && $j + 1 < $bodyLen) {
+                $next = $body[$j + 1];
+                $isMultiSet = in_array($next, ['d', 'D', 's', 'S', 'w', 'W'], true);
+                // Multi-byte escapes consume their full extent.
+                if (
+                    $next === 'x' && $j + 3 < $bodyLen
+                    && ctype_xdigit($body[$j + 2]) && ctype_xdigit($body[$j + 3])
+                ) {
+                    $atoms[] = ['type' => 'esc', 'text' => substr($body, $j, 4), 'isSet' => false];
+                    $j += 4;
+                    continue;
+                }
+                if ($next === 'u' && $j + 2 < $bodyLen && $body[$j + 2] === '{') {
+                    $closeBrace = strpos($body, '}', $j + 3);
+                    if ($closeBrace !== false) {
+                        $atoms[] = [
+                            'type' => 'esc',
+                            'text' => substr($body, $j, $closeBrace - $j + 1),
+                            'isSet' => false,
+                        ];
+                        $j = $closeBrace + 1;
+                        continue;
+                    }
+                }
+                if (
+                    $next === 'u' && $j + 5 < $bodyLen && ctype_xdigit($body[$j + 2])
+                    && ctype_xdigit($body[$j + 3]) && ctype_xdigit($body[$j + 4])
+                    && ctype_xdigit($body[$j + 5])
+                ) {
+                    $atoms[] = ['type' => 'esc', 'text' => substr($body, $j, 6), 'isSet' => false];
+                    $j += 6;
+                    continue;
+                }
+                if (($next === 'p' || $next === 'P') && $j + 2 < $bodyLen && $body[$j + 2] === '{') {
+                    $closeBrace = strpos($body, '}', $j + 3);
+                    if ($closeBrace !== false) {
+                        $atoms[] = [
+                            'type' => 'esc',
+                            'text' => substr($body, $j, $closeBrace - $j + 1),
+                            'isSet' => true,
+                        ];
+                        $j = $closeBrace + 1;
+                        continue;
+                    }
+                }
+                $atoms[] = ['type' => 'esc', 'text' => substr($body, $j, 2), 'isSet' => $isMultiSet];
+                $j += 2;
+                continue;
+            }
+            if ($c === '-') {
+                $atoms[] = ['type' => 'dash', 'text' => '-', 'isSet' => false];
+                $j++;
+                continue;
+            }
+            // Multi-byte UTF-8: keep the whole sequence as one atom.
+            $byte = ord($c);
+            $width = 1;
+            if (($byte & 0xE0) === 0xC0) {
+                $width = 2;
+            } elseif (($byte & 0xF0) === 0xE0) {
+                $width = 3;
+            } elseif (($byte & 0xF8) === 0xF0) {
+                $width = 4;
+            }
+            $atoms[] = ['type' => 'lit', 'text' => substr($body, $j, $width), 'isSet' => false];
+            $j += $width;
+        }
+
+        // Decide which dashes are range operators vs literal hyphens. A dash
+        // is a range operator only when it sits between two atoms that are
+        // both single characters; if either neighbour is `\d/\D/\s/\S/\w/\W`
+        // (or a property escape) the dash is literal per Annex B.
+        $rebuilt = '';
+        $count = count($atoms);
+        for ($k = 0; $k < $count; $k++) {
+            $atom = $atoms[$k];
+            if ($atom['type'] !== 'dash') {
+                $rebuilt .= $atom['text'];
+                continue;
+            }
+            // Dash at start or end of class is always literal in PCRE.
+            if ($k === 0 || $k === $count - 1) {
+                $rebuilt .= '-';
+                continue;
+            }
+            $prev = $atoms[$k - 1];
+            $nextAtom = $atoms[$k + 1];
+            // If previous atom was itself a dash that was already used as the
+            // operator side of a previous range, this dash is literal.
+            if ($prev['type'] === 'dash' || $nextAtom['type'] === 'dash') {
+                $rebuilt .= '\\-';
+                continue;
+            }
+            if ($prev['isSet'] || $nextAtom['isSet']) {
+                $rebuilt .= '\\-';
+                continue;
+            }
+            $rebuilt .= '-';
+        }
+
+        return $prefix . $rebuilt . ']';
     }
 
     /**

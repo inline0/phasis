@@ -5063,6 +5063,14 @@ class Parser
         $groupNames = [];
         $kRefs = [];
         $hasNamedGroup = self::collectRegExpGroupNamesAndKRefs($pattern, $groupNames, $kRefs);
+        // The +N grammar parameter is set whenever the pattern contains a
+        // GroupSpecifier `(?<Name>...)` anywhere — even if our tokenising
+        // pre-pass swallowed it inside an attempted \k<...> name. This second
+        // check ensures the strict grammar still fires for inputs like
+        // `\k<a(?<a>a)`.
+        if (!$hasNamedGroup) {
+            $hasNamedGroup = self::regexpHasNamedGroupDeclaration($pattern);
+        }
         $captureCount = self::countCapturingGroupsInRegExp($pattern);
         // Pass 1: structural validation.
         $len = strlen($pattern);
@@ -5165,7 +5173,9 @@ class Parser
                 }
                 if ($next === 'k' && !$inClass) {
                     // \k<Name> reference. With named groups present, must
-                    // reference an existing group.
+                    // reference an existing group. In non-unicode mode
+                    // without any named groups, malformed \k<...> falls
+                    // back to treating \k as a literal escape.
                     if ($i + 2 >= $len || $pattern[$i + 2] !== '<') {
                         if ($unicode || $hasNamedGroup) {
                             throw new \PhpJs\Exceptions\SyntaxError(
@@ -5179,19 +5189,28 @@ class Parser
                             $name .= $pattern[$j];
                             $j++;
                         }
-                        if ($j >= $len || $name === '' || !self::isValidGroupName($name)) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
-                                "Invalid regular expression: /{$pattern}/: Invalid named back reference",
-                            );
+                        $invalidName = $j >= $len || $name === '' || !self::isValidGroupName($name);
+                        $unknownName = !$invalidName && !isset($groupNames[$name]);
+                        if ($invalidName) {
+                            if ($unicode || $hasNamedGroup) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Invalid named back reference",
+                                );
+                            }
+                            // Non-unicode without named groups: fall through
+                            // and treat \k as literal "k".
+                        } elseif ($unknownName) {
+                            if ($unicode || $hasNamedGroup) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Invalid named capture referenced",
+                                );
+                            }
+                            // Non-unicode without named groups: fall through.
+                        } else {
+                            $i = $j + 1;
+                            $prevAtom = true;
+                            continue;
                         }
-                        if (($unicode || $hasNamedGroup) && !isset($groupNames[$name])) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
-                                "Invalid regular expression: /{$pattern}/: Invalid named capture referenced",
-                            );
-                        }
-                        $i = $j + 1;
-                        $prevAtom = true;
-                        continue;
                     }
                 }
                 // u-flag IdentityEscape: only SyntaxCharacter / / are allowed
@@ -5271,7 +5290,8 @@ class Parser
                                 // as General_Category, the value must be a
                                 // canonical-cased GC value.
                                 $normName = \PhpJs\Runtime\Interpreter::normalizeUnicodePropertyName($parts[0]);
-                                if ($normName === 'General_Category'
+                                if (
+                                    $normName === 'General_Category'
                                     && \PhpJs\Runtime\Interpreter::isGeneralCategoryValue($parts[1]) === false
                                 ) {
                                     throw new \PhpJs\Exceptions\SyntaxError(
@@ -5381,7 +5401,8 @@ class Parser
                         $j++;
                     }
                     $decodedName = self::decodeRegExpGroupName($name);
-                    if ($j >= $len || $decodedName === '' || $decodedName === null
+                    if (
+                        $j >= $len || $decodedName === '' || $decodedName === null
                         || !self::isValidGroupName($decodedName)
                     ) {
                         throw new \PhpJs\Exceptions\SyntaxError(
@@ -5622,6 +5643,51 @@ class Parser
             $i++;
         }
         return $hasNamed;
+    }
+
+    /**
+     * Detect whether `pattern` contains a GroupSpecifier `(?<Name>…)` whose
+     * name starts with a valid identifier character. Unlike
+     * collectRegExpGroupNamesAndKRefs this does not swallow `(?<` inside an
+     * attempted `\k<…>` name, so it is reliable for the +N grammar
+     * lookahead.
+     */
+    private static function regexpHasNamedGroupDeclaration(string $pattern): bool
+    {
+        $len = strlen($pattern);
+        $i = 0;
+        $inClass = false;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === '\\') {
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $c === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($inClass && $c === ']') {
+                $inClass = false;
+                $i++;
+                continue;
+            }
+            if (
+                !$inClass
+                && $c === '('
+                && $i + 3 < $len
+                && $pattern[$i + 1] === '?'
+                && $pattern[$i + 2] === '<'
+            ) {
+                $third = $pattern[$i + 3];
+                if ($third !== '=' && $third !== '!') {
+                    return true;
+                }
+            }
+            $i++;
+        }
+        return false;
     }
 
     /**
@@ -5991,7 +6057,8 @@ class Parser
                         // Combine surrogate pairs: a high surrogate
                         // followed by another \uXXXX low surrogate forms a
                         // single supplementary code point.
-                        if ($cp >= 0xD800 && $cp <= 0xDBFF
+                        if (
+                            $cp >= 0xD800 && $cp <= 0xDBFF
                             && $i + 11 < $len
                             && $name[$i + 6] === '\\' && $name[$i + 7] === 'u'
                         ) {
@@ -6034,10 +6101,12 @@ class Parser
         }
         // GroupName accepts the full IdentifierName grammar — including
         // non-ASCII letters/digits, plus ZWJ/ZWNJ as IdentifierPart.
-        if (preg_match(
-            '/^[\p{L}\p{Nl}_$][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}_$\x{200C}\x{200D}]*$/u',
-            $name,
-        ) !== 1) {
+        if (
+            preg_match(
+                '/^[\p{L}\p{Nl}_$][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}_$\x{200C}\x{200D}]*$/u',
+                $name,
+            ) !== 1
+        ) {
             return false;
         }
         return true;
