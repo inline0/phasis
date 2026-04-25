@@ -101,7 +101,8 @@ class WeakSetConstructor
 
         $iterator = $iteratorMethod->call($iterable, []);
         if (!$iterator instanceof JsObject) {
-            return;
+            // Spec GetIterator: throw if iteratorMethod returns a non-object.
+            throw new TypeError('Iterator method returned a non-object');
         }
 
         $nextMethod = $iterator->get('next');

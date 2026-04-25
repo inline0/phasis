@@ -120,7 +120,8 @@ class WeakMapConstructor
 
         $iterator = $iteratorMethod->call($iterable, []);
         if (!$iterator instanceof JsObject) {
-            return;
+            // Spec GetIterator: if iteratorMethod returns a non-object, throw.
+            throw new TypeError('Iterator method returned a non-object');
         }
 
         $nextMethod = $iterator->get('next');
