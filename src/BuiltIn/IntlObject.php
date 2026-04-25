@@ -3111,6 +3111,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 // type is required.
                 $typeVal = $options->get('type');
@@ -3292,6 +3293,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
@@ -3612,6 +3614,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
