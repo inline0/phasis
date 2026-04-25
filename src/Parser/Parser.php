@@ -3503,9 +3503,16 @@ class Parser
             }
 
             $declarations = [new VariableDeclarator($id->location, $id, $init)];
+            // Per spec 14.7.4: C-style for-init declarator initializers use
+            // AssignmentExpressionNoIn, so a top-level `in` operator must be
+            // rejected (the head can only be Annex B for-in if there is a
+            // single declarator with an `in` token immediately after).
+            $savedNoInList = $this->noIn;
+            $this->noIn = true;
             while ($this->eat(TokenType::Comma)) {
                 $declarations[] = $this->parseVariableDeclarator();
             }
+            $this->noIn = $savedNoInList;
             // Per §13.3.1.1: const declarators in a C-style `for(;;)` head
             // must have initializers. The for-of/for-in branches bypass
             // this requirement (the iteration value initializes the
