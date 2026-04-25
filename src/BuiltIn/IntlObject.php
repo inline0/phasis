@@ -3327,6 +3327,21 @@ class IntlObject
                     'ethiopic-amete-alem' => 'ethioaa',
                     'gregorian' => 'gregory',
                 ];
+                // UTS35 BCP47 type alias "yes" -> "true" for keyword
+                // keys that explicitly list "yes" as an alias of "true".
+                // Ordering must be preserved.
+                static $yesToTrueKeys = ['kb', 'kc', 'kh', 'kk', 'kn'];
+                foreach ($yesToTrueKeys as $yesKey) {
+                    if (
+                        isset($keywords[$yesKey])
+                        && count($keywords[$yesKey]) === 1
+                        && $keywords[$yesKey][0] === 'yes'
+                    ) {
+                        // "true" is the canonical default and renders as
+                        // the bare key with no value subtag.
+                        $keywords[$yesKey] = [];
+                    }
+                }
                 foreach ($legacyMap as $key => $slot) {
                     if (!isset($keywords[$key])) {
                         continue;
