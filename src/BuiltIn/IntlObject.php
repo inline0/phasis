@@ -2023,12 +2023,52 @@ class IntlObject
                     $hourCycle = $hc;
                 }
                 $h12Val = $options->get('hour12');
+                $hour12 = null;
                 if (!$h12Val instanceof JsUndefined) {
-                    $hourCycle = TypeConversion::toBoolean($h12Val) ? 'h12' : 'h23';
+                    $hour12 = TypeConversion::toBoolean($h12Val);
+                }
+                // Pull `-u-hc-…` from the requested locale as a default
+                // when the constructor doesn't override it.
+                if ($hourCycle === null && $hour12 === null) {
+                    foreach ($locales as $candidate) {
+                        $parsedTag = self::parseLocaleTag($candidate);
+                        if (
+                            $parsedTag !== null
+                            && isset($parsedTag['hourCycle'])
+                            && $parsedTag['hourCycle'] !== ''
+                        ) {
+                            $hourCycle = $parsedTag['hourCycle'];
+                            break;
+                        }
+                    }
+                }
+                // Per spec step 24-26, hour12 takes precedence over the
+                // unicode extension `hc` and any constructor-supplied
+                // hourCycle. The locale data picks h11 vs h12 (and
+                // h23 vs h24); ICU's English/most-locale default is
+                // h12, with ja-JP using h11.
+                if ($hour12 !== null) {
+                    $localeLang = strtolower(strtok($resolvedLocale, '-_'));
+                    if ($hour12) {
+                        $hourCycle = $localeLang === 'ja' ? 'h11' : 'h12';
+                    } else {
+                        $hourCycle = 'h23';
+                    }
                 }
                 if ($hourCycle !== null) {
                     $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
                         new JsString($hourCycle),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
+                // Remember hour12 for later so we can default the cycle
+                // when a `hour` component is requested but no cycle is
+                // specified.
+                if ($hour12 !== null) {
+                    $obj->defineOwnProperty('[[Hour12]]', PropertyDescriptor::data(
+                        new JsBoolean($hour12),
                         false,
                         false,
                         false,
@@ -2050,6 +2090,7 @@ class IntlObject
                     'timeZoneName' => ['short', 'long', 'shortOffset', 'longOffset', 'shortGeneric', 'longGeneric'],
                 ];
                 $hasExplicitFormatComponents = false;
+                $hasHour = false;
                 foreach ($components as $prop => $validValues) {
                     $val = $options->get($prop);
                     if (!$val instanceof JsUndefined) {
@@ -2058,6 +2099,9 @@ class IntlObject
                             throw new RangeError("Invalid {$prop}: {$str}");
                         }
                         $hasExplicitFormatComponents = true;
+                        if ($prop === 'hour') {
+                            $hasHour = true;
+                        }
                         $obj->defineOwnProperty("[[{$prop}]]", PropertyDescriptor::data(
                             new JsString($str),
                             false,
@@ -2065,6 +2109,24 @@ class IntlObject
                             false,
                         ));
                     }
+                }
+                // When `hour` is requested but no cycle is set, fall
+                // back to the locale's CLDR default ("h12" for most
+                // locales, "h11" for ja, "h23" for some others). This
+                // matches V8's behaviour and keeps resolvedOptions's
+                // hourCycle non-undefined whenever hour is included.
+                if ($hasHour && $hourCycle === null) {
+                    $localeLang = strtolower(strtok($resolvedLocale, '-_'));
+                    static $localeDefaultHc = [
+                        'ja' => 'h11',
+                    ];
+                    $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
+                    $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
+                        new JsString($hourCycle),
+                        false,
+                        false,
+                        false,
+                    ));
                 }
 
                 // formatMatcher: "basic" or "best fit" (default).
@@ -2290,7 +2352,14 @@ class IntlObject
             ));
             $hcVal = $this_->get('[[HourCycle]]');
             if (!$hcVal instanceof JsUndefined) {
-                self::defineDataProp($result, 'hourCycle', new JsString(TypeConversion::toString($hcVal)));
+                $hcStr = TypeConversion::toString($hcVal);
+                self::defineDataProp($result, 'hourCycle', new JsString($hcStr));
+                // Spec: hour12 is true for h11/h12, false for h23/h24.
+                self::defineDataProp(
+                    $result,
+                    'hour12',
+                    new JsBoolean(in_array($hcStr, ['h11', 'h12'], true)),
+                );
             }
 
             // Component options.
