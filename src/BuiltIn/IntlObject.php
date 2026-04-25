@@ -2099,21 +2099,31 @@ class IntlObject
             && preg_match('/^[0\x{0660}\x{06F0}\x{0E50}]+$/u', $digitsOnly) === 1;
         $effectiveZero = $roundedToZero || $isNaN;
         $hasMinus = str_contains($formatted, '-');
-        $stripMinus = static fn(string $s): string => str_replace('-', '', $s);
+        $hasParens = str_starts_with($formatted, '(') && str_ends_with($formatted, ')');
+        // For currency accounting form, the negative indicator is the
+        // parenthesis pair, not a "-" prefix. Treat that the same as a
+        // minus when applying sign-display rules.
+        $negativeShown = $hasMinus || $hasParens;
+        $stripNegative = static function (string $s) use ($hasParens): string {
+            if ($hasParens) {
+                return substr($s, 1, -1);
+            }
+            return str_replace('-', '', $s);
+        };
 
         switch ($signDisplay) {
             case 'never':
-                return $stripMinus($formatted);
+                return $stripNegative($formatted);
             case 'always':
-                if ($isNegative || $hasMinus) {
+                if ($isNegative || $negativeShown) {
                     return $formatted;
                 }
                 return '+' . $formatted;
             case 'exceptZero':
                 if ($effectiveZero) {
-                    return $stripMinus($formatted);
+                    return $stripNegative($formatted);
                 }
-                if ($isNegative || $hasMinus) {
+                if ($isNegative || $negativeShown) {
                     return $formatted;
                 }
                 return '+' . $formatted;
@@ -2121,7 +2131,7 @@ class IntlObject
                 if ($isNegative && !$effectiveZero) {
                     return $formatted;
                 }
-                return $stripMinus($formatted);
+                return $stripNegative($formatted);
         }
         return $formatted;
     }
