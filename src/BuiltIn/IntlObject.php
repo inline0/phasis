@@ -3359,6 +3359,12 @@ class IntlObject
                 }
 
                 $obj = self::instanceFromConstructor($this_, $proto);
+                $obj->defineOwnProperty('[[InitializedDisplayNames]]', PropertyDescriptor::data(
+                    new JsBoolean(true),
+                    false,
+                    false,
+                    false,
+                ));
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3409,7 +3415,7 @@ class IntlObject
         $of = JsFunction::fromCallable('of', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedDisplayNames]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DisplayNames.prototype.of called on non-DisplayNames');
             }
@@ -3532,7 +3538,7 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedDisplayNames]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DisplayNames.prototype.resolvedOptions called on non-DisplayNames');
             }
