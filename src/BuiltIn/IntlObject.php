@@ -1049,15 +1049,46 @@ class IntlObject
                     false,
                 ));
 
-                // useGrouping
+                // useGrouping per spec sec-numberformat-useGrouping:
+                //   true  -> "always"
+                //   false -> false (the boolean, not the string "false")
+                //   "min2" / "auto" / "always" -> string passthrough
+                //   any other primitive coerces to "auto" only when it is
+                //   the string "true"/"false"/the JS undefined sentinel;
+                //   everything else throws RangeError.
                 $useGrouping = 'auto';
                 $ugVal = $options->get('useGrouping');
                 if (!$ugVal instanceof JsUndefined) {
                     if ($ugVal instanceof JsBoolean) {
                         $useGrouping = $ugVal->toBoolean() ? 'always' : 'false';
+                    } elseif ($ugVal instanceof JsNull) {
+                        $useGrouping = 'false';
+                    } elseif ($ugVal instanceof JsString) {
+                        $ug = $ugVal->value;
+                        if (in_array($ug, ['min2', 'auto', 'always'], true)) {
+                            $useGrouping = $ug;
+                        } elseif ($ug === '' || $ug === 'true' || $ug === 'false') {
+                            // Strings literally equal to "" / "true" / "false"
+                            // are spec-recognised primitives that map onto
+                            // the matching boolean fallback ("" → false,
+                            // "true"/"false" → "auto") per the test262
+                            // useGrouping fixtures.
+                            $useGrouping = $ug === '' ? 'false' : 'auto';
+                        } else {
+                            throw new RangeError("Invalid useGrouping: {$ug}");
+                        }
+                    } elseif ($ugVal instanceof JsNumber) {
+                        // Spec ToBoolean → false maps to "false",
+                        // ToBoolean → true throws because numeric-true is
+                        // not a recognised useGrouping form.
+                        if ($ugVal->value === 0.0) {
+                            $useGrouping = 'false';
+                        } else {
+                            throw new RangeError("Invalid useGrouping: {$ugVal->value}");
+                        }
                     } else {
                         $ug = TypeConversion::toString($ugVal);
-                        $useGrouping = $ug;
+                        throw new RangeError("Invalid useGrouping: {$ug}");
                     }
                 }
                 $obj->defineOwnProperty('[[UseGrouping]]', PropertyDescriptor::data(
