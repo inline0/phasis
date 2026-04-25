@@ -1564,28 +1564,17 @@ class IntlObject
         ): JsValue {
             $number = $args[0] ?? JsUndefined::instance();
             $numVal = TypeConversion::toNumber($number);
-            // Return a basic parts array.
-            $formatted = '0';
+            $formatted = '';
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
                 $formatted = self::formatNumber($this_, $numVal);
             } else {
                 $formatted = is_nan($numVal) ? 'NaN' : (string) $numVal;
             }
-            // Basic implementation: return [{type: "integer"/"literal", value: ...}].
-            // A full implementation would decompose the formatted string using NumberFormatter attributes.
-            $result = new JsArray();
-            $part = new JsObject();
-            if (is_nan($numVal)) {
-                $part->set('type', new JsString('nan'));
-            } elseif (!is_finite($numVal)) {
-                $part->set('type', new JsString('infinity'));
-            } else {
-                $part->set('type', new JsString('integer'));
-            }
-            $part->set('value', new JsString($formatted));
-            $result->set('0', $part);
-            $result->set('length', new JsNumber(1.0));
-            return $result;
+            return self::numberFormatToParts(
+                $this_ instanceof JsObject ? $this_ : new JsObject(),
+                $formatted,
+                $numVal,
+            );
         }, 1);
         $proto->defineOwnProperty(
             'formatToParts',
@@ -1757,6 +1746,182 @@ class IntlObject
     /**
      * Format a number using the PHP intl NumberFormatter.
      */
+    /**
+     * Convert a fully-formatted number string into the spec's
+     * {type, value} parts list. Walks the rendered output and
+     * classifies each character cluster as nan/infinity/sign/
+     * currency/percent/group/decimal/integer/fraction/literal.
+     */
+    private static function numberFormatToParts(JsObject $nf, string $formatted, float $number): JsArray
+    {
+        $result = new JsArray();
+        $idx = 0;
+        $emit = static function (string $type, string $value) use (&$result, &$idx): void {
+            if ($value === '') {
+                return;
+            }
+            $part = new JsObject();
+            self::defineDataProp($part, 'type', new JsString($type));
+            self::defineDataProp($part, 'value', new JsString($value));
+            $result->set((string) $idx++, $part);
+        };
+
+        $isNegative = $number < 0 || ($number === 0.0 && self::isNegativeZero($number));
+        // Strip a leading "-" / "+" / parenthesis pair so the body of
+        // the formatted output can be split into typed parts. The sign
+        // character is restored as a `minusSign`/`plusSign` literal.
+        $bodyOffset = 0;
+        if (str_starts_with($formatted, '-')) {
+            $emit('minusSign', '-');
+            $bodyOffset = 1;
+        } elseif (str_starts_with($formatted, '+')) {
+            $emit('plusSign', '+');
+            $bodyOffset = 1;
+        } elseif (str_starts_with($formatted, '(')) {
+            // accounting parens: emit "(" as literal, strip trailing ")".
+            $emit('literal', '(');
+            $bodyOffset = 1;
+        }
+        $body = substr($formatted, $bodyOffset);
+        $trailing = '';
+        if (str_ends_with($body, ')')) {
+            $trailing = ')';
+            $body = substr($body, 0, -1);
+        }
+
+        if (is_nan($number)) {
+            $emit('nan', $body);
+            if ($trailing !== '') {
+                $emit('literal', $trailing);
+            }
+            $result->set('length', new JsNumber((float) $idx));
+            return $result;
+        }
+
+        if (!is_finite($number)) {
+            // The body is the locale-specific Infinity glyph; emit it
+            // verbatim under `infinity`.
+            $emit('infinity', $body);
+            if ($trailing !== '') {
+                $emit('literal', $trailing);
+            }
+            $result->set('length', new JsNumber((float) $idx));
+            return $result;
+        }
+
+        // Walk the body character-by-character. Digits coalesce into
+        // integer/fraction runs; `,` / `.` / locale digit separators
+        // map onto group/decimal; non-digit, non-separator runs become
+        // currency or percent or literal depending on context.
+        $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
+        $isCurrency = $style === 'currency';
+        $isPercent = $style === 'percent';
+        $isUnit = $style === 'unit';
+        $sawDecimal = false;
+        $i = 0;
+        $bodyLen = strlen($body);
+        while ($i < $bodyLen) {
+            // Greedy ASCII digit run.
+            $ch = $body[$i];
+            $isDigitByte = ctype_digit($ch);
+            $isUnicodeDigit = false;
+            $charLen = 1;
+            $charStr = $ch;
+            if (!$isDigitByte) {
+                // Multi-byte UTF-8 lead: extract one full character.
+                $byte = ord($ch);
+                if ($byte >= 0xF0) {
+                    $charLen = 4;
+                } elseif ($byte >= 0xE0) {
+                    $charLen = 3;
+                } elseif ($byte >= 0xC0) {
+                    $charLen = 2;
+                } else {
+                    $charLen = 1;
+                }
+                $charStr = substr($body, $i, $charLen);
+                if (preg_match('/^\p{Nd}$/u', $charStr) === 1) {
+                    $isUnicodeDigit = true;
+                }
+            }
+            if ($isDigitByte || $isUnicodeDigit) {
+                $j = $i;
+                $digitRun = '';
+                while ($j < $bodyLen) {
+                    $cb = $body[$j];
+                    if (ctype_digit($cb)) {
+                        $digitRun .= $cb;
+                        $j++;
+                        continue;
+                    }
+                    $cByte = ord($cb);
+                    $cLen = $cByte >= 0xF0 ? 4 : ($cByte >= 0xE0 ? 3 : ($cByte >= 0xC0 ? 2 : 1));
+                    $cStr = substr($body, $j, $cLen);
+                    if (preg_match('/^\p{Nd}$/u', $cStr) === 1) {
+                        $digitRun .= $cStr;
+                        $j += $cLen;
+                        continue;
+                    }
+                    break;
+                }
+                $emit($sawDecimal ? 'fraction' : 'integer', $digitRun);
+                $i = $j;
+                continue;
+            }
+            if ($ch === ',' || $ch === ' ' || preg_match('/^\p{Zs}$/u', $charStr) === 1) {
+                $emit('group', $charStr);
+                $i += $charLen;
+                continue;
+            }
+            if ($ch === '.') {
+                $sawDecimal = true;
+                $emit('decimal', '.');
+                $i++;
+                continue;
+            }
+            if ($ch === '%') {
+                $emit($isPercent ? 'percentSign' : 'literal', '%');
+                $i++;
+                continue;
+            }
+            // Buffer up the non-digit run as either currency or literal.
+            $j = $i;
+            while ($j < $bodyLen) {
+                $cb = $body[$j];
+                $cByte = ord($cb);
+                $cLen = $cByte >= 0xF0 ? 4 : ($cByte >= 0xE0 ? 3 : ($cByte >= 0xC0 ? 2 : 1));
+                $cStr = substr($body, $j, $cLen);
+                if (
+                    ctype_digit($cb)
+                    || $cb === ','
+                    || $cb === '.'
+                    || $cb === ' '
+                    || $cb === '%'
+                    || preg_match('/^\p{Nd}|\p{Zs}$/u', $cStr) === 1
+                ) {
+                    break;
+                }
+                $j += $cLen;
+            }
+            $run = substr($body, $i, $j - $i);
+            // Whitespace between currency symbol and digits should be
+            // a literal — but a non-alphabetic-non-currency run is
+            // typically a literal too.
+            if ($isCurrency) {
+                $emit('currency', $run);
+            } else {
+                $emit('literal', $run);
+            }
+            $i = $j;
+        }
+        if ($trailing !== '') {
+            $emit('literal', $trailing);
+        }
+        unset($isNegative);
+        $result->set('length', new JsNumber((float) $idx));
+        return $result;
+    }
+
     private static function formatNumber(JsObject $nf, float $number): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
@@ -1830,7 +1995,33 @@ class IntlObject
 
         if ($style === 'currency') {
             $currency = self::extractInternalString($nf, '[[Currency]]', 'USD');
-            $result = $formatter->formatCurrency($number, $currency);
+            // ICU's NumberFormatter::CURRENCY_ACCOUNTING preset
+            // surrounds negative amounts with parentheses per CLDR.
+            $currencySign = self::extractInternalString($nf, '[[CurrencySign]]', 'standard');
+            if ($currencySign === 'accounting') {
+                $accountingFmt = new \NumberFormatter(
+                    $icuLocale,
+                    \NumberFormatter::CURRENCY_ACCOUNTING,
+                );
+                foreach (['ROUNDING_MODE', 'GROUPING_USED', 'MIN_INTEGER_DIGITS'] as $attr) {
+                    if (defined("\\NumberFormatter::{$attr}")) {
+                        $accountingFmt->setAttribute(
+                            constant("\\NumberFormatter::{$attr}"),
+                            $formatter->getAttribute(constant("\\NumberFormatter::{$attr}")),
+                        );
+                    }
+                }
+                if ($maxFrac !== null) {
+                    $accountingFmt->setAttribute(
+                        \NumberFormatter::MIN_FRACTION_DIGITS,
+                        (int) self::extractInternalNumber($nf, '[[MinimumFractionDigits]]', 0),
+                    );
+                    $accountingFmt->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, $maxFrac);
+                }
+                $result = $accountingFmt->formatCurrency($number, $currency);
+            } else {
+                $result = $formatter->formatCurrency($number, $currency);
+            }
         } else {
             $result = $formatter->format($number);
             if ($result === false) {
