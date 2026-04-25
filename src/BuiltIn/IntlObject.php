@@ -2563,8 +2563,120 @@ class IntlObject
      *
      * @return array<string, mixed>|null
      */
+    /**
+     * Quick structural rejection of obviously-invalid BCP47 tags before
+     * delegating to ICU. Catches the common cases test262 exercises:
+     * non-ASCII text, leading singletons, wildcards, duplicate scripts /
+     * regions / variants, and duplicate `-u-` / `-x-` extension singletons.
+     */
+    private static function isStructurallyInvalidLanguageTag(string $tag): bool
+    {
+        if ($tag === '') {
+            return true;
+        }
+        // ASCII-only letters, digits, hyphens.
+        if (preg_match('/[^A-Za-z0-9\-]/', $tag)) {
+            return true;
+        }
+        // No leading or trailing hyphens, no consecutive hyphens, no empty
+        // subtags.
+        if ($tag[0] === '-' || $tag[strlen($tag) - 1] === '-' || str_contains($tag, '--')) {
+            return true;
+        }
+        $parts = explode('-', $tag);
+        $first = $parts[0];
+        // First subtag must be unicode_language_subtag = alpha{2,3} | alpha{5,8}.
+        $firstLen = strlen($first);
+        if (
+            !ctype_alpha($first)
+            || !($firstLen === 2 || $firstLen === 3 || ($firstLen >= 5 && $firstLen <= 8))
+        ) {
+            return true;
+        }
+        $sawScript = false;
+        $sawRegion = false;
+        $variants = [];
+        $extensionsSeen = [];
+        $i = 1;
+        $count = count($parts);
+        while ($i < $count) {
+            $p = $parts[$i];
+            $len = strlen($p);
+            if ($len === 0) {
+                return true;
+            }
+            if ($len === 1) {
+                // Singleton extension introducer. Must be unique and
+                // followed by at least one extension subtag of length
+                // 2-8. Singleton 'x' switches to private use; anything
+                // after is unrestricted alphanum 1-8.
+                $key = strtolower($p);
+                if (isset($extensionsSeen[$key])) {
+                    return true;
+                }
+                $extensionsSeen[$key] = true;
+                $i++;
+                $isPrivate = $key === 'x';
+                $minSubLen = $isPrivate ? 1 : 2;
+                $maxSubLen = 8;
+                $sawAny = false;
+                while ($i < $count) {
+                    $sub = $parts[$i];
+                    $subLen = strlen($sub);
+                    if ($subLen === 1) {
+                        break;
+                    }
+                    if ($subLen < $minSubLen || $subLen > $maxSubLen) {
+                        return true;
+                    }
+                    if (!ctype_alnum($sub)) {
+                        return true;
+                    }
+                    $sawAny = true;
+                    $i++;
+                }
+                if (!$sawAny) {
+                    return true;
+                }
+                continue;
+            }
+            // Script: alpha{4} (only one allowed, and only before region/variant).
+            if ($len === 4 && ctype_alpha($p) && !$sawScript && !$sawRegion && empty($variants)) {
+                $sawScript = true;
+                $i++;
+                continue;
+            }
+            // Region: alpha{2} | digit{3}, only one, only before variants.
+            if (
+                ((($len === 2 && ctype_alpha($p)) || ($len === 3 && ctype_digit($p))))
+                && !$sawRegion && empty($variants)
+            ) {
+                $sawRegion = true;
+                $i++;
+                continue;
+            }
+            // Variant: alphanum{5,8} or digit followed by alphanum{3}.
+            $isLongVariant = ($len >= 5 && $len <= 8 && ctype_alnum($p));
+            $isShortNumericVariant = ($len === 4 && ctype_digit($p[0]) && ctype_alnum($p));
+            if ($isLongVariant || $isShortNumericVariant) {
+                $vKey = strtolower($p);
+                if (isset($variants[$vKey])) {
+                    return true;
+                }
+                $variants[$vKey] = true;
+                $i++;
+                continue;
+            }
+            return true;
+        }
+        return false;
+    }
+
     private static function parseLocaleTag(string $tag): ?array
     {
+        if (self::isStructurallyInvalidLanguageTag($tag)) {
+            return null;
+        }
         if (extension_loaded('intl')) {
             $icuTag = str_replace('-', '_', $tag);
             $parsed = \Locale::parseLocale($icuTag);
