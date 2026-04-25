@@ -133,8 +133,9 @@ class WeakMapConstructor
 
         while (true) {
             $result = $nextMethod->call($iterator, []);
+            // Per spec IteratorStep: a non-object next() result is TypeError.
             if (!$result instanceof JsObject) {
-                break;
+                throw new TypeError('Iterator result is not an object');
             }
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;

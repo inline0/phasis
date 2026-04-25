@@ -306,8 +306,10 @@ class MapConstructor
 
         while (true) {
             $result = $nextMethod->call($iterator, []);
+            // Per spec IteratorStep / IteratorNext: the value returned by
+            // next() must be an Object. Anything else is a TypeError.
             if (!$result instanceof JsObject) {
-                break;
+                throw new TypeError('Iterator result is not an object');
             }
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
