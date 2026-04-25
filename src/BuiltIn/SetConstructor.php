@@ -345,9 +345,14 @@ class SetConstructor
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
+            // Per spec 24.2.4.6, GetKeysIterator (which reads .keys() and
+            // .next) runs BEFORE resultSetData is copied. A getter on
+            // .next can mutate the receiver, so the snapshot must happen
+            // after GetKeysIterator.
+            $iter = self::getKeysIterator($rec);
             // Per spec, set-method results are plain Sets, not subclass instances.
             $result = $this_->copy($proto);
-            self::iterateSetRecord($rec, function (JsValue $value) use ($result): void {
+            self::consumeKeysIterator($iter, function (JsValue $value) use ($result): void {
                 $result->setAdd($value);
             });
             return $result;
@@ -365,15 +370,24 @@ class SetConstructor
             $result = new JsSet($proto);
             $thisSize = $this_->setSize();
             if ($thisSize <= $rec['size']) {
-                foreach ($this_->setValues() as $value) {
+                // Slot-based iteration: has() can mutate the receiver, and
+                // mutations must be observed (newly added entries iterated,
+                // emptied slots skipped).
+                $index = 0;
+                while ($index < $this_->slotCount()) {
+                    $value = $this_->getSlot($index);
+                    $index++;
+                    if ($value === null) {
+                        continue;
+                    }
                     $inOther = $rec['has']->call($rec['obj'], [$value]);
-                    if (TypeConversion::toBoolean($inOther)) {
+                    if (TypeConversion::toBoolean($inOther) && !$result->setHas($value)) {
                         $result->setAdd($value);
                     }
                 }
             } else {
                 self::iterateSetRecord($rec, function (JsValue $value) use ($this_, $result): void {
-                    if ($this_->setHas($value)) {
+                    if ($this_->setHas($value) && !$result->setHas($value)) {
                         $result->setAdd($value);
                     }
                 });
@@ -393,7 +407,15 @@ class SetConstructor
             $result = $this_->copy($proto);
             $thisSize = $this_->setSize();
             if ($thisSize <= $rec['size']) {
-                foreach ($result->setValues() as $value) {
+                // Iterate result slot-wise so mutations during has() are
+                // reflected: newly-added entries get their has() check too.
+                $index = 0;
+                while ($index < $result->slotCount()) {
+                    $value = $result->getSlot($index);
+                    $index++;
+                    if ($value === null) {
+                        continue;
+                    }
                     $inOther = $rec['has']->call($rec['obj'], [$value]);
                     if (TypeConversion::toBoolean($inOther)) {
                         $result->setDelete($value);
@@ -422,8 +444,12 @@ class SetConstructor
             }
             $other = $args[0] ?? JsUndefined::instance();
             $rec = self::getSetRecord($other);
+            // Per spec 24.2.4.5, GetKeysIterator runs before resultSetData
+            // is copied. The .next getter on the iterator can mutate the
+            // receiver, and that mutation must be observed by the copy.
+            $iter = self::getKeysIterator($rec);
             $result = $this_->copy($proto);
-            self::iterateSetRecord($rec, function (JsValue $value) use ($this_, $result): void {
+            self::consumeKeysIterator($iter, function (JsValue $value) use ($this_, $result): void {
                 $inOriginal = $this_->setHas($value);
                 $inResult = $result->setHas($value);
                 if ($inOriginal) {
@@ -589,7 +615,10 @@ class SetConstructor
         if ($numSize < 0) {
             throw new RangeError('The .size property is negative');
         }
-        $intSize = (int) $numSize;
+        // Per spec, intSize comes from ToIntegerOrInfinity, which returns
+        // +Infinity for +Infinity rather than the implementation-defined
+        // result of an int cast on a float (PHP's (int) INF is 0).
+        $intSize = is_infinite($numSize) ? INF : (int) $numSize;
 
         $has = $obj->get('has');
         if (!$has instanceof JsFunction) {
@@ -610,6 +639,22 @@ class SetConstructor
      */
     private static function iterateSetRecord(array $rec, callable $callback): void
     {
+        $iter = self::getKeysIterator($rec);
+        self::consumeKeysIterator($iter, $callback);
+    }
+
+    /**
+     * Per spec GetKeysIterator: call keys() on the set-record's object and
+     * read the resulting iterator's next method, validating both. Returns
+     * an iterator record that can be consumed later. Splitting this from
+     * the actual iteration matters because the spec interleaves it with
+     * other steps (e.g. union copies its [[SetData]] AFTER GetKeysIterator).
+     *
+     * @param array{obj: JsObject, size: int, has: JsFunction, keys: JsFunction} $rec
+     * @return array{iter: JsObject, next: JsFunction}
+     */
+    private static function getKeysIterator(array $rec): array
+    {
         $keysIter = $rec['keys']->call($rec['obj'], []);
         if (!$keysIter instanceof JsObject) {
             throw new TypeError('The .keys() method must return an object');
@@ -618,6 +663,16 @@ class SetConstructor
         if (!$nextMethod instanceof JsFunction) {
             throw new TypeError('The iterator does not have a next method');
         }
+        return ['iter' => $keysIter, 'next' => $nextMethod];
+    }
+
+    /**
+     * @param array{iter: JsObject, next: JsFunction} $iter
+     */
+    private static function consumeKeysIterator(array $iter, callable $callback): void
+    {
+        $keysIter = $iter['iter'];
+        $nextMethod = $iter['next'];
         while (true) {
             $result = $nextMethod->call($keysIter, []);
             if (!$result instanceof JsObject) {
