@@ -2217,7 +2217,31 @@ class IntlObject
                     ));
                 }
 
-                // roundingMode
+                // Spec orders SetNumberFormatDigitOptions reads as:
+                // roundingIncrement → roundingMode → roundingPriority →
+                // trailingZeroDisplay. The values still feed into the
+                // PluralRules digit slots as today.
+                $rivVal = $options->get('roundingIncrement');
+                if (!$rivVal instanceof JsUndefined) {
+                    $riNum = TypeConversion::toNumber($rivVal);
+                    $validIncrements = [
+                        1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500,
+                        1000, 2000, 2500, 5000,
+                    ];
+                    if (
+                        is_nan($riNum)
+                        || $riNum != floor($riNum)
+                        || !in_array((int) $riNum, $validIncrements, true)
+                    ) {
+                        throw new RangeError("Invalid roundingIncrement: {$riNum}");
+                    }
+                    $obj->defineOwnProperty('[[RoundingIncrement]]', PropertyDescriptor::data(
+                        new JsNumber((float) (int) $riNum),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
                 $roundingMode = 'halfExpand';
                 $rmVal = $options->get('roundingMode');
                 if (!$rmVal instanceof JsUndefined) {
@@ -2229,6 +2253,32 @@ class IntlObject
                     false,
                     false,
                 ));
+                $rpVal = $options->get('roundingPriority');
+                if (!$rpVal instanceof JsUndefined) {
+                    $rp = TypeConversion::toString($rpVal);
+                    if (!in_array($rp, ['auto', 'morePrecision', 'lessPrecision'], true)) {
+                        throw new RangeError("Invalid roundingPriority: {$rp}");
+                    }
+                    $obj->defineOwnProperty('[[RoundingPriority]]', PropertyDescriptor::data(
+                        new JsString($rp),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
+                $tzdVal = $options->get('trailingZeroDisplay');
+                if (!$tzdVal instanceof JsUndefined) {
+                    $tzd = TypeConversion::toString($tzdVal);
+                    if (!in_array($tzd, ['auto', 'stripIfInteger'], true)) {
+                        throw new RangeError("Invalid trailingZeroDisplay: {$tzd}");
+                    }
+                    $obj->defineOwnProperty('[[TrailingZeroDisplay]]', PropertyDescriptor::data(
+                        new JsString($tzd),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
 
                 return $obj;
             },
