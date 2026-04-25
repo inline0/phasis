@@ -171,9 +171,21 @@ class MathObject
             if (is_nan($x) || is_infinite($x) || $x === 0.0) {
                 return new JsNumber($x);
             }
-            // PHP does not have a built-in cbrt, use pow.
+            // PHP does not have a built-in cbrt; pow(x, 1/3) is imprecise
+            // because 1/3 is inexact in IEEE-754. Refine the initial pow
+            // estimate with two Newton-Raphson iterations on the polynomial
+            // y^3 - a = 0, which converge cubically and recover full
+            // double precision around the cube-root.
             $sign = $x < 0 ? -1.0 : 1.0;
-            return new JsNumber($sign * pow(abs($x), 1.0 / 3.0));
+            $a = abs($x);
+            $y = pow($a, 1.0 / 3.0);
+            for ($i = 0; $i < 2; $i++) {
+                if ($y === 0.0 || is_infinite($y)) {
+                    break;
+                }
+                $y = (2.0 * $y + $a / ($y * $y)) / 3.0;
+            }
+            return new JsNumber($sign * $y);
         };
     }
 
