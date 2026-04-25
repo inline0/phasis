@@ -6430,24 +6430,22 @@ class Parser
         $generator = $this->eat(TokenType::Star);
         $name = null;
 
-        // Yield can appear as identifier name in non-generator, non-strict
-        // functions. Await can appear as identifier name in non-async,
-        // non-module-top-level functions.
-        if ($this->check(TokenType::Identifier)) {
-            $name = $this->advance()->value;
-        } elseif (
-            !$generator
-            && !$this->strictMode
-            && $this->check(TokenType::Yield)
+        // Function expression name is an optional BindingIdentifier. Per spec,
+        // it may be any IdentifierReference allowed in this context: regular
+        // Identifier, Yield (sloppy non-generator), Await (sloppy non-async),
+        // Let, Static_, Of, Async (which are tokenized separately but valid
+        // as identifiers in many contexts). Reserved words like `enum` are
+        // rejected via parseIdentifier's validation.
+        if (
+            $this->check(TokenType::Identifier)
+            || $this->check(TokenType::Yield)
+            || $this->check(TokenType::Await)
+            || $this->check(TokenType::Let)
+            || $this->check(TokenType::Static_)
+            || $this->check(TokenType::Of)
+            || $this->check(TokenType::Async)
         ) {
-            $name = $this->advance()->value;
-        } elseif ($this->check(TokenType::Await)) {
-            // Per §15.2.1: FunctionExpression BindingIdentifier is [~Yield,
-            // ~Await] — `await` is allowed as the function-expression name
-            // regardless of outer context, including inside static blocks
-            // and module top-level. The function's own body then parses
-            // with await as an identifier too.
-            $name = $this->advance()->value;
+            $name = $this->parseIdentifier()->name;
         }
 
         // Set inGenerator/inAsync BEFORE parsing parameters so that default
