@@ -14205,9 +14205,16 @@ class Interpreter
 
         $repeatedGroups = [];
         foreach ($groups as $idx => $g) {
-            // Only process groups that have a repeating quantifier (* or +).
-            // {n,m} with m > 1 also counts, but * and + are the common cases.
-            if ($g['quantifier'] !== '*' && $g['quantifier'] !== '+' && $g['quantifier'] !== '{') {
+            // Process groups with quantifiers that allow zero matches at
+            // runtime. Per the ES RepeatMatcher rule, when min=0 and the
+            // body matches the empty string, the iteration is discarded
+            // and captures inside reset to undefined.
+            if (
+                $g['quantifier'] !== '*'
+                && $g['quantifier'] !== '+'
+                && $g['quantifier'] !== '?'
+                && $g['quantifier'] !== '{'
+            ) {
                 continue;
             }
             if ($g['closePos'] === null) {
@@ -14248,6 +14255,7 @@ class Interpreter
                 'innerCaptures' => $innerCaptures,
                 'bodyPattern' => $bodyPattern,
                 'nullable' => $nullable,
+                'quantifier' => $g['quantifier'],
             ];
         }
 
@@ -14675,6 +14683,24 @@ class Interpreter
         callable $transformFn,
     ): array {
         foreach ($analysis['repeatedGroups'] as $groupIdx => $info) {
+            // Per RepeatMatcher step 2.b: when min=0 and the body matched
+            // empty, the iteration is discarded and the capture itself is
+            // undefined. PCRE keeps the empty match instead.
+            if (
+                isset($matches[$groupIdx])
+                && $matches[$groupIdx][0] === ''
+                && ($info['quantifier'] ?? null) === '?'
+                && ($info['nullable'] ?? false)
+            ) {
+                $matches[$groupIdx] = [null, -1];
+                foreach ($info['innerCaptures'] as $innerIdx) {
+                    if (isset($matches[$innerIdx])) {
+                        $matches[$innerIdx] = [null, -1];
+                    }
+                }
+                continue;
+            }
+
             if (empty($info['innerCaptures'])) {
                 continue;
             }
