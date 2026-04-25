@@ -5350,7 +5350,10 @@ class Parser
                         $name .= $pattern[$j];
                         $j++;
                     }
-                    if ($j >= $len || $name === '' || !self::isValidGroupName($name)) {
+                    $decodedName = self::decodeRegExpGroupName($name);
+                    if ($j >= $len || $decodedName === '' || $decodedName === null
+                        || !self::isValidGroupName($decodedName)
+                    ) {
                         throw new \PhpJs\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid named capture group",
                         );
@@ -5808,20 +5811,95 @@ class Parser
         );
     }
 
+    /**
+     * Decode \uXXXX and \u{X..} escape sequences in a regex group name
+     * to their UTF-8 form so the IdentifierName check sees actual letters.
+     * Returns null if the escape sequence is malformed.
+     */
+    private static function decodeRegExpGroupName(string $name): ?string
+    {
+        $len = strlen($name);
+        $result = '';
+        $i = 0;
+        while ($i < $len) {
+            $c = $name[$i];
+            if ($c === '\\' && $i + 1 < $len && $name[$i + 1] === 'u') {
+                if ($i + 2 < $len && $name[$i + 2] === '{') {
+                    $end = strpos($name, '}', $i + 3);
+                    if ($end === false) {
+                        return null;
+                    }
+                    $hex = substr($name, $i + 3, $end - ($i + 3));
+                    if ($hex === '' || !ctype_xdigit($hex)) {
+                        return null;
+                    }
+                    $cp = (int) hexdec($hex);
+                    if ($cp > 0x10FFFF) {
+                        return null;
+                    }
+                    $ch = mb_chr($cp, 'UTF-8');
+                    if ($ch === false) {
+                        return null;
+                    }
+                    $result .= $ch;
+                    $i = $end + 1;
+                    continue;
+                }
+                if ($i + 5 < $len) {
+                    $hex = substr($name, $i + 2, 4);
+                    if (strlen($hex) === 4 && ctype_xdigit($hex)) {
+                        $cp = (int) hexdec($hex);
+                        // Combine surrogate pairs: a high surrogate
+                        // followed by another \uXXXX low surrogate forms a
+                        // single supplementary code point.
+                        if ($cp >= 0xD800 && $cp <= 0xDBFF
+                            && $i + 11 < $len
+                            && $name[$i + 6] === '\\' && $name[$i + 7] === 'u'
+                        ) {
+                            $loHex = substr($name, $i + 8, 4);
+                            if (strlen($loHex) === 4 && ctype_xdigit($loHex)) {
+                                $lo = (int) hexdec($loHex);
+                                if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
+                                    $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
+                                    $ch = mb_chr($cp, 'UTF-8');
+                                    if ($ch === false) {
+                                        return null;
+                                    }
+                                    $result .= $ch;
+                                    $i += 12;
+                                    continue;
+                                }
+                            }
+                        }
+                        $ch = mb_chr($cp, 'UTF-8');
+                        if ($ch === false) {
+                            return null;
+                        }
+                        $result .= $ch;
+                        $i += 6;
+                        continue;
+                    }
+                }
+                return null;
+            }
+            $result .= $c;
+            $i++;
+        }
+        return $result;
+    }
+
     private static function isValidGroupName(string $name): bool
     {
         if ($name === '') {
             return false;
         }
-        $first = $name[0];
-        if (!ctype_alpha($first) && $first !== '_' && $first !== '$') {
+        // GroupName accepts the full IdentifierName grammar — including
+        // non-ASCII letters/digits, plus ZWJ/ZWNJ as IdentifierPart.
+        if (preg_match(
+            '/^[\p{L}\p{Nl}_$][\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}_$\x{200C}\x{200D}]*$/u',
+            $name,
+        ) !== 1) {
             return false;
-        }
-        for ($i = 1, $n = strlen($name); $i < $n; $i++) {
-            $c = $name[$i];
-            if (!ctype_alnum($c) && $c !== '_' && $c !== '$') {
-                return false;
-            }
         }
         return true;
     }

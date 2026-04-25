@@ -12040,9 +12040,16 @@ class Interpreter
         // succeed.
         $pcreFlags .= 'D';
 
+        // ECMAScript group names allow `$` and the full IdentifierName grammar
+        // (including non-ASCII letters). PCRE2 only accepts ASCII letters,
+        // digits and underscore. Remap to PCRE-safe placeholders here and
+        // remember the original names so match results can present the spec
+        // names back to the user.
+        [$rewrittenPattern, $groupNameMap] = self::rewriteRegExpGroupNames($pattern);
+
         // Transform ECMAScript-specific character class escapes for PCRE compatibility.
         // PCRE's \s does not include U+FEFF; ECMAScript's does.
-        $transformedPattern = $this->transformEsPatternForPcre($pattern, $flags);
+        $transformedPattern = $this->transformEsPatternForPcre($rewrittenPattern, $flags);
 
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
@@ -12102,6 +12109,21 @@ class Interpreter
             '[[PCREPattern]]',
             PropertyDescriptor::data(new JsString($pcrePattern), false, false, false),
         );
+        // [[GroupNameMap]] is the safe-name → original-name mapping used by
+        // exec/match to reconstruct user-visible named-capture keys.
+        if (!empty($groupNameMap)) {
+            $mapValue = JsObject::createNullPrototype();
+            foreach ($groupNameMap as $safe => $orig) {
+                $mapValue->defineOwnProperty(
+                    $safe,
+                    PropertyDescriptor::data(new JsString($orig), false, false, false),
+                );
+            }
+            $obj->defineOwnProperty(
+                '[[GroupNameMap]]',
+                PropertyDescriptor::data($mapValue, false, false, false),
+            );
+        }
 
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
         $execFn = function (
@@ -12909,6 +12931,244 @@ class Interpreter
     public static function isGeneralCategoryValue(string $value): bool
     {
         return self::mapGeneralCategoryValue($value) !== null;
+    }
+
+    /**
+     * Decode `\uXXXX` / `\u{X..}` escape sequences in a regex group name
+     * to their UTF-8 form. Surrogate pairs are merged. Returns null if a
+     * sequence is malformed.
+     */
+    private static function decodeRegExpEscapesInName(string $name): ?string
+    {
+        if (!str_contains($name, '\\')) {
+            return $name;
+        }
+        $len = strlen($name);
+        $result = '';
+        $i = 0;
+        while ($i < $len) {
+            $c = $name[$i];
+            if ($c === '\\' && $i + 1 < $len && $name[$i + 1] === 'u') {
+                if ($i + 2 < $len && $name[$i + 2] === '{') {
+                    $end = strpos($name, '}', $i + 3);
+                    if ($end === false) {
+                        return null;
+                    }
+                    $hex = substr($name, $i + 3, $end - ($i + 3));
+                    if ($hex === '' || !ctype_xdigit($hex)) {
+                        return null;
+                    }
+                    $cp = (int) hexdec($hex);
+                    if ($cp > 0x10FFFF) {
+                        return null;
+                    }
+                    $ch = mb_chr($cp, 'UTF-8');
+                    if ($ch === false) {
+                        return null;
+                    }
+                    $result .= $ch;
+                    $i = $end + 1;
+                    continue;
+                }
+                if ($i + 5 < $len) {
+                    $hex = substr($name, $i + 2, 4);
+                    if (strlen($hex) === 4 && ctype_xdigit($hex)) {
+                        $cp = (int) hexdec($hex);
+                        if ($cp >= 0xD800 && $cp <= 0xDBFF
+                            && $i + 11 < $len
+                            && $name[$i + 6] === '\\' && $name[$i + 7] === 'u'
+                        ) {
+                            $loHex = substr($name, $i + 8, 4);
+                            if (strlen($loHex) === 4 && ctype_xdigit($loHex)) {
+                                $lo = (int) hexdec($loHex);
+                                if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
+                                    $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
+                                    $ch = mb_chr($cp, 'UTF-8');
+                                    if ($ch === false) {
+                                        return null;
+                                    }
+                                    $result .= $ch;
+                                    $i += 12;
+                                    continue;
+                                }
+                            }
+                        }
+                        $ch = mb_chr($cp, 'UTF-8');
+                        if ($ch === false) {
+                            return null;
+                        }
+                        $result .= $ch;
+                        $i += 6;
+                        continue;
+                    }
+                }
+                return null;
+            }
+            $result .= $c;
+            $i++;
+        }
+        return $result;
+    }
+
+    /**
+     * Rewrite ECMAScript named capture groups so the PCRE compiler accepts
+     * them. Names containing non-ASCII characters or `$` are remapped to
+     * `_es<index>_`, and matching `\k<name>` references are rewritten in
+     * lockstep. Returns `[rewritten pattern, safe→original name map]`.
+     *
+     * @return array{0: string, 1: array<string, string>}
+     */
+    public static function rewriteRegExpGroupNames(string $pattern): array
+    {
+        $len = strlen($pattern);
+        $needsRewrite = false;
+        $i = 0;
+        $inClass = false;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === '\\') {
+                $i += 2;
+                continue;
+            }
+            if ($c === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($c === ']') {
+                $inClass = false;
+                $i++;
+                continue;
+            }
+            if ($inClass) {
+                $i++;
+                continue;
+            }
+            if (
+                $c === '(' && $i + 2 < $len
+                && $pattern[$i + 1] === '?' && $pattern[$i + 2] === '<'
+                && ($pattern[$i + 3] ?? '') !== '=' && ($pattern[$i + 3] ?? '') !== '!'
+            ) {
+                $closeAngle = strpos($pattern, '>', $i + 3);
+                if ($closeAngle !== false) {
+                    $name = substr($pattern, $i + 3, $closeAngle - ($i + 3));
+                    if (preg_match('/[^A-Za-z0-9_]/', $name) || str_contains($name, '\\')) {
+                        $needsRewrite = true;
+                        break;
+                    }
+                    $i = $closeAngle + 1;
+                    continue;
+                }
+            }
+            $i++;
+        }
+        if (!$needsRewrite) {
+            return [$pattern, []];
+        }
+        $orderToOriginal = [];
+        $groupIndex = 0;
+        $i = 0;
+        $out = '';
+        $inClass = false;
+        $safeToOrig = [];
+        $origToSafe = [];
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === '\\') {
+                if (
+                    !$inClass && $i + 2 < $len
+                    && $pattern[$i + 1] === 'k' && $pattern[$i + 2] === '<'
+                ) {
+                    $closeAngle = strpos($pattern, '>', $i + 3);
+                    if ($closeAngle !== false) {
+                        $refRaw = substr($pattern, $i + 3, $closeAngle - ($i + 3));
+                        $refDecoded = self::decodeRegExpEscapesInName($refRaw) ?? $refRaw;
+                        if (isset($origToSafe[$refDecoded])) {
+                            $out .= '\\k<' . $origToSafe[$refDecoded] . '>';
+                            $i = $closeAngle + 1;
+                            continue;
+                        }
+                        if (isset($origToSafe[$refRaw])) {
+                            $out .= '\\k<' . $origToSafe[$refRaw] . '>';
+                            $i = $closeAngle + 1;
+                            continue;
+                        }
+                        // Forward reference: emit a placeholder keyed by the
+                        // decoded name so the second pass can resolve it.
+                        $out .= '\\k<__esfwd_' . count($orderToOriginal) . '_' . md5($refDecoded) . '_>';
+                        $orderToOriginal[count($orderToOriginal)] = $refDecoded;
+                        $i = $closeAngle + 1;
+                        continue;
+                    }
+                }
+                $out .= substr($pattern, $i, 2);
+                $i += 2;
+                continue;
+            }
+            if ($c === '[') {
+                $inClass = true;
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            if ($c === ']') {
+                $inClass = false;
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            if (!$inClass && $c === '(') {
+                if (
+                    $i + 2 < $len
+                    && $pattern[$i + 1] === '?' && $pattern[$i + 2] === '<'
+                    && ($pattern[$i + 3] ?? '') !== '=' && ($pattern[$i + 3] ?? '') !== '!'
+                ) {
+                    $closeAngle = strpos($pattern, '>', $i + 3);
+                    if ($closeAngle !== false) {
+                        $groupIndex++;
+                        $rawName = substr($pattern, $i + 3, $closeAngle - ($i + 3));
+                        // Spec names allow `\u{XXXX}` and `\uXXXX` escapes;
+                        // store the decoded form so the user-facing groups
+                        // object exposes the canonical text.
+                        $decoded = self::decodeRegExpEscapesInName($rawName);
+                        $name = $decoded ?? $rawName;
+                        $safe = '_es' . $groupIndex . '_';
+                        $safeToOrig[$safe] = $name;
+                        $origToSafe[$name] = $safe;
+                        // Also map the raw form so backref `\k<rawname>` finds
+                        // the same group.
+                        if ($rawName !== $name) {
+                            $origToSafe[$rawName] = $safe;
+                        }
+                        $out .= '(?<' . $safe . '>';
+                        $i = $closeAngle + 1;
+                        continue;
+                    }
+                } elseif ($pattern[$i + 1] !== '?') {
+                    $groupIndex++;
+                }
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            $out .= $c;
+            $i++;
+        }
+        // Second pass: replace forward-reference placeholders with safe
+        // names that we now know.
+        $out = preg_replace_callback(
+            '/\\\\k<__esfwd_(\\d+)_[a-f0-9]+_>/',
+            static function ($matches) use ($orderToOriginal, $origToSafe) {
+                $idx = (int) $matches[1];
+                $orig = $orderToOriginal[$idx] ?? null;
+                if ($orig !== null && isset($origToSafe[$orig])) {
+                    return '\\k<' . $origToSafe[$orig] . '>';
+                }
+                return $matches[0];
+            },
+            $out,
+        ) ?? $out;
+        return [$out, $safeToOrig];
     }
 
     private static function mapEsPropertyToPcre(string $propExpr, bool $negated): ?string

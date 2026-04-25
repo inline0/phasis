@@ -621,9 +621,19 @@ class RegExpPrototype
 
                 $groups = JsObject::createNullPrototype();
                 $hasGroups = false;
+                $groupNameMapDesc = $this_->getOwnPropertyDescriptor('[[GroupNameMap]]');
+                $groupNameMap = ($groupNameMapDesc !== null && $groupNameMapDesc->value instanceof JsObject)
+                    ? $groupNameMapDesc->value
+                    : null;
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
+                        if ($groupNameMap !== null) {
+                            $orig = $groupNameMap->get($key);
+                            if ($orig instanceof JsString) {
+                                $key = $orig->value;
+                            }
+                        }
                         // Per spec: CreateDataProperty(groups, s, capturedValue).
                         $groups->defineOwnProperty($key, PropertyDescriptor::data(
                             ($match[1] === -1 || $match[0] === null)
