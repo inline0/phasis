@@ -559,9 +559,12 @@ class JsonObject
         if ($sourceMap !== null) {
             $context = new JsObject();
             $mapKey = spl_object_id($holder) . ':' . $name;
-            // Only include source when the current holder value is the exact
-            // originally-parsed instance (not a value replaced by the reviver).
-            if (isset($sourceMap[$mapKey]) && $sourceMap[$mapKey][1] === $val) {
+            // Per spec, include `source` whenever the current value is
+            // SameValue with the originally-parsed value, even if the reviver
+            // replaced it with a structurally-equal primitive.
+            if (isset($sourceMap[$mapKey])
+                && \PhpJs\Spec\AbstractOperations::sameValue($sourceMap[$mapKey][1], $val)
+            ) {
                 $context->defineOwnProperty('source', PropertyDescriptor::data(
                     new JsString($sourceMap[$mapKey][0]),
                     true,
