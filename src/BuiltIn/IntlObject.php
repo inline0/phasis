@@ -890,6 +890,18 @@ class IntlObject
                     false,
                 ));
 
+                // numberingSystem must be read before style per spec
+                // option-access order. The resolved value still falls
+                // back to "latn" because PHP intl only ships latn data.
+                $numberingSystem = 'latn';
+                $nsValEarly = $options->get('numberingSystem');
+                if (!$nsValEarly instanceof JsUndefined) {
+                    $nsEarly = TypeConversion::toString($nsValEarly);
+                    if (!self::isValidUnicodeTypeValue($nsEarly)) {
+                        throw new RangeError("Invalid numberingSystem: {$nsEarly}");
+                    }
+                }
+
                 // Style: "decimal" (default), "currency", "percent", "unit".
                 $style = 'decimal';
                 $styleVal = $options->get('style');
@@ -1187,15 +1199,9 @@ class IntlObject
                     ));
                 }
 
-                // numberingSystem
-                $numberingSystem = 'latn';
-                $nsVal = $options->get('numberingSystem');
-                if (!$nsVal instanceof JsUndefined) {
-                    $numberingSystem = TypeConversion::toString($nsVal);
-                    if (!self::isValidUnicodeTypeValue($numberingSystem)) {
-                        throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
-                    }
-                }
+                // numberingSystem already validated above; record the
+                // resolved value. PHP intl ships only "latn" so we always
+                // resolve to that even for valid unrecognised systems.
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
                     false,
