@@ -1574,17 +1574,19 @@ class IntlObject
             self::defineDataProp($result, 'signDisplay', new JsString(
                 self::extractInternalString($this_, '[[SignDisplay]]', 'auto'),
             ));
-            self::defineDataProp($result, 'roundingMode', new JsString(
-                self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
-            ));
+            // Spec key ordering: roundingIncrement, roundingMode,
+            // roundingPriority, trailingZeroDisplay (after signDisplay).
             self::defineDataProp($result, 'roundingIncrement', new JsNumber(
                 self::extractInternalNumber($this_, '[[RoundingIncrement]]', 1),
             ));
-            self::defineDataProp($result, 'trailingZeroDisplay', new JsString(
-                self::extractInternalString($this_, '[[TrailingZeroDisplay]]', 'auto'),
+            self::defineDataProp($result, 'roundingMode', new JsString(
+                self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
             ));
             self::defineDataProp($result, 'roundingPriority', new JsString(
                 self::extractInternalString($this_, '[[RoundingPriority]]', 'auto'),
+            ));
+            self::defineDataProp($result, 'trailingZeroDisplay', new JsString(
+                self::extractInternalString($this_, '[[TrailingZeroDisplay]]', 'auto'),
             ));
             return $result;
         }, 0);
