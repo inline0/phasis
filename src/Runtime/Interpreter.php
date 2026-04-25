@@ -12562,6 +12562,31 @@ class Interpreter
                     }
                     continue;
                 }
+                // \0 outside character class: NUL character (or legacy octal
+                // when Annex B and lookahead is an octal digit).
+                if ($next === '0' && !$inCharClass) {
+                    $oj = $i + 2;
+                    if (!$isUnicodeMode && $oj < $len && $pattern[$oj] >= '0' && $pattern[$oj] <= '7') {
+                        // Legacy octal sequence: \0[0-7][0-7]?
+                        $octalStr = '0';
+                        while (
+                            $oj < $len
+                            && $pattern[$oj] >= '0'
+                            && $pattern[$oj] <= '7'
+                            && strlen($octalStr) < 3
+                        ) {
+                            $octalStr .= $pattern[$oj];
+                            $oj++;
+                        }
+                        $cp = octdec($octalStr);
+                        $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
+                        $i = $oj;
+                    } else {
+                        $result .= '\\x{0}';
+                        $i += 2;
+                    }
+                    continue;
+                }
                 // Numeric backreferences to non-existent groups (Annex B).
                 // In non-unicode mode, \N where N exceeds the group count is
                 // treated as an octal escape (digits 0-7) or identity escape
@@ -12577,13 +12602,17 @@ class Interpreter
                     if ($refNum > $numGroups) {
                         // Not a valid backreference. Convert to octal or identity.
                         if ($next >= '0' && $next <= '7') {
+                            // LegacyOctalEscapeSequence: when the first digit
+                            // is 4..7 the sequence is at most 2 digits long;
+                            // 0..3 may extend to 3 digits.
+                            $maxLen = ($next >= '4' && $next <= '7') ? 2 : 3;
                             $octalStr = '';
                             $oj = $i + 1;
                             while (
                                 $oj < $len
                                 && $pattern[$oj] >= '0'
                                 && $pattern[$oj] <= '7'
-                                && strlen($octalStr) < 3
+                                && strlen($octalStr) < $maxLen
                             ) {
                                 $octalStr .= $pattern[$oj];
                                 $oj++;
@@ -12611,10 +12640,20 @@ class Interpreter
                     } else {
                         // In ECMAScript, a backreference to a non-participating
                         // group (one that exists but didn't capture) matches the
-                        // empty string. PCRE fails the match instead. Wrap the
-                        // backreference in (?:\N|) so that when the group didn't
-                        // participate, the empty alternative is taken.
-                        $result .= '(?:' . $ch . $numStr . '|)';
+                        // empty string. PCRE fails the match instead. Only wrap
+                        // when the referenced group might actually skip
+                        // capturing: it sits in another alternation branch,
+                        // inside a lookahead/lookbehind that the backref does
+                        // not share, or under a `?`/`*`/`{0,…}` quantifier. For
+                        // unconditional backrefs we keep PCRE semantics so that
+                        // patterns like `(.)\1` advance the match position when
+                        // the backref does not match.
+                        $groupOpen = $groupPositions[$refNum - 1];
+                        if ($this->backrefMayMissCapture($pattern, $groupOpen, $i)) {
+                            $result .= '(?:' . $ch . $numStr . '|)';
+                        } else {
+                            $result .= $ch . $numStr;
+                        }
                     }
                     $i = $j;
                     continue;
@@ -13547,6 +13586,148 @@ class Interpreter
             }
         }
         return $positions;
+    }
+
+    /**
+     * Decide whether a backreference at $backrefPos to a capture group that
+     * opens at $groupOpen could refer to a non-participating capture, in
+     * which case we wrap it as `(?:\N|)` so PCRE matches the empty string
+     * instead of failing.
+     *
+     * The capture group cannot capture if it sits in another alternation
+     * branch, inside a lookahead/lookbehind that the backref does not
+     * share, or behind a `?`/`*`/`{0,…}` quantifier.
+     */
+    private function backrefMayMissCapture(string $pattern, int $groupOpen, int $backrefPos): bool
+    {
+        // Mismatch in nesting: walk from $groupOpen toward $backrefPos,
+        // tracking paren depth. If we drop below the starting depth, the
+        // group has closed before the backref. Also flag any `|` that we
+        // encounter at exactly the group's parent depth, since that means
+        // the group sits inside an alternation alternative.
+        $len = strlen($pattern);
+        $closeIdx = $this->findGroupClose($pattern, $groupOpen);
+        if ($closeIdx === null) {
+            return true;
+        }
+        // Self-reference inside the same group: a backref nested inside
+        // its own target group resets each iteration, so the first pass
+        // sees the group as non-participating.
+        if ($backrefPos > $groupOpen && $backrefPos < $closeIdx) {
+            return true;
+        }
+        if ($closeIdx + 1 < $len) {
+            $follow = $pattern[$closeIdx + 1];
+            if ($follow === '?' || $follow === '*') {
+                return true;
+            }
+            if ($follow === '{') {
+                $endBrace = strpos($pattern, '}', $closeIdx + 1);
+                if ($endBrace !== false) {
+                    $quant = substr(
+                        $pattern,
+                        $closeIdx + 2,
+                        $endBrace - ($closeIdx + 2),
+                    );
+                    if (str_starts_with($quant, '0,') || $quant === '0') {
+                        return true;
+                    }
+                }
+            }
+        }
+        // Walk from the start to check if any ancestor (?!...)/(?=...) or
+        // alternation `|` separates the group definition from the backref.
+        $stack = [];
+        $k = 0;
+        while ($k < $len) {
+            $c = $pattern[$k];
+            if ($c === '\\') {
+                $k += 2;
+                continue;
+            }
+            if ($c === '[') {
+                $k++;
+                while ($k < $len && $pattern[$k] !== ']') {
+                    if ($pattern[$k] === '\\') {
+                        $k++;
+                    }
+                    $k++;
+                }
+                $k++;
+                continue;
+            }
+            if ($c === '(') {
+                if ($k === $groupOpen) {
+                    foreach ($stack as $entry) {
+                        if ($entry['kind'] === '!' || $entry['kind'] === '=') {
+                            $ancClose = $this->findGroupClose($pattern, $entry['open']);
+                            if ($ancClose !== null && $backrefPos > $ancClose) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                $kind = '';
+                if ($k + 2 < $len && $pattern[$k + 1] === '?') {
+                    $kind = $pattern[$k + 2];
+                }
+                $stack[] = ['open' => $k, 'kind' => $kind];
+                $k++;
+                continue;
+            }
+            if ($c === ')') {
+                array_pop($stack);
+                $k++;
+                continue;
+            }
+            if ($c === '|' && $k > $groupOpen && $k < $backrefPos) {
+                if (empty($stack) || $stack[count($stack) - 1]['open'] < $groupOpen) {
+                    return true;
+                }
+            }
+            $k++;
+        }
+        return false;
+    }
+
+    /**
+     * Locate the matching closing paren for the group that opens at $open
+     * in $pattern, ignoring escapes and character classes. Returns null if
+     * the close cannot be found.
+     */
+    private function findGroupClose(string $pattern, int $open): ?int
+    {
+        $len = strlen($pattern);
+        if ($open >= $len || $pattern[$open] !== '(') {
+            return null;
+        }
+        $depth = 0;
+        for ($i = $open; $i < $len; $i++) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i++;
+                continue;
+            }
+            if ($ch === '[') {
+                $i++;
+                while ($i < $len && $pattern[$i] !== ']') {
+                    if ($pattern[$i] === '\\') {
+                        $i++;
+                    }
+                    $i++;
+                }
+                continue;
+            }
+            if ($ch === '(') {
+                $depth++;
+            } elseif ($ch === ')') {
+                $depth--;
+                if ($depth === 0) {
+                    return $i;
+                }
+            }
+        }
+        return null;
     }
 
     /** Lazily created global object used as the default this in sloppy mode. */
