@@ -356,8 +356,13 @@ class ObjectConstructor
                     $builtinTag = 'Function';
                 } elseif (!$isProxy && $o->hasOwnProperty('[[ErrorData]]')) {
                     $builtinTag = 'Error';
-                } elseif (!$isProxy && $o->has('[[PrimitiveValue]]')) {
-                    $prim = $o->get('[[PrimitiveValue]]');
+                } elseif (!$isProxy && $o->hasOwnProperty('[[PrimitiveValue]]')) {
+                    // Spec internal-slot checks are own-only. Object.create on
+                    // a Boolean/Number/String wrapper does not inherit
+                    // [[BooleanData]]/[[NumberData]]/[[StringData]] from its
+                    // prototype, so the resulting object's tag is "Object".
+                    $primDesc = $o->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+                    $prim = $primDesc?->value;
                     if ($prim instanceof JsBoolean) {
                         $builtinTag = 'Boolean';
                     } elseif ($prim instanceof JsNumber) {
