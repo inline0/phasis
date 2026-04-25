@@ -39,15 +39,17 @@ class ReflectObject
                 $target = self::requireObject($args, 'Reflect.get');
                 $key = $args[1] ?? JsUndefined::instance();
                 $receiver = $args[2] ?? $target;
-                if ($key instanceof JsSymbol) {
-                    return $target->getBySymbol($key);
+                // Spec §28.1.6 step 2: ToPropertyKey(propertyKey). A Symbol
+                // wrapper unboxes to its primitive Symbol via @@toPrimitive.
+                $propKey = TypeConversion::toPropertyKey($key);
+                if ($propKey instanceof JsSymbol) {
+                    return $target->getBySymbol($propKey);
                 }
-                $propKey = TypeConversion::toString($key);
-                // Use receiver-aware get when a receiver is provided.
+                $name = $propKey instanceof JsString ? $propKey->value : TypeConversion::toString($propKey);
                 if ($receiver instanceof JsObject) {
-                    return $target->internalGet($propKey, $receiver);
+                    return $target->internalGet($name, $receiver);
                 }
-                return $target->get($propKey);
+                return $target->get($name);
             }, 2),
             true,
             false,
@@ -136,10 +138,12 @@ class ReflectObject
             JsFunction::fromCallable('has', function (JsValue $this_, array $args): JsValue {
                 $target = self::requireObject($args, 'Reflect.has');
                 $key = $args[1] ?? JsUndefined::instance();
-                if ($key instanceof JsSymbol) {
-                    return new JsBoolean($target->hasBySymbol($key));
+                $propKey = TypeConversion::toPropertyKey($key);
+                if ($propKey instanceof JsSymbol) {
+                    return new JsBoolean($target->hasBySymbol($propKey));
                 }
-                return new JsBoolean($target->has(TypeConversion::toString($key)));
+                $name = $propKey instanceof JsString ? $propKey->value : TypeConversion::toString($propKey);
+                return new JsBoolean($target->has($name));
             }, 2),
             true,
             false,
