@@ -685,6 +685,26 @@ class Environment
     }
 
     /**
+     * Walk past arrow function frames to find the enclosing non-arrow
+     * function kind. Used by eval-context checks: arrow functions inherit
+     * new.target / arguments / super from their enclosing non-arrow
+     * function, so for those checks the relevant kind is the first
+     * non-arrow function we hit. Returns null if we reach global scope
+     * before finding a non-arrow function.
+     */
+    public function getEnclosingNonArrowFunctionKind(): ?string
+    {
+        $env = $this;
+        while ($env !== null) {
+            if ($env->functionKind !== null && $env->functionKind !== 'arrow') {
+                return $env->functionKind;
+            }
+            $env = $env->parent;
+        }
+        return null;
+    }
+
+    /**
      * Find the nearest variable environment (function scope or global scope).
      * Per spec, the VariableEnvironment is the enclosing function scope or
      * the global scope. Block scopes (if, for, try, etc.) are lexical

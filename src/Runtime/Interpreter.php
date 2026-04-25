@@ -2057,20 +2057,16 @@ class Interpreter
                 throw new \PhpJs\Exceptions\SyntaxError("'super' keyword unexpected here");
             }
 
-            // Per spec 15.1.1: new.target in eval is a SyntaxError unless
-            // the direct eval is contained in function code that is not an
-            // ArrowFunction.
-            // Per sec-performeval-rules-in-initializer, eval inside a class
-            // field initializer (including static blocks) is treated as being
-            // inside a function: the "outside functions" early errors that
-            // would forbid new.target do not apply.
+            // Per spec 15.1.1: new.target in eval is a SyntaxError when the
+            // direct eval is not contained in function code. Arrow functions
+            // *inherit* new.target from their enclosing non-arrow function,
+            // so eval inside an arrow function is fine as long as some
+            // ancestor is a regular function. Walk past arrow frames before
+            // deciding.
             if ($this->astContainsNewTarget($program->body)) {
-                $funcKind = $env->getEnclosingFunctionKind();
+                $nonArrowKind = $env->getEnclosingNonArrowFunctionKind();
                 $inClassInit = $env->has('[[ClassFieldInitializer]]');
-                // Allowed if inside a class field initializer, regular function,
-                // generator, or async function. Not allowed in global code or
-                // arrow functions.
-                if (!$inClassInit && ($funcKind === null || $funcKind === 'arrow')) {
+                if (!$inClassInit && $nonArrowKind === null) {
                     throw new \PhpJs\Exceptions\SyntaxError("new.target expression is not allowed here");
                 }
             }
