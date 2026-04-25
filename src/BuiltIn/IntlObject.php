@@ -3688,7 +3688,11 @@ class IntlObject
                     false,
                 ));
 
-                // numberingSystem
+                // numberingSystem: validate the option syntactically, then
+                // resolve to a numbering system the host actually supports.
+                // PHP intl currently only ships latn data, so unrecognised
+                // valid values fall back to "latn" per the spec's resolve
+                // step.
                 $numberingSystem = 'latn';
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
@@ -3696,7 +3700,6 @@ class IntlObject
                     if (!self::isValidUnicodeTypeValue($ns)) {
                         throw new RangeError("Invalid numberingSystem: {$ns}");
                     }
-                    $numberingSystem = $ns;
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
