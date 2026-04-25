@@ -1396,6 +1396,21 @@ class Interpreter
 
         if ($argument instanceof MemberExpression) {
             $obj = $this->evaluate($argument->object, $env);
+            // Optional chain short-circuit: `delete a?.b` where a is null
+            // or undefined produces an undefined Reference; delete on a
+            // non-Reference returns true per §13.5.1.2 step 3.
+            if (
+                $argument->optional
+                && ($obj instanceof JsNull || $obj instanceof JsUndefined || $obj instanceof JsOptionalUndefined)
+            ) {
+                return new JsBoolean(true);
+            }
+            // Optional chain short-circuit propagation: a continued chain
+            // (e.g. `delete (a?.b).c`) carrying the sentinel also returns
+            // true without further evaluation.
+            if ($obj instanceof JsOptionalUndefined) {
+                return new JsBoolean(true);
+            }
             if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
                 throw new TypeError(
                     'Cannot read properties of ' . ($obj instanceof JsNull ? 'null' : 'undefined') . ' (deleting)',
