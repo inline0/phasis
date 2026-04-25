@@ -7854,6 +7854,17 @@ class Interpreter
                 if ($decl->init !== null) {
                     $initVal = $this->evaluate($decl->init, $env);
                     if ($decl->id instanceof Identifier) {
+                        // Per NamedEvaluation, an anonymous function/class
+                        // assigned to a var binding here gets the binding
+                        // name as its `.name` property.
+                        if (
+                            $initVal instanceof JsFunction
+                            && $initVal->getName() === '(anonymous)'
+                            && $this->isAnonymousFunctionDefinitionNode($decl->init)
+                            && !$this->hasExplicitNameProperty($initVal)
+                        ) {
+                            $initVal->setName($decl->id->name);
+                        }
                         $env->set($decl->id->name, $initVal, false);
                     }
                 }
