@@ -12386,10 +12386,20 @@ class Interpreter
         $result = '';
         $len = strlen($pattern);
         $inCharClass = false;
+        $isDotAll = str_contains($flags, 's');
         $i = 0;
 
         while ($i < $len) {
             $ch = $pattern[$i];
+
+            // Outside a character class and outside dotAll mode, `.` must
+            // exclude \n, \r,  ,   per spec. PCRE's `.` only
+            // excludes \n by default, so rewrite as a negated class.
+            if ($ch === '.' && !$inCharClass && !$isDotAll) {
+                $result .= '[^\\n\\r\\x{2028}\\x{2029}]';
+                $i++;
+                continue;
+            }
 
             // Detect raw UTF-8 encoded surrogate bytes (U+D800-U+DFFF).
             // These are 3-byte sequences: 0xED 0xA0-0xBF 0x80-0xBF.
