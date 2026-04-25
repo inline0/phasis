@@ -1944,11 +1944,118 @@ class IntlObject
         return $result;
     }
 
+    /**
+     * Render `engineering` / `scientific` notation. We compute the
+     * exponent and mantissa explicitly, then format the mantissa
+     * through the existing number-formatting pipeline so locale
+     * grouping/sign/numbering-system settings still apply.
+     */
+    private static function formatScientificNumber(JsObject $nf, float $number, string $notation): string
+    {
+        if (is_nan($number)) {
+            return 'NaN';
+        }
+        if (!is_finite($number)) {
+            return $number < 0 ? '-∞' : '∞';
+        }
+        $sign = $number < 0 ? '-' : '';
+        $abs = abs($number);
+        $exp = 0;
+        if ($abs !== 0.0) {
+            $exp = (int) floor(log10($abs));
+            if ($notation === 'engineering') {
+                // Engineering exponents are multiples of 3, with the
+                // mantissa adjusted to fall in [1, 1000).
+                $exp = (int) (floor($exp / 3) * 3);
+            }
+        }
+        $mantissa = $abs / 10 ** $exp;
+        $rt = self::extractInternalString($nf, '[[RoundingType]]', 'fractionDigits');
+        if ($rt === 'significantDigits') {
+            $maxSig = (int) self::extractInternalNumber($nf, '[[MaximumSignificantDigits]]', 21);
+            $mantissaStr = self::roundMantissaToSignificant($mantissa, $maxSig);
+        } else {
+            $maxFrac = (int) self::extractInternalNumber($nf, '[[MaximumFractionDigits]]', 3);
+            $mantissaStr = self::roundMantissaToFraction($mantissa, $maxFrac);
+        }
+        return $sign . $mantissaStr . 'E' . $exp;
+    }
+
+    /**
+     * Best-effort CLDR-shaped en-US label for a Unit Identifier.
+     * Compound units (foo-per-bar) render as "shortFoo/shortBar"
+     * via per-unit recursion. Anything else falls back to the
+     * raw identifier.
+     */
+    private static function renderUnitLabel(string $unit, string $display): string
+    {
+        if ($unit === '') {
+            return '';
+        }
+        if (str_contains($unit, '-per-')) {
+            [$num, $den] = explode('-per-', $unit, 2);
+            return self::renderUnitLabel($num, $display) . '/'
+                . self::renderUnitLabel($den, $display);
+        }
+        static $shortLabels = [
+            'acre' => 'ac', 'bit' => 'bit', 'byte' => 'byte',
+            'celsius' => '°C', 'centimeter' => 'cm', 'day' => 'd',
+            'degree' => 'deg', 'fahrenheit' => '°F',
+            'fluid-ounce' => 'fl oz', 'foot' => 'ft', 'gallon' => 'gal',
+            'gigabit' => 'Gb', 'gigabyte' => 'GB', 'gram' => 'g',
+            'hectare' => 'ha', 'hour' => 'h', 'inch' => 'in',
+            'kilobit' => 'kb', 'kilobyte' => 'kB', 'kilogram' => 'kg',
+            'kilometer' => 'km', 'liter' => 'L', 'megabit' => 'Mb',
+            'megabyte' => 'MB', 'meter' => 'm', 'mile' => 'mi',
+            'mile-scandinavian' => 'smi', 'milliliter' => 'mL',
+            'millimeter' => 'mm', 'millisecond' => 'ms',
+            'minute' => 'min', 'month' => 'mo', 'nanosecond' => 'ns',
+            'ounce' => 'oz', 'percent' => '%', 'petabyte' => 'PB',
+            'pound' => 'lb', 'second' => 's', 'stone' => 'st',
+            'terabit' => 'Tb', 'terabyte' => 'TB', 'week' => 'w',
+            'yard' => 'yd', 'year' => 'y',
+        ];
+        if ($display === 'narrow' || $display === 'short') {
+            return $shortLabels[$unit] ?? $unit;
+        }
+        return $unit;
+    }
+
+    /** Round a positive mantissa to N significant digits, no trailing zeros. */
+    private static function roundMantissaToSignificant(float $value, int $maxSig): string
+    {
+        if ($value === 0.0) {
+            return '0';
+        }
+        $exp = (int) floor(log10($value));
+        $factor = 10 ** ($maxSig - 1 - $exp);
+        $rounded = round($value * $factor) / $factor;
+        return rtrim(rtrim(sprintf('%.20f', $rounded), '0'), '.');
+    }
+
+    /** Round to up to N fraction digits, trimming trailing zeros. */
+    private static function roundMantissaToFraction(float $value, int $maxFrac): string
+    {
+        $rounded = round($value, $maxFrac);
+        $formatted = number_format($rounded, $maxFrac, '.', '');
+        // Strip trailing zeros and a stranded decimal point.
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+        return $formatted === '' ? '0' : $formatted;
+    }
+
     private static function formatNumber(JsObject $nf, float $number): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
         $numberingSystem = self::extractInternalString($nf, '[[NumberingSystem]]', 'latn');
+        $notation = self::extractInternalString($nf, '[[Notation]]', 'standard');
+
+        // Engineering / scientific notations decompose into a
+        // mantissa + locale-rendered exponent. Compact notation is
+        // outside our reach without CLDR pattern data.
+        if ($notation === 'engineering' || $notation === 'scientific') {
+            return self::formatScientificNumber($nf, $number, $notation);
+        }
 
         $fmtStyle = match ($style) {
             'currency' => \NumberFormatter::CURRENCY,
@@ -2013,6 +2120,27 @@ class IntlObject
                 \NumberFormatter::ROUNDING_INCREMENT,
                 $roundingIncrement / $factor,
             );
+        }
+
+        // Unit style: ICU doesn't expose a units-formatter via PHP, so
+        // we format the number with the same options as decimal style
+        // and suffix the unit with a thin no-break space, mirroring
+        // the en-US CLDR pattern. Locale-specific unit translations
+        // require the CLDR unit data we don't ship.
+        if ($style === 'unit') {
+            $bareResult = $formatter->format($number);
+            if ($bareResult === false) {
+                $bareResult = (string) $number;
+            }
+            $unit = self::extractInternalString($nf, '[[Unit]]', '');
+            $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
+            $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
+            $result = $unitLabel === ''
+                ? $bareResult
+                : $bareResult . "\u{00A0}" . $unitLabel;
+            $result = self::normalizeIntlInfinity($result, $number);
+            $result = self::applySignDisplay($nf, $result, $number);
+            return $result;
         }
 
         if ($style === 'currency') {

@@ -148,6 +148,10 @@ class NumberConstructor
             $localesArg = $args[0] ?? JsUndefined::instance();
             $optionsArg = $args[1] ?? JsUndefined::instance();
             $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            // Construct an Intl.NumberFormat and delegate formatting
+            // through its `format` getter so style/unit/notation/sign
+            // options take effect (matches V8). Falls back to a bare
+            // decimal rendering if Intl isn't available.
             if ($env !== null) {
                 $intlObj = $env->get('Intl', false);
                 if ($intlObj instanceof \PhpJs\Value\JsObject) {
@@ -157,6 +161,31 @@ class NumberConstructor
                         $newObj = new \PhpJs\Value\JsObject($proto instanceof \PhpJs\Value\JsObject ? $proto : null);
                         $newObj->set('[[NewTarget]]', $nfCtor);
                         ($nfCtor->getNativeCallable())($newObj, [$localesArg, $optionsArg]);
+                        $interp = \PhpJs\Engine::getCurrentInterpreter();
+                        $formatGetter = $proto instanceof \PhpJs\Value\JsObject
+                            ? $proto->getOwnPropertyDescriptor('format')
+                            : null;
+                        if (
+                            $formatGetter !== null
+                            && $formatGetter->get instanceof \PhpJs\Value\JsFunction
+                            && $interp !== null
+                        ) {
+                            $bound = $interp->callFunction(
+                                $formatGetter->get,
+                                $newObj,
+                                [],
+                            );
+                            if ($bound instanceof \PhpJs\Value\JsFunction) {
+                                $formatted = $interp->callFunction(
+                                    $bound,
+                                    JsUndefined::instance(),
+                                    [new JsNumber($numValue)],
+                                );
+                                if ($formatted instanceof JsString) {
+                                    return $formatted;
+                                }
+                            }
+                        }
                     }
                 }
             }
