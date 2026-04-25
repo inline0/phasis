@@ -6457,6 +6457,21 @@ class Parser
         $generator = $this->eat(TokenType::Star);
         $name = null;
 
+        // Per spec FunctionExpression : `function` BindingIdentifier? `(` ... `)` `{` ... `}`
+        // The BindingIdentifier slot uses [~Yield, ~Await], so within an
+        // enclosing generator/async function the name `yield` / `await` may
+        // still appear here as an identifier. Set the parser context BEFORE
+        // parsing the name so parseIdentifier's reserved-word check honours
+        // the inner function's context.
+        $prevGenerator = $this->inGenerator;
+        $prevAsync = $this->inAsync;
+        $prevTopLevel = $this->topLevel;
+        $prevStaticBlock = $this->inStaticBlock;
+        $this->inGenerator = $generator;
+        $this->inAsync = false;
+        $this->topLevel = false;
+        $this->inStaticBlock = false;
+
         // Function expression name is an optional BindingIdentifier. Per spec,
         // it may be any IdentifierReference allowed in this context: regular
         // Identifier, Yield (sloppy non-generator), Await (sloppy non-async),
@@ -6474,17 +6489,6 @@ class Parser
         ) {
             $name = $this->parseIdentifier()->name;
         }
-
-        // Set inGenerator/inAsync BEFORE parsing parameters so that default
-        // parameter expressions use the function's own context.
-        $prevGenerator = $this->inGenerator;
-        $prevAsync = $this->inAsync;
-        $prevTopLevel = $this->topLevel;
-        $prevStaticBlock = $this->inStaticBlock;
-        $this->inGenerator = $generator;
-        $this->inAsync = false;
-        $this->topLevel = false;
-        $this->inStaticBlock = false;
         $params = $this->parseFormalParameters();
         $body = $this->parseBlockStatement(true);
         $this->inGenerator = $prevGenerator;
