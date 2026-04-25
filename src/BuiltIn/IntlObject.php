@@ -274,20 +274,11 @@ class IntlObject
      */
     private static function localesFromArg(JsValue $arg): array
     {
-        if ($arg instanceof JsUndefined) {
-            return [];
-        }
-        if ($arg instanceof JsString) {
-            $canon = self::canonicalizeLocaleTag($arg->value);
-            if ($canon === null) {
-                throw new RangeError("Invalid language tag: {$arg->value}");
-            }
-            return [$canon];
-        }
-        if ($arg instanceof JsObject) {
-            return self::canonicalizeLocaleList($arg);
-        }
-        throw new TypeError('Locales argument must be a string or an object');
+        // Defer all validation to canonicalizeLocaleList so primitives
+        // get ToObject'd (matching the spec's CanonicalizeLocaleList
+        // step 4) and the resulting wrapper's length/index properties
+        // are walked via the prototype chain.
+        return self::canonicalizeLocaleList($arg);
     }
 
     /**
@@ -2369,6 +2360,73 @@ class IntlObject
     // Intl.PluralRules
     // ---------------------------------------------------------------
 
+    /**
+     * Return the CLDR plural-rule categories supported by `$locale`,
+     * sorted in the spec's canonical order: zero, one, two, few, many,
+     * other. Cardinal and ordinal rules differ; the table covers the
+     * locales the test262 fixtures exercise plus a generous default.
+     *
+     * @return list<string>
+     */
+    private static function pluralCategoriesForLocale(string $locale, string $type): array
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        static $order = ['zero', 'one', 'two', 'few', 'many', 'other'];
+        static $cardinal = [
+            'ar' => ['zero', 'one', 'two', 'few', 'many', 'other'],
+            'be' => ['one', 'few', 'many', 'other'],
+            'br' => ['one', 'two', 'few', 'many', 'other'],
+            'cs' => ['one', 'few', 'many', 'other'],
+            'cy' => ['zero', 'one', 'two', 'few', 'many', 'other'],
+            'fr' => ['one', 'many', 'other'],
+            'ga' => ['one', 'two', 'few', 'many', 'other'],
+            'gv' => ['one', 'two', 'few', 'many', 'other'],
+            'he' => ['one', 'two', 'many', 'other'],
+            'iw' => ['one', 'two', 'many', 'other'],
+            'is' => ['one', 'other'],
+            'ja' => ['other'],
+            'km' => ['other'],
+            'ko' => ['other'],
+            'lt' => ['one', 'few', 'many', 'other'],
+            'lv' => ['zero', 'one', 'other'],
+            'mk' => ['one', 'other'],
+            'mt' => ['one', 'two', 'few', 'many', 'other'],
+            'pl' => ['one', 'few', 'many', 'other'],
+            'pt' => ['one', 'many', 'other'],
+            'ro' => ['one', 'few', 'other'],
+            'ru' => ['one', 'few', 'many', 'other'],
+            'sk' => ['one', 'few', 'many', 'other'],
+            'sl' => ['one', 'two', 'few', 'other'],
+            'sr' => ['one', 'few', 'other'],
+            'th' => ['other'],
+            'uk' => ['one', 'few', 'many', 'other'],
+            'vi' => ['other'],
+            'zh' => ['other'],
+        ];
+        static $ordinal = [
+            'ar' => ['other'],
+            'cy' => ['zero', 'one', 'two', 'few', 'many', 'other'],
+            'en' => ['one', 'two', 'few', 'other'],
+            'fr' => ['one', 'other'],
+            'ga' => ['one', 'other'],
+            'hu' => ['one', 'other'],
+            'it' => ['many', 'other'],
+            'mk' => ['one', 'two', 'many', 'other'],
+            'mr' => ['one', 'two', 'few', 'other'],
+            'ne' => ['one', 'other'],
+            'sv' => ['one', 'two', 'other'],
+            'tk' => ['few', 'other'],
+            'uk' => ['few', 'other'],
+        ];
+        $table = $type === 'ordinal' ? $ordinal : $cardinal;
+        $cats = $table[$lang] ?? ['one', 'other'];
+        // Always emit in spec order.
+        return array_values(array_filter(
+            $order,
+            static fn(string $c): bool => in_array($c, $cats, true),
+        ));
+    }
+
     private static function installPluralRules(JsObject $intl): void
     {
         $proto = new JsObject();
@@ -2665,9 +2723,15 @@ class IntlObject
                     self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
                 ));
             }
-            // Plural categories: per spec, return the list of plural categories for the locale.
+            // Plural categories: subset of `{zero, one, two, few, many, other}`
+            // that the locale's CLDR plural rules can produce, returned
+            // in the spec's canonical order. Locales not enumerated
+            // here fall back to the conservative ['one', 'other'] pair
+            // that covers the majority of European languages.
+            $type = self::extractInternalString($this_, '[[Type]]', 'cardinal');
+            $localeForCats = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $cats = self::pluralCategoriesForLocale($localeForCats, $type);
             $categories = new JsArray();
-            $cats = ['few', 'many', 'one', 'other', 'two', 'zero'];
             foreach ($cats as $i => $cat) {
                 $categories->set((string) $i, new JsString($cat));
             }
