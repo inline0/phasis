@@ -2473,7 +2473,7 @@ class IntlObject
 
         // Locale.prototype.toString()
         $toString = JsFunction::fromCallable('toString', function (JsValue $this_): JsValue {
-            if ($this_ instanceof JsObject) {
+            if ($this_ instanceof JsObject && self::isInitializedLocale($this_)) {
                 $tag = $this_->get('[[LocaleTag]]');
                 if (!$tag instanceof JsUndefined) {
                     return $tag;
@@ -2496,7 +2496,7 @@ class IntlObject
         ];
         foreach ($accessors as $prop => $internalKey) {
             $getter = JsFunction::fromCallable("get {$prop}", function (JsValue $this_) use ($internalKey): JsValue {
-                if (!$this_ instanceof JsObject) {
+                if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                     throw new TypeError("Intl.Locale.prototype.{$internalKey} called on non-Locale");
                 }
                 $val = $this_->get("[[{$internalKey}]]");
@@ -2512,7 +2512,7 @@ class IntlObject
 
         // numeric: boolean accessor
         $numericGetter = JsFunction::fromCallable('get numeric', function (JsValue $this_): JsValue {
-            if (!$this_ instanceof JsObject) {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.numeric called on non-Locale');
             }
             $val = $this_->get('[[numeric]]');
@@ -2530,7 +2530,7 @@ class IntlObject
 
         // baseName: accessor
         $baseNameGetter = JsFunction::fromCallable('get baseName', function (JsValue $this_): JsValue {
-            if (!$this_ instanceof JsObject) {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.baseName called on non-Locale');
             }
             $lang = self::extractInternalString($this_, '[[language]]', '');
