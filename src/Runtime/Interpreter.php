@@ -11979,6 +11979,14 @@ class Interpreter
         if ($isUnicode) {
             $this->validateUnicodePattern($pattern);
         }
+        // Run the same parse-time validator that regex literals get so
+        // RegExp(/.../, "u") rechecks identity-escape and bracket rules
+        // against the new flag set.
+        try {
+            \PhpJs\Parser\Parser::validateRegExpAtRuntime($pattern, $flags);
+        } catch (\PhpJs\Exceptions\SyntaxError $e) {
+            throw $e;
+        }
 
         $regexpProto = null;
         if ($this->globalEnv->has('RegExp')) {

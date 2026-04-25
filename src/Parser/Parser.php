@@ -5046,6 +5046,16 @@ class Parser
      * Lightweight ECMAScript regex pattern validator. Catches the most
      * common parse-time errors. Not a full Pattern parser.
      */
+    /**
+     * Public wrapper so the runtime RegExp constructor can re-run the
+     * same parse-time validation when flags differ from the originating
+     * regex literal.
+     */
+    public static function validateRegExpAtRuntime(string $pattern, string $flags): void
+    {
+        self::validateRegExpPatternAtParseTime($pattern, $flags);
+    }
+
     private static function validateRegExpPatternAtParseTime(string $pattern, string $flags): void
     {
         $unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
