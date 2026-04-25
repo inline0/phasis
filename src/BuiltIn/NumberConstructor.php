@@ -425,23 +425,21 @@ class NumberConstructor
                 throw new \PhpJs\Exceptions\RangeError('toPrecision() argument must be between 1 and 100');
             }
 
-            // Use sprintf to get the correctly-rounded scientific notation.
-            // sprintf handles the rounding to p significant digits properly.
             $absValue = abs($numValue);
-            $sprintfDigits = min($precision - 1, 53);
-            $result = @sprintf('%.' . $sprintfDigits . 'e', $absValue);
-            $parts = explode('e', $result);
-            $mantissa = $parts[0];
-            $exp = (int) $parts[1];
-
-            // If precision exceeds sprintf capacity (53), pad the mantissa.
-            if ($precision - 1 > $sprintfDigits) {
-                if (!str_contains($mantissa, '.')) {
-                    $mantissa .= '.';
-                }
-                $dotPos = strpos($mantissa, '.');
-                $currentDecimals = strlen($mantissa) - $dotPos - 1;
-                $mantissa = str_pad($mantissa, $dotPos + 1 + ($precision - 1), '0');
+            // Use the bcmath-based exact decimal expansion of the IEEE 754
+            // double for the requested precision. libc printf rounds at
+            // its requested precision, which can poison a subsequent
+            // round-half-away-from-zero step on the same precision.
+            if ($absValue === 0.0) {
+                $digits = str_repeat('0', $precision);
+                $exp = 0;
+            } else {
+                [$digits, $exp] = self::exactDecimalDigits($absValue, $precision);
+            }
+            if ($precision > 1) {
+                $mantissa = $digits[0] . '.' . substr($digits, 1);
+            } else {
+                $mantissa = $digits[0];
             }
 
             $prefix = $numValue < 0 ? '-' : '';
@@ -539,55 +537,134 @@ class NumberConstructor
      */
     private static function formatExponential(float $value, int $fractionDigits): string
     {
-        // Use sprintf with extra precision to get enough digits, then
-        // apply JavaScript-style rounding (round half away from zero).
-        $extraDigits = min($fractionDigits + 5, 53);
-        $raw = @sprintf('%.' . $extraDigits . 'e', $value);
-        $parts = explode('e', $raw);
-        $rawMantissa = $parts[0];
-        $e = (int) $parts[1];
-
-        // Remove the decimal point to get a digit string.
-        $rawDigits = str_replace('.', '', $rawMantissa);
-        // rawDigits has (extraDigits + 1) significant digits.
-        // We need (fractionDigits + 1) significant digits.
         $needed = $fractionDigits + 1;
-
-        if (strlen($rawDigits) > $needed) {
-            // Round the digit string to $needed digits.
-            // JavaScript uses round-half-away-from-zero.
-            $truncated = substr($rawDigits, 0, $needed);
-            $nextDigit = (int) ($rawDigits[$needed] ?? '0');
-            if ($nextDigit >= 5) {
-                // Round up.
-                $carry = 1;
-                $digits = str_split($truncated);
-                for ($i = count($digits) - 1; $i >= 0 && $carry; $i--) {
-                    $d = (int) $digits[$i] + $carry;
-                    $digits[$i] = (string) ($d % 10);
-                    $carry = (int) ($d >= 10);
-                }
-                $nStr = implode('', $digits);
-                if ($carry) {
-                    // Rounding caused overflow (e.g. 999 -> 1000).
-                    $nStr = '1' . substr($nStr, 0, $needed - 1);
-                    $e++;
-                }
-            } else {
-                $nStr = $truncated;
-            }
-        } else {
-            $nStr = str_pad($rawDigits, $needed, '0');
-        }
+        // Always use the bcmath-based exact decimal expansion: it produces
+        // the same digit stream as V8 / SpiderMonkey for any precision up
+        // to 100, and avoids libc-printf rounding artefacts where it had
+        // already rounded the requested-precision-th digit before our own
+        // round-half-away-from-zero pass.
+        [$digits, $e] = self::exactDecimalDigits($value, $needed);
 
         if ($fractionDigits > 0) {
-            $mantissa = $nStr[0] . '.' . substr($nStr, 1);
+            $mantissa = $digits[0] . '.' . substr($digits, 1);
         } else {
-            $mantissa = $nStr[0];
+            $mantissa = $digits[0];
         }
 
         $expSign = $e >= 0 ? '+' : '-';
         return $mantissa . 'e' . $expSign . abs($e);
+    }
+
+    /**
+     * Compute the exact decimal expansion of a positive finite double to
+     * the given number of significant digits, using bcmath. Returns
+     * [digits, decimalExponent] where digits is a string of $sigDigits
+     * decimal digits and decimalExponent is the power-of-10 of the
+     * leading digit (so digits[0] . '.' . digits[1..] × 10^exp == value).
+     *
+     * @return array{0: string, 1: int}
+     */
+    private static function exactDecimalDigits(float $value, int $sigDigits): array
+    {
+        // Decompose the IEEE 754 double into sign, biased exponent, and
+        // 52-bit mantissa. Use little-endian pack ('e') so the byte order
+        // is portable.
+        $bytes = pack('e', $value);
+        $lo = unpack('V', substr($bytes, 0, 4))[1];
+        $hi = unpack('V', substr($bytes, 4, 4))[1];
+        $expBiased = ($hi >> 20) & 0x7FF;
+        $mantHi = $hi & 0xFFFFF;
+        // Build full 53-bit mantissa: implicit leading 1 (or 0 for denormals).
+        $impl = $expBiased === 0 ? 0 : 1;
+        $mant = bcadd(
+            bcadd(bcmul((string) $impl, '4503599627370496'), bcmul((string) $mantHi, '4294967296')),
+            (string) $lo,
+        );
+        // Power-of-2 shift: value = mant * 2^shift.
+        // Normal: shift = expBiased - 1023 - 52.
+        // Denormal (expBiased=0): shift = -1074.
+        $shift = $expBiased === 0 ? -1074 : ($expBiased - 1075);
+
+        // Compute a decimal string for mant * 2^shift. For negative shift
+        // the leading non-zero digit of 2^shift is roughly at position
+        // shift * log10(2) ≈ shift * 0.30103, so the bcdiv scale must
+        // cover that plus sigDigits + a rounding margin.
+        if ($shift >= 0) {
+            $exact = bcmul($mant, bcpow('2', (string) $shift), 0);
+        } else {
+            $magnitude = (int) ceil(-$shift * 0.30103);
+            $scale = $magnitude + $sigDigits + 5;
+            $exact = bcdiv($mant, bcpow('2', (string) (-$shift)), $scale);
+        }
+
+        // Strip a leading sign (defensive — value is positive here).
+        if ($exact !== '' && $exact[0] === '-') {
+            $exact = substr($exact, 1);
+        }
+
+        // Split on the decimal point.
+        $dot = strpos($exact, '.');
+        if ($dot === false) {
+            $intPart = $exact;
+            $fracPart = '';
+        } else {
+            $intPart = substr($exact, 0, $dot);
+            $fracPart = substr($exact, $dot + 1);
+        }
+        $intPart = ltrim($intPart, '0');
+
+        // Find the position of the first non-zero digit and build a
+        // contiguous digit stream starting there.
+        if ($intPart !== '') {
+            $digitStream = $intPart . $fracPart;
+            $decimalExponent = strlen($intPart) - 1;
+        } else {
+            // Value < 1: skip leading zero fraction digits.
+            $skip = 0;
+            $fracLen = strlen($fracPart);
+            while ($skip < $fracLen && $fracPart[$skip] === '0') {
+                $skip++;
+            }
+            if ($skip === $fracLen) {
+                // Effectively zero in the precision we computed.
+                return [str_repeat('0', $sigDigits), 0];
+            }
+            $digitStream = substr($fracPart, $skip);
+            $decimalExponent = -1 - $skip;
+        }
+
+        // Take sigDigits + 1 leading digits for rounding. Pad with zeros
+        // if the stream is shorter (very small denormals, etc.).
+        $stream = str_pad($digitStream, $sigDigits + 1, '0');
+        $taken = substr($stream, 0, $sigDigits);
+        $nextDigit = (int) ($stream[$sigDigits] ?? '0');
+        if ($nextDigit >= 5) {
+            [$taken, $carry] = self::roundUpDigitString($taken);
+            if ($carry) {
+                $taken = '1' . substr($taken, 0, $sigDigits - 1);
+                $decimalExponent++;
+            }
+        }
+
+        return [$taken, $decimalExponent];
+    }
+
+    /**
+     * Increment a decimal-digit string by one, returning [newDigits, carry].
+     * Carry is 1 only when the entire string was 9s (e.g. "999" -> "000" + carry).
+     *
+     * @return array{0: string, 1: int}
+     */
+    private static function roundUpDigitString(string $s): array
+    {
+        $digits = str_split($s);
+        $carry = 1;
+        for ($i = count($digits) - 1; $i >= 0 && $carry; $i--) {
+            $d = (int) $digits[$i] + $carry;
+            $digits[$i] = (string) ($d % 10);
+            $carry = (int) ($d >= 10);
+        }
+        return [implode('', $digits), $carry];
     }
 
     /**
