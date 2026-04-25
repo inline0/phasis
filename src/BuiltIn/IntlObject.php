@@ -1655,6 +1655,7 @@ class IntlObject
                     'fractionalSecondDigits' => null, // 1, 2, or 3
                     'timeZoneName' => ['short', 'long', 'shortOffset', 'longOffset', 'shortGeneric', 'longGeneric'],
                 ];
+                $hasExplicitFormatComponents = false;
                 foreach ($components as $prop => $validValues) {
                     $val = $options->get($prop);
                     if (!$val instanceof JsUndefined) {
@@ -1662,6 +1663,7 @@ class IntlObject
                         if ($validValues !== null && !in_array($str, $validValues, true)) {
                             throw new RangeError("Invalid {$prop}: {$str}");
                         }
+                        $hasExplicitFormatComponents = true;
                         $obj->defineOwnProperty("[[{$prop}]]", PropertyDescriptor::data(
                             new JsString($str),
                             false,
@@ -1698,6 +1700,16 @@ class IntlObject
                         throw new RangeError("Invalid timeStyle: {$ts}");
                     }
                     $timeStyle = $ts;
+                }
+                // Spec step 43: dateStyle / timeStyle are mutually
+                // exclusive with explicit format components.
+                if (
+                    ($dateStyle !== null || $timeStyle !== null)
+                    && $hasExplicitFormatComponents
+                ) {
+                    throw new TypeError(
+                        'dateStyle and timeStyle cannot be combined with explicit format components'
+                    );
                 }
                 if ($dateStyle !== null) {
                     $obj->defineOwnProperty('[[DateStyle]]', PropertyDescriptor::data(
