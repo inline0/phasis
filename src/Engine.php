@@ -613,13 +613,16 @@ class Engine
 
             $calledAsNew = $this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]');
 
-            // Per spec 22.2.3.1: IsRegExp check using Symbol.match.
+            // Per spec 22.2.3.1: IsRegExp check using @@match. If matcher is
+            // undefined, fall back to whether the argument has the
+            // [[RegExpMatcher]] internal slot (we use [[PCREPattern]] for
+            // that purpose).
             $patternIsRegExp = false;
             if ($arg0 instanceof \PhpJs\Value\JsObject) {
                 $matchSymbol = \PhpJs\BuiltIn\SymbolConstructor::match();
                 $matchProp = $arg0->getBySymbol($matchSymbol);
                 if ($matchProp instanceof \PhpJs\Value\JsUndefined) {
-                    $patternIsRegExp = $arg0->has('source') && $arg0->has('flags');
+                    $patternIsRegExp = $arg0->getOwnPropertyDescriptor('[[PCREPattern]]') !== null;
                 } else {
                     $patternIsRegExp = \PhpJs\Spec\TypeConversion::toBoolean($matchProp);
                 }
@@ -648,9 +651,11 @@ class Engine
                 }
             }
 
-            // If the first argument is already a RegExp object and no flags argument given,
-            // return a copy with the same pattern and flags (per spec 22.2.3.1).
-            if ($arg0 instanceof \PhpJs\Value\JsObject && $arg0->has('source') && $arg0->has('flags')) {
+            // Per spec 22.2.3.1 step 4-5: only treat the argument as a
+            // RegExp source/flags pair when IsRegExp(pattern) was true. An
+            // arbitrary object with `source`/`flags` properties but a falsy
+            // @@match must be coerced via ToString instead.
+            if ($patternIsRegExp && $arg0 instanceof \PhpJs\Value\JsObject) {
                 $pattern = \PhpJs\Spec\TypeConversion::toString($arg0->get('source'));
                 // Empty source is stored as (?:) on the object, but we need the raw pattern for PCRE.
                 if ($pattern === '(?:)') {

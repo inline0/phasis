@@ -247,6 +247,16 @@ class RegExpPrototype
                     if (!$this_ instanceof JsObject) {
                         throw new \PhpJs\Exceptions\TypeError("get {$propName} called on non-object");
                     }
+                    // Per spec, internal slots like [[OriginalFlags]] /
+                    // [[RegExpMatcher]] are not exposed through Proxy
+                    // [[GetOwnProperty]] traps. A Proxy wrapping a RegExp
+                    // does not itself have the slot — accessing the source/
+                    // flags getters with such a Proxy as `this` must throw.
+                    if ($this_ instanceof \PhpJs\Value\JsProxy) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "get {$propName} requires that 'this' be a RegExp object",
+                        );
+                    }
                     // Per spec §22.2.6: if R does not have [[OriginalFlags]]:
                     //   - If R is %RegExp.prototype% and propName is 'source',
                     //     return "(?:)".
