@@ -4356,6 +4356,26 @@ class Parser
             }
 
             if ($token->type === TokenType::OptionalChaining) {
+                // Per the optional-chaining proposal: `super` is not a
+                // valid LHS for OptionalChain. `super?.x` and `super?.()`
+                // are SyntaxErrors regardless of context.
+                if ($left instanceof Identifier && $left->name === 'super') {
+                    throw new ParseError(
+                        'Invalid optional chain from super property',
+                        $token,
+                    );
+                }
+                // Per the optional-chaining proposal: `new C ?.` is invalid
+                // because `new C` is a NewExpression (not a MemberExpression
+                // or CallExpression), and only those can begin an
+                // OptionalExpression. `new C() ?.x` is fine — the args turn
+                // it into a MemberExpression.
+                if ($left instanceof NewExpression && !$left->hasArguments) {
+                    throw new ParseError(
+                        'Invalid optional chain from new expression',
+                        $token,
+                    );
+                }
                 if ($this->check(TokenType::LeftParen)) {
                     $this->advance();
                     $args = $this->parseArguments();
@@ -4596,6 +4616,20 @@ class Parser
                 continue;
             }
             if ($this->check(TokenType::OptionalChaining)) {
+                // Per the optional-chaining proposal: `super` and a bare
+                // NewExpression cannot begin an OptionalChain.
+                if ($expr instanceof Identifier && $expr->name === 'super') {
+                    throw new ParseError(
+                        'Invalid optional chain from super property',
+                        $this->current(),
+                    );
+                }
+                if ($expr instanceof NewExpression && !$expr->hasArguments) {
+                    throw new ParseError(
+                        'Invalid optional chain from new expression',
+                        $this->current(),
+                    );
+                }
                 $this->advance();
                 if ($this->check(TokenType::LeftParen)) {
                     $this->advance();
@@ -6885,6 +6919,18 @@ class Parser
             } elseif ($this->check(TokenType::OptionalChaining)) {
                 // ?. is part of LeftHandSideExpression per ES2020+
                 // (e.g. valid as ClassHeritage: `class C extends a?.b {}`).
+                if ($expr instanceof Identifier && $expr->name === 'super') {
+                    throw new ParseError(
+                        'Invalid optional chain from super property',
+                        $this->current(),
+                    );
+                }
+                if ($expr instanceof NewExpression && !$expr->hasArguments) {
+                    throw new ParseError(
+                        'Invalid optional chain from new expression',
+                        $this->current(),
+                    );
+                }
                 $this->advance();
                 if ($this->check(TokenType::LeftBracket)) {
                     $this->advance();
@@ -6986,11 +7032,13 @@ class Parser
         }
 
         $args = [];
+        $hasArgs = false;
         if ($this->eat(TokenType::LeftParen)) {
+            $hasArgs = true;
             $args = $this->parseArguments();
         }
 
-        return new NewExpression($location, $callee, $args);
+        return new NewExpression($location, $callee, $args, $hasArgs);
     }
 
     private function parseSpreadElement(): SpreadElement
