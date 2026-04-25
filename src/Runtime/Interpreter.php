@@ -2271,6 +2271,12 @@ class Interpreter
                 "'super' keyword unexpected here"
             );
         }
+        // Per AllPrivateNamesValid: indirect eval has no enclosing class,
+        // so any private name reference must be declared within a class
+        // defined inside the eval source.
+        foreach ($program->body as $stmt) {
+            $this->validatePrivateNamesIn($stmt, [], $this->getGlobalEnv());
+        }
     }
 
     /**
@@ -2605,15 +2611,79 @@ class Interpreter
      */
     private function validateEvalPrivateNames(array $statements, Environment $env): void
     {
-        $privateNames = $this->collectPrivateNameReferences($statements);
-        foreach ($privateNames as $name) {
-            $resolved = $env->resolvePrivateName($name);
-            // If resolvePrivateName returns the source name unchanged, it was not
-            // found in any enclosing class body's private name map.
-            if ($resolved === $name) {
+        // Walk into nested class bodies tracking each body's declared private
+        // names. A private reference is valid only if it appears in the
+        // declared set of some enclosing class — that includes classes
+        // declared inside the eval source, AND classes resolvable via the
+        // surrounding lexical scope (env.resolvePrivateName).
+        foreach ($statements as $stmt) {
+            $this->validatePrivateNamesIn($stmt, [], $env);
+        }
+    }
+
+    /**
+     * Recursive helper for validateEvalPrivateNames. $declaredStack is a list
+     * of arrays, each containing the source-level private names declared by
+     * an enclosing class. The most recently entered class is at the top.
+     *
+     * @param list<list<string>> $declaredStack
+     */
+    private function validatePrivateNamesIn(Node $node, array $declaredStack, Environment $env): void
+    {
+        if ($node instanceof PrivateIdentifier) {
+            foreach ($declaredStack as $declared) {
+                if (in_array($node->name, $declared, true)) {
+                    return;
+                }
+            }
+            // Not declared in any class lexically inside the eval; check the
+            // surrounding lexical scope (the eval's enclosing class).
+            $resolved = $env->resolvePrivateName($node->name);
+            if ($resolved === $node->name) {
                 throw new \PhpJs\Exceptions\SyntaxError(
-                    "Private field '{$name}' must be declared in an enclosing class",
+                    "Private field '{$node->name}' must be declared in an enclosing class",
                 );
+            }
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+        ) {
+            $declared = [];
+            foreach ($node->body as $element) {
+                if (
+                    ($element instanceof \PhpJs\Ast\Expression\ClassMethod
+                        || $element instanceof \PhpJs\Ast\Expression\ClassProperty)
+                    && $element->key instanceof PrivateIdentifier
+                ) {
+                    $declared[] = $element->key->name;
+                }
+            }
+            $newStack = $declaredStack;
+            $newStack[] = $declared;
+            // Validate the superClass expression in the OUTER scope: it
+            // is evaluated before the class body and cannot see the class's
+            // own private names.
+            if ($node->superClass !== null) {
+                $this->validatePrivateNamesIn($node->superClass, $declaredStack, $env);
+            }
+            foreach ($node->body as $element) {
+                $this->validatePrivateNamesIn($element, $newStack, $env);
+            }
+            return;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                $this->validatePrivateNamesIn($value, $declaredStack, $env);
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node) {
+                        $this->validatePrivateNamesIn($item, $declaredStack, $env);
+                    }
+                }
             }
         }
     }

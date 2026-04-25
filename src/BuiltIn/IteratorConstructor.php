@@ -478,13 +478,26 @@ class IteratorConstructor
                 function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter, &$innerIt, &$innerNx, &$innerDone): JsObject {
                     while (true) {
                         if ($innerIt !== null && !$innerDone) {
-                            $innerResult = $innerNx->call($innerIt, []);
-                            if (!$innerResult instanceof JsObject) {
-                                $innerDone = true;
-                                throw new TypeError('Iterator result is not an object');
+                            // Per spec Iterator Helpers 2.1.5.7 step 1.i: if
+                            // any inner step (innerNext, innerComplete = .done
+                            // getter, or .value getter) throws, the outer
+                            // iterator must be closed before propagating.
+                            try {
+                                $innerResult = $innerNx->call($innerIt, []);
+                                if (!$innerResult instanceof JsObject) {
+                                    $innerDone = true;
+                                    throw new TypeError('Iterator result is not an object');
+                                }
+                                $innerIsDone = TypeConversion::toBoolean($innerResult->get('done'));
+                                if (!$innerIsDone) {
+                                    $innerValue = $innerResult->get('value');
+                                }
+                            } catch (\Throwable $e) {
+                                self::closeIterator($itObj, true);
+                                throw $e;
                             }
-                            if (!TypeConversion::toBoolean($innerResult->get('done'))) {
-                                return self::iterResult($innerResult->get('value'), false);
+                            if (!$innerIsDone) {
+                                return self::iterResult($innerValue, false);
                             }
                             $innerIt = null;
                             $innerNx = null;
