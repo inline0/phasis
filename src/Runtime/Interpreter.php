@@ -4365,11 +4365,13 @@ class Interpreter
             }
 
             // Collect parameter names for Annex B hoisting checks.
-            // Per B.3.2.1, the check uses parameterNames (BoundNames of
-            // FormalParameters). The implicit `arguments` binding is NOT a
-            // formal parameter, so a block-scoped `function arguments() {}`
-            // is eligible for Annex B var-hoisting and overwrites the
-            // implicit arguments object.
+            // Per spec step 21.f, when an arguments object is created
+            // "arguments" is appended to parameterNames, which would
+            // disqualify `function arguments() {}` from Annex B var
+            // hoisting. V8 and SpiderMonkey diverge from the strict spec
+            // and DO propagate the function to the var scope, overwriting
+            // the implicit arguments. This project's oracle is V8, so we
+            // follow V8 and skip adding "arguments" to parameterNames.
             $savedParamNames = $this->currentParamNames;
             $this->currentParamNames = [];
             foreach ($params as $p) {
