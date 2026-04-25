@@ -1342,7 +1342,7 @@ class StringPrototype
         int $position,
         array $captures,
         string $replacement,
-        ?array $namedCaptures = null,
+        array|JsObject|null $namedCaptures = null,
     ): string {
         $result = '';
         $len = strlen($replacement);
@@ -1382,7 +1382,14 @@ class StringPrototype
                         $closePos = strpos($replacement, '>', $i + 2);
                         if ($closePos !== false) {
                             $name = substr($replacement, $i + 2, $closePos - $i - 2);
-                            if (array_key_exists($name, $namedCaptures)) {
+                            if ($namedCaptures instanceof JsObject) {
+                                // Per spec, lookup uses Get which walks the
+                                // prototype chain.
+                                $val = $namedCaptures->get($name);
+                                if (!$val instanceof JsUndefined) {
+                                    $result .= TypeConversion::toString($val);
+                                }
+                            } elseif (array_key_exists($name, $namedCaptures)) {
                                 $result .= $namedCaptures[$name] ?? '';
                             }
                             // If name not found, append nothing per spec.

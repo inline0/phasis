@@ -997,15 +997,12 @@ class RegExpPrototype
                     $replacement = TypeConversion::toString($replValue);
                 } else {
                     // Per spec step 14.l.i: if namedCaptures is not undefined,
-                    // Set namedCaptures to ToObject(namedCaptures).
+                    // Set namedCaptures to ToObject(namedCaptures). Pass the
+                    // JsObject directly so $<name> uses Get (which walks the
+                    // prototype chain) rather than only own-property lookup.
                     $namedCaptures = null;
                     if (!$groupsVal instanceof JsUndefined) {
-                        $groupsObj = TypeConversion::toObject($groupsVal);
-                        $namedCaptures = [];
-                        foreach ($groupsObj->getOwnPropertyNames() as $key) {
-                            $val = $groupsObj->get($key);
-                            $namedCaptures[$key] = $val instanceof JsUndefined ? null : TypeConversion::toString($val);
-                        }
+                        $namedCaptures = TypeConversion::toObject($groupsVal);
                     }
                     $replacement = StringPrototype::getSubstitution(
                         $matched,
