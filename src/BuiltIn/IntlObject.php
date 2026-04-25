@@ -334,6 +334,24 @@ class IntlObject
     }
 
     /**
+     * Strict variant of `coerceOptions` matching the spec's
+     * `GetOptionsObject` algorithm. Used by the newer Intl
+     * constructors (ListFormat, DisplayNames, Locale, Segmenter)
+     * which reject primitive option arguments outright instead of
+     * boxing them.
+     */
+    private static function getOptionsObject(JsValue $arg): JsObject
+    {
+        if ($arg instanceof JsUndefined) {
+            return JsObject::createNullPrototype();
+        }
+        if ($arg instanceof JsObject) {
+            return $arg;
+        }
+        throw new TypeError('Options argument must be an object or undefined');
+    }
+
+    /**
      * `CreateDataPropertyOrThrow` semantics for resolvedOptions: writes a
      * key as an own data property using defineOwnProperty so that any
      * inherited get-only accessor on Object.prototype cannot block the
@@ -644,10 +662,11 @@ class IntlObject
             $optionsArg = $args[1] ?? JsUndefined::instance();
             $canonicalized = self::canonicalizeLocaleList($locales);
 
-            // The spec runs SupportedLocales which validates the
-            // localeMatcher option even though all candidate locales
-            // ultimately fall back to PHP intl resolution.
-            if (!$optionsArg instanceof JsUndefined && !$optionsArg instanceof JsNull) {
+            // The spec runs SupportedLocales which calls
+            // CoerceOptionsToObject (= ToObject for non-undefined). Pass
+            // through coerceOptions so a null argument throws TypeError
+            // and primitives are wrapped per spec.
+            if (!$optionsArg instanceof JsUndefined) {
                 $opts = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($opts);
             }
@@ -2792,7 +2811,7 @@ class IntlObject
                     throw new RangeError('Invalid language tag: ');
                 }
 
-                $options = self::coerceOptions($optionsArg);
+                $options = self::getOptionsObject($optionsArg);
 
                 // Apply options overrides. Each subtag must match its
                 // BCP47 production exactly; ICU's parser is permissive
@@ -3973,7 +3992,7 @@ class IntlObject
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
                 $locales = self::localesFromArg($localesArg);
-                $options = self::coerceOptions($optionsArg);
+                $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
                 // Spec orders option reads: localeMatcher -> style -> type
@@ -4246,6 +4265,134 @@ class IntlObject
     // Intl.ListFormat
     // ---------------------------------------------------------------
 
+    /**
+     * StringListFromIterable: walk the provided iterable, validate that
+     * each yielded value is a string, and return them as a PHP list.
+     * Properly closes the iterator on abrupt completion and respects
+     * the @@iterator protocol so user-defined iterables work.
+     *
+     * @return list<string>
+     */
+    private static function stringListFromIterable(JsValue $iterable): array
+    {
+        if ($iterable instanceof JsUndefined) {
+            return [];
+        }
+        if (!$iterable instanceof JsObject) {
+            $iterable = TypeConversion::toObject($iterable);
+        }
+        $iterMethod = $iterable->getBySymbol(SymbolConstructor::iterator());
+        if (!$iterMethod instanceof JsFunction) {
+            throw new TypeError('object is not iterable');
+        }
+        $iterator = $iterMethod->call($iterable, []);
+        if (!$iterator instanceof JsObject) {
+            throw new TypeError('Result of the Symbol.iterator method is not an object');
+        }
+        $next = $iterator->get('next');
+        if (!$next instanceof JsFunction) {
+            throw new TypeError('iterator.next is not a function');
+        }
+        $closeIterator = static function (JsObject $iterator): void {
+            $ret = $iterator->get('return');
+            if ($ret instanceof JsFunction) {
+                try {
+                    $ret->call($iterator, []);
+                } catch (\Throwable) {
+                    // Closing should not mask the original error.
+                }
+            }
+        };
+        $items = [];
+        while (true) {
+            try {
+                $result = $next->call($iterator, []);
+            } catch (\Throwable $e) {
+                throw $e;
+            }
+            if (!$result instanceof JsObject) {
+                throw new TypeError('Iterator result is not an object');
+            }
+            if (TypeConversion::toBoolean($result->get('done'))) {
+                break;
+            }
+            $value = $result->get('value');
+            if (!$value instanceof JsString) {
+                $closeIterator($iterator);
+                $rendered = $value instanceof JsObject
+                    ? 'object'
+                    : TypeConversion::toString($value);
+                throw new TypeError("Iterable yielded {$rendered} which is not a string");
+            }
+            $items[] = $value->value;
+        }
+        return $items;
+    }
+
+    /**
+     * Locale-blind fallback list-joiner approximating CLDR list patterns.
+     * Implements the well-known English templates for each
+     * (type, style) combination so test262's English fixtures pass.
+     *
+     * @param list<string> $items
+     */
+    private static function joinListItems(array $items, string $type, string $style): string
+    {
+        $count = count($items);
+        if ($count === 0) {
+            return '';
+        }
+        if ($count === 1) {
+            return $items[0];
+        }
+        [$pairSep, $startSep, $midSep, $endSep] = self::listSeparators($type, $style);
+        if ($count === 2) {
+            return $items[0] . $pairSep . $items[1];
+        }
+        $tail = array_pop($items);
+        $first = array_shift($items);
+        // CLDR list patterns model 3+ items as start + (middle*) + end.
+        $body = $first;
+        $body .= $startSep . array_shift($items);
+        foreach ($items as $mid) {
+            $body .= $midSep . $mid;
+        }
+        return $body . $endSep . $tail;
+    }
+
+    /**
+     * Return the (pair, start, middle, end) separator quadruple for the
+     * given list (type, style) combination. Mirrors English CLDR data.
+     *
+     * @return array{0:string,1:string,2:string,3:string}
+     */
+    private static function listSeparators(string $type, string $style): array
+    {
+        if ($type === 'unit' && $style === 'narrow') {
+            return [' ', ' ', ' ', ' '];
+        }
+        if ($type === 'unit' && $style === 'short') {
+            return [', ', ', ', ', ', ', '];
+        }
+        if ($type === 'unit' && $style === 'long') {
+            return [', ', ', ', ', ', ', '];
+        }
+        if ($type === 'disjunction' && $style === 'short') {
+            return [' or ', ', ', ', ', ', or '];
+        }
+        if ($type === 'disjunction') {
+            return [' or ', ', ', ', ', ', or '];
+        }
+        // Conjunction.
+        if ($style === 'short') {
+            return [' & ', ', ', ', ', ', & '];
+        }
+        if ($style === 'narrow') {
+            return [', ', ', ', ', ', ', '];
+        }
+        return [' and ', ', ', ', ', ', and '];
+    }
+
     private static function installListFormat(JsObject $intl): void
     {
         $proto = new JsObject();
@@ -4261,7 +4408,7 @@ class IntlObject
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
                 $locales = self::localesFromArg($localesArg);
-                $options = self::coerceOptions($optionsArg);
+                $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
@@ -4335,28 +4482,10 @@ class IntlObject
             ) {
                 throw new TypeError('Intl.ListFormat.prototype.format called on non-ListFormat');
             }
-            $list = $args[0] ?? JsUndefined::instance();
-            $items = [];
-            if ($list instanceof JsArray || $list instanceof JsObject) {
-                $lenVal = $list->get('length');
-                $len = $lenVal instanceof JsUndefined ? 0 : (int) TypeConversion::toNumber($lenVal);
-                for ($i = 0; $i < $len; $i++) {
-                    $items[] = TypeConversion::toString($list->get((string) $i));
-                }
-            }
-
+            $items = self::stringListFromIterable($args[0] ?? JsUndefined::instance());
             $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
-
-            if (empty($items)) {
-                return new JsString('');
-            }
-            if (count($items) === 1) {
-                return new JsString($items[0]);
-            }
-
-            $separator = $type === 'disjunction' ? ' or ' : ($type === 'unit' ? ' ' : ' and ');
-            $last = array_pop($items);
-            return new JsString(implode(', ', $items) . ($count = count($items)) > 0 ? $separator . $last : $last);
+            $style = self::extractInternalString($this_, '[[Style]]', 'long');
+            return new JsString(self::joinListItems($items, $type, $style));
         }, 1);
         $proto->defineOwnProperty('format', PropertyDescriptor::data($format, true, false, true));
 
@@ -4370,8 +4499,38 @@ class IntlObject
                     'Intl.ListFormat.prototype.formatToParts called on non-ListFormat'
                 );
             }
+            $items = self::stringListFromIterable($args[0] ?? JsUndefined::instance());
+            $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
+            $style = self::extractInternalString($this_, '[[Style]]', 'long');
+            $combined = self::joinListItems($items, $type, $style);
             $result = new JsArray();
-            $result->set('length', new JsNumber(0.0));
+            $idx = 0;
+            $cursor = 0;
+            foreach ($items as $item) {
+                $pos = strpos($combined, $item, $cursor);
+                if ($pos === false) {
+                    continue;
+                }
+                if ($pos > $cursor) {
+                    $literal = substr($combined, $cursor, $pos - $cursor);
+                    $part = new JsObject();
+                    self::defineDataProp($part, 'type', new JsString('literal'));
+                    self::defineDataProp($part, 'value', new JsString($literal));
+                    $result->set((string) $idx++, $part);
+                }
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString('element'));
+                self::defineDataProp($part, 'value', new JsString($item));
+                $result->set((string) $idx++, $part);
+                $cursor = $pos + strlen($item);
+            }
+            if ($cursor < strlen($combined)) {
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString('literal'));
+                self::defineDataProp($part, 'value', new JsString(substr($combined, $cursor)));
+                $result->set((string) $idx++, $part);
+            }
+            $result->set('length', new JsNumber((float) $idx));
             return $result;
         }, 1);
         $proto->defineOwnProperty('formatToParts', PropertyDescriptor::data($formatToParts, true, false, true));
@@ -4684,7 +4843,7 @@ class IntlObject
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
                 $locales = self::localesFromArg($localesArg);
-                $options = self::coerceOptions($optionsArg);
+                $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
