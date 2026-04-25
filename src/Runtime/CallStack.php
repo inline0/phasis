@@ -12,7 +12,13 @@ class CallStack
     private array $frames = [];
 
     public function __construct(
-        private readonly int $maxDepth = 100,
+        // 1024 matches what Node.js exposes via stack-overflow tests well
+        // enough — deep super() chains in test262 (built up to ~100 levels)
+        // need to clear the engine's bookkeeping plus PHP's own recursion
+        // overhead, and 100 was tripping common patterns. PHP's xdebug or
+        // ini max_execution_time / memory_limit bound runaway recursion
+        // independently.
+        private readonly int $maxDepth = 1024,
     ) {
     }
 
