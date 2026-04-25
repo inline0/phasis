@@ -1865,6 +1865,13 @@ class Interpreter
                         $args = $this->evaluateArguments($node->arguments, $env);
                         return $this->callFunction($method, $rawObj, $args);
                     }
+                    // Callable Proxy methods on String.prototype must also keep
+                    // the primitive as `this` so strict-mode underlying
+                    // functions observe the unboxed value.
+                    if ($method instanceof JsProxy && $method->isCallable()) {
+                        $args = $this->evaluateArguments($node->arguments, $env);
+                        return $method->apply($rawObj, $args);
+                    }
                 }
             }
 
