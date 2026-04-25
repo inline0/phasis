@@ -2517,11 +2517,18 @@ class IntlObject
                     if (is_bool($val)) {
                         $jsVal = new JsBoolean($val);
                     } elseif (is_array($val)) {
-                        $arr = new JsArray();
-                        foreach ($val as $i => $item) {
-                            $arr->set((string) $i, new JsString((string) $item));
+                        // Skip extension bookkeeping (unicodeAttributes /
+                        // unicodeKeywords) — they're plain PHP storage and
+                        // don't need to be exposed as JS internal slots.
+                        if ($key === 'unicodeAttributes' || $key === 'unicodeKeywords') {
+                            continue;
                         }
-                        $arr->set('length', new JsNumber((float) count($val)));
+                        $arr = new JsArray();
+                        $idx = 0;
+                        foreach (array_values($val) as $item) {
+                            $arr->set((string) $idx++, new JsString((string) $item));
+                        }
+                        $arr->set('length', new JsNumber((float) $idx));
                         $jsVal = $arr;
                     } else {
                         $jsVal = new JsString((string) $val);
@@ -2957,43 +2964,125 @@ class IntlObject
                 $result['variants'] = array_keys($variants);
             }
 
-            // Extract unicode extension keywords from the original tag.
-            if (preg_match('/-u-(.+?)(?:-[a-wyz]-|$)/i', $tag, $extMatch)) {
-                $extStr = $extMatch[1];
-                $extParts = explode('-', $extStr);
-                $i = 0;
-                while ($i < count($extParts)) {
-                    $key = $extParts[$i];
-                    if (strlen($key) === 2) {
-                        $val = isset($extParts[$i + 1]) && strlen($extParts[$i + 1]) > 2
-                            ? $extParts[$i + 1]
-                            : 'true';
-                        $mapped = match ($key) {
-                            'ca' => 'calendar',
-                            'co' => 'collation',
-                            'fw' => 'firstDayOfWeek',
-                            'hc' => 'hourCycle',
-                            'kf' => 'caseFirst',
-                            'kn' => 'numeric',
-                            'nu' => 'numberingSystem',
-                            default => null,
-                        };
-                        if ($mapped !== null) {
-                            if ($mapped === 'numeric') {
-                                $result[$mapped] = ($val === 'true');
+            // Walk the tag once to split off other-extension singletons
+            // (`-a-…`, `-t-…`, etc.) and the `-x-` private-use tail. The
+            // unicode extension (`-u-…`) is parsed below for its
+            // semantic content; the rest are kept as raw payload strings
+            // so the canonical form can re-emit them in singleton order.
+            $publicTag = $tag;
+            $otherExtensions = [];
+            $privateUse = null;
+            if (
+                preg_match(
+                    '/^([a-zA-Z]{2,8}(?:-[a-zA-Z]{4})?(?:-[a-zA-Z]{2}|-\d{3})?(?:-[a-zA-Z0-9]{4,8})*(?:-[a-zA-Z0-9]{5,8})*)((?:-[a-zA-Z0-9]-[a-zA-Z0-9-]+)*)$/i',
+                    $tag,
+                    $structureMatch,
+                ) === 1
+            ) {
+                $publicTag = $structureMatch[1];
+                $extensionTail = $structureMatch[2];
+                if ($extensionTail !== '') {
+                    // Handle the `-x-` private-use boundary specially: once
+                    // a `-x-` singleton is seen, everything that follows is
+                    // private use and must not be re-parsed as a fresh
+                    // extension singleton.
+                    $xPos = false;
+                    if (preg_match('/-x-/i', $extensionTail, $xMatch, PREG_OFFSET_CAPTURE)) {
+                        $xPos = $xMatch[0][1];
+                        $privateUse = strtolower(substr($extensionTail, $xPos + 3));
+                        $extensionTail = substr($extensionTail, 0, $xPos);
+                    }
+                    if (
+                        $extensionTail !== ''
+                        && preg_match_all(
+                            '/-([a-zA-Z0-9])-((?:[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*?)(?=(?:-[a-zA-Z0-9]-)|$))/',
+                            $extensionTail,
+                            $matches,
+                            PREG_SET_ORDER,
+                        )
+                    ) {
+                        foreach ($matches as $m) {
+                            $singleton = strtolower($m[1]);
+                            $payload = strtolower($m[2]);
+                            if ($singleton === 'u') {
+                                $publicTag .= '-u-' . $payload;
                             } else {
-                                // UTS35: a value of "true" canonicalizes to
-                                // the empty string, which renders as the
-                                // bare key in toString and is reflected by
-                                // the corresponding getter.
-                                $result[$mapped] = ($val === 'true') ? '' : $val;
+                                $otherExtensions[$singleton] = $payload;
                             }
                         }
-                        $i += ($val !== 'true' || (isset($extParts[$i + 1]) && strlen($extParts[$i + 1]) > 2)) ? 2 : 1;
-                    } else {
-                        $i++;
                     }
                 }
+            }
+            if (preg_match('/-u-(.+?)(?=-[a-wy-z]-|$)/i', $publicTag, $extMatch)) {
+                $extStr = strtolower($extMatch[1]);
+                $extParts = explode('-', $extStr);
+                $i = 0;
+                $count = count($extParts);
+                $attributes = [];
+                $keywords = [];
+                $lastKey = null;
+                // Leading subtags of length >= 3 are attributes.
+                while ($i < $count && strlen($extParts[$i]) >= 3) {
+                    $attributes[] = $extParts[$i];
+                    $i++;
+                }
+                while ($i < $count) {
+                    $key = $extParts[$i];
+                    if (strlen($key) !== 2) {
+                        $i++;
+                        continue;
+                    }
+                    $i++;
+                    $values = [];
+                    while ($i < $count && strlen($extParts[$i]) >= 3) {
+                        $values[] = $extParts[$i];
+                        $i++;
+                    }
+                    // Spec keeps the FIRST occurrence of a duplicate
+                    // keyword and discards later ones.
+                    if (!isset($keywords[$key])) {
+                        $keywords[$key] = $values;
+                    }
+                }
+                // Sort attributes and keywords in US-ASCII order.
+                sort($attributes, SORT_STRING);
+                ksort($keywords);
+                if (!empty($attributes)) {
+                    $result['unicodeAttributes'] = $attributes;
+                }
+                if (!empty($keywords)) {
+                    $result['unicodeKeywords'] = $keywords;
+                }
+                // Mirror the well-known keys to the legacy slot names so
+                // existing getters continue to function.
+                $legacyMap = [
+                    'ca' => 'calendar',
+                    'co' => 'collation',
+                    'fw' => 'firstDayOfWeek',
+                    'hc' => 'hourCycle',
+                    'kf' => 'caseFirst',
+                    'kn' => 'numeric',
+                    'nu' => 'numberingSystem',
+                ];
+                foreach ($legacyMap as $key => $slot) {
+                    if (!isset($keywords[$key])) {
+                        continue;
+                    }
+                    $vals = $keywords[$key];
+                    $valStr = empty($vals) ? '' : implode('-', $vals);
+                    if ($slot === 'numeric') {
+                        $result[$slot] = $valStr === '' || $valStr === 'true';
+                    } else {
+                        $result[$slot] = $valStr === 'true' ? '' : $valStr;
+                    }
+                }
+            }
+            if (!empty($otherExtensions)) {
+                ksort($otherExtensions);
+                $result['otherExtensions'] = $otherExtensions;
+            }
+            if ($privateUse !== null) {
+                $result['privateUse'] = $privateUse;
             }
 
             return $result;
@@ -3049,12 +3138,19 @@ class IntlObject
             }
         }
 
-        // Add unicode extensions if present.
-        $extensions = [];
-        // Spec orders Unicode extension keywords in US-ASCII order on the
-        // 2-letter key; iterating $extMap in that same order produces a
-        // canonical toString.
-        $extMap = [
+        // Build the unicode extension. Start from the parsed
+        // attributes/keywords (which preserve unknown keywords in
+        // US-ASCII order) and overlay any options that the constructor
+        // applied through the legacy slot names.
+        $attributes = [];
+        if (isset($parsed['unicodeAttributes']) && is_array($parsed['unicodeAttributes'])) {
+            $attributes = $parsed['unicodeAttributes'];
+        }
+        $keywords = [];
+        if (isset($parsed['unicodeKeywords']) && is_array($parsed['unicodeKeywords'])) {
+            $keywords = $parsed['unicodeKeywords'];
+        }
+        $legacyMap = [
             'calendar' => 'ca',
             'collation' => 'co',
             'firstDayOfWeek' => 'fw',
@@ -3063,30 +3159,58 @@ class IntlObject
             'numeric' => 'kn',
             'numberingSystem' => 'nu',
         ];
-        foreach ($extMap as $key => $uKey) {
-            if (isset($parsed[$key])) {
-                $val = $parsed[$key];
-                if (is_bool($val)) {
-                    // The kn (numeric) extension uses the bare key for
-                    // true and `kn-false` for false per UTS35
-                    // canonicalization.
-                    $extensions[] = $uKey;
-                    if (!$val) {
-                        $extensions[] = 'false';
-                    }
-                } else {
-                    $extensions[] = $uKey;
-                    // The empty value (canonical "true") renders as the
-                    // bare key with no value subtag.
-                    if ($val !== '') {
-                        $extensions[] = (string) $val;
-                    }
+        foreach ($legacyMap as $slot => $key) {
+            if (!isset($parsed[$slot])) {
+                continue;
+            }
+            $val = $parsed[$slot];
+            if (is_bool($val)) {
+                $keywords[$key] = $val ? [] : ['false'];
+            } else {
+                $valStr = (string) $val;
+                $keywords[$key] = $valStr === '' ? [] : explode('-', $valStr);
+            }
+        }
+        ksort($keywords);
+        sort($attributes, SORT_STRING);
+        // Collect every extension keyed by its singleton character,
+        // then emit them in US-ASCII order with the `-x-` private use
+        // tail forced last per UTS35.
+        $extensionsBySingleton = [];
+        if (!empty($attributes) || !empty($keywords)) {
+            $uPayload = [];
+            foreach ($attributes as $attr) {
+                $uPayload[] = $attr;
+            }
+            foreach ($keywords as $key => $vals) {
+                $uPayload[] = $key;
+                foreach ($vals as $v) {
+                    $uPayload[] = $v;
+                }
+            }
+            $extensionsBySingleton['u'] = implode('-', $uPayload);
+        }
+        if (isset($parsed['otherExtensions']) && is_array($parsed['otherExtensions'])) {
+            foreach ($parsed['otherExtensions'] as $singleton => $payload) {
+                $extensionsBySingleton[(string) $singleton] = (string) $payload;
+            }
+        }
+        ksort($extensionsBySingleton);
+        foreach ($extensionsBySingleton as $singleton => $payload) {
+            $parts[] = $singleton;
+            foreach (explode('-', $payload) as $sub) {
+                if ($sub !== '') {
+                    $parts[] = $sub;
                 }
             }
         }
-        if (count($extensions) > 0) {
-            $parts[] = 'u';
-            array_push($parts, ...$extensions);
+        if (isset($parsed['privateUse']) && $parsed['privateUse'] !== '') {
+            $parts[] = 'x';
+            foreach (explode('-', (string) $parsed['privateUse']) as $sub) {
+                if ($sub !== '') {
+                    $parts[] = $sub;
+                }
+            }
         }
 
         return implode('-', $parts);
