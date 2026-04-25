@@ -2485,25 +2485,33 @@ class IntlObject
                     }
                     $parsed['numberingSystem'] = $numberingSystem;
                 }
-                // firstDayOfWeek: a weekday name (mon, tue, ...) or 1-7,
-                // canonicalized to the lowercase 3-letter form.
+                // firstDayOfWeek: numeric forms 0-7 are mapped to the
+                // canonical short weekday names (0 and 7 both alias to
+                // sun per UTS35); other strings just need to satisfy
+                // the BCP47 "type" production
+                // (alphanum{3,8}(-alphanum{3,8})*).
                 $firstDayOfWeek = null;
                 $fwVal = $options->get('firstDayOfWeek');
                 if (!$fwVal instanceof JsUndefined) {
                     $fw = TypeConversion::toString($fwVal);
                     static $weekdayMap = [
-                        '1' => 'mon', '2' => 'tue', '3' => 'wed',
+                        '0' => 'sun', '1' => 'mon', '2' => 'tue', '3' => 'wed',
                         '4' => 'thu', '5' => 'fri', '6' => 'sat', '7' => 'sun',
                     ];
                     if (isset($weekdayMap[$fw])) {
                         $fw = $weekdayMap[$fw];
                     }
                     $fwLower = strtolower($fw);
-                    static $validWeekdays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-                    if (!in_array($fwLower, $validWeekdays, true)) {
-                        throw new RangeError("Invalid firstDayOfWeek: {$fw}");
+                    // The boolean primitive `true` canonicalises to the bare
+                    // key with no value subtag.
+                    if ($fwLower === 'true') {
+                        $firstDayOfWeek = '';
+                    } else {
+                        if (!$isValidUnicodeType($fwLower)) {
+                            throw new RangeError("Invalid firstDayOfWeek: {$fw}");
+                        }
+                        $firstDayOfWeek = $fwLower;
                     }
-                    $firstDayOfWeek = $fwLower;
                     $parsed['firstDayOfWeek'] = $firstDayOfWeek;
                 }
 
