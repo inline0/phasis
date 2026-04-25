@@ -1389,7 +1389,9 @@ class Interpreter
             if ($obj instanceof JsObject) {
                 $rawKey = null;
                 if ($argument->computed) {
-                    $rawKey = $this->evaluate($argument->property, $env);
+                    // ToPropertyKey on the computed key so a Symbol returned
+                    // by a custom toString stays a Symbol key.
+                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
                     if ($rawKey instanceof JsSymbol) {
                         // Delete symbol-keyed property.
                         $deleted = $obj->deleteBySymbol($rawKey);
@@ -1400,7 +1402,7 @@ class Interpreter
                         }
                         return new JsBoolean($deleted);
                     }
-                    $key = TypeConversion::toString($rawKey);
+                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
                 } else {
                     $key = $argument->property instanceof Identifier ? $argument->property->name : '';
                 }
@@ -1799,11 +1801,12 @@ class Interpreter
             // Per spec 12.3.5.1: evaluating super.property requires GetThisBinding().
             // In a derived constructor before super(), this throws ReferenceError.
             $thisValue = $env->get('this');
-            // Resolve the property key.
+            // Resolve the property key. Computed keys go through ToPropertyKey
+            // so a Symbol returned by a custom toString stays a Symbol key.
             if ($node->callee->computed) {
-                $rawKey = $this->evaluate($node->callee->property, $env);
+                $rawKey = TypeConversion::toPropertyKey($this->evaluate($node->callee->property, $env));
                 $isSymKey = $rawKey instanceof JsSymbol;
-                $key = $isSymKey ? '' : TypeConversion::toString($rawKey);
+                $key = $isSymKey ? '' : ($rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey));
             } else {
                 $rawKey = null;
                 $isSymKey = false;
@@ -5066,7 +5069,9 @@ class Interpreter
             // post-evaluation value.
             $rawKey = null;
             if ($node->computed) {
-                $rawKey = $this->evaluate($node->property, $env);
+                // ToPropertyKey on the computed key so a Symbol returned by
+                // a custom toString stays a Symbol key.
+                $rawKey = TypeConversion::toPropertyKey($this->evaluate($node->property, $env));
             }
             $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
             // RequireObjectCoercible: if superBase is null, throw TypeError (spec §12.3.5.3 step 5).
@@ -5090,7 +5095,8 @@ class Interpreter
                         $superThisRead instanceof JsObject ? $superThisRead : $superBase,
                     );
                 }
-                return $superBase->getWithValueReceiver(TypeConversion::toString($rawKey), $superThisRead);
+                $keyStr = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
+                return $superBase->getWithValueReceiver($keyStr, $superThisRead);
             }
             $key = $node->property instanceof Identifier
                 ? $node->property->name
@@ -5439,18 +5445,22 @@ class Interpreter
                 continue;
             }
 
-            // Evaluate computed key; may be a Symbol.
+            // Evaluate computed key; may be a Symbol. Per spec
+            // EvaluatePropertyKey, computed property name expressions go
+            // through ToPropertyKey, which preserves Symbols (including
+            // Symbols obtained from a custom toString/valueOf via
+            // ToPrimitive(value, "string")).
             $rawKey = null;
             $isSymbolKey = false;
             if ($prop->computed) {
-                $rawKey = $this->evaluate($prop->key, $env);
+                $rawKey = TypeConversion::toPropertyKey($this->evaluate($prop->key, $env));
                 $isSymbolKey = $rawKey instanceof JsSymbol;
             }
 
             $key = '';
             if (!$isSymbolKey) {
                 $key = $prop->computed
-                    ? TypeConversion::toString($rawKey)
+                    ? ($rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey))
                     : ($prop->key instanceof Identifier
                         ? $prop->key->name
                         : ($prop->key instanceof Literal
