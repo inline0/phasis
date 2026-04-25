@@ -3176,11 +3176,31 @@ class IntlObject
             if ($result['language'] === '' && preg_match('/^([a-zA-Z]{2,8})/', $tag, $m)) {
                 $result['language'] = strtolower($m[1]);
             }
+            // Apply CLDR language alias replacement so deprecated
+            // subtags (cmn, ji, in, ...) collapse to their preferred
+            // form. Limited to the languageAlias entries with a
+            // single-tag replacement.
+            static $languageAliasCanonical = [
+                'cmn' => 'zh', 'in' => 'id', 'iw' => 'he', 'ji' => 'yi',
+                'jw' => 'jv', 'mo' => 'ro', 'sh' => 'sr', 'tl' => 'fil',
+                'no-bok' => 'nb', 'no-nyn' => 'nn',
+            ];
+            if (isset($languageAliasCanonical[$result['language']])) {
+                $result['language'] = $languageAliasCanonical[$result['language']];
+            }
             if (isset($parsed['script']) && $parsed['script'] !== '') {
                 $result['script'] = ucfirst(strtolower($parsed['script']));
             }
             if (isset($parsed['region']) && $parsed['region'] !== '') {
                 $result['region'] = strtoupper($parsed['region']);
+                static $regionAliasCanonical = [
+                    'BU' => 'MM', 'DD' => 'DE', 'FX' => 'FR', 'TP' => 'TL',
+                    'YD' => 'YE', 'ZR' => 'CD', 'CT' => 'KI', 'NH' => 'VU',
+                    'RH' => 'ZW', 'VD' => 'VN', 'AN' => 'CW',
+                ];
+                if (isset($regionAliasCanonical[$result['region']])) {
+                    $result['region'] = $regionAliasCanonical[$result['region']];
+                }
             }
             // Extract variants (alphanum{5,8} or digit alphanum{3}) from the
             // original tag. ICU's parseLocale exposes them via numbered
@@ -3327,6 +3347,106 @@ class IntlObject
                     'ethiopic-amete-alem' => 'ethioaa',
                     'gregorian' => 'gregory',
                 ];
+                // CLDR languageAlias entries: replace deprecated language
+                // subtag with its preferred form before reconstructing.
+                static $languageAliases = [
+                    'cmn' => 'zh',
+                    'in' => 'id',
+                    'iw' => 'he',
+                    'ji' => 'yi',
+                    'jw' => 'jv',
+                    'mo' => 'ro',
+                    'tl' => 'fil',
+                    'sh' => 'sr',
+                    'aam' => 'aas',
+                    'aar' => 'aa',
+                    'aue' => 'ktz',
+                    'arb' => 'ar',
+                    'ayr' => 'ay',
+                    'ayx' => 'nun',
+                    'bhk' => 'fbl',
+                    'bjd' => 'drl',
+                    'ccq' => 'rki',
+                    'cjr' => 'mom',
+                    'cka' => 'cmr',
+                    'cmk' => 'xch',
+                    'cmn' => 'zh',
+                    'drh' => 'khk',
+                    'drw' => 'prs',
+                    'gav' => 'dev',
+                    'gfx' => 'vaj',
+                    'ggn' => 'gvr',
+                    'gti' => 'nyc',
+                    'guv' => 'duz',
+                    'hrr' => 'jal',
+                    'ibi' => 'opa',
+                    'ilw' => 'gal',
+                    'jeg' => 'oyb',
+                    'kgc' => 'tdf',
+                    'kgh' => 'kml',
+                    'koj' => 'kwv',
+                    'krm' => 'bmf',
+                    'ktr' => 'dtp',
+                    'kvs' => 'gdj',
+                    'kwq' => 'yam',
+                    'kxe' => 'tvd',
+                    'kzj' => 'dtp',
+                    'kzt' => 'dtp',
+                    'lii' => 'raq',
+                    'lmm' => 'rmx',
+                    'meg' => 'cir',
+                    'mst' => 'mry',
+                    'mwj' => 'vaj',
+                    'myt' => 'mry',
+                    'nad' => 'xny',
+                    'ncp' => 'kdz',
+                    'nnx' => 'ngv',
+                    'nts' => 'pij',
+                    'oun' => 'vaj',
+                    'pcr' => 'adx',
+                    'pmc' => 'huw',
+                    'pmu' => 'phr',
+                    'ppa' => 'bfy',
+                    'ppr' => 'lcq',
+                    'pry' => 'prt',
+                    'puz' => 'pub',
+                    'sca' => 'hle',
+                    'skk' => 'oyb',
+                    'tdu' => 'dtp',
+                    'thc' => 'tpo',
+                    'thx' => 'oyb',
+                    'tie' => 'ras',
+                    'tkk' => 'twm',
+                    'tlw' => 'weo',
+                    'tmp' => 'tyj',
+                    'tne' => 'kak',
+                    'tnf' => 'prs',
+                    'tsf' => 'taj',
+                    'uok' => 'ema',
+                    'xba' => 'cax',
+                    'xia' => 'acn',
+                    'xkh' => 'waw',
+                    'xpe' => 'kpe',
+                    'xsj' => 'suj',
+                    'ybd' => 'rki',
+                    'yma' => 'lrr',
+                    'ymt' => 'mtm',
+                    'yos' => 'zom',
+                    'yuu' => 'yug',
+                ];
+                if (isset($languageAliases[$result['language']])) {
+                    $result['language'] = $languageAliases[$result['language']];
+                }
+                // CLDR regionAlias / territoryAlias replacements that
+                // collapse to a single preferred region.
+                static $regionAliases = [
+                    'BU' => 'MM', 'DD' => 'DE', 'FX' => 'FR', 'TP' => 'TL',
+                    'YD' => 'YE', 'ZR' => 'CD', 'CT' => 'KI', 'NH' => 'VU',
+                    'RH' => 'ZW', 'VD' => 'VN', 'AN' => 'CW',
+                ];
+                if (isset($result['region']) && isset($regionAliases[$result['region']])) {
+                    $result['region'] = $regionAliases[$result['region']];
+                }
                 // UTS35 BCP47 type alias "yes" -> "true" for keyword
                 // keys that explicitly list "yes" as an alias of "true".
                 // Ordering must be preserved.
