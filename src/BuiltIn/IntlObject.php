@@ -3537,14 +3537,15 @@ class IntlObject
                 throw new TypeError('Intl.DisplayNames.prototype.resolvedOptions called on non-DisplayNames');
             }
             $result = new JsObject();
+            // Spec table 6 ordering: locale, style, type, fallback, languageDisplay.
             self::defineDataProp($result, 'locale', new JsString(
                 self::extractInternalString($this_, '[[Locale]]', 'en'),
             ));
-            self::defineDataProp($result, 'type', new JsString(
-                self::extractInternalString($this_, '[[Type]]', 'language'),
-            ));
             self::defineDataProp($result, 'style', new JsString(
                 self::extractInternalString($this_, '[[Style]]', 'long'),
+            ));
+            self::defineDataProp($result, 'type', new JsString(
+                self::extractInternalString($this_, '[[Type]]', 'language'),
             ));
             self::defineDataProp($result, 'fallback', new JsString(
                 self::extractInternalString($this_, '[[Fallback]]', 'code'),
