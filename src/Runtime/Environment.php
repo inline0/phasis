@@ -583,6 +583,18 @@ class Environment
                 }
                 return true;
             }
+            // For global bindings backed by a configurable own property on
+            // the linked global object (the standard built-ins like Math,
+            // Function, etc.), [[Delete]] on the Global Object Record
+            // succeeds and removes the property from both stores.
+            if ($this->linkedObject !== null) {
+                $desc = $this->linkedObject->getOwnPropertyDescriptor($name);
+                if ($desc !== null && $desc->configurable) {
+                    unset($this->bindings[$name]);
+                    $this->linkedObject->delete($name);
+                    return true;
+                }
+            }
             // Declared bindings are not deletable.
             return false;
         }
