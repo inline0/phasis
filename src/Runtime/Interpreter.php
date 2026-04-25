@@ -13267,6 +13267,13 @@ class Interpreter
             if ($binaryPcre === '!Assigned') {
                 return ($negated ? '\\p' : '\\P') . '{Cn}';
             }
+            if ($binaryPcre === '!StringProperty') {
+                // We don't have data for v-flag string-binary properties.
+                // Substitute a never-matching codepoint (U+FFFE
+                // noncharacter) so the regex compiles and the property
+                // contributes nothing to the match set.
+                return $negated ? '[^\\x{FFFE}]' : '\\x{FFFE}';
+            }
             return $prefix . '{' . $binaryPcre . '}';
         }
 
@@ -13343,9 +13350,10 @@ class Interpreter
     private static function mapBinaryProperty(string $name): ?string
     {
         if (self::isVStringBinaryProperty($name)) {
-            // Use a PCRE pattern that never matches a single code point,
-            // so at runtime the regex compiles but produces no matches.
-            return '!Assigned';
+            // We don't have native data for v-flag string-binary
+            // properties. Substitute a never-matching tag so the regex
+            // compiles cleanly without polluting the match set.
+            return '!StringProperty';
         }
         static $supported = [
             'ASCII' => 'ASCII', 'ASCII_Hex_Digit' => 'ASCII_Hex_Digit',
