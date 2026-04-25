@@ -7866,33 +7866,25 @@ class Interpreter
 
         if (!$this->strictMode) {
             $name = $node->id->name;
-            // Per B.3.3.1 step 3: instantiate the function in the current
-            // lexical environment and propagate to the variable environment.
-            $fobj = new JsFunction(
-                $name,
-                $node->params,
-                $node->body,
-                $env,
-                isGenerator: $node->generator,
-                isAsync: $node->async,
-                strict: false,
-            );
-            if ($node->sourceText !== null) {
-                $fobj->setSourceText($node->sourceText);
-            }
-            $this->installFunctionPrototype($fobj, $node->generator, $node->async);
-            // Propagate to the variable environment (enclosing function/global
-            // scope) where the var binding was hoisted. Only propagate if this
-            // FunctionDeclaration AST node was identified as eligible during the
-            // hoisting phase. Per B.3.3.1, only function declarations identified
-            // in step 1 get the modified evaluation that propagates to fenv.
+            // Per B.3.3.1 step 3: propagate the existing block-scoped function
+            // to the variable environment. The JsFunction was already created
+            // during hoistDeclarations and lives in $env (the current
+            // lexical/block scope); reuse that exact object so the block's
+            // x and the function-scope x are identity-equal per spec.
             if (isset($this->annexBEligible[spl_object_id($node)])) {
-                $varScope = $env;
-                while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
-                    $varScope = $varScope->getParent();
+                try {
+                    $blockFn = $env->get($name);
+                } catch (\Throwable) {
+                    $blockFn = null;
                 }
-                if ($varScope !== null) {
-                    $varScope->set($name, $fobj, false);
+                if ($blockFn instanceof JsFunction) {
+                    $varScope = $env;
+                    while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
+                        $varScope = $varScope->getParent();
+                    }
+                    if ($varScope !== null) {
+                        $varScope->set($name, $blockFn, false);
+                    }
                 }
             }
         }
