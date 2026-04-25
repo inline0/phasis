@@ -7087,6 +7087,17 @@ class Interpreter
                         return $superClass->construct($args, $superClass);
                     },
                 )->setConstructable();
+            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsNull) {
+                // class C extends null { }: default constructor is
+                // `constructor(...args) { super(...args); }` per spec, which
+                // throws because GetSuperConstructor returns %FunctionPrototype%
+                // (not a constructor).
+                $constructor = JsFunction::fromCallable(
+                    $name ?? '(anonymous)',
+                    function (): JsValue {
+                        throw new TypeError('Super constructor must be a constructor');
+                    },
+                )->setConstructable();
             } else {
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
