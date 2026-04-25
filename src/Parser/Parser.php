@@ -4573,13 +4573,17 @@ class Parser
         // and `await` is a valid bare identifier-statement).
         if ($token->type === TokenType::Await) {
             $next = $this->peek();
+            // Only fire when the following token unambiguously starts an
+            // operand for the await operator. `await(...)` and `await[...]`
+            // are valid CallExpression / MemberExpression continuations on
+            // the `await` identifier, so they are not errors here.
             $nextStartsExpr = match ($next->type) {
                 TokenType::Number, TokenType::String,
                 TokenType::NoSubstitutionTemplate, TokenType::TemplateHead,
                 TokenType::Identifier, TokenType::PrivateIdentifier,
                 TokenType::True, TokenType::False, TokenType::Null,
                 TokenType::This, TokenType::Function_, TokenType::New,
-                TokenType::LeftBrace, TokenType::LeftBracket, TokenType::LeftParen,
+                TokenType::LeftBrace,
                 TokenType::RegExp, TokenType::Class, TokenType::Async => true,
                 default => false,
             };
