@@ -2751,8 +2751,23 @@ class IntlObject
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.getWeekInfo called on non-Locale');
             }
+            // The `fw` extension overrides the locale-derived first day.
+            // Map the canonical short weekday name to its ISO 8601 index
+            // (mon=1 .. sun=7).
+            $firstDay = 1;
+            $fwSlot = $this_->get('[[firstDayOfWeek]]');
+            if ($fwSlot instanceof JsString) {
+                static $weekdayIndex = [
+                    'mon' => 1, 'tue' => 2, 'wed' => 3, 'thu' => 4,
+                    'fri' => 5, 'sat' => 6, 'sun' => 7,
+                ];
+                $name = strtolower($fwSlot->value);
+                if (isset($weekdayIndex[$name])) {
+                    $firstDay = $weekdayIndex[$name];
+                }
+            }
             $result = new JsObject();
-            $result->set('firstDay', new JsNumber(1.0));
+            $result->set('firstDay', new JsNumber((float) $firstDay));
             $weekend = new JsArray();
             $weekend->set('0', new JsNumber(6.0));
             $weekend->set('1', new JsNumber(7.0));
