@@ -333,6 +333,20 @@ class IntlObject
     }
 
     /**
+     * `CreateDataPropertyOrThrow` semantics for resolvedOptions: writes a
+     * key as an own data property using defineOwnProperty so that any
+     * inherited get-only accessor on Object.prototype cannot block the
+     * data property from being created.
+     */
+    private static function defineDataProp(JsObject $obj, string $name, JsValue $value): void
+    {
+        $obj->defineOwnProperty(
+            $name,
+            PropertyDescriptor::data($value, true, true, true),
+        );
+    }
+
+    /**
      * UTS35 type production: alphanum{3,8}(-alphanum{3,8})*. Used by
      * `numberingSystem`, `calendar`, `collation`, `firstDayOfWeek`, etc.
      */
@@ -821,25 +835,25 @@ class IntlObject
             }
             $result = new JsObject();
             $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
-            $result->set('locale', new JsString($locale));
-            $result->set('usage', new JsString(
+            self::defineDataProp($result, 'locale', new JsString($locale));
+            self::defineDataProp($result, 'usage', new JsString(
                 self::extractInternalString($this_, '[[Usage]]', 'sort'),
             ));
-            $result->set('sensitivity', new JsString(
+            self::defineDataProp($result, 'sensitivity', new JsString(
                 self::extractInternalString($this_, '[[Sensitivity]]', 'variant'),
             ));
             $ipVal = $this_->get('[[IgnorePunctuation]]');
-            $result->set('ignorePunctuation', new JsBoolean(
+            self::defineDataProp($result, 'ignorePunctuation', new JsBoolean(
                 $ipVal instanceof JsBoolean ? $ipVal->toBoolean() : false,
             ));
-            $result->set('collation', new JsString(
+            self::defineDataProp($result, 'collation', new JsString(
                 self::extractInternalString($this_, '[[Collation]]', 'default'),
             ));
             $numVal = $this_->get('[[Numeric]]');
-            $result->set('numeric', new JsBoolean(
+            self::defineDataProp($result, 'numeric', new JsBoolean(
                 $numVal instanceof JsBoolean ? $numVal->toBoolean() : false,
             ));
-            $result->set('caseFirst', new JsString(
+            self::defineDataProp($result, 'caseFirst', new JsString(
                 self::extractInternalString($this_, '[[CaseFirst]]', 'false'),
             ));
             return $result;
@@ -1385,85 +1399,83 @@ class IntlObject
                 throw new TypeError('Intl.NumberFormat.prototype.resolvedOptions called on non-NumberFormat');
             }
             $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'numberingSystem', new JsString(
+                self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
+            ));
+            $style = self::extractInternalString($this_, '[[Style]]', 'decimal');
+            self::defineDataProp($result, 'style', new JsString($style));
+            if ($style === 'currency') {
+                self::defineDataProp($result, 'currency', new JsString(
+                    self::extractInternalString($this_, '[[Currency]]', 'USD'),
                 ));
-                $result->set('numberingSystem', new JsString(
-                    self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
+                self::defineDataProp($result, 'currencyDisplay', new JsString(
+                    self::extractInternalString($this_, '[[CurrencyDisplay]]', 'symbol'),
                 ));
-                $style = self::extractInternalString($this_, '[[Style]]', 'decimal');
-                $result->set('style', new JsString($style));
-                if ($style === 'currency') {
-                    $result->set('currency', new JsString(
-                        self::extractInternalString($this_, '[[Currency]]', 'USD'),
-                    ));
-                    $result->set('currencyDisplay', new JsString(
-                        self::extractInternalString($this_, '[[CurrencyDisplay]]', 'symbol'),
-                    ));
-                    $result->set('currencySign', new JsString(
-                        self::extractInternalString($this_, '[[CurrencySign]]', 'standard'),
-                    ));
-                }
-                if ($style === 'unit') {
-                    $result->set('unit', new JsString(
-                        self::extractInternalString($this_, '[[Unit]]', ''),
-                    ));
-                    $result->set('unitDisplay', new JsString(
-                        self::extractInternalString($this_, '[[UnitDisplay]]', 'short'),
-                    ));
-                }
-                $result->set('minimumIntegerDigits', new JsNumber(
-                    self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
-                ));
-                $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
-                if ($rt === 'significantDigits') {
-                    $result->set('minimumSignificantDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
-                    ));
-                    $result->set('maximumSignificantDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
-                    ));
-                } else {
-                    $result->set('minimumFractionDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
-                    ));
-                    $result->set('maximumFractionDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
-                    ));
-                }
-                $ug = self::extractInternalString($this_, '[[UseGrouping]]', 'auto');
-                // Per spec, useGrouping can be a boolean or string.
-                if ($ug === 'false') {
-                    $result->set('useGrouping', new JsBoolean(false));
-                } else {
-                    $result->set('useGrouping', new JsString($ug));
-                }
-                $result->set('notation', new JsString(
-                    self::extractInternalString($this_, '[[Notation]]', 'standard'),
-                ));
-                $notation = self::extractInternalString($this_, '[[Notation]]', 'standard');
-                if ($notation === 'compact') {
-                    $result->set('compactDisplay', new JsString(
-                        self::extractInternalString($this_, '[[CompactDisplay]]', 'short'),
-                    ));
-                }
-                $result->set('signDisplay', new JsString(
-                    self::extractInternalString($this_, '[[SignDisplay]]', 'auto'),
-                ));
-                $result->set('roundingMode', new JsString(
-                    self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
-                ));
-                $result->set('roundingIncrement', new JsNumber(
-                    self::extractInternalNumber($this_, '[[RoundingIncrement]]', 1),
-                ));
-                $result->set('trailingZeroDisplay', new JsString(
-                    self::extractInternalString($this_, '[[TrailingZeroDisplay]]', 'auto'),
-                ));
-                $result->set('roundingPriority', new JsString(
-                    self::extractInternalString($this_, '[[RoundingPriority]]', 'auto'),
+                self::defineDataProp($result, 'currencySign', new JsString(
+                    self::extractInternalString($this_, '[[CurrencySign]]', 'standard'),
                 ));
             }
+            if ($style === 'unit') {
+                self::defineDataProp($result, 'unit', new JsString(
+                    self::extractInternalString($this_, '[[Unit]]', ''),
+                ));
+                self::defineDataProp($result, 'unitDisplay', new JsString(
+                    self::extractInternalString($this_, '[[UnitDisplay]]', 'short'),
+                ));
+            }
+            self::defineDataProp($result, 'minimumIntegerDigits', new JsNumber(
+                self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
+            ));
+            $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
+            if ($rt === 'significantDigits') {
+                self::defineDataProp($result, 'minimumSignificantDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
+                ));
+                self::defineDataProp($result, 'maximumSignificantDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
+                ));
+            } else {
+                self::defineDataProp($result, 'minimumFractionDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
+                ));
+                self::defineDataProp($result, 'maximumFractionDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
+                ));
+            }
+            $ug = self::extractInternalString($this_, '[[UseGrouping]]', 'auto');
+            // Per spec, useGrouping can be a boolean or string.
+            if ($ug === 'false') {
+                self::defineDataProp($result, 'useGrouping', new JsBoolean(false));
+            } else {
+                self::defineDataProp($result, 'useGrouping', new JsString($ug));
+            }
+            self::defineDataProp($result, 'notation', new JsString(
+                self::extractInternalString($this_, '[[Notation]]', 'standard'),
+            ));
+            $notation = self::extractInternalString($this_, '[[Notation]]', 'standard');
+            if ($notation === 'compact') {
+                self::defineDataProp($result, 'compactDisplay', new JsString(
+                    self::extractInternalString($this_, '[[CompactDisplay]]', 'short'),
+                ));
+            }
+            self::defineDataProp($result, 'signDisplay', new JsString(
+                self::extractInternalString($this_, '[[SignDisplay]]', 'auto'),
+            ));
+            self::defineDataProp($result, 'roundingMode', new JsString(
+                self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
+            ));
+            self::defineDataProp($result, 'roundingIncrement', new JsNumber(
+                self::extractInternalNumber($this_, '[[RoundingIncrement]]', 1),
+            ));
+            self::defineDataProp($result, 'trailingZeroDisplay', new JsString(
+                self::extractInternalString($this_, '[[TrailingZeroDisplay]]', 'auto'),
+            ));
+            self::defineDataProp($result, 'roundingPriority', new JsString(
+                self::extractInternalString($this_, '[[RoundingPriority]]', 'auto'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
@@ -1850,43 +1862,41 @@ class IntlObject
                 throw new TypeError('Intl.DateTimeFormat.prototype.resolvedOptions called on non-DateTimeFormat');
             }
             $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
-                ));
-                $result->set('calendar', new JsString(
-                    self::extractInternalString($this_, '[[Calendar]]', 'gregory'),
-                ));
-                $result->set('numberingSystem', new JsString(
-                    self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
-                ));
-                $result->set('timeZone', new JsString(
-                    self::extractInternalString($this_, '[[TimeZone]]', 'UTC'),
-                ));
-                $hcVal = $this_->get('[[HourCycle]]');
-                if (!$hcVal instanceof JsUndefined) {
-                    $result->set('hourCycle', new JsString(TypeConversion::toString($hcVal)));
-                }
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'calendar', new JsString(
+                self::extractInternalString($this_, '[[Calendar]]', 'gregory'),
+            ));
+            self::defineDataProp($result, 'numberingSystem', new JsString(
+                self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
+            ));
+            self::defineDataProp($result, 'timeZone', new JsString(
+                self::extractInternalString($this_, '[[TimeZone]]', 'UTC'),
+            ));
+            $hcVal = $this_->get('[[HourCycle]]');
+            if (!$hcVal instanceof JsUndefined) {
+                self::defineDataProp($result, 'hourCycle', new JsString(TypeConversion::toString($hcVal)));
+            }
 
-                // Component options.
-                foreach (
-                    ['weekday', 'era', 'year', 'month', 'day', 'dayPeriod',
-                    'hour', 'minute', 'second', 'fractionalSecondDigits', 'timeZoneName'] as $comp
-                ) {
-                    $val = $this_->get("[[{$comp}]]");
-                    if (!$val instanceof JsUndefined) {
-                        $result->set($comp, new JsString(TypeConversion::toString($val)));
-                    }
+            // Component options.
+            foreach (
+                ['weekday', 'era', 'year', 'month', 'day', 'dayPeriod',
+                'hour', 'minute', 'second', 'fractionalSecondDigits', 'timeZoneName'] as $comp
+            ) {
+                $val = $this_->get("[[{$comp}]]");
+                if (!$val instanceof JsUndefined) {
+                    self::defineDataProp($result, $comp, new JsString(TypeConversion::toString($val)));
                 }
+            }
 
-                $dsVal = $this_->get('[[DateStyle]]');
-                if (!$dsVal instanceof JsUndefined) {
-                    $result->set('dateStyle', new JsString(TypeConversion::toString($dsVal)));
-                }
-                $tsVal = $this_->get('[[TimeStyle]]');
-                if (!$tsVal instanceof JsUndefined) {
-                    $result->set('timeStyle', new JsString(TypeConversion::toString($tsVal)));
-                }
+            $dsVal = $this_->get('[[DateStyle]]');
+            if (!$dsVal instanceof JsUndefined) {
+                self::defineDataProp($result, 'dateStyle', new JsString(TypeConversion::toString($dsVal)));
+            }
+            $tsVal = $this_->get('[[TimeStyle]]');
+            if (!$tsVal instanceof JsUndefined) {
+                self::defineDataProp($result, 'timeStyle', new JsString(TypeConversion::toString($tsVal)));
             }
             return $result;
         }, 0);
@@ -2175,28 +2185,28 @@ class IntlObject
                 throw new TypeError('Intl.PluralRules.prototype.resolvedOptions called on non-PluralRules');
             }
             $result = new JsObject();
-            $result->set('locale', new JsString(
+            self::defineDataProp($result, 'locale', new JsString(
                 self::extractInternalString($this_, '[[Locale]]', 'en'),
             ));
-            $result->set('type', new JsString(
+            self::defineDataProp($result, 'type', new JsString(
                 self::extractInternalString($this_, '[[Type]]', 'cardinal'),
             ));
-            $result->set('minimumIntegerDigits', new JsNumber(
+            self::defineDataProp($result, 'minimumIntegerDigits', new JsNumber(
                 self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
             ));
             $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
             if ($rt === 'significantDigits') {
-                $result->set('minimumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumSignificantDigits', new JsNumber(
                     self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
                 ));
-                $result->set('maximumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumSignificantDigits', new JsNumber(
                     self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
                 ));
             } else {
-                $result->set('minimumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumFractionDigits', new JsNumber(
                     self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
                 ));
-                $result->set('maximumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumFractionDigits', new JsNumber(
                     self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
                 ));
             }
@@ -2207,8 +2217,8 @@ class IntlObject
                 $categories->set((string) $i, new JsString($cat));
             }
             $categories->set('length', new JsNumber((float) count($cats)));
-            $result->set('pluralCategories', $categories);
-            $result->set('roundingMode', new JsString(
+            self::defineDataProp($result, 'pluralCategories', $categories);
+            self::defineDataProp($result, 'roundingMode', new JsString(
                 self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
             ));
             return $result;
