@@ -3645,16 +3645,19 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
-                $resolvedLocale = self::resolveLocale($locales);
-                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
-                    new JsString($resolvedLocale),
-                    false,
-                    false,
-                    false,
-                ));
+                // Spec orders option reads: localeMatcher (already done in
+                // validateLocaleMatcher above) -> numberingSystem -> style
+                // -> numeric. Throwing getters in test262 verify this exact
+                // sequence.
+                $numberingSystem = 'latn';
+                $nsVal = $options->get('numberingSystem');
+                if (!$nsVal instanceof JsUndefined) {
+                    $ns = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($ns)) {
+                        throw new RangeError("Invalid numberingSystem: {$ns}");
+                    }
+                }
 
-                // style: "long" (default), "short", "narrow".
                 $style = 'long';
                 $styleVal = $options->get('style');
                 if (!$styleVal instanceof JsUndefined) {
@@ -3664,14 +3667,7 @@ class IntlObject
                     }
                     $style = $s;
                 }
-                $obj->defineOwnProperty('[[Style]]', PropertyDescriptor::data(
-                    new JsString($style),
-                    false,
-                    false,
-                    false,
-                ));
 
-                // numeric: "always" (default), "auto".
                 $numeric = 'always';
                 $numVal = $options->get('numeric');
                 if (!$numVal instanceof JsUndefined) {
@@ -3681,26 +3677,27 @@ class IntlObject
                     }
                     $numeric = $n;
                 }
+
+                $obj = self::instanceFromConstructor($this_, $proto);
+                $resolvedLocale = self::resolveLocale($locales);
+                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
+                    new JsString($resolvedLocale),
+                    false,
+                    false,
+                    false,
+                ));
+                $obj->defineOwnProperty('[[Style]]', PropertyDescriptor::data(
+                    new JsString($style),
+                    false,
+                    false,
+                    false,
+                ));
                 $obj->defineOwnProperty('[[Numeric]]', PropertyDescriptor::data(
                     new JsString($numeric),
                     false,
                     false,
                     false,
                 ));
-
-                // numberingSystem: validate the option syntactically, then
-                // resolve to a numbering system the host actually supports.
-                // PHP intl currently only ships latn data, so unrecognised
-                // valid values fall back to "latn" per the spec's resolve
-                // step.
-                $numberingSystem = 'latn';
-                $nsVal = $options->get('numberingSystem');
-                if (!$nsVal instanceof JsUndefined) {
-                    $ns = TypeConversion::toString($nsVal);
-                    if (!self::isValidUnicodeTypeValue($ns)) {
-                        throw new RangeError("Invalid numberingSystem: {$ns}");
-                    }
-                }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
                     false,
