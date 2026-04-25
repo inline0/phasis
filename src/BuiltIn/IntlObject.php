@@ -293,6 +293,24 @@ class IntlObject
      * Convert a JS options argument to a JsObject (coerce undefined/null to empty object).
      * Per spec: CoerceOptionsToObject.
      */
+    /**
+     * OrdinaryCreateFromConstructor for Intl built-ins. When the
+     * constructor is invoked via `super(...)` from a subclass, the
+     * runtime allocates an instance with the subclass's prototype and
+     * passes it as `this`; we should populate that object in place
+     * rather than creating a fresh JsObject with the built-in prototype.
+     */
+    private static function instanceFromConstructor(JsValue $this_, JsObject $proto): JsObject
+    {
+        if (
+            $this_ instanceof JsObject
+            && !$this_->get('[[NewTarget]]') instanceof JsUndefined
+        ) {
+            return $this_;
+        }
+        return new JsObject($proto);
+    }
+
     private static function coerceOptions(JsValue $arg): JsObject
     {
         if ($arg instanceof JsUndefined) {
@@ -581,7 +599,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $obj->defineOwnProperty('[[InitializedCollator]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -843,7 +861,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $obj->defineOwnProperty('[[InitializedNumberFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -1508,7 +1526,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $obj->defineOwnProperty('[[InitializedDateTimeFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -1930,7 +1948,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $obj->defineOwnProperty('[[InitializedPluralRules]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -2468,18 +2486,7 @@ class IntlObject
                     $parsed['numberingSystem'] = $numberingSystem;
                 }
 
-                // OrdinaryCreateFromConstructor: when called via `super()`
-                // from a subclass, $this_ is already an instance of that
-                // subclass with the right prototype. Populate it in place
-                // rather than discarding it.
-                if (
-                    $this_ instanceof JsObject
-                    && !$this_->get('[[NewTarget]]') instanceof JsUndefined
-                ) {
-                    $obj = $this_;
-                } else {
-                    $obj = new JsObject($proto);
-                }
+                $obj = self::instanceFromConstructor($this_, $proto);
 
                 // Store parsed components as internal slots.
                 foreach ($parsed as $key => $val) {
@@ -3115,7 +3122,7 @@ class IntlObject
                     throw new RangeError("Invalid type: {$type}");
                 }
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3285,7 +3292,7 @@ class IntlObject
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3434,7 +3441,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3605,7 +3612,7 @@ class IntlObject
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
 
-                $obj = new JsObject($proto);
+                $obj = self::instanceFromConstructor($this_, $proto);
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
