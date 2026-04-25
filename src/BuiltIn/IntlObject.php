@@ -3311,6 +3311,20 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
+                // Spec orders option reads: localeMatcher -> style -> type
+                // -> fallback -> languageDisplay. RangeError for an invalid
+                // style must therefore propagate before we report the
+                // missing required `type` argument.
+                $style = 'long';
+                $styleVal = $options->get('style');
+                if (!$styleVal instanceof JsUndefined) {
+                    $s = TypeConversion::toString($styleVal);
+                    if (!in_array($s, ['narrow', 'short', 'long'], true)) {
+                        throw new RangeError("Invalid style: {$s}");
+                    }
+                    $style = $s;
+                }
+
                 // type is required.
                 $typeVal = $options->get('type');
                 if ($typeVal instanceof JsUndefined) {
@@ -3320,6 +3334,28 @@ class IntlObject
                 $validTypes = ['language', 'region', 'script', 'currency', 'calendar', 'dateTimeField'];
                 if (!in_array($type, $validTypes, true)) {
                     throw new RangeError("Invalid type: {$type}");
+                }
+
+                // fallback
+                $fallback = 'code';
+                $fbVal = $options->get('fallback');
+                if (!$fbVal instanceof JsUndefined) {
+                    $fb = TypeConversion::toString($fbVal);
+                    if (!in_array($fb, ['code', 'none'], true)) {
+                        throw new RangeError("Invalid fallback: {$fb}");
+                    }
+                    $fallback = $fb;
+                }
+
+                // languageDisplay
+                $languageDisplay = 'dialect';
+                $ldVal = $options->get('languageDisplay');
+                if (!$ldVal instanceof JsUndefined) {
+                    $ld = TypeConversion::toString($ldVal);
+                    if (!in_array($ld, ['dialect', 'standard'], true)) {
+                        throw new RangeError("Invalid languageDisplay: {$ld}");
+                    }
+                    $languageDisplay = $ld;
                 }
 
                 $obj = self::instanceFromConstructor($this_, $proto);
@@ -3336,51 +3372,18 @@ class IntlObject
                     false,
                     false,
                 ));
-
-                // style
-                $style = 'long';
-                $styleVal = $options->get('style');
-                if (!$styleVal instanceof JsUndefined) {
-                    $s = TypeConversion::toString($styleVal);
-                    if (!in_array($s, ['narrow', 'short', 'long'], true)) {
-                        throw new RangeError("Invalid style: {$s}");
-                    }
-                    $style = $s;
-                }
                 $obj->defineOwnProperty('[[Style]]', PropertyDescriptor::data(
                     new JsString($style),
                     false,
                     false,
                     false,
                 ));
-
-                // fallback
-                $fallback = 'code';
-                $fbVal = $options->get('fallback');
-                if (!$fbVal instanceof JsUndefined) {
-                    $fb = TypeConversion::toString($fbVal);
-                    if (!in_array($fb, ['code', 'none'], true)) {
-                        throw new RangeError("Invalid fallback: {$fb}");
-                    }
-                    $fallback = $fb;
-                }
                 $obj->defineOwnProperty('[[Fallback]]', PropertyDescriptor::data(
                     new JsString($fallback),
                     false,
                     false,
                     false,
                 ));
-
-                // languageDisplay
-                $languageDisplay = 'dialect';
-                $ldVal = $options->get('languageDisplay');
-                if (!$ldVal instanceof JsUndefined) {
-                    $ld = TypeConversion::toString($ldVal);
-                    if (!in_array($ld, ['dialect', 'standard'], true)) {
-                        throw new RangeError("Invalid languageDisplay: {$ld}");
-                    }
-                    $languageDisplay = $ld;
-                }
                 $obj->defineOwnProperty('[[LanguageDisplay]]', PropertyDescriptor::data(
                     new JsString($languageDisplay),
                     false,
