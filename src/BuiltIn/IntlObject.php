@@ -2618,7 +2618,10 @@ class IntlObject
             },
         ];
         foreach ($infoMethods as $name => $getter) {
-            $fn = JsFunction::fromCallable($name, function (JsValue $this_) use ($getter): JsValue {
+            $fn = JsFunction::fromCallable($name, function (JsValue $this_) use ($getter, $name): JsValue {
+                if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
+                    throw new TypeError("Intl.Locale.prototype.{$name} called on non-Locale");
+                }
                 $values = $getter();
                 $result = new JsArray();
                 foreach ($values as $i => $v) {
@@ -2632,6 +2635,9 @@ class IntlObject
 
         // getTextInfo()
         $getTextInfo = JsFunction::fromCallable('getTextInfo', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
+                throw new TypeError('Intl.Locale.prototype.getTextInfo called on non-Locale');
+            }
             $result = new JsObject();
             $result->set('direction', new JsString('ltr'));
             return $result;
@@ -2640,6 +2646,9 @@ class IntlObject
 
         // getWeekInfo()
         $getWeekInfo = JsFunction::fromCallable('getWeekInfo', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
+                throw new TypeError('Intl.Locale.prototype.getWeekInfo called on non-Locale');
+            }
             $result = new JsObject();
             $result->set('firstDay', new JsNumber(1.0));
             $weekend = new JsArray();
@@ -2654,6 +2663,9 @@ class IntlObject
 
         // getTimeZones()
         $getTimeZones = JsFunction::fromCallable('getTimeZones', function (JsValue $this_): JsValue {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
+                throw new TypeError('Intl.Locale.prototype.getTimeZones called on non-Locale');
+            }
             $result = new JsArray();
             $tzs = self::getSupportedTimeZones();
             $limited = array_slice($tzs, 0, 50);
