@@ -4687,12 +4687,10 @@ class Interpreter
                 enumerable: false,
                 configurable: false,
             ));
-            $argsObj->defineOwnProperty('caller', PropertyDescriptor::accessor(
-                get: $poisonPill,
-                set: $poisonPill,
-                enumerable: false,
-                configurable: false,
-            ));
+            // Per ES2017+, strict mode arguments objects do NOT expose a
+            // "caller" own property; only the poison-pilled "callee" remains.
+            // (The historical ES5 erratum that added a poison-pilled "caller"
+            // was reverted.)
         }
         // Link Symbol.iterator to Array.prototype[Symbol.iterator] if available.
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
