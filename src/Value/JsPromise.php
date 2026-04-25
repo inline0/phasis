@@ -144,13 +144,22 @@ class JsPromise extends JsObject
         // fires via the PromiseResolveThenableJob path (spec §27.2.1.3.2
         // steps 8–12 don't short-circuit for IsPromise — only the `then`
         // method's identity decides behavior).
+        //
+        // Also fall through when the value is a Promise SUBCLASS instance:
+        // PromiseResolveThenableJob calls value.then(...), which goes
+        // through species and creates a new subclass instance — observable
+        // via test262's subclass-resolve-count tests that assert the exact
+        // number of derived promises.
         if ($value instanceof self) {
             $thenLookup = $value->get('then');
             $thenUnchanged = self::$intrinsicThen !== null && $thenLookup === self::$intrinsicThen;
+            $isPlainPromise = self::$promisePrototype !== null
+                && $value->getPrototype() === self::$promisePrototype;
         } else {
             $thenUnchanged = false;
+            $isPlainPromise = false;
         }
-        if ($value instanceof self && $thenUnchanged) {
+        if ($value instanceof self && $thenUnchanged && $isPlainPromise) {
             if ($value->state === self::STATE_FULFILLED) {
                 $this->state = self::STATE_FULFILLED;
                 $this->value = $value->value;
