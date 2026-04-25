@@ -3441,24 +3441,28 @@ class IntlObject
 
         // DisplayNames.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
-            $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
-                ));
-                $result->set('type', new JsString(
-                    self::extractInternalString($this_, '[[Type]]', 'language'),
-                ));
-                $result->set('style', new JsString(
-                    self::extractInternalString($this_, '[[Style]]', 'long'),
-                ));
-                $result->set('fallback', new JsString(
-                    self::extractInternalString($this_, '[[Fallback]]', 'code'),
-                ));
-                $result->set('languageDisplay', new JsString(
-                    self::extractInternalString($this_, '[[LanguageDisplay]]', 'dialect'),
-                ));
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.DisplayNames.prototype.resolvedOptions called on non-DisplayNames');
             }
+            $result = new JsObject();
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'type', new JsString(
+                self::extractInternalString($this_, '[[Type]]', 'language'),
+            ));
+            self::defineDataProp($result, 'style', new JsString(
+                self::extractInternalString($this_, '[[Style]]', 'long'),
+            ));
+            self::defineDataProp($result, 'fallback', new JsString(
+                self::extractInternalString($this_, '[[Fallback]]', 'code'),
+            ));
+            self::defineDataProp($result, 'languageDisplay', new JsString(
+                self::extractInternalString($this_, '[[LanguageDisplay]]', 'dialect'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
@@ -3607,18 +3611,22 @@ class IntlObject
 
         // ListFormat.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
-            $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
-                ));
-                $result->set('type', new JsString(
-                    self::extractInternalString($this_, '[[Type]]', 'conjunction'),
-                ));
-                $result->set('style', new JsString(
-                    self::extractInternalString($this_, '[[Style]]', 'long'),
-                ));
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.ListFormat.prototype.resolvedOptions called on non-ListFormat');
             }
+            $result = new JsObject();
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'type', new JsString(
+                self::extractInternalString($this_, '[[Type]]', 'conjunction'),
+            ));
+            self::defineDataProp($result, 'style', new JsString(
+                self::extractInternalString($this_, '[[Style]]', 'long'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
@@ -4056,15 +4064,19 @@ class IntlObject
 
         // Segmenter.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
-            $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
-                ));
-                $result->set('granularity', new JsString(
-                    self::extractInternalString($this_, '[[Granularity]]', 'grapheme'),
-                ));
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Granularity]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.Segmenter.prototype.resolvedOptions called on non-Segmenter');
             }
+            $result = new JsObject();
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'granularity', new JsString(
+                self::extractInternalString($this_, '[[Granularity]]', 'grapheme'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
