@@ -3414,15 +3414,101 @@ class IntlObject
                 throw new TypeError('Intl.DisplayNames.prototype.of called on non-DisplayNames');
             }
             $code = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
-            if ($code === '') {
-                throw new RangeError('Invalid code for DisplayNames.of()');
-            }
-
-            $type = 'language';
-            $locale = 'en';
-            if ($this_ instanceof JsObject) {
-                $type = self::extractInternalString($this_, '[[Type]]', 'language');
-                $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $type = self::extractInternalString($this_, '[[Type]]', 'language');
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            // Per spec each `type` validates its `code` against a specific
+            // production and throws RangeError on any mismatch.
+            $validateCode = static function (string $type, string $code): bool {
+                if ($code === '') {
+                    return false;
+                }
+                if (preg_match('/[^A-Za-z0-9-]/', $code)) {
+                    return false;
+                }
+                if ($code[0] === '-' || $code[strlen($code) - 1] === '-' || str_contains($code, '--')) {
+                    return false;
+                }
+                $parts = explode('-', $code);
+                $first = $parts[0];
+                $firstLen = strlen($first);
+                switch ($type) {
+                    case 'language':
+                        // unicode_language_id: alpha{2,3}|alpha{5,8} optional
+                        // script (alpha{4}) optional region (alpha{2}|digit{3})
+                        // followed by zero or more variant subtags.
+                        if (
+                            !ctype_alpha($first)
+                            || !($firstLen === 2 || $firstLen === 3 || ($firstLen >= 5 && $firstLen <= 8))
+                        ) {
+                            return false;
+                        }
+                        $j = 1;
+                        $partCount = count($parts);
+                        if ($j < $partCount && strlen($parts[$j]) === 4 && ctype_alpha($parts[$j])) {
+                            $j++;
+                        }
+                        if ($j < $partCount) {
+                            $rp = $parts[$j];
+                            $rpLen = strlen($rp);
+                            if (
+                                ($rpLen === 2 && ctype_alpha($rp))
+                                || ($rpLen === 3 && ctype_digit($rp))
+                            ) {
+                                $j++;
+                            }
+                        }
+                        while ($j < $partCount) {
+                            $vp = $parts[$j];
+                            $vpLen = strlen($vp);
+                            $isLong = ($vpLen >= 5 && $vpLen <= 8 && ctype_alnum($vp));
+                            $isShortNum = ($vpLen === 4 && ctype_digit($vp[0]) && ctype_alnum($vp));
+                            if (!$isLong && !$isShortNum) {
+                                return false;
+                            }
+                            $j++;
+                        }
+                        return true;
+                    case 'region':
+                        // alpha{2} or digit{3} only.
+                        if (count($parts) !== 1) {
+                            return false;
+                        }
+                        return ($firstLen === 2 && ctype_alpha($first))
+                            || ($firstLen === 3 && ctype_digit($first));
+                    case 'script':
+                        if (count($parts) !== 1) {
+                            return false;
+                        }
+                        return $firstLen === 4 && ctype_alpha($first);
+                    case 'currency':
+                        if (count($parts) !== 1) {
+                            return false;
+                        }
+                        return $firstLen === 3 && ctype_alpha($first);
+                    case 'calendar':
+                        // calendar = alphanum{3,8}(-alphanum{3,8})*
+                        foreach ($parts as $p) {
+                            $pLen = strlen($p);
+                            if ($pLen < 3 || $pLen > 8 || !ctype_alnum($p)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    case 'dateTimeField':
+                        return in_array(
+                            $code,
+                            [
+                                'era', 'year', 'quarter', 'month', 'weekOfYear',
+                                'weekday', 'day', 'dayPeriod', 'hour', 'minute',
+                                'second', 'timeZoneName',
+                            ],
+                            true,
+                        );
+                }
+                return true;
+            };
+            if (!$validateCode($type, $code)) {
+                throw new RangeError("Invalid code for DisplayNames.of: {$code}");
             }
 
             if (extension_loaded('intl')) {
