@@ -3288,11 +3288,21 @@ class Parser
     {
         $location = $this->expect(TokenType::For)->location;
 
-        // for await (... of ...) -- only valid inside async functions/generators.
+        // for await (... of ...) -- only valid inside async functions/generators
+        // and at module top level. Per §14.7.5.1, using `for await` outside
+        // those contexts is a SyntaxError with a specific spec-mandated
+        // message format that test262 checks for.
         $isAwait = false;
         if ($this->check(TokenType::Await)) {
+            $awaitToken = $this->current();
             $isAwait = true;
             $this->advance();
+            if (!$this->inAsync && !($this->topLevel && $this->moduleMode)) {
+                throw new ParseError(
+                    "for await (... of ...) is only valid in async functions and async generators",
+                    $awaitToken,
+                );
+            }
         }
 
         $this->expect(TokenType::LeftParen);
