@@ -1171,16 +1171,29 @@ class RegExpPrototype
                 ? \PhpJs\Engine::getCurrentInterpreter()->getGlobalValue('RegExp')
                 : null;
             if ($regExpCtor instanceof \PhpJs\Value\JsFunction) {
-                // SpeciesConstructor: check rx.constructor[Symbol.species] or default to RegExp.
+                // SpeciesConstructor: per spec 7.3.20:
+                //   1. C = Get(O, "constructor"); 2. If C undefined, return default;
+                //   3. If Type(C) is not Object, throw TypeError;
+                //   4. S = Get(C, @@species); 5. If S null/undefined, return default;
+                //   6. If IsConstructor(S), return S; 7. Else throw TypeError.
                 $C = $regExpCtor;
                 $ctorVal = $this_->get('constructor');
-                if ($ctorVal instanceof JsObject) {
+                if (!($ctorVal instanceof JsUndefined)) {
+                    if (!$ctorVal instanceof JsObject) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            'Property `constructor` is not an object'
+                        );
+                    }
                     $speciesSymbol = SymbolConstructor::species();
                     $speciesVal = $ctorVal->getBySymbol($speciesSymbol);
-                    if ($speciesVal instanceof \PhpJs\Value\JsFunction) {
-                        $C = $speciesVal;
-                    } elseif (!($speciesVal instanceof JsUndefined) && !($speciesVal instanceof \PhpJs\Value\JsNull)) {
+                    if ($speciesVal instanceof JsUndefined || $speciesVal instanceof \PhpJs\Value\JsNull) {
                         // Use default
+                    } elseif ($speciesVal instanceof \PhpJs\Value\JsFunction && $speciesVal->isConstructable()) {
+                        $C = $speciesVal;
+                    } else {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            '@@species must be a constructor'
+                        );
                     }
                 }
                 // Get flags and add 'y'.
@@ -1355,14 +1368,18 @@ class RegExpPrototype
                 continue;
             }
 
-            $e = (int) TypeConversion::toNumber($rx->get('lastIndex'));
-            if ($e === $q) {
+            // Per spec step 24.d.i: e = ToLength(Get(splitter, "lastIndex")).
+            // Per step 24.d.ii: clamp e to size. Per step 24.d.iii: if e === p,
+            // advance q (not q === e) — comparing to p is what lets the loop
+            // observe lastIndex updates from a custom exec.
+            $eVal = TypeConversion::toLength($rx->get('lastIndex'));
+            $e = min($eVal, $size);
+            if ($e === $p) {
                 $q++;
                 continue;
             }
 
-            $matchStart = (int) TypeConversion::toNumber($z->get('index'));
-            $T = mb_substr($S, $p, $matchStart - $p, 'UTF-8');
+            $T = mb_substr($S, $p, $q - $p, 'UTF-8');
             $A[] = new JsString($T);
             $lengthA++;
             if ($lengthA === $lim) {
@@ -1370,7 +1387,10 @@ class RegExpPrototype
             }
 
             $p = $e;
-            $nCaptures = max((int) TypeConversion::toNumber($z->get('length')) - 1, 0);
+            // Per spec 24.d.iv.7: ToLength(Get(z, "length")). This is observable
+            // (a Symbol or throwing valueOf must propagate).
+            $lenVal = $z->get('length');
+            $nCaptures = max(TypeConversion::toLength($lenVal) - 1, 0);
             for ($i = 1; $i <= $nCaptures; $i++) {
                 $A[] = $z->get((string) $i);
                 $lengthA++;
