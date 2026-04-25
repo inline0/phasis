@@ -88,6 +88,12 @@ class IntlObject
             return [];
         }
 
+        // Per spec, null falls into the ToObject(locales) path which
+        // throws TypeError. We surface the same error directly.
+        if ($locales instanceof JsNull) {
+            throw new TypeError('Cannot convert null to object');
+        }
+
         $seen = [];
 
         // Per spec, both String and an Intl.Locale instance are wrapped
@@ -114,32 +120,37 @@ class IntlObject
             return [$canon];
         }
 
-        // Treat as array-like.
-        if ($locales instanceof JsObject) {
-            $lenVal = $locales->get('length');
-            $len = $lenVal instanceof JsUndefined ? 0 : (int) TypeConversion::toNumber($lenVal);
-            for ($k = 0; $k < $len; $k++) {
-                $kPresent = $locales->has((string) $k);
-                if ($kPresent) {
-                    $kValue = $locales->get((string) $k);
-                    if (!$kValue instanceof JsString && !$kValue instanceof JsObject) {
-                        throw new TypeError('Language tag must be a string or object');
-                    }
-                    if ($kValue instanceof JsObject && self::isInitializedLocale($kValue)) {
-                        $tag = self::extractInternalString($kValue, '[[LocaleTag]]', '');
-                        if ($tag === '') {
-                            $tag = TypeConversion::toString($kValue);
-                        }
-                    } else {
+        // Spec: ToObject(locales) is performed before iterating. Primitives
+        // (boolean, number, symbol, bigint) coerce to wrapper objects whose
+        // prototype-chain may expose `length`/index properties — required by
+        // the locales-is-not-a-string test that patches Number.prototype.
+        $obj = $locales instanceof JsObject
+            ? $locales
+            : TypeConversion::toObject($locales);
+
+        $lenVal = $obj->get('length');
+        $len = $lenVal instanceof JsUndefined ? 0 : (int) TypeConversion::toNumber($lenVal);
+        for ($k = 0; $k < $len; $k++) {
+            $kPresent = $obj->has((string) $k);
+            if ($kPresent) {
+                $kValue = $obj->get((string) $k);
+                if (!$kValue instanceof JsString && !$kValue instanceof JsObject) {
+                    throw new TypeError('Language tag must be a string or object');
+                }
+                if ($kValue instanceof JsObject && self::isInitializedLocale($kValue)) {
+                    $tag = self::extractInternalString($kValue, '[[LocaleTag]]', '');
+                    if ($tag === '') {
                         $tag = TypeConversion::toString($kValue);
                     }
-                    $canon = self::canonicalizeLocaleTag($tag);
-                    if ($canon === null) {
-                        throw new RangeError("Invalid language tag: {$tag}");
-                    }
-                    if (!in_array($canon, $seen, true)) {
-                        $seen[] = $canon;
-                    }
+                } else {
+                    $tag = TypeConversion::toString($kValue);
+                }
+                $canon = self::canonicalizeLocaleTag($tag);
+                if ($canon === null) {
+                    throw new RangeError("Invalid language tag: {$tag}");
+                }
+                if (!in_array($canon, $seen, true)) {
+                    $seen[] = $canon;
                 }
             }
         }
@@ -3094,6 +3105,7 @@ class IntlObject
                 $extensionsSeen[$key] = true;
                 $i++;
                 $isPrivate = $key === 'x';
+                $isUnicode = $key === 'u';
                 $minSubLen = $isPrivate ? 1 : 2;
                 $maxSubLen = 8;
                 $sawAny = false;
@@ -3110,6 +3122,13 @@ class IntlObject
                         return true;
                     }
                     if (!ctype_alnum($sub)) {
+                        return true;
+                    }
+                    // UTS35 ukey = alphanum alpha. A length-2 subtag in
+                    // the -u- extension must end with a letter, so e.g.
+                    // `en-u-c0` and `en-u-00` are invalid (the second
+                    // character is a digit).
+                    if ($isUnicode && $subLen === 2 && !ctype_alpha($sub[1])) {
                         return true;
                     }
                     $sawAny = true;
@@ -3157,6 +3176,24 @@ class IntlObject
         if (self::isStructurallyInvalidLanguageTag($tag)) {
             return null;
         }
+        // CLDR `<languageAlias>` for regular grandfathered tags that map
+        // to a single replacement. Apply before structural parsing so the
+        // entire tag substitutes wholesale.
+        static $grandfathered = [
+            'art-lojban' => 'jbo',
+            'cel-gaulish' => 'xtg',
+            'zh-guoyu' => 'zh',
+            'zh-hakka' => 'hak',
+            'zh-xiang' => 'hsn',
+            'no-bok' => 'nb',
+            'no-nyn' => 'nn',
+            'zh-min-nan' => 'nan',
+            'zh-min' => 'nan-x-zh-min',
+        ];
+        $lcTag = strtolower($tag);
+        if (isset($grandfathered[$lcTag])) {
+            $tag = $grandfathered[$lcTag];
+        }
         if (extension_loaded('intl')) {
             $icuTag = str_replace('-', '_', $tag);
             $parsed = \Locale::parseLocale($icuTag);
@@ -3176,23 +3213,77 @@ class IntlObject
             if ($result['language'] === '' && preg_match('/^([a-zA-Z]{2,8})/', $tag, $m)) {
                 $result['language'] = strtolower($m[1]);
             }
-            // Apply CLDR language alias replacement so deprecated
-            // subtags (cmn, ji, in, ...) collapse to their preferred
-            // form. Limited to the languageAlias entries with a
-            // single-tag replacement.
-            static $languageAliasCanonical = [
-                'cmn' => 'zh', 'in' => 'id', 'iw' => 'he', 'ji' => 'yi',
-                'jw' => 'jv', 'mo' => 'ro', 'sh' => 'sr', 'tl' => 'fil',
-                'no-bok' => 'nb', 'no-nyn' => 'nn',
-            ];
-            if (isset($languageAliasCanonical[$result['language']])) {
-                $result['language'] = $languageAliasCanonical[$result['language']];
-            }
             if (isset($parsed['script']) && $parsed['script'] !== '') {
                 $result['script'] = ucfirst(strtolower($parsed['script']));
             }
             if (isset($parsed['region']) && $parsed['region'] !== '') {
                 $result['region'] = strtoupper($parsed['region']);
+            }
+            // Apply CLDR language alias replacement so deprecated
+            // subtags (cmn, ji, in, aam, ...) collapse to their preferred
+            // form. Single-tag replacements are applied unconditionally;
+            // multi-tag replacements (sh -> sr-Latn, cnr -> sr-ME) only
+            // contribute the script or region if the source tag did not
+            // already specify one. Region-conditioned replacements
+            // (sgn-XX → ...) drop the region.
+            static $languageAliasCanonical = [
+                'aam' => 'aas', 'aar' => 'aa', 'aue' => 'ktz', 'arb' => 'ar',
+                'ayr' => 'ay', 'ayx' => 'nun', 'bhk' => 'fbl', 'bjd' => 'drl',
+                'ccq' => 'rki', 'cjr' => 'mom', 'cka' => 'cmr', 'cmk' => 'xch',
+                'cmn' => 'zh', 'drh' => 'khk', 'drw' => 'prs', 'gav' => 'dev',
+                'gfx' => 'vaj', 'ggn' => 'gvr', 'gti' => 'nyc', 'guv' => 'duz',
+                'hrr' => 'jal', 'ibi' => 'opa', 'ilw' => 'gal', 'in' => 'id',
+                'iw' => 'he', 'jeg' => 'oyb', 'ji' => 'yi', 'jw' => 'jv',
+                'kgc' => 'tdf', 'kgh' => 'kml', 'koj' => 'kwv', 'krm' => 'bmf',
+                'ktr' => 'dtp', 'kvs' => 'gdj', 'kwq' => 'yam', 'kxe' => 'tvd',
+                'kzj' => 'dtp', 'kzt' => 'dtp', 'lii' => 'raq', 'lmm' => 'rmx',
+                'meg' => 'cir', 'mo' => 'ro', 'mst' => 'mry', 'mwj' => 'vaj',
+                'myt' => 'mry', 'nad' => 'xny', 'ncp' => 'kdz', 'nnx' => 'ngv',
+                'no-bok' => 'nb', 'no-nyn' => 'nn', 'nts' => 'pij',
+                'oun' => 'vaj', 'pcr' => 'adx', 'pmc' => 'huw', 'pmu' => 'phr',
+                'ppa' => 'bfy', 'ppr' => 'lcq', 'pry' => 'prt', 'puz' => 'pub',
+                'sca' => 'hle', 'skk' => 'oyb', 'tdu' => 'dtp', 'thc' => 'tpo',
+                'thx' => 'oyb', 'tie' => 'ras', 'tkk' => 'twm', 'tl' => 'fil',
+                'tlw' => 'weo', 'tmp' => 'tyj', 'tne' => 'kak', 'tnf' => 'prs',
+                'tsf' => 'taj', 'uok' => 'ema', 'xba' => 'cax', 'xia' => 'acn',
+                'xkh' => 'waw', 'xpe' => 'kpe', 'xsj' => 'suj', 'ybd' => 'rki',
+                'yma' => 'lrr', 'ymt' => 'mtm', 'yos' => 'zom', 'yuu' => 'yug',
+            ];
+            if (isset($languageAliasCanonical[$result['language']])) {
+                $result['language'] = $languageAliasCanonical[$result['language']];
+            }
+            // Multi-tag language replacements: <languageAlias> entries with
+            // more than one tag in the replacement value contribute the
+            // extra subtags only if the source has none of its own.
+            if ($result['language'] === 'sh') {
+                $result['language'] = 'sr';
+                if (!isset($result['script']) || $result['script'] === '') {
+                    $result['script'] = 'Latn';
+                }
+            } elseif ($result['language'] === 'cnr') {
+                $result['language'] = 'sr';
+                if (!isset($result['region']) || $result['region'] === '') {
+                    $result['region'] = 'ME';
+                }
+            }
+            // sgn-XX language replacements: when the source language is
+            // "sgn" and a region subtag is present, the combined
+            // (lang, region) pair maps to a specific sign-language code
+            // and the region is dropped.
+            if ($result['language'] === 'sgn' && isset($result['region']) && $result['region'] !== '') {
+                static $sgnAliases = [
+                    'AE' => 'ase', 'BR' => 'bzs', 'CO' => 'csn', 'DE' => 'gsg',
+                    'DK' => 'dsl', 'ES' => 'ssp', 'FR' => 'fsl', 'GB' => 'bfi',
+                    'GR' => 'gss', 'IE' => 'isg', 'IT' => 'ise', 'JP' => 'jsl',
+                    'MX' => 'mfs', 'NI' => 'ncs', 'NL' => 'dse', 'NO' => 'nsi',
+                    'PT' => 'psr', 'SE' => 'swl', 'US' => 'ase', 'ZA' => 'sfs',
+                ];
+                if (isset($sgnAliases[$result['region']])) {
+                    $result['language'] = $sgnAliases[$result['region']];
+                    unset($result['region']);
+                }
+            }
+            if (isset($result['region'])) {
                 static $regionAliasCanonical = [
                     'BU' => 'MM', 'DD' => 'DE', 'FX' => 'FR', 'TP' => 'TL',
                     'YD' => 'YE', 'ZR' => 'CD', 'CT' => 'KI', 'NH' => 'VU',
@@ -3236,6 +3327,62 @@ class IntlObject
                 }
                 $variants[strtolower($sub)] = true;
                 $idx++;
+            }
+            // CLDR variantAlias replacement. Multi-variant sequences are
+            // replaced first so `hepburn-heploc` collapses to `alalc97`
+            // instead of producing two independent replacements.
+            if (!empty($variants)) {
+                $variantList = array_keys($variants);
+                static $multiVariantAliases = [
+                    'hepburn-heploc' => 'alalc97',
+                ];
+                static $variantAliases = [
+                    'heploc' => 'alalc97',
+                    'aaland' => '',
+                    'arevela' => '',
+                    'arevmda' => '',
+                ];
+                // Some variant aliases promote to a language replacement
+                // (CLDR `<variantAlias type=... replacement="<lang>"/>`).
+                // When the source language matches, the variant is dropped
+                // and the language is rewritten.
+                static $variantToLanguageAliases = [
+                    'arevmda' => ['hy' => 'hyw'],
+                ];
+                foreach ($variantToLanguageAliases as $vName => $langMap) {
+                    if (
+                        in_array($vName, $variantList, true)
+                        && isset($langMap[$result['language']])
+                    ) {
+                        $result['language'] = $langMap[$result['language']];
+                        $variantList = array_values(array_filter(
+                            $variantList,
+                            static fn(string $v): bool => $v !== $vName,
+                        ));
+                    }
+                }
+                foreach ($multiVariantAliases as $from => $to) {
+                    $fromParts = explode('-', $from);
+                    $matches = !array_diff($fromParts, $variantList);
+                    if ($matches) {
+                        $variantList = array_values(array_diff($variantList, $fromParts));
+                        if ($to !== '') {
+                            $variantList[] = $to;
+                        }
+                    }
+                }
+                $remapped = [];
+                foreach ($variantList as $v) {
+                    if (array_key_exists($v, $variantAliases)) {
+                        $repl = $variantAliases[$v];
+                        if ($repl !== '') {
+                            $remapped[$repl] = true;
+                        }
+                    } else {
+                        $remapped[$v] = true;
+                    }
+                }
+                $variants = $remapped;
             }
             if (!empty($variants)) {
                 ksort($variants);
@@ -3347,106 +3494,6 @@ class IntlObject
                     'ethiopic-amete-alem' => 'ethioaa',
                     'gregorian' => 'gregory',
                 ];
-                // CLDR languageAlias entries: replace deprecated language
-                // subtag with its preferred form before reconstructing.
-                static $languageAliases = [
-                    'cmn' => 'zh',
-                    'in' => 'id',
-                    'iw' => 'he',
-                    'ji' => 'yi',
-                    'jw' => 'jv',
-                    'mo' => 'ro',
-                    'tl' => 'fil',
-                    'sh' => 'sr',
-                    'aam' => 'aas',
-                    'aar' => 'aa',
-                    'aue' => 'ktz',
-                    'arb' => 'ar',
-                    'ayr' => 'ay',
-                    'ayx' => 'nun',
-                    'bhk' => 'fbl',
-                    'bjd' => 'drl',
-                    'ccq' => 'rki',
-                    'cjr' => 'mom',
-                    'cka' => 'cmr',
-                    'cmk' => 'xch',
-                    'cmn' => 'zh',
-                    'drh' => 'khk',
-                    'drw' => 'prs',
-                    'gav' => 'dev',
-                    'gfx' => 'vaj',
-                    'ggn' => 'gvr',
-                    'gti' => 'nyc',
-                    'guv' => 'duz',
-                    'hrr' => 'jal',
-                    'ibi' => 'opa',
-                    'ilw' => 'gal',
-                    'jeg' => 'oyb',
-                    'kgc' => 'tdf',
-                    'kgh' => 'kml',
-                    'koj' => 'kwv',
-                    'krm' => 'bmf',
-                    'ktr' => 'dtp',
-                    'kvs' => 'gdj',
-                    'kwq' => 'yam',
-                    'kxe' => 'tvd',
-                    'kzj' => 'dtp',
-                    'kzt' => 'dtp',
-                    'lii' => 'raq',
-                    'lmm' => 'rmx',
-                    'meg' => 'cir',
-                    'mst' => 'mry',
-                    'mwj' => 'vaj',
-                    'myt' => 'mry',
-                    'nad' => 'xny',
-                    'ncp' => 'kdz',
-                    'nnx' => 'ngv',
-                    'nts' => 'pij',
-                    'oun' => 'vaj',
-                    'pcr' => 'adx',
-                    'pmc' => 'huw',
-                    'pmu' => 'phr',
-                    'ppa' => 'bfy',
-                    'ppr' => 'lcq',
-                    'pry' => 'prt',
-                    'puz' => 'pub',
-                    'sca' => 'hle',
-                    'skk' => 'oyb',
-                    'tdu' => 'dtp',
-                    'thc' => 'tpo',
-                    'thx' => 'oyb',
-                    'tie' => 'ras',
-                    'tkk' => 'twm',
-                    'tlw' => 'weo',
-                    'tmp' => 'tyj',
-                    'tne' => 'kak',
-                    'tnf' => 'prs',
-                    'tsf' => 'taj',
-                    'uok' => 'ema',
-                    'xba' => 'cax',
-                    'xia' => 'acn',
-                    'xkh' => 'waw',
-                    'xpe' => 'kpe',
-                    'xsj' => 'suj',
-                    'ybd' => 'rki',
-                    'yma' => 'lrr',
-                    'ymt' => 'mtm',
-                    'yos' => 'zom',
-                    'yuu' => 'yug',
-                ];
-                if (isset($languageAliases[$result['language']])) {
-                    $result['language'] = $languageAliases[$result['language']];
-                }
-                // CLDR regionAlias / territoryAlias replacements that
-                // collapse to a single preferred region.
-                static $regionAliases = [
-                    'BU' => 'MM', 'DD' => 'DE', 'FX' => 'FR', 'TP' => 'TL',
-                    'YD' => 'YE', 'ZR' => 'CD', 'CT' => 'KI', 'NH' => 'VU',
-                    'RH' => 'ZW', 'VD' => 'VN', 'AN' => 'CW',
-                ];
-                if (isset($result['region']) && isset($regionAliases[$result['region']])) {
-                    $result['region'] = $regionAliases[$result['region']];
-                }
                 // UTS35 BCP47 type alias "yes" -> "true" for keyword
                 // keys that explicitly list "yes" as an alias of "true".
                 // Ordering must be preserved.
@@ -3460,6 +3507,66 @@ class IntlObject
                         // "true" is the canonical default and renders as
                         // the bare key with no value subtag.
                         $keywords[$yesKey] = [];
+                    }
+                }
+                // CLDR <type alias=...> replacements for -u- extension
+                // values. Each table maps deprecated value -> canonical
+                // value for a specific key.
+                static $unicodeTypeAliases = [
+                    // ks (colStrength)
+                    'ks' => [
+                        'primary' => 'level1',
+                        'secondary' => 'level2',
+                        'tertiary' => 'level3',
+                        'quaternary' => 'level4',
+                        'quarternary' => 'level4',
+                        'identical' => 'identic',
+                    ],
+                    // ms (measurement system)
+                    'ms' => [
+                        'imperial' => 'uksystem',
+                    ],
+                    // tz (timezone)
+                    'tz' => [
+                        'cnckg' => 'cnsha',
+                        'eire' => 'iedub',
+                        'est' => 'papty',
+                        'gmt0' => 'gmt',
+                        'uct' => 'utc',
+                        'zulu' => 'utc',
+                    ],
+                    // ca (calendar) — same as $calendarAliases above; the
+                    // legacy-slot path still applies them for the
+                    // corresponding result['calendar'] field.
+                    'ca' => [
+                        'islamicc' => 'islamic-civil',
+                        'ethiopic-amete-alem' => 'ethioaa',
+                        'gregorian' => 'gregory',
+                    ],
+                ];
+                static $subdivisionAliases = [
+                    'no23' => 'no50', 'cn11' => 'cnbj', 'cz10a' => 'cz110',
+                    'fra' => 'frges', 'frg' => 'frges', 'lud' => 'lucl',
+                ];
+                foreach ($unicodeTypeAliases as $aliasKey => $aliasMap) {
+                    if (!isset($keywords[$aliasKey])) {
+                        continue;
+                    }
+                    $combined = implode('-', $keywords[$aliasKey]);
+                    if (isset($aliasMap[$combined])) {
+                        $canonical = $aliasMap[$combined];
+                        $keywords[$aliasKey] = $canonical === '' ? [] : explode('-', $canonical);
+                    }
+                }
+                // Subdivision aliases apply to `sd` and `rg` keys; the
+                // value is a single subdivision code.
+                foreach (['sd', 'rg'] as $sdKey) {
+                    if (!isset($keywords[$sdKey])) {
+                        continue;
+                    }
+                    $val = implode('-', $keywords[$sdKey]);
+                    if (isset($subdivisionAliases[$val])) {
+                        $keywords[$sdKey] = [$subdivisionAliases[$val]];
                     }
                 }
                 foreach ($legacyMap as $key => $slot) {
