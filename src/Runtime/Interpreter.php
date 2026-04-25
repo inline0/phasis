@@ -1363,6 +1363,22 @@ class Interpreter
 
     private function evalDelete(Node $argument, Environment $env): JsValue
     {
+        // Spec §13.5.1.2: delete super.foo / delete super[expr] always
+        // throws ReferenceError. The property expression is evaluated for
+        // side effects before throwing.
+        if (
+            $argument instanceof MemberExpression
+            && $argument->object instanceof Identifier
+            && $argument->object->name === 'super'
+        ) {
+            if ($argument->computed) {
+                $this->evaluate($argument->property, $env);
+            }
+            throw new ReferenceError(
+                'Unsupported reference to "super"',
+            );
+        }
+
         if ($argument instanceof MemberExpression) {
             $obj = $this->evaluate($argument->object, $env);
             if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
