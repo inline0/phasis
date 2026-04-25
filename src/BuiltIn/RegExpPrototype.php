@@ -616,6 +616,70 @@ class RegExpPrototype
                     ),
                 );
 
+                // Per spec sec-makematchindicesindexpairarray, when the
+                // regex has the d flag emit an `indices` array on the
+                // result with [start, end] pairs per capture, plus a
+                // groups object mapping named captures to their pairs.
+                if (str_contains($origFlags, 'd')) {
+                    $indicesArr = [];
+                    foreach ($matches as $key => $m) {
+                        if (!is_int($key)) {
+                            continue;
+                        }
+                        if ($m[1] === -1 || $m[0] === null) {
+                            $indicesArr[] = JsUndefined::instance();
+                            continue;
+                        }
+                        $startCp = (int) (strlen(JsString::utf8ToUtf16LE(substr($str, 0, $m[1]))) / 2);
+                        $endCp = $startCp + (int) (strlen(JsString::utf8ToUtf16LE($m[0])) / 2);
+                        $indicesArr[] = JsArray::fromArray([
+                            new JsNumber((float) $startCp),
+                            new JsNumber((float) $endCp),
+                        ]);
+                    }
+                    $iArr = JsArray::fromArray($indicesArr);
+                    $iGrp = JsObject::createNullPrototype();
+                    $iHasGrp = false;
+                    foreach ($matches as $ik => $im) {
+                        if (!is_string($ik)) {
+                            continue;
+                        }
+                        $iHasGrp = true;
+                        if ($im[1] === -1 || $im[0] === null) {
+                            $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
+                                JsUndefined::instance(),
+                                true,
+                                true,
+                                true,
+                            ));
+                        } else {
+                            $sCp = (int) (strlen(JsString::utf8ToUtf16LE(substr($str, 0, $im[1]))) / 2);
+                            $eCp = $sCp + (int) (strlen(JsString::utf8ToUtf16LE($im[0])) / 2);
+                            $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
+                                JsArray::fromArray([
+                                    new JsNumber((float) $sCp),
+                                    new JsNumber((float) $eCp),
+                                ]),
+                                true,
+                                true,
+                                true,
+                            ));
+                        }
+                    }
+                    $iArr->defineOwnProperty('groups', PropertyDescriptor::data(
+                        $iHasGrp ? $iGrp : JsUndefined::instance(),
+                        true,
+                        true,
+                        true,
+                    ));
+                    $result->defineOwnProperty('indices', PropertyDescriptor::data(
+                        $iArr,
+                        true,
+                        true,
+                        true,
+                    ));
+                }
+
                 return $result;
             }
 
