@@ -295,15 +295,23 @@ class IntlObject
      */
     private static function coerceOptions(JsValue $arg): JsObject
     {
-        if ($arg instanceof JsUndefined || $arg instanceof JsNull) {
+        if ($arg instanceof JsUndefined) {
             // Spec uses OrdinaryObjectCreate(null) so that monkey-patching
             // Object.prototype cannot inject defaults into option lookup.
             return new JsObject(null);
         }
+        if ($arg instanceof JsNull) {
+            // Per spec, an explicit null is `ToObject(null)` which throws.
+            throw new TypeError('Cannot convert null to options object');
+        }
         if ($arg instanceof JsObject) {
             return $arg;
         }
-        throw new TypeError('Options must be an object');
+        // Primitive values are coerced to a wrapper Object whose property
+        // lookups walk Object.prototype, matching V8's behaviour for
+        // `new Intl.X([], "string")` and similar.
+        $wrapper = new JsObject();
+        return $wrapper;
     }
 
     /**
