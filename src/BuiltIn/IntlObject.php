@@ -595,12 +595,31 @@ class IntlObject
                 self::validateLocaleMatcher($opts);
             }
 
-            // For our purposes (PHP intl backed), all well-formed locales are supported.
-            $result = new JsArray();
-            foreach ($canonicalized as $i => $tag) {
-                $result->set((string) $i, new JsString($tag));
+            // Implement BestAvailableLocale to filter out tags that
+            // ICU doesn't recognise. Without this we'd pretend every
+            // structurally-valid tag is supported, which fails tests
+            // that rely on intentionally-unsupported tags like `zxx`.
+            $available = [];
+            if (extension_loaded('intl')) {
+                $available = \ResourceBundle::getLocales('');
             }
-            $result->set('length', new JsNumber((float) count($canonicalized)));
+            $result = new JsArray();
+            $count = 0;
+            foreach ($canonicalized as $tag) {
+                if ($available === []) {
+                    $result->set((string) $count, new JsString($tag));
+                    $count++;
+                    continue;
+                }
+                $candidate = str_replace('-', '_', $tag);
+                $best = \Locale::lookup($available, $candidate, true, '');
+                if ($best === '' || $best === null) {
+                    continue;
+                }
+                $result->set((string) $count, new JsString($tag));
+                $count++;
+            }
+            $result->set('length', new JsNumber((float) $count));
             return $result;
         }, 1);
         return $fn;
@@ -1074,89 +1093,6 @@ class IntlObject
                     false,
                 ));
 
-                // compactDisplay
-                $compactDisplay = 'short';
-                $compVal = $options->get('compactDisplay');
-                if (!$compVal instanceof JsUndefined) {
-                    $cd2 = TypeConversion::toString($compVal);
-                    if (!in_array($cd2, ['short', 'long'], true)) {
-                        throw new RangeError("Invalid compactDisplay: {$cd2}");
-                    }
-                    $compactDisplay = $cd2;
-                }
-                $obj->defineOwnProperty('[[CompactDisplay]]', PropertyDescriptor::data(
-                    new JsString($compactDisplay),
-                    false,
-                    false,
-                    false,
-                ));
-
-                // signDisplay
-                $signDisplay = 'auto';
-                $sdVal = $options->get('signDisplay');
-                if (!$sdVal instanceof JsUndefined) {
-                    $sd = TypeConversion::toString($sdVal);
-                    if (!in_array($sd, ['auto', 'never', 'always', 'exceptZero', 'negative'], true)) {
-                        throw new RangeError("Invalid signDisplay: {$sd}");
-                    }
-                    $signDisplay = $sd;
-                }
-                $obj->defineOwnProperty('[[SignDisplay]]', PropertyDescriptor::data(
-                    new JsString($signDisplay),
-                    false,
-                    false,
-                    false,
-                ));
-
-                // useGrouping per spec sec-numberformat-useGrouping:
-                //   true  -> "always"
-                //   false -> false (the boolean, not the string "false")
-                //   "min2" / "auto" / "always" -> string passthrough
-                //   any other primitive coerces to "auto" only when it is
-                //   the string "true"/"false"/the JS undefined sentinel;
-                //   everything else throws RangeError.
-                $useGrouping = 'auto';
-                $ugVal = $options->get('useGrouping');
-                if (!$ugVal instanceof JsUndefined) {
-                    if ($ugVal instanceof JsBoolean) {
-                        $useGrouping = $ugVal->toBoolean() ? 'always' : 'false';
-                    } elseif ($ugVal instanceof JsNull) {
-                        $useGrouping = 'false';
-                    } elseif ($ugVal instanceof JsString) {
-                        $ug = $ugVal->value;
-                        if (in_array($ug, ['min2', 'auto', 'always'], true)) {
-                            $useGrouping = $ug;
-                        } elseif ($ug === '' || $ug === 'true' || $ug === 'false') {
-                            // Strings literally equal to "" / "true" / "false"
-                            // are spec-recognised primitives that map onto
-                            // the matching boolean fallback ("" → false,
-                            // "true"/"false" → "auto") per the test262
-                            // useGrouping fixtures.
-                            $useGrouping = $ug === '' ? 'false' : 'auto';
-                        } else {
-                            throw new RangeError("Invalid useGrouping: {$ug}");
-                        }
-                    } elseif ($ugVal instanceof JsNumber) {
-                        // Spec ToBoolean → false maps to "false",
-                        // ToBoolean → true throws because numeric-true is
-                        // not a recognised useGrouping form.
-                        if ($ugVal->value === 0.0) {
-                            $useGrouping = 'false';
-                        } else {
-                            throw new RangeError("Invalid useGrouping: {$ugVal->value}");
-                        }
-                    } else {
-                        $ug = TypeConversion::toString($ugVal);
-                        throw new RangeError("Invalid useGrouping: {$ug}");
-                    }
-                }
-                $obj->defineOwnProperty('[[UseGrouping]]', PropertyDescriptor::data(
-                    new JsString($useGrouping),
-                    false,
-                    false,
-                    false,
-                ));
-
                 // Numeric digit options.
                 $minIntDigits = 1;
                 $midVal = $options->get('minimumIntegerDigits');
@@ -1256,25 +1192,6 @@ class IntlObject
                     false,
                 ));
 
-                // roundingMode
-                $roundingMode = 'halfExpand';
-                $rmVal = $options->get('roundingMode');
-                if (!$rmVal instanceof JsUndefined) {
-                    $rm = TypeConversion::toString($rmVal);
-                    $validModes = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor',
-                        'halfExpand', 'halfTrunc', 'halfEven'];
-                    if (!in_array($rm, $validModes, true)) {
-                        throw new RangeError("Invalid roundingMode: {$rm}");
-                    }
-                    $roundingMode = $rm;
-                }
-                $obj->defineOwnProperty('[[RoundingMode]]', PropertyDescriptor::data(
-                    new JsString($roundingMode),
-                    false,
-                    false,
-                    false,
-                ));
-
                 // roundingIncrement: must be an integer in the
                 // {1,2,5,10,20,25,50,100,200,250,500,1000,2000,2500,5000}
                 // set. Non-integer or out-of-set values throw RangeError.
@@ -1299,18 +1216,20 @@ class IntlObject
                     false,
                 ));
 
-                // trailingZeroDisplay
-                $trailingZeroDisplay = 'auto';
-                $tzdVal = $options->get('trailingZeroDisplay');
-                if (!$tzdVal instanceof JsUndefined) {
-                    $tzd = TypeConversion::toString($tzdVal);
-                    if (!in_array($tzd, ['auto', 'stripIfInteger'], true)) {
-                        throw new RangeError("Invalid trailingZeroDisplay: {$tzd}");
+                // roundingMode
+                $roundingMode = 'halfExpand';
+                $rmVal = $options->get('roundingMode');
+                if (!$rmVal instanceof JsUndefined) {
+                    $rm = TypeConversion::toString($rmVal);
+                    $validModes = ['ceil', 'floor', 'expand', 'trunc', 'halfCeil', 'halfFloor',
+                        'halfExpand', 'halfTrunc', 'halfEven'];
+                    if (!in_array($rm, $validModes, true)) {
+                        throw new RangeError("Invalid roundingMode: {$rm}");
                     }
-                    $trailingZeroDisplay = $tzd;
+                    $roundingMode = $rm;
                 }
-                $obj->defineOwnProperty('[[TrailingZeroDisplay]]', PropertyDescriptor::data(
-                    new JsString($trailingZeroDisplay),
+                $obj->defineOwnProperty('[[RoundingMode]]', PropertyDescriptor::data(
+                    new JsString($roundingMode),
                     false,
                     false,
                     false,
@@ -1328,6 +1247,106 @@ class IntlObject
                 }
                 $obj->defineOwnProperty('[[RoundingPriority]]', PropertyDescriptor::data(
                     new JsString($roundingPriority),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // trailingZeroDisplay
+                $trailingZeroDisplay = 'auto';
+                $tzdVal = $options->get('trailingZeroDisplay');
+                if (!$tzdVal instanceof JsUndefined) {
+                    $tzd = TypeConversion::toString($tzdVal);
+                    if (!in_array($tzd, ['auto', 'stripIfInteger'], true)) {
+                        throw new RangeError("Invalid trailingZeroDisplay: {$tzd}");
+                    }
+                    $trailingZeroDisplay = $tzd;
+                }
+                $obj->defineOwnProperty('[[TrailingZeroDisplay]]', PropertyDescriptor::data(
+                    new JsString($trailingZeroDisplay),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // compactDisplay
+                $compactDisplay = 'short';
+                $compVal = $options->get('compactDisplay');
+                if (!$compVal instanceof JsUndefined) {
+                    $cd2 = TypeConversion::toString($compVal);
+                    if (!in_array($cd2, ['short', 'long'], true)) {
+                        throw new RangeError("Invalid compactDisplay: {$cd2}");
+                    }
+                    $compactDisplay = $cd2;
+                }
+                $obj->defineOwnProperty('[[CompactDisplay]]', PropertyDescriptor::data(
+                    new JsString($compactDisplay),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // useGrouping per spec sec-numberformat-useGrouping:
+                //   true  -> "always"
+                //   false -> false (the boolean, not the string "false")
+                //   "min2" / "auto" / "always" -> string passthrough
+                //   any other primitive coerces to "auto" only when it is
+                //   the string "true"/"false"/the JS undefined sentinel;
+                //   everything else throws RangeError.
+                $useGrouping = 'auto';
+                $ugVal = $options->get('useGrouping');
+                if (!$ugVal instanceof JsUndefined) {
+                    if ($ugVal instanceof JsBoolean) {
+                        $useGrouping = $ugVal->toBoolean() ? 'always' : 'false';
+                    } elseif ($ugVal instanceof JsNull) {
+                        $useGrouping = 'false';
+                    } elseif ($ugVal instanceof JsString) {
+                        $ug = $ugVal->value;
+                        if (in_array($ug, ['min2', 'auto', 'always'], true)) {
+                            $useGrouping = $ug;
+                        } elseif ($ug === '' || $ug === 'true' || $ug === 'false') {
+                            // Strings literally equal to "" / "true" / "false"
+                            // are spec-recognised primitives that map onto
+                            // the matching boolean fallback ("" → false,
+                            // "true"/"false" → "auto") per the test262
+                            // useGrouping fixtures.
+                            $useGrouping = $ug === '' ? 'false' : 'auto';
+                        } else {
+                            throw new RangeError("Invalid useGrouping: {$ug}");
+                        }
+                    } elseif ($ugVal instanceof JsNumber) {
+                        // Spec ToBoolean → false maps to "false",
+                        // ToBoolean → true throws because numeric-true is
+                        // not a recognised useGrouping form.
+                        if ($ugVal->value === 0.0) {
+                            $useGrouping = 'false';
+                        } else {
+                            throw new RangeError("Invalid useGrouping: {$ugVal->value}");
+                        }
+                    } else {
+                        $ug = TypeConversion::toString($ugVal);
+                        throw new RangeError("Invalid useGrouping: {$ug}");
+                    }
+                }
+                $obj->defineOwnProperty('[[UseGrouping]]', PropertyDescriptor::data(
+                    new JsString($useGrouping),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // signDisplay
+                $signDisplay = 'auto';
+                $sdVal = $options->get('signDisplay');
+                if (!$sdVal instanceof JsUndefined) {
+                    $sd = TypeConversion::toString($sdVal);
+                    if (!in_array($sd, ['auto', 'never', 'always', 'exceptZero', 'negative'], true)) {
+                        throw new RangeError("Invalid signDisplay: {$sd}");
+                    }
+                    $signDisplay = $sd;
+                }
+                $obj->defineOwnProperty('[[SignDisplay]]', PropertyDescriptor::data(
+                    new JsString($signDisplay),
                     false,
                     false,
                     false,
@@ -1638,6 +1657,7 @@ class IntlObject
         $formatter->setAttribute(\NumberFormatter::MIN_INTEGER_DIGITS, $minInt);
 
         $rt = self::extractInternalString($nf, '[[RoundingType]]', 'fractionDigits');
+        $maxFrac = null;
         if ($rt === 'significantDigits') {
             $minSig = (int) self::extractInternalNumber($nf, '[[MinimumSignificantDigits]]', 1);
             $maxSig = (int) self::extractInternalNumber($nf, '[[MaximumSignificantDigits]]', 21);
@@ -1655,13 +1675,127 @@ class IntlObject
             $formatter->setAttribute(\NumberFormatter::GROUPING_USED, 0);
         }
 
-        if ($style === 'currency') {
-            $currency = self::extractInternalString($nf, '[[Currency]]', 'USD');
-            return $formatter->formatCurrency($number, $currency);
+        // Map the spec's roundingMode to ICU's ROUNDING_MODE.
+        // ICU's default is HALFEVEN, but the spec default is halfExpand,
+        // so we always explicitly set this.
+        $rm = self::extractInternalString($nf, '[[RoundingMode]]', 'halfExpand');
+        $icuMode = match ($rm) {
+            'ceil' => \NumberFormatter::ROUND_CEILING,
+            'floor' => \NumberFormatter::ROUND_FLOOR,
+            'trunc' => \NumberFormatter::ROUND_DOWN,
+            'expand' => \NumberFormatter::ROUND_UP,
+            'halfCeil' => \NumberFormatter::ROUND_HALFUP,
+            'halfFloor' => \NumberFormatter::ROUND_HALFDOWN,
+            'halfTrunc' => \NumberFormatter::ROUND_HALFDOWN,
+            'halfEven' => \NumberFormatter::ROUND_HALFEVEN,
+            default => \NumberFormatter::ROUND_HALFUP,
+        };
+        $formatter->setAttribute(\NumberFormatter::ROUNDING_MODE, $icuMode);
+
+        // roundingIncrement uses ICU's "rounding increment" attribute.
+        $roundingIncrement = (int) self::extractInternalNumber($nf, '[[RoundingIncrement]]', 1);
+        if ($roundingIncrement > 1 && $maxFrac !== null) {
+            $factor = 10 ** $maxFrac;
+            $formatter->setAttribute(
+                \NumberFormatter::ROUNDING_INCREMENT,
+                $roundingIncrement / $factor,
+            );
         }
 
-        $result = $formatter->format($number);
-        return $result === false ? (string) $number : $result;
+        if ($style === 'currency') {
+            $currency = self::extractInternalString($nf, '[[Currency]]', 'USD');
+            $result = $formatter->formatCurrency($number, $currency);
+        } else {
+            $result = $formatter->format($number);
+            if ($result === false) {
+                $result = (string) $number;
+            }
+        }
+
+        // PHP/ICU uses the locale-specific Infinity glyph (e.g. "INF" for
+        // ja-JP). The spec mandates the "∞" U+221E symbol. Substitute
+        // the textual marker before applying signDisplay.
+        $result = self::normalizeIntlInfinity($result, $number);
+        $result = self::applySignDisplay($nf, $result, $number);
+
+        return $result;
+    }
+
+    /**
+     * Replace the locale-specific Infinity glyph used by some ICU bundles
+     * (e.g. "INF" for ja-JP) with the U+221E "∞" symbol the spec mandates.
+     */
+    private static function normalizeIntlInfinity(string $formatted, float $number): string
+    {
+        if (!is_finite($number) && !is_nan($number)) {
+            // Replace standalone "INF" — surrounded by non-letter
+            // characters or at string boundaries — with "∞". Avoid
+            // touching e.g. "INFANTRY" embedded in a hypothetical
+            // currency name.
+            return preg_replace('/\bINF\b/', '∞', $formatted) ?? $formatted;
+        }
+        return $formatted;
+    }
+
+    /**
+     * Apply the spec's signDisplay option as a post-processing step.
+     * ICU's NumberFormat doesn't expose all of "always", "never",
+     * "exceptZero", "negative", so we walk the formatted output to add
+     * or strip the leading "+"/"-" prefix.
+     */
+    private static function applySignDisplay(JsObject $nf, string $formatted, float $number): string
+    {
+        $signDisplay = self::extractInternalString($nf, '[[SignDisplay]]', 'auto');
+        if ($signDisplay === 'auto') {
+            return $formatted;
+        }
+        $isNegative = ($number < 0) || ($number === 0.0 && self::isNegativeZero($number));
+        $isNaN = is_nan($number);
+        // "Rounded to zero" comparison uses the formatted string so that
+        // small magnitudes like -0.0001 with maxFractionDigits=3 are
+        // recognised as the rounded zero they actually display as.
+        $digitsOnly = preg_replace('/[^0-9\x{0660}-\x{0669}\x{06F0}-\x{06F9}\x{0E50}-\x{0E59}]/u', '', $formatted);
+        $roundedToZero = $digitsOnly !== null
+            && $digitsOnly !== ''
+            && preg_match('/^[0\x{0660}\x{06F0}\x{0E50}]+$/u', $digitsOnly) === 1;
+        $effectiveZero = $roundedToZero || $isNaN;
+        $hasMinus = str_contains($formatted, '-');
+        $stripMinus = static fn(string $s): string => str_replace('-', '', $s);
+
+        switch ($signDisplay) {
+            case 'never':
+                return $stripMinus($formatted);
+            case 'always':
+                if ($isNegative || $hasMinus) {
+                    return $formatted;
+                }
+                return '+' . $formatted;
+            case 'exceptZero':
+                if ($effectiveZero) {
+                    return $stripMinus($formatted);
+                }
+                if ($isNegative || $hasMinus) {
+                    return $formatted;
+                }
+                return '+' . $formatted;
+            case 'negative':
+                if ($isNegative && !$effectiveZero) {
+                    return $formatted;
+                }
+                return $stripMinus($formatted);
+        }
+        return $formatted;
+    }
+
+    private static function isNegativeZero(float $n): bool
+    {
+        if ($n !== 0.0) {
+            return false;
+        }
+        // Inspect the IEEE 754 sign bit directly to avoid the
+        // DivisionByZeroError raised by `1 / 0.0` under PHP 8.
+        $packed = pack('d', $n);
+        return ord($packed[7]) >= 0x80;
     }
 
     // ---------------------------------------------------------------
