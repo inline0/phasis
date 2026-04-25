@@ -2783,6 +2783,10 @@ class IntlObject
             if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.getTimeZones called on non-Locale');
             }
+            // Spec: when the locale has no region subtag, return undefined.
+            if ($this_->get('[[region]]') instanceof JsUndefined) {
+                return JsUndefined::instance();
+            }
             $result = new JsArray();
             $tzs = self::getSupportedTimeZones();
             $limited = array_slice($tzs, 0, 50);
