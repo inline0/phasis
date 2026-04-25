@@ -3600,6 +3600,12 @@ class IntlObject
                 self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
+                $obj->defineOwnProperty('[[InitializedListFormat]]', PropertyDescriptor::data(
+                    new JsBoolean(true),
+                    false,
+                    false,
+                    false,
+                ));
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3660,7 +3666,7 @@ class IntlObject
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.ListFormat.prototype.format called on non-ListFormat');
             }
@@ -3693,7 +3699,7 @@ class IntlObject
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.ListFormat.prototype.formatToParts called on non-ListFormat'
@@ -3709,7 +3715,7 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedListFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.ListFormat.prototype.resolvedOptions called on non-ListFormat');
             }
@@ -3797,6 +3803,12 @@ class IntlObject
                 }
 
                 $obj = self::instanceFromConstructor($this_, $proto);
+                $obj->defineOwnProperty('[[InitializedRelativeTimeFormat]]', PropertyDescriptor::data(
+                    new JsBoolean(true),
+                    false,
+                    false,
+                    false,
+                ));
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -3841,7 +3853,7 @@ class IntlObject
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.RelativeTimeFormat.prototype.format called on non-RelativeTimeFormat'
@@ -3885,7 +3897,7 @@ class IntlObject
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Locale]]') instanceof JsUndefined
+                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError(
                     'Intl.RelativeTimeFormat.prototype.formatToParts called on non-RelativeTimeFormat'
@@ -3936,7 +3948,10 @@ class IntlObject
 
         // RelativeTimeFormat.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
-            if (!$this_ instanceof JsObject || $this_->get('[[Locale]]') instanceof JsUndefined) {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedRelativeTimeFormat]]') instanceof JsUndefined
+            ) {
                 throw new TypeError('Intl.RelativeTimeFormat.prototype.resolvedOptions called on non-RelativeTimeFormat');
             }
             $result = new JsObject();
@@ -4008,6 +4023,12 @@ class IntlObject
                 self::validateLocaleMatcher($options);
 
                 $obj = self::instanceFromConstructor($this_, $proto);
+                $obj->defineOwnProperty('[[InitializedSegmenter]]', PropertyDescriptor::data(
+                    new JsBoolean(true),
+                    false,
+                    false,
+                    false,
+                ));
                 $resolvedLocale = self::resolveLocale($locales);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
@@ -4051,7 +4072,7 @@ class IntlObject
         $segment = JsFunction::fromCallable('segment', function (JsValue $this_, array $args): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Granularity]]') instanceof JsUndefined
+                || $this_->get('[[InitializedSegmenter]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Segmenter.prototype.segment called on non-Segmenter');
             }
@@ -4199,7 +4220,7 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
             if (
                 !$this_ instanceof JsObject
-                || $this_->get('[[Granularity]]') instanceof JsUndefined
+                || $this_->get('[[InitializedSegmenter]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.Segmenter.prototype.resolvedOptions called on non-Segmenter');
             }
