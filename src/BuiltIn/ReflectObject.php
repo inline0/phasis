@@ -107,6 +107,14 @@ class ReflectObject
                     }
                 }
 
+                // Proxy targets always run through their [[Set]] trap, even
+                // when the receiver is a primitive — the trap is observable
+                // and the receiver is passed through verbatim.
+                if ($target instanceof \PhpJs\Value\JsProxy) {
+                    return new JsBoolean(
+                        $target->setWithValueReceiver($propKey->toJsString(), $value, $receiver)
+                    );
+                }
                 // Per spec, [[Set]] passes receiver through, even if it is not
                 // an object. OrdinarySetWithOwnDescriptor returns false when
                 // Type(Receiver) is not Object for data descriptors. Accessor

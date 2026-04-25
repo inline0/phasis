@@ -315,6 +315,15 @@ class JsProxy extends JsObject
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
+        return $this->setWithValueReceiver($name, $value, $receiver);
+    }
+
+    /**
+     * Like internalSet but accepts any JsValue as receiver, so Reflect.set
+     * can pass a primitive or undefined receiver through to the trap.
+     */
+    public function setWithValueReceiver(string $name, JsValue $value, JsValue $receiver): bool
+    {
         $trap = $this->getTrap('set');
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target, new JsString($name), $value, $receiver]);
@@ -326,8 +335,16 @@ class JsProxy extends JsObject
             $this->validateSetInvariants($name, $value);
             return true;
         }
-        // No trap: forward to target.[[Set]](P, V, Receiver).
-        return $this->target->internalSet($name, $value, $receiver);
+        // No trap: forward to target.[[Set]](P, V, Receiver). Target is
+        // a JsObject which only accepts JsObject receivers; coerce the
+        // (potentially primitive) receiver to itself by using the target
+        // as the receiver when it's not an Object — the underlying spec
+        // semantics for OrdinarySet then return false for primitive
+        // receivers on data descriptors.
+        if ($receiver instanceof JsObject) {
+            return $this->target->internalSet($name, $value, $receiver);
+        }
+        return $this->target->internalSet($name, $value, $this->target);
     }
 
     /**
