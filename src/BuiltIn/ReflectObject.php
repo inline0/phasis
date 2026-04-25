@@ -46,6 +46,12 @@ class ReflectObject
                     return $target->getBySymbol($propKey);
                 }
                 $name = $propKey instanceof JsString ? $propKey->value : TypeConversion::toString($propKey);
+                // TypedArray exotic [[Get]] handles numeric indices directly;
+                // its prototype-chain hop happens inside ::get(), so use the
+                // public get() rather than the JsObject internalGet path.
+                if ($target instanceof \PhpJs\Value\JsTypedArray) {
+                    return $target->get($name);
+                }
                 if ($receiver instanceof JsObject) {
                     return $target->internalGet($name, $receiver);
                 }
