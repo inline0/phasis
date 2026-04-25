@@ -946,23 +946,61 @@ class RegExpPrototype
 
             $S = TypeConversion::toString($args[0] ?? JsUndefined::instance());
 
-            // Get flags to create a copy with the same flags.
+            // Per spec step 4-8: C = SpeciesConstructor(R, %RegExp%);
+            // flags = ToString(R.flags); matcher = Construct(C, R, flags);
+            // matcher.lastIndex = R.lastIndex.
+            $globalRegExp = null;
+            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            if ($interp !== null) {
+                $g = $interp->getGlobalValue('RegExp');
+                if ($g instanceof JsFunction) {
+                    $globalRegExp = $g;
+                }
+            }
+            $C = $globalRegExp;
+            $rCtor = $this_->get('constructor');
+            if ($rCtor instanceof JsObject) {
+                $species = $rCtor->getBySymbol(SymbolConstructor::species());
+                if ($species instanceof JsUndefined || $species instanceof JsNull) {
+                    // Use default %RegExp% — already in $C.
+                } elseif (
+                    ($species instanceof JsFunction && $species->isConstructable())
+                    || ($species instanceof \PhpJs\Value\JsProxy && $species->isConstructable())
+                ) {
+                    /** @var JsFunction|\PhpJs\Value\JsProxy $species */
+                    $C = $species;
+                } else {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Species constructor must be a constructor'
+                    );
+                }
+            } elseif (!$rCtor instanceof JsUndefined) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'RegExp constructor must be an object'
+                );
+            }
+
             $flagsVal = $this_->get('flags');
             $flags = TypeConversion::toString($flagsVal);
             $global = str_contains($flags, 'g');
             $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
 
-            // Create a copy of the regexp (using the exec method from the same object
-            // but with lastIndex propagated). Per spec we should use SpeciesConstructor
-            // but for simplicity we use the same object and save/restore state.
-            // Actually per spec we create a new regexp. For now, clone the state.
-            // We'll use the original regexp's exec but track state in our iterator.
-            $lastIndexVal = $this_->get('lastIndex');
-            $startIndex = (int) TypeConversion::toNumber($lastIndexVal);
+            if ($C === null) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'RegExp constructor is not available'
+                );
+            }
+            $matcherV = $C->construct([$this_, new JsString($flags)]);
+            if (!$matcherV instanceof JsObject) {
+                throw new \PhpJs\Exceptions\TypeError(
+                    'Species constructor must return an object'
+                );
+            }
+            $matcher = $matcherV;
 
-            // We need a "matcher" - use the original rx since exec is instance-specific.
-            // Per spec, we create a copy; approximate by using original rx with saved lastIndex.
-            $matcher = $this_;
+            $lastIndexVal = $this_->get('lastIndex');
+            $startIndex = TypeConversion::toLength($lastIndexVal);
+            $matcher->set('lastIndex', new JsNumber((float) $startIndex), true);
 
             // Create the iterator closure over $matcher, $S, $global, $fullUnicode.
             $done = false;
