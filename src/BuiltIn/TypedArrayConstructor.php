@@ -13,6 +13,7 @@ use PhpJs\Value\JsArray;
 use PhpJs\Value\JsArrayBuffer;
 use PhpJs\Value\JsBoolean;
 use PhpJs\Value\JsDataView;
+use PhpJs\Value\JsProxy;
 use PhpJs\Value\JsSharedArrayBuffer;
 use PhpJs\Value\JsFunction;
 use PhpJs\Value\JsNull;
@@ -158,8 +159,11 @@ class TypedArrayConstructor
                         $ctor = $constructor;
                     } else {
                         // Per spec 7.3.20 step 9: If IsConstructor(S) is true, return S.
-                        // Step 10: Throw a TypeError exception.
-                        if (!($species instanceof JsFunction && $species->isConstructable())) {
+                        // Step 10: Throw a TypeError exception. IsConstructor
+                        // accepts proxies whose target has [[Construct]].
+                        $isCtor = ($species instanceof JsFunction && $species->isConstructable())
+                            || ($species instanceof JsProxy && $species->isConstructable());
+                        if (!$isCtor) {
                             throw new TypeError(
                                 'ArrayBuffer.prototype.slice: species constructor is not a constructor'
                             );
@@ -169,7 +173,9 @@ class TypedArrayConstructor
                 }
 
                 // Step 15: Construct(ctor, newLen).
-                if ($ctor instanceof JsFunction && $ctor->isConstructable()) {
+                $isCtor = ($ctor instanceof JsFunction && $ctor->isConstructable())
+                    || ($ctor instanceof JsProxy && $ctor->isConstructable());
+                if ($isCtor) {
                     $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
                 } else {
                     // Default: create a plain ArrayBuffer.

@@ -47,5 +47,9 @@ return [
         'annexB/built-ins/unescape',
     ],
     'test262_skipped_features' => [
+        // Module proposals not implemented. Tests for these features
+        // dynamic-import all variants of import.defer / import.source.
+        'import-defer',
+        'source-phase-imports',
     ],
 ];
