@@ -10344,14 +10344,18 @@ class Interpreter
         }
 
         foreach ($children as $child) {
-            if ($child instanceof FunctionDeclaration) {
+            if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
                 if ($canHoist($child->id->name)) {
                     $env->defineAnnexBVar($child->id->name, JsUndefined::instance(), $this->isEvalContext);
                     $this->annexBEligible[spl_object_id($child)] = true;
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
-                    if ($inner instanceof FunctionDeclaration) {
+                    // Annex B.3 hoisting only applies to plain function
+                    // declarations — generator and async function
+                    // declarations stay block-scoped and are not promoted
+                    // to var bindings.
+                    if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         // Per B.3.3.1: skip if the enclosing block already has a
                         // lexical binding for this name (let/const/class/function).
                         // Replacing with var would be an Early Error.
