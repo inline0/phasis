@@ -6014,6 +6014,26 @@ class Parser
                     "Invalid regular expression: /{$pattern}/: Reserved class-set double punctuator",
                 );
             }
+            // /v `&&` is the intersection operator and requires non-empty
+            // operands on both sides. `[&&]`, `[&&a]`, `[a&&]` are syntax
+            // errors per spec.
+            if (
+                $isVFlag
+                && $c === '&'
+                && $i + 1 < $len
+                && $pattern[$i + 1] === '&'
+            ) {
+                $prevChar = $i > $start + 1 ? $pattern[$i - 1] : '[';
+                $isClassStart = ($prevChar === '[' || $prevChar === '^');
+                $afterIdx = $i + 2;
+                $afterChar = $afterIdx < $len ? $pattern[$afterIdx] : ']';
+                $isClassEnd = ($afterChar === ']');
+                if ($isClassStart || $isClassEnd) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: /{$pattern}/: Empty operand for class-set intersection",
+                    );
+                }
+            }
             $prevWasClassEscape = false;
             $i++;
         }
