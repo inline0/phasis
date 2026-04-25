@@ -4268,7 +4268,8 @@ class Interpreter
                         && ($thisValue instanceof JsNumber
                             || $thisValue instanceof JsString
                             || $thisValue instanceof JsBoolean
-                            || $thisValue instanceof JsSymbol)
+                            || $thisValue instanceof JsSymbol
+                            || $thisValue instanceof JsBigInt)
                     ) {
                         $thisValue = TypeConversion::toObject($thisValue);
                     }

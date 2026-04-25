@@ -79,7 +79,7 @@ class ArrayConstructor
         $fromFn = JsFunction::fromCallable('from', self::from(), 1);
         $fromFn->setNonConstructable();
         $constructor->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
-        $fromAsyncFn = JsFunction::fromCallable('fromAsync', self::fromAsync(), 1);
+        $fromAsyncFn = JsFunction::fromCallable('fromAsync', self::fromAsync($env), 1);
         $fromAsyncFn->setNonConstructable();
         $constructor->defineOwnProperty('fromAsync', PropertyDescriptor::data($fromAsyncFn, true, false, true));
         $ofFn = JsFunction::fromCallable('of', self::of(), 0);
@@ -2136,22 +2136,25 @@ class ArrayConstructor
      * Per spec, returns a Promise that resolves to an Array.
      * Since php-js is synchronous, thenables and promises are resolved eagerly.
      */
-    private static function fromAsync(): \Closure
+    private static function fromAsync(Environment $env): \Closure
     {
-        return function (JsValue $this_, array $args): JsValue {
+        return function (JsValue $this_, array $args) use ($env): JsValue {
             $c = $this_;
             $asyncItems = $args[0] ?? JsUndefined::instance();
             $mapFnRaw = $args[1] ?? JsUndefined::instance();
             $thisArg = $args[2] ?? JsUndefined::instance();
 
-            // Step 3: validate mapFn early.
+            // Step 3: validate mapFn early. Per spec the mapfn check happens
+            // synchronously, but the rejected Promise itself must be returned
+            // asynchronously — never throw synchronously to the caller.
             $mapFn = null;
             if (!$mapFnRaw instanceof JsUndefined) {
                 if (!$mapFnRaw instanceof JsFunction) {
                     $promise = new \PhpJs\Value\JsPromise();
                     $promise->reject(
-                        self::createTypeErrorObject(
-                            TypeConversion::toString($mapFnRaw) . ' is not a function'
+                        self::buildErrorObject(
+                            $env,
+                            new \PhpJs\Exceptions\TypeError('mapfn is not a function'),
                         )
                     );
                     return $promise;
@@ -2308,6 +2311,11 @@ class ArrayConstructor
                     /** @var JsFunction $c */
                     $a = self::constructWith($c, [new JsNumber((float) $lenNum)]);
                 } else {
+                    // Per spec, the non-constructor path is `A = ? ArrayCreate(len)`.
+                    // ArrayCreate throws RangeError for len > 2^32 - 1.
+                    if ($lenNum > 0xFFFFFFFF) {
+                        throw new \PhpJs\Exceptions\RangeError('Invalid array length');
+                    }
                     $a = new JsArray();
                 }
 
@@ -2329,17 +2337,46 @@ class ArrayConstructor
                 }
                 $promise->resolve($a);
             } catch (\Throwable $e) {
-                if ($e instanceof \PhpJs\Exceptions\RuntimeError) {
-                    $errVal = $e->getJsValue();
-                    $promise->reject($errVal ?? new JsString($e->getMessage()));
-                } elseif ($e instanceof TypeError) {
-                    $promise->reject(self::createTypeErrorObject($e->getMessage()));
+                if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                    $promise->reject($e->jsValue);
                 } else {
-                    $promise->reject(new JsString($e->getMessage()));
+                    $promise->reject(self::buildErrorObject($env, $e));
                 }
             }
             return $promise;
         };
+    }
+
+    /**
+     * Convert a PHP exception to a JS Error subclass instance using the live
+     * constructors registered on the global environment, so the resulting
+     * value is `instanceof TypeError` (etc.) when checked from JS.
+     */
+    private static function buildErrorObject(Environment $env, \Throwable $e): JsValue
+    {
+        $ctorName = match (true) {
+            $e instanceof \PhpJs\Exceptions\TypeError => 'TypeError',
+            $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
+            $e instanceof \PhpJs\Exceptions\ReferenceError => 'ReferenceError',
+            $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
+            default => 'Error',
+        };
+        try {
+            $ctor = $env->get($ctorName);
+        } catch (\Throwable) {
+            $ctor = null;
+        }
+        if ($ctor instanceof JsFunction && $ctor->isConstructable()) {
+            try {
+                $built = $ctor->construct([new JsString($e->getMessage())]);
+                if ($built instanceof JsValue) {
+                    return $built;
+                }
+            } catch (\Throwable) {
+                // fall through to plain object
+            }
+        }
+        return self::createTypeErrorObject($e->getMessage());
     }
 
     /**
@@ -2504,6 +2541,14 @@ class ArrayConstructor
     {
         $err = new JsObject();
         $err->set('name', new JsString('TypeError'));
+        $err->set('message', new JsString($message));
+        return $err;
+    }
+
+    private static function createRangeErrorObject(string $message): JsObject
+    {
+        $err = new JsObject();
+        $err->set('name', new JsString('RangeError'));
         $err->set('message', new JsString($message));
         return $err;
     }
