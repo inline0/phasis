@@ -221,11 +221,22 @@ function compatGroupForDirectory(string $relativeDir): ?string
     // built-ins/RegExp and built-ins/Temporal have huge flat subdirectories that
     // are expensive to run. Group at depth 3 so CI shards can parallelise across
     // subgroups (e.g. built-ins/RegExp/prototype, built-ins/RegExp/property-escapes)
-    // without any one shard having to handle the full set.
+    // without any one shard having to handle the full set. property-escapes
+    // itself has a generated/ subfolder with 400+ tests; group at depth 4
+    // so the CI shard can target it separately from the rest.
     $isDeep = $parts[0] === 'annexB'
         || ($parts[0] === 'built-ins' && ($parts[1] ?? '') === 'RegExp')
         || ($parts[0] === 'built-ins' && ($parts[1] ?? '') === 'Temporal');
-    $depth = $isDeep ? min(count($parts), 3) : min(count($parts), 2);
+    $isExtraDeep = $parts[0] === 'built-ins'
+        && ($parts[1] ?? '') === 'RegExp'
+        && ($parts[2] ?? '') === 'property-escapes';
+    if ($isExtraDeep) {
+        $depth = min(count($parts), 4);
+    } elseif ($isDeep) {
+        $depth = min(count($parts), 3);
+    } else {
+        $depth = min(count($parts), 2);
+    }
 
     return implode('/', array_slice($parts, 0, $depth));
 }

@@ -61,7 +61,11 @@ jobs:
           # 45-min cap. compat-report groups RegExp at depth 3 so these
           # subprefixes resolve to distinct groups.
           - { id: 'builtins-RegExp-prototype', prefix: 'built-ins/RegExp/prototype', exclude: '' }
-          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: '' }
+          # property-escapes/generated holds 432 unicode property tests that
+          # collectively trip pcre.backtrack_limit; split off so the rest of
+          # property-escapes finishes quickly.
+          - { id: 'builtins-RegExp-property-escapes-generated', prefix: 'built-ins/RegExp/property-escapes/generated', exclude: '' }
+          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: 'built-ins/RegExp/property-escapes/generated' }
           - { id: 'builtins-RegExp-rest', prefix: 'built-ins/RegExp', exclude: 'built-ins/RegExp/prototype built-ins/RegExp/property-escapes' }
           - { id: 'builtins-S', prefix: 'built-ins/S', exclude: '' }
           # Temporal has 4165 tests; split by top-level type.
