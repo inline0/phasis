@@ -7057,36 +7057,53 @@ class Interpreter
             $self = $this;
             $needsFieldInit = true;
             if ($isDerived && $superClass instanceof JsFunction) {
+                $constructorRef = null;
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args) use ($superClass, $self) {
-                        // Spec default derived constructor: super(...args). The AST
-                        // SuperCall path initializes the super class's own instance
-                        // fields before its body runs when the super is a base
-                        // class. Mirror that here so field initializers in a base
-                        // class still execute when invoked via a derived default
-                        // constructor.
+                    function (JsValue $thisVal, array $args) use (&$constructorRef, $self) {
+                        // Spec default derived constructor: GetSuperConstructor
+                        // looks up via [[GetPrototypeOf]](activeFunction) so a
+                        // runtime Object.setPrototypeOf on the class redirects
+                        // super(...args) to the new parent.
+                        $activeSuper = $constructorRef instanceof JsFunction
+                            ? $constructorRef->getPrototype()
+                            : null;
+                        if (!$activeSuper instanceof JsFunction || !$activeSuper->isConstructable()) {
+                            throw new TypeError('Super constructor must be a constructor');
+                        }
                         if (
                             $thisVal instanceof JsObject
-                            && $superClass->isClassConstructor()
-                            && !$superClass->isDerivedConstructor()
+                            && $activeSuper->isClassConstructor()
+                            && !$activeSuper->isDerivedConstructor()
                         ) {
                             $self->initializeInstanceFields(
-                                $superClass,
+                                $activeSuper,
                                 $thisVal,
-                                $superClass->getPrivateEnv() ?? $self->getGlobalEnv(),
+                                $activeSuper->getPrivateEnv() ?? $self->getGlobalEnv(),
                             );
                         }
-                        return $self->callFunction($superClass, $thisVal, $args);
+                        return $self->callFunction($activeSuper, $thisVal, $args);
                     },
                 )->setConstructable();
+                $constructorRef = $constructor;
             } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+                $constructorRef = null;
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args) use ($superClass) {
-                        return $superClass->construct($args, $superClass);
+                    function (JsValue $thisVal, array $args) use (&$constructorRef) {
+                        $activeSuper = $constructorRef instanceof JsFunction
+                            ? $constructorRef->getPrototype()
+                            : null;
+                        if ($activeSuper instanceof \PhpJs\Value\JsProxy && $activeSuper->isConstructable()) {
+                            return $activeSuper->construct($args, $activeSuper);
+                        }
+                        if ($activeSuper instanceof JsFunction && $activeSuper->isConstructable()) {
+                            return $activeSuper->construct($args);
+                        }
+                        throw new TypeError('Super constructor must be a constructor');
                     },
                 )->setConstructable();
+                $constructorRef = $constructor;
             } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsNull) {
                 // class C extends null { }: default constructor is
                 // `constructor(...args) { super(...args); }` per spec, which
