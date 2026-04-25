@@ -107,29 +107,31 @@ class ReflectObject
                     }
                 }
 
-                // Per spec, [[Set]] passes receiver through, even if it is not an object.
-                // OrdinarySetWithOwnDescriptor returns false when Type(Receiver) is not Object.
+                // Per spec, [[Set]] passes receiver through, even if it is not
+                // an object. OrdinarySetWithOwnDescriptor returns false when
+                // Type(Receiver) is not Object for data descriptors. Accessor
+                // setters always run with the receiver (which may be a
+                // primitive) as their this value.
                 if (!$receiver instanceof JsObject) {
-                    // Walk to find own descriptor, then apply spec step 5b.
-                    $ownDesc = $target->getOwnPropertyDescriptor($propKey->toJsString());
-                    if ($ownDesc === null) {
-                        $parent = $target->getPrototype();
-                        if ($parent !== null) {
-                            // Inherit from parent, but receiver is still non-object.
+                    // Walk the prototype chain looking for an accessor descriptor.
+                    $cur = $target;
+                    while ($cur !== null) {
+                        $ownDesc = $cur->getOwnPropertyDescriptor($propKey->toJsString());
+                        if ($ownDesc !== null) {
+                            if ($ownDesc->isDataDescriptor()) {
+                                // Step 5b: Type(Receiver) is not Object → false.
+                                return new JsBoolean(false);
+                            }
+                            if ($ownDesc->set !== null) {
+                                $ownDesc->set->call($receiver, [$value]);
+                                return new JsBoolean(true);
+                            }
                             return new JsBoolean(false);
                         }
-                        // No own, no parent: would create on receiver, but receiver is not object.
-                        return new JsBoolean(false);
+                        $cur = $cur->getPrototype();
                     }
-                    if ($ownDesc->isDataDescriptor()) {
-                        // Step 5b: If Type(Receiver) is not Object, return false.
-                        return new JsBoolean(false);
-                    }
-                    // Accessor: call setter if present.
-                    if ($ownDesc->set !== null) {
-                        $ownDesc->set->call($target, [$value]);
-                        return new JsBoolean(true);
-                    }
+                    // No own/inherited descriptor: would create on receiver,
+                    // but receiver is not object → false.
                     return new JsBoolean(false);
                 }
                 $success = $target->internalSet($propKey->toJsString(), $value, $receiver);
