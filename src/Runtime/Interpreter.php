@@ -5175,9 +5175,7 @@ class Interpreter
                     $rawKey = $this->evaluate($prop->key, $env);
                     if ($rawKey instanceof JsSymbol) {
                         $usedSymIds[$rawKey->getId()] = true;
-                        $propValue = ($value instanceof JsObject)
-                            ? $value->getBySymbol($rawKey)
-                            : JsUndefined::instance();
+                        $propValue = $this->getVForDestructuring($value, null, $rawKey);
                         $this->bindPattern($prop->value, $propValue, $env);
                         continue;
                     }
@@ -5188,12 +5186,33 @@ class Interpreter
                         : TypeConversion::toString($this->evaluate($prop->key, $env));
                 }
                 $usedKeys[] = $key;
-                $propValue = ($value instanceof JsObject)
-                    ? $value->get($key)
-                    : JsUndefined::instance();
+                $propValue = $this->getVForDestructuring($value, $key, null);
                 $this->bindPattern($prop->value, $propValue, $env);
             }
         }
+    }
+
+    /**
+     * GetV for destructuring: ToObject(value) for the lookup, then [[Get]]
+     * with the primitive as the receiver. Reading a property like
+     * __proto__ from a primitive (e.g. `const {__proto__: x} = "s"`)
+     * resolves through String.prototype, returning the prototype itself.
+     */
+    private function getVForDestructuring(JsValue $value, ?string $key, ?JsSymbol $symbolKey): JsValue
+    {
+        if ($value instanceof JsObject) {
+            return $symbolKey !== null
+                ? $value->getBySymbol($symbolKey)
+                : $value->get($key);
+        }
+        if ($value instanceof JsUndefined || $value instanceof JsNull) {
+            return JsUndefined::instance();
+        }
+        $boxed = TypeConversion::toObject($value);
+        if ($symbolKey !== null) {
+            return $boxed->getBySymbolWithReceiver($symbolKey, $value);
+        }
+        return $boxed->getWithValueReceiver($key, $value);
     }
 
     private function evalMemberExpression(MemberExpression $node, Environment $env): JsValue
@@ -8739,9 +8758,7 @@ class Interpreter
                         $rawK = $this->evaluate($prop->key, $env);
                         if ($rawK instanceof JsSymbol) {
                             $usedSymIdsApe[$rawK->getId()] = true;
-                            $propValue = ($value instanceof JsObject)
-                                ? $value->getBySymbol($rawK)
-                                : JsUndefined::instance();
+                            $propValue = $this->getVForDestructuring($value, null, $rawK);
                             $this->assignPatternToEnv($prop->value, $propValue, $env);
                             continue;
                         }
@@ -8752,7 +8769,7 @@ class Interpreter
                             : TypeConversion::toString($this->evaluate($prop->key, $env));
                     }
                     $usedKeysApe[] = $key;
-                    $propValue = ($value instanceof JsObject) ? $value->get($key) : JsUndefined::instance();
+                    $propValue = $this->getVForDestructuring($value, $key, null);
                     $this->assignPatternToEnv($prop->value, $propValue, $env);
                 }
             }
