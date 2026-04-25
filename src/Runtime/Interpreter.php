@@ -3399,11 +3399,21 @@ class Interpreter
             return true;
         }
 
-        // Stop at function/class boundaries.
+        // Walk into arrow functions — they inherit new.target from the
+        // enclosing non-arrow function, so a new.target reference inside an
+        // arrow is also gated on the eval's enclosing context.
+        if ($node instanceof ArrowFunction) {
+            $body = $node->body;
+            if ($body instanceof BlockStatement) {
+                return $this->astContainsNewTarget($body->body);
+            }
+            return $body instanceof Node && $this->nodeContainsNewTarget($body);
+        }
+
+        // Stop at non-arrow function/class boundaries.
         if (
             $node instanceof FunctionDeclaration
             || $node instanceof FunctionExpression
-            || $node instanceof ArrowFunction
             || $node instanceof ClassDeclaration
             || $node instanceof ClassExpression
         ) {
