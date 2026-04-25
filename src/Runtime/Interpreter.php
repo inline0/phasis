@@ -5008,18 +5008,24 @@ class Interpreter
             // Per spec 12.3.5.3 MakeSuperPropertyReference step 3:
             // let actualThis = env.GetThisBinding(). If this is uninitialized
             // (derived constructor before super()), this throws ReferenceError.
+            // Per GetThisValue + [[Get]], the actualThis (which may be a
+            // primitive in strict mode methods) is passed to the getter as
+            // its `this`. Use getWithValueReceiver so primitives pass through
+            // unboxed instead of being substituted with the super base.
             $superThisRead = $env->get('this');
-            $superRecvRead = $superThisRead instanceof JsObject ? $superThisRead : $superBase;
             if ($node->computed) {
                 if ($rawKey instanceof JsSymbol) {
-                    return $superBase->getBySymbolWithReceiver($rawKey, $superRecvRead);
+                    return $superBase->getBySymbolWithReceiver(
+                        $rawKey,
+                        $superThisRead instanceof JsObject ? $superThisRead : $superBase,
+                    );
                 }
-                return $superBase->internalGet(TypeConversion::toString($rawKey), $superRecvRead);
+                return $superBase->getWithValueReceiver(TypeConversion::toString($rawKey), $superThisRead);
             }
             $key = $node->property instanceof Identifier
                 ? $node->property->name
                 : TypeConversion::toString($this->evaluate($node->property, $env));
-            return $superBase->internalGet($key, $superRecvRead);
+            return $superBase->getWithValueReceiver($key, $superThisRead);
         }
 
         $obj = $this->evaluate($node->object, $env);
