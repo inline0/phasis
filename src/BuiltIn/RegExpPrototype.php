@@ -681,6 +681,12 @@ class RegExpPrototype
                             continue;
                         }
                         $iHasGrp = true;
+                        if ($groupNameMap !== null) {
+                            $orig = $groupNameMap->get($ik);
+                            if ($orig instanceof JsString) {
+                                $ik = $orig->value;
+                            }
+                        }
                         if ($im[1] === -1 || $im[0] === null) {
                             $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
                                 JsUndefined::instance(),
