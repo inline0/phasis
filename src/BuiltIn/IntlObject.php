@@ -1279,8 +1279,11 @@ class IntlObject
         $formatGetter = JsFunction::fromCallable('get format', function (
             JsValue $this_,
         ) use ($formatFn): JsValue {
-            if (!$this_ instanceof JsObject) {
-                throw new TypeError('Intl.NumberFormat.prototype.format called on non-object');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.NumberFormat.prototype.format called on non-NumberFormat');
             }
             $boundFormat = JsFunction::fromCallable('format', function (
                 JsValue $unused,
@@ -1780,8 +1783,11 @@ class IntlObject
         $formatGetter = JsFunction::fromCallable('get format', function (
             JsValue $this_,
         ) use ($formatFn): JsValue {
-            if (!$this_ instanceof JsObject) {
-                throw new TypeError('Intl.DateTimeFormat.prototype.format called on non-object');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.DateTimeFormat.prototype.format called on non-DateTimeFormat');
             }
             $boundFormat = JsFunction::fromCallable('format', function (
                 JsValue $unused,
