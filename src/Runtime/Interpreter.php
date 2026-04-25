@@ -1364,13 +1364,18 @@ class Interpreter
     private function evalDelete(Node $argument, Environment $env): JsValue
     {
         // Spec §13.5.1.2: delete super.foo / delete super[expr] always
-        // throws ReferenceError. The property expression is evaluated for
-        // side effects before throwing.
+        // throws ReferenceError. Per 13.3.7.1, GetThisBinding runs BEFORE
+        // evaluating the property expression — so in a derived constructor
+        // before super(), the property expression must not run (this read
+        // throws ReferenceError first). After this read succeeds, evaluate
+        // the property expression for side effects, then throw the
+        // 13.5.1.2 ReferenceError.
         if (
             $argument instanceof MemberExpression
             && $argument->object instanceof Identifier
             && $argument->object->name === 'super'
         ) {
+            $env->get('this');
             if ($argument->computed) {
                 $this->evaluate($argument->property, $env);
             }
