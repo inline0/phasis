@@ -1586,19 +1586,31 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
-            if (count($args) < 2) {
-                throw new TypeError('formatRange requires two arguments');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.NumberFormat.prototype.formatRange called on non-NumberFormat',
+                );
             }
-            $start = TypeConversion::toNumber($args[0]);
-            $end = TypeConversion::toNumber($args[1]);
+            $startVal = $args[0] ?? JsUndefined::instance();
+            $endVal = $args[1] ?? JsUndefined::instance();
+            if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
+                throw new TypeError('formatRange arguments cannot be undefined');
+            }
+            $start = TypeConversion::toNumber($startVal);
+            $end = TypeConversion::toNumber($endVal);
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRange');
             }
-            $startStr = ($this_ instanceof JsObject && extension_loaded('intl'))
+            $startStr = extension_loaded('intl')
                 ? self::formatNumber($this_, $start) : (string) $start;
-            $endStr = ($this_ instanceof JsObject && extension_loaded('intl'))
+            $endStr = extension_loaded('intl')
                 ? self::formatNumber($this_, $end) : (string) $end;
-            // Use an en-dash for ranges.
+            if ($startStr === $endStr) {
+                return new JsString($startStr);
+            }
             return new JsString($startStr . "\u{2013}" . $endStr);
         }, 2);
         $proto->defineOwnProperty(
@@ -1611,11 +1623,21 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
-            if (count($args) < 2) {
-                throw new TypeError('formatRangeToParts requires two arguments');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.NumberFormat.prototype.formatRangeToParts called on non-NumberFormat',
+                );
             }
-            $start = TypeConversion::toNumber($args[0]);
-            $end = TypeConversion::toNumber($args[1]);
+            $startVal = $args[0] ?? JsUndefined::instance();
+            $endVal = $args[1] ?? JsUndefined::instance();
+            if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
+                throw new TypeError('formatRangeToParts arguments cannot be undefined');
+            }
+            $start = TypeConversion::toNumber($startVal);
+            $end = TypeConversion::toNumber($endVal);
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRangeToParts');
             }
