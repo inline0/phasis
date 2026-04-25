@@ -5770,10 +5770,16 @@ class Parser
                 }
                 $next = $pattern[$i + 1];
                 if (in_array($next, ['d', 'D', 's', 'S', 'w', 'W', 'p', 'P'], true)) {
+                    // `\d-X` is invalid as a class range in u-mode. In v-mode
+                    // `\d--X` is the set-difference operator, not a range, so
+                    // we must not reject the leading `-` then.
                     if ($i + 2 < $len && $pattern[$i + 2] === '-' && $i + 3 < $len && $pattern[$i + 3] !== ']') {
-                        throw new \PhpJs\Exceptions\SyntaxError(
-                            "Invalid regular expression: /{$pattern}/: Invalid character class",
-                        );
+                        $isVDifference = $isVFlag && $pattern[$i + 3] === '-';
+                        if (!$isVDifference) {
+                            throw new \PhpJs\Exceptions\SyntaxError(
+                                "Invalid regular expression: /{$pattern}/: Invalid character class",
+                            );
+                        }
                     }
                     // Skip past possible \p{Property}.
                     if ($next === 'p' || $next === 'P') {
