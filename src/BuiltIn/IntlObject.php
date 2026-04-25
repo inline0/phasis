@@ -2439,22 +2439,34 @@ class IntlObject
         ): JsValue {
             $dateArg = $args[0] ?? JsUndefined::instance();
 
-            // Get timestamp from Date object or number.
-            $timestamp = time();
+            // Get timestamp from Date object or number. Per spec, the
+            // value goes through ToNumber and is then validated via
+            // TimeClip; non-finite numbers throw RangeError.
+            $timestampMs = null;
             if ($dateArg instanceof JsObject && $dateArg->has('getTime')) {
                 $getTime = $dateArg->get('getTime');
                 if ($getTime instanceof JsFunction) {
                     $interp = \PhpJs\Engine::getCurrentInterpreter();
                     if ($interp !== null) {
                         $result = $interp->callFunction($getTime, $dateArg, []);
-                        $timestamp = (int) ($result instanceof JsNumber ? $result->value / 1000 : time());
+                        $timestampMs = $result instanceof JsNumber ? $result->value : NAN;
                     }
                 }
-            } elseif ($dateArg instanceof JsNumber) {
-                $timestamp = (int) ($dateArg->value / 1000);
-            } elseif (!$dateArg instanceof JsUndefined) {
-                $timestamp = (int) (TypeConversion::toNumber($dateArg) / 1000);
+            } elseif ($dateArg instanceof JsUndefined) {
+                $timestampMs = (float) (time() * 1000);
+            } else {
+                $timestampMs = TypeConversion::toNumber($dateArg);
             }
+            if ($timestampMs === null || is_nan($timestampMs) || !is_finite($timestampMs)) {
+                throw new RangeError('Invalid time value');
+            }
+            // TimeClip rejects values exceeding the JS Date range
+            // (±8.64e15). Mirror the spec so the
+            // time-clip-near-time-boundaries test passes.
+            if (abs($timestampMs) > 8.64e15) {
+                throw new RangeError('Time value out of range');
+            }
+            $timestamp = (int) ($timestampMs / 1000);
 
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
                 $formatted = self::formatDateTime($this_, $timestamp);
@@ -2704,6 +2716,12 @@ class IntlObject
     {
         $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
         $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
+        // ICU rejects "+HH:MM" / "-HH:MM" identifiers but accepts the
+        // "GMT+HH:MM" form. Translate offset-style time zones so
+        // IntlDateFormatter doesn't throw `No such time zone`.
+        if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
+            $tz = 'GMT' . $tz;
+        }
 
         $dateStyle = null;
         $dsVal = $dtf->get('[[DateStyle]]');
