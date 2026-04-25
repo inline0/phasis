@@ -125,8 +125,7 @@ class IteratorConstructor
                 }
                 $handler = $this_->getOwnPropertyDescriptor('[[ReturnHandler]]');
                 if ($handler === null || !$handler->value instanceof JsFunction) {
-                    // Default: return a done iterator result.
-                    return self::iterResult(JsUndefined::instance(), true);
+                    throw new TypeError('Method called on incompatible Iterator helper');
                 }
                 return $handler->value->call($this_, $args);
             },
