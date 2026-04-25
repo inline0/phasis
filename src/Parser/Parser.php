@@ -1990,6 +1990,24 @@ class Parser
      */
     private function validateAsAssignmentPattern(Node $node): void
     {
+        // Per §13.15.5.1: a nested DestructuringAssignmentTarget that is a
+        // parenthesized ObjectLiteral, ArrayLiteral, or AssignmentExpression
+        // is an early SyntaxError. Object/array literals must be unwrapped
+        // so the cover-grammar refinement applies; assignment expressions
+        // must be the unparenthesized AssignmentElement form `a = init`.
+        // (The outer `([a]) = ...` case is rejected before this is called.)
+        if (
+            $this->parenthesized->contains($node)
+            && (
+                $node instanceof ObjectExpression
+                || $node instanceof ArrayExpression
+                || ($node instanceof AssignmentExpression && $node->operator === '=')
+            )
+        ) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid destructuring assignment target: parenthesized pattern',
+            );
+        }
         if ($node instanceof ObjectExpression) {
             $count = count($node->properties);
             for ($i = 0; $i < $count; $i++) {
