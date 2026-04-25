@@ -6392,9 +6392,20 @@ class Parser
                 }
                 return [new Literal($token->location, $digits, $raw), false];
             }
-            $value = (float) $raw;
-            if ($value == (int) $value) {
-                $value = (int) $raw;
+            // Decode non-decimal bases — (float) and (int) casts on a string
+            // like "0xff" return 0, so the property key would be "0" rather
+            // than "255". Mirror parseNumericLiteral's base handling.
+            if (str_starts_with($raw, '0x') || str_starts_with($raw, '0X')) {
+                $value = hexdec($raw);
+            } elseif (str_starts_with($raw, '0o') || str_starts_with($raw, '0O')) {
+                $value = octdec(substr($raw, 2));
+            } elseif (str_starts_with($raw, '0b') || str_starts_with($raw, '0B')) {
+                $value = bindec(substr($raw, 2));
+            } else {
+                $value = (float) $raw;
+                if ($value == (int) $value && !str_contains($raw, '.') && !str_contains($raw, 'e') && !str_contains($raw, 'E')) {
+                    $value = (int) $raw;
+                }
             }
             return [new Literal($token->location, $value, $raw), false];
         }
