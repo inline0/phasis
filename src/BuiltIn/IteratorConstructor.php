@@ -966,12 +966,10 @@ class IteratorConstructor
             $iter = $this_->getOwnPropertyDescriptor('[[WrapForValidIterator]]')->value;
             // Spec WrapForValidIteratorPrototype.next: invoke the inner next
             // method with no arguments; the wrapper's caller-supplied args
-            // are discarded ("next argument is ignored" semantic).
-            $result = $nextMethod->call($iter, []);
-            if (!$result instanceof JsObject) {
-                throw new TypeError('Iterator result is not an object');
-            }
-            return $result;
+            // are discarded ("next argument is ignored" semantic). The spec
+            // does NOT validate that the result is an object — that
+            // validation is the caller's responsibility.
+            return $nextMethod->call($iter, []);
         }, 0);
 
         $returnFn = JsFunction::fromCallable('return', function (JsValue $this_, array $args): JsValue {
