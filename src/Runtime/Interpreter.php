@@ -8133,6 +8133,20 @@ class Interpreter
             }
 
             $iterEnv = $env->createChild();
+            // Pre-declare lexical bindings so destructured names inherit the
+            // const/let kind (matches the for-of body branch below).
+            if ($node->left instanceof VariableDeclaration && $node->left->kind !== 'var') {
+                $declareKind = $node->left->kind;
+                foreach ($node->left->declarations as $decl) {
+                    foreach ($this->patternBoundNames($decl->id) as $boundName) {
+                        if ($declareKind === 'const') {
+                            $iterEnv->declareConst($boundName);
+                        } else {
+                            $iterEnv->declareLet($boundName);
+                        }
+                    }
+                }
+            }
             $this->assignForBinding($node->left, new JsString((string) $key), $iterEnv);
             $completion = $this->executeStatement($node->body, $iterEnv);
 
@@ -8284,6 +8298,22 @@ class Interpreter
                     $value = $this->awaitValue($value);
                 }
                 $iterEnv = $env->createChild();
+                // Pre-declare let/const bindings in the iteration env so that
+                // destructured names inherit the lexical kind (especially const,
+                // which bindPattern would otherwise downgrade to var via the
+                // initializeTdz fallback).
+                if ($node->left instanceof VariableDeclaration && $node->left->kind !== 'var') {
+                    $declareKind = $node->left->kind;
+                    foreach ($node->left->declarations as $decl) {
+                        foreach ($this->patternBoundNames($decl->id) as $boundName) {
+                            if ($declareKind === 'const') {
+                                $iterEnv->declareConst($boundName);
+                            } else {
+                                $iterEnv->declareLet($boundName);
+                            }
+                        }
+                    }
+                }
                 // Per spec ForIn/OfBodyEvaluation: if LHS assignment/destructuring is abrupt,
                 // close the iterator before propagating the error.
                 try {
