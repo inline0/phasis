@@ -2568,13 +2568,14 @@ class IntlObject
             self::dateTimeFormatRangeReceiverCheck($this_, 'formatRange');
             $startVal = $args[0] ?? JsUndefined::instance();
             $endVal = $args[1] ?? JsUndefined::instance();
+            // Spec step 4: BOTH undefined checks happen before
+            // ToNumber, so a poisoned `valueOf` on one side never
+            // runs when the other is undefined.
+            if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
+                throw new TypeError('formatRange arguments cannot be undefined');
+            }
             $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
             $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
-            if ($startMs > $endMs) {
-                throw new RangeError(
-                    'startDate must be smaller than or equal to endDate'
-                );
-            }
             $startStr = '';
             $endStr = '';
             if (extension_loaded('intl') && $this_ instanceof JsObject) {
@@ -2602,13 +2603,11 @@ class IntlObject
             self::dateTimeFormatRangeReceiverCheck($this_, 'formatRangeToParts');
             $startVal = $args[0] ?? JsUndefined::instance();
             $endVal = $args[1] ?? JsUndefined::instance();
+            if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
+                throw new TypeError('formatRangeToParts arguments cannot be undefined');
+            }
             $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
             $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
-            if ($startMs > $endMs) {
-                throw new RangeError(
-                    'startDate must be smaller than or equal to endDate'
-                );
-            }
             $result = new JsArray();
             $idx = 0;
             $emit = static function (string $type, string $value, string $source) use (
@@ -2739,9 +2738,6 @@ class IntlObject
      */
     private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
     {
-        if ($val instanceof JsUndefined) {
-            throw new TypeError("{$argName} cannot be undefined");
-        }
         $n = TypeConversion::toNumber($val);
         if (is_nan($n) || !is_finite($n)) {
             throw new RangeError("Invalid {$argName}: not a finite number");
