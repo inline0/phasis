@@ -333,6 +333,24 @@ class IntlObject
     }
 
     /**
+     * UTS35 type production: alphanum{3,8}(-alphanum{3,8})*. Used by
+     * `numberingSystem`, `calendar`, `collation`, `firstDayOfWeek`, etc.
+     */
+    private static function isValidUnicodeTypeValue(string $value): bool
+    {
+        if ($value === '') {
+            return false;
+        }
+        foreach (explode('-', $value) as $part) {
+            $partLen = strlen($part);
+            if ($partLen < 3 || $partLen > 8 || !ctype_alnum($part)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Validate the localeMatcher option. Per spec, must be "lookup" or "best fit".
      */
     private static function validateLocaleMatcher(JsObject $options): void
@@ -1127,6 +1145,9 @@ class IntlObject
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $numberingSystem = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($numberingSystem)) {
+                        throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
+                    }
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
@@ -1560,6 +1581,9 @@ class IntlObject
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $numberingSystem = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($numberingSystem)) {
+                        throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
+                    }
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
@@ -3669,6 +3693,9 @@ class IntlObject
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $ns = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($ns)) {
+                        throw new RangeError("Invalid numberingSystem: {$ns}");
+                    }
                     $numberingSystem = $ns;
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
