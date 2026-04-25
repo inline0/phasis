@@ -4959,6 +4959,11 @@ class Parser
         while ($i < $len) {
             $c = $pattern[$i];
             if ($c === '\\') {
+                // Escape sequences are atoms — once consumed, any
+                // immediately following quantifier no longer applies to a
+                // bare lookbehind close-paren.
+                $lastClosedGroupWasLookbehind = false;
+                $lastClosedGroupWasLookahead = false;
                 if ($i + 1 >= $len) {
                     throw new \PhpJs\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: \\ at end of pattern",
@@ -5109,6 +5114,8 @@ class Parser
                 continue;
             }
             if (!$inClass && $c === '[') {
+                $lastClosedGroupWasLookbehind = false;
+                $lastClosedGroupWasLookahead = false;
                 if ($unicode) {
                     $endPos = self::validateCharClassUnicode($pattern, $i);
                     $i = $endPos;
@@ -5126,6 +5133,10 @@ class Parser
                 continue;
             }
             if (!$inClass && $c === '(' && $i + 1 < $len && $pattern[$i + 1] === '?') {
+                // Opening a new group resets the
+                // "directly-follows-lookbehind" flag.
+                $lastClosedGroupWasLookbehind = false;
+                $lastClosedGroupWasLookahead = false;
                 // Validate construct after `(?`.
                 $third = $i + 2 < $len ? $pattern[$i + 2] : '';
                 if ($third === ':') {
@@ -5186,6 +5197,8 @@ class Parser
                 continue;
             }
             if (!$inClass && $c === '(') {
+                $lastClosedGroupWasLookbehind = false;
+                $lastClosedGroupWasLookahead = false;
                 $i++;
                 $groupOpen++;
                 $groupKindStack[] = 'normal';
@@ -5290,9 +5303,16 @@ class Parser
             }
             if (!$inClass && $c === '|') {
                 $prevAtom = false;
+                $lastClosedGroupWasLookbehind = false;
+                $lastClosedGroupWasLookahead = false;
                 $i++;
                 continue;
             }
+            // Any other character is an atom; the lookbehind-quantifier
+            // restriction only fires when a quantifier IMMEDIATELY follows
+            // the lookbehind close, so consume the flag here.
+            $lastClosedGroupWasLookbehind = false;
+            $lastClosedGroupWasLookahead = false;
             $prevAtom = !$inClass;
             $i++;
         }
