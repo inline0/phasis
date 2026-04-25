@@ -2468,7 +2468,18 @@ class IntlObject
                     $parsed['numberingSystem'] = $numberingSystem;
                 }
 
-                $obj = new JsObject($proto);
+                // OrdinaryCreateFromConstructor: when called via `super()`
+                // from a subclass, $this_ is already an instance of that
+                // subclass with the right prototype. Populate it in place
+                // rather than discarding it.
+                if (
+                    $this_ instanceof JsObject
+                    && !$this_->get('[[NewTarget]]') instanceof JsUndefined
+                ) {
+                    $obj = $this_;
+                } else {
+                    $obj = new JsObject($proto);
+                }
 
                 // Store parsed components as internal slots.
                 foreach ($parsed as $key => $val) {
