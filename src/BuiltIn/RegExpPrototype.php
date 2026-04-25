@@ -28,12 +28,22 @@ class RegExpPrototype
     private static ?JsObject $regExpStringIteratorProto = null;
 
     /**
+     * The intrinsic RegExp.prototype.exec captured at install time. Used so
+     * the optimised match/replace/split paths can verify the receiver still
+     * has the spec-default exec before bypassing it. If something replaced
+     * RegExp.prototype.exec or set an own `exec` on the receiver, fall back
+     * to the slow path that calls exec via the prototype lookup.
+     */
+    private static ?JsValue $intrinsicExec = null;
+
+    /**
      * Clear the cached %RegExpStringIteratorPrototype% so fresh realms get a
      * prototype whose [[Prototype]] points at the realm's own %IteratorPrototype%.
      */
     public static function resetStringIteratorProto(): void
     {
         self::$regExpStringIteratorProto = null;
+        self::$intrinsicExec = null;
     }
 
     /** %RegExpStringIteratorPrototype%: inherits from %IteratorPrototype%. */
@@ -225,6 +235,12 @@ class RegExpPrototype
 
         // Per spec §22.2.6.2: RegExp.prototype.exec reads [[PCREPattern]] from this.
         $addMethod('exec', self::execMethod(), 1);
+        // Snapshot the intrinsic exec so the optimised match/split/replace
+        // paths can detect overrides and route through the slow path.
+        $execDesc = $proto->getOwnPropertyDescriptor('exec');
+        if ($execDesc !== null) {
+            self::$intrinsicExec = $execDesc->value;
+        }
 
         // Per spec 22.2.6.14: RegExp.prototype.test calls RegExpExec.
         $addMethod('test', static function (JsValue $this_, array $args): JsValue {
@@ -1211,8 +1227,15 @@ class RegExpPrototype
                 ? $pcrePatternDesc->value->value
                 : null;
 
-            // If no compiled PCRE, fall back to exec-based approach via prototype exec.
-            if ($pcrePattern === null) {
+            // If no compiled PCRE, OR the splitter's exec has been
+            // overridden, fall back to the spec exec-based approach via
+            // the prototype lookup. The fast path bypasses exec entirely
+            // and would miss user-installed overrides on the receiver or
+            // RegExp.prototype.
+            $execLookup = $splitter->get('exec');
+            $execIsIntrinsic = self::$intrinsicExec !== null
+                && $execLookup === self::$intrinsicExec;
+            if ($pcrePattern === null || !$execIsIntrinsic) {
                 return self::symbolSplitViaExec($splitter, $S, $lim);
             }
 
