@@ -1423,7 +1423,34 @@ class Interpreter
                 }
                 return new JsBoolean($obj->delete($key, $this->strictMode));
             }
-            // Deleting a property on a non-object primitive: return true.
+            // Deleting a property on a primitive base: per spec [[Delete]] on
+            // an Object Reference Record uses ToObject(GetBase) then attempts
+            // delete. For string-indexed properties (non-configurable), this
+            // returns false in sloppy mode and throws TypeError in strict.
+            if ($obj instanceof JsString) {
+                $rawKey = null;
+                if ($argument->computed) {
+                    $rawKey = TypeConversion::toPropertyKey($this->evaluate($argument->property, $env));
+                    $key = $rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey);
+                } else {
+                    $key = $argument->property instanceof Identifier ? $argument->property->name : '';
+                }
+                // String indices and length are non-configurable on the
+                // exotic String object — deletion fails.
+                $u16 = JsString::utf8ToUtf16LE($obj->value);
+                $u16Len = (int) (strlen($u16) / 2);
+                if ($key === 'length' || (ctype_digit($key) && (int) $key < $u16Len)) {
+                    if ($this->strictMode) {
+                        throw new TypeError("Cannot delete property '{$key}' of '{$obj->value}'");
+                    }
+                    return new JsBoolean(false);
+                }
+                // Other properties (those on String.prototype etc.) cannot
+                // be deleted via the exotic — also non-configurable on the
+                // wrapper, so always true (no own slot to remove).
+                return new JsBoolean(true);
+            }
+            // Other primitives: no own properties, delete is a no-op.
             return new JsBoolean(true);
         }
 

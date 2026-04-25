@@ -305,7 +305,13 @@ class ArrayConstructor
                 $newLen = $len - 1;
                 $index = (string) $newLen;
                 $val = $o->get($index);
-                $o->delete($index);
+                // Per §23.1.3.22 step 5: DeletePropertyOrThrow uses
+                // throw=true. Fails for non-configurable indices.
+                if (!$o->delete($index, true)) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        "Cannot delete property '{$index}' of '[object Array]'",
+                    );
+                }
                 // Per spec, Set(O, "length", newLen, true): throw on failure.
                 $o->set('length', new JsNumber((float) $newLen), true);
                 return $val;
@@ -324,16 +330,23 @@ class ArrayConstructor
                     return JsUndefined::instance();
                 }
                 $first = $o->get('0');
+                // Per §23.1.3.27 every Set/DeletePropertyOrThrow call uses
+                // strict=true, so non-writable / non-configurable elements
+                // throw rather than silently failing mid-shift.
                 for ($i = 1; $i < $len; $i++) {
                     $from = (string) $i;
                     $to = (string) ($i - 1);
                     if ($o->has($from)) {
-                        $o->set($to, $o->get($from));
+                        $o->set($to, $o->get($from), true);
                     } else {
-                        $o->delete($to);
+                        if (!$o->delete($to, true)) {
+                            throw new \PhpJs\Exceptions\TypeError("Cannot delete property '{$to}'");
+                        }
                     }
                 }
-                $o->delete((string) ($len - 1));
+                if (!$o->delete((string) ($len - 1), true)) {
+                    throw new \PhpJs\Exceptions\TypeError("Cannot delete property '" . ($len - 1) . "'");
+                }
                 // Per spec, Set(O, "length", len - 1, true).
                 $o->set('length', new JsNumber((float) ($len - 1)), true);
                 return $first;
