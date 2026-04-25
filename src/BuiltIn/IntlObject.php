@@ -2244,6 +2244,14 @@ class IntlObject
                 if ($tagArg instanceof JsUndefined) {
                     throw new TypeError('First argument to Intl.Locale must be a string or Locale object');
                 }
+                // Per spec step 7: only String or Object are accepted;
+                // null / undefined / number / boolean / symbol throw TypeError.
+                if (
+                    !$tagArg instanceof JsString
+                    && !$tagArg instanceof JsObject
+                ) {
+                    throw new TypeError('First argument to Intl.Locale must be a string or Locale object');
+                }
                 // Per spec step 11.a, ToObject(null) throws TypeError when an
                 // explicit null options argument is supplied.
                 if ($optionsArg instanceof JsNull) {
