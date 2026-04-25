@@ -7091,11 +7091,20 @@ class Interpreter
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
                     function (JsValue $thisVal, array $args) use (&$constructorRef) {
+                        // Per spec, the default constructor's super() uses the
+                        // active function's new.target, not the super itself.
+                        $newTarget = $constructorRef;
+                        if ($thisVal instanceof JsObject) {
+                            $nt = $thisVal->get('[[NewTarget]]');
+                            if ($nt instanceof JsFunction || $nt instanceof \PhpJs\Value\JsProxy) {
+                                $newTarget = $nt;
+                            }
+                        }
                         $activeSuper = $constructorRef instanceof JsFunction
                             ? $constructorRef->getPrototype()
                             : null;
                         if ($activeSuper instanceof \PhpJs\Value\JsProxy && $activeSuper->isConstructable()) {
-                            return $activeSuper->construct($args, $activeSuper);
+                            return $activeSuper->construct($args, $newTarget ?? $activeSuper);
                         }
                         if ($activeSuper instanceof JsFunction && $activeSuper->isConstructable()) {
                             return $activeSuper->construct($args);
