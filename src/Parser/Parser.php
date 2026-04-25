@@ -5834,18 +5834,27 @@ class Parser
                 // Check if this `-` introduces a range whose right side is a
                 // class-escape. Look ahead.
                 $next = $i + 1 < $len ? $pattern[$i + 1] : '';
-                if ($prevWasClassEscape && $next !== ']') {
+                // /v: `--` is the set-difference operator and must skip
+                // these range-validity checks.
+                $isVDifference = $isVFlag && $next === '-';
+                if (!$isVDifference && $prevWasClassEscape && $next !== ']') {
                     throw new \PhpJs\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Invalid character class range",
                     );
                 }
-                if ($next === '\\') {
+                if (!$isVDifference && $next === '\\') {
                     $nn = $i + 2 < $len ? $pattern[$i + 2] : '';
                     if (in_array($nn, ['d', 'D', 's', 'S', 'w', 'W', 'p', 'P'], true)) {
                         throw new \PhpJs\Exceptions\SyntaxError(
                             "Invalid regular expression: /{$pattern}/: Invalid character class range",
                         );
                     }
+                }
+                if ($isVDifference) {
+                    // Skip past the `--` operator.
+                    $i += 2;
+                    $prevWasClassEscape = false;
+                    continue;
                 }
                 // /v: `-` is only legal in range position. A lone `-`
                 // between class atoms (e.g. `[-]`, `[a-]`) is rejected.
