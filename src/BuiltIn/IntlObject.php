@@ -90,8 +90,23 @@ class IntlObject
 
         $seen = [];
 
+        // Per spec, both String and an Intl.Locale instance are wrapped
+        // in a one-element list before iteration. The Locale instance's
+        // tag comes from the [[Locale]] internal slot, bypassing
+        // ToString to avoid monkey-patched toString.
         if ($locales instanceof JsString) {
             $tag = $locales->value;
+            $canon = self::canonicalizeLocaleTag($tag);
+            if ($canon === null) {
+                throw new RangeError("Invalid language tag: {$tag}");
+            }
+            return [$canon];
+        }
+        if ($locales instanceof JsObject && self::isInitializedLocale($locales)) {
+            $tag = self::extractInternalString($locales, '[[LocaleTag]]', '');
+            if ($tag === '') {
+                $tag = TypeConversion::toString($locales);
+            }
             $canon = self::canonicalizeLocaleTag($tag);
             if ($canon === null) {
                 throw new RangeError("Invalid language tag: {$tag}");
@@ -110,7 +125,14 @@ class IntlObject
                     if (!$kValue instanceof JsString && !$kValue instanceof JsObject) {
                         throw new TypeError('Language tag must be a string or object');
                     }
-                    $tag = TypeConversion::toString($kValue);
+                    if ($kValue instanceof JsObject && self::isInitializedLocale($kValue)) {
+                        $tag = self::extractInternalString($kValue, '[[LocaleTag]]', '');
+                        if ($tag === '') {
+                            $tag = TypeConversion::toString($kValue);
+                        }
+                    } else {
+                        $tag = TypeConversion::toString($kValue);
+                    }
                     $canon = self::canonicalizeLocaleTag($tag);
                     if ($canon === null) {
                         throw new RangeError("Invalid language tag: {$tag}");
@@ -123,6 +145,18 @@ class IntlObject
         }
 
         return $seen;
+    }
+
+    /**
+     * Detect an Intl.Locale instance by walking the prototype chain
+     * looking for the `[[LocaleTag]]` internal slot we set during
+     * construction. Subclasses (like the test262 `PatchedLocale`)
+     * inherit the slot through `super`.
+     */
+    private static function isInitializedLocale(JsObject $obj): bool
+    {
+        return !$obj->get('[[LocaleTag]]') instanceof JsUndefined
+            || !$obj->get('[[language]]') instanceof JsUndefined;
     }
 
     /**
