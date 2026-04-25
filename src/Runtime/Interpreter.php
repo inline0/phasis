@@ -5082,11 +5082,15 @@ class Interpreter
                     return $sym;
                 }, 0);
             }
-            // Check Symbol.prototype from global env
+            // Check Symbol.prototype from global env. Use the primitive Symbol
+            // as the receiver so accessor getters observe `this === sym`
+            // instead of being boxed into a Symbol wrapper.
             if ($env->has('__SymbolPrototype__')) {
                 $proto = $env->get('__SymbolPrototype__');
                 if ($proto instanceof JsObject) {
-                    $val = $isSymbolKey ? $proto->getBySymbol($rawKey) : $proto->get($key);
+                    $val = $isSymbolKey
+                        ? $proto->getBySymbolWithReceiver($rawKey, $obj)
+                        : $proto->getWithValueReceiver($key, $obj);
                     if (!$val instanceof JsUndefined) {
                         return $val;
                     }
