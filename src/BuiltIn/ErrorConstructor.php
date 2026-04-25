@@ -33,32 +33,36 @@ class ErrorConstructor
             $proto->defineOwnProperty('name', PropertyDescriptor::data(new JsString($name), true, false, true));
             $proto->defineOwnProperty('message', PropertyDescriptor::data(new JsString(''), true, false, true));
 
-            // Error.prototype.toString per spec §19.5.3.4
-            $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
-                'toString',
-                function (JsValue $this_): JsValue {
-                    if (!$this_ instanceof JsObject) {
-                        throw new \PhpJs\Exceptions\TypeError(
-                            'Error.prototype.toString requires that \'this\' be an Object',
-                        );
-                    }
-                    // Step 3: Let name be Get(O, "name"). If undefined, use "Error".
-                    $n = $this_->get('name');
-                    $nameStr = ($n instanceof JsUndefined) ? 'Error' : TypeConversion::toString($n);
-                    // Step 5: Let msg be Get(O, "message"). If undefined, use "".
-                    $m = $this_->get('message');
-                    $msgStr = ($m instanceof JsUndefined) ? '' : TypeConversion::toString($m);
-                    // Step 7-9
-                    if ($nameStr === '') {
-                        return new JsString($msgStr);
-                    }
-                    if ($msgStr === '') {
-                        return new JsString($nameStr);
-                    }
-                    return new JsString("{$nameStr}: {$msgStr}");
-                },
-                0,
-            ), true, false, true));
+            // Error.prototype.toString per spec §19.5.3.4. Native error
+            // subclasses (TypeError, RangeError, etc.) inherit toString
+            // from Error.prototype rather than carrying their own copy.
+            if ($name === 'Error') {
+                $proto->defineOwnProperty('toString', PropertyDescriptor::data(JsFunction::fromCallable(
+                    'toString',
+                    function (JsValue $this_): JsValue {
+                        if (!$this_ instanceof JsObject) {
+                            throw new \PhpJs\Exceptions\TypeError(
+                                'Error.prototype.toString requires that \'this\' be an Object',
+                            );
+                        }
+                        // Step 3: Let name be Get(O, "name"). If undefined, use "Error".
+                        $n = $this_->get('name');
+                        $nameStr = ($n instanceof JsUndefined) ? 'Error' : TypeConversion::toString($n);
+                        // Step 5: Let msg be Get(O, "message"). If undefined, use "".
+                        $m = $this_->get('message');
+                        $msgStr = ($m instanceof JsUndefined) ? '' : TypeConversion::toString($m);
+                        // Step 7-9
+                        if ($nameStr === '') {
+                            return new JsString($msgStr);
+                        }
+                        if ($msgStr === '') {
+                            return new JsString($nameStr);
+                        }
+                        return new JsString("{$nameStr}: {$msgStr}");
+                    },
+                    0,
+                ), true, false, true));
+            }
 
             if ($name === 'AggregateError') {
                 $constructor = JsFunction::fromCallable(
