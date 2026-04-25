@@ -7507,6 +7507,32 @@ class Interpreter
             $env->initialize($name, $constructor);
         }
 
+        // Install private static methods on the constructor BEFORE static
+        // fields and static blocks run, so static initializers can resolve
+        // private static methods/getters/setters via C.#name.
+        foreach ($privateStaticMethods as [$key, $fn, $kind]) {
+            if ($fn instanceof JsFunction) {
+                $fn->setHomeObject($constructor);
+            }
+            if ($kind === 'get' || $kind === 'set') {
+                if ($kind === 'get') {
+                    $existingAccessor = $constructor->hasPrivateField($key)
+                        ? $constructor->getPrivateFieldRaw($key)
+                        : null;
+                    $setter = is_array($existingAccessor) ? $existingAccessor[1] : null;
+                    $constructor->setPrivateAccessor($key, [$fn, $setter]);
+                } else {
+                    $existingAccessor = $constructor->hasPrivateField($key)
+                        ? $constructor->getPrivateFieldRaw($key)
+                        : null;
+                    $getter = is_array($existingAccessor) ? $existingAccessor[0] : null;
+                    $constructor->setPrivateAccessor($key, [$getter, $fn]);
+                }
+            } else {
+                $constructor->setPrivateMethod($key, $fn);
+            }
+        }
+
         // Per spec, static field initializers have `this` bound to the
         // constructor and an implicit [[HomeObject]] pointing at it. Create a
         // scoped environment so inner expressions (and eval) observe `this`.
@@ -7599,30 +7625,6 @@ class Interpreter
                 if ($sbCompletion->type === CompletionType::Throw) {
                     $this->throwJsValue($sbCompletion->value);
                 }
-            }
-        }
-
-        // Install private static methods on the constructor itself.
-        foreach ($privateStaticMethods as [$key, $fn, $kind]) {
-            if ($fn instanceof JsFunction) {
-                $fn->setHomeObject($constructor);
-            }
-            if ($kind === 'get' || $kind === 'set') {
-                if ($kind === 'get') {
-                    $existingAccessor = $constructor->hasPrivateField($key)
-                        ? $constructor->getPrivateFieldRaw($key)
-                        : null;
-                    $setter = is_array($existingAccessor) ? $existingAccessor[1] : null;
-                    $constructor->setPrivateAccessor($key, [$fn, $setter]);
-                } else {
-                    $existingAccessor = $constructor->hasPrivateField($key)
-                        ? $constructor->getPrivateFieldRaw($key)
-                        : null;
-                    $getter = is_array($existingAccessor) ? $existingAccessor[0] : null;
-                    $constructor->setPrivateAccessor($key, [$getter, $fn]);
-                }
-            } else {
-                $constructor->setPrivateMethod($key, $fn);
             }
         }
 
