@@ -844,17 +844,9 @@ class RegExpPrototype
             }
 
             // Global: iterate all matches.
-            // Per §22.2.7.3.3 fullUnicode is determined from the internal
-            // [[OriginalFlags]] slot, not via Get(R, "unicode"). Override
-            // tests (`Object.defineProperty(r, 'unicode', ...)`) must not
-            // affect iteration.
-            $origFlags = '';
-            $origDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
-            if ($origDesc !== null && $origDesc->value instanceof JsString) {
-                $origFlags = $origDesc->value->value;
-            }
-            $fullUnicode = str_contains($origFlags, 'u')
-                || str_contains($origFlags, 'v');
+            // Per spec 22.2.6.8 step 6.a, fullUnicode is derived from the
+            // already-read flags string (not a fresh Get(R, "unicode")).
+            $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
 
             // Per spec: Set(rx, "lastIndex", +0, Throw=true).
             $this_->set('lastIndex', new JsNumber(0.0), true);
@@ -1430,17 +1422,30 @@ class RegExpPrototype
 
     /**
      * Advance string index by one Unicode code point (for fullUnicode mode).
+     *
+     * Per spec 22.2.7.4 AdvanceStringIndex: in unicode mode, when the unit
+     * at $index is a high surrogate followed by a low surrogate, the pair
+     * counts as one code point, so advance by 2 UTF-16 code units; else 1.
+     * $S is the input string in UTF-8 byte form; $index is in UTF-16 code
+     * units.
      */
     private static function advanceStringIndex(string $S, int $index): int
     {
-        // In UTF-8 we just advance by one character (code point).
-        // For truly correct UTF-16 surrogate pair handling we'd need UTF-16 semantics,
-        // but for most cases this is sufficient.
-        $len = mb_strlen($S, 'UTF-8');
-        if ($index + 1 >= $len) {
+        $u16 = JsString::utf8ToUtf16LE($S);
+        $u16Len = (int) (strlen($u16) / 2);
+        if ($index + 1 >= $u16Len) {
             return $index + 1;
         }
-        return $index + 1;
+        $offset = $index * 2;
+        $high = ord($u16[$offset]) | (ord($u16[$offset + 1]) << 8);
+        if ($high < 0xD800 || $high > 0xDBFF) {
+            return $index + 1;
+        }
+        $low = ord($u16[$offset + 2]) | (ord($u16[$offset + 3]) << 8);
+        if ($low < 0xDC00 || $low > 0xDFFF) {
+            return $index + 1;
+        }
+        return $index + 2;
     }
 
     /**
