@@ -2244,6 +2244,11 @@ class IntlObject
                 if ($tagArg instanceof JsUndefined) {
                     throw new TypeError('First argument to Intl.Locale must be a string or Locale object');
                 }
+                // Per spec step 11.a, ToObject(null) throws TypeError when an
+                // explicit null options argument is supplied.
+                if ($optionsArg instanceof JsNull) {
+                    throw new TypeError('Cannot convert null to Locale options object');
+                }
 
                 // If tagArg is already a Locale-like object, extract its string.
                 $tag = TypeConversion::toString($tagArg);
