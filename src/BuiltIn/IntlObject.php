@@ -234,14 +234,15 @@ class IntlObject
         if (extension_loaded('intl')) {
             $default = \Locale::getDefault();
             foreach ($requestedLocales as $locale) {
-                // ICU uses underscores internally.
                 $icuLocale = str_replace('-', '_', $locale);
                 $lookup = \Locale::lookup([$icuLocale], $default);
                 if ($lookup !== '' && $lookup !== null) {
-                    return str_replace('_', '-', $icuLocale);
+                    return self::canonicalizeLocaleTag(str_replace('_', '-', $icuLocale))
+                        ?? str_replace('_', '-', $icuLocale);
                 }
             }
-            return str_replace('_', '-', $default);
+            return self::canonicalizeLocaleTag(str_replace('_', '-', $default))
+                ?? str_replace('_', '-', $default);
         }
         // Without ICU, return first requested or 'en'.
         return $requestedLocales[0] ?? 'en';
