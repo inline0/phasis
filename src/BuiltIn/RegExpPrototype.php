@@ -130,7 +130,32 @@ class RegExpPrototype
         for ($i = 0; $i < $len; $i++) {
             $ch = $source[$i];
             if ($ch === '\\' && $i + 1 < $len) {
-                $out .= $ch . $source[$i + 1];
+                // A backslash followed by a line terminator in the pattern
+                // source must stringify as `\` + the LineTerminator's
+                // escape letter (e.g. \<LF> -> \n) per EscapeRegExpPattern;
+                // the existing `\` plays the role of the escape backslash.
+                $next = $source[$i + 1];
+                if ($next === "\n") {
+                    $out .= '\\n';
+                    $i++;
+                    continue;
+                }
+                if ($next === "\r") {
+                    $out .= '\\r';
+                    $i++;
+                    continue;
+                }
+                if (
+                    $next === "\xE2"
+                    && $i + 3 < $len
+                    && $source[$i + 2] === "\x80"
+                    && ($source[$i + 3] === "\xA8" || $source[$i + 3] === "\xA9")
+                ) {
+                    $out .= $source[$i + 3] === "\xA8" ? '\\u2028' : '\\u2029';
+                    $i += 3;
+                    continue;
+                }
+                $out .= $ch . $next;
                 $i++;
                 continue;
             }
