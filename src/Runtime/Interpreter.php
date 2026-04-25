@@ -3781,8 +3781,10 @@ class Interpreter
             if ($nextMethod instanceof JsFunction) {
                 while (true) {
                     $result = $this->callFunction($nextMethod, $iterator, []);
+                    // Spec IteratorStep: if next() does not return an Object,
+                    // throw TypeError instead of treating it as iteration end.
                     if (!$result instanceof JsObject) {
-                        break;
+                        throw new TypeError('iterator.next() returned a non-object value');
                     }
                     if (TypeConversion::toBoolean($result->get('done'))) {
                         break;
