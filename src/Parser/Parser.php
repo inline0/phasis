@@ -5059,6 +5059,7 @@ class Parser
     private static function validateRegExpPatternAtParseTime(string $pattern, string $flags): void
     {
         $unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $isVFlag = str_contains($flags, 'v');
         $groupNames = [];
         $kRefs = [];
         $hasNamedGroup = self::collectRegExpGroupNamesAndKRefs($pattern, $groupNames, $kRefs);
@@ -5504,8 +5505,10 @@ class Parser
                 continue;
             }
             // u-mode forbids stray `}` and `]` outside a quantifier or
-            // character class.
-            if ($unicode && !$inClass && ($c === '}' || $c === ']')) {
+            // character class. /v allows nested character classes whose
+            // brackets land here during the structural pass; the v-flag
+            // transform handles them later.
+            if ($unicode && !$isVFlag && !$inClass && ($c === '}' || $c === ']')) {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     "Invalid regular expression: /{$pattern}/: Lone quantifier brackets",
                 );
