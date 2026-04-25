@@ -389,10 +389,11 @@ class Environment
         }
 
         // At the global (root) environment. If a linked global object exists,
-        // check it for properties set directly (e.g. this.color = "red").
-        // This mirrors the ES spec behavior where properties on the global
-        // object are accessible as global variables.
-        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+        // check it (and its prototype chain) for properties — both directly
+        // assigned globals (e.g. `this.color = "red"`) and inherited
+        // accessors / data properties on Object.prototype must resolve as
+        // global variables per spec.
+        if ($this->linkedObject !== null && $this->linkedObject->has($name)) {
             return $this->linkedObject->get($name);
         }
 
@@ -494,15 +495,26 @@ class Environment
             throw new ReferenceError("{$name} is not defined");
         }
 
-        // Sloppy mode: implicitly create a global variable (deletable).
+        // Sloppy mode: implicitly create a global variable (deletable). Per
+        // spec PutValue, when the unresolvable reference is set, we delegate
+        // to the global object's [[Set]] which walks the global object's
+        // prototype chain and may fire an inherited accessor's setter.
+        if ($this->linkedObject !== null) {
+            // OrdinarySet walks Object.prototype etc.; if a setter exists,
+            // it fires; otherwise a new own property is created.
+            $beforeOwn = $this->linkedObject->hasOwnProperty($name);
+            $this->linkedObject->set($name, $value);
+            // Only mirror to the env's own bindings if the set actually
+            // created an own slot on the global object (no inherited setter
+            // intercepted).
+            if (!$beforeOwn && $this->linkedObject->hasOwnProperty($name)) {
+                $this->bindings[$name] = $value;
+                $this->deletable[$name] = true;
+            }
+            return;
+        }
         $this->bindings[$name] = $value;
         $this->deletable[$name] = true;
-        if ($this->linkedObject !== null) {
-            $this->linkedObject->defineOwnProperty(
-                $name,
-                \PhpJs\Object\PropertyDescriptor::data($value, true, true, true),
-            );
-        }
     }
 
     /** Check whether a binding exists anywhere in the scope chain. */
