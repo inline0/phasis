@@ -13315,8 +13315,32 @@ class Interpreter
         return $map[$value] ?? null;
     }
 
+    /**
+     * v-flag binary properties of strings (ES2024) that aren't backed by a
+     * PCRE binary property. Accepted at parse-time so the regex compiles;
+     * runtime matching against these falls through and matches nothing.
+     */
+    private static function isVStringBinaryProperty(string $name): bool
+    {
+        static $names = [
+            'Basic_Emoji' => true,
+            'Emoji_Keycap_Sequence' => true,
+            'RGI_Emoji' => true,
+            'RGI_Emoji_Flag_Sequence' => true,
+            'RGI_Emoji_Modifier_Sequence' => true,
+            'RGI_Emoji_Tag_Sequence' => true,
+            'RGI_Emoji_ZWJ_Sequence' => true,
+        ];
+        return isset($names[$name]);
+    }
+
     private static function mapBinaryProperty(string $name): ?string
     {
+        if (self::isVStringBinaryProperty($name)) {
+            // Use a PCRE pattern that never matches a single code point,
+            // so at runtime the regex compiles but produces no matches.
+            return '!Assigned';
+        }
         static $supported = [
             'ASCII' => 'ASCII', 'ASCII_Hex_Digit' => 'ASCII_Hex_Digit',
             'AHex' => 'ASCII_Hex_Digit', 'Alphabetic' => 'Alphabetic',
