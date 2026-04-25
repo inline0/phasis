@@ -145,6 +145,16 @@ class Interpreter
     /** Current module path for resolving relative import specifiers. */
     private ?string $currentModulePath = null;
 
+    /**
+     * Cache of import.meta objects, keyed by module path. Per spec, every
+     * evaluation of `import.meta` within a single module returns the same
+     * object — host hooks may attach properties to it that should persist
+     * across reads.
+     *
+     * @var array<string, JsObject>
+     */
+    private array $importMetaCache = [];
+
     public function getModuleLoader(): \PhpJs\Module\ModuleLoader
     {
         if ($this->moduleLoader === null) {
@@ -6007,10 +6017,19 @@ class Interpreter
     private function evalMetaProperty(MetaProperty $node, Environment $env): JsValue
     {
         if ($node->meta === 'import' && $node->property === 'meta') {
-            $meta = new JsObject(null);
+            $cacheKey = $this->currentModulePath ?? '<script>';
+            if (isset($this->importMetaCache[$cacheKey])) {
+                return $this->importMetaCache[$cacheKey];
+            }
+            // Per spec 16.2.1.7, an import.meta object's prototype is null
+            // and it is an ordinary extensible object whose initial property
+            // bag is determined by HostGetImportMetaProperties.
+            $meta = new JsObject();
+            $meta->setPrototype(null);
             if ($this->currentModulePath !== null) {
                 $meta->set('url', new JsString('file://' . $this->currentModulePath));
             }
+            $this->importMetaCache[$cacheKey] = $meta;
             return $meta;
         }
 
