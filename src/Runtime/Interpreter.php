@@ -12146,8 +12146,15 @@ class Interpreter
                     }
                 }
                 $result = JsArray::fromArray($elements);
-                $result->set('index', new JsNumber((float) $matchCharPos));
-                $result->set('input', new JsString($str));
+                // Per spec, index/input/groups are added via CreateDataProperty.
+                $result->defineOwnProperty(
+                    'index',
+                    PropertyDescriptor::data(new JsNumber((float) $matchCharPos), true, true, true),
+                );
+                $result->defineOwnProperty(
+                    'input',
+                    PropertyDescriptor::data(new JsString($str), true, true, true),
+                );
 
                 // Named capture groups.
                 $groups = new JsObject(null);
@@ -12155,12 +12162,25 @@ class Interpreter
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
-                        $groups->set($key, ($match[1] === -1 || $match[0] === null)
-                            ? JsUndefined::instance()
-                            : new JsString($match[0]));
+                        $groups->defineOwnProperty($key, PropertyDescriptor::data(
+                            ($match[1] === -1 || $match[0] === null)
+                                ? JsUndefined::instance()
+                                : new JsString($match[0]),
+                            true,
+                            true,
+                            true,
+                        ));
                     }
                 }
-                $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+                $result->defineOwnProperty(
+                    'groups',
+                    PropertyDescriptor::data(
+                        $hasGroups ? $groups : JsUndefined::instance(),
+                        true,
+                        true,
+                        true,
+                    ),
+                );
 
                 if ($hasIndices) {
                     $indEls = [];

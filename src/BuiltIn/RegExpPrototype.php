@@ -580,8 +580,18 @@ class RegExpPrototype
                     }
                 }
                 $result = JsArray::fromArray($elements);
-                $result->set('index', new JsNumber((float) $matchCharPos));
-                $result->set('input', new JsString($str));
+                // Per spec these properties are added with CreateDataProperty,
+                // which bypasses any setter on the result's prototype chain
+                // (e.g. tests that install a `groups` setter on
+                // Array.prototype). Use defineOwnProperty.
+                $result->defineOwnProperty(
+                    'index',
+                    PropertyDescriptor::data(new JsNumber((float) $matchCharPos), true, true, true),
+                );
+                $result->defineOwnProperty(
+                    'input',
+                    PropertyDescriptor::data(new JsString($str), true, true, true),
+                );
 
                 $groups = JsObject::createNullPrototype();
                 $hasGroups = false;
@@ -596,7 +606,15 @@ class RegExpPrototype
                         ));
                     }
                 }
-                $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+                $result->defineOwnProperty(
+                    'groups',
+                    PropertyDescriptor::data(
+                        $hasGroups ? $groups : JsUndefined::instance(),
+                        true,
+                        true,
+                        true,
+                    ),
+                );
 
                 return $result;
             }
