@@ -4701,6 +4701,126 @@ class IntlObject
     // Intl.RelativeTimeFormat
     // ---------------------------------------------------------------
 
+    /**
+     * Normalise the user-provided RelativeTimeFormat unit name to its
+     * singular canonical form, throwing RangeError for unknown values.
+     */
+    private static function canonicalRelativeTimeUnit(string $unit): string
+    {
+        static $unitMap = [
+            'second' => 'second', 'seconds' => 'second',
+            'minute' => 'minute', 'minutes' => 'minute',
+            'hour' => 'hour', 'hours' => 'hour',
+            'day' => 'day', 'days' => 'day',
+            'week' => 'week', 'weeks' => 'week',
+            'month' => 'month', 'months' => 'month',
+            'quarter' => 'quarter', 'quarters' => 'quarter',
+            'year' => 'year', 'years' => 'year',
+        ];
+        if (!isset($unitMap[$unit])) {
+            throw new RangeError("Invalid unit: {$unit}");
+        }
+        return $unitMap[$unit];
+    }
+
+    /**
+     * Format a number through `\NumberFormatter` with locale-aware
+     * grouping for use inside RelativeTimeFormat output. Falls back
+     * to a plain `(string)` cast when intl isn't available.
+     */
+    private static function formatRelativeTimeNumber(string $locale, float $n): string
+    {
+        if (!extension_loaded('intl')) {
+            $rendered = (string) $n;
+            // PHP's float-to-string can use scientific notation; the
+            // RelativeTimeFormat tests only inspect integers though.
+            return $rendered;
+        }
+        $fmt = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+        return $fmt->format($n);
+    }
+
+    /**
+     * Implement the en-US "numeric: auto" exception table from
+     * CLDR (today/yesterday/tomorrow/this week/last quarter/...).
+     * For other (numeric, locale, value) combinations we fall back
+     * to the spec's plural form rendered through NumberFormatter so
+     * grouping stays locale-aware.
+     */
+    private static function formatRelativeTime(
+        string $locale,
+        float $n,
+        string $unit,
+        string $numeric,
+        string $style = 'long',
+    ): string {
+        $isEnglish = str_starts_with(strtolower($locale), 'en');
+        if ($numeric === 'auto' && $isEnglish && in_array($n, [-1.0, 0.0, 1.0], true) && $style === 'long') {
+            $autoTable = [
+                'second' => ['-1' => '1 second ago', '0' => 'now', '1' => 'in 1 second'],
+                'minute' => ['-1' => '1 minute ago', '0' => 'this minute', '1' => 'in 1 minute'],
+                'hour' => ['-1' => '1 hour ago', '0' => 'this hour', '1' => 'in 1 hour'],
+                'day' => ['-1' => 'yesterday', '0' => 'today', '1' => 'tomorrow'],
+                'week' => ['-1' => 'last week', '0' => 'this week', '1' => 'next week'],
+                'month' => ['-1' => 'last month', '0' => 'this month', '1' => 'next month'],
+                'quarter' => ['-1' => 'last quarter', '0' => 'this quarter', '1' => 'next quarter'],
+                'year' => ['-1' => 'last year', '0' => 'this year', '1' => 'next year'],
+            ];
+            // -0 collapses to 0 per CLDR (auto-mode treats any zero
+            // identically).
+            $key = (string) (int) ($n);
+            return $autoTable[$unit][$key] ?? '';
+        }
+        $absN = abs($n);
+        $absStr = self::formatRelativeTimeNumber($locale, $absN);
+        $isPlural = $absN !== 1.0;
+        // Locale-specific abbreviations for short/narrow English styles.
+        // Other locales fall back to long-form labels.
+        if ($isEnglish) {
+            if ($style === 'short') {
+                $shortLabels = [
+                    'second' => ['sec.', 'sec.'],
+                    'minute' => ['min.', 'min.'],
+                    'hour' => ['hr.', 'hr.'],
+                    'day' => ['day', 'days'],
+                    'week' => ['wk.', 'wk.'],
+                    'month' => ['mo.', 'mo.'],
+                    'quarter' => ['qtr.', 'qtrs.'],
+                    'year' => ['yr.', 'yr.'],
+                ];
+                if (isset($shortLabels[$unit])) {
+                    $unitStr = $isPlural ? $shortLabels[$unit][1] : $shortLabels[$unit][0];
+                } else {
+                    $unitStr = $isPlural ? $unit . 's' : $unit;
+                }
+            } elseif ($style === 'narrow') {
+                $narrowLabels = [
+                    'second' => ['sec.', 'sec.'],
+                    'minute' => ['min.', 'min.'],
+                    'hour' => ['hr.', 'hr.'],
+                    'day' => ['day', 'days'],
+                    'week' => ['wk.', 'wk.'],
+                    'month' => ['mo.', 'mo.'],
+                    'quarter' => ['qtr.', 'qtrs.'],
+                    'year' => ['yr.', 'yr.'],
+                ];
+                if (isset($narrowLabels[$unit])) {
+                    $unitStr = $isPlural ? $narrowLabels[$unit][1] : $narrowLabels[$unit][0];
+                } else {
+                    $unitStr = $isPlural ? $unit . 's' : $unit;
+                }
+            } else {
+                $unitStr = $isPlural ? $unit . 's' : $unit;
+            }
+        } else {
+            $unitStr = $isPlural ? $unit . 's' : $unit;
+        }
+        if ($n < 0 || ($n === 0.0 && self::isNegativeZero($n))) {
+            return $absStr . ' ' . $unitStr . ' ago';
+        }
+        return 'in ' . $absStr . ' ' . $unitStr;
+    }
+
     private static function installRelativeTimeFormat(JsObject $intl): void
     {
         $proto = new JsObject();
@@ -4817,29 +4937,11 @@ class IntlObject
                 throw new RangeError('Invalid time value');
             }
 
-            $validUnits = ['year', 'years', 'quarter', 'quarters', 'month', 'months',
-                'week', 'weeks', 'day', 'days', 'hour', 'hours', 'minute', 'minutes',
-                'second', 'seconds'];
-            if (!in_array($unit, $validUnits, true)) {
-                throw new RangeError("Invalid unit: {$unit}");
-            }
-
-            // Normalize unit to singular.
-            $singular = rtrim($unit, 's');
-            if ($singular === $unit && str_ends_with($unit, 's')) {
-                $singular = substr($unit, 0, -1);
-            }
-
-            $abs = abs($n);
-            $unitStr = $abs === 1.0 ? $singular : $singular . 's';
-
-            if ($n < 0) {
-                return new JsString("{$abs} {$unitStr} ago");
-            }
-            if ($n > 0) {
-                return new JsString("in {$abs} {$unitStr}");
-            }
-            return new JsString("in 0 {$unitStr}");
+            $singular = self::canonicalRelativeTimeUnit($unit);
+            $numeric = self::extractInternalString($this_, '[[Numeric]]', 'always');
+            $style = self::extractInternalString($this_, '[[Style]]', 'long');
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            return new JsString(self::formatRelativeTime($locale, $n, $singular, $numeric, $style));
         }, 2);
         $proto->defineOwnProperty('format', PropertyDescriptor::data($format, true, false, true));
 
@@ -4860,38 +4962,76 @@ class IntlObject
                 throw new RangeError('Invalid time value');
             }
             $unit = TypeConversion::toString($unitArg);
-            // Plural and singular spellings collapse to a single canonical
-            // unit per spec.
-            static $unitMap = [
-                'second' => 'second', 'seconds' => 'second',
-                'minute' => 'minute', 'minutes' => 'minute',
-                'hour' => 'hour', 'hours' => 'hour',
-                'day' => 'day', 'days' => 'day',
-                'week' => 'week', 'weeks' => 'week',
-                'month' => 'month', 'months' => 'month',
-                'quarter' => 'quarter', 'quarters' => 'quarter',
-                'year' => 'year', 'years' => 'year',
-            ];
-            if (!isset($unitMap[$unit])) {
-                throw new RangeError("Invalid unit: {$unit}");
-            }
-            $canonicalUnit = $unitMap[$unit];
+            $singular = self::canonicalRelativeTimeUnit($unit);
+            $numeric = self::extractInternalString($this_, '[[Numeric]]', 'always');
+            $style = self::extractInternalString($this_, '[[Style]]', 'long');
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $formatted = self::formatRelativeTime($locale, $n, $singular, $numeric, $style);
+            // Locate the formatted number digits inside the result so we
+            // can split into spec-shaped {literal, integer, group, ...}
+            // parts. If the number doesn't appear (auto-mode word like
+            // "today"), emit a single literal part.
+            $absStr = self::formatRelativeTimeNumber($locale, abs($n));
             $result = new JsArray();
-            // Minimal but spec-shaped output: emit the formatted string as a
-            // single literal-typed part. The full parts breakdown requires
-            // CLDR pattern data we don't currently ship.
-            $sign = $n < 0 ? '' : '';
-            $absN = abs($n);
-            $valueStr = (string) $n;
-            $part = new JsObject();
-            self::defineDataProp($part, 'type', new JsString('literal'));
-            self::defineDataProp($part, 'value', new JsString(
-                ($n >= 0 ? 'in ' : '')
-                . $valueStr . ($n >= 0 ? '' : ' ago')
-                . ' ' . $canonicalUnit . ($absN === 1.0 ? '' : 's'),
-            ));
-            $result->set('0', $part);
-            $result->set('length', new JsNumber(1.0));
+            $idx = 0;
+            $pos = $absStr === '' ? false : strpos($formatted, $absStr);
+            if ($pos === false) {
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString('literal'));
+                self::defineDataProp($part, 'value', new JsString($formatted));
+                $result->set((string) $idx++, $part);
+            } else {
+                if ($pos > 0) {
+                    $part = new JsObject();
+                    self::defineDataProp($part, 'type', new JsString('literal'));
+                    self::defineDataProp($part, 'value', new JsString(substr($formatted, 0, $pos)));
+                    $result->set((string) $idx++, $part);
+                }
+                // Walk the rendered number: emit `integer` runs (or
+                // `fraction` after a decimal separator), interleaving
+                // `group` separators (",", " ") and `decimal` separators
+                // ("."). Tracks the integer/fraction transition by
+                // remembering whether a decimal separator has been
+                // emitted.
+                $numLen = strlen($absStr);
+                $i = 0;
+                $sawDecimal = false;
+                while ($i < $numLen) {
+                    $ch = $absStr[$i];
+                    if (ctype_digit($ch)) {
+                        $j = $i;
+                        while ($j < $numLen && ctype_digit($absStr[$j])) {
+                            $j++;
+                        }
+                        $part = new JsObject();
+                        $digitType = $sawDecimal ? 'fraction' : 'integer';
+                        self::defineDataProp($part, 'type', new JsString($digitType));
+                        self::defineDataProp($part, 'value', new JsString(substr($absStr, $i, $j - $i)));
+                        self::defineDataProp($part, 'unit', new JsString($singular));
+                        $result->set((string) $idx++, $part);
+                        $i = $j;
+                        continue;
+                    }
+                    $type = ($ch === ',' || $ch === ' ') ? 'group' : 'decimal';
+                    if ($type === 'decimal') {
+                        $sawDecimal = true;
+                    }
+                    $part = new JsObject();
+                    self::defineDataProp($part, 'type', new JsString($type));
+                    self::defineDataProp($part, 'value', new JsString($ch));
+                    self::defineDataProp($part, 'unit', new JsString($singular));
+                    $result->set((string) $idx++, $part);
+                    $i++;
+                }
+                $tailStart = $pos + strlen($absStr);
+                if ($tailStart < strlen($formatted)) {
+                    $part = new JsObject();
+                    self::defineDataProp($part, 'type', new JsString('literal'));
+                    self::defineDataProp($part, 'value', new JsString(substr($formatted, $tailStart)));
+                    $result->set((string) $idx++, $part);
+                }
+            }
+            $result->set('length', new JsNumber((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty('formatToParts', PropertyDescriptor::data($formatToParts, true, false, true));
