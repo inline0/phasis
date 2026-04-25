@@ -2565,7 +2565,7 @@ class IntlObject
 
         // maximize() and minimize()
         $maximize = JsFunction::fromCallable('maximize', function (JsValue $this_) use ($constructor): JsValue {
-            if (!$this_ instanceof JsObject) {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.maximize called on non-Locale');
             }
             $tag = self::extractInternalString($this_, '[[LocaleTag]]', 'en');
@@ -2585,7 +2585,7 @@ class IntlObject
         $proto->defineOwnProperty('maximize', PropertyDescriptor::data($maximize, true, false, true));
 
         $minimize = JsFunction::fromCallable('minimize', function (JsValue $this_) use ($constructor): JsValue {
-            if (!$this_ instanceof JsObject) {
+            if (!$this_ instanceof JsObject || !self::isInitializedLocale($this_)) {
                 throw new TypeError('Intl.Locale.prototype.minimize called on non-Locale');
             }
             $tag = self::extractInternalString($this_, '[[LocaleTag]]', 'en');
