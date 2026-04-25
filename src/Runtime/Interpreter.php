@@ -12527,8 +12527,26 @@ class Interpreter
                                     $result .= '(?:)';
                                     $i = $closeAngle + 1;
                                 } else {
-                                    $result .= substr($pattern, $i, $closeAngle + 1 - $i);
-                                    $i = $closeAngle + 1;
+                                    // Backward / self / sibling reference. If
+                                    // the target group might not participate
+                                    // (alternation, optional quantifier, or
+                                    // self-reference inside its own
+                                    // quantified body), wrap so PCRE can fall
+                                    // back to the empty alternative.
+                                    $kEnd = $closeAngle + 1;
+                                    $kRefPos = $i;
+                                    $needsWrap = $this->backrefMayMissCapture(
+                                        $pattern,
+                                        $declOffset,
+                                        $kRefPos,
+                                    );
+                                    $kRef = substr($pattern, $i, $kEnd - $i);
+                                    if ($needsWrap) {
+                                        $result .= '(?:' . $kRef . '|)';
+                                    } else {
+                                        $result .= $kRef;
+                                    }
+                                    $i = $kEnd;
                                 }
                             } else {
                                 // No matching named group: per Annex B in
