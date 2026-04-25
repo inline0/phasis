@@ -12386,10 +12386,51 @@ class Interpreter
         $result = '';
         $len = strlen($pattern);
         $inCharClass = false;
+        $isDotAll = str_contains($flags, 's');
+        // Stack of dotAll states. Each entry is true when `.` should match
+        // line terminators (whole-pattern /s flag, or an enclosing
+        // `(?s:…)` modifier group).
+        $dotAllStack = [$isDotAll];
         $i = 0;
 
         while ($i < $len) {
             $ch = $pattern[$i];
+
+            // Outside a character class and outside the current dotAll
+            // scope, `.` excludes the JS LineTerminator set per spec.
+            if ($ch === '.' && !$inCharClass && !end($dotAllStack)) {
+                $result .= '[^\\n\\r\\x{2028}\\x{2029}]';
+                $i++;
+                continue;
+            }
+            if (
+                $ch === '(' && !$inCharClass && $i + 2 < $len
+                && $pattern[$i + 1] === '?'
+            ) {
+                $j = $i + 2;
+                $addS = null;
+                while ($j < $len && ($pattern[$j] === 'i' || $pattern[$j] === 'm' || $pattern[$j] === 's')) {
+                    if ($pattern[$j] === 's') {
+                        $addS = true;
+                    }
+                    $j++;
+                }
+                if ($j < $len && $pattern[$j] === '-') {
+                    $j++;
+                    while ($j < $len && ($pattern[$j] === 'i' || $pattern[$j] === 'm' || $pattern[$j] === 's')) {
+                        if ($pattern[$j] === 's') {
+                            $addS = false;
+                        }
+                        $j++;
+                    }
+                }
+                if ($j < $len && $pattern[$j] === ':' && $addS !== null) {
+                    $dotAllStack[] = $addS;
+                }
+            }
+            if ($ch === ')' && !$inCharClass && count($dotAllStack) > 1) {
+                array_pop($dotAllStack);
+            }
 
             // Detect raw UTF-8 encoded surrogate bytes (U+D800-U+DFFF).
             // These are 3-byte sequences: 0xED 0xA0-0xBF 0x80-0xBF.
