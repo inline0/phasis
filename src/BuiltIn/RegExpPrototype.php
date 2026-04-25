@@ -524,16 +524,21 @@ class RegExpPrototype
                 throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on non-object');
             }
 
-            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
-            if ($pcrePatternDesc === null || !$pcrePatternDesc->value instanceof JsString) {
+            // Step 1: confirm R has [[RegExpMatcher]] (we use [[PCREPattern]]).
+            if ($this_->getOwnPropertyDescriptor('[[PCREPattern]]') === null) {
                 throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }
-            $pcrePattern = $pcrePatternDesc->value->value;
 
             // Per spec: if no argument, convert undefined to "undefined".
             $str = isset($args[0]) ? TypeConversion::toString($args[0])
                 : TypeConversion::toString(\PhpJs\Value\JsUndefined::instance());
             $strLen = mb_strlen($str, 'UTF-8');
+
+            // Per spec step 4: read lastIndex first so any observable side
+            // effects (e.g. a valueOf that calls regExp.compile) settle the
+            // pattern/flags before we read them for the actual match.
+            $lastIndexVal = $this_->get('lastIndex');
+            $lastIndex = TypeConversion::toLength($lastIndexVal);
 
             // Per RegExpBuiltinExec, `global` and `sticky` come from the
             // [[OriginalFlags]] internal slot — NOT the public getter.
@@ -546,9 +551,14 @@ class RegExpPrototype
             $isGlobal = str_contains($origFlags, 'g');
             $isSticky = str_contains($origFlags, 'y');
 
-            // Per spec step 4: always read lastIndex for observable side effects.
-            $lastIndexVal = $this_->get('lastIndex');
-            $lastIndex = TypeConversion::toLength($lastIndexVal);
+            // Read the (potentially recompiled) pattern after lastIndex
+            // coercion. compile() inside the ToLength call would have
+            // overwritten [[PCREPattern]] by this point.
+            $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
+            if ($pcrePatternDesc === null || !$pcrePatternDesc->value instanceof JsString) {
+                throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
+            }
+            $pcrePattern = $pcrePatternDesc->value->value;
 
             if (!$isGlobal && !$isSticky) {
                 $lastIndex = 0;
