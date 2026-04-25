@@ -5424,14 +5424,15 @@ class Interpreter
                     $value->setName($key);
                 }
                 // Method shorthand: set [[HomeObject]] for super references.
-                // Per spec, method definitions are not constructable and
-                // do not have a .prototype property, EXCEPT generator and
-                // async-generator methods which keep their .prototype (it
-                // controls the prototype of the returned generator).
+                // Per spec, method definitions are not constructable and do
+                // not have a .prototype property — EXCEPT generator and
+                // async-generator methods (sync- or async-yielding) which
+                // keep their .prototype (it controls the returned generator's
+                // prototype). Async non-generator methods do NOT keep one.
                 if ($prop->method && $value instanceof JsFunction) {
                     $value->setHomeObject($obj);
                     $value->setNonConstructable();
-                    if (!$value->isGenerator() && !$value->isAsync()) {
+                    if (!$value->isGenerator()) {
                         $value->forceDelete('prototype');
                     }
                 }
@@ -6998,7 +6999,12 @@ class Interpreter
 
             if ($method->kind !== 'constructor' && $fn instanceof JsFunction) {
                 $fn->setNonConstructable();
-                $fn->forceDelete('prototype');
+                // Generator (sync or async) methods keep their .prototype —
+                // it controls the prototype of the returned generator. Other
+                // methods (regular, async non-generator, get, set) drop it.
+                if (!$fn->isGenerator()) {
+                    $fn->forceDelete('prototype');
+                }
             }
 
             if ($method->kind === 'constructor') {
