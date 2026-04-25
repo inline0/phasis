@@ -2971,6 +2971,7 @@ class IntlObject
                         $mapped = match ($key) {
                             'ca' => 'calendar',
                             'co' => 'collation',
+                            'fw' => 'firstDayOfWeek',
                             'hc' => 'hourCycle',
                             'kf' => 'caseFirst',
                             'kn' => 'numeric',
@@ -3050,9 +3051,13 @@ class IntlObject
 
         // Add unicode extensions if present.
         $extensions = [];
+        // Spec orders Unicode extension keywords in US-ASCII order on the
+        // 2-letter key; iterating $extMap in that same order produces a
+        // canonical toString.
         $extMap = [
             'calendar' => 'ca',
             'collation' => 'co',
+            'firstDayOfWeek' => 'fw',
             'hourCycle' => 'hc',
             'caseFirst' => 'kf',
             'numeric' => 'kn',
