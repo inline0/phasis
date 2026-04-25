@@ -5383,10 +5383,15 @@ class Interpreter
                     $fn->setHomeObject($obj);
                     if ($isSymbolKey) {
                         $existing = $obj->getSymbolPropertyDescriptor($rawKey);
+                        // Use defineOwnSymbolProperty (direct set) rather than
+                        // definePropertyBySymbol so the new accessor fully
+                        // replaces the existing one — the merge logic ignores
+                        // get/set fields without hasGet/hasSet flags and would
+                        // keep the previous getter/setter.
                         if ($prop->kind === 'get') {
-                            $obj->definePropertyBySymbol($rawKey, PropertyDescriptor::accessor($fn, $existing?->set));
+                            $obj->defineOwnSymbolProperty($rawKey, PropertyDescriptor::accessor($fn, $existing?->set));
                         } else {
-                            $obj->definePropertyBySymbol($rawKey, PropertyDescriptor::accessor($existing?->get, $fn));
+                            $obj->defineOwnSymbolProperty($rawKey, PropertyDescriptor::accessor($existing?->get, $fn));
                         }
                     } else {
                         $existing = $obj->getOwnPropertyDescriptor($key);
@@ -6176,7 +6181,11 @@ class Interpreter
         // name down so static fields observe it. The explicit class name (if
         // present) always wins.
         $effectiveName = $node->id?->name ?? $nameHint;
-        $cls = $this->buildClass($effectiveName, $node->superClass, $node->body, $classEnv);
+        // Only named class expressions get an inner class-name binding; an
+        // anonymous class with a NamedEvaluation hint still has no inner
+        // binding (the outer let must remain TDZ during static field eval).
+        $hasInnerNameBinding = $node->id !== null;
+        $cls = $this->buildClass($effectiveName, $node->superClass, $node->body, $classEnv, $hasInnerNameBinding);
         // Bind the class name to the constructor in the class scope.
         if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
             $classEnv->initialize($node->id->name, $cls);
@@ -6899,6 +6908,7 @@ class Interpreter
         ?Node $superClassNode,
         array $elements,
         Environment $env,
+        bool $hasInnerNameBinding = true,
     ): JsFunction {
         $superClass = $superClassNode !== null
             ? $this->evaluate($superClassNode, $env)
@@ -7372,8 +7382,12 @@ class Interpreter
 
         // Per spec ClassDefinitionEvaluation step 16: bind the class name in the
         // class scope BEFORE evaluating static fields and static blocks, so they
-        // can reference the class by name.
-        if ($name !== null && $env->hasOwnBinding($name) && $env->isInTdz($name)) {
+        // can reference the class by name. Only do this when the class has its
+        // own inner-name binding (named class expressions / class declarations).
+        // For anonymous class expressions assigned to `let X = class { ... }`,
+        // the X binding lives in the outer scope and must remain in TDZ during
+        // static field evaluation per spec.
+        if ($hasInnerNameBinding && $name !== null && $env->hasOwnBinding($name) && $env->isInTdz($name)) {
             $env->initialize($name, $constructor);
         }
 

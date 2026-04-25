@@ -4,3 +4,6 @@
 /.phpstan.cache/
 /.compat-state*/
 package-lock.json
+
+# Claude Code internal state
+.claude/

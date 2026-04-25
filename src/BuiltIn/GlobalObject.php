@@ -619,6 +619,19 @@ class GlobalObject
             // can walk through to the target's prototype.
             $boundFn->forceDelete('prototype');
             $boundFn->setBoundTarget($target);
+            // Per spec 10.4.1 BoundFunctionCreate step 2: set the bound
+            // function's [[Prototype]] to OrdinaryGetPrototypeOf(Target).
+            // Without this `class C extends Function {}; new C(...).bind(...)`
+            // produces a bound function whose proto is Function.prototype
+            // instead of C.prototype, breaking instanceof.
+            $targetProto = $target->getPrototype();
+            if ($targetProto !== null) {
+                $boundFn->setCustomPrototype($targetProto);
+            } else {
+                // Target had a null [[Prototype]] (e.g. via setPrototypeOf(fn, null)).
+                // Bound function inherits null prototype too.
+                $boundFn->setPrototype(null);
+            }
             return $boundFn;
         };
         $bindFn = JsFunction::fromCallable('bind', $bindCb, 1);
