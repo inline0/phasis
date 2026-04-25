@@ -651,11 +651,11 @@ class JsFunction extends JsObject
         if ($this->sourceText !== null) {
             return $this->sourceText;
         }
-        // Native/built-in functions use NativeFunction syntax.
-        // The name must be a valid IdentifierName (no spaces, special chars).
-        // If the name is not valid (e.g. "bound foo"), omit it.
+        // Native/built-in functions use NativeFunction syntax:
+        // function NativeAccessor? PropertyName? () { [native code] }
+        // Bound functions render with no name to match V8 output.
         $name = $this->name;
-        if ($name === '' || $name === '(anonymous)' || preg_match('/[^a-zA-Z0-9_$]/', $name)) {
+        if ($this->boundTarget !== null || $name === '' || $name === '(anonymous)') {
             return 'function () { [native code] }';
         }
         return "function {$name}() { [native code] }";
