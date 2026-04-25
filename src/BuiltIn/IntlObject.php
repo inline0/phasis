@@ -1589,27 +1589,38 @@ class IntlObject
                 ));
 
                 // timeZone: must be a recognized identifier per the IANA
-                // tz database (or a UTC offset). Use the host's timezone
-                // list as the canonical authority — anything PHP doesn't
-                // recognise is rejected per Intl spec.
+                // tz database (or a UTC offset). Identifiers are
+                // case-insensitive; canonicalise by matching the host's
+                // case-preserved list.
                 $timeZone = 'UTC';
                 $tzVal = $options->get('timeZone');
                 if (!$tzVal instanceof JsUndefined) {
                     $tz = TypeConversion::toString($tzVal);
                     $isOffset = preg_match('/^[+-]\d{2}:?\d{2}$/', $tz) === 1;
-                    $isValidName = false;
+                    $canonical = null;
                     if (!$isOffset) {
-                        try {
-                            new \DateTimeZone($tz);
-                            $isValidName = true;
-                        } catch (\Throwable) {
-                            $isValidName = false;
+                        static $tzLowerMap = null;
+                        if ($tzLowerMap === null) {
+                            $tzLowerMap = [];
+                            // Spec preserves the user-supplied (deprecated)
+                            // alias if it is structurally valid, so include
+                            // ALL_WITH_BC. Newer canonical names take
+                            // precedence so a "real" zone wins over an
+                            // alias when both exist with the same lower
+                            // case form.
+                            foreach (\DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC) as $id) {
+                                $tzLowerMap[strtolower($id)] = $id;
+                            }
+                            foreach (\DateTimeZone::listIdentifiers() as $id) {
+                                $tzLowerMap[strtolower($id)] = $id;
+                            }
                         }
+                        $canonical = $tzLowerMap[strtolower($tz)] ?? null;
                     }
-                    if (!$isOffset && !$isValidName) {
+                    if (!$isOffset && $canonical === null) {
                         throw new RangeError("Invalid timeZone: {$tz}");
                     }
-                    $timeZone = $tz;
+                    $timeZone = $canonical ?? $tz;
                 }
                 $obj->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(
                     new JsString($timeZone),
