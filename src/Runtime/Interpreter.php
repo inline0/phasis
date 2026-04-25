@@ -8295,7 +8295,27 @@ class Interpreter
                     $closeIterator(Completion::throw($this->phpExceptionToJsValue($assignErr)));
                     throw $assignErr;
                 }
-                $completion = $this->executeStatement($node->body, $iterEnv);
+                try {
+                    $completion = $this->executeStatement($node->body, $iterEnv);
+                } catch (\PhpJs\Value\GeneratorReturnSignal $returnSignal) {
+                    // Per spec ForIn/OfBodyEvaluation: an abrupt completion in
+                    // the body (including a generator-return resumption that
+                    // propagates through a yield inside the body) must close
+                    // the iterator before unwinding further. The original
+                    // completion is "return", so a throw from iter.return()
+                    // replaces the return per IteratorClose semantics.
+                    $closeCompletion = $closeIterator(null);
+                    if ($closeCompletion !== null && $closeCompletion->type === CompletionType::Throw) {
+                        throw new \PhpJs\Exceptions\JsThrowable($closeCompletion->value);
+                    }
+                    throw $returnSignal;
+                } catch (\PhpJs\Exceptions\JsThrowable $bodyErr) {
+                    $closeIterator(Completion::throw($bodyErr->jsValue));
+                    throw $bodyErr;
+                } catch (\PhpJs\Exceptions\RuntimeError $bodyErr) {
+                    $closeIterator(Completion::throw($this->phpExceptionToJsValue($bodyErr)));
+                    throw $bodyErr;
+                }
 
                 if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
                     $v = $completion->value;
