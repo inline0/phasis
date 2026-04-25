@@ -651,11 +651,30 @@ class Engine
                 }
             }
 
-            // Per spec 22.2.3.1 the order is: RegExpAlloc(newTarget) — which
-            // calls GetPrototypeFromConstructor(newTarget) — happens BEFORE
-            // any ToString of the arguments. Resolve the subclass prototype
-            // up front so a `prototype` accessor on newTarget runs before
-            // the flags ToString.
+            // Per spec 22.2.3.1 step 4 (when pattern is a RegExp): capture
+            // [[OriginalSource]] / [[OriginalFlags]] BEFORE doing the
+            // prototype lookup, so a `prototype` accessor on the newTarget
+            // that mutates the source regex (e.g. via re.compile()) does
+            // not retroactively change the source we use.
+            $cachedPattern = null;
+            $cachedFlags = null;
+            if ($patternIsRegExp && $arg0 instanceof \PhpJs\Value\JsObject) {
+                $srcDesc = $arg0->getOwnPropertyDescriptor('[[OriginalSource]]');
+                if ($srcDesc !== null && $srcDesc->value instanceof \PhpJs\Value\JsString) {
+                    $cachedPattern = $srcDesc->value->value;
+                }
+                if ($arg1 instanceof \PhpJs\Value\JsUndefined) {
+                    $flgDesc = $arg0->getOwnPropertyDescriptor('[[OriginalFlags]]');
+                    if ($flgDesc !== null && $flgDesc->value instanceof \PhpJs\Value\JsString) {
+                        $cachedFlags = $flgDesc->value->value;
+                    }
+                }
+            }
+
+            // For subclass instances, resolve newTarget.prototype up front
+            // so a `prototype` accessor on newTarget runs at the spec-
+            // mandated step (RegExpAlloc -> GetPrototypeFromConstructor),
+            // not after argument ToString.
             $subProto = null;
             if ($isSubclass && $newTarget instanceof JsFunction) {
                 $maybeProto = $newTarget->get('prototype');
@@ -669,14 +688,21 @@ class Engine
             // arbitrary object with `source`/`flags` properties but a falsy
             // @@match must be coerced via ToString instead.
             if ($patternIsRegExp && $arg0 instanceof \PhpJs\Value\JsObject) {
-                $pattern = \PhpJs\Spec\TypeConversion::toString($arg0->get('source'));
-                // Empty source is stored as (?:) on the object, but we need the raw pattern for PCRE.
-                if ($pattern === '(?:)') {
-                    $pattern = '';
+                if ($cachedPattern !== null) {
+                    $pattern = $cachedPattern;
+                } else {
+                    $pattern = \PhpJs\Spec\TypeConversion::toString($arg0->get('source'));
+                    if ($pattern === '(?:)') {
+                        $pattern = '';
+                    }
                 }
-                $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
-                    ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
-                    : \PhpJs\Spec\TypeConversion::toString($arg1);
+                if ($cachedFlags !== null) {
+                    $flags = $cachedFlags;
+                } else {
+                    $flags = $arg1 instanceof \PhpJs\Value\JsUndefined
+                        ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
+                        : \PhpJs\Spec\TypeConversion::toString($arg1);
+                }
                 $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
                 if ($subProto !== null) {
                     $result->setPrototype($subProto);
