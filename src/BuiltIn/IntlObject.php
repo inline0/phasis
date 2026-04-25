@@ -3884,8 +3884,45 @@ class IntlObject
                     'Intl.RelativeTimeFormat.prototype.formatToParts called on non-RelativeTimeFormat'
                 );
             }
+            $value = $args[0] ?? JsUndefined::instance();
+            $unitArg = $args[1] ?? JsUndefined::instance();
+            $n = TypeConversion::toNumber($value);
+            if (!is_finite($n)) {
+                throw new RangeError('Invalid time value');
+            }
+            $unit = TypeConversion::toString($unitArg);
+            // Plural and singular spellings collapse to a single canonical
+            // unit per spec.
+            static $unitMap = [
+                'second' => 'second', 'seconds' => 'second',
+                'minute' => 'minute', 'minutes' => 'minute',
+                'hour' => 'hour', 'hours' => 'hour',
+                'day' => 'day', 'days' => 'day',
+                'week' => 'week', 'weeks' => 'week',
+                'month' => 'month', 'months' => 'month',
+                'quarter' => 'quarter', 'quarters' => 'quarter',
+                'year' => 'year', 'years' => 'year',
+            ];
+            if (!isset($unitMap[$unit])) {
+                throw new RangeError("Invalid unit: {$unit}");
+            }
+            $canonicalUnit = $unitMap[$unit];
             $result = new JsArray();
-            $result->set('length', new JsNumber(0.0));
+            // Minimal but spec-shaped output: emit the formatted string as a
+            // single literal-typed part. The full parts breakdown requires
+            // CLDR pattern data we don't currently ship.
+            $sign = $n < 0 ? '' : '';
+            $absN = abs($n);
+            $valueStr = (string) $n;
+            $part = new JsObject();
+            self::defineDataProp($part, 'type', new JsString('literal'));
+            self::defineDataProp($part, 'value', new JsString(
+                ($n >= 0 ? 'in ' : '')
+                . $valueStr . ($n >= 0 ? '' : ' ago')
+                . ' ' . $canonicalUnit . ($absN === 1.0 ? '' : 's'),
+            ));
+            $result->set('0', $part);
+            $result->set('length', new JsNumber(1.0));
             return $result;
         }, 2);
         $proto->defineOwnProperty('formatToParts', PropertyDescriptor::data($formatToParts, true, false, true));
