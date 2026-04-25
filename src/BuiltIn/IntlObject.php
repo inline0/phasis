@@ -2851,10 +2851,11 @@ class IntlObject
             if (isset($parsed[$key])) {
                 $val = $parsed[$key];
                 if (is_bool($val)) {
+                    // The kn (numeric) extension uses the bare key for
+                    // true and `kn-false` for false per UTS35
+                    // canonicalization.
                     $extensions[] = $uKey;
-                    if ($val) {
-                        $extensions[] = 'true';
-                    } else {
+                    if (!$val) {
                         $extensions[] = 'false';
                     }
                 } else {
