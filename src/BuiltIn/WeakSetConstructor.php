@@ -125,12 +125,17 @@ class WeakSetConstructor
             try {
                 $adder->call($set, [$nextValue]);
             } catch (\Throwable $e) {
-                // IteratorClose: call return method if it exists.
-                $returnMethod = $iterator->get('return');
+                // IteratorClose: original throw takes precedence over
+                // anything thrown by the `return` accessor or its call.
+                try {
+                    $returnMethod = $iterator->get('return');
+                } catch (\Throwable) {
+                    $returnMethod = null;
+                }
                 if ($returnMethod instanceof JsFunction) {
                     try {
                         $returnMethod->call($iterator, []);
-                    } catch (\Throwable $ignored) {
+                    } catch (\Throwable) {
                         // Per spec: ignore errors from the return method; re-throw original.
                     }
                 }

@@ -11708,26 +11708,42 @@ class Interpreter
         $completionIsThrow = $completion !== null
             && !($completion instanceof \PhpJs\Value\GeneratorReturnSignal);
 
-        $returnMethod = $iterator->get('return');
-        if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
-            if ($completion !== null) {
-                throw $completion;
-            }
-            return;
-        }
-        if (!$returnMethod instanceof JsFunction) {
-            if ($completion !== null) {
-                throw $completion;
-            }
-            throw new TypeError('Iterator return is not callable');
-        }
-
+        // Per spec step 1: innerResult = Completion(GetMethod(iterator, "return")).
+        // A throwing `return` accessor must be captured as innerException so
+        // the outer throw completion (if any) takes precedence per step 3.
         $innerException = null;
-        $innerResult = null;
+        $returnMethod = null;
         try {
-            $innerResult = $this->callFunction($returnMethod, $iterator, []);
+            $returnMethod = $iterator->get('return');
         } catch (\Throwable $e) {
             $innerException = $e;
+        }
+
+        if ($innerException === null) {
+            if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
+                if ($completion !== null) {
+                    throw $completion;
+                }
+                return;
+            }
+            if (!$returnMethod instanceof JsFunction) {
+                if ($completionIsThrow) {
+                    throw $completion;
+                }
+                if ($completion !== null) {
+                    throw $completion;
+                }
+                throw new TypeError('Iterator return is not callable');
+            }
+        }
+
+        $innerResult = null;
+        if ($innerException === null) {
+            try {
+                $innerResult = $this->callFunction($returnMethod, $iterator, []);
+            } catch (\Throwable $e) {
+                $innerException = $e;
+            }
         }
 
         // Step 7: if completion.[[type]] is throw, return Completion(completion).

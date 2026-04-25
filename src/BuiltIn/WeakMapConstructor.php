@@ -129,7 +129,22 @@ class WeakMapConstructor
             return;
         }
 
-        $returnMethod = $iterator->get('return');
+        // Per spec, the original throw takes precedence over anything
+        // raised inside iterator close — including a throwing `return`
+        // accessor or call. Close lazily on each error path.
+        $closeIterator = static function () use ($iterator): void {
+            try {
+                $returnMethod = $iterator->get('return');
+            } catch (\Throwable) {
+                return;
+            }
+            if ($returnMethod instanceof JsFunction) {
+                try {
+                    $returnMethod->call($iterator, []);
+                } catch (\Throwable) {
+                }
+            }
+        };
 
         while (true) {
             $result = $nextMethod->call($iterator, []);
@@ -142,10 +157,7 @@ class WeakMapConstructor
             }
             $entry = $result->get('value');
             if (!$entry instanceof JsObject) {
-                // Close the iterator, then throw.
-                if ($returnMethod instanceof JsFunction) {
-                    $returnMethod->call($iterator, []);
-                }
+                $closeIterator();
                 throw new TypeError('Iterator value is not an entry object');
             }
             try {
@@ -153,14 +165,7 @@ class WeakMapConstructor
                 $value = $entry->get('1');
                 $adder->call($map, [$key, $value]);
             } catch (\Throwable $e) {
-                // Per spec: if getting key/value or set throws, close the iterator.
-                if ($returnMethod instanceof JsFunction) {
-                    try {
-                        $returnMethod->call($iterator, []);
-                    } catch (\Throwable) {
-                        // Ignore errors from return method per spec.
-                    }
-                }
+                $closeIterator();
                 throw $e;
             }
         }

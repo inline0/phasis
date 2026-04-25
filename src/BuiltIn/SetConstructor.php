@@ -226,10 +226,15 @@ class SetConstructor
             if (TypeConversion::toBoolean($result->get('done'))) {
                 break;
             }
+            // Per Set ctor step 8.c: extract value BEFORE the protected
+            // region. A throw from the value getter propagates without
+            // closing the iterator (no IfAbruptCloseIteration here).
+            $nextValue = $result->get('value');
             try {
-                $adder->call($set, [$result->get('value')]);
+                $adder->call($set, [$nextValue]);
             } catch (\Throwable $e) {
-                // Per spec, close the iterator on abrupt completion.
+                // Per spec step 8.e (IfAbruptCloseIteration), close on
+                // abrupt completion of the adder call only.
                 self::closeIterator($iterator);
                 throw $e;
             }
@@ -239,11 +244,19 @@ class SetConstructor
     /** Close an iterator by calling its return method if present. */
     private static function closeIterator(JsObject $iterator): void
     {
-        $returnMethod = $iterator->get('return');
+        // Per spec 7.4.10 IteratorClose: when the outer completion is a
+        // throw (which is the only path this helper is reached from), that
+        // throw takes precedence over anything raised by `return` lookup or
+        // invocation — including a throwing accessor.
+        try {
+            $returnMethod = $iterator->get('return');
+        } catch (\Throwable) {
+            return;
+        }
         if ($returnMethod instanceof JsFunction) {
             try {
                 $returnMethod->call($iterator, []);
-            } catch (\Throwable $e) {
+            } catch (\Throwable) {
                 // Per spec, ignore errors from closing the iterator.
             }
         }

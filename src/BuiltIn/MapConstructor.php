@@ -342,11 +342,19 @@ class MapConstructor
     /** Close an iterator by calling its return method if present. */
     private static function closeIterator(JsObject $iterator): void
     {
-        $returnMethod = $iterator->get('return');
+        // Per spec 7.4.10 IteratorClose: this helper is only invoked when the
+        // outer completion is a throw, so the original throw takes precedence
+        // over anything that happens inside close — including a throwing
+        // `return` accessor or call.
+        try {
+            $returnMethod = $iterator->get('return');
+        } catch (\Throwable) {
+            return;
+        }
         if ($returnMethod instanceof JsFunction) {
             try {
                 $returnMethod->call($iterator, []);
-            } catch (\Throwable $e) {
+            } catch (\Throwable) {
                 // Per spec, ignore errors from closing the iterator.
             }
         }
