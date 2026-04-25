@@ -651,6 +651,19 @@ class Engine
                 }
             }
 
+            // Per spec 22.2.3.1 the order is: RegExpAlloc(newTarget) — which
+            // calls GetPrototypeFromConstructor(newTarget) — happens BEFORE
+            // any ToString of the arguments. Resolve the subclass prototype
+            // up front so a `prototype` accessor on newTarget runs before
+            // the flags ToString.
+            $subProto = null;
+            if ($isSubclass && $newTarget instanceof JsFunction) {
+                $maybeProto = $newTarget->get('prototype');
+                if ($maybeProto instanceof \PhpJs\Value\JsObject) {
+                    $subProto = $maybeProto;
+                }
+            }
+
             // Per spec 22.2.3.1 step 4-5: only treat the argument as a
             // RegExp source/flags pair when IsRegExp(pattern) was true. An
             // arbitrary object with `source`/`flags` properties but a falsy
@@ -665,12 +678,8 @@ class Engine
                     ? \PhpJs\Spec\TypeConversion::toString($arg0->get('flags'))
                     : \PhpJs\Spec\TypeConversion::toString($arg1);
                 $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
-                // Per spec: use NewTarget.prototype for subclass instances.
-                if ($isSubclass && $newTarget instanceof JsFunction) {
-                    $subProto = $newTarget->get('prototype');
-                    if ($subProto instanceof \PhpJs\Value\JsObject) {
-                        $result->setPrototype($subProto);
-                    }
+                if ($subProto !== null) {
+                    $result->setPrototype($subProto);
                 }
                 return $result;
             }
@@ -682,12 +691,8 @@ class Engine
                 ? ''
                 : \PhpJs\Spec\TypeConversion::toString($arg1);
             $result = $interp->createRegExpFromConstructor($pattern, $flags, $isSubclass);
-            // Per spec: use NewTarget.prototype for subclass instances.
-            if ($isSubclass && $newTarget instanceof JsFunction) {
-                $subProto = $newTarget->get('prototype');
-                if ($subProto instanceof \PhpJs\Value\JsObject) {
-                    $result->setPrototype($subProto);
-                }
+            if ($subProto !== null) {
+                $result->setPrototype($subProto);
             }
             return $result;
         };
