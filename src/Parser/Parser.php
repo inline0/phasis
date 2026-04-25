@@ -5285,6 +5285,25 @@ class Parser
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
+                                // Properties of strings (\q-eligible) only
+                                // legal in v-mode.
+                                if (
+                                    \PhpJs\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                ) {
+                                    if (!$isVFlag) {
+                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                            "Invalid regular expression: /{$pattern}/: Property of strings only allowed in /v",
+                                        );
+                                    }
+                                    // Even in /v, a string-property may not
+                                    // be negated; \P{Emoji_Keycap_Sequence}
+                                    // is an early error.
+                                    if ($next === 'P') {
+                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                            "Invalid regular expression: /{$pattern}/: \\P{} property of strings cannot be negated",
+                                        );
+                                    }
+                                }
                             }
                             $i = $j + 1;
                             $prevAtom = true;
@@ -5310,7 +5329,7 @@ class Parser
                 $lastClosedGroupWasLookbehind = false;
                 $lastClosedGroupWasLookahead = false;
                 if ($unicode) {
-                    $endPos = self::validateCharClassUnicode($pattern, $i);
+                    $endPos = self::validateCharClassUnicode($pattern, $i, $isVFlag);
                     $i = $endPos;
                     $prevAtom = true;
                     continue;
@@ -5658,11 +5677,13 @@ class Parser
      * unescaped `-` adjacent to a CharacterClassEscape (`\d`, `\w`, `\s`,
      * etc.). Returns the position just past the closing `]`.
      */
-    private static function validateCharClassUnicode(string $pattern, int $start): int
+    private static function validateCharClassUnicode(string $pattern, int $start, bool $isVFlag = false): int
     {
         $len = strlen($pattern);
         $i = $start + 1;
+        $isNegated = false;
         if ($i < $len && $pattern[$i] === '^') {
+            $isNegated = true;
             $i++;
         }
         // Each "atom" inside the class is either a single char, an escape,
@@ -5723,6 +5744,20 @@ class Parser
                                     throw new \PhpJs\Exceptions\SyntaxError(
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
+                                }
+                                if (
+                                    \PhpJs\Runtime\Interpreter::isVStringBinaryPropertyPublic($propExpr)
+                                ) {
+                                    if (!$isVFlag) {
+                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                            "Invalid regular expression: /{$pattern}/: Property of strings only allowed in /v",
+                                        );
+                                    }
+                                    if ($next === 'P' || $isNegated) {
+                                        throw new \PhpJs\Exceptions\SyntaxError(
+                                            "Invalid regular expression: /{$pattern}/: Negated property of strings",
+                                        );
+                                    }
                                 }
                             }
                             $i = $j + 1;

@@ -12951,6 +12951,12 @@ class Interpreter
         return self::mapBinaryProperty($name) !== null;
     }
 
+    /** Whether $name is a /v-only string-binary property. */
+    public static function isVStringBinaryPropertyPublic(string $name): bool
+    {
+        return self::isVStringBinaryProperty($name);
+    }
+
     /**
      * Whether the lone-form `\p{X}` is known: either a General_Category
      * value (e.g. Letter, Lu) or a binary property (e.g. ASCII, Emoji).
