@@ -10348,6 +10348,12 @@ class Interpreter
         }
 
         foreach ($children as $child) {
+            // Per Annex B.3.4, a LabeledFunctionDeclaration hoists like a
+            // plain FunctionDeclaration. Unwrap the label so the same
+            // checks apply.
+            if ($child instanceof LabeledStatement) {
+                $child = $child->body;
+            }
             if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
                 if ($canHoist($child->id->name)) {
                     $env->defineAnnexBVar($child->id->name, JsUndefined::instance(), $this->isEvalContext);
@@ -10355,6 +10361,10 @@ class Interpreter
                 }
             } elseif ($child instanceof BlockStatement) {
                 foreach ($child->body as $inner) {
+                    // Same labeled-decl unwrap inside nested blocks.
+                    if ($inner instanceof LabeledStatement) {
+                        $inner = $inner->body;
+                    }
                     // Annex B.3 hoisting only applies to plain function
                     // declarations — generator and async function
                     // declarations stay block-scoped and are not promoted
@@ -10430,9 +10440,16 @@ class Interpreter
         // switch statements, and try statements.
         if ($stmt instanceof BlockStatement) {
             foreach ($stmt->body as $child) {
-                if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
+                // Per Annex B.3.4 unwrap label so `l: function f() {}` hoists
+                // like a plain function declaration.
+                $unwrapped = $child instanceof LabeledStatement ? $child->body : $child;
+                if (
+                    $unwrapped instanceof FunctionDeclaration
+                    && !$unwrapped->async
+                    && !$unwrapped->generator
+                ) {
                     $this->addEvalAnnexBCandidate(
-                        $child,
+                        $unwrapped,
                         $declaredFuncOrVarNames,
                         $lexicalNames,
                         $result,
@@ -10505,13 +10522,29 @@ class Interpreter
                 }
             }
         } elseif ($stmt instanceof LabeledStatement) {
-            $this->scanEvalAnnexBFunctions(
-                $stmt->body,
-                $declaredFuncOrVarNames,
-                $lexicalNames,
-                $result,
-                $seen,
-            );
+            // A labeled function declaration is itself eligible per
+            // Annex B.3.4. Otherwise, recurse into the body.
+            if (
+                $stmt->body instanceof FunctionDeclaration
+                && !$stmt->body->async
+                && !$stmt->body->generator
+            ) {
+                $this->addEvalAnnexBCandidate(
+                    $stmt->body,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            } else {
+                $this->scanEvalAnnexBFunctions(
+                    $stmt->body,
+                    $declaredFuncOrVarNames,
+                    $lexicalNames,
+                    $result,
+                    $seen,
+                );
+            }
         } elseif ($stmt instanceof TryStatement) {
             foreach ($stmt->block->body as $child) {
                 $this->scanEvalAnnexBFunctions(
