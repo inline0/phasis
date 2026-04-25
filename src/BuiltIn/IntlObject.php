@@ -2258,21 +2258,39 @@ class IntlObject
 
                 $options = self::coerceOptions($optionsArg);
 
-                // Apply options overrides.
+                // Apply options overrides. Each subtag must match its
+                // BCP47 production exactly; ICU's parser is permissive
+                // so we validate up-front.
                 $language = null;
                 $langVal = $options->get('language');
                 if (!$langVal instanceof JsUndefined) {
                     $language = TypeConversion::toString($langVal);
+                    $langLen = strlen($language);
+                    if (
+                        !ctype_alpha($language)
+                        || !($langLen === 2 || $langLen === 3 || ($langLen >= 5 && $langLen <= 8))
+                    ) {
+                        throw new RangeError("Invalid language: {$language}");
+                    }
                 }
                 $script = null;
                 $scriptVal = $options->get('script');
                 if (!$scriptVal instanceof JsUndefined) {
                     $script = TypeConversion::toString($scriptVal);
+                    if (strlen($script) !== 4 || !ctype_alpha($script)) {
+                        throw new RangeError("Invalid script: {$script}");
+                    }
                 }
                 $region = null;
                 $regionVal = $options->get('region');
                 if (!$regionVal instanceof JsUndefined) {
                     $region = TypeConversion::toString($regionVal);
+                    $regionLen = strlen($region);
+                    $isAlpha2 = ($regionLen === 2 && ctype_alpha($region));
+                    $isDigit3 = ($regionLen === 3 && ctype_digit($region));
+                    if (!$isAlpha2 && !$isDigit3) {
+                        throw new RangeError("Invalid region: {$region}");
+                    }
                 }
 
                 // Parse the tag.
@@ -2292,29 +2310,57 @@ class IntlObject
                     $parsed['region'] = strtoupper($region);
                 }
 
-                // Unicode extension keywords from options.
+                // Unicode extension keywords from options. Each value
+                // must satisfy the BCP47 type production:
+                // alphanum{3,8}(-alphanum{3,8})*  for calendar /
+                // collation / numberingSystem; the others are fixed
+                // enumerations.
+                $isValidUnicodeType = static function (string $value): bool {
+                    if ($value === '') {
+                        return false;
+                    }
+                    foreach (explode('-', $value) as $part) {
+                        $partLen = strlen($part);
+                        if ($partLen < 3 || $partLen > 8 || !ctype_alnum($part)) {
+                            return false;
+                        }
+                    }
+                    return true;
+                };
                 $calendar = null;
                 $calVal = $options->get('calendar');
                 if (!$calVal instanceof JsUndefined) {
                     $calendar = TypeConversion::toString($calVal);
+                    if (!$isValidUnicodeType($calendar)) {
+                        throw new RangeError("Invalid calendar: {$calendar}");
+                    }
                     $parsed['calendar'] = $calendar;
                 }
                 $collation = null;
                 $collVal = $options->get('collation');
                 if (!$collVal instanceof JsUndefined) {
                     $collation = TypeConversion::toString($collVal);
+                    if (!$isValidUnicodeType($collation)) {
+                        throw new RangeError("Invalid collation: {$collation}");
+                    }
                     $parsed['collation'] = $collation;
                 }
                 $hourCycle = null;
                 $hcVal = $options->get('hourCycle');
                 if (!$hcVal instanceof JsUndefined) {
                     $hourCycle = TypeConversion::toString($hcVal);
+                    if (!in_array($hourCycle, ['h11', 'h12', 'h23', 'h24'], true)) {
+                        throw new RangeError("Invalid hourCycle: {$hourCycle}");
+                    }
                     $parsed['hourCycle'] = $hourCycle;
                 }
                 $caseFirst = null;
                 $cfVal = $options->get('caseFirst');
                 if (!$cfVal instanceof JsUndefined) {
                     $caseFirst = TypeConversion::toString($cfVal);
+                    if (!in_array($caseFirst, ['upper', 'lower', 'false'], true)) {
+                        throw new RangeError("Invalid caseFirst: {$caseFirst}");
+                    }
                     $parsed['caseFirst'] = $caseFirst;
                 }
                 $numeric = null;
@@ -2327,6 +2373,9 @@ class IntlObject
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
                     $numberingSystem = TypeConversion::toString($nsVal);
+                    if (!$isValidUnicodeType($numberingSystem)) {
+                        throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
+                    }
                     $parsed['numberingSystem'] = $numberingSystem;
                 }
 
