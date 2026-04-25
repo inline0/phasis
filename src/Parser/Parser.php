@@ -3450,6 +3450,20 @@ class Parser
             while ($this->eat(TokenType::Comma)) {
                 $declarations[] = $this->parseVariableDeclarator();
             }
+            // Per §13.3.1.1: const declarators in a C-style `for(;;)` head
+            // must have initializers. The for-of/for-in branches bypass
+            // this requirement (the iteration value initializes the
+            // binding); we already returned for those above.
+            if ($kind === 'const') {
+                foreach ($declarations as $d) {
+                    if ($d->init === null) {
+                        throw new ParseError(
+                            "Missing initializer in const declaration",
+                            $kindToken,
+                        );
+                    }
+                }
+            }
             $varDecl = new VariableDeclaration($kindToken->location, $kind, $declarations);
             $this->expect(TokenType::Semicolon);
             $test = $this->check(TokenType::Semicolon) ? null : $this->parseExpression();
