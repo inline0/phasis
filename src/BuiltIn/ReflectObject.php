@@ -734,50 +734,11 @@ class ReflectObject
     /** Convert a JsObject descriptor to a PropertyDescriptor. */
     private static function toPropertyDescriptor(JsObject $obj): PropertyDescriptor
     {
-        $value = $obj->has('value') ? $obj->get('value') : null;
-        $writable = $obj->has('writable')
-            ? TypeConversion::toBoolean($obj->get('writable'))
-            : null;
-        $enumerable = $obj->has('enumerable')
-            ? TypeConversion::toBoolean($obj->get('enumerable'))
-            : null;
-        $configurable = $obj->has('configurable')
-            ? TypeConversion::toBoolean($obj->get('configurable'))
-            : null;
-
-        $getter = null;
-        $setter = null;
-        $hasGetOrSet = false;
-        if ($obj->has('get')) {
-            $hasGetOrSet = true;
-            $g = $obj->get('get');
-            if ($g instanceof JsFunction) {
-                $getter = $g;
-            }
-        }
-        if ($obj->has('set')) {
-            $hasGetOrSet = true;
-            $s = $obj->get('set');
-            if ($s instanceof JsFunction) {
-                $setter = $s;
-            }
-        }
-
-        if ($hasGetOrSet) {
-            return PropertyDescriptor::accessor(
-                get: $getter,
-                set: $setter,
-                enumerable: $enumerable ?? false,
-                configurable: $configurable ?? false,
-            );
-        }
-
-        return new PropertyDescriptor(
-            value: $value,
-            writable: $writable,
-            enumerable: $enumerable,
-            configurable: $configurable,
-        );
+        // Delegate to ObjectConstructor::toPropertyDescriptor so the spec-
+        // mandated field order, hasGet / hasSet tracking, and validation
+        // (mixed data + accessor → TypeError) all match the
+        // Object.defineProperty path.
+        return \PhpJs\BuiltIn\ObjectConstructor::toPropertyDescriptor($obj);
     }
 
     /** Convert a PropertyDescriptor to a JsObject. */
