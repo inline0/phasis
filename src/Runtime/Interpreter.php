@@ -7346,12 +7346,13 @@ class Interpreter
             $constructor->addPrivateMethodEntry($key, $fn, $kind);
         }
 
-        // Store the private name environment on the constructor so that
-        // field initializers (which run at construction time) can resolve
-        // branded private names.
-        if (!empty($privateNameMap)) {
-            $constructor->setPrivateEnv($privateEnv);
-        }
+        // Store the class's private/lexical environment on the constructor.
+        // Field initializers (which run at construction time) need this to
+        // resolve branded private names AND to see the inner class-name
+        // binding (e.g. \`class Inner { field = Inner; }\`). Always set it
+        // so the lexical scope chain is preserved even when no private
+        // names are declared.
+        $constructor->setPrivateEnv($privateEnv);
 
         // Inheritance: set [[Prototype]] of constructor to super class.
         if ($superClass instanceof JsFunction) {
