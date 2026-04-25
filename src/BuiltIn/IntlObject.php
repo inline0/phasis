@@ -160,7 +160,10 @@ class IntlObject
     }
 
     /**
-     * Canonicalize a single BCP 47 language tag using ICU.
+     * Canonicalize a single BCP 47 language tag. Routes the input through
+     * the structural parser/reconstructor so the output is canonical
+     * BCP47 (extensions reordered, attributes sorted, duplicate keywords
+     * dropped) rather than ICU's "lang@key=val" legacy form.
      */
     private static function canonicalizeLocaleTag(string $tag): ?string
     {
@@ -168,38 +171,16 @@ class IntlObject
             return null;
         }
 
-        // Validate basic structure of BCP 47 tag.
-        // Must match: language[-script][-region][-variant]*[-extension]*[-privateuse]
-        // Or: x-privateuse
-        // Or: grandfathered tags
+        // ASCII-only validity gate; reject obvious garbage.
         if (!preg_match('/^[a-zA-Z0-9][-a-zA-Z0-9]*$/u', $tag)) {
             return null;
         }
 
-        if (extension_loaded('intl')) {
-            // Use ICU to canonicalize. \Locale::canonicalize handles
-            // grandfathered tags, script/region casing, and alias replacement.
-            $canon = \Locale::canonicalize($tag);
-            if ($canon === null) {
-                return null;
-            }
-            // ICU uses underscores; BCP 47 uses hyphens.
-            $canon = str_replace('_', '-', $canon);
-
-            // ICU may not validate all structural issues. Do a basic check:
-            // the result should look like a valid tag.
-            if (!preg_match('/^[a-zA-Z]{2,8}/', $canon)) {
-                return null;
-            }
-
-            // Preserve unicode extension keywords from original tag.
-            // ICU's canonicalize sometimes drops or reorders -u- extensions.
-            // Re-parse from original if needed.
-            return self::formatBcp47Casing($canon);
+        $parsed = self::parseLocaleTag($tag);
+        if ($parsed === null || ($parsed['language'] ?? '') === '') {
+            return null;
         }
-
-        // Fallback: basic casing normalization without ICU.
-        return self::formatBcp47Casing($tag);
+        return self::reconstructLocaleTag($parsed);
     }
 
     /**
