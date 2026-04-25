@@ -772,32 +772,34 @@ class IteratorConstructor
                 $receiver = $obj;
             }
 
+            $iterator = null;
             if (!($iterMethod instanceof JsUndefined) && !($iterMethod instanceof JsNull)) {
-                if ($iterMethod instanceof JsFunction) {
-                    $iterator = $iterMethod->call($receiver, []);
-                    if (!$iterator instanceof JsObject) {
-                        throw new TypeError('Symbol.iterator result is not an object');
-                    }
-                    // Per Iterator.from spec, GetIteratorDirect runs before
-                    // the OrdinaryHasInstance(%Iterator%, ...) check, so we
-                    // read `next` first. createWrapForValidIterator captures
-                    // the next method; isIteratorInstance walks the prototype
-                    // chain after, observing the spec-mandated order.
-                    $wrapped = self::createWrapForValidIterator($iterator);
-                    if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
-                        return $iterator;
-                    }
-                    return $wrapped;
+                if (!$iterMethod instanceof JsFunction) {
+                    throw new TypeError('Symbol.iterator is not a function');
                 }
-                throw new TypeError('Symbol.iterator is not a function');
+                $iterator = $iterMethod->call($receiver, []);
+                if (!$iterator instanceof JsObject) {
+                    throw new TypeError('Symbol.iterator result is not an object');
+                }
+            } else {
+                // No @@iterator: use the input directly. For String primitives,
+                // coerce to a String wrapper per GetIteratorFlattenable step 5.
+                if ($obj instanceof JsString) {
+                    $obj = TypeConversion::toObject($obj);
+                }
+                $iterator = $obj;
             }
 
-            // If obj was a primitive string with no @@iterator, coerce to String wrapper
-            // and wrap that as an iterator (step 5 of GetIteratorFlattenable).
-            if ($obj instanceof JsString) {
-                $obj = TypeConversion::toObject($obj);
+            // Per Iterator.from spec, GetIteratorDirect runs before the
+            // OrdinaryHasInstance(%Iterator%, ...) check. createWrapForValidIterator
+            // reads `next` first; isIteratorInstance walks the prototype
+            // chain afterwards, observing the spec-mandated order including
+            // the proxy's getPrototypeOf trap firing after the next read.
+            $wrapped = self::createWrapForValidIterator($iterator);
+            if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
+                return $iterator;
             }
-            return self::createWrapForValidIterator($obj);
+            return $wrapped;
         };
     }
 
