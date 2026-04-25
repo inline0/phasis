@@ -2558,6 +2558,7 @@ class IntlObject
             'collation' => 'collation',
             'hourCycle' => 'hourCycle',
             'numberingSystem' => 'numberingSystem',
+            'firstDayOfWeek' => 'firstDayOfWeek',
         ];
         foreach ($accessors as $prop => $internalKey) {
             $getter = JsFunction::fromCallable("get {$prop}", function (JsValue $this_) use ($internalKey): JsValue {
