@@ -2338,6 +2338,23 @@ class IntlObject
                     false,
                 ));
 
+                // hour12 / hourCycle reads happen BEFORE timeZone per
+                // CreateDateTimeFormat steps 12-13 / 29 (in that order).
+                $h12Val = $options->get('hour12');
+                $hour12 = null;
+                if (!$h12Val instanceof JsUndefined) {
+                    $hour12 = TypeConversion::toBoolean($h12Val);
+                }
+                $hourCycle = null;
+                $hcVal = $options->get('hourCycle');
+                if (!$hcVal instanceof JsUndefined) {
+                    $hc = TypeConversion::toString($hcVal);
+                    if (!in_array($hc, ['h11', 'h12', 'h23', 'h24'], true)) {
+                        throw new RangeError("Invalid hourCycle: {$hc}");
+                    }
+                    $hourCycle = $hc;
+                }
+
                 // timeZone: must be a recognized identifier per the IANA
                 // tz database (or a UTC offset). Identifiers are
                 // case-insensitive; canonicalise by matching the host's
@@ -2362,22 +2379,6 @@ class IntlObject
                     false,
                     false,
                 ));
-
-                // hourCycle / hour12
-                $hourCycle = null;
-                $hcVal = $options->get('hourCycle');
-                if (!$hcVal instanceof JsUndefined) {
-                    $hc = TypeConversion::toString($hcVal);
-                    if (!in_array($hc, ['h11', 'h12', 'h23', 'h24'], true)) {
-                        throw new RangeError("Invalid hourCycle: {$hc}");
-                    }
-                    $hourCycle = $hc;
-                }
-                $h12Val = $options->get('hour12');
-                $hour12 = null;
-                if (!$h12Val instanceof JsUndefined) {
-                    $hour12 = TypeConversion::toBoolean($h12Val);
-                }
                 // Pull `-u-hc-…` from the requested locale as a default
                 // when the constructor doesn't override it.
                 if ($hourCycle === null && $hour12 === null) {
