@@ -2229,6 +2229,17 @@ class StringPrototype
                 if ($code < 0 || $code > 0x10FFFF) {
                     throw new \PhpJs\Exceptions\RangeError("Invalid code point {$code}");
                 }
+                if ($code >= 0xD800 && $code <= 0xDBFF) {
+                    // Lone high surrogate: encode as CESU-8 so the byte
+                    // stream round-trips back to a single UTF-16 code unit.
+                    $str .= "\xED" . chr(0xA0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+                    continue;
+                }
+                if ($code >= 0xDC00 && $code <= 0xDFFF) {
+                    // Lone low surrogate.
+                    $str .= "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+                    continue;
+                }
                 $ch = mb_chr($code, 'UTF-8');
                 $str .= $ch !== false ? $ch : '';
             }

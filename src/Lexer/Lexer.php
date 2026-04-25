@@ -917,6 +917,17 @@ class Lexer
             if ($code > 0x10FFFF) {
                 throw new SyntaxError('Unicode escape out of range', $start);
             }
+            // Lone surrogates are valid JS string contents (UTF-16 semantics)
+            // but cannot be encoded as standalone UTF-8 codepoints. Emit them
+            // as CESU-8 (3-byte WTF-8) so JsString::utf8ToUtf16LE round-trips
+            // back to the surrogate code unit and downstream code can treat
+            // the value as a UTF-16 code unit.
+            if ($code >= 0xD800 && $code <= 0xDBFF) {
+                return "\xED" . chr(0xA0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+            }
+            if ($code >= 0xDC00 && $code <= 0xDFFF) {
+                return "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
+            }
             $chr = mb_chr($code, 'UTF-8');
             return $chr !== false ? $chr : '?';
         }
