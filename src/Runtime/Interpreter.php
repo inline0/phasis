@@ -5139,18 +5139,13 @@ class Interpreter
             return $val ?? JsUndefined::instance();
         }
 
-        // Auto-boxing for primitives (number, boolean).
-        // In strict mode, getters on the prototype chain must receive the
-        // original primitive as `this`, not the boxed wrapper object.
+        // Auto-boxing for primitives (number, boolean). Per spec GetV(V, P)
+        // (§6.2.4.5): ToObject(V) for the lookup, but invoke getters with V
+        // (the primitive) as the receiver — the getter's own strict-mode flag
+        // decides whether `this` gets boxed at OrdinaryCallBindThis. Always
+        // route through getPropertyWithPrimitiveReceiver so this matches.
         $boxed = TypeConversion::toObject($obj);
-        if ($this->strictMode) {
-            $result = $this->getPropertyWithPrimitiveReceiver($boxed, $key, $isSymbolKey, $rawKey, $obj);
-            return $result;
-        }
-        if ($isSymbolKey) {
-            return $boxed->getBySymbol($rawKey);
-        }
-        return $boxed->get($key);
+        return $this->getPropertyWithPrimitiveReceiver($boxed, $key, $isSymbolKey, $rawKey, $obj);
     }
 
     /**
