@@ -452,28 +452,30 @@ class IntlObject
     /** @return list<string> */
     private static function getSupportedCalendars(): array
     {
+        // The full BCP 47 calendar list per CLDR. ICU's
+        // `getKeywordValuesForLocale` historically returned only
+        // `gregorian`, so we merge it with the static list and
+        // sort to satisfy supportedValuesOf's spec ordering
+        // requirement.
+        $base = ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
+            'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic',
+            'islamic-civil', 'islamic-rgsa', 'islamic-tbla',
+            'islamic-umalqura', 'iso8601', 'japanese', 'persian', 'roc'];
         if (extension_loaded('intl')) {
             $iter = \IntlCalendar::getKeywordValuesForLocale('calendar', 'und', true);
-            $result = [];
             foreach ($iter as $cal) {
-                // Map ICU calendar names to BCP 47 / CLDR names.
                 $mapped = match ($cal) {
                     'gregorian' => 'gregory',
                     'ethiopic-amete-alem' => 'ethioaa',
-                    'islamic-civil' => 'islamic-civil',
                     default => $cal,
                 };
-                $result[] = $mapped;
+                if (!in_array($mapped, $base, true)) {
+                    $base[] = $mapped;
+                }
             }
-            return $result ?: ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
-                'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic', 'islamic-civil',
-                'islamic-rgsa', 'islamic-tbla', 'islamic-umalqura', 'iso8601',
-                'japanese', 'persian', 'roc'];
         }
-        return ['buddhist', 'chinese', 'coptic', 'dangi', 'ethioaa',
-            'ethiopic', 'gregory', 'hebrew', 'indian', 'islamic', 'islamic-civil',
-            'islamic-rgsa', 'islamic-tbla', 'islamic-umalqura', 'iso8601',
-            'japanese', 'persian', 'roc'];
+        sort($base, SORT_STRING);
+        return $base;
     }
 
     /** @return list<string> */
@@ -1030,14 +1032,21 @@ class IntlObject
                 ));
 
                 // numberingSystem must be read before style per spec
-                // option-access order. The resolved value still falls
-                // back to "latn" because PHP intl only ships latn data.
+                // option-access order. ICU honours the request via the
+                // `@numbers=…` keyword in formatNumber, so we keep the
+                // resolved system the user asked for — but only if
+                // it's in `Intl.supportedValuesOf("numberingSystem")`.
+                // Algorithmic systems (armn, hebr, roman, ...) and
+                // unknown ones fall back to "latn".
                 $numberingSystem = 'latn';
                 $nsValEarly = $options->get('numberingSystem');
                 if (!$nsValEarly instanceof JsUndefined) {
                     $nsEarly = TypeConversion::toString($nsValEarly);
                     if (!self::isValidUnicodeTypeValue($nsEarly)) {
                         throw new RangeError("Invalid numberingSystem: {$nsEarly}");
+                    }
+                    if (in_array($nsEarly, self::getSupportedNumberingSystems(), true)) {
+                        $numberingSystem = $nsEarly;
                     }
                 }
 
@@ -1752,6 +1761,7 @@ class IntlObject
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
+        $numberingSystem = self::extractInternalString($nf, '[[NumberingSystem]]', 'latn');
 
         $fmtStyle = match ($style) {
             'currency' => \NumberFormatter::CURRENCY,
@@ -1759,7 +1769,15 @@ class IntlObject
             default => \NumberFormatter::DECIMAL,
         };
 
-        $formatter = new \NumberFormatter(str_replace('-', '_', $locale), $fmtStyle);
+        // Encode the numbering system as a `-u-nu-…` extension on the
+        // ICU locale so non-Latn digits are emitted (Arabic, Thai,
+        // Adlam, ...). Without this every NumberFormat would render
+        // 0-9 in Latin digits regardless of [[NumberingSystem]].
+        $icuLocale = str_replace('-', '_', $locale);
+        if ($numberingSystem !== 'latn' && $numberingSystem !== '') {
+            $icuLocale = $icuLocale . '@numbers=' . $numberingSystem;
+        }
+        $formatter = new \NumberFormatter($icuLocale, $fmtStyle);
 
         $minInt = (int) self::extractInternalNumber($nf, '[[MinimumIntegerDigits]]', 1);
         $formatter->setAttribute(\NumberFormatter::MIN_INTEGER_DIGITS, $minInt);
