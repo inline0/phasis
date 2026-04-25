@@ -2569,6 +2569,15 @@ class IntlObject
                     if (!$isValidUnicodeType($calendar)) {
                         throw new RangeError("Invalid calendar: {$calendar}");
                     }
+                    // UTS35 canonical form for a small set of CLDR-aliased
+                    // calendar identifiers.
+                    static $calendarAliases = [
+                        'islamicc' => 'islamic-civil',
+                        'ethiopic-amete-alem' => 'ethioaa',
+                        'gregorian' => 'gregory',
+                    ];
+                    $calLower = strtolower($calendar);
+                    $calendar = $calendarAliases[$calLower] ?? $calLower;
                     $parsed['calendar'] = $calendar;
                 }
                 $collation = null;
@@ -3219,6 +3228,11 @@ class IntlObject
                     'kn' => 'numeric',
                     'nu' => 'numberingSystem',
                 ];
+                static $calendarAliases = [
+                    'islamicc' => 'islamic-civil',
+                    'ethiopic-amete-alem' => 'ethioaa',
+                    'gregorian' => 'gregory',
+                ];
                 foreach ($legacyMap as $key => $slot) {
                     if (!isset($keywords[$key])) {
                         continue;
@@ -3229,7 +3243,19 @@ class IntlObject
                         $result[$slot] = $valStr === '' || $valStr === 'true';
                     } else {
                         $result[$slot] = $valStr === 'true' ? '' : $valStr;
+                        if ($slot === 'calendar' && isset($calendarAliases[$result[$slot]])) {
+                            $canonical = $calendarAliases[$result[$slot]];
+                            $result[$slot] = $canonical;
+                            // Update the keywords list so toString sees the
+                            // canonical value too.
+                            $keywords[$key] = $canonical === '' ? [] : explode('-', $canonical);
+                        }
                     }
+                }
+                // Re-store keywords in case calendar canonicalization
+                // mutated them above.
+                if (!empty($keywords)) {
+                    $result['unicodeKeywords'] = $keywords;
                 }
             }
             if (!empty($otherExtensions)) {
