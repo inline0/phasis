@@ -7047,6 +7047,14 @@ class Interpreter
         Environment $env,
         bool $hasInnerNameBinding = true,
     ): JsFunction {
+        // Per spec, ALL parts of a class definition are strict mode code,
+        // including the ClassHeritage expression. Flip strict mode BEFORE
+        // evaluating the heritage so any FunctionExpression/ArrowFunction
+        // produced there carries the strict flag (e.g. `class extends
+        // function(){ arguments.callee }` must throw on access).
+        $previousStrictMode = $this->strictMode;
+        $this->strictMode = true;
+
         $superClass = $superClassNode !== null
             ? $this->evaluate($superClassNode, $env)
             : null;
@@ -7064,6 +7072,7 @@ class Interpreter
                 $superStr = $superClass instanceof \PhpJs\Value\JsProxy
                     ? 'function () { [native code] }'
                     : TypeConversion::toString($superClass);
+                $this->strictMode = $previousStrictMode;
                 throw new TypeError(
                     'Class extends value ' . $superStr . ' is not a constructor or null',
                 );
@@ -7076,10 +7085,6 @@ class Interpreter
         $instanceFields = [];
         $privateInstanceMethods = [];
         $privateStaticMethods = [];
-
-        // Class bodies are always strict mode per spec.
-        $previousStrictMode = $this->strictMode;
-        $this->strictMode = true;
 
         // Per spec ClassDefinitionEvaluation: create a new PrivateEnvironment.
         // Each evaluation of a class body generates unique branded private names
