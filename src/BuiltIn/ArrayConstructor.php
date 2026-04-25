@@ -1385,13 +1385,20 @@ class ArrayConstructor
                     return strcmp($sa, $sb);
                 });
                 $itemCount = count($items);
-                // Write sorted elements.
+                // Write sorted elements. Per §23.1.3.30 step 7, every Set
+                // call uses strict=true so non-writable indices throw rather
+                // than silently dropping the assignment.
                 for ($i = 0; $i < $itemCount; $i++) {
-                    $this_->set((string) $i, $items[$i]);
+                    $this_->set((string) $i, $items[$i], true);
                 }
                 // Delete trailing holes (indices that no longer have values).
+                // Step 8 uses DeletePropertyOrThrow.
                 for ($i = $itemCount; $i < $len; $i++) {
-                    $this_->delete((string) $i);
+                    if (!$this_->delete((string) $i, true)) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot delete property '{$i}' of '[object Array]'",
+                        );
+                    }
                 }
                 return $this_;
             },
