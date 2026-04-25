@@ -1086,10 +1086,27 @@ class IntlObject
                 $msdVal = $options->get('minimumSignificantDigits');
                 $xsdVal = $options->get('maximumSignificantDigits');
 
+                $defaultNumberOption = static function (
+                    JsValue $val,
+                    int $min,
+                    int $max,
+                    int $fallback,
+                    string $name,
+                ): int {
+                    if ($val instanceof JsUndefined) {
+                        return $fallback;
+                    }
+                    $n = TypeConversion::toNumber($val);
+                    if (is_nan($n) || $n < $min || $n > $max) {
+                        throw new RangeError("Invalid {$name}: {$n}");
+                    }
+                    return (int) floor($n);
+                };
+
                 if (!$msdVal instanceof JsUndefined || !$xsdVal instanceof JsUndefined) {
                     // Significant digits mode.
-                    $minSig = !$msdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($msdVal) : 1;
-                    $maxSig = !$xsdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($xsdVal) : 21;
+                    $minSig = $defaultNumberOption($msdVal, 1, 21, 1, 'minimumSignificantDigits');
+                    $maxSig = $defaultNumberOption($xsdVal, $minSig, 21, 21, 'maximumSignificantDigits');
                     $obj->defineOwnProperty('[[MinimumSignificantDigits]]', PropertyDescriptor::data(
                         new JsNumber((float) $minSig),
                         false,
@@ -1111,10 +1128,14 @@ class IntlObject
                 } else {
                     $defaultMinFrac = $style === 'currency' ? 2 : 0;
                     $defaultMaxFrac = $style === 'currency' ? 2 : ($style === 'percent' ? 0 : 3);
-                    $minFrac = !$mfdVal instanceof JsUndefined
-                        ? (int) TypeConversion::toNumber($mfdVal) : $defaultMinFrac;
-                    $maxFrac = !$xfdVal instanceof JsUndefined
-                        ? (int) TypeConversion::toNumber($xfdVal) : max($defaultMaxFrac, $minFrac);
+                    $minFrac = $defaultNumberOption($mfdVal, 0, 100, $defaultMinFrac, 'minimumFractionDigits');
+                    $maxFrac = $defaultNumberOption(
+                        $xfdVal,
+                        0,
+                        100,
+                        max($defaultMaxFrac, $minFrac),
+                        'maximumFractionDigits',
+                    );
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
                         new JsNumber((float) $minFrac),
                         false,
