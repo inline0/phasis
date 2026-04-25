@@ -881,20 +881,49 @@ class DateConstructor
             return $toISO->call($o, []);
         }, 1);
 
-        $d('toLocaleDateString', function (JsValue $this_): JsValue {
+        // The toLocale* methods route locales/options through
+        // Intl.DateTimeFormat so they share the same option-validation
+        // behaviour: invalid locales (e.g. "de_DE") and invalid options
+        // (e.g. {timeZone: "invalid"}) propagate the same RangeError /
+        // TypeError as constructing the Intl.DateTimeFormat directly.
+        $validateIntlOptions = static function (array $args): void {
+            $localesArg = $args[0] ?? JsUndefined::instance();
+            $optionsArg = $args[1] ?? JsUndefined::instance();
+            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            if ($env === null) {
+                return;
+            }
+            $intlObj = $env->get('Intl', false);
+            if (!$intlObj instanceof JsObject) {
+                return;
+            }
+            $dtfCtor = $intlObj->get('DateTimeFormat');
+            if (!$dtfCtor instanceof JsFunction) {
+                return;
+            }
+            $newObj = new JsObject($dtfCtor->get('prototype') instanceof JsObject
+                ? $dtfCtor->get('prototype')
+                : null);
+            $newObj->set('[[NewTarget]]', $dtfCtor);
+            ($dtfCtor->getNativeCallable())($newObj, [$localesArg, $optionsArg]);
+        };
+
+        $d('toLocaleDateString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
             }
+            $validateIntlOptions($args);
             $local = self::localDateTime($tv);
             return new JsString($local->format('n/j/Y'));
         });
 
-        $d('toLocaleTimeString', function (JsValue $this_): JsValue {
+        $d('toLocaleTimeString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
             }
+            $validateIntlOptions($args);
             $local = self::localDateTime($tv);
             $h = (int) $local->format('g');
             $min = $local->format('i');
@@ -903,11 +932,12 @@ class DateConstructor
             return new JsString("{$h}:{$min}:{$sec} {$ampm}");
         });
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
             }
+            $validateIntlOptions($args);
             $local = self::localDateTime($tv);
             $date = $local->format('n/j/Y');
             $h = (int) $local->format('g');

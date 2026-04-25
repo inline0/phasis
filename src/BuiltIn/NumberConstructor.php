@@ -140,9 +140,26 @@ class NumberConstructor
         $d('toExponential', self::toExponential(), 1);
         $d('toString', self::toStringFn(), 1);
         $d('valueOf', self::valueOf(), 0);
-        // toLocaleString: defaults to toString behavior
+        // toLocaleString: routes locales/options through Intl.NumberFormat
+        // construction so invalid arguments propagate the same exceptions
+        // the test262 fixtures expect.
         $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             $numValue = self::extractNumberValue($this_);
+            $localesArg = $args[0] ?? JsUndefined::instance();
+            $optionsArg = $args[1] ?? JsUndefined::instance();
+            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            if ($env !== null) {
+                $intlObj = $env->get('Intl', false);
+                if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                    $nfCtor = $intlObj->get('NumberFormat');
+                    if ($nfCtor instanceof \PhpJs\Value\JsFunction) {
+                        $proto = $nfCtor->get('prototype');
+                        $newObj = new \PhpJs\Value\JsObject($proto instanceof \PhpJs\Value\JsObject ? $proto : null);
+                        $newObj->set('[[NewTarget]]', $nfCtor);
+                        ($nfCtor->getNativeCallable())($newObj, [$localesArg, $optionsArg]);
+                    }
+                }
+            }
             if (is_nan($numValue)) {
                 return new JsString('NaN');
             }
