@@ -1374,24 +1374,28 @@ class StringPrototype
                     $i += 2;
                     break;
                 case '<':
-                    // Named capture: $<Name>
-                    $closePos = strpos($replacement, '>', $i + 2);
-                    if ($closePos !== false && $namedCaptures !== null) {
-                        $name = substr($replacement, $i + 2, $closePos - $i - 2);
-                        if (array_key_exists($name, $namedCaptures)) {
-                            $result .= $namedCaptures[$name] ?? '';
+                    // Named capture: $<Name>. Per spec, $< is only literal
+                    // when the regex has no named captures; in that case
+                    // the rest after `<` is processed normally as if `$<`
+                    // was a two-character literal.
+                    if ($namedCaptures !== null) {
+                        $closePos = strpos($replacement, '>', $i + 2);
+                        if ($closePos !== false) {
+                            $name = substr($replacement, $i + 2, $closePos - $i - 2);
+                            if (array_key_exists($name, $namedCaptures)) {
+                                $result .= $namedCaptures[$name] ?? '';
+                            }
+                            // If name not found, append nothing per spec.
+                            $i = $closePos + 1;
                         } else {
-                            $result .= '';
+                            $result .= '$<';
+                            $i += 2;
                         }
-                        $i = $closePos + 1;
-                    } elseif ($closePos !== false) {
-                        // No named captures: output as literal
-                        $name = substr($replacement, $i + 2, $closePos - $i - 2);
-                        $result .= '$<' . $name . '>';
-                        $i = $closePos + 1;
                     } else {
-                        $result .= '$';
-                        $i++;
+                        // No named captures: $< is literal but the rest is
+                        // re-parsed as ordinary substitution chars.
+                        $result .= '$<';
+                        $i += 2;
                     }
                     break;
                 default:
