@@ -2286,7 +2286,9 @@ class ArrayConstructor
                             $index++;
                         }
                     }
-                    $a->set('length', new JsNumber((float) $index));
+                    // Per spec the final length set is `Set(A, "length", k, true)`
+                    // (throw on failure), so use the strict-mode variant.
+                    $a->set('length', new JsNumber((float) $index), true);
                     if ($a instanceof JsArray) {
                         $a->setLength($index);
                     }
@@ -2331,7 +2333,7 @@ class ArrayConstructor
                         PropertyDescriptor::data($val, true, true, true),
                     );
                 }
-                $a->set('length', new JsNumber((float) $lenNum));
+                $a->set('length', new JsNumber((float) $lenNum), true);
                 if ($a instanceof JsArray) {
                     $a->setLength($lenNum);
                 }
