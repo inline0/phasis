@@ -137,6 +137,15 @@ class SymbolConstructor
             return $this_;
         }
 
+        // Spec thisSymbolValue checks the [[SymbolData]] internal slot
+        // directly on the value, not via property lookup. A Proxy that
+        // *targets* a Symbol wrapper does not itself have [[SymbolData]],
+        // so it must throw — its has/get traps cannot satisfy the slot
+        // requirement.
+        if ($this_ instanceof \PhpJs\Value\JsProxy) {
+            throw new TypeError("Symbol.prototype.{$methodName} called on non-symbol value");
+        }
+
         // Handle Object(Symbol(...)) wrappers: [[PrimitiveValue]] holds the JsSymbol.
         if ($this_ instanceof JsObject && $this_->has('[[PrimitiveValue]]')) {
             $prim = $this_->get('[[PrimitiveValue]]');
