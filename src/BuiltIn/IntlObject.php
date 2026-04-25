@@ -3272,6 +3272,132 @@ class IntlObject
      * non-ASCII text, leading singletons, wildcards, duplicate scripts /
      * regions / variants, and duplicate `-u-` / `-x-` extension singletons.
      */
+    /**
+     * Inverse of utf8ByteToUtf16Index: walk the UTF-8 string and return
+     * the byte offset corresponding to a UTF-16 code-unit index.
+     * Out-of-range indices clamp to the string length.
+     */
+    private static function utf16IndexToUtf8Byte(string $str, int $codeUnitIdx): int
+    {
+        if ($codeUnitIdx <= 0) {
+            return 0;
+        }
+        $i = 0;
+        $codeUnits = 0;
+        $len = strlen($str);
+        while ($i < $len && $codeUnits < $codeUnitIdx) {
+            $byte = ord($str[$i]);
+            if ($byte < 0x80) {
+                $inc = 1;
+                $width = 1;
+            } elseif ($byte < 0xC0) {
+                // Stray continuation byte — count as one without
+                // contributing to UTF-16 code units.
+                $inc = 0;
+                $width = 1;
+            } elseif ($byte < 0xE0) {
+                $inc = 1;
+                $width = 2;
+            } elseif ($byte < 0xF0) {
+                $inc = 1;
+                $width = 3;
+            } else {
+                // Supplementary plane: 4 bytes UTF-8, 2 UTF-16 code units.
+                $inc = 2;
+                $width = 4;
+            }
+            if ($codeUnits + $inc > $codeUnitIdx) {
+                // The requested code-unit lands inside a surrogate
+                // pair: anchor at the start of the encompassing char.
+                return $i;
+            }
+            $codeUnits += $inc;
+            $i += $width;
+        }
+        return $i;
+    }
+
+    /**
+     * Compute the [start, end] byte-offset bounds of the segment
+     * containing `$byteIdx` for the given granularity. Used by
+     * Segmenter.prototype.segment(...).containing(index).
+     *
+     * @return array{0:int,1:int}
+     */
+    private static function segmentBoundsAt(string $str, int $byteIdx, string $granularity): array
+    {
+        if (!extension_loaded('intl')) {
+            return [0, strlen($str)];
+        }
+        $bi = match ($granularity) {
+            'word' => \IntlBreakIterator::createWordInstance(),
+            'sentence' => \IntlBreakIterator::createSentenceInstance(),
+            default => \IntlBreakIterator::createCharacterInstance(),
+        };
+        $bi->setText($str);
+        // ICU's preceding() treats positions inside multi-byte chars
+        // oddly (it skips the enclosing break). Walk the breaks
+        // forward so the bounds stay correct for supplementary-plane
+        // characters and surrogate pairs.
+        $start = 0;
+        $end = strlen($str);
+        $prev = 0;
+        while (($pos = $bi->next()) !== \IntlBreakIterator::DONE) {
+            if ($pos > $byteIdx) {
+                $start = $prev;
+                $end = $pos;
+                break;
+            }
+            $prev = $pos;
+        }
+        if ($pos === \IntlBreakIterator::DONE) {
+            $start = $prev;
+            $end = strlen($str);
+        }
+        return [$start, $end];
+    }
+
+    /**
+     * Convert a UTF-8 byte offset into the equivalent UTF-16 code-unit
+     * index. JS strings expose UTF-16 indices, so segment results need
+     * the byte offset returned by IntlBreakIterator translated before
+     * being handed back to userland.
+     */
+    private static function utf8ByteToUtf16Index(string $str, int $byteOffset): int
+    {
+        if ($byteOffset <= 0) {
+            return 0;
+        }
+        $byteOffset = min($byteOffset, strlen($str));
+        $sub = substr($str, 0, $byteOffset);
+        $codeUnits = 0;
+        $i = 0;
+        $len = strlen($sub);
+        while ($i < $len) {
+            $byte = ord($sub[$i]);
+            if ($byte < 0x80) {
+                $codeUnits++;
+                $i++;
+            } elseif ($byte < 0xC0) {
+                // Continuation byte without lead — count as one to avoid
+                // an infinite loop on truncated input.
+                $i++;
+            } elseif ($byte < 0xE0) {
+                $codeUnits++;
+                $i += 2;
+            } elseif ($byte < 0xF0) {
+                $codeUnits++;
+                $i += 3;
+            } else {
+                // Supplementary plane decomposes into a UTF-16 surrogate
+                // pair (two code units).
+                $codeUnits += 2;
+                $i += 4;
+            }
+        }
+        return $codeUnits;
+    }
+
     private static function isStructurallyInvalidLanguageTag(string $tag): bool
     {
         if ($tag === '') {
@@ -4900,7 +5026,11 @@ class IntlObject
             ) {
                 throw new TypeError('Intl.Segmenter.prototype.segment called on non-Segmenter');
             }
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            // Spec: `Let string be ? ToString(string)`. The default-arg
+            // ToString happens unconditionally, so a missing argument
+            // (or an explicit `undefined`) becomes the literal string
+            // "undefined".
+            $str = TypeConversion::toString($args[0] ?? JsUndefined::instance());
             $granularity = self::extractInternalString($this_, '[[Granularity]]', 'grapheme');
 
             // Return a Segments object (iterable).
@@ -4927,17 +5057,37 @@ class IntlObject
                 $str,
                 $granularity
 ): JsValue {
-                $index = isset($args[0]) ? (int) TypeConversion::toNumber($args[0]) : 0;
-                if ($index < 0 || $index >= mb_strlen($str, 'UTF-8')) {
+                if (
+                    !$this2_ instanceof JsObject
+                    || $this2_->get('[[String]]') instanceof JsUndefined
+                ) {
+                    throw new TypeError(
+                        'Intl.Segmenter%segments%.prototype.containing called on incompatible receiver',
+                    );
+                }
+                $rawIndex = TypeConversion::toNumber($args[0] ?? JsUndefined::instance());
+                if (is_nan($rawIndex)) {
+                    $rawIndex = 0.0;
+                }
+                $utf16Length = self::utf8ByteToUtf16Index($str, strlen($str));
+                if (!is_finite($rawIndex) || $rawIndex < 0 || $rawIndex >= $utf16Length) {
                     return JsUndefined::instance();
                 }
-                $char = mb_substr($str, $index, 1, 'UTF-8');
+                $index = (int) ($rawIndex >= 0 ? floor($rawIndex) : -floor(-$rawIndex));
+                $byteIdx = self::utf16IndexToUtf8Byte($str, $index);
+                [$start, $end] = self::segmentBoundsAt($str, $byteIdx, $granularity);
+                $segment = substr($str, $start, $end - $start);
                 $result = new JsObject();
-                $result->set('segment', new JsString($char));
-                $result->set('index', new JsNumber((float) $index));
+                $result->set('segment', new JsString($segment));
+                $result->set(
+                    'index',
+                    new JsNumber((float) self::utf8ByteToUtf16Index($str, $start)),
+                );
                 $result->set('input', new JsString($str));
                 if ($granularity === 'word') {
-                    $result->set('isWordLike', new JsBoolean(preg_match('/\w/u', $char) === 1));
+                    $result->set('isWordLike', new JsBoolean(
+                        preg_match('/\p{L}|\p{N}/u', $segment) === 1,
+                    ));
                 }
                 return $result;
             }, 1);
@@ -4957,14 +5107,37 @@ class IntlObject
                     $bi->setText($str);
                     $prev = 0;
                     while (($pos = $bi->next()) !== \IntlBreakIterator::DONE) {
-                        $chars[] = ['segment' => mb_substr($str, $prev, $pos - $prev, 'UTF-8'), 'index' => $prev];
+                        // IntlBreakIterator returns BYTE offsets when fed
+                        // a PHP string (UTF-8). Use substr-by-byte and
+                        // convert the byte offset to a UTF-16 code-unit
+                        // index for the JS-facing `index` property.
+                        $chars[] = [
+                            'segment' => substr($str, $prev, $pos - $prev),
+                            'index' => self::utf8ByteToUtf16Index($str, $prev),
+                        ];
                         $prev = $pos;
                     }
                 } elseif ($granularity === 'word') {
-                    // Split on word boundaries.
-                    preg_match_all('/\S+|\s+/u', $str, $matches, PREG_OFFSET_CAPTURE);
-                    foreach ($matches[0] as $m) {
-                        $chars[] = ['segment' => $m[0], 'index' => mb_strlen(substr($str, 0, $m[1]), 'UTF-8')];
+                    if (extension_loaded('intl')) {
+                        $bi = \IntlBreakIterator::createWordInstance();
+                        $bi->setText($str);
+                        $prev = 0;
+                        while (($pos = $bi->next()) !== \IntlBreakIterator::DONE) {
+                            $chars[] = [
+                                'segment' => substr($str, $prev, $pos - $prev),
+                                'index' => self::utf8ByteToUtf16Index($str, $prev),
+                            ];
+                            $prev = $pos;
+                        }
+                    } else {
+                        // Fallback: split on word boundaries.
+                        preg_match_all('/\S+|\s+/u', $str, $matches, PREG_OFFSET_CAPTURE);
+                        foreach ($matches[0] as $m) {
+                            $chars[] = [
+                                'segment' => $m[0],
+                                'index' => mb_strlen(substr($str, 0, $m[1]), 'UTF-8'),
+                            ];
+                        }
                     }
                 } elseif ($granularity === 'sentence') {
                     if (extension_loaded('intl')) {
@@ -4972,7 +5145,10 @@ class IntlObject
                         $bi->setText($str);
                         $prev = 0;
                         while (($pos = $bi->next()) !== \IntlBreakIterator::DONE) {
-                            $chars[] = ['segment' => mb_substr($str, $prev, $pos - $prev, 'UTF-8'), 'index' => $prev];
+                            $chars[] = [
+                                'segment' => substr($str, $prev, $pos - $prev),
+                                'index' => self::utf8ByteToUtf16Index($str, $prev),
+                            ];
                             $prev = $pos;
                         }
                     } else {
