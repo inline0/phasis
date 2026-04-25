@@ -296,7 +296,9 @@ class IntlObject
     private static function coerceOptions(JsValue $arg): JsObject
     {
         if ($arg instanceof JsUndefined || $arg instanceof JsNull) {
-            return new JsObject();
+            // Spec uses OrdinaryObjectCreate(null) so that monkey-patching
+            // Object.prototype cannot inject defaults into option lookup.
+            return new JsObject(null);
         }
         if ($arg instanceof JsObject) {
             return $arg;
@@ -2030,6 +2032,12 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.PluralRules.prototype.select called on non-PluralRules');
+            }
             $number = $args[0] ?? JsUndefined::instance();
             $n = TypeConversion::toNumber($number);
 
@@ -2037,12 +2045,8 @@ class IntlObject
                 return new JsString('other');
             }
 
-            $locale = 'en';
-            $type = 'cardinal';
-            if ($this_ instanceof JsObject) {
-                $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
-                $type = self::extractInternalString($this_, '[[Type]]', 'cardinal');
-            }
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $type = self::extractInternalString($this_, '[[Type]]', 'cardinal');
 
             if (extension_loaded('intl')) {
                 $icuType = $type === 'ordinal'
@@ -2066,11 +2070,23 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.PluralRules.prototype.selectRange called on non-PluralRules');
+            }
             if (count($args) < 2) {
                 throw new TypeError('selectRange requires two arguments');
             }
-            $start = TypeConversion::toNumber($args[0]);
-            $end = TypeConversion::toNumber($args[1]);
+            $startArg = $args[0];
+            $endArg = $args[1];
+            // Spec mandates an explicit undefined check before coercion.
+            if ($startArg instanceof JsUndefined || $endArg instanceof JsUndefined) {
+                throw new TypeError('selectRange arguments must not be undefined');
+            }
+            $start = TypeConversion::toNumber($startArg);
+            $end = TypeConversion::toNumber($endArg);
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for selectRange');
             }
@@ -2083,45 +2099,49 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedPluralRules]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.PluralRules.prototype.resolvedOptions called on non-PluralRules');
+            }
             $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
+            $result->set('locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            $result->set('type', new JsString(
+                self::extractInternalString($this_, '[[Type]]', 'cardinal'),
+            ));
+            $result->set('minimumIntegerDigits', new JsNumber(
+                self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
+            ));
+            $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
+            if ($rt === 'significantDigits') {
+                $result->set('minimumSignificantDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
                 ));
-                $result->set('type', new JsString(
-                    self::extractInternalString($this_, '[[Type]]', 'cardinal'),
+                $result->set('maximumSignificantDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
                 ));
-                $result->set('minimumIntegerDigits', new JsNumber(
-                    self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
+            } else {
+                $result->set('minimumFractionDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
                 ));
-                $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
-                if ($rt === 'significantDigits') {
-                    $result->set('minimumSignificantDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
-                    ));
-                    $result->set('maximumSignificantDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
-                    ));
-                } else {
-                    $result->set('minimumFractionDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
-                    ));
-                    $result->set('maximumFractionDigits', new JsNumber(
-                        self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
-                    ));
-                }
-                // Plural categories: per spec, return the list of plural categories for the locale.
-                $categories = new JsArray();
-                $cats = ['few', 'many', 'one', 'other', 'two', 'zero'];
-                foreach ($cats as $i => $cat) {
-                    $categories->set((string) $i, new JsString($cat));
-                }
-                $categories->set('length', new JsNumber((float) count($cats)));
-                $result->set('pluralCategories', $categories);
-                $result->set('roundingMode', new JsString(
-                    self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
+                $result->set('maximumFractionDigits', new JsNumber(
+                    self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
                 ));
             }
+            // Plural categories: per spec, return the list of plural categories for the locale.
+            $categories = new JsArray();
+            $cats = ['few', 'many', 'one', 'other', 'two', 'zero'];
+            foreach ($cats as $i => $cat) {
+                $categories->set((string) $i, new JsString($cat));
+            }
+            $categories->set('length', new JsNumber((float) count($cats)));
+            $result->set('pluralCategories', $categories);
+            $result->set('roundingMode', new JsString(
+                self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
