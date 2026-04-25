@@ -575,6 +575,13 @@ class Environment
             return $this->parent->deleteBinding($name);
         }
 
+        // Global environment record: delegate to the linked global object so
+        // configurability of properties defined directly on globalThis (e.g.
+        // via Object.defineProperty(this, name, { configurable: false })) is
+        // honoured per [[Delete]] on Object Environment Records.
+        if ($this->linkedObject !== null && $this->linkedObject->hasOwnProperty($name)) {
+            return $this->linkedObject->delete($name);
+        }
         // Not found anywhere: returning true per spec (unresolvable reference).
         return true;
     }
