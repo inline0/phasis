@@ -3404,6 +3404,12 @@ class IntlObject
 
         // DisplayNames.prototype.of(code)
         $of = JsFunction::fromCallable('of', function (JsValue $this_, array $args): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.DisplayNames.prototype.of called on non-DisplayNames');
+            }
             $code = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
             if ($code === '') {
                 throw new RangeError('Invalid code for DisplayNames.of()');
@@ -3552,6 +3558,12 @@ class IntlObject
 
         // ListFormat.prototype.format(list)
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.ListFormat.prototype.format called on non-ListFormat');
+            }
             $list = $args[0] ?? JsUndefined::instance();
             $items = [];
             if ($list instanceof JsArray || $list instanceof JsObject) {
@@ -3562,10 +3574,7 @@ class IntlObject
                 }
             }
 
-            $type = 'conjunction';
-            if ($this_ instanceof JsObject) {
-                $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
-            }
+            $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
 
             if (empty($items)) {
                 return new JsString('');
@@ -3582,6 +3591,14 @@ class IntlObject
 
         // ListFormat.prototype.formatToParts(list)
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.ListFormat.prototype.formatToParts called on non-ListFormat'
+                );
+            }
             $result = new JsArray();
             $result->set('length', new JsNumber(0.0));
             return $result;
@@ -3891,11 +3908,14 @@ class IntlObject
 
         // Segmenter.prototype.segment(string)
         $segment = JsFunction::fromCallable('segment', function (JsValue $this_, array $args): JsValue {
-            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
-            $granularity = 'grapheme';
-            if ($this_ instanceof JsObject) {
-                $granularity = self::extractInternalString($this_, '[[Granularity]]', 'grapheme');
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Granularity]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.Segmenter.prototype.segment called on non-Segmenter');
             }
+            $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
+            $granularity = self::extractInternalString($this_, '[[Granularity]]', 'grapheme');
 
             // Return a Segments object (iterable).
             $segments = new JsObject();
