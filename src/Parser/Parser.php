@@ -6767,6 +6767,23 @@ class Parser
                 $this->advance();
                 $args = $this->parseArguments();
                 $expr = new CallExpression($expr->location, $expr, $args, false);
+            } elseif ($this->check(TokenType::OptionalChaining)) {
+                // ?. is part of LeftHandSideExpression per ES2020+
+                // (e.g. valid as ClassHeritage: `class C extends a?.b {}`).
+                $this->advance();
+                if ($this->check(TokenType::LeftBracket)) {
+                    $this->advance();
+                    $property = $this->parseExpression();
+                    $this->expect(TokenType::RightBracket);
+                    $expr = new MemberExpression($expr->location, $expr, $property, true, true);
+                } elseif ($this->check(TokenType::LeftParen)) {
+                    $this->advance();
+                    $args = $this->parseArguments();
+                    $expr = new CallExpression($expr->location, $expr, $args, true);
+                } else {
+                    $property = $this->parseIdentifierOrKeyword();
+                    $expr = new MemberExpression($expr->location, $expr, $property, false, true);
+                }
             } else {
                 break;
             }
