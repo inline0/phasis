@@ -5205,15 +5205,68 @@ class Parser
                     }
                 }
                 // \p{Property} / \P{Property} consume the trailing {…}.
-                if (($next === 'p' || $next === 'P') && $i + 2 < $len && $pattern[$i + 2] === '{') {
-                    $j = $i + 3;
-                    while ($j < $len && $pattern[$j] !== '}') {
-                        $j++;
-                    }
-                    if ($j < $len) {
-                        $i = $j + 1;
-                        $prevAtom = true;
-                        continue;
+                if ($next === 'p' || $next === 'P') {
+                    if ($i + 2 < $len && $pattern[$i + 2] === '{') {
+                        $j = $i + 3;
+                        while ($j < $len && $pattern[$j] !== '}') {
+                            $j++;
+                        }
+                        if ($j < $len) {
+                            $propExpr = substr($pattern, $i + 3, $j - ($i + 3));
+                            // Reject only the syntactic-shape errors we
+                            // can be sure about. Specific value names we
+                            // do not enumerate (e.g. recent Script values)
+                            // are deferred to runtime to avoid
+                            // false-positive SyntaxErrors.
+                            if ($unicode && $propExpr === '') {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Empty property name",
+                                );
+                            }
+                            if ($unicode && (str_starts_with($propExpr, '^') || str_contains($propExpr, '^'))) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                );
+                            }
+                            if ($unicode && str_contains($propExpr, '=')) {
+                                $parts = explode('=', $propExpr, 2);
+                                if ($parts[0] === '' || $parts[1] === '') {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                    );
+                                }
+                                if (\PhpJs\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Binary property used with value",
+                                    );
+                                }
+                                if (\PhpJs\Runtime\Interpreter::isNonBinaryUnicodePropertyName($parts[0]) === false) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                    );
+                                }
+                            }
+                            if ($unicode && !str_contains($propExpr, '=')) {
+                                if (\PhpJs\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                    );
+                                }
+                            }
+                            $i = $j + 1;
+                            $prevAtom = true;
+                            continue;
+                        }
+                        if ($unicode) {
+                            throw new \PhpJs\Exceptions\SyntaxError(
+                                "Invalid regular expression: /{$pattern}/: Unterminated property",
+                            );
+                        }
+                    } elseif ($unicode) {
+                        // In u-mode, \p / \P MUST be followed by `{...}`.
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Invalid escape",
+                        );
                     }
                 }
                 $i += 2;
@@ -5601,6 +5654,31 @@ class Parser
                                 throw new \PhpJs\Exceptions\SyntaxError(
                                     "Invalid regular expression: /{$pattern}/: Invalid Unicode property",
                                 );
+                            }
+                            $propExpr = substr($pattern, $i + 3, $j - ($i + 3));
+                            if ($propExpr === '') {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Empty property name",
+                                );
+                            }
+                            if (str_contains($propExpr, '=')) {
+                                $parts = explode('=', $propExpr, 2);
+                                if ($parts[0] === '' || $parts[1] === '') {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                    );
+                                }
+                                if (\PhpJs\Runtime\Interpreter::isBinaryUnicodePropertyName($parts[0])) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Binary property used with value",
+                                    );
+                                }
+                            } else {
+                                if (\PhpJs\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property name",
+                                    );
+                                }
                             }
                             $i = $j + 1;
                             $prevWasClassEscape = true;

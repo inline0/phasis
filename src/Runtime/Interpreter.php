@@ -12867,6 +12867,38 @@ class Interpreter
      * Map ECMAScript Unicode property escape expressions to PCRE2 equivalents.
      * Returns null if the property expression is invalid.
      */
+    public static function mapEsPropertyToPcrePublic(string $propExpr, bool $negated): ?string
+    {
+        return self::mapEsPropertyToPcre($propExpr, $negated);
+    }
+
+    /** Whether $name is a binary Unicode property recognised by the engine. */
+    public static function isBinaryUnicodePropertyName(string $name): bool
+    {
+        return self::mapBinaryProperty($name) !== null;
+    }
+
+    /**
+     * Whether the lone-form `\p{X}` is known: either a General_Category
+     * value (e.g. Letter, Lu) or a binary property (e.g. ASCII, Emoji).
+     */
+    public static function isLoneUnicodePropertyKnown(string $name): bool
+    {
+        return self::mapGeneralCategoryValue($name) !== null
+            || self::mapBinaryProperty($name) !== null;
+    }
+
+    /**
+     * Whether $name is a known non-binary Unicode property name (the
+     * left side of `\p{Name=Value}`). Limited to General_Category,
+     * Script, Script_Extensions, and their aliases — names that pair
+     * with a value per spec.
+     */
+    public static function isNonBinaryUnicodePropertyName(string $name): bool
+    {
+        return self::normalizeEsPropertyName($name) !== null;
+    }
+
     private static function mapEsPropertyToPcre(string $propExpr, bool $negated): ?string
     {
         $prefix = $negated ? '\\P' : '\\p';
