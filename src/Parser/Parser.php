@@ -566,6 +566,15 @@ class Parser
         // module-top-level separately.
         $prevModuleTopLevel = $this->moduleTopLevel;
         $this->moduleTopLevel = false;
+        // Cover-init / __proto__-duplicate deferral is per-AssignmentExpression
+        // and must not cross function boundaries: a return-statement inside a
+        // nested function body parses its own AssignmentExpressions, and any
+        // ObjectLiteral inside should run its early-error checks immediately
+        // instead of waiting for an enclosing assignment that doesn't exist.
+        $prevAllowCoverInit = $this->allowCoverInit;
+        if ($isFunctionBody) {
+            $this->allowCoverInit = false;
+        }
         try {
             while (!$this->check(TokenType::RightBrace) && !$this->isAtEnd()) {
                 $body[] = $this->parseStatementOrDeclaration();
@@ -573,6 +582,7 @@ class Parser
         } finally {
             $this->moduleTopLevel = $prevModuleTopLevel;
             $this->strictMode = $prevStrict;
+            $this->allowCoverInit = $prevAllowCoverInit;
         }
 
         $this->expect(TokenType::RightBrace);
