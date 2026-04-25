@@ -5653,9 +5653,14 @@ class Interpreter
                 $fn = $this->evaluate($prop->value, $env);
                 if ($fn instanceof JsFunction) {
                     // Per spec, getter/setter functions are not constructable and
-                    // do not have a .prototype property.
+                    // do not have a .prototype property. They are also "newer-type"
+                    // functions per Forbidden Extensions §16.2 — drop the legacy
+                    // .arguments / .caller slots so prototype walk hits the
+                    // Function.prototype thrower.
                     $fn->setNonConstructable();
                     $fn->forceDelete('prototype');
+                    $fn->forceDelete('arguments');
+                    $fn->forceDelete('caller');
                     // Per spec 14.3.8/14.3.9 SetFunctionName(closure, propKey, prefix):
                     // set the function name to "get <key>" or "set <key>".
                     if ($isSymbolKey) {
@@ -5750,6 +5755,12 @@ class Interpreter
                     if (!$value->isGenerator()) {
                         $value->forceDelete('prototype');
                     }
+                    // Methods are "newer-type" functions per Forbidden
+                    // Extensions §16.2 — they MUST NOT carry the legacy
+                    // .arguments / .caller own slots, so prototype walk
+                    // hits Function.prototype's poison-pill thrower.
+                    $value->forceDelete('arguments');
+                    $value->forceDelete('caller');
                 }
                 // Per spec 13.2.5.5 PropertyDefinitionEvaluation: call
                 // CreateDataPropertyOrThrow which uses [[DefineOwnProperty]],
@@ -7339,6 +7350,12 @@ class Interpreter
                 if (!$fn->isGenerator()) {
                     $fn->forceDelete('prototype');
                 }
+                // Class methods / getters / setters are "newer-type"
+                // functions per Forbidden Extensions §16.2 — drop the
+                // legacy .arguments / .caller slots so prototype walk
+                // hits the Function.prototype thrower.
+                $fn->forceDelete('arguments');
+                $fn->forceDelete('caller');
             }
 
             if ($method->kind === 'constructor') {
