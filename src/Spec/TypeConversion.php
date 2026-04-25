@@ -464,6 +464,13 @@ final class TypeConversion
      */
     public static function toString(JsValue $value): string
     {
+        // The optional-chain short-circuit sentinel reaches the spec's value
+        // semantics layer as a regular `undefined`. Treat it identically here
+        // so that string coercion via template literals, String(), `+`, etc.
+        // produces "undefined" rather than the sentinel's empty fallback.
+        if ($value instanceof \PhpJs\Value\JsOptionalUndefined) {
+            return 'undefined';
+        }
         if ($value instanceof JsUndefined) {
             return 'undefined';
         }

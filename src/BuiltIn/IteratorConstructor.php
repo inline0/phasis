@@ -778,10 +778,16 @@ class IteratorConstructor
                     if (!$iterator instanceof JsObject) {
                         throw new TypeError('Symbol.iterator result is not an object');
                     }
+                    // Per Iterator.from spec, GetIteratorDirect runs before
+                    // the OrdinaryHasInstance(%Iterator%, ...) check, so we
+                    // read `next` first. createWrapForValidIterator captures
+                    // the next method; isIteratorInstance walks the prototype
+                    // chain after, observing the spec-mandated order.
+                    $wrapped = self::createWrapForValidIterator($iterator);
                     if (self::isIteratorInstance($iterator, $iteratorPrototype)) {
                         return $iterator;
                     }
-                    return self::createWrapForValidIterator($iterator);
+                    return $wrapped;
                 }
                 throw new TypeError('Symbol.iterator is not a function');
             }
