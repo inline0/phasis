@@ -243,15 +243,23 @@ class IntlObject
     private static function resolveLocale(array $requestedLocales): string
     {
         if (extension_loaded('intl')) {
-            $default = \Locale::getDefault();
+            $available = \ResourceBundle::getLocales('');
             foreach ($requestedLocales as $locale) {
                 $icuLocale = str_replace('-', '_', $locale);
-                $lookup = \Locale::lookup([$icuLocale], $default);
-                if ($lookup !== '' && $lookup !== null) {
-                    return self::canonicalizeLocaleTag(str_replace('_', '-', $icuLocale))
-                        ?? str_replace('_', '-', $icuLocale);
+                $best = \Locale::lookup($available, $icuLocale, true, '');
+                if ($best !== '' && $best !== null) {
+                    // Canonicalise the requested tag (preserving its
+                    // requested specificity) rather than the truncated
+                    // best match — `de-DE` should resolve to `de-DE`,
+                    // not `de`, even when only `de` is in the bundle.
+                    return self::canonicalizeLocaleTag($locale) ?? $locale;
                 }
             }
+            $default = \Locale::getDefault();
+            // Strip the legacy `POSIX` variant from the host default so
+            // resolvedOptions().locale matches V8 ("en-US") instead of
+            // exposing the macOS `en_US_POSIX` artefact.
+            $default = preg_replace('/[_-]POSIX$/i', '', $default) ?? $default;
             return self::canonicalizeLocaleTag(str_replace('_', '-', $default))
                 ?? str_replace('_', '-', $default);
         }
@@ -554,6 +562,55 @@ class IntlObject
         }
         // Fallback: use PHP's timezone identifiers.
         return \DateTimeZone::listIdentifiers();
+    }
+
+    /**
+     * Resolve a user-provided time-zone identifier to its canonical form,
+     * walking PHP's `DateTimeZone` list AND ICU's `IntlTimeZone`
+     * enumeration so legacy aliases ICU still recognises (e.g.
+     * `Canada/East-Saskatchewan`) are accepted even though PHP's list
+     * has dropped them.
+     */
+    private static function resolveTimeZoneIdentifier(string $tz): ?string
+    {
+        static $tzLowerMap = null;
+        if ($tzLowerMap === null) {
+            $tzLowerMap = [];
+            foreach (\DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC) as $id) {
+                $tzLowerMap[strtolower($id)] = $id;
+            }
+            foreach (\DateTimeZone::listIdentifiers() as $id) {
+                $tzLowerMap[strtolower($id)] = $id;
+            }
+            if (extension_loaded('intl')) {
+                $iter = \IntlTimeZone::createEnumeration();
+                foreach ($iter as $id) {
+                    $lower = strtolower($id);
+                    if (!isset($tzLowerMap[$lower])) {
+                        $tzLowerMap[$lower] = $id;
+                    }
+                }
+            }
+        }
+        return $tzLowerMap[strtolower($tz)] ?? null;
+    }
+
+    /**
+     * Normalise an offset-style time-zone string ("+05", "+0530", "-0530")
+     * to the canonical "+HH:MM" form the spec mandates.
+     */
+    private static function canonicalizeOffsetTimeZone(string $tz): string
+    {
+        if (preg_match('/^([+-])(\d{1,2}):?(\d{0,2})$/', $tz, $m) !== 1) {
+            return $tz;
+        }
+        $sign = $m[1];
+        $hh = str_pad($m[2], 2, '0', STR_PAD_LEFT);
+        $mm = $m[3] === '' ? '00' : str_pad($m[3], 2, '0', STR_PAD_LEFT);
+        if ($hh === '00' && $mm === '00') {
+            return 'UTC';
+        }
+        return $sign . $hh . ':' . $mm;
     }
 
     /** @return list<string> */
@@ -1869,31 +1926,15 @@ class IntlObject
                 $tzVal = $options->get('timeZone');
                 if (!$tzVal instanceof JsUndefined) {
                     $tz = TypeConversion::toString($tzVal);
-                    $isOffset = preg_match('/^[+-]\d{2}:?\d{2}$/', $tz) === 1;
+                    $isOffset = preg_match('/^[+-]\d{1,2}:?\d{0,2}$/', $tz) === 1;
                     $canonical = null;
                     if (!$isOffset) {
-                        static $tzLowerMap = null;
-                        if ($tzLowerMap === null) {
-                            $tzLowerMap = [];
-                            // Spec preserves the user-supplied (deprecated)
-                            // alias if it is structurally valid, so include
-                            // ALL_WITH_BC. Newer canonical names take
-                            // precedence so a "real" zone wins over an
-                            // alias when both exist with the same lower
-                            // case form.
-                            foreach (\DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC) as $id) {
-                                $tzLowerMap[strtolower($id)] = $id;
-                            }
-                            foreach (\DateTimeZone::listIdentifiers() as $id) {
-                                $tzLowerMap[strtolower($id)] = $id;
-                            }
-                        }
-                        $canonical = $tzLowerMap[strtolower($tz)] ?? null;
+                        $canonical = self::resolveTimeZoneIdentifier($tz);
                     }
                     if (!$isOffset && $canonical === null) {
                         throw new RangeError("Invalid timeZone: {$tz}");
                     }
-                    $timeZone = $canonical ?? $tz;
+                    $timeZone = $canonical ?? self::canonicalizeOffsetTimeZone($tz);
                 }
                 $obj->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(
                     new JsString($timeZone),
@@ -2010,6 +2051,27 @@ class IntlObject
                         false,
                         false,
                     ));
+                }
+
+                // Per spec sec-initializedatetimeformat steps 38-40:
+                // when neither dateStyle/timeStyle nor any explicit
+                // format component is supplied, default to a
+                // year/month/day skeleton so resolvedOptions exposes
+                // the implied components and the formatter still
+                // emits a date.
+                if (
+                    !$hasExplicitFormatComponents
+                    && $dateStyle === null
+                    && $timeStyle === null
+                ) {
+                    foreach (['year', 'month', 'day'] as $comp) {
+                        $obj->defineOwnProperty("[[{$comp}]]", PropertyDescriptor::data(
+                            new JsString('numeric'),
+                            false,
+                            false,
+                            false,
+                        ));
+                    }
                 }
 
                 return $obj;
