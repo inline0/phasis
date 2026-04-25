@@ -4063,6 +4063,29 @@ class Interpreter
         // Per spec §27.3.4 / §10.2.4: .prototype is writable, non-enumerable, non-configurable for generators;
         // writable, non-enumerable, non-configurable for regular functions too.
         $fn->defineOwnProperty('prototype', PropertyDescriptor::data($proto, true, false, false));
+
+        // Annex B legacy `function.caller` / `function.arguments`: install
+        // own slots (default null) on non-strict, non-arrow, non-async,
+        // non-generator, non-class-constructor regular functions so a
+        // pre-call read does not fall through to the
+        // Function.prototype.arguments / .caller poison-pill thrower.
+        // A body-level "use strict" directive promotes the function to
+        // strict — its body is observable, so check it here too.
+        $body = $fn->getBody();
+        $hasBodyStrict = $body instanceof BlockStatement
+            && $this->hasUseStrictDirective($body->body);
+        if (
+            !$fn->isStrict()
+            && !$hasBodyStrict
+            && !$fn->isArrow()
+            && !$fn->isNative()
+            && !$isAsync
+            && !$isGenerator
+            && !$fn->isClassConstructor()
+        ) {
+            $fn->defineOwnProperty('arguments', PropertyDescriptor::data(JsNull::instance(), true, false, true));
+            $fn->defineOwnProperty('caller', PropertyDescriptor::data(JsNull::instance(), true, false, true));
+        }
     }
 
     /**
@@ -4101,16 +4124,61 @@ class Interpreter
             && !$fn->isClassConstructor()
             && $fn->isConstructable();
         $savedCaller = null;
+        $savedArguments = null;
         $callerIsStrict = false;
+        // Track whether the engine should auto-update the slot during the
+        // call. If the user redefined caller/arguments to an accessor or a
+        // non-default data shape, leave it alone — the user's definition
+        // wins.
+        $autoUpdateCaller = false;
+        $autoUpdateArguments = false;
         if ($setCallerProp) {
             $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            // Per the legacy function reflection proposal, a non-strict
-            // function's `caller` slot is set to null when the calling
-            // context is strict mode (or the immediate caller is a strict
-            // function). Setting null (rather than deleting) avoids the
-            // Function.prototype.caller poison-pill firing on prototype
-            // walk and matches the spec-mandated `f.caller === null`
-            // observation when invoked from strict code.
+            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
+            // Engine-default slot: data, writable, non-enumerable,
+            // configurable, with value null (the install-time default) or
+            // the active-call value the engine previously wrote. If the
+            // user has assigned a different value via `o.caller = 1`,
+            // leave it alone — the forbidden-extension test verifies that
+            // user-assigned values survive across a call.
+            $isEngineDefaultCaller = static function (?PropertyDescriptor $d) use ($callerFn): bool {
+                if (
+                    $d === null
+                    || !$d->isDataDescriptor()
+                    || ($d->writable ?? false) !== true
+                    || ($d->enumerable ?? true) !== false
+                    || ($d->configurable ?? false) !== true
+                ) {
+                    return false;
+                }
+                $v = $d->value;
+                return $v instanceof JsNull
+                    || ($v instanceof JsFunction && $v === $callerFn);
+            };
+            $isEngineDefaultArguments = static function (?PropertyDescriptor $d): bool {
+                if (
+                    $d === null
+                    || !$d->isDataDescriptor()
+                    || ($d->writable ?? false) !== true
+                    || ($d->enumerable ?? true) !== false
+                    || ($d->configurable ?? false) !== true
+                ) {
+                    return false;
+                }
+                $v = $d->value;
+                // Null is the install-time default; an arguments object
+                // means a previous (recursive) call set it.
+                if ($v instanceof JsNull) {
+                    return true;
+                }
+                if ($v instanceof JsObject) {
+                    return $v->getOwnPropertyDescriptor('[[IsArguments]]') !== null;
+                }
+                return false;
+            };
+            $autoUpdateCaller = $isEngineDefaultCaller($savedCaller);
+            $autoUpdateArguments = $isEngineDefaultArguments($savedArguments);
+
             $callerIsStrictMode = $this->strictMode
                 || ($callerFn instanceof JsFunction && $callerFn->isStrict());
             $callerVal = ($callerIsStrictMode || !$callerFn instanceof JsFunction)
@@ -4119,12 +4187,26 @@ class Interpreter
             if ($callerIsStrictMode) {
                 $callerIsStrict = true;
             }
-            $fn->defineOwnProperty("caller", PropertyDescriptor::data(
-                $callerVal,
-                true,
-                false,
-                true,
-            ));
+            // Per the legacy function reflection proposal, the engine
+            // auto-updates the caller / arguments slots ONLY if they
+            // currently hold the default engine shape; user-defined
+            // accessors or replaced descriptors are left alone.
+            if ($autoUpdateCaller) {
+                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                    $callerVal,
+                    true,
+                    false,
+                    true,
+                ));
+            }
+            if ($autoUpdateArguments) {
+                $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
+                    JsNull::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            }
         }
 
         // Save and potentially update strict mode for this function body.
@@ -4240,6 +4322,16 @@ class Interpreter
                 $unmapped = $this->strictMode || $this->isNonSimpleParameterList($params);
                 $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
                 $fnEnv->defineVar('arguments', $argsObj);
+                // Annex B legacy: while the call is active, function.arguments
+                // reflects the current arguments object rather than null.
+                if ($setCallerProp && $autoUpdateArguments) {
+                    $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
+                        $argsObj,
+                        true,
+                        false,
+                        true,
+                    ));
+                }
             }
 
             // Bind parameters
@@ -4336,11 +4428,18 @@ class Interpreter
         } finally {
             array_pop($this->callerStack);
             if ($setCallerProp) {
-                if ($savedCaller !== null) {
-                    $fn->defineOwnProperty("caller", $savedCaller);
-                } else {
-                    // Restore to null after call completes.
-                    $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                // Only restore engine-managed slots; user-defined accessors
+                // or replaced descriptors were never touched on entry.
+                if ($autoUpdateCaller) {
+                    $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
+                        JsNull::instance(),
+                        true,
+                        false,
+                        true,
+                    ));
+                }
+                if ($autoUpdateArguments) {
+                    $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
                         JsNull::instance(),
                         true,
                         false,
