@@ -976,11 +976,46 @@ class IntlObject
                     false,
                 ));
 
-                // unit (required when style is "unit").
+                // unit (required when style is "unit"). Per UTS35 a unit
+                // identifier is one of the registered single units, or
+                // <numerator>-per-<denominator> built from registered
+                // single units. Reject anything that doesn't match the
+                // known list with RangeError.
                 $unit = null;
                 $unitVal = $options->get('unit');
                 if (!$unitVal instanceof JsUndefined) {
                     $unit = TypeConversion::toString($unitVal);
+                    $validSingleUnits = [
+                        'acre', 'bit', 'byte', 'celsius', 'centimeter',
+                        'day', 'degree', 'fahrenheit', 'fluid-ounce',
+                        'foot', 'gallon', 'gigabit', 'gigabyte', 'gram',
+                        'hectare', 'hour', 'inch', 'kilobit', 'kilobyte',
+                        'kilogram', 'kilometer', 'liter', 'megabit',
+                        'megabyte', 'meter', 'microsecond', 'mile',
+                        'mile-scandinavian', 'milliliter', 'millimeter',
+                        'millisecond', 'minute', 'month', 'nanosecond',
+                        'ounce', 'percent', 'petabyte', 'pound', 'second',
+                        'stone', 'terabit', 'terabyte', 'week', 'yard',
+                        'year',
+                    ];
+                    $isValidUnit = static function (string $u) use ($validSingleUnits): bool {
+                        if ($u === '') {
+                            return false;
+                        }
+                        $parts = explode('-per-', $u);
+                        if (count($parts) > 2) {
+                            return false;
+                        }
+                        foreach ($parts as $p) {
+                            if (!in_array($p, $validSingleUnits, true)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    };
+                    if (!$isValidUnit($unit)) {
+                        throw new RangeError("Invalid unit: {$unit}");
+                    }
                 }
                 if ($style === 'unit' && $unit === null) {
                     throw new TypeError('Unit is required with unit style');
