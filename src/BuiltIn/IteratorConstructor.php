@@ -92,6 +92,51 @@ class IteratorConstructor
             SymbolConstructor::toStringTag(),
             PropertyDescriptor::data(new JsString('Iterator Helper'), false, false, true),
         );
+        // Shared next/return on the helper prototype that dispatch to the
+        // per-instance closure stored in the [[NextHandler]] / [[ReturnHandler]]
+        // slot. Tests extract `next` off the prototype and call it on a
+        // different helper, so the methods MUST live on the prototype rather
+        // than as own properties.
+        $protoNext = JsFunction::fromCallable(
+            'next',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Iterator helper next called on non-object');
+                }
+                $handler = $this_->getOwnPropertyDescriptor('[[NextHandler]]');
+                if ($handler === null || !$handler->value instanceof JsFunction) {
+                    throw new TypeError('Method called on incompatible Iterator helper');
+                }
+                return $handler->value->call($this_, $args);
+            },
+            0,
+        );
+        $protoNext->setNonConstructable();
+        self::$iteratorHelperPrototype->defineOwnProperty(
+            'next',
+            PropertyDescriptor::data($protoNext, true, false, true),
+        );
+
+        $protoReturn = JsFunction::fromCallable(
+            'return',
+            function (JsValue $this_, array $args): JsValue {
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Iterator helper return called on non-object');
+                }
+                $handler = $this_->getOwnPropertyDescriptor('[[ReturnHandler]]');
+                if ($handler === null || !$handler->value instanceof JsFunction) {
+                    // Default: return a done iterator result.
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
+                return $handler->value->call($this_, $args);
+            },
+            0,
+        );
+        $protoReturn->setNonConstructable();
+        self::$iteratorHelperPrototype->defineOwnProperty(
+            'return',
+            PropertyDescriptor::data($protoReturn, true, false, true),
+        );
         self::$wrapForValidIteratorPrototype = new JsObject($iteratorPrototype);
 
         self::installMethod($iteratorPrototype, 'map', self::mapMethod(), 1);
@@ -229,8 +274,17 @@ class IteratorConstructor
             0,
         );
 
-        $helper->defineOwnProperty('next', PropertyDescriptor::data($nextFn, true, false, true));
-        $helper->defineOwnProperty('return', PropertyDescriptor::data($returnFn, true, false, true));
+        // Store the per-instance handlers in internal slots; the prototype's
+        // next / return dispatch to them. This lets tests pull `next` off
+        // the prototype and call it on any helper instance, matching V8.
+        $helper->defineOwnProperty(
+            '[[NextHandler]]',
+            PropertyDescriptor::data($nextFn, false, false, false),
+        );
+        $helper->defineOwnProperty(
+            '[[ReturnHandler]]',
+            PropertyDescriptor::data($returnFn, false, false, false),
+        );
         return $helper;
     }
 
