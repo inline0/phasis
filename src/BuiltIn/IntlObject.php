@@ -316,7 +316,7 @@ class IntlObject
         if ($arg instanceof JsUndefined) {
             // Spec uses OrdinaryObjectCreate(null) so that monkey-patching
             // Object.prototype cannot inject defaults into option lookup.
-            return new JsObject(null);
+            return JsObject::createNullPrototype();
         }
         if ($arg instanceof JsNull) {
             // Per spec, an explicit null is `ToObject(null)` which throws.
@@ -3765,21 +3765,37 @@ class IntlObject
 
         // RelativeTimeFormat.prototype.resolvedOptions()
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (JsValue $this_): JsValue {
-            $result = new JsObject();
-            if ($this_ instanceof JsObject) {
-                $result->set('locale', new JsString(
-                    self::extractInternalString($this_, '[[Locale]]', 'en'),
-                ));
-                $result->set('style', new JsString(
-                    self::extractInternalString($this_, '[[Style]]', 'long'),
-                ));
-                $result->set('numeric', new JsString(
-                    self::extractInternalString($this_, '[[Numeric]]', 'always'),
-                ));
-                $result->set('numberingSystem', new JsString(
-                    self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
-                ));
+            if (!$this_ instanceof JsObject || $this_->get('[[Locale]]') instanceof JsUndefined) {
+                throw new TypeError('Intl.RelativeTimeFormat.prototype.resolvedOptions called on non-RelativeTimeFormat');
             }
+            $result = new JsObject();
+            // Use defineOwnProperty so an inherited accessor on
+            // Object.prototype with no setter cannot intercept the
+            // resolved values (CreateDataPropertyOrThrow semantics).
+            $result->defineOwnProperty('locale', PropertyDescriptor::data(
+                new JsString(self::extractInternalString($this_, '[[Locale]]', 'en')),
+                true,
+                true,
+                true,
+            ));
+            $result->defineOwnProperty('style', PropertyDescriptor::data(
+                new JsString(self::extractInternalString($this_, '[[Style]]', 'long')),
+                true,
+                true,
+                true,
+            ));
+            $result->defineOwnProperty('numeric', PropertyDescriptor::data(
+                new JsString(self::extractInternalString($this_, '[[Numeric]]', 'always')),
+                true,
+                true,
+                true,
+            ));
+            $result->defineOwnProperty('numberingSystem', PropertyDescriptor::data(
+                new JsString(self::extractInternalString($this_, '[[NumberingSystem]]', 'latn')),
+                true,
+                true,
+                true,
+            ));
             return $result;
         }, 0);
         $proto->defineOwnProperty(
