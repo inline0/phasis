@@ -2491,10 +2491,29 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
-            if (count($args) < 2) {
-                throw new TypeError('formatRange requires two arguments');
+            self::dateTimeFormatRangeReceiverCheck($this_, 'formatRange');
+            $startVal = $args[0] ?? JsUndefined::instance();
+            $endVal = $args[1] ?? JsUndefined::instance();
+            $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
+            $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
+            if ($startMs > $endMs) {
+                throw new RangeError(
+                    'startDate must be smaller than or equal to endDate'
+                );
             }
-            return new JsString('');
+            $startStr = '';
+            $endStr = '';
+            if (extension_loaded('intl') && $this_ instanceof JsObject) {
+                $startStr = self::formatDateTime($this_, (int) round($startMs / 1000));
+                $endStr = self::formatDateTime($this_, (int) round($endMs / 1000));
+            } else {
+                $startStr = (string) $startMs;
+                $endStr = (string) $endMs;
+            }
+            if ($startStr === $endStr) {
+                return new JsString($startStr);
+            }
+            return new JsString($startStr . " \u{2013} " . $endStr);
         }, 2);
         $proto->defineOwnProperty(
             'formatRange',
@@ -2506,11 +2525,42 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
-            if (count($args) < 2) {
-                throw new TypeError('formatRangeToParts requires two arguments');
+            self::dateTimeFormatRangeReceiverCheck($this_, 'formatRangeToParts');
+            $startVal = $args[0] ?? JsUndefined::instance();
+            $endVal = $args[1] ?? JsUndefined::instance();
+            $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
+            $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
+            if ($startMs > $endMs) {
+                throw new RangeError(
+                    'startDate must be smaller than or equal to endDate'
+                );
             }
             $result = new JsArray();
-            $result->set('length', new JsNumber(0.0));
+            $idx = 0;
+            $emit = static function (string $type, string $value, string $source) use (
+                &$result,
+                &$idx,
+            ): void {
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString($type));
+                self::defineDataProp($part, 'value', new JsString($value));
+                self::defineDataProp($part, 'source', new JsString($source));
+                $result->set((string) $idx++, $part);
+            };
+            $startStr = '';
+            $endStr = '';
+            if (extension_loaded('intl') && $this_ instanceof JsObject) {
+                $startStr = self::formatDateTime($this_, (int) round($startMs / 1000));
+                $endStr = self::formatDateTime($this_, (int) round($endMs / 1000));
+            }
+            if ($startStr === $endStr) {
+                $emit('literal', $startStr, 'shared');
+            } else {
+                $emit('literal', $startStr, 'startRange');
+                $emit('literal', " \u{2013} ", 'shared');
+                $emit('literal', $endStr, 'endRange');
+            }
+            $result->set('length', new JsNumber((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty(
@@ -2589,6 +2639,40 @@ class IntlObject
             'DateTimeFormat',
             PropertyDescriptor::data($constructor, true, false, true),
         );
+    }
+
+    /**
+     * Brand-check the receiver of DateTimeFormat range methods. Spec:
+     * if `this` doesn't have [[InitializedDateTimeFormat]], throw
+     * TypeError.
+     */
+    private static function dateTimeFormatRangeReceiverCheck(JsValue $this_, string $name): void
+    {
+        if (
+            !$this_ instanceof JsObject
+            || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
+        ) {
+            throw new TypeError(
+                "Intl.DateTimeFormat.prototype.{$name} called on non-DateTimeFormat",
+            );
+        }
+    }
+
+    /**
+     * Coerce a `startDate` / `endDate` argument to a millisecond
+     * timestamp. Mirrors HandleDateTimeValue from the spec: undefined
+     * is a TypeError, invalid Dates / NaN / Infinity are a RangeError.
+     */
+    private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
+    {
+        if ($val instanceof JsUndefined) {
+            throw new TypeError("{$argName} cannot be undefined");
+        }
+        $n = TypeConversion::toNumber($val);
+        if (is_nan($n) || !is_finite($n)) {
+            throw new RangeError("Invalid {$argName}: not a finite number");
+        }
+        return $n;
     }
 
     /**
