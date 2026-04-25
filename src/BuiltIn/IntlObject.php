@@ -497,7 +497,16 @@ class IntlObject
             array $args,
         ): JsValue {
             $locales = $args[0] ?? JsUndefined::instance();
+            $optionsArg = $args[1] ?? JsUndefined::instance();
             $canonicalized = self::canonicalizeLocaleList($locales);
+
+            // The spec runs SupportedLocales which validates the
+            // localeMatcher option even though all candidate locales
+            // ultimately fall back to PHP intl resolution.
+            if (!$optionsArg instanceof JsUndefined && !$optionsArg instanceof JsNull) {
+                $opts = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($opts);
+            }
 
             // For our purposes (PHP intl backed), all well-formed locales are supported.
             $result = new JsArray();
@@ -526,6 +535,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = new JsObject($proto);
                 $obj->defineOwnProperty('[[InitializedCollator]]', PropertyDescriptor::data(
@@ -780,6 +790,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = new JsObject($proto);
                 $obj->defineOwnProperty('[[InitializedNumberFormat]]', PropertyDescriptor::data(
@@ -1438,6 +1449,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = new JsObject($proto);
                 $obj->defineOwnProperty('[[InitializedDateTimeFormat]]', PropertyDescriptor::data(
@@ -1481,11 +1493,28 @@ class IntlObject
                     false,
                 ));
 
-                // timeZone
+                // timeZone: must be a recognized identifier per the IANA
+                // tz database (or a UTC offset). Use the host's timezone
+                // list as the canonical authority — anything PHP doesn't
+                // recognise is rejected per Intl spec.
                 $timeZone = 'UTC';
                 $tzVal = $options->get('timeZone');
                 if (!$tzVal instanceof JsUndefined) {
-                    $timeZone = TypeConversion::toString($tzVal);
+                    $tz = TypeConversion::toString($tzVal);
+                    $isOffset = preg_match('/^[+-]\d{2}:?\d{2}$/', $tz) === 1;
+                    $isValidName = false;
+                    if (!$isOffset) {
+                        try {
+                            new \DateTimeZone($tz);
+                            $isValidName = true;
+                        } catch (\Throwable) {
+                            $isValidName = false;
+                        }
+                    }
+                    if (!$isOffset && !$isValidName) {
+                        throw new RangeError("Invalid timeZone: {$tz}");
+                    }
+                    $timeZone = $tz;
                 }
                 $obj->defineOwnProperty('[[TimeZone]]', PropertyDescriptor::data(
                     new JsString($timeZone),
@@ -1499,9 +1528,10 @@ class IntlObject
                 $hcVal = $options->get('hourCycle');
                 if (!$hcVal instanceof JsUndefined) {
                     $hc = TypeConversion::toString($hcVal);
-                    if (in_array($hc, ['h11', 'h12', 'h23', 'h24'], true)) {
-                        $hourCycle = $hc;
+                    if (!in_array($hc, ['h11', 'h12', 'h23', 'h24'], true)) {
+                        throw new RangeError("Invalid hourCycle: {$hc}");
                     }
+                    $hourCycle = $hc;
                 }
                 $h12Val = $options->get('hour12');
                 if (!$h12Val instanceof JsUndefined) {
@@ -1534,6 +1564,9 @@ class IntlObject
                     $val = $options->get($prop);
                     if (!$val instanceof JsUndefined) {
                         $str = TypeConversion::toString($val);
+                        if ($validValues !== null && !in_array($str, $validValues, true)) {
+                            throw new RangeError("Invalid {$prop}: {$str}");
+                        }
                         $obj->defineOwnProperty("[[{$prop}]]", PropertyDescriptor::data(
                             new JsString($str),
                             false,
@@ -1543,22 +1576,33 @@ class IntlObject
                     }
                 }
 
+                // formatMatcher: "basic" or "best fit" (default).
+                $fmVal = $options->get('formatMatcher');
+                if (!$fmVal instanceof JsUndefined) {
+                    $fm = TypeConversion::toString($fmVal);
+                    if (!in_array($fm, ['basic', 'best fit'], true)) {
+                        throw new RangeError("Invalid formatMatcher: {$fm}");
+                    }
+                }
+
                 // dateStyle / timeStyle (mutually exclusive with individual components per spec).
                 $dateStyle = null;
                 $dsVal = $options->get('dateStyle');
                 if (!$dsVal instanceof JsUndefined) {
                     $ds = TypeConversion::toString($dsVal);
-                    if (in_array($ds, ['full', 'long', 'medium', 'short'], true)) {
-                        $dateStyle = $ds;
+                    if (!in_array($ds, ['full', 'long', 'medium', 'short'], true)) {
+                        throw new RangeError("Invalid dateStyle: {$ds}");
                     }
+                    $dateStyle = $ds;
                 }
                 $timeStyle = null;
                 $tsVal = $options->get('timeStyle');
                 if (!$tsVal instanceof JsUndefined) {
                     $ts = TypeConversion::toString($tsVal);
-                    if (in_array($ts, ['full', 'long', 'medium', 'short'], true)) {
-                        $timeStyle = $ts;
+                    if (!in_array($ts, ['full', 'long', 'medium', 'short'], true)) {
+                        throw new RangeError("Invalid timeStyle: {$ts}");
                     }
+                    $timeStyle = $ts;
                 }
                 if ($dateStyle !== null) {
                     $obj->defineOwnProperty('[[DateStyle]]', PropertyDescriptor::data(
@@ -1821,6 +1865,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = new JsObject($proto);
                 $obj->defineOwnProperty('[[InitializedPluralRules]]', PropertyDescriptor::data(
@@ -3025,6 +3070,7 @@ class IntlObject
 
                 $locales = self::localesFromArg($localesArg);
                 $options = self::coerceOptions($optionsArg);
+                self::validateLocaleMatcher($options);
 
                 $obj = new JsObject($proto);
                 $resolvedLocale = self::resolveLocale($locales);
