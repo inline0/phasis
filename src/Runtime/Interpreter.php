@@ -12908,14 +12908,16 @@ class Interpreter
                 // [\S] and [^\S]: PCRE \S excludes FEFF, but JS \S also
                 // excludes FEFF, so the inverse matters. Rewrite the class to
                 // express JS-compatible semantics directly.
-                if ($i + 3 < $len && $pattern[$i + 1] === '\\'
+                if (
+                    $i + 3 < $len && $pattern[$i + 1] === '\\'
                     && $pattern[$i + 2] === 'S' && $pattern[$i + 3] === ']'
                 ) {
                     $result .= '[^\\s\\x{FEFF}]';
                     $i += 4;
                     continue;
                 }
-                if ($i + 4 < $len && $pattern[$i + 1] === '^' && $pattern[$i + 2] === '\\'
+                if (
+                    $i + 4 < $len && $pattern[$i + 1] === '^' && $pattern[$i + 2] === '\\'
                     && $pattern[$i + 3] === 'S' && $pattern[$i + 4] === ']'
                 ) {
                     $result .= '[\\s\\x{FEFF}]';
@@ -13802,14 +13804,14 @@ class Interpreter
         }
 
         // Apply set operators left-to-right using lookahead patterns.
-        $base = $operands[0];
+        $base = $this->vFlagOperandToMatcher($operands[0]);
         for ($oi = 0; $oi < count($operators); $oi++) {
             $op = $operators[$oi];
-            $rhs = $operands[$oi + 1];
+            $rhs = $this->vFlagOperandToMatcher($operands[$oi + 1]);
             if ($op === '&&') {
-                $base = '(?=[' . $base . '])[' . $rhs . ']';
+                $base = '(?=' . $base . ')' . $rhs;
             } elseif ($op === '--') {
-                $base = '(?=[' . $base . '])(?![' . $rhs . ']).';
+                $base = '(?=' . $base . ')(?!' . $rhs . ').';
             }
         }
 
@@ -13818,6 +13820,40 @@ class Interpreter
         }
 
         return ['output' => '(?:' . $base . ')', 'pos' => $pos];
+    }
+
+    /**
+     * Convert a v-flag class operand into a PCRE matcher.
+     * Operands that contain `\q{X|Y|Z}` produce an alternation
+     * `(?:X|Y|Z|[remaining])`; plain operands wrap as `[...]`.
+     */
+    private function vFlagOperandToMatcher(string $operand): string
+    {
+        if (str_contains($operand, '\\q{')) {
+            $stringAlts = [];
+            $remaining = preg_replace_callback(
+                '/\\\\q\\{([^}]*)\\}/',
+                function (array $m) use (&$stringAlts): string {
+                    foreach (explode('|', $m[1]) as $alt) {
+                        if ($alt !== '') {
+                            $stringAlts[] = $alt;
+                        }
+                    }
+                    return '';
+                },
+                $operand,
+            );
+            usort($stringAlts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+            $alts = $stringAlts;
+            if ($remaining !== '') {
+                $alts[] = '[' . $remaining . ']';
+            }
+            if (empty($alts)) {
+                return '(?![\\s\\S])';
+            }
+            return '(?:' . implode('|', $alts) . ')';
+        }
+        return '[' . $operand . ']';
     }
 
     /**
