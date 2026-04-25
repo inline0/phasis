@@ -2391,15 +2391,27 @@ class IntlObject
 
                 // Store parsed components as internal slots.
                 foreach ($parsed as $key => $val) {
-                    if ($val !== null) {
-                        $jsVal = is_bool($val) ? new JsBoolean($val) : new JsString((string) $val);
-                        $obj->defineOwnProperty("[[{$key}]]", PropertyDescriptor::data(
-                            $jsVal,
-                            false,
-                            false,
-                            false,
-                        ));
+                    if ($val === null) {
+                        continue;
                     }
+                    if (is_bool($val)) {
+                        $jsVal = new JsBoolean($val);
+                    } elseif (is_array($val)) {
+                        $arr = new JsArray();
+                        foreach ($val as $i => $item) {
+                            $arr->set((string) $i, new JsString((string) $item));
+                        }
+                        $arr->set('length', new JsNumber((float) count($val)));
+                        $jsVal = $arr;
+                    } else {
+                        $jsVal = new JsString((string) $val);
+                    }
+                    $obj->defineOwnProperty("[[{$key}]]", PropertyDescriptor::data(
+                        $jsVal,
+                        false,
+                        false,
+                        false,
+                    ));
                 }
 
                 // Store the full canonical tag.
@@ -2490,6 +2502,7 @@ class IntlObject
             $lang = self::extractInternalString($this_, '[[language]]', '');
             $script = self::extractInternalStringOrNull($this_, '[[script]]');
             $region = self::extractInternalStringOrNull($this_, '[[region]]');
+            $variantsVal = $this_->get('[[variants]]');
 
             $parts = [$lang];
             if ($script !== null) {
@@ -2497,6 +2510,15 @@ class IntlObject
             }
             if ($region !== null) {
                 $parts[] = $region;
+            }
+            if ($variantsVal instanceof JsArray) {
+                $variantLen = (int) \PhpJs\Spec\TypeConversion::toNumber($variantsVal->get('length'));
+                for ($vi = 0; $vi < $variantLen; $vi++) {
+                    $vs = $variantsVal->get((string) $vi);
+                    if ($vs instanceof JsString) {
+                        $parts[] = $vs->value;
+                    }
+                }
             }
             return new JsString(implode('-', $parts));
         }, 0);
@@ -2762,6 +2784,45 @@ class IntlObject
             if (isset($parsed['region']) && $parsed['region'] !== '') {
                 $result['region'] = strtoupper($parsed['region']);
             }
+            // Extract variants (alphanum{5,8} or digit alphanum{3}) from the
+            // original tag. ICU's parseLocale exposes them via numbered
+            // variant0..variantN keys but also strips them. Walk the raw
+            // tag instead so we preserve order and unique-only variants.
+            $variants = [];
+            $rawParts = explode('-', $tag);
+            $idx = 1;
+            // Skip script.
+            if (isset($rawParts[$idx]) && strlen($rawParts[$idx]) === 4 && ctype_alpha($rawParts[$idx])) {
+                $idx++;
+            }
+            // Skip region.
+            if (
+                isset($rawParts[$idx])
+                && (
+                    (strlen($rawParts[$idx]) === 2 && ctype_alpha($rawParts[$idx]))
+                    || (strlen($rawParts[$idx]) === 3 && ctype_digit($rawParts[$idx]))
+                )
+            ) {
+                $idx++;
+            }
+            while (isset($rawParts[$idx])) {
+                $sub = $rawParts[$idx];
+                $sLen = strlen($sub);
+                if ($sLen === 1) {
+                    break;
+                }
+                $isLong = ($sLen >= 5 && $sLen <= 8 && ctype_alnum($sub));
+                $isShortNumeric = ($sLen === 4 && ctype_digit($sub[0]) && ctype_alnum($sub));
+                if (!$isLong && !$isShortNumeric) {
+                    break;
+                }
+                $variants[strtolower($sub)] = true;
+                $idx++;
+            }
+            if (!empty($variants)) {
+                ksort($variants);
+                $result['variants'] = array_keys($variants);
+            }
 
             // Extract unicode extension keywords from the original tag.
             if (preg_match('/-u-(.+?)(?:-[a-wyz]-|$)/i', $tag, $extMatch)) {
@@ -2843,6 +2904,11 @@ class IntlObject
         }
         if (isset($parsed['region'])) {
             $parts[] = strtoupper((string) $parsed['region']);
+        }
+        if (isset($parsed['variants']) && is_array($parsed['variants'])) {
+            foreach ($parsed['variants'] as $variant) {
+                $parts[] = strtolower((string) $variant);
+            }
         }
 
         // Add unicode extensions if present.
