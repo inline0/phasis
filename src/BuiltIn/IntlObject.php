@@ -736,6 +736,26 @@ class IntlObject
                     false,
                 ));
 
+                // Pre-parse the requested locale so the `-u-kn-…` /
+                // `-u-kf-…` / `-u-co-…` extension keywords are
+                // available as default values when the matching
+                // option isn't set explicitly. Also pulls the legacy
+                // `numeric`/`caseFirst`/`collation` slots populated by
+                // parseLocaleTag.
+                $localeKeywords = ['numeric' => null, 'caseFirst' => null, 'collation' => null];
+                foreach ($locales as $candidate) {
+                    $parsedTag = self::parseLocaleTag($candidate);
+                    if ($parsedTag === null) {
+                        continue;
+                    }
+                    foreach ($localeKeywords as $key => $existing) {
+                        if (isset($parsedTag[$key]) && $localeKeywords[$key] === null) {
+                            $localeKeywords[$key] = $parsedTag[$key];
+                        }
+                    }
+                    break;
+                }
+
                 // Usage: "sort" (default) or "search".
                 $usage = 'sort';
                 $usageVal = $options->get('usage');
@@ -770,8 +790,12 @@ class IntlObject
                     false,
                 ));
 
-                // ignorePunctuation: boolean, default false.
-                $ignorePunctuation = false;
+                // ignorePunctuation: boolean. Defaults to true for
+                // locales whose CLDR data sets `alternateHandling` to
+                // shifted; only Thai (and its descendants) matches in
+                // CLDR's current data.
+                $resolvedLanguage = strtolower(strtok($resolvedLocale, '-_'));
+                $ignorePunctuation = $resolvedLanguage === 'th';
                 $ipVal = $options->get('ignorePunctuation');
                 if (!$ipVal instanceof JsUndefined) {
                     $ignorePunctuation = TypeConversion::toBoolean($ipVal);
@@ -783,21 +807,26 @@ class IntlObject
                     false,
                 ));
 
-                // numeric: boolean.
-                $numeric = false;
+                // numeric: boolean. Falls back to the locale's `-u-kn-…`
+                // value when the option isn't set explicitly.
+                $numeric = $localeKeywords['numeric'] ?? false;
                 $numVal = $options->get('numeric');
                 if (!$numVal instanceof JsUndefined) {
                     $numeric = TypeConversion::toBoolean($numVal);
                 }
                 $obj->defineOwnProperty('[[Numeric]]', PropertyDescriptor::data(
-                    new JsBoolean($numeric),
+                    new JsBoolean((bool) $numeric),
                     false,
                     false,
                     false,
                 ));
 
-                // caseFirst: "upper", "lower", "false" (default).
-                $caseFirst = 'false';
+                // caseFirst: "upper", "lower", "false" (default). Same
+                // locale-extension fallback as numeric above.
+                $caseFirst = $localeKeywords['caseFirst'] ?? 'false';
+                if ($caseFirst === '') {
+                    $caseFirst = 'false';
+                }
                 $cfVal = $options->get('caseFirst');
                 if (!$cfVal instanceof JsUndefined) {
                     $cf = TypeConversion::toString($cfVal);
@@ -871,6 +900,18 @@ class IntlObject
                 if ($numericVal instanceof JsBoolean && $numericVal->toBoolean()) {
                     $collator->setAttribute(\Collator::NUMERIC_COLLATION, \Collator::ON);
                 }
+                // ICU's alternate-handling defaults differ per locale
+                // (Thai ships with SHIFTED), so ALWAYS write the
+                // attribute explicitly to honour the user's
+                // [[IgnorePunctuation]] choice — otherwise opting out
+                // of ignorePunctuation on a Thai collator silently
+                // keeps SHIFTED active.
+                $ipVal = $this_->get('[[IgnorePunctuation]]');
+                $ignorePunct = $ipVal instanceof JsBoolean && $ipVal->toBoolean();
+                $collator->setAttribute(
+                    \Collator::ALTERNATE_HANDLING,
+                    $ignorePunct ? \Collator::SHIFTED : \Collator::NON_IGNORABLE,
+                );
 
                 $result = $collator->compare($x, $y);
                 return new JsNumber((float) ($result === false ? 0 : $result));
