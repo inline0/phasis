@@ -4067,23 +4067,27 @@ class Interpreter
         $callerIsStrict = false;
         if ($setCallerProp) {
             $savedCaller = $fn->getOwnPropertyDescriptor("caller");
-            // Per Annex B: if the caller is strict, accessing .caller must
-            // throw TypeError. Delete own .caller so Function.prototype thrower
-            // accessor takes effect.
+            // Per the legacy function reflection proposal, a non-strict
+            // function's `caller` slot is set to null when the calling
+            // context is strict mode (or the immediate caller is a strict
+            // function). Setting null (rather than deleting) avoids the
+            // Function.prototype.caller poison-pill firing on prototype
+            // walk and matches the spec-mandated `f.caller === null`
+            // observation when invoked from strict code.
             $callerIsStrictMode = $this->strictMode
                 || ($callerFn instanceof JsFunction && $callerFn->isStrict());
+            $callerVal = ($callerIsStrictMode || !$callerFn instanceof JsFunction)
+                ? JsNull::instance()
+                : $callerFn;
             if ($callerIsStrictMode) {
                 $callerIsStrict = true;
-                $fn->forceDelete('caller');
-            } else {
-                $callerVal = $callerFn instanceof JsFunction ? $callerFn : JsNull::instance();
-                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
-                    $callerVal,
-                    true,
-                    false,
-                    true,
-                ));
             }
+            $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                $callerVal,
+                true,
+                false,
+                true,
+            ));
         }
 
         // Save and potentially update strict mode for this function body.
