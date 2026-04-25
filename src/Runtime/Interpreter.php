@@ -8527,6 +8527,24 @@ class Interpreter
             }
             return \PhpJs\Value\JsPromise::rejected($jsErr);
         }
+        // Per spec 27.1.4.4 step 5: valueWrapper = PromiseResolve(%Promise%, value).
+        // PromiseResolve reads value.constructor when value is a Promise; a
+        // poisoned constructor getter must surface as the promise rejection.
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            try {
+                $value->get('constructor');
+            } catch (\Throwable $e) {
+                $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
+                    ? $e->jsValue : $this->phpExceptionToJsValue($e);
+                if (!$done && $syncIterator !== null) {
+                    try {
+                        $this->iteratorClose($syncIterator);
+                    } catch (\Throwable) {
+                    }
+                }
+                return \PhpJs\Value\JsPromise::rejected($jsErr);
+            }
+        }
         // Unwrap: if value is a Promise/thenable, await it.
         try {
             $unwrapped = $this->awaitValue($value);
