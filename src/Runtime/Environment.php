@@ -546,9 +546,13 @@ class Environment
      */
     public function deleteBinding(string $name): bool
     {
-        // "with" object environment record: delegate delete to the binding object.
+        // "with" object environment record: delegate delete to the binding
+        // object, but only if the name is actually scoped to it. A name on
+        // the with target's @@unscopables list passes through to the
+        // surrounding scope so `delete x` against an outer let / const
+        // returns the spec-mandated false.
         if ($this->withObject !== null) {
-            if ($this->withObject->has($name)) {
+            if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
                 return $this->withObject->delete($name);
             }
             if ($this->parent !== null) {
