@@ -270,8 +270,17 @@ class GlobalObject
                     $body = array_pop($stringArgs);
                     $params = implode(',', $stringArgs);
                 }
-            // Per spec steps 17-18, params are parsed first as FormalParameters
-            // (no preceding line terminator, so --> in params is a SyntaxError).
+            // Per spec steps 17-18, parse params independently so comment
+            // tricks like `new Function("/*", "*/) {")` cannot smuggle the
+            // close-paren into the body. ParseText(parameters, FormalParameters)
+            // must parse to completion on its own; we approximate that by
+            // wrapping in `(function (${params}){})` and asserting it parses.
+                $paramProbe = "(function ({$params}\n) {})";
+                try {
+                    (new \PhpJs\Parser\Parser($paramProbe))->parse();
+                } catch (\Throwable $e) {
+                    throw new \PhpJs\Exceptions\SyntaxError('Function parameter list is invalid');
+                }
             // The body gets line feeds per step 41 so AnnexB HTML comments work.
             // The function is anonymous (no named binding visible in scope) —
             // we set .name = "anonymous" after creation rather than parsing
