@@ -5062,16 +5062,21 @@ class Interpreter
             } catch (\Throwable) {
                 $homeObject = null;
             }
+            // Per spec 13.3.7.1 step 2: GetThisBinding is called FIRST,
+            // before evaluating the property expression. In a derived
+            // constructor before super(), this throws ReferenceError —
+            // the property expression must not run in that case.
+            $superThisRead = $env->get('this');
             // Per spec 12.3.5.1: for super[expr], evaluate the property
-            // expression FIRST, then call GetSuperBase. The home object's
-            // [[Prototype]] may be mutated by the expression (e.g. via
-            // Object.setPrototypeOf), and GetSuperBase must observe the
-            // post-evaluation value.
+            // expression next (yielding a JsValue, NOT yet a property key),
+            // then read GetSuperBase. ToPropertyKey runs LAST, in
+            // GetValue. The home object's [[Prototype]] may be mutated by
+            // either the expression itself or the ToPropertyKey conversion
+            // (via toString); GetSuperBase observes the value at the moment
+            // between the two.
             $rawKey = null;
             if ($node->computed) {
-                // ToPropertyKey on the computed key so a Symbol returned by
-                // a custom toString stays a Symbol key.
-                $rawKey = TypeConversion::toPropertyKey($this->evaluate($node->property, $env));
+                $rawKey = $this->evaluate($node->property, $env);
             }
             $superBase = $homeObject instanceof JsObject ? $homeObject->getPrototype() : null;
             // RequireObjectCoercible: if superBase is null, throw TypeError (spec §12.3.5.3 step 5).
@@ -5080,14 +5085,15 @@ class Interpreter
                     "Cannot read properties of undefined (super)",
                 );
             }
-            // Per spec 12.3.5.3 MakeSuperPropertyReference step 3:
-            // let actualThis = env.GetThisBinding(). If this is uninitialized
-            // (derived constructor before super()), this throws ReferenceError.
+            // Now (after GetSuperBase) coerce the property name. A Symbol
+            // returned via a custom toString stays a Symbol key.
+            if ($node->computed) {
+                $rawKey = TypeConversion::toPropertyKey($rawKey);
+            }
             // Per GetThisValue + [[Get]], the actualThis (which may be a
             // primitive in strict mode methods) is passed to the getter as
             // its `this`. Use getWithValueReceiver so primitives pass through
             // unboxed instead of being substituted with the super base.
-            $superThisRead = $env->get('this');
             if ($node->computed) {
                 if ($rawKey instanceof JsSymbol) {
                     return $superBase->getBySymbolWithReceiver(
