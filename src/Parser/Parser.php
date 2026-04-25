@@ -3002,14 +3002,20 @@ class Parser
         // It's a method. Only plain methods named 'constructor' become
         // the class constructor; getters/setters/generators/async named
         // 'constructor' keep their original kind (and are rejected by
-        // the class-body validator).
+        // the class-body validator). Per spec, StringLiteralPropertyName
+        // with value "constructor" is treated identically to the bare
+        // identifier — it's still the class constructor.
+        $isConstructorName = (
+            ($key instanceof Identifier && $key->name === 'constructor')
+            || ($key instanceof Literal && $key->value === 'constructor')
+        );
         if (
-            $key instanceof Identifier
-            && $key->name === 'constructor'
+            $isConstructorName
             && !$isStatic
             && $kind === 'method'
             && !$isGenerator
             && !$isAsync
+            && !$computed
         ) {
             $kind = 'constructor';
         }
