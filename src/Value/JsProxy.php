@@ -178,15 +178,17 @@ class JsProxy extends JsObject
             $this->assertNotRevoked('get');
             return $this->target->internalGet($name, $this->target);
         }
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('get');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name), $receiver]);
+            $result = $trap->call($handler, [$target, new JsString($name), $receiver]);
             // Validate invariants per spec 10.5.8 steps 10-11.
-            $this->validateGetInvariants($name, $result);
+            $this->validateGetInvariants($name, $result, $target);
             return $result;
         }
         // No trap: forward to target.[[Get]](P, Receiver).
-        $result = $this->target->internalGet($name, $receiver);
+        $result = $target->internalGet($name, $receiver);
         // For callable proxies, return proxy-aware wrappers for call/apply/bind
         // so that p.call(...), p.apply(...), p.bind(...) invoke the proxy's
         // [[Call]] internal method correctly. This is needed because
@@ -261,15 +263,16 @@ class JsProxy extends JsObject
      * - If target property is non-configurable accessor with get=undefined,
      *   trap result must be undefined.
      */
-    private function validateGetInvariants(string $name, JsValue $trapResult): void
+    private function validateGetInvariants(string $name, JsValue $trapResult, ?JsObject $target = null): void
     {
         // A revoked proxy has a null target; the caller should have already
         // thrown TypeError before invoking a trap, but guard defensively so a
         // stale trap invocation doesn't crash the PHP runtime.
-        if ($this->target === null) {
+        $target ??= $this->target;
+        if ($target === null) {
             return;
         }
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
@@ -324,15 +327,17 @@ class JsProxy extends JsObject
      */
     public function setWithValueReceiver(string $name, JsValue $value, JsValue $receiver): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('set');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name), $value, $receiver]);
+            $result = $trap->call($handler, [$target, new JsString($name), $value, $receiver]);
             $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
             if (!$booleanTrapResult) {
                 return false;
             }
             // Validate invariants per spec step 14.
-            $this->validateSetInvariants($name, $value);
+            $this->validateSetInvariants($name, $value, $target);
             return true;
         }
         // No trap: forward to target.[[Set]](P, V, Receiver). Target is
@@ -342,9 +347,9 @@ class JsProxy extends JsObject
         // semantics for OrdinarySet then return false for primitive
         // receivers on data descriptors.
         if ($receiver instanceof JsObject) {
-            return $this->target->internalSet($name, $value, $receiver);
+            return $target->internalSet($name, $value, $receiver);
         }
-        return $this->target->internalSet($name, $value, $this->target);
+        return $target->internalSet($name, $value, $target);
     }
 
     /**
@@ -354,9 +359,13 @@ class JsProxy extends JsObject
      * - Data property with writable=false: value must be SameValue as V.
      * - Accessor property with set=undefined: must throw TypeError.
      */
-    private function validateSetInvariants(string $name, JsValue $value): void
+    private function validateSetInvariants(string $name, JsValue $value, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
@@ -423,17 +432,19 @@ class JsProxy extends JsObject
             $this->assertNotRevoked('has');
             return $this->target->has($name);
         }
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('has');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name)]);
+            $result = $trap->call($handler, [$target, new JsString($name)]);
             $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
             if (!$booleanTrapResult) {
                 // Validate invariants per spec 10.5.7 step 11.
-                $this->validateHasInvariants($name);
+                $this->validateHasInvariants($name, $target);
             }
             return $booleanTrapResult;
         }
-        return $this->target->has($name);
+        return $target->has($name);
     }
 
     /**
@@ -443,9 +454,13 @@ class JsProxy extends JsObject
      * - If property is non-configurable on target, throw TypeError.
      * - If target is not extensible and property exists on target, throw TypeError.
      */
-    private function validateHasInvariants(string $name): void
+    private function validateHasInvariants(string $name, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
         if ($targetDesc !== null) {
             if ($targetDesc->configurable === false) {
                 throw new TypeError(
@@ -453,7 +468,7 @@ class JsProxy extends JsObject
                     . " property of the proxy target but the has trap returned false"
                 );
             }
-            if (!$this->target->isExtensible()) {
+            if (!$target->isExtensible()) {
                 throw new TypeError(
                     "'has' on proxy: property '{$name}' is an own property of the"
                     . " non-extensible proxy target but the has trap returned false"
@@ -466,20 +481,22 @@ class JsProxy extends JsObject
 
     public function delete(string $name, bool $strict = false): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('deleteProperty');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name)]);
+            $result = $trap->call($handler, [$target, new JsString($name)]);
             $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
             if ($booleanTrapResult) {
                 // Validate invariants per spec 10.5.10 steps 13-15.
-                $this->validateDeleteInvariants($name);
+                $this->validateDeleteInvariants($name, $target);
             }
             if (!$booleanTrapResult && $strict) {
                 throw new TypeError("'deleteProperty' on proxy: property '{$name}' is non-configurable");
             }
             return $booleanTrapResult;
         }
-        return $this->target->delete($name, $strict);
+        return $target->delete($name, $strict);
     }
 
     /**
@@ -489,9 +506,13 @@ class JsProxy extends JsObject
      * - If target property is non-configurable, throw TypeError.
      * - If target property exists and target is not extensible, throw TypeError.
      */
-    private function validateDeleteInvariants(string $name): void
+    private function validateDeleteInvariants(string $name, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
         if ($targetDesc !== null) {
             if ($targetDesc->configurable === false) {
                 throw new TypeError(
@@ -499,7 +520,7 @@ class JsProxy extends JsObject
                     . " non-configurable and can't be deleted"
                 );
             }
-            if (!$this->target->isExtensible()) {
+            if (!$target->isExtensible()) {
                 throw new TypeError(
                     "'deleteProperty' on proxy: property '{$name}' exists on a"
                     . " non-extensible proxy target and can't be deleted"
@@ -512,9 +533,11 @@ class JsProxy extends JsObject
 
     public function ownKeys(): array
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('ownKeys');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target]);
+            $result = $trap->call($handler, [$target]);
             $trapResult = $this->trapResultToPropertyKeys($result);
             // Build stringified list for invariant validation.
             $stringified = [];
@@ -523,7 +546,7 @@ class JsProxy extends JsObject
                     ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
                     : ($k instanceof JsString ? $k->value : (string) $k);
             }
-            $this->validateOwnKeysInvariants($stringified);
+            $this->validateOwnKeysInvariants($stringified, $target);
             // Return string keys only (symbols handled via ordinaryOwnPropertyKeys).
             $stringKeys = [];
             foreach ($trapResult as $k) {
@@ -534,7 +557,7 @@ class JsProxy extends JsObject
             return $stringKeys;
         }
         // Forward to target's [[OwnPropertyKeys]] in spec order.
-        return $this->target->getOwnPropertyNames();
+        return $target->getOwnPropertyNames();
     }
 
     /**
@@ -542,21 +565,26 @@ class JsProxy extends JsObject
      *
      * @param list<string> $trapResult
      */
-    private function validateOwnKeysInvariants(array $trapResult): void
+    private function validateOwnKeysInvariants(array $trapResult, ?JsObject $target = null): void
     {
         // Step 17: Check for duplicate entries.
         if (count($trapResult) !== count(array_unique($trapResult))) {
             throw new TypeError("'ownKeys' on proxy: trap returned duplicate entries");
         }
 
-        $extensibleTarget = $this->target->isExtensible();
-        $targetKeys = $this->target->ownKeys();
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+
+        $extensibleTarget = $target->isExtensible();
+        $targetKeys = $target->ownKeys();
 
         // Find non-configurable string keys on target.
         $targetNonconfigurableKeys = [];
         $targetConfigurableKeys = [];
         foreach ($targetKeys as $key) {
-            $desc = $this->target->getOwnPropertyDescriptor($key);
+            $desc = $target->getOwnPropertyDescriptor($key);
             if ($desc !== null && $desc->configurable === false) {
                 $targetNonconfigurableKeys[] = $key;
             } else {
@@ -566,7 +594,7 @@ class JsProxy extends JsObject
 
         // Also check symbol keys for non-configurable invariant.
         // Per spec, non-configurable symbol keys must appear in trap result.
-        $targetSymbolPairs = $this->target->getOwnSymbolsWithDescriptors();
+        $targetSymbolPairs = $target->getOwnSymbolsWithDescriptors();
         foreach ($targetSymbolPairs as [$sym, $desc]) {
             if ($desc->configurable === false) {
                 // Non-configurable symbol key must be in trap result.
@@ -659,9 +687,14 @@ class JsProxy extends JsObject
 
     public function getPrototype(): ?JsObject
     {
+        // Snapshot target/handler before trap dispatch: GetMethod can run
+        // arbitrary code (e.g. another proxy's get trap) that revokes this
+        // proxy mid-operation, after which $this->target is null.
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('getPrototypeOf');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target]);
+            $result = $trap->call($handler, [$target]);
             if ($result instanceof JsNull) {
                 $handlerProto = null;
             } elseif ($result instanceof JsObject) {
@@ -670,8 +703,8 @@ class JsProxy extends JsObject
                 throw new TypeError('\'getPrototypeOf\' on proxy: trap returned neither object nor null');
             }
             // Invariant: if target is not extensible, must return same as target proto.
-            if (!$this->target->isExtensible()) {
-                $targetProto = $this->target->getPrototype();
+            if (!$target->isExtensible()) {
+                $targetProto = $target->getPrototype();
                 if ($handlerProto !== $targetProto) {
                     throw new TypeError(
                         '\'getPrototypeOf\' on proxy: proxy target is non-extensible but the'
@@ -681,7 +714,7 @@ class JsProxy extends JsObject
             }
             return $handlerProto;
         }
-        return $this->target->getPrototype();
+        return $target->getPrototype();
     }
 
     // -- [[SetPrototypeOf]] --
@@ -691,21 +724,23 @@ class JsProxy extends JsObject
      */
     public function internalSetPrototypeOf(?JsObject $prototype): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('setPrototypeOf');
         if ($trap !== null) {
             $protoArg = $prototype ?? JsNull::instance();
-            $result = $trap->call($this->handler, [$this->target, $protoArg]);
+            $result = $trap->call($handler, [$target, $protoArg]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
             // Per spec step 10-14: if target is extensible, return true.
             // Only check the invariant when target is NOT extensible.
-            $extensibleTarget = $this->target->isExtensible();
+            $extensibleTarget = $target->isExtensible();
             if ($extensibleTarget) {
                 return true;
             }
             // Target is not extensible: the prototype must match target's current prototype.
-            $targetProto = $this->target->getPrototype();
+            $targetProto = $target->getPrototype();
             if ($prototype !== $targetProto) {
                 throw new TypeError(
                     '\'setPrototypeOf\' on proxy: trap returned truish for setting a'
@@ -714,7 +749,7 @@ class JsProxy extends JsObject
             }
             return true;
         }
-        return $this->target->trySetPrototype($prototype);
+        return $target->trySetPrototype($prototype);
     }
 
     public function setPrototype(?JsObject $prototype): void
@@ -737,28 +772,34 @@ class JsProxy extends JsObject
 
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('defineProperty');
         if ($trap !== null) {
             $descObj = self::descriptorToObject($desc);
-            $result = $trap->call($this->handler, [$this->target, new JsString($name), $descObj]);
+            $result = $trap->call($handler, [$target, new JsString($name), $descObj]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
             // Per spec 10.5.6 steps 17-22: validate invariants.
             // Invariant violations throw TypeError (must propagate, not be caught).
-            $this->validateDefinePropertyInvariants($name, $desc);
+            $this->validateDefinePropertyInvariants($name, $desc, $target);
             return true;
         }
-        return $this->target->defineOwnProperty($name, $desc);
+        return $target->defineOwnProperty($name, $desc);
     }
 
     /**
      * Validate defineProperty invariants per spec 10.5.6 steps 17-22.
      */
-    private function validateDefinePropertyInvariants(string $name, PropertyDescriptor $desc): void
+    private function validateDefinePropertyInvariants(string $name, PropertyDescriptor $desc, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
-        $extensibleTarget = $this->target->isExtensible();
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $extensibleTarget = $target->isExtensible();
 
         // Step 19: If target property does not exist and target is not extensible, throw.
         if ($targetDesc === null && !$extensibleTarget) {
@@ -927,12 +968,14 @@ class JsProxy extends JsObject
             $this->assertNotRevoked('getOwnPropertyDescriptor');
             return $this->target->getOwnPropertyDescriptor($name);
         }
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('getOwnPropertyDescriptor');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, new JsString($name)]);
+            $result = $trap->call($handler, [$target, new JsString($name)]);
             if ($result instanceof JsUndefined) {
                 // Validate undefined result invariants per spec 10.5.5 step 14.
-                $this->validateGetOwnPropertyUndefinedInvariants($name);
+                $this->validateGetOwnPropertyUndefinedInvariants($name, $target);
                 return null;
             }
             if (!$result instanceof JsObject) {
@@ -944,19 +987,23 @@ class JsProxy extends JsObject
             }
             $resultDesc = self::objectToDescriptor($result);
             // Validate result descriptor invariants per spec 10.5.5 steps 16-22.
-            $this->validateGetOwnPropertyInvariants($name, $resultDesc);
+            $this->validateGetOwnPropertyInvariants($name, $resultDesc, $target);
             return $resultDesc;
         }
-        return $this->target->getOwnPropertyDescriptor($name);
+        return $target->getOwnPropertyDescriptor($name);
     }
 
     /**
      * Validate getOwnPropertyDescriptor invariants when trap returns undefined.
      * Per spec 10.5.5 step 14.
      */
-    private function validateGetOwnPropertyUndefinedInvariants(string $name): void
+    private function validateGetOwnPropertyUndefinedInvariants(string $name, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
@@ -968,7 +1015,7 @@ class JsProxy extends JsObject
             );
         }
         // 14e: if target is non-extensible, existing property cannot be reported as non-existent.
-        if (!$this->target->isExtensible()) {
+        if (!$target->isExtensible()) {
             throw new TypeError(
                 "'getOwnPropertyDescriptor' on proxy: property '{$name}' exists on the"
                 . " non-extensible proxy target but the trap returned undefined"
@@ -980,10 +1027,14 @@ class JsProxy extends JsObject
      * Validate getOwnPropertyDescriptor invariants when trap returns a descriptor.
      * Per spec 10.5.5 steps 16-22.
      */
-    private function validateGetOwnPropertyInvariants(string $name, PropertyDescriptor $resultDesc): void
+    private function validateGetOwnPropertyInvariants(string $name, PropertyDescriptor $resultDesc, ?JsObject $target = null): void
     {
-        $targetDesc = $this->target->getOwnPropertyDescriptor($name);
-        $extensibleTarget = $this->target->isExtensible();
+        $target ??= $this->target;
+        if ($target === null) {
+            return;
+        }
+        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $extensibleTarget = $target->isExtensible();
 
         // Step 20: IsCompatiblePropertyDescriptor check.
         // If target is non-extensible and target property does not exist, throw.
@@ -1023,12 +1074,14 @@ class JsProxy extends JsObject
 
     public function isExtensible(): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('isExtensible');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target]);
+            $result = $trap->call($handler, [$target]);
             $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
             // Invariant: trap result must match target's extensible state.
-            $targetResult = $this->target->isExtensible();
+            $targetResult = $target->isExtensible();
             if ($booleanTrapResult !== $targetResult) {
                 throw new TypeError(
                     "'isExtensible' on proxy: trap result does not reflect"
@@ -1038,7 +1091,7 @@ class JsProxy extends JsObject
             }
             return $booleanTrapResult;
         }
-        return $this->target->isExtensible();
+        return $target->isExtensible();
     }
 
     // -- [[PreventExtensions]] --
@@ -1049,13 +1102,15 @@ class JsProxy extends JsObject
      */
     public function internalPreventExtensions(): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('preventExtensions');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target]);
+            $result = $trap->call($handler, [$target]);
             $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
             if ($booleanTrapResult) {
                 // Invariant: if trap returns true, target must actually be non-extensible.
-                if ($this->target->isExtensible()) {
+                if ($target->isExtensible()) {
                     throw new TypeError(
                         "'preventExtensions' on proxy: trap returned truish but"
                         . " the proxy target is extensible"
@@ -1064,7 +1119,7 @@ class JsProxy extends JsObject
             }
             return $booleanTrapResult;
         }
-        $this->target->preventExtensions();
+        $target->preventExtensions();
         return true;
     }
 
@@ -1166,17 +1221,19 @@ class JsProxy extends JsObject
     public function apply(JsValue $thisArg, array $args): JsValue
     {
         $this->assertNotRevoked('apply');
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('apply');
         if ($trap !== null) {
             $argsArray = JsArray::fromArray($args);
-            return $trap->call($this->handler, [$this->target, $thisArg, $argsArray]);
+            return $trap->call($handler, [$target, $thisArg, $argsArray]);
         }
         // Forward to target. If target is also a Proxy, recursively invoke apply.
-        if ($this->target instanceof JsProxy) {
-            return $this->target->apply($thisArg, $args);
+        if ($target instanceof JsProxy) {
+            return $target->apply($thisArg, $args);
         }
-        if ($this->target instanceof JsFunction) {
-            return $this->target->call($thisArg, $args);
+        if ($target instanceof JsFunction) {
+            return $target->call($thisArg, $args);
         }
         throw new TypeError('proxy target is not a function');
     }
