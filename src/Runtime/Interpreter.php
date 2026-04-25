@@ -12034,6 +12034,11 @@ class Interpreter
         if (str_contains($flags, 's')) {
             $pcreFlags .= 's';
         }
+        // PCRE_DOLLAR_ENDONLY: ECMAScript `$` (no /m) matches the end of the
+        // input, never before a final newline. PCRE's default lets `$` match
+        // before a trailing newline, which would make `/abc$/.test("abc\n")`
+        // succeed.
+        $pcreFlags .= 'D';
 
         // Transform ECMAScript-specific character class escapes for PCRE compatibility.
         // PCRE's \s does not include U+FEFF; ECMAScript's does.
