@@ -145,14 +145,24 @@ class JsProxy extends JsObject
 
     /**
      * Override getWithValueReceiver so prototype chain walks through a proxy
-     * (e.g. Object.create(proxy).prop) go through the [[Get]] trap.
+     * (e.g. Object.create(proxy).prop) go through the [[Get]] trap. When the
+     * receiver is a primitive (e.g. Reflect.get(proxy, "x", 37.2)), pass it
+     * through to the trap as-is per spec [[Get]] semantics.
      */
     public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
     {
-        if ($receiver instanceof JsObject) {
-            return $this->internalGet($name, $receiver);
+        $this->assertNotRevoked('get');
+        $trap = $this->getTrap('get');
+        if ($trap !== null) {
+            $result = $trap->call($this->handler, [$this->target, new JsString($name), $receiver]);
+            $this->validateGetInvariants($name, $result);
+            return $result;
         }
-        return $this->internalGet($name, $this);
+        // No trap: forward to target.
+        if ($this->target instanceof JsProxy) {
+            return $this->target->getWithValueReceiver($name, $receiver);
+        }
+        return $this->target->getWithValueReceiver($name, $receiver);
     }
 
     /**

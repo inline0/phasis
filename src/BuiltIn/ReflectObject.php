@@ -52,10 +52,11 @@ class ReflectObject
                 if ($target instanceof \PhpJs\Value\JsTypedArray) {
                     return $target->get($name);
                 }
-                if ($receiver instanceof JsObject) {
-                    return $target->internalGet($name, $receiver);
-                }
-                return $target->get($name);
+                // Spec [[Get]] accepts any value as receiver. For non-object
+                // receivers, route through getWithValueReceiver so any
+                // accessors (including proxy traps) see the original value
+                // rather than $target.
+                return $target->getWithValueReceiver($name, $receiver);
             }, 2),
             true,
             false,
