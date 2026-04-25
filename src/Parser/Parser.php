@@ -2089,7 +2089,23 @@ class Parser
             );
         }
         // Other nodes like Identifier, MemberExpression, etc. are valid
-        // assignment targets at the leaf level.
+        // assignment targets at the leaf level. Anything else (literals,
+        // logical/binary/unary expressions, calls, conditional, sequence,
+        // template literals, etc.) is a SyntaxError per
+        // §13.15.1 / §13.15.5 — even if it would constant-fold to a valid
+        // reference at runtime, the early error fires before evaluation.
+        if (
+            !($node instanceof Identifier)
+            && !($node instanceof MemberExpression)
+            && !($node instanceof \PhpJs\Ast\Pattern\ArrayPattern)
+            && !($node instanceof \PhpJs\Ast\Pattern\ObjectPattern)
+            && !($node instanceof \PhpJs\Ast\Pattern\AssignmentPattern)
+            && !($node instanceof \PhpJs\Ast\Pattern\RestElement)
+        ) {
+            throw new \PhpJs\Exceptions\SyntaxError(
+                'Invalid destructuring assignment target',
+            );
+        }
     }
 
     private static function containsYieldOrAwaitExpression(?Node $node): bool
