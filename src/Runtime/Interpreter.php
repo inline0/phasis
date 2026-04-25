@@ -1640,8 +1640,11 @@ class Interpreter
             $superCtor = $activeFunc instanceof JsFunction ? $activeFunc->getPrototype() : null;
             $isDerived = $activeFunc instanceof JsFunction && $activeFunc->isDerivedConstructor();
 
-            // Per spec: check IsConstructor after evaluating arguments.
-            if (!$superCtor instanceof JsFunction || !$superCtor->isConstructable()) {
+            // Per spec: check IsConstructor after evaluating arguments. A
+            // JsProxy wrapping a constructable target also passes IsConstructor.
+            $superIsCallable = $superCtor instanceof JsFunction
+                || ($superCtor instanceof \PhpJs\Value\JsProxy && $superCtor->isConstructable());
+            if (!$superIsCallable) {
                 throw new TypeError('Super constructor must be a constructor');
             }
 
@@ -1681,18 +1684,26 @@ class Interpreter
                 }
             }
             try {
-                // If super is a base-class constructor (not itself derived),
-                // initialize its instance fields on the receiver before its
-                // body evaluates so default-param expressions like
-                // `constructor(o = this.#x)` can see the fields.
-                if (
-                    $superCtor->isClassConstructor()
-                    && !$superCtor->isDerivedConstructor()
-                    && $currentThis instanceof JsObject
-                ) {
-                    $this->initializeInstanceFields($superCtor, $currentThis, $env);
+                // Proxy super: forward through the proxy's [[Construct]]
+                // so handler.construct (if any) fires; result becomes the
+                // new this binding.
+                if ($superCtor instanceof \PhpJs\Value\JsProxy) {
+                    $newTarget = $superNewTarget instanceof JsValue ? $superNewTarget : $superCtor;
+                    $result = $superCtor->construct($args, $newTarget);
+                } else {
+                    // If super is a base-class constructor (not itself derived),
+                    // initialize its instance fields on the receiver before its
+                    // body evaluates so default-param expressions like
+                    // `constructor(o = this.#x)` can see the fields.
+                    if (
+                        $superCtor->isClassConstructor()
+                        && !$superCtor->isDerivedConstructor()
+                        && $currentThis instanceof JsObject
+                    ) {
+                        $this->initializeInstanceFields($superCtor, $currentThis, $env);
+                    }
+                    $result = $this->callFunction($superCtor, $currentThis, $args);
                 }
-                $result = $this->callFunction($superCtor, $currentThis, $args);
             } finally {
                 if ($currentThis instanceof JsObject && !$superHadNT) {
                     $currentThis->forceDelete('[[NewTarget]]');
@@ -7275,6 +7286,11 @@ class Interpreter
 
         // Inheritance: set [[Prototype]] of constructor to super class.
         if ($superClass instanceof JsFunction) {
+            $constructor->setCustomPrototype($superClass);
+        } elseif ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
+            // Extending a callable Proxy: the constructor's [[Prototype]] is
+            // the proxy itself so super() resolves to the proxy via
+            // [[GetPrototypeOf]](activeFunction).
             $constructor->setCustomPrototype($superClass);
         }
 
