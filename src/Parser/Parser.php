@@ -5245,6 +5245,18 @@ class Parser
                                         "Invalid regular expression: /{$pattern}/: Invalid property name",
                                     );
                                 }
+                                // Per spec the value side is also matched
+                                // exactly: if we recognise the property name
+                                // as General_Category, the value must be a
+                                // canonical-cased GC value.
+                                $normName = \PhpJs\Runtime\Interpreter::normalizeUnicodePropertyName($parts[0]);
+                                if ($normName === 'General_Category'
+                                    && \PhpJs\Runtime\Interpreter::isGeneralCategoryValue($parts[1]) === false
+                                ) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: /{$pattern}/: Invalid property value",
+                                    );
+                                }
                             }
                             if ($unicode && !str_contains($propExpr, '=')) {
                                 if (\PhpJs\Runtime\Interpreter::isLoneUnicodePropertyKnown($propExpr) === false) {

@@ -12899,6 +12899,18 @@ class Interpreter
         return self::normalizeEsPropertyName($name) !== null;
     }
 
+    /** Normalize a property name into its canonical long form. */
+    public static function normalizeUnicodePropertyName(string $name): ?string
+    {
+        return self::normalizeEsPropertyName($name);
+    }
+
+    /** Whether $value is an exact, case-sensitive General_Category value. */
+    public static function isGeneralCategoryValue(string $value): bool
+    {
+        return self::mapGeneralCategoryValue($value) !== null;
+    }
+
     private static function mapEsPropertyToPcre(string $propExpr, bool $negated): ?string
     {
         $prefix = $negated ? '\\P' : '\\p';
