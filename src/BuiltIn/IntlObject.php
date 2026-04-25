@@ -3718,6 +3718,14 @@ class IntlObject
 
         // RelativeTimeFormat.prototype.format(value, unit)
         $format = JsFunction::fromCallable('format', function (JsValue $this_, array $args): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.RelativeTimeFormat.prototype.format called on non-RelativeTimeFormat'
+                );
+            }
             $value = $args[0] ?? JsUndefined::instance();
             $unit = isset($args[1]) ? TypeConversion::toString($args[1]) : '';
 
@@ -3754,6 +3762,14 @@ class IntlObject
 
         // RelativeTimeFormat.prototype.formatToParts(value, unit)
         $formatToParts = JsFunction::fromCallable('formatToParts', function (JsValue $this_, array $args): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[Locale]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.RelativeTimeFormat.prototype.formatToParts called on non-RelativeTimeFormat'
+                );
+            }
             $result = new JsArray();
             $result->set('length', new JsNumber(0.0));
             return $result;
