@@ -519,8 +519,16 @@ class RegExpPrototype
                 : TypeConversion::toString(\PhpJs\Value\JsUndefined::instance());
             $strLen = mb_strlen($str, 'UTF-8');
 
-            $isGlobal  = TypeConversion::toBoolean($this_->get('global'));
-            $isSticky  = TypeConversion::toBoolean($this_->get('sticky'));
+            // Per RegExpBuiltinExec, `global` and `sticky` come from the
+            // [[OriginalFlags]] internal slot — NOT the public getter.
+            // User overrides like Object.defineProperty(r, 'global', ...)
+            // must not influence whether lastIndex is updated.
+            $origFlagsDesc = $this_->getOwnPropertyDescriptor('[[OriginalFlags]]');
+            $origFlags = ($origFlagsDesc !== null && $origFlagsDesc->value instanceof JsString)
+                ? $origFlagsDesc->value->value
+                : '';
+            $isGlobal = str_contains($origFlags, 'g');
+            $isSticky = str_contains($origFlags, 'y');
 
             // Per spec step 4: always read lastIndex for observable side effects.
             $lastIndexVal = $this_->get('lastIndex');
@@ -688,9 +696,11 @@ class RegExpPrototype
             // Save previousLastIndex.
             $previousLastIndex = $this_->get('lastIndex');
 
-            // If previousLastIndex != 0, reset to 0.
-            if (!self::sameValueZero($previousLastIndex, new JsNumber(0.0))) {
-                $this_->set('lastIndex', new JsNumber(0.0));
+            // Per spec, the comparisons use SameValue (not SameValueZero),
+            // so -0 vs +0 is observable: if lastIndex was -0 and exec set
+            // it to +0 the spec considers them different and restores -0.
+            if (!\PhpJs\Spec\AbstractOperations::sameValue($previousLastIndex, new JsNumber(0.0))) {
+                $this_->set('lastIndex', new JsNumber(0.0), true);
             }
 
             // Call exec.
@@ -698,8 +708,8 @@ class RegExpPrototype
 
             // Restore lastIndex if changed.
             $currentLastIndex = $this_->get('lastIndex');
-            if (!self::sameValueZero($currentLastIndex, $previousLastIndex)) {
-                $this_->set('lastIndex', $previousLastIndex);
+            if (!\PhpJs\Spec\AbstractOperations::sameValue($currentLastIndex, $previousLastIndex)) {
+                $this_->set('lastIndex', $previousLastIndex, true);
             }
 
             if ($result instanceof JsNull) {
