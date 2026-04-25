@@ -1642,9 +1642,11 @@ class Interpreter
 
             // Per spec: check IsConstructor after evaluating arguments. A
             // JsProxy wrapping a constructable target also passes IsConstructor.
-            $superIsCallable = $superCtor instanceof JsFunction
+            // A JsFunction without [[Construct]] (e.g. %FunctionPrototype% used
+            // when `class C extends null`) fails IsConstructor.
+            $superIsConstructor = ($superCtor instanceof JsFunction && $superCtor->isConstructable())
                 || ($superCtor instanceof \PhpJs\Value\JsProxy && $superCtor->isConstructable());
-            if (!$superIsCallable) {
+            if (!$superIsConstructor) {
                 throw new TypeError('Super constructor must be a constructor');
             }
 
