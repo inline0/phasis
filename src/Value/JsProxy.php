@@ -1365,15 +1365,18 @@ class JsProxy extends JsObject
     /** Convert a JsObject descriptor from a trap result to a PropertyDescriptor. */
     private static function objectToDescriptor(JsObject $obj): PropertyDescriptor
     {
-        $value = $obj->has('value') ? $obj->get('value') : null;
-        $writable = $obj->has('writable')
-            ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('writable'))
-            : null;
+        // Per spec 6.2.5.5 ToPropertyDescriptor walks fields in the order
+        // enumerable, configurable, value, writable, get, set. The order is
+        // observable through Proxy has/get traps and so must be exact.
         $enumerable = $obj->has('enumerable')
             ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('enumerable'))
             : null;
         $configurable = $obj->has('configurable')
             ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('configurable'))
+            : null;
+        $value = $obj->has('value') ? $obj->get('value') : null;
+        $writable = $obj->has('writable')
+            ? \PhpJs\Spec\TypeConversion::toBoolean($obj->get('writable'))
             : null;
         $getter = null;
         $setter = null;
