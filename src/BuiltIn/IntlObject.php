@@ -1222,16 +1222,22 @@ class IntlObject
                     false,
                 ));
 
-                // roundingIncrement
+                // roundingIncrement: must be an integer in the
+                // {1,2,5,10,20,25,50,100,200,250,500,1000,2000,2500,5000}
+                // set. Non-integer or out-of-set values throw RangeError.
                 $roundingIncrement = 1;
                 $riVal = $options->get('roundingIncrement');
                 if (!$riVal instanceof JsUndefined) {
-                    $ri = (int) TypeConversion::toNumber($riVal);
+                    $riNum = TypeConversion::toNumber($riVal);
                     $validIncrements = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000];
-                    if (!in_array($ri, $validIncrements, true)) {
-                        throw new RangeError("Invalid roundingIncrement: {$ri}");
+                    if (
+                        is_nan($riNum)
+                        || $riNum != floor($riNum)
+                        || !in_array((int) $riNum, $validIncrements, true)
+                    ) {
+                        throw new RangeError("Invalid roundingIncrement: {$riNum}");
                     }
-                    $roundingIncrement = $ri;
+                    $roundingIncrement = (int) $riNum;
                 }
                 $obj->defineOwnProperty('[[RoundingIncrement]]', PropertyDescriptor::data(
                     new JsNumber((float) $roundingIncrement),
@@ -1273,6 +1279,32 @@ class IntlObject
                     false,
                     false,
                 ));
+
+                // Cross-validation per spec: roundingIncrement != 1 is
+                // incompatible with significantDigits rounding, with the
+                // morePrecision/lessPrecision priorities, and requires
+                // minimumFractionDigits === maximumFractionDigits.
+                if ($roundingIncrement !== 1) {
+                    $hasSig = !$msdVal instanceof JsUndefined || !$xsdVal instanceof JsUndefined;
+                    if ($hasSig) {
+                        throw new TypeError(
+                            'roundingIncrement is incompatible with significant-digit rounding'
+                        );
+                    }
+                    if ($roundingPriority !== 'auto') {
+                        throw new TypeError(
+                            'roundingIncrement is incompatible with roundingPriority "'
+                            . $roundingPriority . '"'
+                        );
+                    }
+                    $minF = self::extractInternalNumber($obj, '[[MinimumFractionDigits]]', 0);
+                    $maxF = self::extractInternalNumber($obj, '[[MaximumFractionDigits]]', 0);
+                    if ((int) $minF !== (int) $maxF) {
+                        throw new RangeError(
+                            'roundingIncrement requires minimumFractionDigits === maximumFractionDigits'
+                        );
+                    }
+                }
 
                 return $obj;
             },
