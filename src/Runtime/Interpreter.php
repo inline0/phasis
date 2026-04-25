@@ -12510,10 +12510,29 @@ class Interpreter
                         $closeAngle = strpos($pattern, '>', $i + 3);
                         if ($closeAngle !== false) {
                             $groupName = substr($pattern, $i + 3, $closeAngle - ($i + 3));
-                            if (preg_match('/\(\?<' . preg_quote($groupName, '/') . '>/', $pattern) === 1) {
-                                $result .= $ch . $next;
-                                $i += 2;
+                            $groupDeclMatch = [];
+                            $hasGroup = preg_match(
+                                '/\(\?<' . preg_quote($groupName, '/') . '>/',
+                                $pattern,
+                                $groupDeclMatch,
+                                PREG_OFFSET_CAPTURE,
+                            ) === 1;
+                            if ($hasGroup) {
+                                $declOffset = $groupDeclMatch[0][1];
+                                if ($declOffset > $i) {
+                                    // Forward named reference: per spec the
+                                    // backref matches the empty string when
+                                    // the group hasn't captured yet. PCRE
+                                    // would fail the match, so emit (?:).
+                                    $result .= '(?:)';
+                                    $i = $closeAngle + 1;
+                                } else {
+                                    $result .= substr($pattern, $i, $closeAngle + 1 - $i);
+                                    $i = $closeAngle + 1;
+                                }
                             } else {
+                                // No matching named group: per Annex B in
+                                // non-unicode mode \k<...> is literal `k<...>`.
                                 $result .= 'k';
                                 $i += 2;
                             }
