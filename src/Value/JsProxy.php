@@ -1089,13 +1089,20 @@ class JsProxy extends JsObject
 
     public function getBySymbol(JsSymbol $symbol): JsValue
     {
+        return $this->getBySymbolWithReceiver($symbol, $this);
+    }
+
+    public function getBySymbolWithReceiver(JsSymbol $symbol, JsValue $receiver): JsValue
+    {
         $this->assertNotRevoked('get');
-        // Check for get trap using the symbol's description as a key proxy.
         $trap = $this->getTrap('get');
         if ($trap !== null) {
-            return $trap->call($this->handler, [$this->target, $symbol, $this]);
+            return $trap->call($this->handler, [$this->target, $symbol, $receiver]);
         }
-        return $this->target->getBySymbol($symbol);
+        // Without a trap, the proxy's [[Get]] forwards to the target's
+        // [[Get]] with the receiver preserved. JsObject.getBySymbolWithReceiver
+        // walks the target's symbol properties and prototype chain.
+        return $this->target->getBySymbolWithReceiver($symbol, $receiver);
     }
 
     public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
