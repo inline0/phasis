@@ -5847,9 +5847,72 @@ class Parser
                         );
                     }
                 }
+                // /v: `-` is only legal in range position. A lone `-`
+                // between class atoms (e.g. `[-]`, `[a-]`) is rejected.
+                if ($isVFlag) {
+                    $prevChar = $i > $start + 1 ? $pattern[$i - 1] : '[';
+                    $isClassStart = ($prevChar === '[' || $prevChar === '^');
+                    $isClassEnd = ($next === ']' || $next === '');
+                    if ($isClassStart && $isClassEnd) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Lone hyphen in /v class",
+                        );
+                    }
+                }
                 $prevWasClassEscape = false;
                 $i++;
                 continue;
+            }
+            // /v ClassSetSyntaxCharacter must be escaped:
+            // `( ) { } / |` are reserved as set operators / quantifier
+            // anchors and must appear escaped. `[` opens a nested
+            // ClassSetExpression (handled by the v-flag transform); `]`
+            // is already the class terminator.
+            if ($isVFlag && $c === '[') {
+                // Nested class: skip past its body. This validator
+                // doesn't recurse, so just consume balanced brackets.
+                $depth = 1;
+                $i++;
+                while ($i < $len && $depth > 0) {
+                    $cc = $pattern[$i];
+                    if ($cc === '\\') {
+                        $i += 2;
+                        continue;
+                    }
+                    if ($cc === '[') {
+                        $depth++;
+                    } elseif ($cc === ']') {
+                        $depth--;
+                        if ($depth === 0) {
+                            $i++;
+                            break;
+                        }
+                    }
+                    $i++;
+                }
+                $prevWasClassEscape = true;
+                continue;
+            }
+            if ($isVFlag && in_array($c, ['(', ')', '{', '}', '/', '|'], true)) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Invalid regular expression: /{$pattern}/: Unescaped class-set syntax character",
+                );
+            }
+            // /v ClassSetReservedDoublePunctuator: a punctuation char
+            // immediately repeated as a bare class atom must be
+            // escaped. `&&` is the intersection operator when between
+            // subclasses, so we exempt it here; any of the other
+            // doubled punctuators in this position are rejected.
+            static $vDoublePunct = ['!', '#', '$', '%', '*', '+', ',', '.', ':', ';', '<', '=', '>', '?', '@', '`', '~', '^'];
+            if (
+                $isVFlag
+                && $i + 1 < $len
+                && $pattern[$i + 1] === $c
+                && in_array($c, $vDoublePunct, true)
+            ) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Invalid regular expression: /{$pattern}/: Reserved class-set double punctuator",
+                );
             }
             $prevWasClassEscape = false;
             $i++;
