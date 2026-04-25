@@ -3408,6 +3408,14 @@ class Parser
             // Annex B: for (var x = expr in obj) is valid in sloppy mode.
             // The initializer is evaluated, then the for-in loop runs normally.
             if ($init !== null && $kind === 'var' && $this->check(TokenType::In)) {
+                // `for await (var x = expr in obj)` is invalid: for-await
+                // only takes for-of, never for-in.
+                if ($isAwait) {
+                    throw new ParseError(
+                        "'for await' loops must be used with 'of'",
+                        $this->current(),
+                    );
+                }
                 // Strict mode: for-in initializers are always a SyntaxError.
                 if ($this->strictMode) {
                     throw new ParseError(
@@ -3449,6 +3457,14 @@ class Parser
             $update = $this->check(TokenType::RightParen) ? null : $this->parseExpression();
             $this->expect(TokenType::RightParen);
             $body = $this->parseSingleStmtBody();
+            // Per §14.7.5.1: `for await` is only valid as for-of (not C-style
+            // or for-in). Reject the C-style fall-through here.
+            if ($isAwait) {
+                throw new ParseError(
+                    "'for await' loops must be used with 'of'",
+                    $this->current(),
+                );
+            }
             // Per §14.7.4.1: lex-bound names in for-init can't overlap
             // with var-declared names in the body Statement.
             if ($kind !== 'var') {
@@ -3467,6 +3483,13 @@ class Parser
             $update = $this->check(TokenType::RightParen) ? null : $this->parseExpression();
             $this->expect(TokenType::RightParen);
             $body = $this->parseSingleStmtBody();
+            // `for await (;;)` is a SyntaxError per §14.7.5.1.
+            if ($isAwait) {
+                throw new ParseError(
+                    "'for await' loops must be used with 'of'",
+                    $this->current(),
+                );
+            }
             return new ForStatement($location, null, $test, $update, $body);
         }
 
@@ -3549,7 +3572,13 @@ class Parser
             return new ForOfStatement($location, $init, $right, $body, $isAwait);
         }
 
-        // Regular for
+        // Regular for. `for await (expr ;;)` is a SyntaxError per §14.7.5.1.
+        if ($isAwait) {
+            throw new ParseError(
+                "'for await' loops must be used with 'of'",
+                $this->current(),
+            );
+        }
         $this->expect(TokenType::Semicolon);
         $test = $this->check(TokenType::Semicolon) ? null : $this->parseExpression();
         $this->expect(TokenType::Semicolon);
