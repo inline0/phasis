@@ -5193,6 +5193,16 @@ class Parser
                         );
                     }
                 }
+                // \xNN must consume exactly 2 hex digits in u-mode.
+                if ($next === 'x' && $unicode) {
+                    $hex1 = $i + 2 < $len ? $pattern[$i + 2] : '';
+                    $hex2 = $i + 3 < $len ? $pattern[$i + 3] : '';
+                    if (!ctype_xdigit($hex1) || !ctype_xdigit($hex2)) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Invalid \\x escape",
+                        );
+                    }
+                }
                 // \c must be followed by A-Za-z in u/v mode. In non-u, \c
                 // followed by a non-letter was historically accepted but the
                 // Annex B extension that allowed it is precluded under u.
@@ -5480,6 +5490,13 @@ class Parser
                 $i++;
                 continue;
             }
+            // u-mode forbids stray `}` and `]` outside a quantifier or
+            // character class.
+            if ($unicode && !$inClass && ($c === '}' || $c === ']')) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Invalid regular expression: /{$pattern}/: Lone quantifier brackets",
+                );
+            }
             // Any other character is an atom; the lookbehind-quantifier
             // restriction only fires when a quantifier IMMEDIATELY follows
             // the lookbehind close, so consume the flag here.
@@ -5747,6 +5764,16 @@ class Parser
                     throw new \PhpJs\Exceptions\SyntaxError(
                         "Invalid regular expression: /{$pattern}/: Invalid escape",
                     );
+                }
+                // \xNN inside character class also needs 2 hex digits in u-mode.
+                if ($next === 'x') {
+                    $hex1 = $i + 2 < $len ? $pattern[$i + 2] : '';
+                    $hex2 = $i + 3 < $len ? $pattern[$i + 3] : '';
+                    if (!ctype_xdigit($hex1) || !ctype_xdigit($hex2)) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            "Invalid regular expression: /{$pattern}/: Invalid \\x escape",
+                        );
+                    }
                 }
                 $i += 2;
                 $prevWasClassEscape = false;
