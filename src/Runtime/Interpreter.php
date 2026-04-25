@@ -5213,12 +5213,16 @@ class Interpreter
                 return JsUndefined::instance();
             }
             // Check for String.prototype properties via global String.prototype.
-            // Return the raw value (no wrapping). Method-call this-binding is
-            // handled by the CallExpression evaluator, not here.
+            // Use getWithValueReceiver so accessor getters observe the
+            // primitive string as their `this` (per spec OrdinaryGet for a
+            // primitive receiver). Method-call this-binding is handled by
+            // the CallExpression evaluator, not here.
             if ($env->has('__StringPrototype__')) {
                 $proto = $env->get('__StringPrototype__');
                 if ($proto instanceof JsObject) {
-                    $val = $proto->get($key);
+                    $val = $isSymbolKey && $rawKey instanceof JsSymbol
+                        ? $proto->getBySymbolWithReceiver($rawKey, $obj)
+                        : $proto->getWithValueReceiver($key, $obj);
                     if (!$val instanceof JsUndefined) {
                         return $val;
                     }
@@ -5325,6 +5329,15 @@ class Interpreter
     ): JsValue {
         $current = $object;
         while ($current !== null) {
+            // If we hit a Proxy in the prototype chain, delegate to its
+            // [[Get]] trap with the primitive receiver preserved per spec
+            // OrdinaryGet — the trap MUST observe the original primitive.
+            if ($current instanceof \PhpJs\Value\JsProxy) {
+                if ($isSymbolKey && $rawKey instanceof JsSymbol) {
+                    return $current->getBySymbolWithReceiver($rawKey, $primitiveReceiver);
+                }
+                return $current->getWithValueReceiver($key, $primitiveReceiver);
+            }
             if ($isSymbolKey && $rawKey instanceof JsSymbol) {
                 $desc = $current->getSymbolPropertyDescriptor($rawKey);
             } else {
