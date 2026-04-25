@@ -2067,7 +2067,14 @@ class Parser
         if (
             $this->strictMode
             && $node instanceof Identifier
-            && ($node->name === 'eval' || $node->name === 'arguments')
+            && (
+                $node->name === 'eval'
+                || $node->name === 'arguments'
+                || $node->name === 'let'
+                || $node->name === 'static'
+                || $node->name === 'yield'
+                || self::isStrictModeFutureReserved($node->name)
+            )
         ) {
             throw new \PhpJs\Exceptions\SyntaxError(
                 "Binding identifier '{$node->name}' may not be used in strict mode",
@@ -2374,14 +2381,25 @@ class Parser
         if ($effectiveStrict || $nonSimple) {
             self::validateUniqueParameterNames($params, $location);
         }
-        // In strict mode, no parameter may be 'arguments' or 'eval'.
+        // In strict mode, no parameter may be 'arguments', 'eval', or any
+        // strict-mode reserved word (let, static, yield, implements,
+        // interface, package, private, protected, public). These are
+        // rejected at parse time when the function inherits strict mode
+        // from its body's "use strict" directive (retroactive strict).
         if ($effectiveStrict) {
             foreach ($params as $p) {
                 if ($p === null) {
                     continue;
                 }
                 foreach (self::collectPatternNames($p) as $name) {
-                    if ($name === 'arguments' || $name === 'eval') {
+                    if (
+                        $name === 'arguments'
+                        || $name === 'eval'
+                        || $name === 'let'
+                        || $name === 'static'
+                        || $name === 'yield'
+                        || self::isStrictModeFutureReserved($name)
+                    ) {
                         throw new ParseError(
                             "Parameter name '{$name}' may not be used in strict mode",
                             new \PhpJs\Lexer\Token(TokenType::Identifier, $name, $location),
@@ -3927,7 +3945,24 @@ class Parser
         $expr = $this->parseExpression();
 
         // label: statement
-        if ($expr instanceof Identifier && $this->eat(TokenType::Colon)) {
+        if ($expr instanceof Identifier && $this->check(TokenType::Colon)) {
+            // Per §13.13: LabelIdentifier is BindingIdentifier — reserved
+            // words (super, enum, this, etc.) are never valid as labels.
+            // Strict-mode reserved words are validated by parseIdentifier
+            // when they reach the binding-identifier slot, but `super`
+            // (and `enum`) can sneak through via parsePrimary returning a
+            // synthetic Identifier; reject them at the label slot here.
+            if (
+                $expr->name === 'super'
+                || $expr->name === 'enum'
+                || self::isReservedWordIdentifierName($expr->name)
+            ) {
+                throw new ParseError(
+                    "Unexpected reserved word '{$expr->name}'",
+                    $this->current(),
+                );
+            }
+            $this->advance();
             // Per Annex B §B.3.2: `label: function f() {}` is permitted in
             // non-strict code at the top level of a Script, FunctionBody,
             // or Block, but is always a SyntaxError when used as the body
@@ -5685,10 +5720,15 @@ class Parser
                 $token,
             );
         }
-        // `let` is reserved as IdentifierReference in strict mode.
-        if ($this->strictMode && $token->value === 'let') {
+        // `let` and `static` are reserved as IdentifierReference in strict
+        // mode. Per §13.13, LabelIdentifier is BindingIdentifier so the
+        // strict-mode reserved-word check applies to label names too.
+        if (
+            $this->strictMode
+            && ($token->value === 'let' || $token->value === 'static' || $token->value === 'yield')
+        ) {
             throw new ParseError(
-                "Unexpected reserved word 'let'",
+                "Unexpected reserved word '{$token->value}'",
                 $token,
             );
         }
