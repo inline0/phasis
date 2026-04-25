@@ -213,8 +213,12 @@ class Lexer
 
         $keyword = TokenType::fromKeyword($result);
         if ($keyword !== null) {
-            // Mark escaped keywords so the parser can reject them where the spec
-            // requires the literal keyword (e.g. import() must be literal 'import').
+            // Per spec 12.6: ReservedWord is matched against the source text
+            // only, so an escaped form (`do`) is not a keyword. We still
+            // emit the keyword token so the parser can flag it where the spec
+            // forbids escaped keywords (most positions); contextual keywords
+            // (`let`, `static`, …) keep using the rawValue marker to
+            // preserve their dual identifier/keyword role downstream.
             $rawValue = $hasEscape ? 'escaped' : null;
             return new Token($keyword, $result, $start, rawValue: $rawValue);
         }

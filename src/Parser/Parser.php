@@ -520,6 +520,17 @@ class Parser
                 $token,
             );
         }
+        // Per spec 12.6: ReservedWord matching is over the source code points,
+        // so `do` written as `do` is not the keyword `do`. Reject the
+        // escaped form here for the strictly reserved keywords; contextual
+        // keywords (let/static/async/yield/await/of) keep their dual role and
+        // are validated at their specific call sites.
+        if ($token->rawValue === 'escaped' && self::isStrictlyReservedKeyword($token->type)) {
+            throw new ParseError(
+                "Keyword '{$token->value}' must not contain escaped characters",
+                $token,
+            );
+        }
         // Bare `let [` pattern in expression position is a SyntaxError (spec
         // lookahead restriction) except when starting a let-declaration;
         // since parseStatement is for Statements only, a let-declaration is
@@ -1580,6 +1591,54 @@ class Parser
      * computed / not statically determinable. Handles Identifier,
      * PrivateIdentifier, and Literal (string/number) keys.
      */
+    /**
+     * Whether $type is a reserved keyword that cannot be spelled with a
+     * Unicode escape sequence per ES spec 12.6. Contextual keywords
+     * (let/static/async/yield/await/of) are excluded — those are validated
+     * at the specific positions where the parser distinguishes them.
+     */
+    private static function isStrictlyReservedKeyword(TokenType $type): bool
+    {
+        return match ($type) {
+            TokenType::Break,
+            TokenType::Case,
+            TokenType::Catch,
+            TokenType::Class_,
+            TokenType::Const_,
+            TokenType::Continue,
+            TokenType::Debugger,
+            TokenType::Default_,
+            TokenType::Delete,
+            TokenType::Do,
+            TokenType::Else,
+            TokenType::Export,
+            TokenType::Extends,
+            TokenType::Finally,
+            TokenType::For,
+            TokenType::Function_,
+            TokenType::If,
+            TokenType::Import,
+            TokenType::In,
+            TokenType::Instanceof,
+            TokenType::New,
+            TokenType::Null,
+            TokenType::Return,
+            TokenType::Super,
+            TokenType::Switch,
+            TokenType::This,
+            TokenType::Throw,
+            TokenType::True,
+            TokenType::False,
+            TokenType::Try,
+            TokenType::Typeof,
+            TokenType::Var,
+            TokenType::Void,
+            TokenType::While,
+            TokenType::With => true,
+            default => false,
+        };
+    }
+
     private static function staticPropName(Node $key): ?string
     {
         if ($key instanceof Identifier) {
@@ -2982,6 +3041,12 @@ class Parser
                 && $next->type !== TokenType::RightBrace
                 && $next->type !== TokenType::Star
             ) {
+                if ($this->current()->rawValue === 'escaped') {
+                    throw new ParseError(
+                        "Keyword 'get' must not contain escaped characters",
+                        $this->current(),
+                    );
+                }
                 $this->advance();
                 $kind = 'get';
             }
@@ -2994,6 +3059,12 @@ class Parser
                 && $next->type !== TokenType::RightBrace
                 && $next->type !== TokenType::Star
             ) {
+                if ($this->current()->rawValue === 'escaped') {
+                    throw new ParseError(
+                        "Keyword 'set' must not contain escaped characters",
+                        $this->current(),
+                    );
+                }
                 $this->advance();
                 $kind = 'set';
             }
