@@ -496,8 +496,10 @@ class DateConstructor
         }
 
         $ms = (int) $tv;
-        $seconds = intdiv($ms, 1000);
-        $millis = abs($ms % 1000);
+        // Floor division so negative time values (years before 1970) split
+        // into the correct (seconds, millis) pair: ms in [0, 999].
+        $seconds = (int) floor($tv / 1000);
+        $millis = $ms - $seconds * 1000;
 
         $dt = new \DateTimeImmutable('@' . $seconds);
         $utc = $dt->setTimezone(new \DateTimeZone('UTC'));
