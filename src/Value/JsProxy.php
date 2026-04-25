@@ -1226,6 +1226,14 @@ class JsProxy extends JsObject
                 $proto = ($protoSource instanceof JsFunction) ? $protoSource->get('prototype') : null;
             }
             if (!$proto instanceof JsObject) {
+                // Per GetPrototypeFromConstructor step 4.a: if Get returned a
+                // non-Object, fall through to GetFunctionRealm. For a Proxy,
+                // GetFunctionRealm calls ValidateNonRevokedProxy first — so a
+                // get trap that revokes the proxy mid-flight must surface as
+                // a TypeError, not as a null target dereference.
+                if ($this->isRevoked()) {
+                    throw new TypeError('Cannot perform Construct on a proxy that has been revoked');
+                }
                 $proto = $this->target->get('prototype');
             }
             // Construct manually so [[NewTarget]] is the user-supplied

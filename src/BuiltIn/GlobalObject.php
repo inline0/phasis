@@ -583,9 +583,39 @@ class GlobalObject
                             $result = $innerInterp->callFunction($target, $newObj, $mergedArgs);
                             return $result instanceof \PhpJs\Value\JsObject ? $result : $newObj;
                         }
-                        // Called via construct path without interpreter (e.g. proxy forwarding).
-                        // Delegate to target's construct method directly.
-                        return $target->construct($mergedArgs);
+                        // Called via construct path without interpreter (e.g.
+                        // proxy forwarding). Construct manually so the user's
+                        // newTarget (extracted from $th's [[NewTarget]] slot
+                        // above) is honoured rather than collapsing to the
+                        // bound target's prototype.
+                        $activeNewTarget = $th->get('[[NewTarget]]');
+                        if (
+                            $selfRef->fn !== null
+                            && $activeNewTarget === $selfRef->fn
+                        ) {
+                            $activeNewTarget = $target;
+                        }
+                        $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
+                            ? $activeNewTarget
+                            : $target;
+                        $ntProto = $ntObj->get('prototype');
+                        $useProto = $ntProto instanceof \PhpJs\Value\JsObject
+                            ? $ntProto
+                            : ($target->get('prototype') instanceof \PhpJs\Value\JsObject
+                                ? $target->get('prototype')
+                                : null);
+                        $newObj = new \PhpJs\Value\JsObject($useProto);
+                        $newObj->defineOwnProperty(
+                            '[[NewTarget]]',
+                            \PhpJs\Object\PropertyDescriptor::data($ntObj, false, false, false),
+                        );
+                        $result = $target->call($newObj, $mergedArgs);
+                        if ($result instanceof \PhpJs\Value\JsObject) {
+                            $result->forceDelete('[[NewTarget]]');
+                            return $result;
+                        }
+                        $newObj->forceDelete('[[NewTarget]]');
+                        return $newObj;
                     }
                     return $target->call($boundThis, $mergedArgs);
                 },
