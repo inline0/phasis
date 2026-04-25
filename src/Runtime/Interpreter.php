@@ -12905,6 +12905,23 @@ class Interpreter
                     $i += 3;
                     continue;
                 }
+                // [\S] and [^\S]: PCRE \S excludes FEFF, but JS \S also
+                // excludes FEFF, so the inverse matters. Rewrite the class to
+                // express JS-compatible semantics directly.
+                if ($i + 3 < $len && $pattern[$i + 1] === '\\'
+                    && $pattern[$i + 2] === 'S' && $pattern[$i + 3] === ']'
+                ) {
+                    $result .= '[^\\s\\x{FEFF}]';
+                    $i += 4;
+                    continue;
+                }
+                if ($i + 4 < $len && $pattern[$i + 1] === '^' && $pattern[$i + 2] === '\\'
+                    && $pattern[$i + 3] === 'S' && $pattern[$i + 4] === ']'
+                ) {
+                    $result .= '[\\s\\x{FEFF}]';
+                    $i += 5;
+                    continue;
+                }
                 $inCharClass = true;
                 $result .= $ch;
                 $i++;
