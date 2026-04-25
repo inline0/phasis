@@ -5808,6 +5808,25 @@ class Parser
                     $prevWasClassEscape = false;
                     continue;
                 }
+                // /v `\q{…}` — string-literal class escape. Skip past
+                // the body; the v-flag transform turns it into an
+                // alternation later.
+                if ($isVFlag && $next === 'q') {
+                    if ($i + 2 < $len && $pattern[$i + 2] === '{') {
+                        $j = $i + 3;
+                        while ($j < $len && $pattern[$j] !== '}') {
+                            $j++;
+                        }
+                        if ($j >= $len) {
+                            throw new \PhpJs\Exceptions\SyntaxError(
+                                "Invalid regular expression: /{$pattern}/: Unterminated \\q{}",
+                            );
+                        }
+                        $i = $j + 1;
+                        $prevWasClassEscape = true;
+                        continue;
+                    }
+                }
                 // Identity escape: only specific chars allowed in u-mode.
                 static $allowedClassIdEscape = ['^', '$', '.', '*', '+', '?', '(', ')', '[', ']', '{', '}', '|', '/', '\\', '-',
                     'b', 'B', 'f', 'n', 'r', 't', 'v', '0', 'c', 'x', 'k'];
