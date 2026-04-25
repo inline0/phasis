@@ -2263,27 +2263,31 @@ class Interpreter
                 }
             }
 
-            // Hoist var declarations and function declarations.
-            // For eval at global scope, function/var bindings must be
-            // configurable (per EvalDeclarationInstantiation step 15/18).
-            $isGlobalEval = !$evalStrict && $varEnv->getLinkedObject() !== null;
-            if ($isGlobalEval) {
-                $this->hoistEvalGlobalDeclarations($program->body, $varEnv);
-            } elseif (!$evalStrict) {
-                // Non-strict, non-global eval: per EvalDeclarationInstantiation,
-                // var bindings are created in the caller's variable environment
-                // even if a same-named binding exists in an outer scope.
-                $this->hoistEvalLocalDeclarations($program->body, $varEnv);
-            } else {
-                $this->hoistDeclarations($program->body, $varEnv);
-            }
-
             // Create a lexical environment for class/let/const TDZ bindings.
             // Per spec step 14: lexEnv = NewDeclarativeEnvironment(ctx.LexicalEnvironment).
             // For non-strict eval, this must be a child of the caller's lexical
             // environment ($env), not varEnv, so that with-scopes and block-scopes
             // from the calling context remain visible during execution.
             $lexEnv = ($evalStrict ? $varEnv : $env)->createChild();
+
+            // Hoist var declarations and function declarations.
+            // For eval at global scope, function/var bindings must be
+            // configurable (per EvalDeclarationInstantiation step 15/18).
+            // Per spec step 16, instantiated function objects close over
+            // lexEnv, so hoist function decls AFTER lexEnv exists and use
+            // it as the function's [[Environment]].
+            $isGlobalEval = !$evalStrict && $varEnv->getLinkedObject() !== null;
+            if ($isGlobalEval) {
+                $this->hoistEvalGlobalDeclarations($program->body, $varEnv, $lexEnv);
+            } elseif (!$evalStrict) {
+                // Non-strict, non-global eval: per EvalDeclarationInstantiation,
+                // var bindings are created in the caller's variable environment
+                // even if a same-named binding exists in an outer scope.
+                $this->hoistEvalLocalDeclarations($program->body, $varEnv, $lexEnv);
+            } else {
+                $this->hoistDeclarations($program->body, $varEnv);
+            }
+
             $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
 
             // Execute the parsed program body in the lexical environment.
@@ -4360,17 +4364,17 @@ class Interpreter
             }
 
             // Collect parameter names for Annex B hoisting checks.
-            // Per spec, 'arguments' is treated as a parameter name when the
-            // arguments object is created (22.1.3.3 step 22f).
+            // Per B.3.2.1, the check uses parameterNames (BoundNames of
+            // FormalParameters). The implicit `arguments` binding is NOT a
+            // formal parameter, so a block-scoped `function arguments() {}`
+            // is eligible for Annex B var-hoisting and overwrites the
+            // implicit arguments object.
             $savedParamNames = $this->currentParamNames;
             $this->currentParamNames = [];
             foreach ($params as $p) {
                 foreach ($this->patternBoundNames($p) as $pName) {
                     $this->currentParamNames[$pName] = true;
                 }
-            }
-            if (!$fn->isArrow()) {
-                $this->currentParamNames['arguments'] = true;
             }
 
             // When the function has parameter expressions (defaults, destructuring
@@ -7878,7 +7882,11 @@ class Interpreter
                     $blockFn = null;
                 }
                 if ($blockFn instanceof JsFunction) {
-                    $varScope = $env;
+                    // Skip the immediate block scope and look for the
+                    // enclosing var scope. The block scope already holds
+                    // the function as its lexical binding; Annex B's job is
+                    // to mirror it into the function/global scope.
+                    $varScope = $env->getParent();
                     while ($varScope !== null && !$varScope->isAnnexBHoisted($name)) {
                         $varScope = $varScope->getParent();
                     }
@@ -9589,11 +9597,23 @@ class Interpreter
      *
      * @param Node[] $statements
      */
-    private function hoistEvalLocalDeclarations(array $statements, Environment $env): void
+    private function hoistEvalLocalDeclarations(array $statements, Environment $env, ?Environment $lexEnv = null): void
     {
+        // Per Annex B.3.4, a top-level LabeledStatement wrapping a
+        // FunctionDeclaration is treated as a plain FunctionDeclaration
+        // for hoisting purposes. Unwrap labels (which can nest) up front
+        // so the rest of this method sees the FunctionDeclaration directly.
+        $unwrapLabels = function (Node $stmt): Node {
+            while ($stmt instanceof LabeledStatement) {
+                $stmt = $stmt->body;
+            }
+            return $stmt;
+        };
+
         // Collect declared function and var names for Annex B step a check.
         $declaredFuncOrVarNames = [];
         foreach ($statements as $stmt) {
+            $stmt = $unwrapLabels($stmt);
             if ($stmt instanceof FunctionDeclaration) {
                 $declaredFuncOrVarNames[$stmt->id->name] = true;
             } elseif ($stmt instanceof VariableDeclaration && $stmt->kind === 'var') {
@@ -9622,13 +9642,18 @@ class Interpreter
             }
         }
 
+        // Per EvalDeclarationInstantiation step 16: function objects close
+        // over the eval's lexEnv (so they can see let/const declared inside
+        // the eval), even though the binding lives in varEnv.
+        $funcParentEnv = $lexEnv ?? $env;
         foreach ($statements as $stmt) {
+            $stmt = $unwrapLabels($stmt);
             if ($stmt instanceof FunctionDeclaration) {
                 $fn = new JsFunction(
                     $stmt->id->name,
                     $stmt->params,
                     $stmt->body,
-                    $env,
+                    $funcParentEnv,
                     isGenerator: $stmt->generator,
                     isAsync: $stmt->async,
                     strict: $this->strictMode,
@@ -9822,7 +9847,7 @@ class Interpreter
      *
      * @param Node[] $statements
      */
-    private function hoistEvalGlobalDeclarations(array $statements, Environment $env): void
+    private function hoistEvalGlobalDeclarations(array $statements, Environment $env, ?Environment $lexEnv = null): void
     {
         $globalObj = $env->getLinkedObject();
         $isExtensible = $globalObj !== null ? $globalObj->isExtensible() : true;
@@ -9946,12 +9971,16 @@ class Interpreter
         }
 
         // Initialize function declarations.
+        // Per EvalDeclarationInstantiation step 16: function objects close
+        // over the eval's lexEnv (so they can see let/const declared inside
+        // the eval), even though the binding lives in varEnv.
+        $funcParentEnv = $lexEnv ?? $env;
         foreach ($funcsToInit as $stmt) {
             $fn = new JsFunction(
                 $stmt->id->name,
                 $stmt->params,
                 $stmt->body,
-                $env,
+                $funcParentEnv,
                 isGenerator: $stmt->generator,
                 isAsync: $stmt->async,
                 strict: $this->strictMode,
@@ -10273,6 +10302,11 @@ class Interpreter
         if ($stmt instanceof SwitchStatement) {
             foreach ($stmt->cases as $case) {
                 foreach ($case->consequent as $inner) {
+                    // Per Annex B.3.4: unwrap LabeledStatement so labeled
+                    // function decls inside switch cases also hoist.
+                    if ($inner instanceof LabeledStatement) {
+                        $inner = $inner->body;
+                    }
                     if ($inner instanceof FunctionDeclaration && !$inner->async && !$inner->generator) {
                         if ($canHoist($inner->id->name)) {
                             $env->defineAnnexBVar($inner->id->name, JsUndefined::instance(), $this->isEvalContext);
@@ -10502,9 +10536,16 @@ class Interpreter
         } elseif ($stmt instanceof SwitchStatement) {
             foreach ($stmt->cases as $case) {
                 foreach ($case->consequent as $child) {
-                    if ($child instanceof FunctionDeclaration && !$child->async && !$child->generator) {
+                    // Per Annex B.3.4 unwrap label so `l: function f() {}`
+                    // inside a switch case hoists like a plain function decl.
+                    $unwrapped = $child instanceof LabeledStatement ? $child->body : $child;
+                    if (
+                        $unwrapped instanceof FunctionDeclaration
+                        && !$unwrapped->async
+                        && !$unwrapped->generator
+                    ) {
                         $this->addEvalAnnexBCandidate(
-                            $child,
+                            $unwrapped,
                             $declaredFuncOrVarNames,
                             $lexicalNames,
                             $result,

@@ -2006,63 +2006,63 @@ class ArrayConstructor
                         /** @var JsFunction $iteratorMethod */
                         $iterator = $iteratorMethod->call($arrayLike, []);
                     }
-                        if (!$iterator instanceof JsObject) {
-                            throw new TypeError('Array.from: iterator is not an object');
+                    if (!$iterator instanceof JsObject) {
+                        throw new TypeError('Array.from: iterator is not an object');
+                    }
+                    while (true) {
+                        $nextMethod = $iterator->get('next');
+                        if (!$nextMethod instanceof JsFunction) {
+                            break;
                         }
-                        while (true) {
-                            $nextMethod = $iterator->get('next');
-                            if (!$nextMethod instanceof JsFunction) {
-                                break;
-                            }
-                            $result = $nextMethod->call($iterator, []);
-                            if (!$result instanceof JsObject) {
-                                throw new TypeError('Array.from: iterator result is not an object');
-                            }
-                            $done = TypeConversion::toBoolean($result->get('done'));
-                            if ($done) {
-                                break;
-                            }
-                            $val = $result->get('value');
-                            if ($mapFn !== null) {
-                                try {
-                                    $val = $mapFn->call(
-                                        $mapThisArg,
-                                        [$val, new JsNumber((float) $index)]
-                                    );
-                                } catch (\Throwable $mapErr) {
-                                    // Per spec: IteratorClose(iterator, mappedValue).
-                                    $returnMethod = $iterator->get('return');
-                                    if ($returnMethod instanceof JsFunction) {
-                                        try {
-                                            $returnMethod->call($iterator, []);
-                                        } catch (\Throwable $e) {
-                                            // Ignore close errors, re-throw original.
-                                        }
-                                    }
-                                    throw $mapErr;
-                                }
-                            }
-                            // CreateDataPropertyOrThrow per spec.
-                            $success = $a->defineOwnProperty(
-                                (string) $index,
-                                PropertyDescriptor::data($val, true, true, true),
-                            );
-                            if (!$success) {
-                                // Per spec: IteratorClose(iterator, defineStatus).
+                        $result = $nextMethod->call($iterator, []);
+                        if (!$result instanceof JsObject) {
+                            throw new TypeError('Array.from: iterator result is not an object');
+                        }
+                        $done = TypeConversion::toBoolean($result->get('done'));
+                        if ($done) {
+                            break;
+                        }
+                        $val = $result->get('value');
+                        if ($mapFn !== null) {
+                            try {
+                                $val = $mapFn->call(
+                                    $mapThisArg,
+                                    [$val, new JsNumber((float) $index)]
+                                );
+                            } catch (\Throwable $mapErr) {
+                                // Per spec: IteratorClose(iterator, mappedValue).
                                 $returnMethod = $iterator->get('return');
                                 if ($returnMethod instanceof JsFunction) {
                                     try {
                                         $returnMethod->call($iterator, []);
                                     } catch (\Throwable $e) {
-                                        // Ignore errors from iterator close.
+                                        // Ignore close errors, re-throw original.
                                     }
                                 }
-                                throw new TypeError(
-                                    'Cannot define property ' . $index . ' on result object'
-                                );
+                                throw $mapErr;
                             }
-                            $index++;
                         }
+                        // CreateDataPropertyOrThrow per spec.
+                        $success = $a->defineOwnProperty(
+                            (string) $index,
+                            PropertyDescriptor::data($val, true, true, true),
+                        );
+                        if (!$success) {
+                            // Per spec: IteratorClose(iterator, defineStatus).
+                            $returnMethod = $iterator->get('return');
+                            if ($returnMethod instanceof JsFunction) {
+                                try {
+                                    $returnMethod->call($iterator, []);
+                                } catch (\Throwable $e) {
+                                    // Ignore errors from iterator close.
+                                }
+                            }
+                            throw new TypeError(
+                                'Cannot define property ' . $index . ' on result object'
+                            );
+                        }
+                        $index++;
+                    }
 
                     // Per spec §23.1.2.1 step 7.h: Set(A, "length", index, true).
                     // Strict-mode set surfaces TypeError when the result has
