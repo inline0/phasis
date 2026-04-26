@@ -1777,22 +1777,41 @@ class IntlObject
                 return new JsString($startStr);
             }
             $sep = self::numberFormatRangeSeparator($this_);
-            // Currency formatRange with an explicit sign collapses
-            // the shared sign+currency prefix off the end value:
-            // "+$2.90 – +$3.10" becomes "+$2.90–3.10" because the
-            // en-dash is the locale's range pattern once the prefix
-            // is shared. Without an explicit sign, V8 keeps the
-            // currency on both endpoints ("$3 – $5"), so we only
-            // collapse when the start string starts with a sign.
+            // Currency formatRange collapses shared affixes so the
+            // range pattern emits a single currency symbol. Both
+            // shared prefix (sign + leading currency) and shared
+            // suffix (trailing currency) collapse independently:
+            //   - prefix-currency en-US with explicit sign:
+            //       "+$2.90" – "+$3.10" → "+$2.90–3.10"
+            //   - suffix-currency pt-PT no sign:
+            //       "3 €" – "5 €" → "3 - 5 €"
+            //   - suffix-currency pt-PT with sign:
+            //       "+2,90 €" – "+3,10 €" → "+2,90 - 3,10 €"
             $style = self::extractInternalString($this_, '[[Style]]', 'decimal');
-            $signDisplay = self::extractInternalString($this_, '[[SignDisplay]]', 'auto');
-            $hasExplicitSign = ($signDisplay === 'always' || $signDisplay === 'exceptZero')
-                && (str_starts_with($startStr, '+') || str_starts_with($startStr, '-'));
-            if ($style === 'currency' && $hasExplicitSign) {
-                $shared = self::sharedCurrencyPrefix($startStr, $endStr);
-                if ($shared !== '' && str_starts_with($endStr, $shared)) {
-                    $endStr = substr($endStr, strlen($shared));
+            if ($style === 'currency') {
+                $signDisplay = self::extractInternalString($this_, '[[SignDisplay]]', 'auto');
+                $hasExplicitSign = ($signDisplay === 'always' || $signDisplay === 'exceptZero')
+                    && (str_starts_with($startStr, '+') || str_starts_with($startStr, '-'));
+                $sharedPrefix = self::sharedCurrencyPrefix($startStr, $endStr);
+                $sharedSuffix = self::sharedCurrencySuffix($startStr, $endStr);
+                $hasCurrencyInPrefix = $sharedPrefix !== '' && self::containsCurrencyChar($sharedPrefix);
+                $hasCurrencyInSuffix = $sharedSuffix !== '' && self::containsCurrencyChar($sharedSuffix);
+                if ($hasCurrencyInPrefix && $hasExplicitSign) {
+                    // Prefix-currency locales (en-US): collapse the
+                    // entire shared prefix and switch to the no-space
+                    // separator. Sign + currency live on the start.
+                    $endStr = substr($endStr, strlen($sharedPrefix));
                     $sep = self::numberFormatRangeSeparatorCollapsed($this_);
+                } elseif ($hasCurrencyInSuffix) {
+                    // Suffix-currency locales (pt-PT): collapse the
+                    // shared suffix off the start, and (when an
+                    // explicit sign is present) collapse the shared
+                    // sign prefix off the end. The separator stays
+                    // the locale's default range pattern.
+                    $startStr = substr($startStr, 0, -strlen($sharedSuffix));
+                    if ($hasExplicitSign && $sharedPrefix !== '') {
+                        $endStr = substr($endStr, strlen($sharedPrefix));
+                    }
                 }
             }
             return new JsString($startStr . $sep . $endStr);
@@ -3069,6 +3088,52 @@ class IntlObject
     private static function numberFormatRangeSeparatorCollapsed(JsObject $nf): string
     {
         return "\u{2013}";
+    }
+
+    /**
+     * Detect whether a shared affix string contains any character
+     * that could plausibly be a currency symbol (anything outside
+     * the ASCII whitespace / sign / paren / digit set).
+     */
+    private static function containsCurrencyChar(string $affix): bool
+    {
+        if ($affix === '') {
+            return false;
+        }
+        // Strip ASCII sign / whitespace / digits / parens; if anything
+        // remains it's likely a currency glyph (Latin letter sequence
+        // for ISO codes, "$"/"€"/"¥" etc.).
+        $stripped = preg_replace('/[+\-\s\d()\\.,]/u', '', $affix);
+        return is_string($stripped) && $stripped !== '';
+    }
+
+    /**
+     * Longest shared NON-DIGIT trailing run of two formatted
+     * values. Walks right-to-left from each end and stops at the
+     * first numeric digit. Used for collapsing a shared currency
+     * suffix in suffix-currency locales like pt-PT.
+     */
+    private static function sharedCurrencySuffix(string $a, string $b): string
+    {
+        $aLen = strlen($a);
+        $bLen = strlen($b);
+        $shared = '';
+        $i = 0;
+        while ($i < $aLen && $i < $bLen) {
+            $cha = $a[$aLen - 1 - $i];
+            $chb = $b[$bLen - 1 - $i];
+            if ($cha !== $chb) {
+                break;
+            }
+            if (ctype_digit($cha)) {
+                break;
+            }
+            $shared = $cha . $shared;
+            $i++;
+        }
+        // Strip a leading whitespace from the suffix so it stays
+        // attached to the *end* value rather than the separator.
+        return ltrim($shared);
     }
 
     private static function numberFormatRangeSeparator(JsObject $nf): string
