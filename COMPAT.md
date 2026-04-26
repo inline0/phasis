@@ -4,62 +4,62 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-26T18:55:09+00:00`
+- Snapshot time: `2026-04-26T18:57:58+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `491f4ff` (dirty)
+- Git: `main` @ `d9f882f` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 47942 | 403 | 507 | 0 | 1576 | 78 | 48345 | 48852 | 50506 | 99.2% |
+| 48349 | 424 | 507 | 0 | 1178 | 48 | 48773 | 49280 | 50506 | 99.1% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| annexB | INCOMPLETE | 946 | 8 | 0 | 0 | 125 | 0 | 99.2% |
-| built-ins | RUNNING | 21580 | 178 | 3 | 0 | 890 | 78 | 99.2% |
+| annexB | INCOMPLETE | 1046 | 8 | 0 | 0 | 25 | 0 | 99.2% |
+| built-ins | RUNNING | 21732 | 194 | 3 | 0 | 752 | 48 | 99.1% |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
-| intl402 | INCOMPLETE | 1445 | 47 | 0 | 0 | 74 | 0 | 96.8% |
-| language | INCOMPLETE | 22718 | 32 | 504 | 0 | 130 | 0 | 99.9% |
-| staging | INCOMPLETE | 1139 | 136 | 0 | 0 | 357 | 0 | 89.3% |
+| intl402 | INCOMPLETE | 1481 | 50 | 0 | 0 | 35 | 0 | 96.7% |
+| language | INCOMPLETE | 22785 | 32 | 504 | 0 | 63 | 0 | 99.9% |
+| staging | INCOMPLETE | 1191 | 138 | 0 | 0 | 303 | 0 | 89.6% |
 
 ## Group Coverage
 
 | Group | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB/built-ins/Array | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
-| annexB/built-ins/Date | PENDING | 0 | 0 | 0 | 0 | 24 | 0 | n/a |
+| annexB/built-ins/Date | PASS | 24 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/built-ins/Function | PENDING | 0 | 0 | 0 | 0 | 6 | 0 | n/a |
 | annexB/built-ins/Object | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | annexB/built-ins/RegExp | PARTIAL | 55 | 7 | 0 | 0 | 0 | 0 | 88.7% |
 | annexB/built-ins/String | PASS | 111 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/built-ins/TypedArrayConstructors | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
-| annexB/built-ins/escape | PENDING | 0 | 0 | 0 | 0 | 16 | 0 | n/a |
-| annexB/built-ins/unescape | PENDING | 0 | 0 | 0 | 0 | 19 | 0 | n/a |
+| annexB/built-ins/escape | PASS | 16 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| annexB/built-ins/unescape | PASS | 19 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/language/comments | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | annexB/language/eval-code | PASS | 469 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| annexB/language/expressions | PENDING | 0 | 0 | 0 | 0 | 19 | 0 | n/a |
+| annexB/language/expressions | PASS | 19 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/language/function-code | PARTIAL | 158 | 1 | 0 | 0 | 0 | 0 | 99.4% |
 | annexB/language/global-code | PASS | 153 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | annexB/language/literals | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
-| annexB/language/statements | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
+| annexB/language/statements | PASS | 22 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AbstractModuleSource | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | built-ins/Array | PARTIAL | 3050 | 25 | 0 | 0 | 0 | 0 | 99.2% |
 | built-ins/ArrayBuffer | PARTIAL | 191 | 1 | 0 | 0 | 0 | 0 | 99.5% |
 | built-ins/ArrayIteratorPrototype | PASS | 27 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AsyncDisposableStack | PASS | 52 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AsyncFromSyncIteratorPrototype | PASS | 38 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/AsyncFunction | PENDING | 0 | 0 | 0 | 0 | 18 | 0 | n/a |
-| built-ins/AsyncGeneratorFunction | PENDING | 0 | 0 | 0 | 0 | 23 | 0 | n/a |
+| built-ins/AsyncFunction | PASS | 18 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/AsyncGeneratorFunction | PARTIAL | 22 | 1 | 0 | 0 | 0 | 0 | 95.7% |
 | built-ins/AsyncGeneratorPrototype | PARTIAL | 45 | 3 | 0 | 0 | 0 | 0 | 93.8% |
 | built-ins/AsyncIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 10 | 0 | n/a |
-| built-ins/Atomics | INCOMPLETE | 170 | 14 | 3 | 0 | 189 | 0 | 92.4% |
+| built-ins/Atomics | INCOMPLETE | 185 | 15 | 3 | 0 | 173 | 0 | 92.5% |
 | built-ins/BigInt | PASS | 75 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Boolean | PASS | 51 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/DataView | PARTIAL | 547 | 3 | 0 | 0 | 0 | 0 | 99.5% |
@@ -68,7 +68,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Error | PASS | 53 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/FinalizationRegistry | PASS | 47 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Function | INCOMPLETE | 495 | 5 | 0 | 0 | 9 | 0 | 99.0% |
-| built-ins/GeneratorFunction | PENDING | 0 | 0 | 0 | 0 | 23 | 0 | n/a |
+| built-ins/GeneratorFunction | PARTIAL | 22 | 1 | 0 | 0 | 0 | 0 | 95.7% |
 | built-ins/GeneratorPrototype | PASS | 61 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Infinity | PENDING | 0 | 0 | 0 | 0 | 6 | 0 | n/a |
 | built-ins/Iterator | PASS | 431 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -87,16 +87,16 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/CharacterClassEscapes | PENDING | 0 | 0 | 0 | 0 | 12 | 0 | n/a |
 | built-ins/RegExp/Symbol.species | PENDING | 0 | 0 | 0 | 0 | 4 | 0 | n/a |
 | built-ins/RegExp/dotall | PENDING | 0 | 0 | 0 | 0 | 4 | 0 | n/a |
-| built-ins/RegExp/escape | PENDING | 0 | 0 | 0 | 0 | 20 | 0 | n/a |
-| built-ins/RegExp/lookBehind | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
+| built-ins/RegExp/escape | PASS | 20 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/RegExp/lookBehind | PARTIAL | 4 | 13 | 0 | 0 | 0 | 0 | 23.5% |
 | built-ins/RegExp/match-indices | PENDING | 0 | 0 | 0 | 0 | 14 | 0 | n/a |
 | built-ins/RegExp/named-groups | PARTIAL | 32 | 4 | 0 | 0 | 0 | 0 | 88.9% |
 | built-ins/RegExp/property-escapes | PASS | 143 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/RegExp/property-escapes/generated | RUNNING | 20 | 7 | 0 | 0 | 354 | 78 | 74.1% |
+| built-ins/RegExp/property-escapes/generated | RUNNING | 20 | 7 | 0 | 0 | 384 | 48 | 74.1% |
 | built-ins/RegExp/prototype | PARTIAL | 473 | 14 | 0 | 0 | 0 | 0 | 97.1% |
 | built-ins/RegExp/regexp-modifiers | PARTIAL | 60 | 10 | 0 | 0 | 0 | 0 | 85.7% |
 | built-ins/RegExp/unicodeSets | PARTIAL | 85 | 28 | 0 | 0 | 0 | 0 | 75.2% |
-| built-ins/RegExpStringIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
+| built-ins/RegExpStringIteratorPrototype | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Set | PASS | 381 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/SetIteratorPrototype | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
 | built-ins/ShadowRealm | PARTIAL | 55 | 9 | 0 | 0 | 0 | 0 | 85.9% |
@@ -128,13 +128,13 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/encodeURIComponent | PASS | 31 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/eval | PENDING | 0 | 0 | 0 | 0 | 10 | 0 | n/a |
 | built-ins/global | PASS | 29 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/isFinite | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
-| built-ins/isNaN | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
+| built-ins/isFinite | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| built-ins/isNaN | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/parseFloat | PASS | 59 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/parseInt | PASS | 60 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/undefined | PENDING | 0 | 0 | 0 | 0 | 8 | 0 | n/a |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
-| intl402 | PENDING | 0 | 0 | 0 | 0 | 22 | 0 | n/a |
+| intl402 | PARTIAL | 21 | 1 | 0 | 0 | 0 | 0 | 95.5% |
 | intl402/Array | PENDING | 0 | 0 | 0 | 0 | 2 | 0 | n/a |
 | intl402/BigInt | PENDING | 0 | 0 | 0 | 0 | 11 | 0 | n/a |
 | intl402/Collator | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -150,7 +150,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | intl402/PluralRules | PASS | 50 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/RelativeTimeFormat | PASS | 79 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Segmenter | PASS | 78 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/String | PENDING | 0 | 0 | 0 | 0 | 17 | 0 | n/a |
+| intl402/String | PARTIAL | 15 | 2 | 0 | 0 | 0 | 0 | 88.2% |
 | intl402/Temporal | PARTIAL | 281 | 42 | 0 | 0 | 0 | 0 | 87.0% |
 | intl402/TypedArray | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | language/arguments-object | INCOMPLETE | 250 | 0 | 0 | 0 | 13 | 0 | 100.0% |
@@ -158,18 +158,18 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/block-scope | PASS | 145 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/comments | PASS | 52 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/computed-property-names | PASS | 48 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/destructuring | PENDING | 0 | 0 | 0 | 0 | 19 | 0 | n/a |
+| language/destructuring | PASS | 19 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/directive-prologue | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/eval-code | PARTIAL | 346 | 1 | 0 | 0 | 0 | 0 | 99.7% |
 | language/export | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| language/expressions | INCOMPLETE | 10579 | 12 | 409 | 0 | 23 | 0 | 99.9% |
+| language/expressions | PARTIAL | 10602 | 12 | 409 | 0 | 0 | 0 | 99.9% |
 | language/function-code | PASS | 217 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/future-reserved-words | PASS | 55 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/global-code | PASS | 42 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/identifier-resolution | PENDING | 0 | 0 | 0 | 0 | 14 | 0 | n/a |
 | language/identifiers | INCOMPLETE | 250 | 0 | 0 | 0 | 10 | 0 | 100.0% |
 | language/import | PASS | 4 | 0 | 81 | 0 | 0 | 0 | 100.0% |
-| language/keywords | PENDING | 0 | 0 | 0 | 0 | 25 | 0 | n/a |
+| language/keywords | PASS | 25 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/line-terminators | PASS | 41 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/literals | PARTIAL | 532 | 2 | 0 | 0 | 0 | 0 | 99.6% |
 | language/module-code | PARTIAL | 564 | 5 | 14 | 0 | 0 | 0 | 99.1% |
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
 | staging/explicit-resource-management | PARTIAL | 53 | 1 | 0 | 0 | 0 | 0 | 98.1% |
 | staging/set-methods | PENDING | 0 | 0 | 0 | 0 | 3 | 0 | n/a |
-| staging/sm | INCOMPLETE | 1010 | 91 | 0 | 0 | 327 | 0 | 91.7% |
+| staging/sm | INCOMPLETE | 1062 | 93 | 0 | 0 | 273 | 0 | 91.9% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -198,6 +198,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
 | language/literals | NORMAL | 65.751s | 250 | `test262/test/language/literals/bigint/binary-invalid-digit.js`<br>`test262/test/language/literals/bigint/exponent-part.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js` |
+| intl402 | NORMAL | 44.230s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
 | built-ins/decodeURI | NORMAL | 39.794s | 27 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.6_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.7_T1.js` |
 | built-ins/decodeURIComponent | NORMAL | 38.327s | 28 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.7_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js` |
 | annexB/built-ins/RegExp | NORMAL | 36.719s | 62 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/prototype/compile/this-subclass-instance.js`<br>`test262/test/annexB/built-ins/RegExp/prototype/flags/order-after-compile.js` |
@@ -216,7 +217,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/statements | NORMAL | 14.844s | 250 | `test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-empty-iter.js`<br>`test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-rest-init.js`<br>...<br>`test262/test/language/statements/function/13.2-18-1.js`<br>`test262/test/language/statements/function/13.2-18-s.js` |
 | staging/sm | NORMAL | 14.587s | 125 | `test262/test/staging/sm/Date/fractions.js`<br>`test262/test/staging/sm/Date/makeday-year-month-is-infinity.js`<br>...<br>`test262/test/staging/sm/Iterator/prototype/find/check-fn-after-getting-iterator.js`<br>`test262/test/staging/sm/Iterator/prototype/find/coerce-result-to-boolean.js` |
 | language/statements | NORMAL | 12.927s | 250 | `test262/test/language/statements/try/scope-catch-param-var-none.js`<br>`test262/test/language/statements/try/static-init-await-binding-invalid.js`<br>...<br>`test262/test/language/statements/with/S12.10_A1.10_T5.js`<br>`test262/test/language/statements/with/S12.10_A1.11_T1.js` |
-| language/expressions | NORMAL | 12.703s | 250 | `test262/test/language/expressions/super/prop-expr-getsuperbase-before-topropertykey-putvalue.js`<br>`test262/test/language/expressions/super/prop-expr-obj-err.js`<br>...<br>`test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-done-no-value.js`<br>`test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-value-err.js` |
 
 ## Runner Caveats
 

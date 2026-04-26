@@ -3495,12 +3495,20 @@ class TemporalObject
 
         // Date/time getters for ZonedDateTime: derive from epoch ns + timezone.
         $dtFields = ['year', 'month', 'day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+        $calFields = ['year' => true, 'month' => true, 'day' => true];
         foreach ($dtFields as $field) {
-            self::defineGetter($proto, $field, function (JsValue $this_) use ($field): JsValue {
+            self::defineGetter($proto, $field, function (JsValue $this_) use ($field, $calFields): JsValue {
                 self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
                 $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
                 $tz = self::getSlotString($this_, '[[TimeZone]]');
+                $cal = self::getSlotString($this_, '[[Calendar]]');
                 $parts = self::epochNsToISOParts($ns, $tz);
+                if (isset($calFields[$field]) && $cal !== 'iso8601') {
+                    $cp = self::isoToCalendarParts($cal, $parts['year'], $parts['month'], $parts['day']);
+                    if ($cp !== null) {
+                        return new JsNumber((float) $cp[$field]);
+                    }
+                }
                 return new JsNumber((float) ($parts[$field] ?? 0));
             });
         }
@@ -3508,7 +3516,14 @@ class TemporalObject
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
+            if ($cal !== 'iso8601') {
+                $cp = self::isoToCalendarParts($cal, $parts['year'], $parts['month'], $parts['day']);
+                if ($cp !== null) {
+                    return new JsString($cp['monthCode']);
+                }
+            }
             return new JsString('M' . str_pad((string) $parts['month'], 2, '0', STR_PAD_LEFT));
         });
         self::defineGetter($proto, 'dayOfWeek', function (JsValue $this_): JsValue {
@@ -4795,6 +4810,16 @@ class TemporalObject
                     }
                 }
                 $overflow = self::getOverflow($options);
+            }
+        }
+        // For non-ISO non-gregory calendars, convert calendar-native fields to
+        // ISO via ICU before applying overflow / wall-time math.
+        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+            $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mo, $d);
+            if ($isoParts !== null) {
+                $y = $isoParts['year'];
+                $mo = $isoParts['month'];
+                $d = $isoParts['day'];
             }
         }
         // Apply overflow (constrain or reject) to date and time fields.

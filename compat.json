@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-26T18:55:09+00:00",
-    "updatedAt": "2026-04-26T18:55:09+00:00",
+    "generatedAt": "2026-04-26T18:57:58+00:00",
+    "updatedAt": "2026-04-26T18:57:58+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "491f4ff",
+        "commit": "d9f882f",
         "isDirty": true
     },
     "environment": {
@@ -201,45 +201,45 @@
             "json-modules"
         ],
         "totals": {
-            "pass": 47942,
-            "fail": 403,
+            "pass": 48349,
+            "fail": 424,
             "skip": 507,
             "blocked": 0,
-            "pending": 1576,
-            "running": 78,
-            "attempted": 48345,
-            "known": 48852,
+            "pending": 1178,
+            "running": 48,
+            "attempted": 48773,
+            "known": 49280,
             "total": 50506,
-            "passRate": 99.2
+            "passRate": 99.1
         },
         "areas": [
             {
                 "name": "annexB",
                 "status": "incomplete",
-                "pass": 946,
+                "pass": 1046,
                 "fail": 8,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 125,
+                "pending": 25,
                 "running": 0,
-                "attempted": 954,
-                "known": 954,
+                "attempted": 1054,
+                "known": 1054,
                 "total": 1079,
                 "passRate": 99.2
             },
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 21580,
-                "fail": 178,
+                "pass": 21732,
+                "fail": 194,
                 "skip": 3,
                 "blocked": 0,
-                "pending": 890,
-                "running": 78,
-                "attempted": 21758,
-                "known": 21761,
+                "pending": 752,
+                "running": 48,
+                "attempted": 21926,
+                "known": 21929,
                 "total": 22729,
-                "passRate": 99.2
+                "passRate": 99.1
             },
             {
                 "name": "harness",
@@ -258,44 +258,44 @@
             {
                 "name": "intl402",
                 "status": "incomplete",
-                "pass": 1445,
-                "fail": 47,
+                "pass": 1481,
+                "fail": 50,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 74,
+                "pending": 35,
                 "running": 0,
-                "attempted": 1492,
-                "known": 1492,
+                "attempted": 1531,
+                "known": 1531,
                 "total": 1566,
-                "passRate": 96.8
+                "passRate": 96.7
             },
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 22718,
+                "pass": 22785,
                 "fail": 32,
                 "skip": 504,
                 "blocked": 0,
-                "pending": 130,
+                "pending": 63,
                 "running": 0,
-                "attempted": 22750,
-                "known": 23254,
+                "attempted": 22817,
+                "known": 23321,
                 "total": 23384,
                 "passRate": 99.9
             },
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1139,
-                "fail": 136,
+                "pass": 1191,
+                "fail": 138,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 357,
+                "pending": 303,
                 "running": 0,
-                "attempted": 1275,
-                "known": 1275,
+                "attempted": 1329,
+                "known": 1329,
                 "total": 1632,
-                "passRate": 89.3
+                "passRate": 89.6
             }
         ],
         "groups": [
@@ -317,17 +317,17 @@
             {
                 "name": "annexB/built-ins/Date",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 24,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 24,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 24,
+                "known": 24,
                 "total": 24,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "annexB/built-ins/Function",
@@ -407,32 +407,32 @@
             {
                 "name": "annexB/built-ins/escape",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 16,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 16,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 16,
+                "known": 16,
                 "total": 16,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "annexB/built-ins/unescape",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 19,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 19,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 19,
+                "known": 19,
                 "total": 19,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "annexB/language/comments",
@@ -467,17 +467,17 @@
             {
                 "name": "annexB/language/expressions",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 19,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 19,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 19,
+                "known": 19,
                 "total": 19,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "annexB/language/function-code",
@@ -527,17 +527,17 @@
             {
                 "name": "annexB/language/statements",
                 "area": "annexB",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 22,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 22,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 22,
+                "known": 22,
                 "total": 22,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/AbstractModuleSource",
@@ -632,32 +632,32 @@
             {
                 "name": "built-ins/AsyncFunction",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 18,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 18,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 18,
+                "known": 18,
                 "total": 18,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/AsyncGeneratorFunction",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 22,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 23,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 23,
+                "known": 23,
                 "total": 23,
-                "passRate": 0
+                "passRate": 95.7
             },
             {
                 "name": "built-ins/AsyncGeneratorPrototype",
@@ -693,16 +693,16 @@
                 "name": "built-ins/Atomics",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 170,
-                "fail": 14,
+                "pass": 185,
+                "fail": 15,
                 "skip": 3,
                 "blocked": 0,
-                "pending": 189,
+                "pending": 173,
                 "running": 0,
-                "attempted": 184,
-                "known": 187,
+                "attempted": 200,
+                "known": 203,
                 "total": 376,
-                "passRate": 92.4
+                "passRate": 92.5
             },
             {
                 "name": "built-ins/BigInt",
@@ -827,17 +827,17 @@
             {
                 "name": "built-ins/GeneratorFunction",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 22,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 23,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 23,
+                "known": 23,
                 "total": 23,
-                "passRate": 0
+                "passRate": 95.7
             },
             {
                 "name": "built-ins/GeneratorPrototype",
@@ -1112,32 +1112,32 @@
             {
                 "name": "built-ins/RegExp/escape",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 20,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 20,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 20,
+                "known": 20,
                 "total": 20,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/RegExp/lookBehind",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 4,
+                "fail": 13,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 17,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 17,
+                "known": 17,
                 "total": 17,
-                "passRate": 0
+                "passRate": 23.5
             },
             {
                 "name": "built-ins/RegExp/match-indices",
@@ -1192,8 +1192,8 @@
                 "fail": 7,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 354,
-                "running": 78,
+                "pending": 384,
+                "running": 48,
                 "attempted": 27,
                 "known": 27,
                 "total": 459,
@@ -1247,17 +1247,17 @@
             {
                 "name": "built-ins/RegExpStringIteratorPrototype",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 17,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 17,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 17,
+                "known": 17,
                 "total": 17,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/Set",
@@ -1727,32 +1727,32 @@
             {
                 "name": "built-ins/isFinite",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 17,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 17,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 17,
+                "known": 17,
                 "total": 17,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/isNaN",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 17,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 17,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 17,
+                "known": 17,
                 "total": 17,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/parseFloat",
@@ -1817,17 +1817,17 @@
             {
                 "name": "intl402",
                 "area": "intl402",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 21,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 22,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 22,
+                "known": 22,
                 "total": 22,
-                "passRate": 0
+                "passRate": 95.5
             },
             {
                 "name": "intl402/Array",
@@ -2057,17 +2057,17 @@
             {
                 "name": "intl402/String",
                 "area": "intl402",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 15,
+                "fail": 2,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 17,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 17,
+                "known": 17,
                 "total": 17,
-                "passRate": 0
+                "passRate": 88.2
             },
             {
                 "name": "intl402/Temporal",
@@ -2177,17 +2177,17 @@
             {
                 "name": "language/destructuring",
                 "area": "language",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 19,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 19,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 19,
+                "known": 19,
                 "total": 19,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "language/directive-prologue",
@@ -2237,15 +2237,15 @@
             {
                 "name": "language/expressions",
                 "area": "language",
-                "status": "incomplete",
-                "pass": 10579,
+                "status": "partial",
+                "pass": 10602,
                 "fail": 12,
                 "skip": 409,
                 "blocked": 0,
-                "pending": 23,
+                "pending": 0,
                 "running": 0,
-                "attempted": 10591,
-                "known": 11000,
+                "attempted": 10614,
+                "known": 11023,
                 "total": 11023,
                 "passRate": 99.9
             },
@@ -2342,17 +2342,17 @@
             {
                 "name": "language/keywords",
                 "area": "language",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 25,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 25,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 25,
+                "known": 25,
                 "total": 25,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "language/line-terminators",
@@ -2643,16 +2643,16 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1010,
-                "fail": 91,
+                "pass": 1062,
+                "fail": 93,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 327,
+                "pending": 273,
                 "running": 0,
-                "attempted": 1101,
-                "known": 1101,
+                "attempted": 1155,
+                "known": 1155,
                 "total": 1428,
-                "passRate": 91.7
+                "passRate": 91.9
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2698,6 +2698,19 @@
                     "...",
                     "test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js",
                     "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js"
+                ]
+            },
+            {
+                "group": "intl402",
+                "kind": "normal",
+                "durationSec": 44.23,
+                "filesCount": 22,
+                "sampleFiles": [
+                    "test262/test/intl402/constructors-string-and-single-element-array.js",
+                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
+                    "...",
+                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
+                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
                 ]
             },
             {
@@ -2932,19 +2945,6 @@
                     "...",
                     "test262/test/language/statements/with/S12.10_A1.10_T5.js",
                     "test262/test/language/statements/with/S12.10_A1.11_T1.js"
-                ]
-            },
-            {
-                "group": "language/expressions",
-                "kind": "normal",
-                "durationSec": 12.703,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/expressions/super/prop-expr-getsuperbase-before-topropertykey-putvalue.js",
-                    "test262/test/language/expressions/super/prop-expr-obj-err.js",
-                    "...",
-                    "test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-done-no-value.js",
-                    "test262/test/language/expressions/yield/star-rhs-iter-rtrn-res-value-err.js"
                 ]
             }
         ]
