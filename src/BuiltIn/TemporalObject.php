@@ -910,6 +910,17 @@ class TemporalObject
                         self::validateInstantRange(bcadd($epochNs, $durNs2, 0));
                     }
                 }
+                if (
+                    $relativeTo !== null
+                    && $hasCalUnit
+                    && $relativeTo instanceof JsObject
+                    && $relativeTo->has('[[IsZonedDateTime]]')
+                ) {
+                    // ZDT-aware compare: build end ZDTs respecting DST.
+                    $end1 = self::addDurationToZdt($relativeTo, $one, 1, 'constrain');
+                    $end2 = self::addDurationToZdt($relativeTo, $two, 1, 'constrain');
+                    return new JsNumber((float) bccomp($end1, $end2, 0));
+                }
                 if ($relativeTo !== null && $hasCalUnit) {
                     // Compare by adding both durations to relativeTo and comparing results.
                     $end1 = self::plainDateAdd($refDate, $one, 1);
