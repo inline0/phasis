@@ -68,6 +68,7 @@ class IntlObject
         self::installListFormat($intl);
         self::installRelativeTimeFormat($intl);
         self::installSegmenter($intl);
+        self::installDurationFormat($intl);
 
         $env->defineVar('Intl', $intl);
     }
@@ -8462,6 +8463,326 @@ class IntlObject
             'Segmenter',
             PropertyDescriptor::data($constructor, true, false, true),
         );
+    }
+
+    // ---------------------------------------------------------------
+    // Intl.DurationFormat (minimal stub for structural compliance)
+    // ---------------------------------------------------------------
+
+    private static function installDurationFormat(JsObject $intl): void
+    {
+        $proto = new JsObject();
+
+        $constructor = JsFunction::fromCallable(
+            'DurationFormat',
+            function (JsValue $this_, array $args) use ($proto): JsValue {
+                if (
+                    !$this_ instanceof JsObject
+                    || $this_->get('[[NewTarget]]') instanceof JsUndefined
+                ) {
+                    throw new TypeError('Constructor Intl.DurationFormat requires \'new\'');
+                }
+                $localesArg = $args[0] ?? JsUndefined::instance();
+                $optionsArg = $args[1] ?? JsUndefined::instance();
+                $locales = self::localesFromArg($localesArg);
+                $options = self::getOptionsObject($optionsArg);
+                self::validateLocaleMatcher($options);
+
+                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj->defineOwnProperty('[[InitializedDurationFormat]]', PropertyDescriptor::data(
+                    new JsBoolean(true),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // numberingSystem: "latn" only (we support latn).
+                $numberingSystem = 'latn';
+                $nsVal = $options->get('numberingSystem');
+                if (!$nsVal instanceof JsUndefined) {
+                    $ns = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($ns)) {
+                        throw new RangeError("Invalid numberingSystem: {$ns}");
+                    }
+                    $numberingSystem = $ns;
+                }
+                $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
+                    new JsString($numberingSystem),
+                    false,
+                    false,
+                    false,
+                ));
+
+                // style: "long" / "short" / "narrow" / "digital", default "short".
+                $style = 'short';
+                $styleVal = $options->get('style');
+                if (!$styleVal instanceof JsUndefined) {
+                    $s = TypeConversion::toString($styleVal);
+                    if (!in_array($s, ['long', 'short', 'narrow', 'digital'], true)) {
+                        throw new RangeError("Invalid style: {$s}");
+                    }
+                    $style = $s;
+                }
+                $obj->defineOwnProperty('[[Style]]', PropertyDescriptor::data(
+                    new JsString($style),
+                    false,
+                    false,
+                    false,
+                ));
+
+                $units = [
+                    'years', 'months', 'weeks', 'days',
+                    'hours', 'minutes', 'seconds',
+                    'milliseconds', 'microseconds', 'nanoseconds',
+                ];
+                $perUnitDefaults = [
+                    'years' => $style,
+                    'months' => $style,
+                    'weeks' => $style,
+                    'days' => $style,
+                    'hours' => $style === 'digital' ? 'numeric' : $style,
+                    'minutes' => $style === 'digital' ? 'numeric' : $style,
+                    'seconds' => $style === 'digital' ? 'numeric' : $style,
+                    'milliseconds' => $style === 'digital' ? 'numeric' : $style,
+                    'microseconds' => $style === 'digital' ? 'numeric' : $style,
+                    'nanoseconds' => $style === 'digital' ? 'numeric' : $style,
+                ];
+                foreach ($units as $u) {
+                    $allowed = ($u === 'hours' || $u === 'minutes' || $u === 'seconds'
+                        || $u === 'milliseconds' || $u === 'microseconds' || $u === 'nanoseconds')
+                        ? ['long', 'short', 'narrow', 'numeric', '2-digit']
+                        : ['long', 'short', 'narrow'];
+                    $val = $options->get($u);
+                    $unitDisplay = $perUnitDefaults[$u];
+                    if (!$val instanceof JsUndefined) {
+                        $u2 = TypeConversion::toString($val);
+                        if (!in_array($u2, $allowed, true)) {
+                            throw new RangeError("Invalid {$u}: {$u2}");
+                        }
+                        $unitDisplay = $u2;
+                    }
+                    $slot = '[[' . ucfirst($u) . ']]';
+                    $obj->defineOwnProperty($slot, PropertyDescriptor::data(
+                        new JsString($unitDisplay),
+                        false,
+                        false,
+                        false,
+                    ));
+                    // Per-unit display: "always" or "auto".
+                    $displaySlot = '[[' . ucfirst($u) . 'Display]]';
+                    $displayKey = $u . 'Display';
+                    $displayDefault = !$val instanceof JsUndefined ? 'always' : 'auto';
+                    $dVal = $options->get($displayKey);
+                    if (!$dVal instanceof JsUndefined) {
+                        $d = TypeConversion::toString($dVal);
+                        if (!in_array($d, ['always', 'auto'], true)) {
+                            throw new RangeError("Invalid {$displayKey}: {$d}");
+                        }
+                        $displayDefault = $d;
+                    }
+                    $obj->defineOwnProperty($displaySlot, PropertyDescriptor::data(
+                        new JsString($displayDefault),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
+
+                // fractionalDigits: 0-9 (or undefined).
+                $fdVal = $options->get('fractionalDigits');
+                if (!$fdVal instanceof JsUndefined) {
+                    $n = TypeConversion::toNumber($fdVal);
+                    if (is_nan($n) || $n < 0 || $n > 9) {
+                        throw new RangeError("Invalid fractionalDigits: {$n}");
+                    }
+                    $obj->defineOwnProperty('[[FractionalDigits]]', PropertyDescriptor::data(
+                        new JsNumber((float) (int) floor($n)),
+                        false,
+                        false,
+                        false,
+                    ));
+                }
+
+                $resolvedLocale = self::resolveLocale($locales, ['nu']);
+                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
+                    new JsString($resolvedLocale),
+                    false,
+                    false,
+                    false,
+                ));
+
+                return $obj;
+            },
+            0,
+        );
+        $constructor->setConstructable();
+
+        $constructor->defineOwnProperty(
+            'prototype',
+            PropertyDescriptor::data($proto, false, false, false),
+        );
+        $proto->defineOwnProperty(
+            'constructor',
+            PropertyDescriptor::data($constructor, true, false, true),
+        );
+
+        $proto->definePropertyBySymbol(
+            SymbolConstructor::toStringTag(),
+            PropertyDescriptor::data(new JsString('Intl.DurationFormat'), false, false, true),
+        );
+
+        // DurationFormat.prototype.format(duration)
+        $formatFn = JsFunction::fromCallable('format', function (
+            JsValue $this_,
+            array $args,
+        ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError('Intl.DurationFormat.prototype.format called on non-DurationFormat');
+            }
+            // Without full CLDR unit-pattern data, fall back to a
+            // simple English-style rendering.
+            $duration = $args[0] ?? JsUndefined::instance();
+            return new JsString(self::durationFormatRender($this_, $duration));
+        }, 1);
+        $proto->defineOwnProperty(
+            'format',
+            PropertyDescriptor::data($formatFn, true, false, true),
+        );
+
+        $formatToParts = JsFunction::fromCallable('formatToParts', function (
+            JsValue $this_,
+            array $args,
+        ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.DurationFormat.prototype.formatToParts called on non-DurationFormat',
+                );
+            }
+            $arr = new JsArray();
+            $arr->set('length', new JsNumber(0.0));
+            return $arr;
+        }, 1);
+        $proto->defineOwnProperty(
+            'formatToParts',
+            PropertyDescriptor::data($formatToParts, true, false, true),
+        );
+
+        $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
+            JsValue $this_,
+        ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_ instanceof \PhpJs\Value\JsProxy
+                || $this_->get('[[InitializedDurationFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.DurationFormat.prototype.resolvedOptions called on non-DurationFormat',
+                );
+            }
+            $result = new JsObject();
+            self::defineDataProp($result, 'locale', new JsString(
+                self::extractInternalString($this_, '[[Locale]]', 'en'),
+            ));
+            self::defineDataProp($result, 'numberingSystem', new JsString(
+                self::extractInternalString($this_, '[[NumberingSystem]]', 'latn'),
+            ));
+            self::defineDataProp($result, 'style', new JsString(
+                self::extractInternalString($this_, '[[Style]]', 'short'),
+            ));
+            $units = [
+                'years', 'months', 'weeks', 'days',
+                'hours', 'minutes', 'seconds',
+                'milliseconds', 'microseconds', 'nanoseconds',
+            ];
+            foreach ($units as $u) {
+                $slot = '[[' . ucfirst($u) . ']]';
+                self::defineDataProp($result, $u, new JsString(
+                    self::extractInternalString($this_, $slot, 'short'),
+                ));
+                $displaySlot = '[[' . ucfirst($u) . 'Display]]';
+                self::defineDataProp($result, $u . 'Display', new JsString(
+                    self::extractInternalString($this_, $displaySlot, 'auto'),
+                ));
+            }
+            $fdVal = $this_->get('[[FractionalDigits]]');
+            if ($fdVal instanceof JsNumber) {
+                self::defineDataProp($result, 'fractionalDigits', $fdVal);
+            }
+            return $result;
+        }, 0);
+        $proto->defineOwnProperty(
+            'resolvedOptions',
+            PropertyDescriptor::data($resolvedOptions, true, false, true),
+        );
+
+        $constructor->defineOwnProperty(
+            'supportedLocalesOf',
+            PropertyDescriptor::data(self::makeSupportedLocalesOf('DurationFormat'), true, false, true),
+        );
+
+        $intl->defineOwnProperty(
+            'DurationFormat',
+            PropertyDescriptor::data($constructor, true, false, true),
+        );
+    }
+
+    /**
+     * Render a Temporal-Duration-like JS object to a localised string.
+     * Handles the common English-style rendering used by V8: each
+     * non-zero unit becomes a "<value> <unit-label>" segment, joined
+     * by a list separator. A best-effort fallback for locales we
+     * don't have CLDR unit data for.
+     */
+    private static function durationFormatRender(JsObject $df, JsValue $duration): string
+    {
+        if (!$duration instanceof JsObject) {
+            throw new TypeError('Intl.DurationFormat.format requires a duration object');
+        }
+        $units = [
+            'years' => 'year', 'months' => 'month', 'weeks' => 'week',
+            'days' => 'day', 'hours' => 'hour', 'minutes' => 'minute',
+            'seconds' => 'second', 'milliseconds' => 'millisecond',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
+        ];
+        $segments = [];
+        foreach ($units as $u => $singular) {
+            $val = $duration->get($u);
+            if (!$val instanceof JsNumber) {
+                continue;
+            }
+            $n = $val->value;
+            if ($n === 0.0) {
+                continue;
+            }
+            $segments[] = self::formatDurationSegment((int) $n, $u, $singular);
+        }
+        if (empty($segments)) {
+            return '0 sec';
+        }
+        return implode(', ', $segments);
+    }
+
+    private static function formatDurationSegment(int $n, string $unit, string $singular): string
+    {
+        // Minimal English short-form labels. A full CLDR table would
+        // span ~10 units × 4 styles × multiple plural categories ×
+        // every locale; we ship the en-US short form as the default
+        // fallback so the structural shape is exercised.
+        static $shortLabels = [
+            'years' => 'yr', 'months' => 'mo', 'weeks' => 'wk',
+            'days' => 'day', 'hours' => 'hr', 'minutes' => 'min',
+            'seconds' => 'sec', 'milliseconds' => 'ms',
+            'microseconds' => 'μs', 'nanoseconds' => 'ns',
+        ];
+        return $n . ' ' . ($shortLabels[$unit] ?? $singular);
     }
 
     // ---------------------------------------------------------------
