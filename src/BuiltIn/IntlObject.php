@@ -9790,9 +9790,19 @@ class IntlObject
                 $fdLimit,
             );
         }
+        // Sub-second values force the seconds slot to render even
+        // when fractionalDigits is 0 (per spec note: "the
+        // fractionalDigits option is not taken into account when
+        // computing whether the seconds unit should appear in the
+        // output"). The fractional STRING separately controls the
+        // ".fff" trailing portion.
+        $hasSubSecondValue = $fracTotalNs > 0;
         $showHours = $hours !== 0 || $hoursDisplay === 'always';
         $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
-        $showSeconds = $seconds !== 0 || $secondsDisplay === 'always' || $fracDigits !== '';
+        $showSeconds = $seconds !== 0
+            || $secondsDisplay === 'always'
+            || $fracDigits !== ''
+            || $hasSubSecondValue;
         if ($showSeconds) {
             $showMinutes = true;
         }
@@ -10256,11 +10266,16 @@ class IntlObject
         }
         // Decide whether each clock unit shows up. Each unit's
         // display flag is independent; we then bridge gaps so
-        // colon-joined runs render contiguously.
+        // colon-joined runs render contiguously. A non-zero
+        // sub-second value forces seconds even when fractionalDigits
+        // is 0 (per spec note: fractionalDigits doesn't gate the
+        // seconds slot's appearance).
+        $hasSubSecondValue = $fracTotalNs > 0;
         $showHours = $hours !== 0 || $hoursDisplay === 'always';
         $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
         $showSeconds = $seconds !== 0 || $secondsDisplay === 'always'
-            || $fracStr !== '';
+            || $fracStr !== ''
+            || $hasSubSecondValue;
         // V8 / spec: when seconds show, minutes appear too (for
         // ":SS" form). Then if minutes show, hours follow only if
         // hours has a non-zero value or always-display.
