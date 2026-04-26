@@ -1123,12 +1123,6 @@ class IntlObject
                 ));
 
                 $resolvedLocale = self::resolveLocale($locales, ["nu"]);
-                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
-                    new JsString($resolvedLocale),
-                    false,
-                    false,
-                    false,
-                ));
 
                 // numberingSystem must be read before style per spec
                 // option-access order. ICU honours the request via the
@@ -1147,7 +1141,15 @@ class IntlObject
                     if (in_array($nsEarly, self::getSupportedNumberingSystems(), true)) {
                         $numberingSystem = $nsEarly;
                     }
+                    // User option overrides the locale extension.
+                    $resolvedLocale = self::filterUnicodeExtensions($resolvedLocale, []);
                 }
+                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
+                    new JsString($resolvedLocale),
+                    false,
+                    false,
+                    false,
+                ));
 
                 // Style: "decimal" (default), "currency", "percent", "unit".
                 $style = 'decimal';
