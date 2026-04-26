@@ -654,11 +654,34 @@ class IntlObject
         // PHP's listIdentifiers() returns the canonical IANA names
         // (excluding deprecated aliases like
         // 'Canada/East-Saskatchewan' that ICU still enumerates),
-        // matching the spec's CanonicalizeTimeZoneName output.
+        // matching the spec's CanonicalizeTimeZoneName output. Per
+        // the spec we also include the Etc/GMT* fixed-offset zones
+        // (PHP filters those out by default).
         $result = \DateTimeZone::listIdentifiers();
+        // Per CLDR, only the offset-bearing Etc/GMT* zones are
+        // canonical primary identifiers. Etc/GMT, Etc/UTC,
+        // Etc/Universal etc. all alias UTC and aren't included.
+        static $etcAllow = [
+            'Etc/GMT+1', 'Etc/GMT+2', 'Etc/GMT+3', 'Etc/GMT+4',
+            'Etc/GMT+5', 'Etc/GMT+6', 'Etc/GMT+7', 'Etc/GMT+8',
+            'Etc/GMT+9', 'Etc/GMT+10', 'Etc/GMT+11', 'Etc/GMT+12',
+            'Etc/GMT-1', 'Etc/GMT-2', 'Etc/GMT-3', 'Etc/GMT-4',
+            'Etc/GMT-5', 'Etc/GMT-6', 'Etc/GMT-7', 'Etc/GMT-8',
+            'Etc/GMT-9', 'Etc/GMT-10', 'Etc/GMT-11', 'Etc/GMT-12',
+            'Etc/GMT-13', 'Etc/GMT-14',
+        ];
+        $etc = [];
+        $allBc = \DateTimeZone::listIdentifiers(\DateTimeZone::ALL_WITH_BC);
+        foreach ($etcAllow as $id) {
+            if (in_array($id, $allBc, true)) {
+                $etc[] = $id;
+            }
+        }
+        $result = array_unique(array_merge($result, $etc));
         if (!in_array('UTC', $result, true)) {
             $result[] = 'UTC';
         }
+        sort($result);
         return $result;
     }
 
