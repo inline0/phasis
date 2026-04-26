@@ -3607,6 +3607,16 @@ class IntlObject
                             false,
                         ));
                     }
+                    // Track whether the hour-cycle came from an option
+                    // override vs. the locale default so we can rewrite
+                    // CLDR's locale-derived timeStyle pattern when the
+                    // user supplied hour12 / hourCycle explicitly.
+                    $obj->defineOwnProperty('[[HourCycleSource]]', PropertyDescriptor::data(
+                        new JsString(($userHour12 || $userHourCycle) ? 'option' : 'locale'),
+                        false,
+                        false,
+                        false,
+                    ));
                 }
 
                 return $obj;
@@ -3760,8 +3770,8 @@ class IntlObject
             $startStr = '';
             $endStr = '';
             if (extension_loaded('intl') && $this_ instanceof JsObject) {
-                $startStr = self::formatDateTime($this_, (int) round($startMs / 1000));
-                $endStr = self::formatDateTime($this_, (int) round($endMs / 1000));
+                $startStr = self::formatDateTimeMs($this_, (float) $startMs);
+                $endStr = self::formatDateTimeMs($this_, (float) $endMs);
             } else {
                 $startStr = (string) $startMs;
                 $endStr = (string) $endMs;
@@ -3962,6 +3972,10 @@ class IntlObject
         $n = TypeConversion::toNumber($val);
         if (is_nan($n) || !is_finite($n)) {
             throw new RangeError("Invalid {$argName}: not a finite number");
+        }
+        // TimeClip: NaN if outside ECMAScript's ±8.64e15 ms range.
+        if (abs($n) > 8.64e15) {
+            throw new RangeError("Invalid {$argName}: time value out of range");
         }
         return $n;
     }
@@ -4221,6 +4235,84 @@ class IntlObject
      * builds a custom skeleton from the explicit component slots
      * ([[year]], [[hour]], [[dayPeriod]], ...) via IntlDatePatternGenerator.
      */
+    /**
+     * Rewrite a CLDR date pattern's hour letters per the requested
+     * hourCycle. Strips the trailing day-period token (a/B) when
+     * switching from a 12-hour cycle to a 24-hour one so the result
+     * doesn't carry an orphan AM/PM marker.
+     */
+    private static function rewriteHourCycleInPattern(string $pattern, string $hourCycle): string
+    {
+        // Letter mapping: h(12: 1-12), K(11: 0-11), H(23: 0-23), k(24: 1-24).
+        $targetLetter = match ($hourCycle) {
+            'h11' => 'K',
+            'h12' => 'h',
+            'h23' => 'H',
+            'h24' => 'k',
+            default => null,
+        };
+        if ($targetLetter === null) {
+            return $pattern;
+        }
+        // Replace all hour letter runs (h/H/K/k) keeping the run's
+        // length so "hh" -> "HH", "h" -> "H", etc. Quoted text
+        // ('AM'/'PM' literal) is left alone.
+        $out = '';
+        $len = strlen($pattern);
+        $inQuote = false;
+        $i = 0;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                if ($inQuote && $i + 1 < $len && $pattern[$i + 1] === "'") {
+                    $out .= "''";
+                    $i += 2;
+                    continue;
+                }
+                $inQuote = !$inQuote;
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            if (!$inQuote && in_array($c, ['h', 'H', 'K', 'k'], true)) {
+                $j = $i;
+                while ($j < $len && $pattern[$j] === $c) {
+                    $j++;
+                }
+                $out .= str_repeat($targetLetter, $j - $i);
+                $i = $j;
+                continue;
+            }
+            $out .= $c;
+            $i++;
+        }
+        // For 24-hour cycles, drop dayPeriod tokens (a/B) and any
+        // literal whitespace surrounding them.
+        if ($hourCycle === 'h23' || $hourCycle === 'h24') {
+            $out = self::stripDayPeriodTokens($out);
+        }
+        return $out;
+    }
+
+    private static function stripDayPeriodTokens(string $pattern): string
+    {
+        // Match optional whitespace + run of 'a'/'B' letters + optional whitespace.
+        $cleaned = preg_replace(
+            '/(\s*\b[aB]+\b\s*)/u',
+            ' ',
+            $pattern,
+        );
+        if (!is_string($cleaned)) {
+            return $pattern;
+        }
+        // Collapse double spaces and trim.
+        $cleaned = preg_replace('/\s+/u', ' ', $cleaned);
+        if (!is_string($cleaned)) {
+            return $pattern;
+        }
+        return trim($cleaned);
+    }
+
     private static function dateTimeFormatterFor(JsObject $dtf): \IntlDateFormatter
     {
         $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
@@ -4242,12 +4334,31 @@ class IntlObject
             };
         };
         if ($dateStyle !== null || $timeStyle !== null) {
-            return new \IntlDateFormatter(
+            $base = new \IntlDateFormatter(
                 $locale,
                 $mapStyle($dateStyle),
                 $mapStyle($timeStyle),
                 $tz,
             );
+            // Honour an explicit hour12 / hourCycle override against
+            // the locale's CLDR-derived time pattern. Without this the
+            // user's hour-cycle choice silently drops when timeStyle
+            // is set.
+            $hourCycleVal = $dtf->get('[[HourCycle]]');
+            $hourCycle = $hourCycleVal instanceof JsString ? $hourCycleVal->value : null;
+            $hourCycleSource = $dtf->get('[[HourCycleSource]]');
+            $isExplicit = $hourCycleSource instanceof JsString
+                && $hourCycleSource->value === 'option';
+            if ($isExplicit && $hourCycle !== null && $timeStyle !== null) {
+                $pattern = $base->getPattern();
+                if (is_string($pattern) && $pattern !== '') {
+                    $newPattern = self::rewriteHourCycleInPattern($pattern, $hourCycle);
+                    if ($newPattern !== $pattern) {
+                        $base->setPattern($newPattern);
+                    }
+                }
+            }
+            return $base;
         }
         // Build a CLDR skeleton from the explicit component slots.
         $skeleton = self::dateTimeSkeletonFromOptions($dtf);
@@ -4271,6 +4382,10 @@ class IntlObject
         if ($pattern === '' || $pattern === false) {
             $pattern = $skeleton;
         }
+        // Honour explicit 2-digit width requests for hour/minute/second/
+        // day/month against ICU's locale-preferred pattern, which may
+        // collapse "hh" → "h" for en-US etc.
+        $pattern = self::enforceExplicitDigitWidths($pattern, $dtf);
         return new \IntlDateFormatter(
             $locale,
             \IntlDateFormatter::FULL,
@@ -4279,6 +4394,80 @@ class IntlObject
             \IntlDateFormatter::GREGORIAN,
             $pattern,
         );
+    }
+
+    /**
+     * After ICU's getBestPattern, ensure each component letter run
+     * matches the user's requested width when "2-digit" was asked
+     * for. ICU is allowed to substitute single-digit forms when the
+     * locale prefers them, but the spec mandates the requested width.
+     */
+    private static function enforceExplicitDigitWidths(string $pattern, JsObject $dtf): string
+    {
+        $get = static function (string $slot) use ($dtf): ?string {
+            $val = $dtf->get($slot);
+            return $val instanceof JsString ? $val->value : null;
+        };
+        $pairs = [
+            ['[[hour]]', ['h', 'H', 'K', 'k']],
+            ['[[minute]]', ['m']],
+            ['[[second]]', ['s']],
+            ['[[day]]', ['d']],
+            ['[[month]]', ['M']],
+        ];
+        foreach ($pairs as [$slot, $letters]) {
+            if ($get($slot) !== '2-digit') {
+                continue;
+            }
+            $pattern = self::doubleSingleLetterRuns($pattern, $letters);
+        }
+        return $pattern;
+    }
+
+    /**
+     * For each pattern letter in $letters, find single-letter runs
+     * (outside of quotes) and double them so a 2-digit width is
+     * preserved.
+     *
+     * @param list<string> $letters
+     */
+    private static function doubleSingleLetterRuns(string $pattern, array $letters): string
+    {
+        $out = '';
+        $len = strlen($pattern);
+        $i = 0;
+        $inQuote = false;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                if ($inQuote && $i + 1 < $len && $pattern[$i + 1] === "'") {
+                    $out .= "''";
+                    $i += 2;
+                    continue;
+                }
+                $inQuote = !$inQuote;
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            if (!$inQuote && in_array($c, $letters, true)) {
+                $j = $i;
+                while ($j < $len && $pattern[$j] === $c) {
+                    $j++;
+                }
+                $runLen = $j - $i;
+                if ($runLen === 1) {
+                    $out .= $c . $c;
+                } else {
+                    $out .= str_repeat($c, $runLen);
+                }
+                $i = $j;
+                continue;
+            }
+            $out .= $c;
+            $i++;
+        }
+        return $out;
     }
 
     /**
@@ -5564,9 +5753,24 @@ class IntlObject
                 $i++;
                 $isPrivate = $key === 'x';
                 $isUnicode = $key === 'u';
+                $isTransform = $key === 't';
                 $minSubLen = $isPrivate ? 1 : 2;
                 $maxSubLen = 8;
                 $sawAny = false;
+                // Track tlang state for the transformed extension.
+                // The first run is the tlang (language, optional
+                // script/region/variants); subsequent runs are tfields
+                // (tkey tvalue+). A length-2 subtag whose 2nd char is
+                // a digit signals the transition from tlang to tfields.
+                $tlangSeen = false;
+                $inTlang = false;
+                $tlangSawScript = false;
+                $tlangSawRegion = false;
+                $tlangVariants = [];
+                // tfield tracking: tkey requires at least one
+                // tvalue (alphanum{3,8}) following it.
+                $awaitingTvalue = false;
+                $sawTvalueForCurrentTkey = false;
                 while ($i < $count) {
                     $sub = $parts[$i];
                     $subLen = strlen($sub);
@@ -5589,8 +5793,111 @@ class IntlObject
                     if ($isUnicode && $subLen === 2 && !ctype_alpha($sub[1])) {
                         return true;
                     }
+                    if ($isTransform) {
+                        // Detect a tkey: alpha digit (length 2). If we
+                        // see one, we're past the tlang.
+                        $isTkey = $subLen === 2
+                            && ctype_alpha($sub[0])
+                            && ctype_digit($sub[1]);
+                        if (!$tlangSeen && !$isTkey) {
+                            // First non-tkey subtag starts the tlang.
+                            // Must be a valid language subtag (2-3 or
+                            // 5-8 alpha; "root" / 4-letter alpha is
+                            // not a valid language).
+                            if (
+                                !ctype_alpha($sub)
+                                || !(
+                                    $subLen === 2
+                                    || $subLen === 3
+                                    || ($subLen >= 5 && $subLen <= 8)
+                                )
+                            ) {
+                                return true;
+                            }
+                            $tlangSeen = true;
+                            $inTlang = true;
+                            $sawAny = true;
+                            $i++;
+                            continue;
+                        }
+                        if ($inTlang && !$isTkey) {
+                            // Within tlang: script, region, or variant.
+                            if (
+                                $subLen === 4
+                                && ctype_alpha($sub)
+                                && !$tlangSawScript
+                                && !$tlangSawRegion
+                                && empty($tlangVariants)
+                            ) {
+                                $tlangSawScript = true;
+                                $sawAny = true;
+                                $i++;
+                                continue;
+                            }
+                            if (
+                                ((($subLen === 2 && ctype_alpha($sub))
+                                    || ($subLen === 3 && ctype_digit($sub))))
+                                && !$tlangSawRegion
+                                && empty($tlangVariants)
+                            ) {
+                                $tlangSawRegion = true;
+                                $sawAny = true;
+                                $i++;
+                                continue;
+                            }
+                            $isLongVar = $subLen >= 5 && $subLen <= 8 && ctype_alnum($sub);
+                            $isShortNumVar = $subLen === 4
+                                && ctype_digit($sub[0])
+                                && ctype_alnum($sub);
+                            if ($isLongVar || $isShortNumVar) {
+                                $vKey = strtolower($sub);
+                                if (isset($tlangVariants[$vKey])) {
+                                    return true;
+                                }
+                                $tlangVariants[$vKey] = true;
+                                $sawAny = true;
+                                $i++;
+                                continue;
+                            }
+                            // Unknown subtag inside tlang — invalid.
+                            return true;
+                        }
+                        if ($isTkey) {
+                            // Switching from tlang to tfields. The
+                            // previous tkey (if any) must have had at
+                            // least one tvalue.
+                            if ($awaitingTvalue && !$sawTvalueForCurrentTkey) {
+                                return true;
+                            }
+                            $inTlang = false;
+                            $awaitingTvalue = true;
+                            $sawTvalueForCurrentTkey = false;
+                            $sawAny = true;
+                            $i++;
+                            continue;
+                        }
+                        // Inside tfields, a non-tkey subtag is a
+                        // tvalue. tvalue = alphanum{3,8}.
+                        if ($awaitingTvalue) {
+                            if ($subLen < 3 || $subLen > 8 || !ctype_alnum($sub)) {
+                                return true;
+                            }
+                            $sawTvalueForCurrentTkey = true;
+                            $sawAny = true;
+                            $i++;
+                            continue;
+                        }
+                        // Reached an unexpected token in -t-.
+                        return true;
+                    }
                     $sawAny = true;
                     $i++;
+                }
+                if ($isTransform) {
+                    // A tkey at the end without a tvalue is invalid.
+                    if ($awaitingTvalue && !$sawTvalueForCurrentTkey) {
+                        return true;
+                    }
                 }
                 if (!$sawAny) {
                     return true;
@@ -6476,7 +6783,7 @@ class IntlObject
             'cjy' => 'cjy-Hans-CN', 'cmn' => 'cmn-Hans-CN',
             'czh' => 'czh-Hans-CN', 'czo' => 'czo-Hans-CN',
             'mnp' => 'mnp-Hans-CN', 'lzh' => 'lzh-Hans-CN',
-            'jbo' => 'jbo-Latn-001', 'xtg' => 'xtg-Latn-FR',
+            'jbo' => 'jbo-Latn-001',
             // Language + script that doesn't follow language alone:
             // CLDR defaults each pair to a specific region.
             'en-shaw' => 'en-Shaw-GB',

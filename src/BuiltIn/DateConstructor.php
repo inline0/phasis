@@ -556,7 +556,10 @@ class DateConstructor
                 }
             }
         } elseif ($options instanceof JsUndefined) {
-            $result = new JsObject();
+            // Per spec ToDateTimeOptions step 1: ObjectCreate(undefined)
+            // gives a null-prototype object, so polluting Object.prototype
+            // with default options doesn't bleed into Date.toLocaleString.
+            $result = JsObject::createNullPrototype();
         } else {
             $result = TypeConversion::toObject($options);
         }
