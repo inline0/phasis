@@ -9014,7 +9014,8 @@ class IntlObject
             }
         }
         $segments = [];
-        $perUnitStyles = [];
+        $isFirstSegment = true;
+        $signNeedsAttaching = $sign < 0;
         foreach ($units as $u => $singular) {
             $n = $values[$u];
             $displaySlot = '[[' . ucfirst($u) . 'Display]]';
@@ -9026,8 +9027,20 @@ class IntlObject
             }
             $unitSlot = '[[' . ucfirst($u) . ']]';
             $unitStyle = self::extractInternalString($df, $unitSlot, 'short');
-            $segments[] = self::formatDurationSegment((int) $n, $u, $singular, $unitStyle);
-            $perUnitStyles[] = $unitStyle;
+            // Spec: when the overall duration is negative, the
+            // leading rendered segment carries the "-" prefix and
+            // every subsequent segment is rendered as the absolute
+            // value. A "0 hours" segment from display:"always"
+            // becomes "-0 hours" so the sign isn't lost.
+            $renderInt = (int) abs($n);
+            $renderedSign = '';
+            if ($isFirstSegment && $signNeedsAttaching) {
+                $renderedSign = '-';
+                $signNeedsAttaching = false;
+            }
+            $seg = self::formatDurationSegment($renderInt, $u, $singular, $unitStyle);
+            $segments[] = $renderedSign . $seg;
+            $isFirstSegment = false;
         }
         if (empty($segments)) {
             return '';
