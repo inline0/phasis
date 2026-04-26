@@ -678,6 +678,33 @@ class TemporalObject
             if ($relativeTo !== null && $hasCalUnit) {
                 return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
             }
+            // For ZDT relativeTo with sub-day unit: compute via ZDT.add so DST
+            // transitions affect the actual UTC ns delta.
+            $hasDayUnit = self::getDurationField($this_, 'days') !== 0;
+            $subDayUnits = ['day', 'hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            if (
+                $relativeTo !== null
+                && $relativeTo instanceof JsObject
+                && $relativeTo->has('[[IsZonedDateTime]]')
+                && in_array($unit, $subDayUnits, true)
+                && ($hasDayUnit || $unit === 'day')
+            ) {
+                $startNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
+                $endNs = self::addDurationToZdt($relativeTo, $this_, 1, 'constrain');
+                $deltaNs = bcsub($endNs, $startNs, 0);
+                if ($unit === 'day') {
+                    return new JsNumber(self::zdtDeltaInDays($relativeTo, $endNs, $startNs));
+                }
+                $unitToNs = [
+                    'hour' => '3600000000000',
+                    'minute' => '60000000000',
+                    'second' => '1000000000',
+                    'millisecond' => '1000000',
+                    'microsecond' => '1000',
+                    'nanosecond' => '1',
+                ];
+                return new JsNumber((float) bcdiv($deltaNs, $unitToNs[$unit], 25));
+            }
             return new JsNumber(self::durationTotalNs($this_, $unit));
         }, 1);
 
@@ -4817,6 +4844,169 @@ class TemporalObject
             }
         }
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+    }
+
+    /**
+     * Apply a Duration to a ZonedDateTime using calendar-then-time semantics.
+     * Returns the resulting epoch ns. Sign +1 adds, -1 subtracts. Years,
+     * months, weeks, and days are calendar arithmetic on the wall time;
+     * hours and below are added as nanoseconds afterward.
+     */
+    private static function addDurationToZdt(JsObject $zdt, JsValue $dur, int $sign, string $overflow = 'constrain'): string
+    {
+        $ns = self::getSlotString($zdt, '[[EpochNanoseconds]]');
+        $tz = self::getSlotString($zdt, '[[TimeZone]]');
+        $parts = self::epochNsToISOParts($ns, $tz);
+        $y = $parts['year'] + $sign * self::getDurationField($dur, 'years');
+        $m = $parts['month'] + $sign * self::getDurationField($dur, 'months');
+        while ($m > 12) {
+            $m -= 12;
+            $y++;
+        }
+        while ($m < 1) {
+            $m += 12;
+            $y--;
+        }
+        $weeksDays = $sign * (
+            self::getDurationField($dur, 'weeks') * 7
+            + self::getDurationField($dur, 'days')
+        );
+        $dd = $parts['day'] + $weeksDays;
+        // Normalize day overflow into the calendar.
+        while (true) {
+            if ($dd < 1) {
+                $m--;
+                if ($m < 1) {
+                    $m = 12;
+                    $y--;
+                }
+                $dd += self::isoDaysInMonth($y, $m);
+                continue;
+            }
+            $dim = self::isoDaysInMonth($y, $m);
+            if ($dd > $dim) {
+                $dd -= $dim;
+                $m++;
+                if ($m > 12) {
+                    $m = 1;
+                    $y++;
+                }
+                continue;
+            }
+            break;
+        }
+        // Constrain only when years/months arithmetic produced a day past the
+        // new month's end (the day-shifting loop already left $dd in range,
+        // so this is a no-op except when no weeks/days were applied and the
+        // year/month change pushed us to a shorter month).
+        $maxDay = self::isoDaysInMonth($y, $m);
+        if ($dd > $maxDay) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$dd} is out of range for month {$m} in year {$y}");
+            }
+            $dd = $maxDay;
+        }
+        $intermediateNs = self::isoDateTimeToEpochNs(
+            $y, $m, $dd,
+            $parts['hour'], $parts['minute'], $parts['second'],
+            $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+            $tz,
+        );
+        $subDayNs = self::durationToTotalNs(
+            self::createDurationObject(
+                0, 0, 0, 0,
+                self::getDurationField($dur, 'hours'),
+                self::getDurationField($dur, 'minutes'),
+                self::getDurationField($dur, 'seconds'),
+                self::getDurationField($dur, 'milliseconds'),
+                self::getDurationField($dur, 'microseconds'),
+                self::getDurationField($dur, 'nanoseconds'),
+            )
+        );
+        if ($sign > 0) {
+            $result = bcadd($intermediateNs, $subDayNs, 0);
+        } else {
+            $result = bcsub($intermediateNs, $subDayNs, 0);
+        }
+        self::validateInstantRange($result);
+        return $result;
+    }
+
+    /**
+     * Compute ZDT-relative day count between two epochs. Whole days are
+     * advanced by adding one calendar day at a time (preserving wall
+     * time, so each step is variable-length on DST days). The fractional
+     * remainder is divided by the wall-day length of the target's
+     * calendar date (00:00 of its date to 00:00 of the next date).
+     */
+    private static function zdtDeltaInDays(JsObject $zdt, string $endNs, string $startNs): float
+    {
+        $tz = self::getSlotString($zdt, '[[TimeZone]]');
+        $sign = bccomp($endNs, $startNs, 0);
+        if ($sign === 0) {
+            return 0.0;
+        }
+        $signMul = $sign > 0 ? 1 : -1;
+        $cur = $startNs;
+        $days = 0;
+        $maxIter = 400 * 366;
+        for ($i = 0; $i < $maxIter; $i++) {
+            $parts = self::epochNsToISOParts($cur, $tz);
+            $ny = $parts['year'];
+            $nm = $parts['month'];
+            $nd = $parts['day'] + $signMul;
+            $dim = self::isoDaysInMonth($ny, $nm);
+            if ($nd > $dim) {
+                $nd = 1; $nm++;
+                if ($nm > 12) { $nm = 1; $ny++; }
+            } elseif ($nd < 1) {
+                $nm--;
+                if ($nm < 1) { $nm = 12; $ny--; }
+                $nd = self::isoDaysInMonth($ny, $nm);
+            }
+            $next = self::isoDateTimeToEpochNs(
+                $ny, $nm, $nd,
+                $parts['hour'], $parts['minute'], $parts['second'],
+                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+                $tz,
+            );
+            $compNext = bccomp($next, $endNs, 0);
+            $passesEnd = $signMul > 0 ? $compNext > 0 : $compNext < 0;
+            if ($passesEnd) {
+                // Leftover = remaining ns from cur to end.
+                // Divisor = length of one calendar day starting from cur
+                //   (always measured in the forward direction).
+                $leftover = bcsub($endNs, $cur, 0);
+                $forwardParts = self::epochNsToISOParts($cur, $tz);
+                $fy = $forwardParts['year'];
+                $fm = $forwardParts['month'];
+                $fd = $forwardParts['day'] + 1;
+                $fdim = self::isoDaysInMonth($fy, $fm);
+                if ($fd > $fdim) {
+                    $fd = 1; $fm++;
+                    if ($fm > 12) { $fm = 1; $fy++; }
+                }
+                $forwardNext = self::isoDateTimeToEpochNs(
+                    $fy, $fm, $fd,
+                    $forwardParts['hour'], $forwardParts['minute'], $forwardParts['second'],
+                    $forwardParts['millisecond'], $forwardParts['microsecond'], $forwardParts['nanosecond'],
+                    $tz,
+                );
+                $dayLen = bcsub($forwardNext, $cur, 0);
+                if (bccomp($dayLen, '0', 0) === 0) {
+                    return (float) $days;
+                }
+                $frac = (float) bcdiv($leftover, $dayLen, 25);
+                return (float) $days + $frac;
+            }
+            $cur = $next;
+            $days += $signMul;
+            if ($compNext === 0) {
+                return (float) $days;
+            }
+        }
+        $deltaNs = bcsub($endNs, $startNs, 0);
+        return (float) bcdiv($deltaNs, '86400000000000', 25);
     }
 
     /** Find the first instant on the given calendar day in the time zone. */
