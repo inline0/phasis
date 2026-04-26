@@ -7401,7 +7401,8 @@ class IntlObject
         // Sourced from CLDR's likelySubtags.xml; only the entries
         // we've actually exercised in tests are listed here.
         $raw = [
-            'aa' => 'aa-Latn-ET', 'ab' => 'ab-Cyrl-GE', 'af' => 'af-Latn-ZA',
+            'aa' => 'aa-Latn-ET', 'aae' => 'aae-Latn-IT',
+            'ab' => 'ab-Cyrl-GE', 'af' => 'af-Latn-ZA',
             'ak' => 'ak-Latn-GH', 'am' => 'am-Ethi-ET', 'ar' => 'ar-Arab-EG',
             'as' => 'as-Beng-IN', 'az' => 'az-Latn-AZ', 'be' => 'be-Cyrl-BY',
             'bg' => 'bg-Cyrl-BG', 'bm' => 'bm-Latn-ML', 'bn' => 'bn-Beng-BD',
