@@ -2902,13 +2902,31 @@ class TemporalObject
                 $prefix = $calendarName === 'critical' ? '!' : '';
                 return new JsString(self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd) . "[{$prefix}u-ca={$cal}]");
             }
+            // Non-ISO calendar with "never" still emits the full
+            // YYYY-MM-DD form so the day is unambiguous (the year
+            // anchors the date for calendar conversion). ISO
+            // calendar collapses to just MM-DD.
+            if ($cal !== 'iso8601') {
+                return new JsString(self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd));
+            }
             return new JsString(self::pad2($m) . '-' . self::pad2($dd));
         }, 0);
 
         $d('toJSON', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // When calendar is non-ISO, emit the full reference-year
+            // form so the calendar annotation has context to anchor
+            // against. ISO-only retains the bare MM-DD form.
+            if ($cal !== 'iso8601') {
+                return new JsString(
+                    self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd)
+                    . "[u-ca={$cal}]"
+                );
+            }
             return new JsString(self::pad2($m) . '-' . self::pad2($dd));
         }, 0);
 
@@ -8045,6 +8063,16 @@ class TemporalObject
             if (!empty($calAnnotations)) {
                 $cal = strtolower($calAnnotations[0]['value']);
             }
+            // Canonicalize CLDR aliases on the parsed calendar id
+            // so islamicc resolves to islamic-civil etc.
+            static $calAliasPmd = [
+                'islamicc' => 'islamic-civil',
+                'ethiopic-amete-alem' => 'ethioaa',
+                'gregorian' => 'gregory',
+            ];
+            if (isset($calAliasPmd[$cal])) {
+                $cal = $calAliasPmd[$cal];
+            }
             // Validate the date.
             $y = (int) $m[1];
             if ($mo < 1 || $mo > 12) {
@@ -8054,12 +8082,22 @@ class TemporalObject
             if ($dd < 1 || $dd > $dim) {
                 throw new RangeError("Invalid PlainMonthDay: {$str}");
             }
-            // For PlainMonthDay from string: non-iso8601 calendar with full date is invalid.
+            // Non-ISO calendars need a representable year for the
+            // reference date; clamp to the ISO range and reject
+            // anything beyond.
             if ($cal !== 'iso8601') {
-                throw new RangeError("non-iso8601 calendar not valid with full date format for PlainMonthDay: {$str}");
+                if ($y < self::ISO_YEAR_MIN || $y > self::ISO_YEAR_MAX) {
+                    throw new RangeError(
+                        "Year {$y} out of range for non-ISO calendar in PlainMonthDay: {$str}",
+                    );
+                }
             }
-            // Reference year is always 1972 per spec.
-            return self::createPlainMonthDayObject($mo, $dd, 1972, $cal);
+            // Reference year stays at the parsed value when the
+            // calendar is non-ISO (the year carries era context for
+            // calendar conversion). ISO calendars always normalise
+            // to 1972.
+            $refYear = $cal === 'iso8601' ? 1972 : $y;
+            return self::createPlainMonthDayObject($mo, $dd, $refYear, $cal);
         }
         throw new RangeError("Invalid PlainMonthDay string: {$str}");
     }
