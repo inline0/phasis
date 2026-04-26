@@ -539,6 +539,80 @@ class DateConstructor
     }
 
     /**
+     * Apply ToDateTimeOptions defaults: when no explicit
+     * date/time component or dateStyle/timeStyle is supplied,
+     * fill in the appropriate skeleton ("date" -> year/month/day,
+     * "time" -> hour/minute/second, "all" -> both). Returns the
+     * augmented options object as a JsObject.
+     */
+    private static function toDateTimeOptions(JsValue $options, string $required): JsObject
+    {
+        if ($options instanceof JsObject) {
+            $result = new JsObject($options->getPrototype());
+            foreach ($options->getOwnPropertyNames() as $name) {
+                $val = $options->get($name);
+                if (!$val instanceof JsUndefined) {
+                    $result->set($name, $val);
+                }
+            }
+        } elseif ($options instanceof JsUndefined) {
+            $result = new JsObject();
+        } else {
+            $result = TypeConversion::toObject($options);
+        }
+        // Per spec ToDateTimeOptions, needDefaults is a single
+        // flag: any explicit component (date or time) OR an explicit
+        // dateStyle / timeStyle disables defaulting altogether.
+        $needDefaults = true;
+        $relevantDate = ['weekday', 'year', 'month', 'day'];
+        $relevantTime = ['dayPeriod', 'hour', 'minute', 'second', 'fractionalSecondDigits'];
+        if ($required === 'date' || $required === 'all' || $required === 'any') {
+            foreach ($relevantDate as $k) {
+                if (!$result->get($k) instanceof JsUndefined) {
+                    $needDefaults = false;
+                    break;
+                }
+            }
+        }
+        if (
+            $needDefaults
+            && ($required === 'time' || $required === 'all' || $required === 'any')
+        ) {
+            foreach ($relevantTime as $k) {
+                if (!$result->get($k) instanceof JsUndefined) {
+                    $needDefaults = false;
+                    break;
+                }
+            }
+        }
+        if (
+            !$result->get('dateStyle') instanceof JsUndefined
+            || !$result->get('timeStyle') instanceof JsUndefined
+        ) {
+            $needDefaults = false;
+        }
+        if (!$needDefaults) {
+            return $result;
+        }
+        // Default the appropriate skeleton.
+        if ($required === 'all' || $required === 'any' || $required === 'date') {
+            foreach (['year', 'month', 'day'] as $k) {
+                if ($result->get($k) instanceof JsUndefined) {
+                    $result->set($k, new JsString('numeric'));
+                }
+            }
+        }
+        if ($required === 'all' || $required === 'any' || $required === 'time') {
+            foreach (['hour', 'minute', 'second'] as $k) {
+                if ($result->get($k) instanceof JsUndefined) {
+                    $result->set($k, new JsString('numeric'));
+                }
+            }
+        }
+        return $result;
+    }
+
+    /**
      * Get a DateTimeImmutable in UTC from the internal timestamp.
      */
     private static function utcDateTime(float $tv): \DateTimeImmutable
@@ -908,20 +982,94 @@ class DateConstructor
             ($dtfCtor->getNativeCallable())($newObj, [$localesArg, $optionsArg]);
         };
 
-        $d('toLocaleDateString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
+        // Build an Intl.DateTimeFormat with sensible component defaults
+        // (per ToDateTimeOptions), invoke its format getter, and return
+        // the result. Returns null when Intl.DateTimeFormat isn't
+        // available, in which case the caller falls back to a manual
+        // formatting path.
+        $tryFormatViaIntl = static function (
+            JsValue $localesArg,
+            JsValue $optionsArg,
+            string $required,
+            float $tv,
+        ): ?JsString {
+            $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+            if ($env === null) {
+                return null;
+            }
+            $intlObj = $env->get('Intl', false);
+            if (!$intlObj instanceof JsObject) {
+                return null;
+            }
+            $dtfCtor = $intlObj->get('DateTimeFormat');
+            if (!$dtfCtor instanceof JsFunction) {
+                return null;
+            }
+            // Apply ToDateTimeOptions defaults: when the user didn't
+            // supply any explicit component / dateStyle / timeStyle,
+            // populate the appropriate skeleton. Required determines
+            // which set: "date" -> year/month/day, "time" -> hour/
+            // minute/second, "all" -> both.
+            $finalOptions = self::toDateTimeOptions($optionsArg, $required);
+            $proto = $dtfCtor->get('prototype');
+            $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+            $newObj->set('[[NewTarget]]', $dtfCtor);
+            ($dtfCtor->getNativeCallable())($newObj, [$localesArg, $finalOptions]);
+            $interp = \PhpJs\Engine::getCurrentInterpreter();
+            $formatGetter = $proto instanceof JsObject
+                ? $proto->getOwnPropertyDescriptor('format')
+                : null;
+            if (
+                $formatGetter === null
+                || !($formatGetter->get instanceof JsFunction)
+                || $interp === null
+            ) {
+                return null;
+            }
+            $bound = $interp->callFunction($formatGetter->get, $newObj, []);
+            if (!$bound instanceof JsFunction) {
+                return null;
+            }
+            $formatted = $interp->callFunction(
+                $bound,
+                JsUndefined::instance(),
+                [new JsNumber($tv)],
+            );
+            return $formatted instanceof JsString ? $formatted : null;
+        };
+
+        $d('toLocaleDateString', function (JsValue $this_, array $args = []) use ($validateIntlOptions, $tryFormatViaIntl): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
+            }
+            $intl = $tryFormatViaIntl(
+                $args[0] ?? JsUndefined::instance(),
+                $args[1] ?? JsUndefined::instance(),
+                'date',
+                $tv,
+            );
+            if ($intl !== null) {
+                return $intl;
             }
             $validateIntlOptions($args);
             $local = self::localDateTime($tv);
             return new JsString($local->format('n/j/Y'));
         });
 
-        $d('toLocaleTimeString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
+        $d('toLocaleTimeString', function (JsValue $this_, array $args = []) use ($validateIntlOptions, $tryFormatViaIntl): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
+            }
+            $intl = $tryFormatViaIntl(
+                $args[0] ?? JsUndefined::instance(),
+                $args[1] ?? JsUndefined::instance(),
+                'time',
+                $tv,
+            );
+            if ($intl !== null) {
+                return $intl;
             }
             $validateIntlOptions($args);
             $local = self::localDateTime($tv);
@@ -932,10 +1080,19 @@ class DateConstructor
             return new JsString("{$h}:{$min}:{$sec} {$ampm}");
         });
 
-        $d('toLocaleString', function (JsValue $this_, array $args = []) use ($validateIntlOptions): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args = []) use ($validateIntlOptions, $tryFormatViaIntl): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
                 return new JsString('Invalid Date');
+            }
+            $intl = $tryFormatViaIntl(
+                $args[0] ?? JsUndefined::instance(),
+                $args[1] ?? JsUndefined::instance(),
+                'all',
+                $tv,
+            );
+            if ($intl !== null) {
+                return $intl;
             }
             $validateIntlOptions($args);
             $local = self::localDateTime($tv);
