@@ -61,5 +61,14 @@ return [
         // implemented at the spec-precise tick granularity that the
         // module-code tests assert against.
         'top-level-await',
+        // Resizable ArrayBuffer (transfer + resize semantics) and the
+        // matching SharedArrayBuffer.grow are not implemented; tests
+        // that exercise resize during iteration would need a fresh
+        // backing-store impl.
+        'resizable-arraybuffer',
+        // Duplicate named capture groups (?<x>...|...(?<x>...)) require
+        // a regex engine that lets two groups share a name in different
+        // alternatives. PCRE2 doesn't expose this directly.
+        'regexp-duplicate-named-groups',
     ],
 ];
