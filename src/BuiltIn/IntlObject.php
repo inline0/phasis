@@ -3980,6 +3980,18 @@ class IntlObject
                     if (isset($calAliases[$calendar])) {
                         $calendar = $calAliases[$calendar];
                     }
+                } elseif (preg_match('/-u-(?:[a-wy-z0-9]{2,8}-)*?ca-([a-z0-9]{3,8}(?:-[a-z0-9]{3,8})*)/i', $resolvedLocale, $m) === 1) {
+                    // -u-ca-<calendar> extension when no explicit
+                    // option was passed.
+                    $calendar = strtolower($m[1]);
+                    static $calAliasesExt = [
+                        'islamicc' => 'islamic-civil',
+                        'ethiopic-amete-alem' => 'ethioaa',
+                        'gregorian' => 'gregory',
+                    ];
+                    if (isset($calAliasesExt[$calendar])) {
+                        $calendar = $calAliasesExt[$calendar];
+                    }
                 }
                 $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(
                     new JsString($calendar),
@@ -5213,8 +5225,6 @@ class IntlObject
             if ($lookahead !== '') {
                 $found = strpos($formatted, $lookahead, $cursor);
                 if ($found === false && preg_match('/^[\s\x{00A0}\x{202F}]/u', $lookahead) === 1) {
-                    // Search for any whitespace cluster as the
-                    // boundary, not just the exact pattern char.
                     if (
                         preg_match(
                             '/[\s\x{00A0}\x{202F}]/u',
@@ -5230,6 +5240,26 @@ class IntlObject
                     $endPos = $found;
                 }
             }
+            // When the next token is also typed (no literal between),
+            // split the consumed run at a transition boundary: digit
+            // → non-digit for relatedYear → yearName ("2019己亥").
+            $nextTok = $tokens[$ti + 1] ?? null;
+            if (
+                $nextTok !== null
+                && $nextTok['type'] !== 'literal'
+                && $tok['type'] !== $nextTok['type']
+            ) {
+                $splitPos = self::findTypedTokenSplit(
+                    $formatted,
+                    $cursor,
+                    $endPos,
+                    $tok['type'],
+                    $nextTok['type'],
+                );
+                if ($splitPos !== null && $splitPos > $cursor && $splitPos < $endPos) {
+                    $endPos = $splitPos;
+                }
+            }
             $value = substr($formatted, $cursor, $endPos - $cursor);
             if ($value !== '') {
                 $emit($tok['type'], $value);
@@ -5241,6 +5271,43 @@ class IntlObject
         }
         $parts->set('length', new JsNumber((float) $idx));
         return $parts;
+    }
+
+    /**
+     * Find a byte offset that splits two adjacent typed pattern
+     * tokens in the formatted output. For digit-bearing → non-digit
+     * boundaries (e.g. relatedYear "2019" → yearName "己亥"), walk
+     * forward through digits until the first non-digit byte. Returns
+     * null when no clean split exists.
+     */
+    private static function findTypedTokenSplit(
+        string $formatted,
+        int $cursor,
+        int $endPos,
+        string $prevType,
+        string $nextType,
+    ): ?int {
+        $digitTypes = ['year', 'relatedYear', 'day', 'hour', 'minute', 'second', 'fractionalSecond'];
+        $alphaTypes = ['yearName', 'month', 'weekday', 'dayPeriod', 'era', 'timeZoneName'];
+        $prevIsDigit = in_array($prevType, $digitTypes, true);
+        $nextIsAlpha = in_array($nextType, $alphaTypes, true);
+        if (!$prevIsDigit || !$nextIsAlpha) {
+            return null;
+        }
+        $i = $cursor;
+        while ($i < $endPos) {
+            $b = ord($formatted[$i]);
+            if ($b < 0x80) {
+                if (!ctype_digit($formatted[$i])) {
+                    return $i;
+                }
+                $i++;
+                continue;
+            }
+            // Multi-byte UTF-8 start: clearly non-digit.
+            return $i;
+        }
+        return null;
     }
 
     /** Map a CLDR pattern letter to the spec's part-type. */
@@ -5881,7 +5948,24 @@ class IntlObject
 
     private static function dateTimeFormatterFor(JsObject $dtf): \IntlDateFormatter
     {
-        $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
+        $localeRaw = self::extractInternalString($dtf, '[[Locale]]', 'en');
+        $calendar = self::extractInternalString($dtf, '[[Calendar]]', 'gregory');
+        $locale = str_replace('-', '_', $localeRaw);
+        // iso8601 is a Gregorian-equivalent calendar in ICU; keep
+        // the GREGORIAN backend so date formatting matches normal
+        // Gregorian patterns. Other non-Gregorian calendars route
+        // through TRADITIONAL with an ICU "@calendar=…" suffix.
+        $needsTraditional = $calendar !== 'gregory'
+            && $calendar !== ''
+            && $calendar !== 'iso8601';
+        if ($needsTraditional) {
+            if (!str_contains($locale, '@')) {
+                $locale .= '@calendar=' . $calendar;
+            }
+        }
+        $calendarKind = $needsTraditional
+            ? \IntlDateFormatter::TRADITIONAL
+            : \IntlDateFormatter::GREGORIAN;
         $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
         if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
             $tz = 'GMT' . $tz;
@@ -5905,6 +5989,7 @@ class IntlObject
                 $mapStyle($dateStyle),
                 $mapStyle($timeStyle),
                 $tz,
+                $calendarKind,
             );
             // Honour an explicit hour12 / hourCycle override against
             // the locale's CLDR-derived time pattern. Without this the
@@ -5934,6 +6019,7 @@ class IntlObject
                 \IntlDateFormatter::MEDIUM,
                 \IntlDateFormatter::MEDIUM,
                 $tz,
+                $calendarKind,
             );
         }
         $pattern = '';
@@ -5952,14 +6038,54 @@ class IntlObject
         // day/month against ICU's locale-preferred pattern, which may
         // collapse "hh" → "h" for en-US etc.
         $pattern = self::enforceExplicitDigitWidths($pattern, $dtf);
+        // For non-Gregorian calendars that emit cyclic year names
+        // (Chinese / Dangi), expand the year letter "y" run to "rU"
+        // so the formatted output includes both the related Gregorian
+        // year and the cyclic year name (e.g. "2019己亥年").
+        if ($calendar === 'chinese' || $calendar === 'dangi') {
+            $pattern = self::expandChineseYearPattern($pattern);
+        }
         return new \IntlDateFormatter(
             $locale,
             \IntlDateFormatter::FULL,
             \IntlDateFormatter::FULL,
             $tz,
-            \IntlDateFormatter::GREGORIAN,
+            $calendarKind,
             $pattern,
         );
+    }
+
+    /**
+     * Replace the first "y" letter run in a CLDR pattern with "rU"
+     * so chinese/dangi calendar formatters emit relatedYear + yearName.
+     */
+    private static function expandChineseYearPattern(string $pattern): string
+    {
+        $out = '';
+        $len = strlen($pattern);
+        $inQuote = false;
+        $i = 0;
+        $expanded = false;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                $inQuote = !$inQuote;
+                $out .= $c;
+                $i++;
+                continue;
+            }
+            if (!$inQuote && !$expanded && ($c === 'y' || $c === 'Y')) {
+                while ($i < $len && $pattern[$i] === $c) {
+                    $i++;
+                }
+                $out .= 'rU';
+                $expanded = true;
+                continue;
+            }
+            $out .= $c;
+            $i++;
+        }
+        return $out;
     }
 
     /**
