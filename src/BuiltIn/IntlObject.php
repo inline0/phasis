@@ -706,8 +706,9 @@ class IntlObject
         $sign = $m[1];
         $hh = str_pad($m[2], 2, '0', STR_PAD_LEFT);
         $mm = $m[3] === '' ? '00' : str_pad($m[3], 2, '0', STR_PAD_LEFT);
+        // Zero-offset normalises to "+00:00" regardless of sign.
         if ($hh === '00' && $mm === '00') {
-            return 'UTC';
+            $sign = '+';
         }
         return $sign . $hh . ':' . $mm;
     }
@@ -2653,33 +2654,6 @@ class IntlObject
                         ));
                     }
                 }
-                // When `hour` is requested but no cycle was supplied,
-                // fall back to the locale's CLDR default ("h12" for
-                // most locales, "h11" for ja, "h23" for some others).
-                if ($hasHour) {
-                    if ($hourCycle === null) {
-                        $localeLang = strtolower(strtok($resolvedLocale, '-_'));
-                        static $localeDefaultHc = [
-                            'ja' => 'h11',
-                        ];
-                        $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
-                    }
-                    $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
-                        new JsString($hourCycle),
-                        false,
-                        false,
-                        false,
-                    ));
-                    if ($hour12 !== null) {
-                        $obj->defineOwnProperty('[[Hour12]]', PropertyDescriptor::data(
-                            new JsBoolean($hour12),
-                            false,
-                            false,
-                            false,
-                        ));
-                    }
-                }
-
                 // formatMatcher: "basic" or "best fit" (default).
                 $fmVal = $options->get('formatMatcher');
                 if (!$fmVal instanceof JsUndefined) {
@@ -2749,6 +2723,35 @@ class IntlObject
                     foreach (['year', 'month', 'day'] as $comp) {
                         $obj->defineOwnProperty("[[{$comp}]]", PropertyDescriptor::data(
                             new JsString('numeric'),
+                            false,
+                            false,
+                            false,
+                        ));
+                    }
+                }
+
+                // Now that dateStyle/timeStyle are known, decide
+                // whether to expose [[HourCycle]] / [[Hour12]] (only
+                // when the formatter will emit hours -- explicit
+                // hour component or via timeStyle).
+                $impliesHour = $hasHour || $timeStyle !== null;
+                if ($impliesHour) {
+                    if ($hourCycle === null) {
+                        $localeLang = strtolower(strtok($resolvedLocale, '-_'));
+                        static $localeDefaultHc = [
+                            'ja' => 'h11',
+                        ];
+                        $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
+                    }
+                    $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
+                        new JsString($hourCycle),
+                        false,
+                        false,
+                        false,
+                    ));
+                    if ($hour12 !== null) {
+                        $obj->defineOwnProperty('[[Hour12]]', PropertyDescriptor::data(
+                            new JsBoolean($hour12),
                             false,
                             false,
                             false,
