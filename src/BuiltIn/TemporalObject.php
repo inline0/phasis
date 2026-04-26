@@ -2982,11 +2982,39 @@ class TemporalObject
         });
         self::defineGetter($proto, 'monthCode', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // Only consult ICU when the storage was clearly produced from a
+            // string with a non-ISO u-ca annotation (i.e. ISOYear is not the
+            // 1972 reference). Otherwise the ISO month/day pair already
+            // carries the user-supplied calendar fields.
+            if ($cal !== 'iso8601' && self::getSlotInt($this_, '[[ISOYear]]') !== 1972) {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsString($parts['monthCode']);
+                }
+            }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             return new JsString('M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT));
         });
         self::defineGetter($proto, 'day', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601' && self::getSlotInt($this_, '[[ISOYear]]') !== 1972) {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['day']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISODay]]'));
         });
 
@@ -10825,6 +10853,142 @@ class TemporalObject
             $result .= ':' . self::pad2($s);
         }
         return $result;
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers: calendar arithmetic via ICU
+    // -----------------------------------------------------------------------
+
+    /**
+     * Convert ISO (y,m,d) to calendar-specific (year, monthCode, day) using
+     * ICU. Returns null if conversion is unavailable. Currently supports
+     * hebrew, islamic*, persian, indian, ethioaa, ethiopic, coptic, buddhist,
+     * japanese, roc, chinese, dangi.
+     */
+    private static function isoToCalendarParts(string $calendar, int $y, int $m, int $d): ?array
+    {
+        if ($calendar === 'iso8601') {
+            $monthCode = 'M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
+            return [
+                'year' => $y,
+                'month' => $m,
+                'monthCode' => $monthCode,
+                'day' => $d,
+                'isLeapMonth' => false,
+            ];
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        try {
+            $icuCal = $calendar;
+            static $aliasMap = [
+                'gregory' => 'gregorian',
+                'islamic-civil' => 'islamic-civil',
+                'islamicc' => 'islamic-civil',
+                'ethioaa' => 'ethiopic-amete-alem',
+            ];
+            if (isset($aliasMap[$calendar])) {
+                $icuCal = $aliasMap[$calendar];
+            }
+            $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            // Set the ICU calendar to the ISO date by epoch ms.
+            $epochMs = self::isoDateToEpochMs($y, $m, $d);
+            $cal->setTime($epochMs);
+            $calY = $cal->get(\IntlCalendar::FIELD_YEAR);
+            $calM = $cal->get(\IntlCalendar::FIELD_MONTH);
+            $calD = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
+        } catch (\Throwable) {
+            return null;
+        }
+        $monthCode = self::calendarMonthToCode($calendar, $calY, $calM);
+        $monthOneBased = self::calendarMonthToOneBased($calendar, $calY, $calM);
+        $isLeapMonth = self::calendarMonthIsLeap($calendar, $calY, $calM);
+        return [
+            'year' => $calY,
+            'month' => $monthOneBased,
+            'monthCode' => $monthCode,
+            'day' => $calD,
+            'isLeapMonth' => $isLeapMonth,
+        ];
+    }
+
+    /** Days since unix epoch for an ISO date. */
+    private static function isoDateToEpochMs(int $y, int $m, int $d): float
+    {
+        $days = self::isoDateToDays($y, $m, $d);
+        return (float) ((int) $days * 86400 * 1000);
+    }
+
+    /** True if the Hebrew year has 13 months (leap). */
+    private static function isHebrewLeapYear(int $year): bool
+    {
+        return in_array($year % 19, [0, 3, 6, 8, 11, 14, 17], true);
+    }
+
+    /** Convert ICU 0-indexed month to spec monthCode for the given calendar. */
+    private static function calendarMonthToCode(string $calendar, int $year, int $icuMonth): string
+    {
+        if ($calendar === 'hebrew') {
+            // ICU month index 0-12. M01-M05 = 0-4, M05L = 5 (leap only),
+            // M06-M12 = 6-12. In a non-leap year ICU collapses position 5
+            // into 6 (Adar), so callers should not see a 5 here, but if they
+            // do we treat it as M06.
+            if ($icuMonth >= 0 && $icuMonth <= 4) {
+                return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
+            }
+            if ($icuMonth === 5) {
+                return self::isHebrewLeapYear($year) ? 'M05L' : 'M06';
+            }
+            // 6..12 → M06..M12.
+            return 'M' . str_pad((string) $icuMonth, 2, '0', STR_PAD_LEFT);
+        }
+        if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            // ICU 0-12; leap month indicator requires deeper detection. Default
+            // to the 1-indexed numeric form. Caller may override on leap.
+            return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
+        }
+        // Default: ICU month 0..N → M01..M(N+1).
+        return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
+    }
+
+    /** Calendar-specific 1-indexed month number (matches the spec's `month` getter). */
+    private static function calendarMonthToOneBased(string $calendar, int $year, int $icuMonth): int
+    {
+        if ($calendar === 'hebrew') {
+            if (self::isHebrewLeapYear($year)) {
+                // Spec ordering: 1=M01, ..., 5=M05, 6=M05L (leap), 7=M06, ..., 13=M12.
+                if ($icuMonth >= 0 && $icuMonth <= 4) {
+                    return $icuMonth + 1;
+                }
+                if ($icuMonth === 5) {
+                    return 6;
+                }
+                return $icuMonth + 1;
+            }
+            // Non-leap: 12 months. ICU 0-4 → 1-5; 5/6 → 6; 7-12 → 7-12... wait actually
+            // for non-leap year the spec uses month numbers 1..12 (no M05L).
+            if ($icuMonth >= 0 && $icuMonth <= 4) {
+                return $icuMonth + 1;
+            }
+            if ($icuMonth === 5 || $icuMonth === 6) {
+                return 6;
+            }
+            return $icuMonth;
+        }
+        return $icuMonth + 1;
+    }
+
+    /** True if ICU's month index represents a leap month for that year. */
+    private static function calendarMonthIsLeap(string $calendar, int $year, int $icuMonth): bool
+    {
+        if ($calendar === 'hebrew') {
+            return self::isHebrewLeapYear($year) && $icuMonth === 5;
+        }
+        return false;
     }
 
     // -----------------------------------------------------------------------
