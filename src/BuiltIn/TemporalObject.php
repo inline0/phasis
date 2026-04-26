@@ -7367,6 +7367,10 @@ class TemporalObject
             // Property bag: per spec, read and convert all fields in alphabetical order.
             // calendar
             $calVal = $item->get('calendar');
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
             // day (with valueOf)
             $dayVal = $item->get('day');
             $dNum = NAN;
@@ -7374,6 +7378,33 @@ class TemporalObject
                 $dNum = TypeConversion::toNumber($dayVal);
                 if (!is_finite($dNum)) {
                     throw new RangeError("day must be finite");
+                }
+            }
+            // era / eraYear (non-ISO calendars only).
+            $eraStr = null;
+            $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+                static $relErasUseEras = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $relErasUseEras, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError('era and eraYear must be provided together');
                 }
             }
             // hour
@@ -7476,9 +7507,17 @@ class TemporalObject
                     }
                 }
             }
-            // Required: year, day (and month or monthCode).
+            // Required: year (or era+eraYear), day (and month or monthCode).
             if ($yearVal instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
+                static $relEraDeriv = ['gregory', 'japanese', 'roc'];
+                if ($eraYearNum !== null && in_array($cal, $relEraDeriv, true)) {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - $eraYearNum)
+                        : $eraYearNum;
+                } else {
+                    throw new TypeError('missing required property: year');
+                }
             }
             if ($dayVal instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
@@ -7502,15 +7541,29 @@ class TemporalObject
                 throw new RangeError("day must be finite");
             }
             $d = (int) $dNum;
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
             // Check for -0 year.
             if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
                 throw new RangeError('reject minus zero as extended year');
             }
             [$y, $m, $d] = self::constrainISODate($y, $m, $d);
+            // If timeZone present, validate offset match (sub-minute fuzzy is rejected
+            // for property bags) and treat as a zoned-relative reference. We still
+            // return a PlainDate here; offset mismatch raises RangeError.
+            if ($hasTz && $offStr !== null) {
+                $timeZone = self::toTemporalTimeZoneIdentifier($tzVal);
+                $h = ($hourVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($hourVal);
+                $minNum = ($minVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($minVal);
+                $sNum = ($secVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($secVal);
+                $msNum = ($milliVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($milliVal);
+                $usNum = ($microVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($microVal);
+                $nsNum = ($nanoVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($nanoVal);
+                $epochFromWall = self::isoDateTimeToEpochNs($y, $m, $d, $h, $minNum, $sNum, $msNum, $usNum, $nsNum, $timeZone);
+                $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
+                $givenOffsetNs = self::parseOffsetToNs($offStr);
+                if ($givenOffsetNs !== $actualOffsetNs) {
+                    throw new RangeError("offset property \"{$offStr}\" does not match time zone \"{$timeZone}\"");
+                }
+            }
             return self::createPlainDateObject($y, $m, $d, $cal);
         }
         // Reject non-string, non-object primitives per spec.
