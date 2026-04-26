@@ -8535,31 +8535,54 @@ class IntlObject
                     'hours', 'minutes', 'seconds',
                     'milliseconds', 'microseconds', 'nanoseconds',
                 ];
-                $perUnitDefaults = [
-                    'years' => $style,
-                    'months' => $style,
-                    'weeks' => $style,
-                    'days' => $style,
-                    'hours' => $style === 'digital' ? 'numeric' : $style,
-                    'minutes' => $style === 'digital' ? 'numeric' : $style,
-                    'seconds' => $style === 'digital' ? 'numeric' : $style,
-                    'milliseconds' => $style === 'digital' ? 'numeric' : $style,
-                    'microseconds' => $style === 'digital' ? 'numeric' : $style,
-                    'nanoseconds' => $style === 'digital' ? 'numeric' : $style,
-                ];
+                // GetDurationUnitOptions: track prevStyle so a
+                // numeric / 2-digit run propagates downstream defaults.
+                // - hours/minutes/seconds following numeric: "2-digit"
+                // - everything else following numeric: "numeric"
+                $prevStyle = null;
                 foreach ($units as $u) {
                     $allowed = ($u === 'hours' || $u === 'minutes' || $u === 'seconds'
                         || $u === 'milliseconds' || $u === 'microseconds' || $u === 'nanoseconds')
                         ? ['long', 'short', 'narrow', 'numeric', '2-digit']
                         : ['long', 'short', 'narrow'];
                     $val = $options->get($u);
-                    $unitDisplay = $perUnitDefaults[$u];
+                    $explicitStyle = null;
                     if (!$val instanceof JsUndefined) {
                         $u2 = TypeConversion::toString($val);
                         if (!in_array($u2, $allowed, true)) {
                             throw new RangeError("Invalid {$u}: {$u2}");
                         }
-                        $unitDisplay = $u2;
+                        $explicitStyle = $u2;
+                    }
+                    if ($explicitStyle !== null) {
+                        $unitDisplay = $explicitStyle;
+                    } elseif ($prevStyle === 'numeric' || $prevStyle === '2-digit') {
+                        // Spec: numeric run continues; minutes/seconds
+                        // default to 2-digit, others to numeric.
+                        if ($u === 'minutes' || $u === 'seconds') {
+                            $unitDisplay = '2-digit';
+                        } else {
+                            $unitDisplay = 'numeric';
+                        }
+                    } elseif ($style === 'digital'
+                        && ($u === 'hours' || $u === 'minutes' || $u === 'seconds')
+                    ) {
+                        $unitDisplay = 'numeric';
+                    } else {
+                        $unitDisplay = $style === 'digital' ? 'short' : $style;
+                    }
+                    // Spec: a "long"/"short"/"narrow" style after a
+                    // numeric/2-digit predecessor is a RangeError
+                    // regardless of which unit (the numeric run can't
+                    // be interrupted).
+                    if (
+                        $explicitStyle !== null
+                        && ($prevStyle === 'numeric' || $prevStyle === '2-digit')
+                        && in_array($explicitStyle, ['long', 'short', 'narrow'], true)
+                    ) {
+                        throw new RangeError(
+                            "{$u} style '{$explicitStyle}' incompatible with preceding numeric unit",
+                        );
                     }
                     $slot = '[[' . ucfirst($u) . ']]';
                     $obj->defineOwnProperty($slot, PropertyDescriptor::data(
@@ -8586,6 +8609,7 @@ class IntlObject
                         false,
                         false,
                     ));
+                    $prevStyle = $unitDisplay;
                 }
 
                 // fractionalDigits: 0-9 (or undefined).
@@ -8752,35 +8776,67 @@ class IntlObject
             'seconds' => 'second', 'milliseconds' => 'millisecond',
             'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
         ];
-        $segments = [];
-        foreach ($units as $u => $singular) {
+        // ToDurationRecord / IsValidDurationRecord:
+        //   - Each unit value must be an integer (or NaN/Infinity rejected).
+        //   - All values must share a sign (or be zero).
+        //   - years/months/weeks limited to abs < 2^32.
+        $values = [];
+        $sign = 0;
+        foreach ($units as $u => $_singular) {
             $val = $duration->get($u);
-            if (!$val instanceof JsNumber) {
+            if ($val instanceof JsUndefined) {
+                $values[$u] = 0.0;
                 continue;
             }
+            if (!$val instanceof JsNumber) {
+                throw new TypeError("Duration {$u} must be a number");
+            }
             $n = $val->value;
-            if ($n === 0.0) {
+            if (is_nan($n) || !is_finite($n) || floor($n) !== $n) {
+                throw new RangeError("Duration {$u} must be an integer");
+            }
+            if (in_array($u, ['years', 'months', 'weeks'], true) && abs($n) >= 4294967296.0) {
+                throw new RangeError("Duration {$u} is out of range");
+            }
+            $values[$u] = $n;
+            if ($n !== 0.0) {
+                $thisSign = $n > 0 ? 1 : -1;
+                if ($sign !== 0 && $thisSign !== $sign) {
+                    throw new RangeError('Duration values must share a sign');
+                }
+                $sign = $thisSign;
+            }
+        }
+        $segments = [];
+        foreach ($units as $u => $singular) {
+            $n = $values[$u];
+            $displaySlot = '[[' . ucfirst($u) . 'Display]]';
+            $display = self::extractInternalString($df, $displaySlot, 'auto');
+            // Per spec: zero values are dropped when display is
+            // "auto"; always rendered when display is "always".
+            if ($n === 0.0 && $display !== 'always') {
                 continue;
             }
             $segments[] = self::formatDurationSegment((int) $n, $u, $singular);
         }
         if (empty($segments)) {
-            return '0 sec';
+            return '';
         }
         return implode(', ', $segments);
     }
 
     private static function formatDurationSegment(int $n, string $unit, string $singular): string
     {
-        // Minimal English short-form labels. A full CLDR table would
-        // span ~10 units × 4 styles × multiple plural categories ×
-        // every locale; we ship the en-US short form as the default
-        // fallback so the structural shape is exercised.
+        // Minimal English short-form labels matching CLDR's narrow /
+        // short data. A full CLDR table would span ~10 units × 4
+        // styles × multiple plural categories × every locale; we
+        // ship the en-US default-style labels so the structural
+        // shape is exercised.
         static $shortLabels = [
-            'years' => 'yr', 'months' => 'mo', 'weeks' => 'wk',
-            'days' => 'day', 'hours' => 'hr', 'minutes' => 'min',
-            'seconds' => 'sec', 'milliseconds' => 'ms',
-            'microseconds' => 'μs', 'nanoseconds' => 'ns',
+            'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
+            'days' => 'd', 'hours' => 'h', 'minutes' => 'min',
+            'seconds' => 's', 'milliseconds' => 'ms',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'ns',
         ];
         return $n . ' ' . ($shortLabels[$unit] ?? $singular);
     }
