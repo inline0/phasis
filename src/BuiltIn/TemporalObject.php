@@ -7724,9 +7724,12 @@ class TemporalObject
         // (b) the duration itself has calendar units that need resolving via calendar.
         $calUnits = ['year', 'month', 'week'];
         $hasCalUnit = $years !== 0 || $months !== 0 || $weeks !== 0;
+        $relIsZdt = $relativeTo instanceof JsObject
+            && $relativeTo->has('[[IsZonedDateTime]]');
         $needsCalendar = in_array($unit, $calUnits, true)
             || in_array($largestUnit, $calUnits, true)
-            || $hasCalUnit;
+            || $hasCalUnit
+            || $relIsZdt;
         if ($needsCalendar && $relativeTo !== null) {
             $refDate = $relativeTo;
             $isZdtRelativeTo = $refDate instanceof JsObject
@@ -7748,9 +7751,56 @@ class TemporalObject
                     self::getSlotString($relativeTo, '[[Calendar]]'),
                 );
             }
-            // For DST-bearing ZDT, do not pre-convert time to days; ZDT-aware
-            // logic later will handle variable day lengths. Fixed-offset and
-            // PlainDate relativeTo can use the regular 24h conversion.
+            // For DST-bearing ZDT with a non-negative duration, derive the
+            // combined (days, time-remainder) from actual epoch ns rather
+            // than from the input duration's hours/days at fixed 24h.
+            // This is what the spec refers to as the "ZDT-aware" path:
+            // wall-clock days vary in length under DST, so a 1-day input
+            // may equal 23h or 25h, and a 25h input may equal 1 day exactly.
+            $durSignForDst = self::durationSign($dur);
+            $smallestNsForDst = self::temporalUnitToNs($unit);
+            $incNsForDst = bcmul((string) $increment, $smallestNsForDst, 0);
+            $isTrivialRound = bccomp($incNsForDst, '1', 0) <= 0;
+            if (
+                $isZdtRelativeTo
+                && $zdtTzIsDst
+                && $durSignForDst >= 0
+                && !$isTrivialRound
+            ) {
+                $endParts = self::epochNsToISOParts($endEpochNs, $tz);
+                $endDate = self::createPlainDateObject(
+                    $endParts['year'],
+                    $endParts['month'],
+                    $endParts['day'],
+                    self::getSlotString($relativeTo, '[[Calendar]]'),
+                );
+                $startOfEndDayNs = self::startOfDayInTimeZone(
+                    $endParts['year'],
+                    $endParts['month'],
+                    $endParts['day'],
+                    $tz,
+                );
+                $remNsBc = bcsub($endEpochNs, $startOfEndDayNs, 0);
+                $dateUnitsOrder = ['year', 'month', 'week', 'day'];
+                $dateDiffLU = in_array($largestUnit, $dateUnitsOrder, true) ? $largestUnit : 'day';
+                $dateDiffOpts = new JsObject();
+                $dateDiffOpts->set('largestUnit', new JsString($dateDiffLU));
+                $dateDiff = self::plainDateDifference($refDate, $endDate, $dateDiffOpts, 1);
+                $remTimeFromNs = self::nsToTimeDuration($remNsBc, 'hour');
+                $combined = self::createDurationObject(
+                    self::getDurationField($dateDiff, 'years'),
+                    self::getDurationField($dateDiff, 'months'),
+                    self::getDurationField($dateDiff, 'weeks'),
+                    self::getDurationField($dateDiff, 'days'),
+                    self::getDurationField($remTimeFromNs, 'hours'),
+                    self::getDurationField($remTimeFromNs, 'minutes'),
+                    self::getDurationField($remTimeFromNs, 'seconds'),
+                    self::getDurationField($remTimeFromNs, 'milliseconds'),
+                    self::getDurationField($remTimeFromNs, 'microseconds'),
+                    self::getDurationField($remTimeFromNs, 'nanoseconds'),
+                );
+                return self::roundCalendarDuration($combined, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
+            }
             if ($isZdtRelativeTo && $zdtTzIsDst) {
                 $extraDays = 0;
                 $remTime = self::createDurationObject(
@@ -10644,11 +10694,58 @@ class TemporalObject
                 $midY2 = intdiv($midTotalM, 12);
                 $midM2 = ($midTotalM % 12) + 1;
             }
-            $daysInMonth = self::isoDaysInMonth($midY2, $midM2);
-            $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
-            $totalMonths = $absYears * 12 + $absMonths + $frac;
-            $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
-            $rm = intdiv($rounded, 1000000);
+            if ($refIsZdt) {
+                // ZDT-aware: month length and progress in epoch ns so that
+                // DST transitions inside the span are accounted for.
+                $absTotalMonthCount = $absYears * 12 + $absMonths;
+                $midDur = self::createDurationObject(
+                    0, $sign * $absTotalMonthCount, 0, 0, 0, 0, 0, 0, 0, 0,
+                );
+                $nextDur = self::createDurationObject(
+                    0, $sign * ($absTotalMonthCount + 1), 0, 0, 0, 0, 0, 0, 0, 0,
+                );
+                $midNsRef = self::addDurationToZdt($ref, $midDur, 1, 'constrain');
+                $nextNsRef = self::addDurationToZdt($ref, $nextDur, 1, 'constrain');
+                $monthLenNs = bcsub($nextNsRef, $midNsRef, 0);
+                $absMonthLen = bccomp($monthLenNs, '0', 0) < 0 ? substr($monthLenNs, 1) : $monthLenNs;
+                $fullDur = self::createDurationObject(
+                    $sign * $absYears,
+                    $sign * $absMonths,
+                    $sign * $absWeeks,
+                    $sign * $absDays,
+                    (float) $hours,
+                    (float) $minutes,
+                    (float) $seconds,
+                    (float) $ms,
+                    (float) $us,
+                    (float) $ns,
+                );
+                $endNsRef = self::addDurationToZdt($ref, $fullDur, 1, 'constrain');
+                $progressNs = bcsub($endNsRef, $midNsRef, 0);
+                $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
+                if (bccomp($absMonthLen, '0', 0) === 0) {
+                    $fracTimes1e9 = '0';
+                } else {
+                    $fracTimes1e9 = bcdiv(bcmul($absProgress, '1000000000', 0), $absMonthLen, 0);
+                }
+                $totalMonthsScaled = bcadd(
+                    bcmul((string) $absTotalMonthCount, '1000000000', 0),
+                    $fracTimes1e9,
+                    0,
+                );
+                $rounded = self::roundToIncrement(
+                    (int) $totalMonthsScaled,
+                    $increment * 1000000000,
+                    $absRoundingMode,
+                );
+                $rm = intdiv($rounded, 1000000000);
+            } else {
+                $daysInMonth = self::isoDaysInMonth($midY2, $midM2);
+                $frac = $daysInMonth > 0 ? ($absDays + abs($hours) / 24.0) / $daysInMonth : 0;
+                $totalMonths = $absYears * 12 + $absMonths + $frac;
+                $rounded = self::roundToIncrement((int) round($totalMonths * 1000000), $increment * 1000000, $absRoundingMode);
+                $rm = intdiv($rounded, 1000000);
+            }
             // Validate both the rounded endpoint and ceil endpoint are representable.
             $ceilM = $rm + $increment;
             $ceilTotalM = $refY * 12 + ($refM - 1) + $ceilM * $sign;
@@ -10678,17 +10775,63 @@ class TemporalObject
         }
         if ($smallestUnit === 'day') {
             // Include sub-day time as fractional days for rounding purposes.
-            $timeNs = abs($hours) * 3600000000000
-                + abs($minutes) * 60000000000
-                + abs($seconds) * 1000000000
-                + abs($ms) * 1000000
-                + abs($us) * 1000
-                + abs($ns);
-            $dayNs = 86400000000000;
-            $totalNs = ($absWeeks * 7 + $absDays) * $dayNs + $timeNs;
-            $incrNs = $dayNs * $increment;
-            $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $incrNs, $roundingMode);
-            $rounded = (int) (abs((int) $roundedNs) / $dayNs);
+            // For ZDT relativeTo, the actual day length on the relevant date
+            // may not be 24h (DST transitions); use the ZDT-aware length so
+            // that 11.5h on a 23h day correctly equals exactly 0.5 day.
+            $useZdtDay = $refIsZdt;
+            if ($useZdtDay) {
+                $absTotalDays = $absDays + $absWeeks * 7;
+                $baseDur = self::createDurationObject(0, 0, 0, $sign * $absTotalDays, 0, 0, 0, 0, 0, 0);
+                $nextDur = self::createDurationObject(0, 0, 0, $sign * ($absTotalDays + 1), 0, 0, 0, 0, 0, 0);
+                $startNsRef = self::getSlotString($ref, '[[EpochNanoseconds]]');
+                $baseNsRef = self::addDurationToZdt($ref, $baseDur, 1, 'constrain');
+                $nextNsRef = self::addDurationToZdt($ref, $nextDur, 1, 'constrain');
+                $dayLenNs = bcsub($nextNsRef, $baseNsRef, 0);
+                $absDayLen = bccomp($dayLenNs, '0', 0) < 0 ? substr($dayLenNs, 1) : $dayLenNs;
+                $fullDur = self::createDurationObject(
+                    $sign * $absYears,
+                    $sign * $absMonths,
+                    $sign * $absWeeks,
+                    $sign * $absDays,
+                    (float) $hours,
+                    (float) $minutes,
+                    (float) $seconds,
+                    (float) $ms,
+                    (float) $us,
+                    (float) $ns,
+                );
+                $endNsRef = self::addDurationToZdt($ref, $fullDur, 1, 'constrain');
+                $progressNs = bcsub($endNsRef, $baseNsRef, 0);
+                $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
+                if (bccomp($absDayLen, '0', 0) === 0) {
+                    $fracTimes1e9 = '0';
+                } else {
+                    $fracTimes1e9 = bcdiv(bcmul($absProgress, '1000000000', 0), $absDayLen, 0);
+                }
+                $totalDaysScaled = bcadd(
+                    bcmul((string) $absTotalDays, '1000000000', 0),
+                    $fracTimes1e9,
+                    0,
+                );
+                $roundedScaled = self::roundToIncrement(
+                    (int) $totalDaysScaled,
+                    $increment * 1000000000,
+                    $absRoundingMode,
+                );
+                $rounded = intdiv($roundedScaled, 1000000000);
+            } else {
+                $timeNs = abs($hours) * 3600000000000
+                    + abs($minutes) * 60000000000
+                    + abs($seconds) * 1000000000
+                    + abs($ms) * 1000000
+                    + abs($us) * 1000
+                    + abs($ns);
+                $dayNs = 86400000000000;
+                $totalNs = ($absWeeks * 7 + $absDays) * $dayNs + $timeNs;
+                $incrNs = $dayNs * $increment;
+                $roundedNs = self::roundNs((string) ($sign < 0 ? -$totalNs : $totalNs), (string) $incrNs, $roundingMode);
+                $rounded = (int) (abs((int) $roundedNs) / $dayNs);
+            }
             // Validate ceiling (rounded + increment) doesn't exceed 100M days.
             $ceilDays = $rounded + $increment;
             if ($ceilDays > 100000000) {
@@ -10730,9 +10873,36 @@ class TemporalObject
             0,
         );
         // If largestUnit is a time unit, fold days into time nanoseconds.
+        // Under DST, a wall-clock day is 23/24/25 hours, not always 24 — fold
+        // via actual epoch ns from ref so the conversion matches reality.
         $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
         if (in_array($largestUnit, $timeUnits, true)) {
-            $timeNsBc = bcadd($timeNsBc, bcmul((string) $absDays, $dayNs, 0), 0);
+            if (
+                $refIsDstZdt
+                && ($absDays !== 0 || $absWeeks !== 0 || $absMonths !== 0 || $absYears !== 0)
+            ) {
+                $startNsRef = self::getSlotString($ref, '[[EpochNanoseconds]]');
+                $dateOnlyDur = self::createDurationObject(
+                    $sign * $absYears,
+                    $sign * $absMonths,
+                    $sign * $absWeeks,
+                    $sign * $absDays,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                );
+                $endDateNsRef = self::addDurationToZdt($ref, $dateOnlyDur, 1, 'constrain');
+                $deltaNsRef = bcsub($endDateNsRef, $startNsRef, 0);
+                if (bccomp($deltaNsRef, '0', 0) < 0) {
+                    $deltaNsRef = substr($deltaNsRef, 1);
+                }
+                $timeNsBc = bcadd($timeNsBc, $deltaNsRef, 0);
+            } else {
+                $timeNsBc = bcadd($timeNsBc, bcmul((string) $absDays, $dayNs, 0), 0);
+            }
             $absDays = 0;
             $absWeeks = 0;
             $absMonths = 0;
@@ -10745,6 +10915,37 @@ class TemporalObject
             $timeNsBc = self::roundNs($signed, $incNs, $roundingMode);
             if (bccomp($timeNsBc, '0', 0) < 0) {
                 $timeNsBc = substr($timeNsBc, 1);
+            }
+        }
+        // AdjustRoundedDurationDays per spec: under DST, when the rounded
+        // time portion exceeds the actual wall day length, increment days
+        // and subtract the day length (then re-round the remainder).
+        if (
+            $refIsDstZdt
+            && in_array($largestUnit, ['year', 'month', 'week', 'day'], true)
+            && bccomp($timeNsBc, '0', 0) > 0
+        ) {
+            while (true) {
+                $iterStartDur = self::createDurationObject(0, 0, 0, $sign * $absDays, 0, 0, 0, 0, 0, 0);
+                $iterEndDur = self::createDurationObject(0, 0, 0, $sign * ($absDays + 1), 0, 0, 0, 0, 0, 0);
+                $iterStartNs = self::addDurationToZdt($ref, $iterStartDur, 1, 'constrain');
+                $iterEndNs = self::addDurationToZdt($ref, $iterEndDur, 1, 'constrain');
+                $dayLenNs = bcsub($iterEndNs, $iterStartNs, 0);
+                if (bccomp($dayLenNs, '0', 0) < 0) {
+                    $dayLenNs = substr($dayLenNs, 1);
+                }
+                if (bccomp($dayLenNs, '0', 0) === 0 || bccomp($timeNsBc, $dayLenNs, 0) <= 0) {
+                    break;
+                }
+                $timeNsBc = bcsub($timeNsBc, $dayLenNs, 0);
+                $absDays++;
+                if ($incNs !== '0') {
+                    $signed = $sign < 0 ? '-' . $timeNsBc : $timeNsBc;
+                    $timeNsBc = self::roundNs($signed, $incNs, $roundingMode);
+                    if (bccomp($timeNsBc, '0', 0) < 0) {
+                        $timeNsBc = substr($timeNsBc, 1);
+                    }
+                }
             }
         }
         // Balance time into days if largestUnit allows it. With ZDT relativeTo
