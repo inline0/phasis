@@ -1957,6 +1957,13 @@ class IntlObject
         $isPercent = $style === 'percent';
         $isUnit = $style === 'unit';
         $isScientific = $notation === 'engineering' || $notation === 'scientific';
+        $isCompact = $notation === 'compact';
+        // For compact notation, find where the compact suffix starts
+        // (the trailing alphabetic/non-digit run after the digits).
+        $compactSuffixStart = -1;
+        if ($isCompact) {
+            $compactSuffixStart = self::findCompactSuffixStart($body);
+        }
         // Detect locale-specific decimal / group symbols so that
         // de-DE (decimal=",", group=".") and similar non-en locales
         // emit the right typed parts. Falls back to en-US conventions
@@ -2122,10 +2129,12 @@ class IntlObject
                 $j += $cLen;
             }
             $run = substr($body, $i, $j - $i);
-            // Whitespace between currency symbol and digits should be
-            // a literal — but a non-alphabetic-non-currency run is
-            // typically a literal too.
-            if ($isCurrency) {
+            // Compact notation: the trailing alphabetic / word run
+            // becomes a `compact` part. Anything before the
+            // compact-suffix offset stays a regular literal.
+            if ($isCompact && $compactSuffixStart !== -1 && $i >= $compactSuffixStart) {
+                $emit('compact', $run);
+            } elseif ($isCurrency) {
                 $emit('currency', $run);
             } else {
                 $emit('literal', $run);
@@ -2411,6 +2420,57 @@ class IntlObject
         $exp = (int) floor(log10(abs($value)));
         $factor = 10 ** ($sig - 1 - $exp);
         return round($value * $factor) / $factor;
+    }
+
+    /**
+     * Walk a compact-formatted body from the right to find where
+     * the compact suffix (K/M/B/T or thousand/million/...) starts.
+     * Returns the byte offset of the first character of the
+     * suffix, or -1 when the body has no trailing alphabetic run
+     * (sub-thousand values or unknown shapes).
+     */
+    private static function findCompactSuffixStart(string $body): int
+    {
+        $bodyLen = strlen($body);
+        // Walk left from the end while the current char is a letter
+        // or whitespace, stopping at the first digit / decimal /
+        // grouping separator.
+        $i = $bodyLen;
+        while ($i > 0) {
+            $prev = $i - 1;
+            $byte = ord($body[$prev]);
+            $charLen = 1;
+            $charStart = $prev;
+            // Step back over multi-byte UTF-8 continuations to land
+            // on the lead byte.
+            while ($charStart > 0 && (ord($body[$charStart]) & 0xC0) === 0x80) {
+                $charStart--;
+            }
+            $charLen = $i - $charStart;
+            $charStr = substr($body, $charStart, $charLen);
+            if (ctype_digit($charStr) || $charStr === '.' || $charStr === ',') {
+                break;
+            }
+            if (preg_match('/^\p{Nd}$/u', $charStr) === 1) {
+                break;
+            }
+            $i = $charStart;
+        }
+        // After the walk, $i points at the start of the trailing
+        // non-digit run. If that run includes any alphabetic
+        // characters it's the compact suffix. Otherwise return -1.
+        if ($i >= $bodyLen) {
+            return -1;
+        }
+        $tail = substr($body, $i);
+        if (preg_match('/[A-Za-z\p{L}]/u', $tail) !== 1) {
+            return -1;
+        }
+        // Skip leading whitespace (literal separator before the suffix).
+        if (preg_match('/^[\s\x{00A0}\x{202F}]+/u', $tail, $wsMatch) === 1) {
+            $i += strlen($wsMatch[0]);
+        }
+        return $i;
     }
 
     /**
