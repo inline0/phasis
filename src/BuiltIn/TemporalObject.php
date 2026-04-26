@@ -7394,10 +7394,11 @@ class TemporalObject
             $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
             if (in_array($unit, $timeUnits, true)) {
                 $unitNsStr = self::temporalUnitToNs($unit);
-                return (float) ($signZdt < 0 ? '-' : '')
-                    . (string) ($unitNsStr === '1'
-                        ? $absDeltaZdt
-                        : bcdiv($absDeltaZdt, $unitNsStr, 25));
+                $abs = $unitNsStr === '1'
+                    ? $absDeltaZdt
+                    : bcdiv($absDeltaZdt, $unitNsStr, 25);
+                $signed = ($signZdt < 0 ? '-' : '') . $abs;
+                return (float) $signed;
             }
             if ($unit === 'day' || $unit === 'week') {
                 $stepUnit = 'day';
@@ -7432,10 +7433,18 @@ class TemporalObject
                 $fracStr = bccomp($absDayLen, '0', 0) === 0
                     ? '0'
                     : bcdiv($absProgress, $absDayLen, 25);
-                $totalDays = (float) ((string) $daysWalked) + (float) $fracStr;
                 if ($unit === 'week') {
-                    return $signZdt * $totalDays / 7.0;
+                    // Fold the integer day count and the fractional progress
+                    // into a single nanosecond total before dividing by a
+                    // week, so the result matches the PlainDate branch which
+                    // does bcdiv directly on epoch ns / 604800e9.
+                    $absDaysNs = bcmul((string) $daysWalked, $absDayLen, 0);
+                    $absTotalNs = bcadd($absDaysNs, $absProgress, 0);
+                    $weekNs = bcmul($absDayLen, '7', 0);
+                    $absWeeks = (float) bcdiv($absTotalNs, $weekNs, 25);
+                    return (float) $signZdt * $absWeeks;
                 }
+                $totalDays = (float) ((string) $daysWalked) + (float) $fracStr;
                 return (float) $signZdt * $totalDays;
             }
             if ($unit === 'month' || $unit === 'year') {
