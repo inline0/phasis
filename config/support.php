@@ -54,5 +54,8 @@ return [
         'source-phase-imports',
         'import-attributes',
         'json-modules',
+        // Multi-realm support is not implemented; tests using
+        // $262.createRealm() can't run.
+        'cross-realm',
     ],
 ];
