@@ -7811,7 +7811,29 @@ class IntlObject
             return $rendered;
         }
         $fmt = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
-        return $fmt->format($n);
+        $rendered = $fmt->format($n);
+        if ($rendered === false) {
+            return (string) $n;
+        }
+        // CLDR's `<minimumGroupingDigits>` is 2 for Polish and a
+        // handful of other locales: a single-digit leading group
+        // (1000–9999) shouldn't be grouped. PHP's NumberFormatter
+        // doesn't honour this, so strip the leading separator
+        // post-format for the affected locales.
+        if (self::localeMinGroupingDigitsIs2($locale)) {
+            return self::stripMin2GroupingSeparator($rendered);
+        }
+        return $rendered;
+    }
+
+    private static function localeMinGroupingDigitsIs2(string $locale): bool
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        // CLDR locales whose minimumGroupingDigits is 2.
+        static $min2Langs = [
+            'pl', 'lv', 'lt', 'mk', 'es', 'sl', 'pt',
+        ];
+        return in_array($lang, $min2Langs, true);
     }
 
     /**
@@ -7886,6 +7908,13 @@ class IntlObject
             } else {
                 $unitStr = $isPlural ? $unit . 's' : $unit;
             }
+        } elseif (str_starts_with(strtolower($locale), 'pl')) {
+            $unitStr = self::polishRelativeTimeUnit($unit, $absN, $style);
+            // Polish past/future templates: "za N unit" / "N unit temu".
+            $isPast = $n < 0 || ($n === 0.0 && self::isNegativeZero($n));
+            return $isPast
+                ? $absStr . ' ' . $unitStr . ' temu'
+                : 'za ' . $absStr . ' ' . $unitStr;
         } else {
             $unitStr = $isPlural ? $unit . 's' : $unit;
         }
@@ -7893,6 +7922,80 @@ class IntlObject
             return $absStr . ' ' . $unitStr . ' ago';
         }
         return 'in ' . $absStr . ' ' . $unitStr;
+    }
+
+    /**
+     * Pick the Polish CLDR unit label for the given absolute integer
+     * value and style. Polish has three plural categories that take
+     * effect (one/few/many); decimals fall to "other" but the test262
+     * fixtures only exercise integers.
+     */
+    private static function polishRelativeTimeUnit(string $unit, float $absN, string $style): string
+    {
+        $cat = self::polishPluralCategory($absN);
+        // CLDR short / narrow forms differ for some units (second
+        // collapses to "s" in narrow, hour to "g.").
+        if ($style === 'narrow') {
+            static $narrow = [
+                'second' => ['one' => 's', 'few' => 's', 'many' => 's', 'other' => 's'],
+                'minute' => ['one' => 'min', 'few' => 'min', 'many' => 'min', 'other' => 'min'],
+                'hour' => ['one' => 'g.', 'few' => 'g.', 'many' => 'g.', 'other' => 'g.'],
+                'day' => ['one' => 'dzień', 'few' => 'dni', 'many' => 'dni', 'other' => 'dnia'],
+                'week' => ['one' => 'tydz.', 'few' => 'tyg.', 'many' => 'tyg.', 'other' => 'tyg.'],
+                'month' => ['one' => 'mies.', 'few' => 'mies.', 'many' => 'mies.', 'other' => 'mies.'],
+                'quarter' => ['one' => 'kw.', 'few' => 'kw.', 'many' => 'kw.', 'other' => 'kw.'],
+                'year' => ['one' => 'rok', 'few' => 'lata', 'many' => 'lat', 'other' => 'roku'],
+            ];
+            $table = $narrow;
+        } elseif ($style === 'short') {
+            static $short = [
+                'second' => ['one' => 'sek.', 'few' => 'sek.', 'many' => 'sek.', 'other' => 'sek.'],
+                'minute' => ['one' => 'min', 'few' => 'min', 'many' => 'min', 'other' => 'min'],
+                'hour' => ['one' => 'godz.', 'few' => 'godz.', 'many' => 'godz.', 'other' => 'godz.'],
+                'day' => ['one' => 'dzień', 'few' => 'dni', 'many' => 'dni', 'other' => 'dnia'],
+                'week' => ['one' => 'tydz.', 'few' => 'tyg.', 'many' => 'tyg.', 'other' => 'tyg.'],
+                'month' => ['one' => 'mies.', 'few' => 'mies.', 'many' => 'mies.', 'other' => 'mies.'],
+                'quarter' => ['one' => 'kw.', 'few' => 'kw.', 'many' => 'kw.', 'other' => 'kw.'],
+                'year' => ['one' => 'rok', 'few' => 'lata', 'many' => 'lat', 'other' => 'roku'],
+            ];
+            $table = $short;
+        } else {
+            // Polish CLDR long-form takes the accusative case in
+            // RelativeTimeFormat output, so the singular forms differ
+            // from the citation forms (sekundę vs sekunda).
+            static $long = [
+                'second' => ['one' => 'sekundę', 'few' => 'sekundy', 'many' => 'sekund', 'other' => 'sekundy'],
+                'minute' => ['one' => 'minutę', 'few' => 'minuty', 'many' => 'minut', 'other' => 'minuty'],
+                'hour' => ['one' => 'godzinę', 'few' => 'godziny', 'many' => 'godzin', 'other' => 'godziny'],
+                'day' => ['one' => 'dzień', 'few' => 'dni', 'many' => 'dni', 'other' => 'dnia'],
+                'week' => ['one' => 'tydzień', 'few' => 'tygodnie', 'many' => 'tygodni', 'other' => 'tygodnia'],
+                'month' => ['one' => 'miesiąc', 'few' => 'miesiące', 'many' => 'miesięcy', 'other' => 'miesiąca'],
+                'quarter' => ['one' => 'kwartał', 'few' => 'kwartały', 'many' => 'kwartałów', 'other' => 'kwartału'],
+                'year' => ['one' => 'rok', 'few' => 'lata', 'many' => 'lat', 'other' => 'roku'],
+            ];
+            $table = $long;
+        }
+        if (!isset($table[$unit])) {
+            return $unit;
+        }
+        return $table[$unit][$cat] ?? $table[$unit]['many'];
+    }
+
+    private static function polishPluralCategory(float $absN): string
+    {
+        if ($absN === 1.0) {
+            return 'one';
+        }
+        if (floor($absN) !== $absN) {
+            return 'other';
+        }
+        $i = (int) $absN;
+        $mod10 = $i % 10;
+        $mod100 = $i % 100;
+        if ($mod10 >= 2 && $mod10 <= 4 && ($mod100 < 12 || $mod100 > 14)) {
+            return 'few';
+        }
+        return 'many';
     }
 
     private static function installRelativeTimeFormat(JsObject $intl): void
@@ -8073,6 +8176,23 @@ class IntlObject
                 $numLen = strlen($absStr);
                 $i = 0;
                 $sawDecimal = false;
+                // Resolve the locale's decimal & group separators so
+                // multi-byte Unicode separators (NBSP for Polish,
+                // narrow no-break space for French, etc.) classify
+                // as group rather than literal.
+                $decimalSep = '.';
+                $groupSep = ',';
+                if (extension_loaded('intl')) {
+                    $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+                    $d = $sf->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
+                    $g = $sf->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
+                    if (is_string($d) && $d !== '') {
+                        $decimalSep = $d;
+                    }
+                    if (is_string($g) && $g !== '') {
+                        $groupSep = $g;
+                    }
+                }
                 while ($i < $numLen) {
                     $ch = $absStr[$i];
                     if (ctype_digit($ch)) {
@@ -8087,6 +8207,27 @@ class IntlObject
                         self::defineDataProp($part, 'unit', new JsString($singular));
                         $result->set((string) $idx++, $part);
                         $i = $j;
+                        continue;
+                    }
+                    // Match locale separator symbols (which may be
+                    // multi-byte) before falling back to ASCII heuristics.
+                    if ($groupSep !== '' && substr($absStr, $i, strlen($groupSep)) === $groupSep) {
+                        $part = new JsObject();
+                        self::defineDataProp($part, 'type', new JsString('group'));
+                        self::defineDataProp($part, 'value', new JsString($groupSep));
+                        self::defineDataProp($part, 'unit', new JsString($singular));
+                        $result->set((string) $idx++, $part);
+                        $i += strlen($groupSep);
+                        continue;
+                    }
+                    if ($decimalSep !== '' && substr($absStr, $i, strlen($decimalSep)) === $decimalSep) {
+                        $sawDecimal = true;
+                        $part = new JsObject();
+                        self::defineDataProp($part, 'type', new JsString('decimal'));
+                        self::defineDataProp($part, 'value', new JsString($decimalSep));
+                        self::defineDataProp($part, 'unit', new JsString($singular));
+                        $result->set((string) $idx++, $part);
+                        $i += strlen($decimalSep);
                         continue;
                     }
                     $type = ($ch === ',' || $ch === ' ') ? 'group' : 'decimal';
