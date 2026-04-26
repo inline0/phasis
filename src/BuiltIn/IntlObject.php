@@ -1392,8 +1392,20 @@ class IntlObject
                         false,
                     ));
                 } else {
-                    $defaultMinFrac = $style === 'currency' ? 2 : 0;
-                    $defaultMaxFrac = $style === 'currency' ? 2 : ($style === 'percent' ? 0 : 3);
+                    // Per spec: currency in "standard" notation uses
+                    // currency-specific defaults (typically 2/2). Any
+                    // other notation, or non-currency styles, falls
+                    // back to 0 minimum and to a max determined by
+                    // style and notation.
+                    $isStandardCurrency = $style === 'currency' && $notation === 'standard';
+                    $defaultMinFrac = $isStandardCurrency ? 2 : 0;
+                    if ($isStandardCurrency) {
+                        $defaultMaxFrac = 2;
+                    } elseif ($style === 'percent' || $notation === 'compact') {
+                        $defaultMaxFrac = 0;
+                    } else {
+                        $defaultMaxFrac = 3;
+                    }
                     $minFrac = $defaultNumberOption($mfdVal, 0, 100, $defaultMinFrac, 'minimumFractionDigits');
                     $maxFrac = $defaultNumberOption(
                         $xfdVal,
@@ -1532,8 +1544,10 @@ class IntlObject
                 //   "min2" / "auto" / "always" -> string passthrough
                 //   any other primitive coerces to "auto" only when it is
                 //   the string "true"/"false"/the JS undefined sentinel;
-                //   everything else throws RangeError.
-                $useGrouping = 'auto';
+                //   everything else throws RangeError. The default differs
+                //   by notation: "compact" defaults to "min2", everything
+                //   else to "auto".
+                $useGrouping = $notation === 'compact' ? 'min2' : 'auto';
                 $ugVal = $options->get('useGrouping');
                 if (!$ugVal instanceof JsUndefined) {
                     if ($ugVal instanceof JsBoolean) {
@@ -1735,7 +1749,14 @@ class IntlObject
                 ? self::formatNumber($this_, $start) : (string) $start;
             $endStr = extension_loaded('intl')
                 ? self::formatNumber($this_, $end) : (string) $end;
+            // Approximately sign: when distinct numeric inputs round
+            // to the same formatted output, the spec mandates an
+            // "approximately" prefix so the consumer can tell that
+            // the range collapsed only after rounding.
             if ($startStr === $endStr) {
+                if ($start !== $end) {
+                    return new JsString(self::numberFormatApproximatelyPrefix($this_) . $startStr);
+                }
                 return new JsString($startStr);
             }
             $sep = self::numberFormatRangeSeparator($this_);
@@ -2923,6 +2944,17 @@ class IntlObject
      *   - pt-PT: "{0} - {1}" with regular hyphen.
      *   - other locales: en-dash separator.
      */
+    /**
+     * CLDR's "approximately" sign for the locale, used when a
+     * numeric range collapses to a single rendered value via
+     * rounding. Most locales use "~"; some use a localised glyph
+     * (e.g. "약 " in ko CLDR data).
+     */
+    private static function numberFormatApproximatelyPrefix(JsObject $nf): string
+    {
+        return '~';
+    }
+
     private static function numberFormatRangeSeparator(JsObject $nf): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');

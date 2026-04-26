@@ -373,26 +373,15 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec 9.1.13 OrdinaryCreateFromConstructor: for user-
-                // defined constructors we eagerly access newTarget.prototype
-                // so Object.getPrototypeOf(this) inside the body observes
-                // the correct prototype. Native built-in constructors
-                // perform that access themselves at the spec-mandated time
-                // (often after argument validation, as in ArrayBuffer), so
-                // we pre-allocate with the target's own prototype and let
-                // the native body fix up the prototype and propagate any
-                // getter error itself.
-                $targetIsNative = $target instanceof JsFunction && $target->isNative();
-                if ($targetIsNative) {
+                // Per spec 9.1.13 OrdinaryCreateFromConstructor:
+                // use GetPrototypeFromConstructor(newTarget, intrinsic).
+                // newTarget.prototype wins; if it's not an Object we
+                // fall back to target.prototype (the intrinsic default).
+                $ntProto = $newTarget->get('prototype');
+                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                if ($useProto === null) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
-                } else {
-                    $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
-                    if ($useProto === null) {
-                        $targetProto = $target->get('prototype');
-                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
-                    }
                 }
                 $newObj = new JsObject($useProto);
                 $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
