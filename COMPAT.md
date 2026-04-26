@@ -4,26 +4,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-26T23:21:58+00:00`
+- Snapshot time: `2026-04-26T23:53:49+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `e303b1c` (dirty)
+- Git: `main` @ `2b3fd0c` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 48026 | 329 | 1636 | 45 | 1107 | 0 | 48355 | 50036 | 51143 | 99.3% |
+| 47994 | 265 | 1745 | 32 | 932 | 0 | 48259 | 50036 | 50968 | 99.5% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | PARTIAL | 1070 | 1 | 8 | 0 | 0 | 0 | 99.9% |
-| built-ins | INCOMPLETE | 21319 | 139 | 791 | 21 | 746 | 0 | 99.4% |
+| built-ins | INCOMPLETE | 21287 | 75 | 900 | 8 | 571 | 0 | 99.6% |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
 | intl402 | PARTIAL | 1553 | 3 | 10 | 0 | 0 | 0 | 99.8% |
 | language | INCOMPLETE | 22533 | 17 | 819 | 4 | 61 | 0 | 99.9% |
@@ -59,7 +59,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/AsyncGeneratorFunction | PASS | 21 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | built-ins/AsyncGeneratorPrototype | PARTIAL | 45 | 3 | 0 | 0 | 0 | 0 | 93.8% |
 | built-ins/AsyncIteratorPrototype | PASS | 10 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Atomics | INCOMPLETE | 282 | 74 | 7 | 13 | 175 | 0 | 79.2% |
+| built-ins/Atomics | PARTIAL | 249 | 11 | 116 | 0 | 0 | 0 | 95.8% |
 | built-ins/BigInt | PASS | 74 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | built-ins/Boolean | PASS | 50 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | built-ins/DataView | PARTIAL | 517 | 1 | 32 | 0 | 0 | 0 | 99.8% |
@@ -105,7 +105,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/StringIteratorPrototype | PASS | 7 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Symbol | PASS | 79 | 0 | 15 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Temporal/Duration | PARTIAL | 472 | 1 | 0 | 0 | 0 | 0 | 99.8% |
+| built-ins/Temporal/Duration | PASS | 473 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/Instant | PASS | 434 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/Now | PASS | 66 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/PlainDate | PASS | 592 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -139,7 +139,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | intl402/BigInt | PASS | 11 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Collator | PASS | 61 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | intl402/Date | PASS | 12 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/DateTimeFormat | PARTIAL | 185 | 2 | 1 | 0 | 0 | 0 | 98.9% |
+| intl402/DateTimeFormat | PARTIAL | 186 | 1 | 1 | 0 | 0 | 0 | 99.5% |
 | intl402/DisplayNames | PASS | 56 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | intl402/DurationFormat | PASS | 110 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Intl | PASS | 67 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -151,7 +151,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | intl402/RelativeTimeFormat | PASS | 78 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | intl402/Segmenter | PASS | 76 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | intl402/String | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/Temporal | PARTIAL | 322 | 1 | 0 | 0 | 0 | 0 | 99.7% |
+| intl402/Temporal | PARTIAL | 321 | 2 | 0 | 0 | 0 | 0 | 99.4% |
 | intl402/TypedArray | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/arguments-object | PASS | 263 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/asi | PASS | 102 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -197,19 +197,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Files | Sample | Log |
 |---|---|---:|---|---|
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/notify/undefined-index-defaults-to-zero.js` | `.compat-state-builtins-A/logs/b521b6a22b5b07b86af45b842bcab64d6e2fa4fa.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/wait/good-views.js` | `.compat-state-builtins-A/logs/f1043b0fe4b011e742a413d3395f878303d2f15a.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/bigint/symbol-for-timeout-throws-agent.js` | `.compat-state-builtins-A/logs/9bc9d5619ee56dab49f658e05131197bfe34738f.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/good-views.js` | `.compat-state-builtins-A/logs/fb55eceac30d4e4532498548409b56cd137a08ec.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/wait/waiterlist-order-of-operations-is-fifo.js` | `.compat-state-builtins-A/logs/360a317ad81d289e0cd8ebe98e5093483b257f5e.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/bigint/good-views.js` | `.compat-state-builtins-A/logs/990225c3d82151a30e1f9a2c54f94c5bcdbcf193.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/wait/bigint/waiterlist-order-of-operations-is-fifo.js` | `.compat-state-builtins-A/logs/99f77a68e9d23feea9bbb8897a391d4dac0b435e.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/poisoned-object-for-timeout-throws-agent.js` | `.compat-state-builtins-A/logs/8d48063e4c57bcaf3ff34c19c4b43955c31a6970.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/symbol-for-timeout-throws-agent.js` | `.compat-state-builtins-A/logs/9067da206278e759cb52a70362b23d1ba3f0244b.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/wait/waiterlist-block-indexedposition-wake.js` | `.compat-state-builtins-A/logs/719251ba1739eb43675043a70858942e6cf8878b.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/notify/notify-in-order-one-time.js` | `.compat-state-builtins-A/logs/54aae61a2773839e29cc71d012c368aeeca4d8d3.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/notify/notify-in-order.js` | `.compat-state-builtins-A/logs/b30c96a538d7753a383fdb8be79dace311695074.log` |
-| built-ins/Atomics | CRASH | 1 | `test262/test/built-ins/Atomics/waitAsync/bigint/poisoned-object-for-timeout-throws-agent.js` | `.compat-state-builtins-A/logs/d2c0bf60ecc0c23543f011c04bf66bce8b5d6042.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/722abcc8bbca8f22a6f4e5029b251630a2d88ff7.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` | `.compat-state-builtins-RegExp-rest/logs/04ddd46937901b97333e1bad5a7183629e181178.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log` |
@@ -219,12 +206,12 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/decodeURIComponent | CRASH | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` | `.compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log` |
 | built-ins/decodeURI | CRASH | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` | `.compat-state-builtins-lower-de/logs/6687624bd5fb87a6a4ff167cd35af4b69d14f50d.log` |
 | language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js` | `.compat-state-language-literals/logs/2d9ce6285a09a880c93e91b65081fd963e13707a.log` |
-| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js` | `.compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log` |
 | language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js` | `.compat-state-language-literals/logs/d9e1bf9de472dab2910e641eec8172033ad31a6c.log` |
 | language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js` | `.compat-state-language-literals/logs/a53fea2e0fecfcecd6532ebd795cb1dae3744df8.log` |
+| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js` | `.compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/BigInt/large-bit-length.js` | `.compat-state-staging/logs/384b2e0bfc2b466c4c57a4a23d7c3f82c656ddac.log` |
-| staging/sm | CRASH | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` | `.compat-state-staging/logs/f77d96875630465a6823161d465877fc4c60f9ae.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` | `.compat-state-staging/logs/fad83b5e2409a84effda05416199c0acf9fa5248.log` |
+| staging/sm | CRASH | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` | `.compat-state-staging/logs/f77d96875630465a6823161d465877fc4c60f9ae.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` | `.compat-state-staging/logs/59f611b1d8f6087de2cf8dd8fc9a3ce8ba03416e.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` | `.compat-state-staging/logs/1d8bc8ec59afa4977eac427273dcca4bb1c34b5e.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` | `.compat-state-staging/logs/f31cff08aae8050007f42d47f3ce1d7c29321ebb.log` |
@@ -247,26 +234,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 80.263s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
-| built-ins/decodeURI | NORMAL | 74.218s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
-| staging/sm | NORMAL | 67.677s | 12 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/enumeration-order.js`<br>`test262/test/staging/sm/Symbol/enumeration.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 62.514s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` |
-| intl402 | NORMAL | 61.992s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.784s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js` |
-| staging/sm | CRASH | 61.489s | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` |
-| built-ins/Atomics | CRASH | 61.438s | 1 | `test262/test/built-ins/Atomics/wait/good-views.js` |
-| built-ins/Atomics | CRASH | 61.300s | 1 | `test262/test/built-ins/Atomics/waitAsync/poisoned-object-for-timeout-throws-agent.js` |
-| staging/sm | CRASH | 61.281s | 1 | `test262/test/staging/sm/Proxy/ownkeys-linear.js` |
-| built-ins/Atomics | CRASH | 61.253s | 1 | `test262/test/built-ins/Atomics/waitAsync/bigint/symbol-for-timeout-throws-agent.js` |
-| staging/sm | CRASH | 61.221s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
-| built-ins/Atomics | CRASH | 61.174s | 1 | `test262/test/built-ins/Atomics/waitAsync/symbol-for-timeout-throws-agent.js` |
-| staging/sm | CRASH | 61.172s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.156s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` |
-| built-ins/Atomics | CRASH | 61.148s | 1 | `test262/test/built-ins/Atomics/notify/notify-in-order.js` |
-| staging/sm | CRASH | 61.097s | 1 | `test262/test/staging/sm/TypedArray/sort_modifications.js` |
-| staging/sm | CRASH | 61.020s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| built-ins/Atomics | CRASH | 61.011s | 1 | `test262/test/built-ins/Atomics/wait/bigint/waiterlist-order-of-operations-is-fifo.js` |
-| staging/sm | CRASH | 60.830s | 1 | `test262/test/staging/sm/String/fromCodePoint.js` |
+| built-ins/decodeURIComponent | NORMAL | 81.686s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
+| built-ins/decodeURI | NORMAL | 76.825s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
+| staging/sm | NORMAL | 67.758s | 12 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/enumeration-order.js`<br>`test262/test/staging/sm/Symbol/enumeration.js` |
+| intl402 | NORMAL | 63.156s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.926s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` |
+| staging/sm | CRASH | 61.554s | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` |
+| staging/sm | CRASH | 61.492s | 1 | `test262/test/staging/sm/Proxy/ownkeys-linear.js` |
+| staging/sm | CRASH | 61.259s | 1 | `test262/test/staging/sm/TypedArray/sort_modifications.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.218s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` |
+| staging/sm | CRASH | 61.202s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| staging/sm | CRASH | 61.183s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
+| staging/sm | CRASH | 61.113s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
+| staging/sm | CRASH | 61.078s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.047s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js` |
+| staging/sm | CRASH | 60.969s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| language/literals | CRASH | 60.863s | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js` |
+| language/literals | CRASH | 60.762s | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js` |
+| staging/sm | CRASH | 60.733s | 1 | `test262/test/staging/sm/String/fromCodePoint.js` |
+| staging/sm | CRASH | 60.618s | 1 | `test262/test/staging/sm/BigInt/large-bit-length.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 60.518s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` |
 
 ## Runner Caveats
 
