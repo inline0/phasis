@@ -7534,6 +7534,144 @@ class IntlObject
         return $parsed;
     }
 
+    /**
+     * Canonicalise the payload of a `-t-` (transformed) extension:
+     *   - Detect the optional tlang prefix (language [-script] [-region]
+     *     [-variants]*) and its variants.
+     *   - Sort tlang variants alphabetically.
+     *   - Apply legacy-language aliases inside tlang (iw → he, etc.).
+     *   - Sort the tfields (tkey + tvalue runs) alphabetically by tkey
+     *     and lowercase everything.
+     *
+     * Returns the canonical payload (without the leading `t-`).
+     */
+    private static function canonicalizeTransformedExtension(string $payload): string
+    {
+        $payload = strtolower($payload);
+        $tokens = explode('-', $payload);
+        $count = count($tokens);
+        if ($count === 0) {
+            return $payload;
+        }
+        $i = 0;
+        $tlang = null;
+        // Detect tlang prefix: starts with a non-tkey alphabetic
+        // token of length 2-3 or 5-8.
+        $isTkey = static function (string $sub): bool {
+            return strlen($sub) === 2
+                && ctype_alpha($sub[0])
+                && ctype_digit($sub[1]);
+        };
+        if ($i < $count && !$isTkey($tokens[$i])) {
+            $first = $tokens[$i];
+            $firstLen = strlen($first);
+            if (
+                ctype_alpha($first)
+                && ($firstLen === 2 || $firstLen === 3
+                    || ($firstLen >= 5 && $firstLen <= 8))
+            ) {
+                // tlang language.
+                $tlangLanguage = $first;
+                $i++;
+                $tlangScript = null;
+                $tlangRegion = null;
+                $tlangVariants = [];
+                if (
+                    $i < $count
+                    && !$isTkey($tokens[$i])
+                    && strlen($tokens[$i]) === 4
+                    && ctype_alpha($tokens[$i])
+                ) {
+                    $tlangScript = $tokens[$i];
+                    $i++;
+                }
+                if (
+                    $i < $count
+                    && !$isTkey($tokens[$i])
+                    && (
+                        (strlen($tokens[$i]) === 2 && ctype_alpha($tokens[$i]))
+                        || (strlen($tokens[$i]) === 3 && ctype_digit($tokens[$i]))
+                    )
+                ) {
+                    $tlangRegion = $tokens[$i];
+                    $i++;
+                }
+                while ($i < $count && !$isTkey($tokens[$i])) {
+                    $sub = $tokens[$i];
+                    $subLen = strlen($sub);
+                    $isLong = $subLen >= 5 && $subLen <= 8 && ctype_alnum($sub);
+                    $isShortNum = $subLen === 4
+                        && ctype_digit($sub[0])
+                        && ctype_alnum($sub);
+                    if (!$isLong && !$isShortNum) {
+                        break;
+                    }
+                    $tlangVariants[] = $sub;
+                    $i++;
+                }
+                // Apply legacy language aliases.
+                static $tlangLangAlias = [
+                    'iw' => 'he', 'ji' => 'yi', 'in' => 'id',
+                    'mo' => 'ro', 'tl' => 'fil', 'jw' => 'jv',
+                    'sh' => 'sr', 'aam' => 'aas', 'aar' => 'aa',
+                ];
+                if (isset($tlangLangAlias[$tlangLanguage])) {
+                    $tlangLanguage = $tlangLangAlias[$tlangLanguage];
+                }
+                sort($tlangVariants, SORT_STRING);
+                $tlangParts = [$tlangLanguage];
+                if ($tlangScript !== null) {
+                    $tlangParts[] = $tlangScript;
+                }
+                if ($tlangRegion !== null) {
+                    $tlangParts[] = $tlangRegion;
+                }
+                foreach ($tlangVariants as $v) {
+                    $tlangParts[] = $v;
+                }
+                $tlang = implode('-', $tlangParts);
+            }
+        }
+        // Collect tfields: (tkey tvalue+)*.
+        $tfields = [];
+        while ($i < $count) {
+            if (!$isTkey($tokens[$i])) {
+                break;
+            }
+            $tkey = $tokens[$i];
+            $i++;
+            $values = [];
+            while ($i < $count && !$isTkey($tokens[$i])) {
+                $values[] = $tokens[$i];
+                $i++;
+            }
+            // Apply known tvalue aliases (CLDR <transformAlias>):
+            //   m0=names → m0=prprname
+            static $tfieldAlias = [
+                'm0' => ['names' => ['prprname']],
+            ];
+            if (isset($tfieldAlias[$tkey])) {
+                $valueKey = implode('-', $values);
+                if (isset($tfieldAlias[$tkey][$valueKey])) {
+                    $values = $tfieldAlias[$tkey][$valueKey];
+                }
+            }
+            $tfields[$tkey] = $values;
+        }
+        ksort($tfields);
+        $out = [];
+        if ($tlang !== null) {
+            $out[] = $tlang;
+        }
+        foreach ($tfields as $tkey => $values) {
+            $out[] = $tkey;
+            foreach ($values as $v) {
+                $out[] = $v;
+            }
+        }
+        return implode('-', $out);
+    }
+
     private static function reconstructLocaleTag(array $parsed): string
     {
         $parts = [];
@@ -7606,7 +7744,16 @@ class IntlObject
         }
         if (isset($parsed['otherExtensions']) && is_array($parsed['otherExtensions'])) {
             foreach ($parsed['otherExtensions'] as $singleton => $payload) {
-                $extensionsBySingleton[(string) $singleton] = (string) $payload;
+                $singletonStr = (string) $singleton;
+                $payloadStr = (string) $payload;
+                // Canonicalise the transformed extension's payload:
+                // sort tlang variants, sort tfields by tkey, lowercase
+                // values, apply known language-tag aliases inside
+                // tlang (iw -> he, etc.).
+                if ($singletonStr === 't') {
+                    $payloadStr = self::canonicalizeTransformedExtension($payloadStr);
+                }
+                $extensionsBySingleton[$singletonStr] = $payloadStr;
             }
         }
         ksort($extensionsBySingleton);
