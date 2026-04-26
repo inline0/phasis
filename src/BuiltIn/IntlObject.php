@@ -2313,7 +2313,22 @@ class IntlObject
                 $calendar = 'gregory';
                 $calVal = $options->get('calendar');
                 if (!$calVal instanceof JsUndefined) {
-                    $calendar = TypeConversion::toString($calVal);
+                    $calRaw = TypeConversion::toString($calVal);
+                    // The identifier grammar is ASCII alphanum / '-'
+                    // only; capital dotted I and similar non-ASCII
+                    // letters are rejected.
+                    if (!self::isValidUnicodeTypeValue($calRaw)) {
+                        throw new RangeError("Invalid calendar: {$calRaw}");
+                    }
+                    $calendar = strtolower($calRaw);
+                    static $calAliases = [
+                        'islamicc' => 'islamic-civil',
+                        'ethiopic-amete-alem' => 'ethioaa',
+                        'gregorian' => 'gregory',
+                    ];
+                    if (isset($calAliases[$calendar])) {
+                        $calendar = $calAliases[$calendar];
+                    }
                 }
                 $obj->defineOwnProperty('[[Calendar]]', PropertyDescriptor::data(
                     new JsString($calendar),
