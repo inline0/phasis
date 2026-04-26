@@ -282,52 +282,50 @@ class IntlObject
      */
     private static function filterUnicodeExtensions(string $tag, array $allowedKeys): string
     {
-        if (preg_match('/^(.+?)-u-(.+?)((?:-[a-wy-z]-.*)?)$/i', $tag, $m) !== 1) {
+        // Parse, filter the -u- keywords against the allow-list, drop
+        // unicodeAttributes (per spec they have no effect), then
+        // reconstruct so other extensions (-t-, -x-, etc.) and the
+        // private-use tail survive untouched.
+        $parsed = self::parseLocaleTag($tag);
+        if ($parsed === null) {
             return $tag;
         }
-        $prefix = $m[1];
-        $payload = $m[2];
-        $tail = $m[3] ?? '';
-        // Walk the payload one segment at a time, dropping keyword
-        // value-runs whose 2-char key isn't allowed. Attributes
-        // (leading 3-8 char tokens) are spec-defined as having no
-        // semantic effect, so they're dropped entirely from the
-        // resolved locale.
-        $tokens = explode('-', $payload);
-        $kept = [];
-        $i = 0;
-        $count = count($tokens);
-        while ($i < $count && strlen($tokens[$i]) >= 3) {
-            // Skip attributes (no key, just a value).
-            $i++;
-        }
-        while ($i < $count) {
-            $key = $tokens[$i];
-            if (strlen($key) !== 2) {
-                $i++;
+        $kw = $parsed['unicodeKeywords'] ?? [];
+        $filtered = [];
+        foreach ($kw as $key => $vals) {
+            if (!in_array($key, $allowedKeys, true)) {
                 continue;
             }
-            $i++;
-            $values = [];
-            while ($i < $count && strlen($tokens[$i]) >= 3) {
-                $values[] = $tokens[$i];
-                $i++;
+            $combined = is_array($vals) ? implode('-', $vals) : (string) $vals;
+            if (!self::isRecognisedUnicodeKeywordValue($key, $combined)) {
+                continue;
             }
-            if (in_array($key, $allowedKeys, true)) {
-                $combined = implode('-', $values);
-                if (!self::isRecognisedUnicodeKeywordValue($key, $combined)) {
-                    continue;
-                }
-                $kept[] = $key;
-                foreach ($values as $v) {
-                    $kept[] = $v;
-                }
+            $filtered[$key] = $vals;
+        }
+        if (empty($filtered)) {
+            unset($parsed['unicodeKeywords']);
+        } else {
+            $parsed['unicodeKeywords'] = $filtered;
+        }
+        unset($parsed['unicodeAttributes']);
+        // Drop legacy slots whose keyword was filtered out so the
+        // legacy-slot layer in reconstructLocaleTag doesn't re-add
+        // them.
+        $legacyMap = [
+            'ca' => 'calendar',
+            'co' => 'collation',
+            'fw' => 'firstDayOfWeek',
+            'hc' => 'hourCycle',
+            'kf' => 'caseFirst',
+            'kn' => 'numeric',
+            'nu' => 'numberingSystem',
+        ];
+        foreach ($legacyMap as $key => $slot) {
+            if (!isset($filtered[$key])) {
+                unset($parsed[$slot]);
             }
         }
-        if (empty($kept)) {
-            return $prefix . $tail;
-        }
-        return $prefix . '-u-' . implode('-', $kept) . $tail;
+        return self::reconstructLocaleTag($parsed);
     }
 
     /**
