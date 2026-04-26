@@ -1650,19 +1650,23 @@ class IntlObject
             JsValue $this_,
             array $args,
         ): JsValue {
+            if (
+                !$this_ instanceof JsObject
+                || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
+            ) {
+                throw new TypeError(
+                    'Intl.NumberFormat.prototype.formatToParts called on non-NumberFormat',
+                );
+            }
             $number = $args[0] ?? JsUndefined::instance();
             $numVal = TypeConversion::toNumber($number);
             $formatted = '';
-            if ($this_ instanceof JsObject && extension_loaded('intl')) {
+            if (extension_loaded('intl')) {
                 $formatted = self::formatNumber($this_, $numVal);
             } else {
                 $formatted = is_nan($numVal) ? 'NaN' : (string) $numVal;
             }
-            return self::numberFormatToParts(
-                $this_ instanceof JsObject ? $this_ : new JsObject(),
-                $formatted,
-                $numVal,
-            );
+            return self::numberFormatToParts($this_, $formatted, $numVal);
         }, 1);
         $proto->defineOwnProperty(
             'formatToParts',
@@ -1922,12 +1926,13 @@ class IntlObject
         // Walk the body character-by-character. Digits coalesce into
         // integer/fraction runs; `,` / `.` / locale digit separators
         // map onto group/decimal; non-digit, non-separator runs become
-        // currency or percent or literal depending on context.
+        // currency, percent, unit, or literal depending on context.
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
         $isCurrency = $style === 'currency';
         $isPercent = $style === 'percent';
         $isUnit = $style === 'unit';
         $sawDecimal = false;
+        $sawDigits = false;
         $i = 0;
         $bodyLen = strlen($body);
         while ($i < $bodyLen) {
@@ -1975,7 +1980,23 @@ class IntlObject
                     break;
                 }
                 $emit($sawDecimal ? 'fraction' : 'integer', $digitRun);
+                $sawDigits = true;
                 $i = $j;
+                continue;
+            }
+            // For unit-style output, the rendered unit suffix follows
+            // the digits joined by a no-break space (we emit it that
+            // way in formatNumber). Once we've already seen at least
+            // one digit run, treat the remaining tail as the unit
+            // part instead of breaking it up into group/literal/etc.
+            if ($isUnit && $sawDigits) {
+                $tailRun = substr($body, $i);
+                // Strip a leading no-break space / regular space
+                // separator so the unit value matches V8's CLDR
+                // output ("%", "km/h", ...).
+                $tailRun = ltrim($tailRun, " \u{00A0}");
+                $emit('unit', $tailRun);
+                $i = $bodyLen;
                 continue;
             }
             if ($ch === ',' || $ch === ' ' || preg_match('/^\p{Zs}$/u', $charStr) === 1) {
