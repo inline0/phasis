@@ -3214,11 +3214,7 @@ class TemporalObject
         self::defineGetter($proto, 'monthCode', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // Only consult ICU when the storage was clearly produced from a
-            // string with a non-ISO u-ca annotation (i.e. ISOYear is not the
-            // 1972 reference). Otherwise the ISO month/day pair already
-            // carries the user-supplied calendar fields.
-            if ($cal !== 'iso8601' && self::getSlotInt($this_, '[[ISOYear]]') !== 1972) {
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $parts = self::isoToCalendarParts(
                     $cal,
                     self::getSlotInt($this_, '[[ISOYear]]'),
@@ -3235,7 +3231,7 @@ class TemporalObject
         self::defineGetter($proto, 'day', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            if ($cal !== 'iso8601' && self::getSlotInt($this_, '[[ISOYear]]') !== 1972) {
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $parts = self::isoToCalendarParts(
                     $cal,
                     self::getSlotInt($this_, '[[ISOYear]]'),
@@ -9466,6 +9462,14 @@ class TemporalObject
                     throw new RangeError("Invalid day: {$d} for month {$m} in year {$refYear}");
                 }
             }
+            // Non-ISO non-gregory: pick the reference ISO date for this calendar
+            // M-d combo (latest ISO ≤ 1972).
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
+                $iso = self::pmdReferenceIsoFor($cal, $hasMonthCode ? $mStr : null, $hasMonthCode ? null : $m, $d);
+                if ($iso !== null) {
+                    return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
+                }
+            }
             return self::createPlainMonthDayObject($m, $d, 1972, $cal);
         }
         $str = TypeConversion::toString($item);
@@ -9653,6 +9657,14 @@ class TemporalObject
                     : self::maxDaysInCalendarMonth($cal, $m, $hasLeap);
                 if ($d < 1 || $d > $dim) {
                     throw new RangeError("Invalid day: {$d}");
+                }
+            }
+            // Non-ISO non-gregory: pick the reference ISO date for this calendar
+            // M-d combo (latest ISO ≤ 1972).
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
+                $iso = self::pmdReferenceIsoFor($cal, $hasMonthCode ? $mStr : null, $hasMonthCode ? null : $m, $d);
+                if ($iso !== null) {
+                    return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
                 }
             }
             return self::createPlainMonthDayObject($m, $d, 1972, $cal);
@@ -11325,6 +11337,78 @@ class TemporalObject
     {
         $days = self::isoDateToDays($y, $m, $d);
         return (float) ((int) $days * 86400 * 1000);
+    }
+
+    /**
+     * Pick the ISO date that represents (calendar, monthCode|month, day) for
+     * Temporal.PlainMonthDay's reference-year purposes. Per spec, this is the
+     * largest ISO date <= 1972-12-31 whose calendar fields match. Returns
+     * null when the calendar cannot be resolved.
+     */
+    private static function pmdReferenceIsoFor(string $cal, ?string $monthCode, ?int $monthNum, int $day): ?array
+    {
+        if ($cal === 'iso8601' || in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
+            $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
+            return ['year' => 1972, 'month' => $m, 'day' => $day];
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        // Approximate calendar-year for ISO 1972-12-31.
+        try {
+            $icuCal = $cal;
+            static $aliasMapPmd = [
+                'islamicc' => 'islamic-civil',
+                'ethioaa' => 'ethiopic-amete-alem',
+            ];
+            if (isset($aliasMapPmd[$cal])) {
+                $icuCal = $aliasMapPmd[$cal];
+            }
+            $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            if (!$probe instanceof \IntlCalendar) {
+                return null;
+            }
+            $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
+            $approxYear = $probe->get(\IntlCalendar::FIELD_YEAR);
+        } catch (\Throwable) {
+            return null;
+        }
+        // Try a window of calendar years from approxYear and pick the largest
+        // one whose ISO mapping for M-d lands in 1972 or earlier AND whose ICU
+        // roundtrip (ISO->calendar) produces back the requested fields.
+        $bestIso = null;
+        for ($delta = 1; $delta >= -8; $delta--) {
+            $tryYear = $approxYear + $delta;
+            $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $day);
+            if ($iso === null) {
+                continue;
+            }
+            // Roundtrip: ISO -> calendar should yield matching M-d.
+            $back = self::isoToCalendarParts($cal, $iso['year'], $iso['month'], $iso['day']);
+            if ($back === null) {
+                continue;
+            }
+            $expectedMc = $monthCode;
+            $expectedDay = $day;
+            if ($expectedMc !== null && $back['monthCode'] !== $expectedMc) {
+                continue;
+            }
+            if ($monthNum !== null && $back['month'] !== $monthNum) {
+                continue;
+            }
+            if ($back['day'] !== $expectedDay) {
+                continue;
+            }
+            if ($iso['year'] <= 1972) {
+                if ($bestIso === null
+                    || $iso['year'] > $bestIso['year']
+                    || ($iso['year'] === $bestIso['year'] && $iso['month'] > $bestIso['month'])
+                ) {
+                    $bestIso = $iso;
+                }
+            }
+        }
+        return $bestIso;
     }
 
     /**
