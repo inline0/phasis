@@ -5289,6 +5289,7 @@ class IntlObject
                                 $j++;
                             }
                         }
+                        $seenVariants = [];
                         while ($j < $partCount) {
                             $vp = $parts[$j];
                             $vpLen = strlen($vp);
@@ -5297,6 +5298,11 @@ class IntlObject
                             if (!$isLong && !$isShortNum) {
                                 return false;
                             }
+                            $vpKey = strtolower($vp);
+                            if (isset($seenVariants[$vpKey])) {
+                                return false;
+                            }
+                            $seenVariants[$vpKey] = true;
                             $j++;
                         }
                         return true;
