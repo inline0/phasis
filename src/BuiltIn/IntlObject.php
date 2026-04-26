@@ -6052,7 +6052,7 @@ class IntlObject
                         $isTkey = $subLen === 2
                             && ctype_alpha($sub[0])
                             && ctype_digit($sub[1]);
-                        if (!$tlangSeen && !$isTkey) {
+                        if (!$tlangSeen && !$isTkey && !$awaitingTvalue) {
                             // First non-tkey subtag starts the tlang.
                             // Must be a valid language subtag (2-3 or
                             // 5-8 alpha; "root" / 4-letter alpha is
