@@ -2163,6 +2163,16 @@ class IntlObject
             $maxFrac = (int) self::extractInternalNumber($nf, '[[MaximumFractionDigits]]', 3);
             $mantissaStr = self::roundMantissaToFraction($mantissa, $maxFrac);
         }
+        // Replace the ASCII decimal point with the locale's decimal
+        // symbol (de-DE renders 3,45E-4 rather than 3.45E-4).
+        if (extension_loaded('intl')) {
+            $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
+            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $decimalSym = $sf->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL) ?: '.';
+            if ($decimalSym !== '.') {
+                $mantissaStr = str_replace('.', $decimalSym, $mantissaStr);
+            }
+        }
         return $sign . $mantissaStr . 'E' . $exp;
     }
 
@@ -2390,7 +2400,14 @@ class IntlObject
             $unit = self::extractInternalString($nf, '[[Unit]]', '');
             $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
             $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
-            $separator = $unitDisplay === 'narrow' ? '' : ' ';
+            // CLDR's CJK-family locales (zh, ja, ko) attach the unit
+            // symbol with no space even in short style.
+            $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
+            $localeLang = strtolower(strtok($localeForUnit, '-_'));
+            $cjkNoSpace = in_array($localeLang, ['zh', 'ja', 'ko'], true);
+            $separator = ($unitDisplay === 'narrow' || ($cjkNoSpace && $unitDisplay !== 'long'))
+                ? ''
+                : ' ';
             $result = $unitLabel === ''
                 ? $bareResult
                 : $bareResult . $separator . $unitLabel;
