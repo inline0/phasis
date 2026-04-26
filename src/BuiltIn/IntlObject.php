@@ -2406,7 +2406,11 @@ class IntlObject
             $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
             $localeLang = strtolower(strtok($localeForUnit, '-_'));
             $koNoSpace = $localeLang === 'ko' && $unitDisplay !== 'long';
-            $separator = ($unitDisplay === 'narrow' || $koNoSpace) ? '' : ' ';
+            // The percent unit attaches with no separator across
+            // locales for short / narrow displays per CLDR
+            // ({0}% pattern).
+            $isPercentNoSpace = $unit === 'percent' && $unitDisplay !== 'long';
+            $separator = ($unitDisplay === 'narrow' || $koNoSpace || $isPercentNoSpace) ? '' : ' ';
             $result = $unitLabel === ''
                 ? $bareResult
                 : $bareResult . $separator . $unitLabel;
