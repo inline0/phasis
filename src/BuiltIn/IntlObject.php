@@ -3588,7 +3588,9 @@ class IntlObject
     private static function patternLetterToPartType(string $letter): string
     {
         return match ($letter) {
-            'y', 'Y', 'u', 'U', 'r' => 'year',
+            'y', 'Y', 'u' => 'year',
+            'U' => 'yearName',
+            'r' => 'relatedYear',
             'M', 'L' => 'month',
             'd' => 'day',
             'D' => 'day',
