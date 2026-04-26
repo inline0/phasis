@@ -9927,7 +9927,12 @@ class IntlObject
                 $renderedSign = '-';
                 $signNeedsAttaching = false;
             }
-            $seg = self::formatDurationSegment($renderInt, $u, $singular, $unitStyle);
+            $seg = self::formatDurationSegment(
+                $renderInt,
+                $u,
+                $singular,
+                $unitStyle,
+            );
             $segments[] = $renderedSign . $seg;
             $isFirstSegment = false;
         }
@@ -10091,6 +10096,7 @@ class IntlObject
         string $unit,
         string $singular,
         string $unitStyle = 'short',
+        bool $useLongPlural = false,
     ): string {
         // Minimal English label tables. A full CLDR implementation
         // would expand across all locales × plural categories ×
@@ -10109,11 +10115,29 @@ class IntlObject
             'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
             'microseconds' => 'microsecond', 'nanoseconds' => 'nanoseconds',
         ];
+        // Long form with English plural rule: n=±1 uses singular,
+        // everything else uses the plural ("days"/"day").
+        static $longSingularLabels = [
+            'years' => 'year', 'months' => 'month', 'weeks' => 'week',
+            'days' => 'day', 'hours' => 'hour', 'minutes' => 'minute',
+            'seconds' => 'second', 'milliseconds' => 'millisecond',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
+        ];
         if ($unitStyle === 'long') {
             return $n . ' ' . ($longLabels[$unit] ?? $singular);
         }
         if ($unitStyle === 'narrow') {
             return $n . ($shortLabels[$unit] ?? $singular);
+        }
+        // For digital style, non-clock units use the long-form
+        // plural-aware label per the explicit fixtures
+        // (digital-style-with-hours-display-auto: '1 day').
+        if ($useLongPlural) {
+            $isOne = abs($n) === 1;
+            $label = $isOne
+                ? ($longSingularLabels[$unit] ?? $singular)
+                : ($longLabels[$unit] ?? $singular);
+            return $n . ' ' . $label;
         }
         return $n . ' ' . ($shortLabels[$unit] ?? $singular);
     }
