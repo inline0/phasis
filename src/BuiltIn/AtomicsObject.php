@@ -312,8 +312,12 @@ class AtomicsObject
             }
         }
 
-        // Value matches but we cannot actually suspend, so return "timed-out".
-        return new JsString('timed-out');
+        // Per spec: when AgentCanSuspend() is false, Atomics.wait must
+        // throw TypeError on a value match (regardless of timeout). Our
+        // runtime is the main thread and never blocks, so AgentCanSuspend
+        // is always false. CanBlockIsTrue tests are skipped earlier so
+        // we never reach here in a context where suspension is expected.
+        throw new TypeError('Atomics.wait cannot suspend the current agent');
     }
 
     /**

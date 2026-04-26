@@ -43,6 +43,24 @@ class Test262Runner
             }
         }
 
+        // Tests that orchestrate multiple agents via the $262.agent host
+        // hooks need real preemptive concurrency to interleave Atomics.wait
+        // and Atomics.notify across threads. Our single-threaded stub can
+        // collect agent sources but can't actually run them in parallel,
+        // so the wait calls deadlock and the test never returns. Skip
+        // them instead of letting each one burn 30 seconds at the wall
+        // clock max_execution_time limit.
+        if (
+            strpos($source, '$262.agent.start') !== false
+            || strpos($source, '$262.agent.broadcast') !== false
+        ) {
+            return new TestResult(
+                $testPath,
+                TestStatus::Skip,
+                'Multi-agent test (single-threaded runner cannot orchestrate)',
+            );
+        }
+
         $flags = $meta['flags'] ?? [];
 
         // Skip CanBlockIsTrue tests: our single-threaded agent cannot block.
