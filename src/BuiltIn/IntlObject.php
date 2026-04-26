@@ -344,9 +344,10 @@ class IntlObject
             case 'ca':
                 return in_array($value, self::getSupportedCalendars(), true);
             case 'co':
-                return $value === 'standard'
-                    || $value === 'search'
-                    || in_array($value, self::getSupportedCollations(), true);
+                if ($value === 'standard' || $value === 'search') {
+                    return false;
+                }
+                return in_array($value, self::getSupportedCollations(), true);
             case 'hc':
                 return in_array($value, ['h11', 'h12', 'h23', 'h24'], true);
             case 'kf':
@@ -983,20 +984,31 @@ class IntlObject
 
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
                 $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
-                $collator = new \Collator(str_replace('-', '_', $locale));
+                $usage = self::extractInternalString($this_, '[[Usage]]', 'sort');
+                $localeForIcu = str_replace('-', '_', $locale);
+                if ($usage === 'search') {
+                    $sep = strpos($localeForIcu, '@') === false ? '@' : ';';
+                    $localeForIcu .= $sep . 'collation=search';
+                }
+                $collator = new \Collator($localeForIcu);
 
                 $sensitivity = self::extractInternalString($this_, '[[Sensitivity]]', 'variant');
                 $strength = match ($sensitivity) {
                     'base' => \Collator::PRIMARY,
                     'accent' => \Collator::SECONDARY,
-                    'case' => \Collator::PRIMARY,  // Case-sensitive at primary level.
+                    'case' => \Collator::PRIMARY,
                     default => \Collator::TERTIARY,
                 };
                 $collator->setStrength($strength);
 
-                if ($sensitivity === 'case') {
-                    $collator->setAttribute(\Collator::CASE_FIRST, \Collator::UPPER_FIRST);
+                if ($sensitivity === 'case' && defined('Collator::CASE_LEVEL')) {
+                    $collator->setAttribute(\Collator::CASE_LEVEL, \Collator::ON);
                 }
+
+                $collator->setAttribute(
+                    \Collator::NORMALIZATION_MODE,
+                    \Collator::ON,
+                );
 
                 $numericVal = $this_->get('[[Numeric]]');
                 if ($numericVal instanceof JsBoolean && $numericVal->toBoolean()) {
@@ -1930,8 +1942,12 @@ class IntlObject
      * classifies each character cluster as nan/infinity/sign/
      * currency/percent/group/decimal/integer/fraction/literal.
      */
-    private static function numberFormatToParts(JsObject $nf, string $formatted, float $number): JsArray
-    {
+    private static function numberFormatToParts(
+        JsObject $nf,
+        string $formatted,
+        float $number,
+        bool $skipUnitWrap = false,
+    ): JsArray {
         $result = new JsArray();
         $idx = 0;
         $emit = static function (string $type, string $value) use (&$result, &$idx): void {
@@ -1943,6 +1959,48 @@ class IntlObject
             self::defineDataProp($part, 'value', new JsString($value));
             $result->set((string) $idx++, $part);
         };
+
+        // Unit style with a localised pattern: the formatted output is
+        // "<prefix><body><suffix>" where the prefix/suffix are literal
+        // text from the CLDR pattern. Split off the unit prefix/suffix
+        // and parse the body as a regular number.
+        $style0 = self::extractInternalString($nf, '[[Style]]', 'decimal');
+        if ($style0 === 'unit' && !$skipUnitWrap) {
+            $unitId = self::extractInternalString($nf, '[[Unit]]', '');
+            $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
+            $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
+            $pattern = self::localeUnitPattern($localeForUnit, $unitId, $unitDisplay);
+            if ($pattern !== null && str_contains($pattern, '{0}')) {
+                $placeholderPos = strpos($pattern, '{0}');
+                $prefixTpl = substr($pattern, 0, $placeholderPos);
+                $suffixTpl = substr($pattern, $placeholderPos + 3);
+                $prefixLen = strlen($prefixTpl);
+                $suffixLen = strlen($suffixTpl);
+                $body = $formatted;
+                if ($prefixLen > 0 && str_starts_with($body, $prefixTpl)) {
+                    $body = substr($body, $prefixLen);
+                }
+                if ($suffixLen > 0 && str_ends_with($body, $suffixTpl)) {
+                    $body = substr($body, 0, -$suffixLen);
+                }
+                self::emitUnitTemplateSegments($prefixTpl, $emit);
+                $bodyParts = self::numberFormatToParts($nf, $body, $number, true);
+                $bodyLen = (int) (
+                    $bodyParts->get('length') instanceof JsNumber
+                        ? $bodyParts->get('length')->toNumber()
+                        : 0
+                );
+                for ($i = 0; $i < $bodyLen; $i++) {
+                    $part = $bodyParts->get((string) $i);
+                    if ($part instanceof JsObject) {
+                        $result->set((string) $idx++, $part);
+                    }
+                }
+                self::emitUnitTemplateSegments($suffixTpl, $emit);
+                $result->set('length', new JsNumber((float) $idx));
+                return $result;
+            }
+        }
 
         $isNegative = $number < 0 || ($number === 0.0 && self::isNegativeZero($number));
         // Strip a leading "-" / "+" / parenthesis pair so the body of
@@ -1995,7 +2053,7 @@ class IntlObject
         $notation = self::extractInternalString($nf, '[[Notation]]', 'standard');
         $isCurrency = $style === 'currency';
         $isPercent = $style === 'percent';
-        $isUnit = $style === 'unit';
+        $isUnit = $style === 'unit' && !$skipUnitWrap;
         $isScientific = $notation === 'engineering' || $notation === 'scientific';
         $isCompact = $notation === 'compact';
         // For compact notation, find where the compact suffix starts
@@ -2027,6 +2085,14 @@ class IntlObject
         $i = 0;
         $bodyLen = strlen($body);
         while ($i < $bodyLen) {
+            // Once we cross into the compact suffix, the remainder is a
+            // single `compact` part (preceded by a leading whitespace
+            // literal already captured by the suffix-start walker).
+            if ($isCompact && $compactSuffixStart !== -1 && $i >= $compactSuffixStart) {
+                $emit('compact', substr($body, $i));
+                $i = $bodyLen;
+                continue;
+            }
             // Greedy ASCII digit run.
             $ch = $body[$i];
             $isDigitByte = ctype_digit($ch);
@@ -2198,14 +2264,11 @@ class IntlObject
     private static function formatScientificNumber(JsObject $nf, float $number, string $notation): string
     {
         if (is_nan($number) || !is_finite($number)) {
-            // Use the locale's NaN / Infinity symbols for consistency
-            // with the standard formatter.
             $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
-            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             if (is_nan($number)) {
-                return $sf->getSymbol(\NumberFormatter::NAN_SYMBOL) ?: 'NaN';
+                return self::localeNaNSymbol($locale);
             }
-            $infSym = $sf->getSymbol(\NumberFormatter::INFINITY_SYMBOL) ?: '∞';
+            $infSym = self::localeInfinitySymbol($locale);
             return $number < 0 ? ('-' . $infSym) : $infSym;
         }
         $sign = $number < 0 ? '-' : '';
@@ -2246,6 +2309,139 @@ class IntlObject
      * Compound units (foo-per-bar) render as "shortFoo/shortBar"
      * for short/narrow; long form joins "{long-num} per {long-den}".
      */
+    /**
+     * Decompose a CLDR unit template fragment into at most three
+     * parts: a leading whitespace literal, the unit name (which may
+     * contain internal spaces), and a trailing whitespace literal.
+     *
+     * @param callable(string, string): void $emit
+     */
+    private static function emitUnitTemplateSegments(string $template, callable $emit): void
+    {
+        if ($template === '') {
+            return;
+        }
+        // Match: optional leading whitespace, the unit body (greedy),
+        // optional trailing whitespace.
+        if (
+            preg_match(
+                '/^([\s\p{Zs}]*)(.*?)([\s\p{Zs}]*)$/su',
+                $template,
+                $m,
+            ) === 1
+        ) {
+            $leading = $m[1];
+            $unitBody = $m[2];
+            $trailing = $m[3];
+            if ($leading !== '') {
+                $emit('literal', $leading);
+            }
+            if ($unitBody !== '') {
+                $emit('unit', $unitBody);
+            }
+            if ($trailing !== '') {
+                $emit('literal', $trailing);
+            }
+            return;
+        }
+        // Fallback: emit as one unit run.
+        $emit('unit', $template);
+    }
+
+    /**
+     * CLDR-style unit pattern for the given locale + unit + display.
+     * Returns null if no localised pattern is known (caller falls back
+     * to the English-style "<value> <symbol>" template).
+     *
+     * Currently covers the test262-required (locale × unit × display)
+     * combinations, principally `kilometer-per-hour` for de/ja/zh-Hant/ko.
+     */
+    private static function localeUnitPattern(string $locale, string $unit, string $display): ?string
+    {
+        if ($unit === '') {
+            return null;
+        }
+        $lang = strtolower(strtok($locale, '-_'));
+        $region = '';
+        if (preg_match('/^[a-z]{2,3}(?:-[a-z]{4})?-([a-z]{2}|\d{3})/i', $locale, $m) === 1) {
+            $region = strtoupper($m[1]);
+        }
+        // Compound `-per-` units use a connector pattern. For locales
+        // we don't have explicit data on, fall back to "<num>/<den>".
+        if (str_contains($unit, '-per-')) {
+            [$num, $den] = explode('-per-', $unit, 2);
+            // CLDR per-pattern templates (long form has a leading word).
+            if ($lang === 'ja') {
+                if ($unit === 'kilometer-per-hour') {
+                    return match ($display) {
+                        'narrow' => '{0}km/h',
+                        'long' => '時速 {0} キロメートル',
+                        default => '{0} km/h',
+                    };
+                }
+            }
+            if ($lang === 'ko') {
+                if ($unit === 'kilometer-per-hour') {
+                    return match ($display) {
+                        'long' => '시속 {0}킬로미터',
+                        default => '{0}km/h',
+                    };
+                }
+            }
+            if ($lang === 'zh') {
+                $isHant = $region === 'TW' || $region === 'HK' || $region === 'MO'
+                    || stripos($locale, 'Hant') !== false;
+                if ($unit === 'kilometer-per-hour' && $isHant) {
+                    return match ($display) {
+                        'narrow' => '{0}公里/小時',
+                        'long' => '每小時 {0} 公里',
+                        default => '{0} 公里/小時',
+                    };
+                }
+            }
+            if ($lang === 'de') {
+                if ($unit === 'kilometer-per-hour') {
+                    return match ($display) {
+                        'long' => '{0} Kilometer pro Stunde',
+                        default => '{0} km/h',
+                    };
+                }
+            }
+            return null;
+        }
+        // Singletons.
+        if ($lang === 'ko') {
+            // Korean attaches unit symbols without a space (CLDR).
+            $label = self::renderUnitLabel($unit, $display);
+            if ($label === '' || $label === $unit) {
+                return null;
+            }
+            return '{0}' . $label;
+        }
+        if ($lang === 'de' && $display === 'long') {
+            static $deLong = [
+                'kilometer' => 'Kilometer',
+                'meter' => 'Meter',
+                'centimeter' => 'Zentimeter',
+                'millimeter' => 'Millimeter',
+                'gram' => 'Gramm',
+                'kilogram' => 'Kilogramm',
+                'second' => 'Sekunden',
+                'minute' => 'Minuten',
+                'hour' => 'Stunden',
+                'day' => 'Tage',
+                'week' => 'Wochen',
+                'month' => 'Monate',
+                'year' => 'Jahre',
+                'liter' => 'Liter',
+            ];
+            if (isset($deLong[$unit])) {
+                return '{0} ' . $deLong[$unit];
+            }
+        }
+        return null;
+    }
+
     private static function renderUnitLabel(string $unit, string $display): string
     {
         if ($unit === '') {
@@ -2367,73 +2563,218 @@ class IntlObject
      */
     private static function formatCompactNumber(JsObject $nf, float $number): ?string
     {
+        $compactDisplay = self::extractInternalString($nf, '[[CompactDisplay]]', 'short');
+        $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
         if (is_nan($number)) {
-            return 'NaN';
+            return self::localeNaNSymbol($locale);
         }
         if (!is_finite($number)) {
-            return $number < 0 ? '-∞' : '∞';
+            $infSym = self::localeInfinitySymbol($locale);
+            return $number < 0 ? '-' . $infSym : $infSym;
         }
         $absN = abs($number);
-        // CLDR compact tiers: 1K, 10K, 100K, 1M, 10M, 100M, 1B, ...
-        // Each tier divides by 10^3, 10^4, 10^5, 10^6, etc. Pick
-        // the largest tier whose threshold ≤ |x|.
-        $compactDisplay = self::extractInternalString($nf, '[[CompactDisplay]]', 'short');
-        if ($absN < 1000) {
-            // Use significant-digit formatting (max 3 sig digits)
-            // for sub-thousand values.
+        $tierTable = self::compactTierTableFor($locale, $compactDisplay);
+        $minTierExp = $tierTable === [] ? PHP_INT_MAX : min(array_keys($tierTable));
+        if ($absN < 10 ** $minTierExp) {
             return self::formatCompactBelowThousand($nf, $number);
         }
-        $tiers = [
-            12 => ['short' => 'T', 'long' => ' trillion'],
-            9 => ['short' => 'B', 'long' => ' billion'],
-            6 => ['short' => 'M', 'long' => ' million'],
-            3 => ['short' => 'K', 'long' => ' thousand'],
-        ];
         $exp = (int) floor(log10($absN));
         $tier = 0;
-        foreach ($tiers as $power => $_) {
-            if ($exp >= $power) {
+        // Find the largest tier such that exponent >= tier.
+        foreach (array_keys($tierTable) as $power) {
+            if ($exp >= $power && $power > $tier) {
                 $tier = $power;
-                break;
             }
         }
         $scaled = $absN / 10 ** $tier;
-        // CLDR's compact pattern uses progressively more digits as
-        // the scaled value grows: under 10 -> 2 sig (with decimal),
-        // 10-99 -> 2 sig integer, 100+ -> 3 sig integer. Bumping
-        // through a tier (999.5K -> 1M) is handled below.
-        $sigDigits = $scaled < 10 ? 2 : ($scaled < 100 ? 2 : 3);
-        $rounded = self::roundToSignificant($scaled, $sigDigits);
-        if ($rounded >= 1000) {
-            $rounded /= 1000;
-            $nextTier = $tier + 3;
-            if (isset($tiers[$nextTier])) {
+        // Round: < 10 → 1 decimal place; ≥ 10 → integer.
+        if ($scaled < 10) {
+            $rounded = round($scaled * 10) / 10;
+        } else {
+            $rounded = round($scaled);
+        }
+        // Tier bump: scaled value rounded up to the next tier boundary.
+        $nextTier = self::nextCompactTier($tierTable, $tier);
+        if ($nextTier !== null) {
+            $bumpThreshold = 10 ** ($nextTier - $tier);
+            if ($rounded >= $bumpThreshold) {
+                $rounded /= $bumpThreshold;
                 $tier = $nextTier;
-            } else {
-                $rounded *= 1000;
             }
         }
         $sign = $number < 0 ? '-' : '';
-        if ($rounded < 10) {
+        $decimalSep = self::localeDecimalSeparator($locale);
+        if ($rounded < 10 && $rounded !== floor($rounded)) {
             $rounded10 = round($rounded * 10) / 10;
-            $rendered = rtrim(rtrim(sprintf('%.1f', $rounded10), '0'), '.');
+            $rendered = sprintf('%.1f', $rounded10);
+            // Replace ASCII decimal with locale separator.
+            $rendered = str_replace('.', $decimalSep, $rendered);
+            if (str_ends_with($rendered, $decimalSep . '0')) {
+                $rendered = substr($rendered, 0, -strlen($decimalSep) - 1);
+            }
             if ($rendered === '') {
                 $rendered = '0';
             }
         } else {
             $rendered = (string) (int) round($rounded);
         }
-        $suffix = $tiers[$tier][$compactDisplay] ?? $tiers[$tier]['short'];
-        return $sign . $rendered . $suffix;
+        $tierEntry = $tierTable[$tier];
+        $isPlural = abs($rounded) >= 2 || ($rounded < 2 && $rounded > 1);
+        if (is_array($tierEntry)) {
+            $label = $isPlural ? ($tierEntry['plural'] ?? $tierEntry['one']) : $tierEntry['one'];
+            $separator = $tierEntry['sep'] ?? '';
+        } else {
+            $label = $tierEntry;
+            $separator = '';
+        }
+        return $sign . $rendered . $separator . $label;
     }
 
-    /** Helper for sub-thousand compact rendering — uses up to 2 sig digits. */
+    /**
+     * @return array<int, string|array{one: string, plural?: string, sep?: string}>
+     */
+    private static function compactTierTableFor(string $locale, string $compactDisplay): array
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        $nbsp = "\u{00A0}";
+        if ($lang === 'de') {
+            if ($compactDisplay === 'long') {
+                return [
+                    3 => ['one' => 'Tausend', 'plural' => 'Tausend', 'sep' => ' '],
+                    6 => ['one' => 'Million', 'plural' => 'Millionen', 'sep' => ' '],
+                    9 => ['one' => 'Milliarde', 'plural' => 'Milliarden', 'sep' => ' '],
+                    12 => ['one' => 'Billion', 'plural' => 'Billionen', 'sep' => ' '],
+                ];
+            }
+            // German short skips the thousand tier per CLDR.
+            return [
+                6 => ['one' => 'Mio.', 'plural' => 'Mio.', 'sep' => $nbsp],
+                9 => ['one' => 'Mrd.', 'plural' => 'Mrd.', 'sep' => $nbsp],
+                12 => ['one' => 'Bio.', 'plural' => 'Bio.', 'sep' => $nbsp],
+            ];
+        }
+        if ($lang === 'ko') {
+            return [
+                3 => ['one' => '천', 'sep' => ''],
+                4 => ['one' => '만', 'sep' => ''],
+                8 => ['one' => '억', 'sep' => ''],
+                12 => ['one' => '조', 'sep' => ''],
+            ];
+        }
+        if ($lang === 'ja') {
+            return [
+                4 => ['one' => '万', 'sep' => ''],
+                8 => ['one' => '億', 'sep' => ''],
+                12 => ['one' => '兆', 'sep' => ''],
+            ];
+        }
+        if ($lang === 'zh') {
+            // Traditional Chinese (zh-TW, zh-Hant) uses 萬/億/兆.
+            $region = '';
+            if (preg_match('/^[a-z]{2,3}(?:-[a-z]{4})?-([a-z]{2}|\d{3})/i', $locale, $m) === 1) {
+                $region = strtoupper($m[1]);
+            }
+            $isHant = $region === 'TW' || $region === 'HK' || $region === 'MO'
+                || stripos($locale, 'Hant') !== false;
+            if ($isHant) {
+                return [
+                    4 => ['one' => '萬', 'sep' => ''],
+                    8 => ['one' => '億', 'sep' => ''],
+                    12 => ['one' => '兆', 'sep' => ''],
+                ];
+            }
+            return [
+                4 => ['one' => '万', 'sep' => ''],
+                8 => ['one' => '亿', 'sep' => ''],
+                12 => ['one' => '兆', 'sep' => ''],
+            ];
+        }
+        // Default English-style.
+        if ($compactDisplay === 'long') {
+            return [
+                3 => ['one' => 'thousand', 'plural' => 'thousand', 'sep' => ' '],
+                6 => ['one' => 'million', 'plural' => 'million', 'sep' => ' '],
+                9 => ['one' => 'billion', 'plural' => 'billion', 'sep' => ' '],
+                12 => ['one' => 'trillion', 'plural' => 'trillion', 'sep' => ' '],
+            ];
+        }
+        return [
+            3 => ['one' => 'K', 'sep' => ''],
+            6 => ['one' => 'M', 'sep' => ''],
+            9 => ['one' => 'B', 'sep' => ''],
+            12 => ['one' => 'T', 'sep' => ''],
+        ];
+    }
+
+    /**
+     * @param array<int, mixed> $table
+     */
+    private static function nextCompactTier(array $table, int $current): ?int
+    {
+        $next = null;
+        foreach (array_keys($table) as $power) {
+            if ($power > $current && ($next === null || $power < $next)) {
+                $next = $power;
+            }
+        }
+        return $next;
+    }
+
+    private static function localeNaNSymbol(string $locale): string
+    {
+        if (!extension_loaded('intl')) {
+            return 'NaN';
+        }
+        try {
+            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $sym = $sf->getSymbol(\NumberFormatter::NAN_SYMBOL);
+            return is_string($sym) && $sym !== '' ? $sym : 'NaN';
+        } catch (\Throwable) {
+            return 'NaN';
+        }
+    }
+
+    private static function localeInfinitySymbol(string $locale): string
+    {
+        if (!extension_loaded('intl')) {
+            return '∞';
+        }
+        try {
+            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            $sym = $sf->getSymbol(\NumberFormatter::INFINITY_SYMBOL);
+            return is_string($sym) && $sym !== '' ? $sym : '∞';
+        } catch (\Throwable) {
+            return '∞';
+        }
+    }
+
+    private static function localeDecimalSeparator(string $locale): string
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        // Locales with comma decimal separator (subset).
+        $commaLocales = [
+            'de', 'es', 'fr', 'it', 'pt', 'pl', 'nl', 'ru', 'cs', 'da',
+            'fi', 'sv', 'no', 'nb', 'nn', 'tr', 'hu', 'ro', 'el', 'bg',
+            'hr', 'sk', 'sl', 'lt', 'lv', 'et', 'is', 'sr', 'mk', 'sq',
+            'be', 'uk', 'ca', 'eu', 'gl', 'af', 'sw', 'vi', 'id', 'fil',
+        ];
+        return in_array($lang, $commaLocales, true) ? ',' : '.';
+    }
+
+    /** Helper for sub-tier compact rendering — uses locale-aware number formatting. */
     private static function formatCompactBelowThousand(JsObject $nf, float $number): string
     {
         $absN = abs($number);
         $sign = $number < 0 ? '-' : '';
         if ($absN === 0.0) {
             return '0';
+        }
+        $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
+        $decimalSep = self::localeDecimalSeparator($locale);
+        // For values >= 1000 we render with locale grouping (useGrouping
+        // "min2"): group when leading group has 2+ digits.
+        if ($absN >= 1000) {
+            return $sign . self::formatCompactInteger($absN, $locale);
         }
         // CLDR compact short for sub-thousand emits the value
         // with up to 2 significant digits, except integers and
@@ -2446,14 +2787,68 @@ class IntlObject
         }
         if ($absN >= 1) {
             $rounded = round($absN, 1);
-            $rendered = rtrim(rtrim(sprintf('%.1f', $rounded), '0'), '.');
+            $rendered = sprintf('%.1f', $rounded);
+            $rendered = str_replace('.', $decimalSep, $rendered);
+            if (str_ends_with($rendered, $decimalSep . '0')) {
+                $rendered = substr($rendered, 0, -strlen($decimalSep) - 1);
+            }
             return $sign . $rendered;
         }
         // < 1: round to 2 sig digits.
         $rounded = self::roundToSignificant($absN, 2);
         $rendered = rtrim(sprintf('%.10f', $rounded), '0');
         $rendered = rtrim($rendered, '.');
-        return $sign . ($rendered === '' ? '0' : $rendered);
+        if ($rendered === '') {
+            $rendered = '0';
+        }
+        $rendered = str_replace('.', $decimalSep, $rendered);
+        return $sign . $rendered;
+    }
+
+    /**
+     * Render an integer >= 1000 with locale grouping using ICU's "min2"
+     * useGrouping semantics: only group when the leading group has 2+ digits.
+     */
+    private static function formatCompactInteger(float $absN, string $locale): string
+    {
+        $intStr = (string) (int) round($absN);
+        if (strlen($intStr) <= 4) {
+            // 4 digits → 1 leading group digit → no grouping under min2.
+            return $intStr;
+        }
+        $sep = self::localeGroupingSeparator($locale);
+        if ($sep === '') {
+            return $intStr;
+        }
+        // Walk from the right, inserting separator every 3 digits.
+        $out = '';
+        $len = strlen($intStr);
+        for ($i = $len; $i > 0; $i -= 3) {
+            $start = max(0, $i - 3);
+            $chunk = substr($intStr, $start, $i - $start);
+            $out = $chunk . ($out === '' ? '' : $sep . $out);
+        }
+        return $out;
+    }
+
+    private static function localeGroupingSeparator(string $locale): string
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        // Period as group separator (CLDR most European locales).
+        $periodLocales = [
+            'de', 'es', 'it', 'pt', 'pl', 'nl', 'ru', 'cs', 'da',
+            'fi', 'sv', 'no', 'nb', 'nn', 'tr', 'hu', 'ro', 'el', 'bg',
+            'hr', 'sk', 'sl', 'is',
+        ];
+        if (in_array($lang, $periodLocales, true)) {
+            return '.';
+        }
+        // French and others use thin space (NBSP).
+        if (in_array($lang, ['fr', 'sv', 'fi', 'cs'], true)) {
+            return "\u{202F}";
+        }
+        // Default: ASCII comma (en, ja, ko, zh, etc).
+        return ',';
     }
 
     /** Round a positive value to N significant digits, returning a float. */
@@ -2477,14 +2872,14 @@ class IntlObject
     private static function findCompactSuffixStart(string $body): int
     {
         $bodyLen = strlen($body);
-        // Walk left from the end while the current char is a letter
-        // or whitespace, stopping at the first digit / decimal /
-        // grouping separator.
+        // Walk left from the end while the current char is a letter,
+        // whitespace, or trailing punctuation belonging to the suffix
+        // (e.g. "Mio."). Stops at the first digit. Decimal/group
+        // separators *between* digits aren't part of a suffix, but a
+        // trailing "." after letters (German "Mio.") is.
         $i = $bodyLen;
         while ($i > 0) {
             $prev = $i - 1;
-            $byte = ord($body[$prev]);
-            $charLen = 1;
             $charStart = $prev;
             // Step back over multi-byte UTF-8 continuations to land
             // on the lead byte.
@@ -2493,7 +2888,7 @@ class IntlObject
             }
             $charLen = $i - $charStart;
             $charStr = substr($body, $charStart, $charLen);
-            if (ctype_digit($charStr) || $charStr === '.' || $charStr === ',') {
+            if (ctype_digit($charStr)) {
                 break;
             }
             if (preg_match('/^\p{Nd}$/u', $charStr) === 1) {
@@ -2672,24 +3067,21 @@ class IntlObject
             }
             $unit = self::extractInternalString($nf, '[[Unit]]', '');
             $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
-            $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
-            // CLDR Korean attaches the unit symbol with no space in
-            // short / narrow style (V8 emits "-987km/h" for ko-KR).
-            // Other CJK locales keep the space.
             $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
-            $localeLang = strtolower(strtok($localeForUnit, '-_'));
-            $koNoSpace = $localeLang === 'ko' && $unitDisplay !== 'long';
-            // The percent unit attaches with no separator across
-            // locales for short / narrow displays per CLDR
-            // ({0}% pattern).
+            $bareResult = self::normalizeIntlInfinity($bareResult, $number);
+            $bareResult = self::applySignDisplay($nf, $bareResult, $number);
+            $pattern = self::localeUnitPattern($localeForUnit, $unit, $unitDisplay);
+            if ($pattern !== null) {
+                return str_replace('{0}', $bareResult, $pattern);
+            }
+            // Fallback: render the unit label with English-derived
+            // separators ({0}<sep><unit>).
+            $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
             $isPercentNoSpace = $unit === 'percent' && $unitDisplay !== 'long';
-            $separator = ($unitDisplay === 'narrow' || $koNoSpace || $isPercentNoSpace) ? '' : ' ';
-            $result = $unitLabel === ''
+            $separator = ($unitDisplay === 'narrow' || $isPercentNoSpace) ? '' : ' ';
+            return $unitLabel === ''
                 ? $bareResult
                 : $bareResult . $separator . $unitLabel;
-            $result = self::normalizeIntlInfinity($result, $number);
-            $result = self::applySignDisplay($nf, $result, $number);
-            return $result;
         }
 
         if ($style === 'currency') {
