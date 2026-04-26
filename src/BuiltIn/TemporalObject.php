@@ -5604,6 +5604,63 @@ class TemporalObject
         };
     }
 
+    /**
+     * Maximum possible days in a month for the given calendar. Used by
+     * PlainMonthDay's "constrain" overflow path where the caller does not
+     * know a specific year. Returns the largest plausible upper bound across
+     * all years for that calendar's month code.
+     */
+    private static function maxDaysInCalendarMonth(string $calendar, int $month, bool $isLeapMonthCode = false): int
+    {
+        switch ($calendar) {
+            case 'buddhist':
+            case 'gregory':
+            case 'japanese':
+            case 'roc':
+                return self::isoDaysInMonth(2000, $month); // leap-year max for Feb (29).
+            case 'coptic':
+            case 'ethioaa':
+            case 'ethiopic':
+                return $month === 13 ? 6 : 30;
+            case 'hebrew':
+                if ($isLeapMonthCode) {
+                    return 30;
+                }
+                return match ($month) {
+                    1, 3, 5, 7, 11 => 30,    // Tishri, Kislev (max), Shevat, Nisan, Av
+                    2 => 30, // Cheshvan (max).
+                    4, 6, 8, 10, 12 => 29,   // Tevet, Adar, Iyyar, Tammuz, Elul
+                    9 => 30, // Sivan
+                    default => 30,
+                };
+            case 'indian':
+                return match ($month) {
+                    1 => 31, // Chaitra (leap year), 30 otherwise
+                    2, 3, 4, 5, 6 => 31,
+                    7, 8, 9, 10, 11, 12 => 30,
+                    default => 31,
+                };
+            case 'islamic':
+            case 'islamic-civil':
+            case 'islamic-tbla':
+            case 'islamic-umalqura':
+            case 'islamic-rgsa':
+                return 30; // umalqura M12 can be 30.
+            case 'persian':
+                return match ($month) {
+                    1, 2, 3, 4, 5, 6 => 31,
+                    7, 8, 9, 10, 11 => 30,
+                    12 => 30, // 30 in leap year, 29 otherwise.
+                    default => 30,
+                };
+            case 'chinese':
+            case 'dangi':
+                return 30;
+            default:
+                return self::isoDaysInMonth(2000, $month);
+        }
+    }
+
     private static function isoDaysInYear(int $year): int
     {
         return self::isoIsLeapYear($year) ? 366 : 365;
@@ -8817,7 +8874,9 @@ class TemporalObject
 
             // Validate month code suitability after year type validation.
             if ($hasMonthCode) {
-                if ($m < 1 || $m > 12) {
+                static $pmdHas13Month = ['coptic', 'ethioaa', 'ethiopic'];
+                $maxMonthCode = in_array($cal, $pmdHas13Month, true) ? 13 : 12;
+                if ($m < 1 || $m > $maxMonthCode) {
                     throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
                 }
                 static $pmdLunisolar2 = ['hebrew', 'chinese', 'dangi'];
@@ -8832,21 +8891,27 @@ class TemporalObject
             // NOW read overflow from options (after all field reads).
             $overflow = self::getOverflow($options);
 
+            static $pmdHas13MonthsConstrain = ['coptic', 'ethioaa', 'ethiopic'];
+            $maxMonth = in_array($cal, $pmdHas13MonthsConstrain, true) ? 13 : 12;
             if ($overflow === 'constrain') {
                 if ($m < 1) {
                     throw new RangeError("Invalid month: {$m}");
                 }
-                $m = min(12, $m);
+                $m = min($maxMonth, $m);
                 if ($d < 1) {
                     throw new RangeError("Invalid day: {$d}");
                 }
-                $dim = self::isoDaysInMonth($refYear, $m);
+                $dim = $cal === 'iso8601'
+                    ? self::isoDaysInMonth($refYear, $m)
+                    : self::maxDaysInCalendarMonth($cal, $m, $hasLeap);
                 $d = min($dim, $d);
             } else {
-                if ($m < 1 || $m > 12) {
+                if ($m < 1 || $m > $maxMonth) {
                     throw new RangeError("Invalid month: {$m}");
                 }
-                $dim = self::isoDaysInMonth($refYear, $m);
+                $dim = $cal === 'iso8601'
+                    ? self::isoDaysInMonth($refYear, $m)
+                    : self::maxDaysInCalendarMonth($cal, $m, $hasLeap);
                 if ($d < 1 || $d > $dim) {
                     throw new RangeError("Invalid day: {$d}");
                 }
