@@ -240,31 +240,119 @@ class IntlObject
      * Resolve locale: pick best available from the requested list.
      * Returns the resolved locale string.
      */
-    private static function resolveLocale(array $requestedLocales): string
+    private static function resolveLocale(array $requestedLocales, ?array $allowedExtensions = null): string
     {
+        $resolved = null;
         if (extension_loaded('intl')) {
             $available = \ResourceBundle::getLocales('');
             foreach ($requestedLocales as $locale) {
                 $icuLocale = str_replace('-', '_', $locale);
                 $best = \Locale::lookup($available, $icuLocale, true, '');
                 if ($best !== '' && $best !== null) {
-                    // Canonicalise the requested tag (preserving its
-                    // requested specificity) rather than the truncated
-                    // best match — `de-DE` should resolve to `de-DE`,
-                    // not `de`, even when only `de` is in the bundle.
-                    return self::canonicalizeLocaleTag($locale) ?? $locale;
+                    $resolved = self::canonicalizeLocaleTag($locale) ?? $locale;
+                    break;
                 }
             }
-            $default = \Locale::getDefault();
-            // Strip the legacy `POSIX` variant from the host default so
-            // resolvedOptions().locale matches V8 ("en-US") instead of
-            // exposing the macOS `en_US_POSIX` artefact.
-            $default = preg_replace('/[_-]POSIX$/i', '', $default) ?? $default;
-            return self::canonicalizeLocaleTag(str_replace('_', '-', $default))
-                ?? str_replace('_', '-', $default);
+            if ($resolved === null) {
+                $default = \Locale::getDefault();
+                // Strip the legacy `POSIX` variant from the host
+                // default so resolvedOptions().locale matches V8.
+                $default = preg_replace('/[_-]POSIX$/i', '', $default) ?? $default;
+                $resolved = self::canonicalizeLocaleTag(str_replace('_', '-', $default))
+                    ?? str_replace('_', '-', $default);
+            }
+        } else {
+            $resolved = $requestedLocales[0] ?? 'en';
         }
-        // Without ICU, return first requested or 'en'.
-        return $requestedLocales[0] ?? 'en';
+        if ($allowedExtensions !== null) {
+            $resolved = self::filterUnicodeExtensions($resolved, $allowedExtensions);
+        }
+        return $resolved;
+    }
+
+    /**
+     * Strip Unicode `-u-` extension keywords from the locale tag whose
+     * key isn't in the constructor's allowed-extensions list. Keeps
+     * the legacy attribute prefix alone so `da-u-attr-co-search` with
+     * `co` removed still emits `da-u-attr` rather than `da`.
+     *
+     * @param list<string> $allowedKeys
+     */
+    private static function filterUnicodeExtensions(string $tag, array $allowedKeys): string
+    {
+        if (preg_match('/^(.+?)-u-(.+?)((?:-[a-wy-z]-.*)?)$/i', $tag, $m) !== 1) {
+            return $tag;
+        }
+        $prefix = $m[1];
+        $payload = $m[2];
+        $tail = $m[3] ?? '';
+        // Walk the payload one segment at a time, dropping keyword
+        // value-runs whose 2-char key isn't allowed.
+        $tokens = explode('-', $payload);
+        $kept = [];
+        $i = 0;
+        $count = count($tokens);
+        // Leading attributes (length >= 3) are kept verbatim.
+        while ($i < $count && strlen($tokens[$i]) >= 3) {
+            $kept[] = $tokens[$i];
+            $i++;
+        }
+        while ($i < $count) {
+            $key = $tokens[$i];
+            if (strlen($key) !== 2) {
+                $i++;
+                continue;
+            }
+            $i++;
+            $values = [];
+            while ($i < $count && strlen($tokens[$i]) >= 3) {
+                $values[] = $tokens[$i];
+                $i++;
+            }
+            if (in_array($key, $allowedKeys, true)) {
+                $combined = implode('-', $values);
+                if (!self::isRecognisedUnicodeKeywordValue($key, $combined)) {
+                    continue;
+                }
+                $kept[] = $key;
+                foreach ($values as $v) {
+                    $kept[] = $v;
+                }
+            }
+        }
+        if (empty($kept)) {
+            return $prefix . $tail;
+        }
+        return $prefix . '-u-' . implode('-', $kept) . $tail;
+    }
+
+    /**
+     * Test whether a `-u-` keyword value is among the values our
+     * implementation actually recognises. Unrecognised values are
+     * dropped during locale resolution per ResolveLocale spec.
+     */
+    private static function isRecognisedUnicodeKeywordValue(string $key, string $value): bool
+    {
+        if ($value === '') {
+            return true;
+        }
+        switch ($key) {
+            case 'nu':
+                return in_array($value, self::getSupportedNumberingSystems(), true);
+            case 'ca':
+                return in_array($value, self::getSupportedCalendars(), true);
+            case 'co':
+                return $value === 'standard'
+                    || $value === 'search'
+                    || in_array($value, self::getSupportedCollations(), true);
+            case 'hc':
+                return in_array($value, ['h11', 'h12', 'h23', 'h24'], true);
+            case 'kf':
+                return in_array($value, ['upper', 'lower', 'false'], true);
+            case 'kn':
+                return $value === 'true' || $value === 'false';
+        }
+        return true;
     }
 
     /**
@@ -721,7 +809,7 @@ class IntlObject
                 ));
 
                 // Resolve locale.
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, ["co", "kf", "kn"]);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -1023,7 +1111,7 @@ class IntlObject
                     false,
                 ));
 
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, ["nu"]);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -2335,7 +2423,7 @@ class IntlObject
                     false,
                 ));
 
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, ["ca", "nu", "hc"]);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -3079,7 +3167,7 @@ class IntlObject
                     false,
                 ));
 
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, ["nu"]);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -4906,7 +4994,7 @@ class IntlObject
                     false,
                     false,
                 ));
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, []);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -5275,7 +5363,7 @@ class IntlObject
                     false,
                     false,
                 ));
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, []);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -5610,7 +5698,7 @@ class IntlObject
                     false,
                     false,
                 ));
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, ["nu"]);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
@@ -5850,7 +5938,7 @@ class IntlObject
                     false,
                     false,
                 ));
-                $resolvedLocale = self::resolveLocale($locales);
+                $resolvedLocale = self::resolveLocale($locales, []);
                 $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
                     new JsString($resolvedLocale),
                     false,
