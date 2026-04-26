@@ -5509,6 +5509,8 @@ class IntlObject
         $isInstant = $obj->has('[[EpochNanoseconds]]') && !$obj->has('[[IsZonedDateTime]]');
         $timeLetters = ['h', 'H', 'K', 'k', 'm', 's', 'S', 'a', 'B', 'z', 'Z', 'O', 'v', 'V', 'X', 'x'];
         $dateLetters = ['G', 'y', 'Y', 'u', 'r', 'M', 'L', 'd', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W', 'Q', 'q', 'U'];
+        $tzLetters = ['z', 'Z', 'O', 'v', 'V', 'X', 'x'];
+        $weekdayLetters = ['E', 'e', 'c'];
         $stripLetters = [];
         $augmentSkeleton = '';
         $forceSkeleton = '';
@@ -5519,7 +5521,10 @@ class IntlObject
                 $forceSkeleton = 'yMd';
             }
         } elseif ($isPlainTime) {
-            $stripLetters = $dateLetters;
+            // Plain types carry no time zone; strip date letters AND
+            // timezone letters so timeStyle=full doesn't tack on a
+            // timezone name from the formatter's [[TimeZone]].
+            $stripLetters = array_merge($dateLetters, $tzLetters);
             if (!$userExplicit) {
                 $forceSkeleton = 'hms';
             }
@@ -5529,7 +5534,14 @@ class IntlObject
                 $forceSkeleton = 'yM';
             }
         } elseif ($isPlainMonthDay) {
-            $stripLetters = array_merge($timeLetters, ['G', 'y', 'Y', 'u', 'r', 'U']);
+            // PlainMonthDay has no year, no time zone, and no weekday;
+            // strip the weekday letters so dateStyle=full doesn't add
+            // a "Friday" prefix that PlainMonthDay can't render.
+            $stripLetters = array_merge(
+                $timeLetters,
+                ['G', 'y', 'Y', 'u', 'r', 'U'],
+                $weekdayLetters,
+            );
             if (!$userExplicit) {
                 $forceSkeleton = 'Md';
             }
@@ -5540,6 +5552,15 @@ class IntlObject
             // dateStyle/timeStyle or any individual component,
             // respect that exactly.
             if ($userExplicit) {
+                if ($isPlainDateTime) {
+                    // PlainDateTime carries no time zone; strip the
+                    // timezone letters so timeStyle=full doesn't add
+                    // a name for the formatter's [[TimeZone]] option.
+                    $newPattern = self::stripPatternLetters($pattern, $tzLetters);
+                    if ($newPattern !== $pattern) {
+                        $base->setPattern($newPattern);
+                    }
+                }
                 return $base;
             }
             $hasDate = self::patternHasAnyOf($pattern, $dateLetters);
@@ -5766,7 +5787,15 @@ class IntlObject
                 $output[] = $pendingSeparator;
             }
             $pendingSeparator = null;
-            $output[] = $t['value'];
+            // Quoted literals lose their surrounding apostrophes during
+            // tokenisation; restore them so the assembled pattern still
+            // tells ICU the run is a literal (otherwise letters like 'a'
+            // inside the literal would become pattern letters again).
+            if ($t['kind'] === 'literal') {
+                $output[] = "'" . $t['value'] . "'";
+            } else {
+                $output[] = $t['value'];
+            }
             $hasKeptBefore = true;
         }
         $assembled = implode('', $output);
