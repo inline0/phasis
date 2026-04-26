@@ -9819,7 +9819,10 @@ class IntlObject
         }
         if ($showMinutes) {
             if ($emitted) {
-                $emit('literal', ':', 'hour');
+                // Per spec the inter-clock-unit colon is a bare
+                // literal — it doesn't belong to either neighbour
+                // unit, so omit the `unit` attribute.
+                $emit('literal', ':', null);
             }
             $minStr = ($showHours || $showSeconds)
                 ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
@@ -9829,7 +9832,7 @@ class IntlObject
         }
         if ($showSeconds) {
             if ($emitted) {
-                $emit('literal', ':', 'minute');
+                $emit('literal', ':', null);
             }
             $secStr = ($showMinutes || $showHours)
                 ? str_pad((string) $seconds, 2, '0', STR_PAD_LEFT)
