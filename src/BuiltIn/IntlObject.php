@@ -3170,6 +3170,93 @@ class IntlObject
     }
 
     /**
+     * Round a decimal string (split into integer + fraction parts)
+     * to the requested significant-digit window, preserving its
+     * order of magnitude. Trailing digits past max-sig become zero
+     * (rounded half-up). Returns [int, frac].
+     *
+     * @return array{0: string, 1: string}
+     */
+    private static function roundDecimalStringToSigDigits(
+        string $intPart,
+        string $fracPart,
+        int $minSig,
+        int $maxSig,
+    ): array {
+        $combined = $intPart . $fracPart;
+        // Strip leading zeros to find the first significant digit's
+        // position, but remember the original integer length so we
+        // can reconstruct magnitude.
+        $sigStart = 0;
+        $combinedLen = strlen($combined);
+        while ($sigStart < $combinedLen && $combined[$sigStart] === '0') {
+            $sigStart++;
+        }
+        if ($sigStart >= $combinedLen) {
+            // The value is zero. Pad to minSig zeros.
+            $intResult = $intPart === '' ? '0' : $intPart;
+            $fracResult = str_pad($fracPart, max($minSig - 1, 0), '0');
+            return [$intResult, $fracResult];
+        }
+        $sigDigits = substr($combined, $sigStart);
+        if (strlen($sigDigits) > $maxSig) {
+            $kept = substr($sigDigits, 0, $maxSig);
+            $rounder = $sigDigits[$maxSig];
+            if ($rounder >= '5') {
+                // Round up the kept portion; propagate carry through
+                // the digits string.
+                $kept = self::incrementDigits($kept);
+                if (strlen($kept) > $maxSig) {
+                    // Carry overflowed; the value scaled up by one
+                    // order of magnitude. Strip the trailing zero
+                    // since the leading digits already represent it.
+                    $sigStart--;
+                    if ($sigStart < 0) {
+                        // Adding a new leading digit slot.
+                        $intPart = '1' . str_repeat('0', strlen($intPart));
+                    }
+                    $kept = substr($kept, 0, $maxSig);
+                }
+            }
+            // Pad kept to original length with zeros.
+            $sigDigits = $kept . str_repeat('0', strlen($sigDigits) - strlen($kept));
+        }
+        // Pad to minSig if shorter.
+        if (strlen($sigDigits) < $minSig) {
+            $sigDigits = str_pad($sigDigits, $minSig, '0');
+        }
+        // Reconstruct: leading zeros + sig digits.
+        $reconstructed = str_repeat('0', $sigStart) . $sigDigits;
+        $origIntLen = strlen($intPart);
+        if (strlen($reconstructed) > $origIntLen) {
+            return [
+                substr($reconstructed, 0, $origIntLen),
+                substr($reconstructed, $origIntLen),
+            ];
+        }
+        return [
+            str_pad($reconstructed, $origIntLen, '0', STR_PAD_LEFT),
+            '',
+        ];
+    }
+
+    /** Add 1 to a decimal-digit string, returning the new (possibly longer) string. */
+    private static function incrementDigits(string $digits): string
+    {
+        $len = strlen($digits);
+        $out = $digits;
+        for ($i = $len - 1; $i >= 0; $i--) {
+            $d = ord($out[$i]) - ord('0');
+            if ($d < 9) {
+                $out[$i] = (string) ($d + 1);
+                return $out;
+            }
+            $out[$i] = '0';
+        }
+        return '1' . $out;
+    }
+
+    /**
      * Render a high-precision numeric string (BigInt or decimal
      * literal) using the locale's grouping / decimal symbols while
      * honouring useGrouping / minimumIntegerDigits. Decimal inputs
@@ -3203,6 +3290,20 @@ class IntlObject
         } else {
             $intPart = substr($rest, 0, $dotPos);
             $fracPart = substr($rest, $dotPos + 1);
+        }
+        // Apply max-sig-digit rounding before grouping so the decimal
+        // representation matches what NumberFormatter would emit for
+        // an in-range value.
+        $rt = self::extractInternalString($nf, '[[RoundingType]]', 'fractionDigits');
+        if ($rt === 'significantDigits') {
+            $maxSig = (int) self::extractInternalNumber($nf, '[[MaximumSignificantDigits]]', 21);
+            $minSig = (int) self::extractInternalNumber($nf, '[[MinimumSignificantDigits]]', 1);
+            [$intPart, $fracPart] = self::roundDecimalStringToSigDigits(
+                $intPart,
+                $fracPart,
+                $minSig,
+                $maxSig,
+            );
         }
         $minInt = (int) self::extractInternalNumber($nf, '[[MinimumIntegerDigits]]', 1);
         if ($minInt > strlen($intPart)) {
