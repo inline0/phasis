@@ -4524,7 +4524,11 @@ class TemporalObject
             }
             try {
                 $tz = new \DateTimeZone($str);
-                return $tz->getName();
+                $name = $tz->getName();
+                // PHP preserves the input case; canonicalize against
+                // the IANA TZDB by walking listIdentifiers when the
+                // returned name doesn't match a known canonical form.
+                return self::canonicalizeIanaTimeZoneCase($name);
             } catch (\Throwable) {
                 throw new RangeError("Invalid time zone: {$str}");
             }
@@ -4541,6 +4545,36 @@ class TemporalObject
                 . ':' . str_pad((string) $min, 2, '0', STR_PAD_LEFT);
         }
         throw new RangeError("Invalid time zone: {$str}");
+    }
+
+    /**
+     * Map a case-insensitive IANA timezone name to its canonical
+     * form (matched against DateTimeZone::listIdentifiers()).
+     * "eTc/gMt+1" → "Etc/GMT+1", "america/new_york" → "America/New_York".
+     */
+    private static function canonicalizeIanaTimeZoneCase(string $name): string
+    {
+        static $caseMap = null;
+        if ($caseMap === null) {
+            $caseMap = [];
+            foreach (\DateTimeZone::listIdentifiers() as $id) {
+                $caseMap[strtolower($id)] = $id;
+            }
+            // Etc/GMT+N and Etc/GMT-N for offsets are not in
+            // listIdentifiers as raw entries on every PHP build;
+            // walk a known range and add them explicitly.
+            for ($n = 1; $n <= 14; $n++) {
+                $plus = "Etc/GMT+{$n}";
+                $minus = "Etc/GMT-{$n}";
+                $caseMap[strtolower($plus)] = $plus;
+                $caseMap[strtolower($minus)] = $minus;
+            }
+            $caseMap['etc/gmt'] = 'Etc/GMT';
+            $caseMap['utc'] = 'UTC';
+            $caseMap['gmt'] = 'GMT';
+        }
+        $lower = strtolower($name);
+        return $caseMap[$lower] ?? $name;
     }
 
     /** Parse a timezone string. Accepts IANA names, UTC offsets, or datetime strings with TZ annotation. */
@@ -10721,6 +10755,16 @@ class TemporalObject
             'islamic-umalqura', 'islamic-tbla', 'islamic-civil', 'islamic-rgsa',
             'islamicc', 'persian', 'roc',
         ];
+        // Canonicalize CLDR aliases to their preferred form so the
+        // resolved [[Calendar]] slot matches what V8 returns.
+        static $aliases = [
+            'islamicc' => 'islamic-civil',
+            'ethiopic-amete-alem' => 'ethioaa',
+            'gregorian' => 'gregory',
+        ];
+        if (isset($aliases[$cal])) {
+            return $aliases[$cal];
+        }
         if (in_array($cal, $known, true)) {
             return $cal;
         }
@@ -10901,6 +10945,52 @@ class TemporalObject
         );
     }
 
+    /**
+     * Mirror ToDateTimeOptions(options, "all"): when no date or time
+     * component is set on the options object (and no dateStyle/
+     * timeStyle), add default {year/month/day/hour/minute/second}.
+     * Returns a fresh options object so the caller's input isn't
+     * mutated.
+     */
+    private static function ensureFullDateTimeOptions(JsValue $options): JsValue
+    {
+        if ($options instanceof JsUndefined) {
+            $result = JsObject::createNullPrototype();
+        } elseif ($options instanceof JsObject) {
+            $result = new JsObject($options->getPrototype());
+            foreach ($options->getOwnPropertyNames() as $name) {
+                $val = $options->get($name);
+                if (!$val instanceof JsUndefined) {
+                    $result->set($name, $val);
+                }
+            }
+        } else {
+            return $options;
+        }
+        $relevantDate = ['weekday', 'year', 'month', 'day'];
+        $relevantTime = ['dayPeriod', 'hour', 'minute', 'second', 'fractionalSecondDigits'];
+        $needDefaults = true;
+        foreach (array_merge($relevantDate, $relevantTime) as $k) {
+            if (!$result->get($k) instanceof JsUndefined) {
+                $needDefaults = false;
+                break;
+            }
+        }
+        if (
+            !$result->get('dateStyle') instanceof JsUndefined
+            || !$result->get('timeStyle') instanceof JsUndefined
+        ) {
+            $needDefaults = false;
+        }
+        if (!$needDefaults) {
+            return $result;
+        }
+        foreach (['year', 'month', 'day', 'hour', 'minute', 'second'] as $k) {
+            $result->set($k, new JsString('numeric'));
+        }
+        return $result;
+    }
+
     private static function setToStringTag(JsObject $obj, string $tag): void
     {
         $sym = SymbolConstructor::toStringTag();
@@ -10917,6 +11007,11 @@ class TemporalObject
      * constructed Intl.DateTimeFormat instance, calling its bound
      * format(this). Used by all Temporal types whose toLocaleString
      * should produce a localised rendering instead of the ISO string.
+     *
+     * For Instant inputs, mirror Date.prototype.toLocaleString by
+     * defaulting the date+time components when no relevant option
+     * was supplied, so a lone {timeZoneName: "short"} still emits
+     * the full datetime context around the zone label.
      */
     private static function temporalToLocaleString(
         JsValue $this_,
@@ -10935,6 +11030,18 @@ class TemporalObject
         if (!$dtfCtor instanceof JsFunction) {
             return new JsString($fallback);
         }
+        // For Temporal.Instant only, augment options with default
+        // date+time components (per spec ToDateTimeOptions("all")
+        // semantics). Plain types are already adapted through
+        // temporalFormatterFor's default-skeleton path.
+        $optionsArg = $args[1] ?? JsUndefined::instance();
+        if (
+            $this_ instanceof JsObject
+            && $this_->has('[[EpochNanoseconds]]')
+            && !$this_->has('[[IsZonedDateTime]]')
+        ) {
+            $optionsArg = self::ensureFullDateTimeOptions($optionsArg);
+        }
         $proto = $dtfCtor->get('prototype');
         $obj = new JsObject($proto instanceof JsObject ? $proto : null);
         $obj->defineOwnProperty(
@@ -10943,7 +11050,7 @@ class TemporalObject
         );
         ($dtfCtor->getNativeCallable())($obj, [
             $args[0] ?? JsUndefined::instance(),
-            $args[1] ?? JsUndefined::instance(),
+            $optionsArg,
         ]);
         $interp = \PhpJs\Engine::getCurrentInterpreter();
         $formatGetter = $proto instanceof JsObject

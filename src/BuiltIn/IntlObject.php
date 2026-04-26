@@ -5428,11 +5428,17 @@ class IntlObject
         self::checkTemporalOptionsCompat($dtf, $obj);
 
         if ($obj->has('[[EpochNanoseconds]]')) {
-            // Instant: uses epoch nanoseconds; the formatter must
-            // have an explicit time zone set.
+            // Instant: uses epoch nanoseconds with the formatter's
+            // own time zone. Use temporalFormatterFor so default
+            // formatters get augmented to include both date AND
+            // time fields (per spec, Instant.toLocaleString
+            // defaults to a full date-time render).
             $epochNsStr = self::extractInternalString($obj, '[[EpochNanoseconds]]', '0');
             $tsMs = self::epochNsToMs($epochNsStr);
-            return self::formatDateTimeMs($dtf, $tsMs);
+            $formatter = self::temporalFormatterFor($dtf, $obj);
+            $dt = self::dateTimeFromTimestampMs($tsMs);
+            $result = $formatter->format($dt);
+            return $result === false ? '' : $result;
         }
         // Plain types: assemble a UTC timestamp from the date/time
         // slots, then format with a UTC-locked formatter whose
@@ -5459,7 +5465,14 @@ class IntlObject
     private static function temporalFormatterFor(JsObject $dtf, JsObject $obj): \IntlDateFormatter
     {
         $base = self::dateTimeFormatterFor($dtf);
-        $base->setTimeZone(new \DateTimeZone('UTC'));
+        // Plain types render with a UTC formatter so component
+        // values aren't shifted by the formatter's TimeZone option.
+        // Instant uses the formatter's own zone (it carries an
+        // absolute moment, so the zone is meaningful).
+        $isInstantBrand = $obj->has('[[EpochNanoseconds]]') && !$obj->has('[[IsZonedDateTime]]');
+        if (!$isInstantBrand) {
+            $base->setTimeZone(new \DateTimeZone('UTC'));
+        }
         $pattern = $base->getPattern();
         if (!is_string($pattern) || $pattern === '') {
             return $base;
