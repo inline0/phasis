@@ -179,8 +179,8 @@ class StringPrototype
         $d('substring', self::substring(), 2);
         $d('toLowerCase', self::toLowerCase(), 0);
         $d('toUpperCase', self::toUpperCase(), 0);
-        $d('toLocaleLowerCase', self::toLowerCase(), 0);
-        $d('toLocaleUpperCase', self::toUpperCase(), 0);
+        $d('toLocaleLowerCase', self::toLocaleLowerCase(), 0);
+        $d('toLocaleUpperCase', self::toLocaleUpperCase(), 0);
         $d('trim', self::trim(), 0);
         $d('trimStart', self::trimStart(), 0);
         $d('trimEnd', self::trimEnd(), 0);
@@ -752,6 +752,92 @@ class StringPrototype
         return function (JsValue $this_): JsValue {
             return new JsString(mb_strtoupper(self::extractString($this_), 'UTF-8'));
         };
+    }
+
+    private static function toLocaleLowerCase(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $locale = self::pickToLocaleCaseLocale($args[0] ?? null);
+            $result = self::applyLocaleCaseTransliterator($str, $locale, 'Lower');
+            if ($result !== null) {
+                return new JsString($result);
+            }
+            return new JsString(mb_strtolower($str, 'UTF-8'));
+        };
+    }
+
+    private static function toLocaleUpperCase(): \Closure
+    {
+        return function (JsValue $this_, array $args): JsValue {
+            $str = self::extractString($this_);
+            $locale = self::pickToLocaleCaseLocale($args[0] ?? null);
+            $result = self::applyLocaleCaseTransliterator($str, $locale, 'Upper');
+            if ($result !== null) {
+                return new JsString($result);
+            }
+            return new JsString(mb_strtoupper($str, 'UTF-8'));
+        };
+    }
+
+    /**
+     * Resolve the locales argument to a single locale identifier
+     * (or null when none is provided / valid). Accepts a string or
+     * an array; the first entry wins.
+     */
+    private static function pickToLocaleCaseLocale(mixed $arg): ?string
+    {
+        if ($arg === null || $arg instanceof \PhpJs\Value\JsUndefined) {
+            return null;
+        }
+        if ($arg instanceof JsString) {
+            return $arg->value;
+        }
+        if ($arg instanceof \PhpJs\Value\JsObject) {
+            // Array of locales: pick the first.
+            $len = $arg->get('length');
+            if ($len instanceof \PhpJs\Value\JsNumber && $len->value > 0) {
+                $first = $arg->get('0');
+                if ($first instanceof JsString) {
+                    return $first->value;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Apply ICU's locale-aware case transliteration. PHP exposes
+     * Transliterator IDs of the form `<locale>-Upper` /
+     * `<locale>-Lower` for the locales whose CLDR SpecialCasing
+     * rules require it (tr, az, lt). Returns null when no
+     * locale-specific transliterator is needed (caller falls back
+     * to the locale-independent mb_strto{lower,upper}).
+     */
+    private static function applyLocaleCaseTransliterator(
+        string $str,
+        ?string $locale,
+        string $direction,
+    ): ?string {
+        if ($locale === null || $locale === '' || !class_exists(\Transliterator::class)) {
+            return null;
+        }
+        $lang = strtolower(strtok($locale, '-_'));
+        // Only languages where SpecialCasing differs from the default.
+        $useLocale = match ($lang) {
+            'tr', 'az', 'lt' => $lang,
+            default => null,
+        };
+        if ($useLocale === null) {
+            return null;
+        }
+        $id = $useLocale . '-' . $direction;
+        $tx = \Transliterator::create($id);
+        if ($tx === null) {
+            return null;
+        }
+        $result = $tx->transliterate($str);
+        return is_string($result) ? $result : null;
     }
 
     private static function trim(): \Closure
