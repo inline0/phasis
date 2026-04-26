@@ -1843,10 +1843,14 @@ class IntlObject
                 );
             }
             $number = $args[0] ?? JsUndefined::instance();
-            $numVal = TypeConversion::toNumber($number);
+            // Preserve a high-precision decimal string when the input
+            // exceeds the double range so the body emitted by format()
+            // matches what's parsed in numberFormatToParts.
+            $bigStr = self::extractHighPrecisionNumeric($number);
+            $numVal = self::numericArgToFloat($number);
             $formatted = '';
             if (extension_loaded('intl')) {
-                $formatted = self::formatNumber($this_, $numVal);
+                $formatted = self::formatNumber($this_, $numVal, $bigStr);
             } else {
                 $formatted = is_nan($numVal) ? 'NaN' : (string) $numVal;
             }
@@ -3459,7 +3463,10 @@ class IntlObject
             $maxFrac = (int) self::extractInternalNumber($nf, '[[MaximumFractionDigits]]', 3);
             if ($maxFrac < strlen($fracPart)) {
                 $fracPart = substr($fracPart, 0, $maxFrac);
-                $fracPart = rtrim($fracPart, '0');
+            }
+            // Trim trailing zeros down to the minimum required count.
+            while (strlen($fracPart) > $minFrac && substr($fracPart, -1) === '0') {
+                $fracPart = substr($fracPart, 0, -1);
             }
             if (strlen($fracPart) < $minFrac) {
                 $fracPart = str_pad($fracPart, $minFrac, '0');
@@ -3718,6 +3725,18 @@ class IntlObject
             $pattern = self::localeUnitPattern($localeForUnit, $unit, $unitDisplay);
             if ($pattern !== null) {
                 return str_replace('{0}', $bareResult, $pattern);
+            }
+            // CLDR pattern lookup with plural-awareness. ResourceBundle
+            // returns {"one": "{0} day", "other": "{0} days"} for the
+            // requested locale, falling back through CLDR's locale
+            // hierarchy automatically.
+            $cldrPatterns = self::cldrUnitPattern($localeForUnit, $unit, $unitDisplay);
+            if ($cldrPatterns !== []) {
+                $plural = self::selectPlural($localeForUnit, abs((float) $number), 'cardinal');
+                $pat = $cldrPatterns[$plural] ?? $cldrPatterns['other'] ?? null;
+                if ($pat !== null) {
+                    return str_replace('{0}', $bareResult, $pat);
+                }
             }
             // Fallback: render the unit label with English-derived
             // separators ({0}<sep><unit>).
@@ -10039,8 +10058,17 @@ class IntlObject
                 $emit('minusSign', '-', $singular);
                 $signNeedsAttaching = false;
             }
-            $emit('integer', (string) $renderInt, $singular);
-            $unitLabel = self::durationUnitLabelFor($u, $unitStyle, $singular);
+            $localeForLabel = self::extractInternalString($df, '[[Locale]]', 'en');
+            // Use grouping for the integer portion when the segment
+            // isn't narrow.
+            $intStr = self::floatToIntegerString(abs($n));
+            $intParts = $unitStyle !== 'narrow'
+                ? self::splitIntegerWithGrouping($intStr, $localeForLabel)
+                : [['type' => 'integer', 'value' => $intStr]];
+            foreach ($intParts as $p) {
+                $emit($p['type'], $p['value'], $singular);
+            }
+            $unitLabel = self::durationUnitLabelFor($u, $unitStyle, $singular, $localeForLabel, $renderInt);
             if ($unitStyle === 'narrow') {
                 $emit('unit', $unitLabel, $singular);
             } else {
@@ -10173,25 +10201,55 @@ class IntlObject
         return true;
     }
 
-    /** Resolve the unit label string used in the parts emission. */
-    private static function durationUnitLabelFor(string $unit, string $style, string $singular): string
-    {
-        static $shortLabels = [
-            'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
-            'days' => 'd', 'hours' => 'h', 'minutes' => 'min',
-            'seconds' => 's', 'milliseconds' => 'ms',
-            'microseconds' => 'microsecond', 'nanoseconds' => 'ns',
+    /**
+     * Resolve the unit label string used in formatToParts. Pulls from
+     * CLDR data via ResourceBundle so plural-awareness matches what
+     * NumberFormat.formatToParts produces, then strips the leading
+     * "{0}<sep>" placeholder so callers can splice in their own value.
+     */
+    private static function durationUnitLabelFor(
+        string $unit,
+        string $style,
+        string $singular,
+        string $locale = 'en',
+        int $value = 0,
+    ): string {
+        $patterns = self::cldrDurationUnitPattern($locale, $singular, $style);
+        if ($patterns !== []) {
+            $plural = $value === 1 ? 'one' : 'other';
+            $pat = $patterns[$plural] ?? $patterns['other'] ?? null;
+            if ($pat !== null) {
+                // Strip the "{0} " or "{0}" placeholder. Patterns look
+                // like "{0} day", "{0} days", "{0}d", "{0} sec".
+                $rest = ltrim(substr($pat, strpos($pat, '{0}') + 3));
+                return $rest;
+            }
+        }
+        static $fallbackShort = [
+            'years' => 'yr', 'months' => 'mth', 'weeks' => 'wk',
+            'days' => 'day', 'hours' => 'hr', 'minutes' => 'min',
+            'seconds' => 'sec', 'milliseconds' => 'ms',
+            'microseconds' => 'μs', 'nanoseconds' => 'ns',
         ];
-        static $longLabels = [
+        static $fallbackNarrow = [
+            'years' => 'y', 'months' => 'm', 'weeks' => 'w',
+            'days' => 'd', 'hours' => 'h', 'minutes' => 'm',
+            'seconds' => 's', 'milliseconds' => 'ms',
+            'microseconds' => 'μs', 'nanoseconds' => 'ns',
+        ];
+        static $fallbackLongPlural = [
             'years' => 'years', 'months' => 'months', 'weeks' => 'weeks',
             'days' => 'days', 'hours' => 'hours', 'minutes' => 'minutes',
             'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
-            'microseconds' => 'microsecond', 'nanoseconds' => 'nanoseconds',
+            'microseconds' => 'microseconds', 'nanoseconds' => 'nanoseconds',
         ];
         if ($style === 'long') {
-            return $longLabels[$unit] ?? $singular;
+            return $fallbackLongPlural[$unit] ?? $singular;
         }
-        return $shortLabels[$unit] ?? $singular;
+        if ($style === 'narrow') {
+            return $fallbackNarrow[$unit] ?? $singular;
+        }
+        return $fallbackShort[$unit] ?? $singular;
     }
 
     /**
@@ -10418,11 +10476,18 @@ class IntlObject
         $segments = [];
         $isFirstSegment = true;
         $signNeedsAttaching = $sign < 0;
+        $locale = self::extractInternalString($df, '[[Locale]]', 'en');
+        $overallStyle = self::extractInternalString($df, '[[Style]]', 'short');
         // Detect a "clock" run: when hours and minutes (or seconds)
         // share a numeric / 2-digit style, render them as
         // "H:MM[:SS]" with sub-second values fused into a fraction.
         $clockSkip = self::detectClockUnitsToSkip($df);
         $clockEmitAt = $clockSkip !== [] ? $clockSkip[0] : null;
+        // Fractional sub-second absorber: when the unit immediately
+        // after seconds, milliseconds, or microseconds has style
+        // "numeric", that smaller unit (and everything below) is
+        // absorbed into the current unit as a fractional value.
+        $absorber = self::durationFractionalAbsorber($df, $clockSkip);
         foreach ($units as $u => $singular) {
             if (in_array($u, $clockSkip, true)) {
                 if ($u === $clockEmitAt) {
@@ -10442,34 +10507,95 @@ class IntlObject
                 }
                 continue;
             }
+            // Skip units strictly below the absorber: they're folded
+            // into the absorber's fractional digits.
+            if ($absorber !== null && self::isBelowAbsorber($u, $absorber)) {
+                continue;
+            }
             $n = $values[$u];
             $displaySlot = '[[' . ucfirst($u) . 'Display]]';
             $display = self::extractInternalString($df, $displaySlot, 'auto');
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $unitStyle = self::extractInternalString($df, $unitSlot, 'short');
+            $renderedSign = '';
+            if ($isFirstSegment && $signNeedsAttaching) {
+                $renderedSign = '-';
+            }
+            // Absorber: render integer + fractional sub-units in one
+            // segment. When the absorber's own style is numeric or
+            // 2-digit, render as a bare decimal (no unit pattern,
+            // no grouping) per FormatNumericSeconds spec. Otherwise
+            // wrap in the CLDR unit pattern.
+            if ($u === $absorber) {
+                [$intStr, $fracStr] = self::durationAbsorberDecimal($df, $values, $u);
+                if ($intStr === '0' && $fracStr === '' && $display === 'auto') {
+                    continue;
+                }
+                if ($unitStyle === 'numeric' || $unitStyle === '2-digit') {
+                    $padded = $unitStyle === '2-digit' && strlen($intStr) < 2
+                        ? str_pad($intStr, 2, '0', STR_PAD_LEFT)
+                        : $intStr;
+                    $segments[] = $renderedSign . $padded . $fracStr;
+                } else {
+                    $useGrouping = ($unitStyle !== 'narrow');
+                    $segments[] = self::formatDurationSegment(
+                        $intStr,
+                        $u,
+                        $singular,
+                        $unitStyle,
+                        $locale,
+                        $useGrouping,
+                        $fracStr,
+                        $renderedSign,
+                    );
+                }
+                if ($renderedSign !== '') {
+                    $signNeedsAttaching = false;
+                }
+                $isFirstSegment = false;
+                continue;
+            }
             // Per spec: zero values are dropped when display is
             // "auto"; always rendered when display is "always".
             if ($n === 0.0 && $display !== 'always') {
                 continue;
             }
-            $unitSlot = '[[' . ucfirst($u) . ']]';
-            $unitStyle = self::extractInternalString($df, $unitSlot, 'short');
             // Spec: when the overall duration is negative, the
             // leading rendered segment carries the "-" prefix and
             // every subsequent segment is rendered as the absolute
             // value. A "0 hours" segment from display:"always"
             // becomes "-0 hours" so the sign isn't lost.
-            $renderInt = (int) abs($n);
-            $renderedSign = '';
-            if ($isFirstSegment && $signNeedsAttaching) {
-                $renderedSign = '-';
-                $signNeedsAttaching = false;
+            $intStr = self::floatToIntegerString(abs($n));
+            // In digital base style, non-clock units default to
+            // "short" but the visible label is plural-aware (V8
+            // behavior). For "long"/"short"/"narrow" base styles,
+            // the unit-level resolved style controls rendering.
+            $segStyle = $unitStyle;
+            if (
+                $overallStyle === 'digital'
+                && in_array($u, ['years', 'months', 'weeks', 'days'], true)
+                && $unitStyle === 'short'
+            ) {
+                // "short" CLDR data for English non-sub-second time
+                // units is already plural-aware ("day"/"days"), so
+                // standard short rendering produces the correct form.
+                $segStyle = 'short';
             }
+            $useGrouping = ($segStyle !== 'narrow');
             $seg = self::formatDurationSegment(
-                $renderInt,
+                $intStr,
                 $u,
                 $singular,
-                $unitStyle,
+                $segStyle,
+                $locale,
+                $useGrouping,
+                '',
+                $renderedSign,
             );
-            $segments[] = $renderedSign . $seg;
+            $segments[] = $seg;
+            if ($renderedSign !== '') {
+                $signNeedsAttaching = false;
+            }
             $isFirstSegment = false;
         }
         if (empty($segments)) {
@@ -10479,11 +10605,9 @@ class IntlObject
         // uses a single space between segments, the rest use a comma
         // followed by a space, with a locale-specific connector
         // before the last item (Spanish "y", etc.).
-        $style = self::extractInternalString($df, '[[Style]]', 'short');
-        if ($style === 'narrow') {
+        if ($overallStyle === 'narrow') {
             return implode(' ', $segments);
         }
-        $locale = self::extractInternalString($df, '[[Locale]]', 'en');
         $count = count($segments);
         if ($count === 1) {
             return $segments[0];
@@ -10491,7 +10615,7 @@ class IntlObject
         // The locale connector ("y", "et", "und") is only used in
         // "long" style per CLDR; "short" / "default" use plain
         // comma-space separators.
-        $listConnector = $style === 'long'
+        $listConnector = $overallStyle === 'long'
             ? self::durationFormatListConnector($locale)
             : null;
         if ($listConnector !== null) {
@@ -10500,6 +10624,179 @@ class IntlObject
             return implode(', ', $head) . $listConnector . $tail;
         }
         return implode(', ', $segments);
+    }
+
+    /**
+     * Detect the fractional sub-second absorber. Walks seconds → ms
+     * → us; returns the first one whose next-unit's resolved style
+     * is "numeric" (per the spec's PartitionDurationFormatPattern
+     * AddFractionalDigits branch). Returns null when no absorption
+     * applies, or when the seconds slot is part of a clock run
+     * (then renderClockSegment handles fusion).
+     *
+     * @param list<string> $clockSkip
+     */
+    private static function durationFractionalAbsorber(JsObject $df, array $clockSkip): ?string
+    {
+        $secondsInClock = in_array('seconds', $clockSkip, true);
+        $msStyle = self::extractInternalString($df, '[[Milliseconds]]', 'short');
+        $usStyle = self::extractInternalString($df, '[[Microseconds]]', 'short');
+        $nsStyle = self::extractInternalString($df, '[[Nanoseconds]]', 'short');
+        if (!$secondsInClock && $msStyle === 'numeric') {
+            return 'seconds';
+        }
+        if ($usStyle === 'numeric') {
+            return 'milliseconds';
+        }
+        if ($nsStyle === 'numeric') {
+            return 'microseconds';
+        }
+        return null;
+    }
+
+    private static function isBelowAbsorber(string $unit, string $absorber): bool
+    {
+        $rank = [
+            'years' => 0, 'months' => 1, 'weeks' => 2, 'days' => 3,
+            'hours' => 4, 'minutes' => 5, 'seconds' => 6,
+            'milliseconds' => 7, 'microseconds' => 8, 'nanoseconds' => 9,
+        ];
+        if (!isset($rank[$unit]) || !isset($rank[$absorber])) {
+            return false;
+        }
+        return $rank[$unit] > $rank[$absorber];
+    }
+
+    /**
+     * Build the absorber's "<int>.<frac>" decimal from the duration
+     * values. Uses BC math when available so values approaching
+     * Number.MAX_SAFE_INTEGER don't lose precision.
+     *
+     * @param array<string, float> $values
+     * @return array{0: string, 1: string} [intPart, ".fff" or ""]
+     */
+    private static function durationAbsorberDecimal(JsObject $df, array $values, string $absorber): array
+    {
+        $exponent = match ($absorber) {
+            'seconds' => 9,
+            'milliseconds' => 6,
+            'microseconds' => 3,
+            default => 0,
+        };
+        if ($exponent === 0) {
+            return [self::floatToIntegerString(abs($values[$absorber] ?? 0.0)), ''];
+        }
+        // Build total nanoseconds (relative to the absorber unit).
+        // For absorber=seconds: scale-by-10^9 (full ns from sub-units).
+        // For absorber=ms:      scale-by-10^6 (us, ns added).
+        // For absorber=us:      scale-by-10^3 (ns added).
+        if (function_exists('bcadd') && function_exists('bcmul') && function_exists('bcdiv') && function_exists('bcmod')) {
+            $total = '0';
+            $base = self::floatToIntegerString(abs($values[$absorber] ?? 0.0));
+            $total = bcmul($base, bcpow('10', (string) $exponent, 0), 0);
+            if ($absorber === 'seconds') {
+                $ms = self::floatToIntegerString(abs($values['milliseconds'] ?? 0.0));
+                $us = self::floatToIntegerString(abs($values['microseconds'] ?? 0.0));
+                $ns = self::floatToIntegerString(abs($values['nanoseconds'] ?? 0.0));
+                $total = bcadd($total, bcmul($ms, '1000000', 0), 0);
+                $total = bcadd($total, bcmul($us, '1000', 0), 0);
+                $total = bcadd($total, $ns, 0);
+            } elseif ($absorber === 'milliseconds') {
+                $us = self::floatToIntegerString(abs($values['microseconds'] ?? 0.0));
+                $ns = self::floatToIntegerString(abs($values['nanoseconds'] ?? 0.0));
+                $total = bcadd($total, bcmul($us, '1000', 0), 0);
+                $total = bcadd($total, $ns, 0);
+            } else {
+                $ns = self::floatToIntegerString(abs($values['nanoseconds'] ?? 0.0));
+                $total = bcadd($total, $ns, 0);
+            }
+            $divisor = bcpow('10', (string) $exponent, 0);
+            $q = bcdiv($total, $divisor, 0);
+            $r = bcmod($total, $divisor);
+            $rPadded = str_pad($r, $exponent, '0', STR_PAD_LEFT);
+        } else {
+            $base = (int) abs($values[$absorber] ?? 0.0);
+            $sub = 0;
+            if ($absorber === 'seconds') {
+                $ms = (int) abs($values['milliseconds'] ?? 0.0);
+                $us = (int) abs($values['microseconds'] ?? 0.0);
+                $ns = (int) abs($values['nanoseconds'] ?? 0.0);
+                $sub = $ms * 1000000 + $us * 1000 + $ns;
+            } elseif ($absorber === 'milliseconds') {
+                $us = (int) abs($values['microseconds'] ?? 0.0);
+                $ns = (int) abs($values['nanoseconds'] ?? 0.0);
+                $sub = $us * 1000 + $ns;
+            } else {
+                $sub = (int) abs($values['nanoseconds'] ?? 0.0);
+            }
+            $cap = (int) (10 ** $exponent);
+            $base += intdiv($sub, $cap);
+            $sub %= $cap;
+            $q = (string) $base;
+            $rPadded = str_pad((string) $sub, $exponent, '0', STR_PAD_LEFT);
+        }
+        // Apply [[FractionalDigits]] override or default {0..9, trunc}.
+        $fdSlot = $df->get('[[FractionalDigits]]');
+        $fdLimit = $fdSlot instanceof JsNumber ? (int) $fdSlot->value : null;
+        if ($fdLimit !== null) {
+            // Pad to fdLimit with zeros, then truncate to that count.
+            $rPadded = str_pad(substr($rPadded, 0, $fdLimit), $fdLimit, '0', STR_PAD_RIGHT);
+            $fracStr = $fdLimit > 0 ? '.' . $rPadded : '';
+        } else {
+            $rTrimmed = rtrim($rPadded, '0');
+            $fracStr = $rTrimmed === '' ? '' : '.' . $rTrimmed;
+        }
+        return [$q, $fracStr];
+    }
+
+    /**
+     * Split a decimal integer string into NumberFormat-style parts
+     * (alternating integer and group literal parts) suitable for
+     * formatToParts emission.
+     *
+     * @return list<array{type: string, value: string}>
+     */
+    private static function splitIntegerWithGrouping(string $intStr, string $locale): array
+    {
+        $sign = '';
+        if ($intStr !== '' && $intStr[0] === '-') {
+            $sign = '-';
+            $intStr = substr($intStr, 1);
+        }
+        $len = strlen($intStr);
+        if ($len <= 3) {
+            return [['type' => 'integer', 'value' => $sign . $intStr]];
+        }
+        $sep = self::localeGroupingSeparator($locale);
+        $first = $len % 3;
+        $parts = [];
+        if ($first > 0) {
+            $parts[] = ['type' => 'integer', 'value' => $sign . substr($intStr, 0, $first)];
+        }
+        for ($i = $first; $i < $len; $i += 3) {
+            if ($parts !== []) {
+                $parts[] = ['type' => 'group', 'value' => $sep];
+            } elseif ($sign !== '') {
+                // Sign attaches to the first integer chunk.
+                $parts[] = ['type' => 'integer', 'value' => $sign . substr($intStr, $i, 3)];
+                continue;
+            }
+            $parts[] = ['type' => 'integer', 'value' => substr($intStr, $i, 3)];
+        }
+        return $parts;
+    }
+
+    /**
+     * Convert a non-negative integer-valued float to its decimal
+     * string form without scientific notation, even for values
+     * above 2^53.
+     */
+    private static function floatToIntegerString(float $f): string
+    {
+        if ($f === 0.0) {
+            return '0';
+        }
+        return sprintf('%.0F', $f);
     }
 
     /**
@@ -10587,9 +10884,9 @@ class IntlObject
         $hourInClock = in_array('hours', $clockSkip, true);
         $minuteInClock = in_array('minutes', $clockSkip, true);
         $secondInClock = in_array('seconds', $clockSkip, true);
-        $hours = $hourInClock ? (int) abs($values['hours'] ?? 0.0) : 0;
-        $minutes = $minuteInClock ? (int) abs($values['minutes'] ?? 0.0) : 0;
-        $seconds = $secondInClock ? (int) abs($values['seconds'] ?? 0.0) : 0;
+        $hoursStr = $hourInClock ? self::floatToIntegerString(abs($values['hours'] ?? 0.0)) : '0';
+        $minutesStr = $minuteInClock ? self::floatToIntegerString(abs($values['minutes'] ?? 0.0)) : '0';
+        $secondsStr = $secondInClock ? self::floatToIntegerString(abs($values['seconds'] ?? 0.0)) : '0';
         $hoursDisplay = self::extractInternalString($df, '[[HoursDisplay]]', 'auto');
         $minutesDisplay = self::extractInternalString($df, '[[MinutesDisplay]]', 'auto');
         $secondsDisplay = self::extractInternalString($df, '[[SecondsDisplay]]', 'auto');
@@ -10597,43 +10894,64 @@ class IntlObject
         // Combine sub-second units into total nanoseconds and carry
         // the integer-second portion up into the seconds slot, so
         // {seconds:56, milliseconds:1234567} renders as "1290.567"
-        // not "56.1234567".
-        $msVal = (int) abs($values['milliseconds'] ?? 0.0);
-        $usVal = (int) abs($values['microseconds'] ?? 0.0);
-        $nsVal = (int) abs($values['nanoseconds'] ?? 0.0);
-        $fracTotalNs = $msVal * 1000000 + $usVal * 1000 + $nsVal;
-        if ($fracTotalNs >= 1000000000) {
-            $extraSeconds = intdiv($fracTotalNs, 1000000000);
-            $fracTotalNs %= 1000000000;
-            $seconds += $extraSeconds;
+        // not "56.1234567". BC math keeps precision for values
+        // approaching Number.MAX_SAFE_INTEGER × 10^6.
+        $msStr = self::floatToIntegerString(abs($values['milliseconds'] ?? 0.0));
+        $usStr = self::floatToIntegerString(abs($values['microseconds'] ?? 0.0));
+        $nsStr = self::floatToIntegerString(abs($values['nanoseconds'] ?? 0.0));
+        $hasBc = function_exists('bcadd') && function_exists('bcmul') && function_exists('bcdiv') && function_exists('bcmod');
+        if ($hasBc) {
+            $fracTotalNs = bcadd(bcmul($msStr, '1000000', 0), bcmul($usStr, '1000', 0), 0);
+            $fracTotalNs = bcadd($fracTotalNs, $nsStr, 0);
+            if (bccomp($fracTotalNs, '1000000000', 0) >= 0) {
+                $extra = bcdiv($fracTotalNs, '1000000000', 0);
+                $fracTotalNs = bcmod($fracTotalNs, '1000000000');
+                $secondsStr = bcadd($secondsStr, $extra, 0);
+            }
+            $fracTotalNsStr = $fracTotalNs;
+        } else {
+            $msVal = (int) (float) $msStr;
+            $usVal = (int) (float) $usStr;
+            $nsVal = (int) (float) $nsStr;
+            $tot = $msVal * 1000000 + $usVal * 1000 + $nsVal;
+            if ($tot >= 1000000000) {
+                $extra = intdiv($tot, 1000000000);
+                $tot %= 1000000000;
+                $secondsStr = (string) ((int) $secondsStr + $extra);
+            }
+            $fracTotalNsStr = (string) $tot;
         }
         $fdVal = $df->get('[[FractionalDigits]]');
         $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
         $fracStr = '';
+        $padded = str_pad($fracTotalNsStr, 9, '0', STR_PAD_LEFT);
         if ($fdLimit === null) {
             // Default: render only as many sub-second digits as needed.
-            if ($fracTotalNs > 0) {
-                $padded = str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT);
-                $fracStr = '.' . rtrim($padded, '0');
+            $trimmed = rtrim($padded, '0');
+            if ($trimmed !== '') {
+                $fracStr = '.' . $trimmed;
             }
         } elseif ($fdLimit > 0) {
-            $padded = str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT);
             $fracStr = '.' . substr($padded, 0, $fdLimit);
         }
+        $hasSubSecondNonZero = ($fracTotalNsStr !== '0' && $fracTotalNsStr !== '');
         // Decide whether each clock unit shows up. Each unit's
         // display flag is independent; we then bridge gaps so
         // colon-joined runs render contiguously. A non-zero
         // sub-second value forces seconds even when fractionalDigits
         // is 0 (per spec note: fractionalDigits doesn't gate the
         // seconds slot's appearance).
-        $hasSubSecondValue = $fracTotalNs > 0;
-        $showHours = $hourInClock && ($hours !== 0 || $hoursDisplay === 'always');
+        $isNonZero = static fn(string $s): bool => $s !== '0' && $s !== '' && $s !== '-0';
+        $hoursNonZero = $isNonZero($hoursStr);
+        $minutesNonZero = $isNonZero($minutesStr);
+        $secondsNonZero = $isNonZero($secondsStr);
+        $showHours = $hourInClock && ($hoursNonZero || $hoursDisplay === 'always');
         $showMinutes = $minuteInClock
-            && ($minutes !== 0 || $minutesDisplay === 'always');
+            && ($minutesNonZero || $minutesDisplay === 'always');
         $showSeconds = $secondInClock
-            && ($seconds !== 0 || $secondsDisplay === 'always'
+            && ($secondsNonZero || $secondsDisplay === 'always'
                 || $fracStr !== ''
-                || $hasSubSecondValue);
+                || $hasSubSecondNonZero);
         // V8 / spec: when seconds show, minutes appear too (for
         // ":SS" form). Then if minutes show, hours follow only if
         // hours has a non-zero value or always-display.
@@ -10655,13 +10973,13 @@ class IntlObject
             $signPrefix = $signNeedsAttaching ? '-' : '';
             if ($showHours) {
                 return $signPrefix . ($hourStyle === '2-digit'
-                    ? str_pad((string) $hours, 2, '0', STR_PAD_LEFT)
-                    : (string) $hours);
+                    ? str_pad($hoursStr, 2, '0', STR_PAD_LEFT)
+                    : $hoursStr);
             }
             if ($showMinutes) {
-                return $signPrefix . (string) $minutes;
+                return $signPrefix . $minutesStr;
             }
-            return $signPrefix . (string) $seconds . $fracStr;
+            return $signPrefix . $secondsStr . $fracStr;
         }
         // Promote intermediate zero units so the colon-joined run
         // doesn't have gaps (e.g. h+s shown but not m → fill m).
@@ -10671,78 +10989,270 @@ class IntlObject
         $parts = [];
         if ($showHours) {
             $parts[] = $hourStyle === '2-digit'
-                ? str_pad((string) $hours, 2, '0', STR_PAD_LEFT)
-                : (string) $hours;
+                ? str_pad($hoursStr, 2, '0', STR_PAD_LEFT)
+                : $hoursStr;
         }
         if ($showMinutes) {
             // Pad minutes when its own style is 2-digit OR when a
             // higher clock unit (hours) precedes it.
             $minStyle = self::extractInternalString($df, '[[Minutes]]', 'short');
             $padMin = $showHours || $minStyle === '2-digit';
-            $parts[] = $padMin
-                ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
-                : (string) $minutes;
+            $parts[] = $padMin && strlen($minutesStr) < 2
+                ? str_pad($minutesStr, 2, '0', STR_PAD_LEFT)
+                : $minutesStr;
         }
         if ($showSeconds) {
             $secStyle = self::extractInternalString($df, '[[Seconds]]', 'short');
             $padSec = $showMinutes || $showHours || $secStyle === '2-digit';
-            $parts[] = $padSec
-                ? str_pad((string) $seconds, 2, '0', STR_PAD_LEFT) . $fracStr
-                : (string) $seconds . $fracStr;
+            $secondsRendered = $padSec && strlen($secondsStr) < 2
+                ? str_pad($secondsStr, 2, '0', STR_PAD_LEFT)
+                : $secondsStr;
+            $parts[] = $secondsRendered . $fracStr;
         }
         $rendered = implode(':', $parts);
         return ($signNeedsAttaching ? '-' : '') . $rendered;
     }
 
     private static function formatDurationSegment(
-        int $n,
+        string $intStr,
         string $unit,
         string $singular,
-        string $unitStyle = 'short',
-        bool $useLongPlural = false,
+        string $unitStyle,
+        string $locale,
+        bool $useGrouping,
+        string $fracStr = '',
+        string $signPrefix = '',
     ): string {
-        // Minimal English label tables. A full CLDR implementation
-        // would expand across all locales × plural categories ×
-        // styles; this covers the en-US default + style-specific
-        // tests test262 exercises.
-        static $shortLabels = [
-            'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
-            'days' => 'd', 'hours' => 'h', 'minutes' => 'min',
+        // Insert grouping separators on the integer portion when the
+        // segment is non-clock and a thousands separator applies for
+        // the locale. Clock segments (rendered numerically) bypass
+        // this via $useGrouping=false.
+        $intDisplay = $useGrouping
+            ? self::applyDecimalGrouping($intStr, $locale)
+            : $intStr;
+        $numberStr = $signPrefix . $intDisplay . $fracStr;
+        $patterns = self::cldrDurationUnitPattern($locale, $singular, $unitStyle);
+        if ($patterns !== []) {
+            $plural = $intStr === '1' ? 'one' : 'other';
+            $pat = $patterns[$plural] ?? $patterns['other'] ?? null;
+            if ($pat !== null) {
+                return str_replace('{0}', $numberStr, $pat);
+            }
+        }
+        // Fallback English labels keyed by style. CLDR data should
+        // normally cover every locale we care about; this branch
+        // protects against missing ResourceBundle data.
+        static $fallbackShort = [
+            'years' => 'yr', 'months' => 'mth', 'weeks' => 'wk',
+            'days' => 'day', 'hours' => 'hr', 'minutes' => 'min',
+            'seconds' => 'sec', 'milliseconds' => 'ms',
+            'microseconds' => 'μs', 'nanoseconds' => 'ns',
+        ];
+        static $fallbackNarrow = [
+            'years' => 'y', 'months' => 'm', 'weeks' => 'w',
+            'days' => 'd', 'hours' => 'h', 'minutes' => 'm',
             'seconds' => 's', 'milliseconds' => 'ms',
-            'microseconds' => 'microsecond', 'nanoseconds' => 'ns',
+            'microseconds' => 'μs', 'nanoseconds' => 'ns',
         ];
-        // Long form uses the "other" plural form regardless of n.
-        static $longLabels = [
-            'years' => 'years', 'months' => 'months', 'weeks' => 'weeks',
-            'days' => 'days', 'hours' => 'hours', 'minutes' => 'minutes',
-            'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
-            'microseconds' => 'microsecond', 'nanoseconds' => 'nanoseconds',
-        ];
-        // Long form with English plural rule: n=±1 uses singular,
-        // everything else uses the plural ("days"/"day").
-        static $longSingularLabels = [
+        static $fallbackLongSingular = [
             'years' => 'year', 'months' => 'month', 'weeks' => 'week',
             'days' => 'day', 'hours' => 'hour', 'minutes' => 'minute',
             'seconds' => 'second', 'milliseconds' => 'millisecond',
             'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
         ];
+        static $fallbackLongPlural = [
+            'years' => 'years', 'months' => 'months', 'weeks' => 'weeks',
+            'days' => 'days', 'hours' => 'hours', 'minutes' => 'minutes',
+            'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
+            'microseconds' => 'microseconds', 'nanoseconds' => 'nanoseconds',
+        ];
+        $isOne = $intStr === '1';
         if ($unitStyle === 'long') {
-            return $n . ' ' . ($longLabels[$unit] ?? $singular);
+            $label = $isOne
+                ? ($fallbackLongSingular[$unit] ?? $singular)
+                : ($fallbackLongPlural[$unit] ?? $singular);
+            return $numberStr . ' ' . $label;
         }
         if ($unitStyle === 'narrow') {
-            return $n . ($shortLabels[$unit] ?? $singular);
+            return $numberStr . ($fallbackNarrow[$unit] ?? $singular);
         }
-        // For digital style, non-clock units use the long-form
-        // plural-aware label per the explicit fixtures
-        // (digital-style-with-hours-display-auto: '1 day').
-        if ($useLongPlural) {
-            $isOne = abs($n) === 1;
-            $label = $isOne
-                ? ($longSingularLabels[$unit] ?? $singular)
-                : ($longLabels[$unit] ?? $singular);
-            return $n . ' ' . $label;
+        return $numberStr . ' ' . ($fallbackShort[$unit] ?? $singular);
+    }
+
+    /**
+     * CLDR duration unit pattern lookup via ResourceBundle. Returns
+     * a map of plural category to "{0}<sep><label>" pattern.
+     *
+     * @return array<string, string>
+     */
+    private static function cldrDurationUnitPattern(string $locale, string $unit, string $display): array
+    {
+        return self::cldrUnitPatternForCategory($locale, 'duration', $unit, $display);
+    }
+
+    /**
+     * Generic CLDR unit pattern lookup. Maps the unit (singular,
+     * dash-separated as JS sees it, e.g. "kilometer-per-hour") to
+     * its CLDR category and queries ResourceBundle.
+     *
+     * @return array<string, string>
+     */
+    private static function cldrUnitPattern(string $locale, string $unit, string $display): array
+    {
+        $cat = self::cldrUnitCategoryFor($unit);
+        if ($cat === null) {
+            return [];
         }
-        return $n . ' ' . ($shortLabels[$unit] ?? $singular);
+        return self::cldrUnitPatternForCategory($locale, $cat, $unit, $display);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function cldrUnitPatternForCategory(
+        string $locale,
+        string $category,
+        string $unit,
+        string $display,
+    ): array {
+        if (!class_exists('ResourceBundle', false)) {
+            return [];
+        }
+        $key = match ($display) {
+            'narrow' => 'unitsNarrow',
+            'long' => 'units',
+            default => 'unitsShort',
+        };
+        // CLDR allows entries to inherit from root when missing in
+        // the target locale. PHP's ResourceBundle nested get() does
+        // NOT follow that fallback chain automatically, so we walk
+        // the locale's parent chain explicitly down to "root".
+        $tries = self::cldrLocaleChain($locale);
+        foreach ($tries as $loc) {
+            $patterns = self::cldrUnitPatternsAtLocale($loc, $key, $category, $unit);
+            if ($patterns !== []) {
+                return $patterns;
+            }
+        }
+        return [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function cldrLocaleChain(string $locale): array
+    {
+        $icuLocale = str_replace('-', '_', $locale);
+        $chain = [$icuLocale];
+        $current = $icuLocale;
+        while (true) {
+            $pos = strrpos($current, '_');
+            if ($pos === false) {
+                break;
+            }
+            $current = substr($current, 0, $pos);
+            $chain[] = $current;
+        }
+        if (!in_array('root', $chain, true)) {
+            $chain[] = 'root';
+        }
+        return $chain;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function cldrUnitPatternsAtLocale(
+        string $icuLocale,
+        string $sectionKey,
+        string $category,
+        string $unit,
+    ): array {
+        try {
+            $bundle = \ResourceBundle::create($icuLocale, 'ICUDATA-unit', false);
+        } catch (\Throwable) {
+            return [];
+        }
+        if ($bundle === null) {
+            return [];
+        }
+        $unitsBundle = $bundle->get($sectionKey);
+        if (!$unitsBundle instanceof \ResourceBundle) {
+            return [];
+        }
+        $catBundle = $unitsBundle->get($category);
+        if (!$catBundle instanceof \ResourceBundle) {
+            return [];
+        }
+        $unitBundle = $catBundle->get($unit);
+        if (!$unitBundle instanceof \ResourceBundle) {
+            return [];
+        }
+        $patterns = [];
+        foreach (['zero', 'one', 'two', 'few', 'many', 'other'] as $plural) {
+            $p = $unitBundle->get($plural);
+            if (is_string($p)) {
+                $patterns[$plural] = $p;
+            }
+        }
+        return $patterns;
+    }
+
+    private static function cldrUnitCategoryFor(string $unit): ?string
+    {
+        static $map = [
+            'second' => 'duration', 'minute' => 'duration', 'hour' => 'duration',
+            'day' => 'duration', 'week' => 'duration', 'month' => 'duration',
+            'year' => 'duration', 'millisecond' => 'duration',
+            'microsecond' => 'duration', 'nanosecond' => 'duration',
+            'meter' => 'length', 'centimeter' => 'length', 'millimeter' => 'length',
+            'kilometer' => 'length', 'mile' => 'length', 'inch' => 'length',
+            'foot' => 'length', 'yard' => 'length',
+            'mile-scandinavian' => 'length',
+            'gram' => 'mass', 'kilogram' => 'mass', 'pound' => 'mass',
+            'ounce' => 'mass', 'stone' => 'mass',
+            'liter' => 'volume', 'milliliter' => 'volume', 'gallon' => 'volume',
+            'fluid-ounce' => 'volume',
+            'celsius' => 'temperature', 'fahrenheit' => 'temperature',
+            'degree' => 'angle',
+            'acre' => 'area', 'hectare' => 'area',
+            'bit' => 'digital', 'byte' => 'digital',
+            'kilobit' => 'digital', 'kilobyte' => 'digital',
+            'megabit' => 'digital', 'megabyte' => 'digital',
+            'gigabit' => 'digital', 'gigabyte' => 'digital',
+            'terabit' => 'digital', 'terabyte' => 'digital',
+            'petabyte' => 'digital',
+            'percent' => 'concentr',
+        ];
+        return $map[$unit] ?? null;
+    }
+
+    /**
+     * Apply locale-aware thousand grouping to an integer decimal
+     * string. Used by DurationFormat when rendering non-clock unit
+     * segments with grouping enabled.
+     */
+    private static function applyDecimalGrouping(string $intStr, string $locale): string
+    {
+        $sign = '';
+        if ($intStr !== '' && $intStr[0] === '-') {
+            $sign = '-';
+            $intStr = substr($intStr, 1);
+        }
+        $len = strlen($intStr);
+        if ($len <= 3) {
+            return $sign . $intStr;
+        }
+        $sep = self::localeGroupingSeparator($locale);
+        $first = $len % 3;
+        $parts = [];
+        if ($first > 0) {
+            $parts[] = substr($intStr, 0, $first);
+        }
+        for ($i = $first; $i < $len; $i += 3) {
+            $parts[] = substr($intStr, $i, 3);
+        }
+        return $sign . implode($sep, $parts);
     }
 
     // ---------------------------------------------------------------
