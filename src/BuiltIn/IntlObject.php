@@ -9607,11 +9607,10 @@ class IntlObject
             }
             $renderInt = (int) abs($n);
             if ($isFirstSegment && $signNeedsAttaching) {
-                $emit('integer', '-' . $renderInt, $singular);
+                $emit('minusSign', '-', $singular);
                 $signNeedsAttaching = false;
-            } else {
-                $emit('integer', (string) $renderInt, $singular);
             }
+            $emit('integer', (string) $renderInt, $singular);
             $unitLabel = self::durationUnitLabelFor($u, $unitStyle, $singular);
             if ($unitStyle === 'narrow') {
                 $emit('unit', $unitLabel, $singular);
