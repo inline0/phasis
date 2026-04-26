@@ -4678,6 +4678,45 @@ class IntlObject
                 if (isset($regionAliasCanonical[$result['region']])) {
                     $result['region'] = $regionAliasCanonical[$result['region']];
                 }
+                // CLDR multi-region territoryAlias entries: pick the
+                // likely region based on the language (and script,
+                // if present). Falls back to the first listed region
+                // when no likelySubtags hit applies.
+                static $multiRegionAliases = [
+                    'SU' => ['RU', 'AM', 'AZ', 'BY', 'EE', 'GE', 'KZ', 'KG',
+                        'LV', 'LT', 'MD', 'TJ', 'TM', 'UA', 'UZ'],
+                    '810' => ['RU', 'AM', 'AZ', 'BY', 'EE', 'GE', 'KZ', 'KG',
+                        'LV', 'LT', 'MD', 'TJ', 'TM', 'UA', 'UZ'],
+                    'CS' => ['RS', 'ME'],
+                    '891' => ['RS', 'ME'],
+                    'NT' => ['SA', 'IQ'],
+                    '536' => ['SA', 'IQ'],
+                    'PC' => ['FM', 'MH', 'MP', 'PW'],
+                ];
+                if (isset($multiRegionAliases[$result['region']])) {
+                    $candidates = $multiRegionAliases[$result['region']];
+                    $likelyRegion = null;
+                    $lookupKey = strtolower(($result['language'] ?? 'und'));
+                    if (!empty($result['script'])) {
+                        $scriptKey = $lookupKey . '-' . strtolower($result['script']);
+                        $table = self::likelySubtagsTable();
+                        if (isset($table[$scriptKey])) {
+                            $likelyRegion = $table[$scriptKey]['region'];
+                        }
+                    }
+                    if ($likelyRegion === null) {
+                        $table = self::likelySubtagsTable();
+                        if (isset($table[$lookupKey])) {
+                            $likelyRegion = $table[$lookupKey]['region'];
+                        }
+                    }
+                    $result['region'] = (
+                        $likelyRegion !== null
+                        && in_array($likelyRegion, $candidates, true)
+                    )
+                        ? $likelyRegion
+                        : $candidates[0];
+                }
             }
             // Extract variants (alphanum{5,8} or digit alphanum{3}) from the
             // original tag. ICU's parseLocale exposes them via numbered
