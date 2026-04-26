@@ -2676,14 +2676,50 @@ class TemporalObject
         });
         self::defineGetter($proto, 'year', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['year']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISOYear]]'));
         });
         self::defineGetter($proto, 'month', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['month']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISOMonth]]'));
         });
         self::defineGetter($proto, 'monthCode', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsString($parts['monthCode']);
+                }
+            }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             return new JsString('M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT));
         });
@@ -8794,6 +8830,14 @@ class TemporalObject
             $m = min(12, $m);
         } elseif ($m > 12) {
             throw new RangeError("month {$m} out of range");
+        }
+        // Non-ISO non-gregory calendars: convert calendar-native (year, month, day=1)
+        // to ISO via ICU and store the resulting ISO date.
+        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+            $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
+            if ($isoParts !== null) {
+                return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
+            }
         }
         return self::createPlainYearMonthObject($y, $m, 1, $cal);
     }
