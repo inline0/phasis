@@ -9863,11 +9863,24 @@ class TemporalObject
                         "Year {$y} out of range for non-ISO calendar in PlainMonthDay: {$str}",
                     );
                 }
+                // Normalise to the spec's reference ISO year (≤ 1972) so the
+                // PlainMonthDay round-trips through equals/since/until without
+                // pinning a specific historical year.
+                if (!in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
+                    $back = self::isoToCalendarParts($cal, $y, $mo, $dd);
+                    if ($back !== null) {
+                        $iso = self::pmdReferenceIsoFor(
+                            $cal,
+                            $back['monthCode'],
+                            null,
+                            $back['day'],
+                        );
+                        if ($iso !== null) {
+                            return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
+                        }
+                    }
+                }
             }
-            // Reference year stays at the parsed value when the
-            // calendar is non-ISO (the year carries era context for
-            // calendar conversion). ISO calendars always normalise
-            // to 1972.
             $refYear = $cal === 'iso8601' ? 1972 : $y;
             return self::createPlainMonthDayObject($mo, $dd, $refYear, $cal);
         }

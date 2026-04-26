@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-26T19:55:06+00:00`
+- Snapshot time: `2026-04-26T19:57:40+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `7b08d5b` (dirty)
+- Git: `main` @ `b894a96` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 48913 | 547 | 518 | 0 | 519 | 9 | 49460 | 49978 | 50506 | 98.9% |
+| 48916 | 550 | 518 | 0 | 513 | 9 | 49466 | 49984 | 50506 | 98.9% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 1068 | 8 | 0 | 0 | 3 | 0 | 99.3% |
-| built-ins | RUNNING | 21979 | 278 | 14 | 0 | 449 | 9 | 98.8% |
+| built-ins | RUNNING | 21979 | 281 | 14 | 0 | 446 | 9 | 98.7% |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
 | intl402 | INCOMPLETE | 1511 | 50 | 0 | 0 | 5 | 0 | 96.8% |
 | language | INCOMPLETE | 22847 | 32 | 504 | 0 | 1 | 0 | 99.9% |
-| staging | INCOMPLETE | 1394 | 177 | 0 | 0 | 61 | 0 | 88.7% |
+| staging | INCOMPLETE | 1397 | 177 | 0 | 0 | 58 | 0 | 88.8% |
 
 ## Group Coverage
 
@@ -92,7 +92,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/match-indices | PARTIAL | 13 | 1 | 0 | 0 | 0 | 0 | 92.9% |
 | built-ins/RegExp/named-groups | PARTIAL | 32 | 4 | 0 | 0 | 0 | 0 | 88.9% |
 | built-ins/RegExp/property-escapes | PASS | 143 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/RegExp/property-escapes/generated | RUNNING | 20 | 39 | 0 | 0 | 391 | 9 | 33.9% |
+| built-ins/RegExp/property-escapes/generated | RUNNING | 20 | 42 | 0 | 0 | 388 | 9 | 32.3% |
 | built-ins/RegExp/prototype | PARTIAL | 473 | 14 | 0 | 0 | 0 | 0 | 97.1% |
 | built-ins/RegExp/regexp-modifiers | PARTIAL | 60 | 10 | 0 | 0 | 0 | 0 | 85.7% |
 | built-ins/RegExp/unicodeSets | PARTIAL | 85 | 28 | 0 | 0 | 0 | 0 | 75.2% |
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PARTIAL | 2 | 1 | 0 | 0 | 0 | 0 | 66.7% |
 | staging/explicit-resource-management | PARTIAL | 53 | 1 | 0 | 0 | 0 | 0 | 98.1% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | INCOMPLETE | 1243 | 126 | 0 | 0 | 59 | 0 | 90.8% |
+| staging/sm | INCOMPLETE | 1246 | 126 | 0 | 0 | 56 | 0 | 90.8% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -200,6 +200,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/property-escapes/generated | NORMAL | 221.445s | 8 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Armenian.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Avestan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Balinese.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bamum.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bassa_Vah.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Batak.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bengali.js` |
 | built-ins/RegExp/property-escapes/generated | NORMAL | 221.256s | 8 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Toto.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tulu_Tigalari.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ugaritic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vai.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vithkuqi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Wancho.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Warang_Citi.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Yezidi.js` |
 | built-ins/RegExp/property-escapes/generated | NORMAL | 113.982s | 4 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypriot.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypro_Minoan.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Deseret.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 89.917s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Uyghur.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Oriya.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Osage.js` |
 | built-ins/RegExp/property-escapes/generated | NORMAL | 86.019s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bhaiksuki.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Brahmi.js` |
 | built-ins/RegExp/property-escapes/generated | NORMAL | 85.008s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Osmanya.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Pahawh_Hmong.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Palmyrene.js` |
 | built-ins/RegExp/property-escapes/generated | NORMAL | 84.997s | 3 | `test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Soft_Dotted.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Terminal_Punctuation.js` |
@@ -216,7 +217,6 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Atomics | NORMAL | 21.463s | 62 | `test262/test/built-ins/Atomics/notify/null-bufferdata-throws.js`<br>`test262/test/built-ins/Atomics/notify/out-of-range-index-throws.js`<br>...<br>`test262/test/built-ins/Atomics/wait/bad-range.js`<br>`test262/test/built-ins/Atomics/wait/bigint/bad-range.js` |
 | staging/sm | NORMAL | 21.032s | 250 | `test262/test/staging/sm/Iterator/prototype/find/descriptor.js`<br>`test262/test/staging/sm/Iterator/prototype/find/error-from-correct-realm.js`<br>...<br>`test262/test/staging/sm/Proxy/hasInstance.js`<br>`test262/test/staging/sm/Proxy/json-stringify-replacer-array-revocable-proxy.js` |
 | intl402/Temporal | NORMAL | 20.702s | 250 | `test262/test/intl402/Temporal/Duration/compare/relativeto-hour.js`<br>`test262/test/intl402/Temporal/Duration/compare/relativeto-sub-minute-offset.js`<br>...<br>`test262/test/intl402/Temporal/ZonedDateTime/prototype/equals/different-calendar-not-equal.js`<br>`test262/test/intl402/Temporal/ZonedDateTime/prototype/equals/infinity-throws-rangeerror.js` |
-| staging/sm | NORMAL | 20.659s | 16 | `test262/test/staging/sm/String/split-undefined-separator.js`<br>`test262/test/staging/sm/String/split-xregexp.js`<br>...<br>`test262/test/staging/sm/Symbol/enumeration-order.js`<br>`test262/test/staging/sm/Symbol/enumeration.js` |
 
 ## Runner Caveats
 
