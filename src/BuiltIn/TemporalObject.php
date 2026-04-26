@@ -4457,12 +4457,20 @@ class TemporalObject
         if ($upper === 'UTC' || $upper === 'GMT') {
             $timeZone = $upper;
         } else {
-            try {
-                $tzObj = new \DateTimeZone($annotation);
-                $timeZone = self::canonicalizeIanaTimeZoneCase($tzObj->getName());
-            } catch (\Throwable) {
-                // Might be a numeric offset like +05:30.
-                $timeZone = $annotation;
+            // Resolve case-insensitively against the full TZDB list
+            // (including legacy Links like GMT+0, Zulu) BEFORE
+            // calling new DateTimeZone(), since PHP would interpret
+            // "GMT+0" as the +00:00 offset.
+            $caseMatched = self::canonicalizeIanaTimeZoneCase($annotation);
+            if ($caseMatched !== $annotation || self::ianaTimeZoneExists($annotation)) {
+                $timeZone = $caseMatched;
+            } else {
+                try {
+                    $tzObj = new \DateTimeZone($annotation);
+                    $timeZone = self::canonicalizeIanaTimeZoneCase($tzObj->getName());
+                } catch (\Throwable) {
+                    $timeZone = $annotation;
+                }
             }
         }
         if ($offset !== null && $offsetOption !== 'ignore') {
@@ -4653,10 +4661,26 @@ class TemporalObject
             if ($upper === 'UTC' || $upper === 'GMT') {
                 return $upper;
             }
-            // Check if it's a known timezone.
+            // Reject ICU/Java-only legacy 3-letter abbreviations.
+            static $invalidLegacyAbbr = [
+                'ACT', 'AET', 'AGT', 'ART', 'AST', 'BET', 'BST',
+                'CAT', 'CNT', 'CST', 'CTT', 'EAT', 'ECT', 'IET',
+                'IST', 'JST', 'MIT', 'NET', 'NST', 'PLT', 'PNT',
+                'PRT', 'PST', 'SST', 'VST',
+            ];
+            if (in_array($upper, $invalidLegacyAbbr, true)) {
+                throw new RangeError("Invalid time zone: {$str}");
+            }
+            // Resolve case-insensitively against the TZDB ALL_WITH_BC
+            // list before delegating to DateTimeZone (so 'GMT+0',
+            // 'Zulu', etc. don't fall through to numeric parsing).
+            $caseMatched = self::canonicalizeIanaTimeZoneCase($str);
+            if ($caseMatched !== $str || self::ianaTimeZoneExists($str)) {
+                return $caseMatched;
+            }
             try {
                 $tz = new \DateTimeZone($str);
-                return $tz->getName();
+                return self::canonicalizeIanaTimeZoneCase($tz->getName());
             } catch (\Throwable) {
                 throw new RangeError("Invalid time zone: {$str}");
             }
