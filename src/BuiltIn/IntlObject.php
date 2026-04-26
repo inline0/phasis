@@ -3163,19 +3163,9 @@ class IntlObject
             $formatted = extension_loaded('intl')
                 ? self::formatDateTime($this_, $timestamp)
                 : date('n/j/Y, g:i:s A', $timestamp);
-            // Spec emits a typed parts list. Without CLDR pattern
-            // skeletons we can't reliably classify each character, so
-            // return the formatted output as a single literal-typed
-            // part. This still satisfies the brand check, NaN/Infinity
-            // throws, and "no time portion" tests that just inspect
-            // result.length / result[0].type.
-            $result = new JsArray();
-            $part = new JsObject();
-            self::defineDataProp($part, 'type', new JsString('literal'));
-            self::defineDataProp($part, 'value', new JsString($formatted));
-            $result->set('0', $part);
-            $result->set('length', new JsNumber(1.0));
-            return $result;
+            // Decompose the formatted output into spec-shaped parts
+            // by walking the underlying ICU pattern in lockstep.
+            return self::dateTimeFormatToParts($this_, $formatted, $timestamp);
         }, 1);
         $proto->defineOwnProperty(
             'formatToParts',
@@ -3365,6 +3355,230 @@ class IntlObject
             throw new RangeError("Invalid {$argName}: not a finite number");
         }
         return $n;
+    }
+
+    /**
+     * Decompose a formatted date-time output into spec-shaped parts
+     * by walking ICU's underlying pattern in lockstep with the
+     * formatted text. Each pattern token maps onto a typed part:
+     * "y" -> year, "M" -> month, "d" -> day, "h"/"H" -> hour,
+     * "m" -> minute, "s" -> second, "a"/"b" -> dayPeriod,
+     * "z"/"v"/"O"/"X" -> timeZoneName, "E"/"c" -> weekday,
+     * "G" -> era, "S" -> fractionalSecond. Unknown tokens collapse
+     * to literal.
+     */
+    private static function dateTimeFormatToParts(JsObject $dtf, string $formatted, int $timestamp): JsArray
+    {
+        $parts = new JsArray();
+        $idx = 0;
+        $emit = static function (string $type, string $value) use (&$parts, &$idx): void {
+            if ($value === '') {
+                return;
+            }
+            $part = new JsObject();
+            self::defineDataProp($part, 'type', new JsString($type));
+            self::defineDataProp($part, 'value', new JsString($value));
+            $parts->set((string) $idx++, $part);
+        };
+        // Without intl we already only have a literal output.
+        if (!extension_loaded('intl')) {
+            $emit('literal', $formatted);
+            $parts->set('length', new JsNumber((float) $idx));
+            return $parts;
+        }
+        // Build a fresh formatter mirroring the DTF's options so
+        // `getPattern()` reflects the same skeleton format() uses.
+        $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
+        $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
+        if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
+            $tz = 'GMT' . $tz;
+        }
+        $dateStyle = $dtf->get('[[DateStyle]]');
+        $timeStyle = $dtf->get('[[TimeStyle]]');
+        $mapStyle = static function (?string $s): int {
+            return match ($s) {
+                'full' => \IntlDateFormatter::FULL,
+                'long' => \IntlDateFormatter::LONG,
+                'medium' => \IntlDateFormatter::MEDIUM,
+                'short' => \IntlDateFormatter::SHORT,
+                default => \IntlDateFormatter::NONE,
+            };
+        };
+        $dateFmt = $mapStyle($dateStyle instanceof JsString ? $dateStyle->value : null);
+        $timeFmt = $mapStyle($timeStyle instanceof JsString ? $timeStyle->value : null);
+        if ($dateFmt === \IntlDateFormatter::NONE && $timeFmt === \IntlDateFormatter::NONE) {
+            $dateFmt = $timeFmt = \IntlDateFormatter::MEDIUM;
+        }
+        $formatter = new \IntlDateFormatter($locale, $dateFmt, $timeFmt, $tz);
+        $pattern = $formatter->getPattern();
+        if ($pattern === false || $pattern === '') {
+            $emit('literal', $formatted);
+            $parts->set('length', new JsNumber((float) $idx));
+            return $parts;
+        }
+
+        // Tokenise the pattern: a run of identical letters is one
+        // token; anything else (literal text, quoted strings) is
+        // a literal run.
+        $tokens = [];
+        $patLen = strlen($pattern);
+        $p = 0;
+        while ($p < $patLen) {
+            $ch = $pattern[$p];
+            if ($ch === "'") {
+                // Quoted literal — supports doubled '' for an apostrophe.
+                $p++;
+                $literal = '';
+                while ($p < $patLen) {
+                    if ($pattern[$p] === "'") {
+                        if ($p + 1 < $patLen && $pattern[$p + 1] === "'") {
+                            $literal .= "'";
+                            $p += 2;
+                            continue;
+                        }
+                        $p++;
+                        break;
+                    }
+                    $literal .= $pattern[$p];
+                    $p++;
+                }
+                $tokens[] = ['type' => 'literal', 'len' => 0, 'value' => $literal];
+                continue;
+            }
+            // Only ASCII letters are CLDR pattern letters; high-bit
+            // bytes (UTF-8 continuation, U+202F, etc.) are literal
+            // text. ctype_alpha is locale-dependent and accepts
+            // \xE2 as alpha on macOS, which previously corrupted
+            // multi-byte literal tokens.
+            $isAscii = ord($ch) < 0x80;
+            $isAsciiAlpha = $isAscii && ctype_alpha($ch);
+            if ($isAsciiAlpha) {
+                $j = $p;
+                while ($j < $patLen && $pattern[$j] === $ch) {
+                    $j++;
+                }
+                $tokens[] = ['type' => self::patternLetterToPartType($ch), 'len' => $j - $p, 'letter' => $ch];
+                $p = $j;
+                continue;
+            }
+            // Run of non-letter literal chars.
+            $j = $p;
+            while ($j < $patLen) {
+                $b = $pattern[$j];
+                $isB = ord($b) < 0x80 && ctype_alpha($b);
+                if ($isB || $b === "'") {
+                    break;
+                }
+                $j++;
+            }
+            $tokens[] = ['type' => 'literal', 'len' => 0, 'value' => substr($pattern, $p, $j - $p)];
+            $p = $j;
+        }
+
+        // Walk the formatted output one character cluster at a time,
+        // consuming tokens. For literal tokens the cluster must match
+        // the literal verbatim; for typed tokens we accept any run of
+        // characters until the next literal lookahead matches.
+        $cursor = 0;
+        $outLen = strlen($formatted);
+        for ($ti = 0; $ti < count($tokens); $ti++) {
+            $tok = $tokens[$ti];
+            if ($tok['type'] === 'literal') {
+                $lit = $tok['value'] ?? '';
+                if ($lit === '') {
+                    continue;
+                }
+                // ICU formatters often substitute the ASCII space in
+                // the pattern with U+00A0 / U+202F, so allow any
+                // whitespace cluster to match a pattern space.
+                if (substr($formatted, $cursor, strlen($lit)) === $lit) {
+                    $emit('literal', $lit);
+                    $cursor += strlen($lit);
+                } elseif (
+                    preg_match('/^[\s\x{00A0}\x{202F}]/u', $lit) === 1
+                    && preg_match(
+                        '/^[\s\x{00A0}\x{202F}]+/u',
+                        substr($formatted, $cursor),
+                        $wsMatch,
+                    ) === 1
+                ) {
+                    $emit('literal', $wsMatch[0]);
+                    $cursor += strlen($wsMatch[0]);
+                } else {
+                    if ($cursor < $outLen) {
+                        $emit('literal', substr($formatted, $cursor));
+                        $cursor = $outLen;
+                    }
+                    break;
+                }
+                continue;
+            }
+            // Typed token: consume up to the next literal lookahead.
+            $lookahead = '';
+            for ($k = $ti + 1; $k < count($tokens); $k++) {
+                if (
+                    $tokens[$k]['type'] === 'literal'
+                    && isset($tokens[$k]['value'])
+                    && $tokens[$k]['value'] !== ''
+                ) {
+                    $lookahead = $tokens[$k]['value'];
+                    break;
+                }
+            }
+            $endPos = $outLen;
+            if ($lookahead !== '') {
+                $found = strpos($formatted, $lookahead, $cursor);
+                if ($found === false && preg_match('/^[\s\x{00A0}\x{202F}]/u', $lookahead) === 1) {
+                    // Search for any whitespace cluster as the
+                    // boundary, not just the exact pattern char.
+                    if (
+                        preg_match(
+                            '/[\s\x{00A0}\x{202F}]/u',
+                            substr($formatted, $cursor),
+                            $wsAfter,
+                            PREG_OFFSET_CAPTURE,
+                        ) === 1
+                    ) {
+                        $found = $cursor + $wsAfter[0][1];
+                    }
+                }
+                if ($found !== false) {
+                    $endPos = $found;
+                }
+            }
+            $value = substr($formatted, $cursor, $endPos - $cursor);
+            if ($value !== '') {
+                $emit($tok['type'], $value);
+            }
+            $cursor = $endPos;
+        }
+        if ($cursor < $outLen) {
+            $emit('literal', substr($formatted, $cursor));
+        }
+        $parts->set('length', new JsNumber((float) $idx));
+        return $parts;
+    }
+
+    /** Map a CLDR pattern letter to the spec's part-type. */
+    private static function patternLetterToPartType(string $letter): string
+    {
+        return match ($letter) {
+            'y', 'Y', 'u', 'U', 'r' => 'year',
+            'M', 'L' => 'month',
+            'd' => 'day',
+            'D' => 'day',
+            'E', 'c', 'e' => 'weekday',
+            'a', 'b', 'B' => 'dayPeriod',
+            'h', 'H', 'k', 'K' => 'hour',
+            'm' => 'minute',
+            's' => 'second',
+            'S', 'A' => 'fractionalSecond',
+            'z', 'Z', 'v', 'V', 'O', 'X', 'x' => 'timeZoneName',
+            'G' => 'era',
+            'q', 'Q' => 'quarter',
+            'w', 'W' => 'weekOfYear',
+            default => 'literal',
+        };
     }
 
     /**
