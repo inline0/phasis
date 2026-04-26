@@ -2518,6 +2518,10 @@ class TemporalObject
                 $base .= '-' . self::pad2($dd);
                 $prefix = $calendarName === 'critical' ? '!' : '';
                 $base .= "[{$prefix}u-ca={$cal}]";
+            } elseif ($cal !== 'iso8601') {
+                // Non-ISO calendar with calendarName="never": still
+                // include the day so the year-month is unambiguous.
+                $base .= '-' . self::pad2($dd);
             }
             return new JsString($base);
         }, 0);
@@ -2526,6 +2530,16 @@ class TemporalObject
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // Non-ISO calendars need the day in toJSON so the
+            // resulting string can round-trip through PlainYearMonth.from.
+            if ($cal !== 'iso8601') {
+                return new JsString(
+                    self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd)
+                    . "[u-ca={$cal}]"
+                );
+            }
             return new JsString(self::padISOYear($y) . '-' . self::pad2($m));
         }, 0);
 
