@@ -1026,7 +1026,7 @@ class IntlObject
                 throw new TypeError('Intl.Collator.prototype.compare called on non-Collator');
             }
             // Return a bound compare function.
-            $boundCompare = JsFunction::fromCallable('compare', function (
+            $boundCompare = JsFunction::fromCallable('', function (
                 JsValue $unused,
                 array $innerArgs,
             ) use (
