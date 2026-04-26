@@ -4499,9 +4499,83 @@ class IntlObject
                     $endStr,
                     (int) round($endMs / 1000),
                 );
-                $appendTyped($startParts, 'startRange');
-                $emit('literal', " \u{2013} ", 'shared');
-                $appendTyped($endParts, 'endRange');
+                // Walk start/end parts in lockstep to find a shared
+                // prefix and shared suffix (where every (type, value)
+                // pair matches). Collapse those into 'shared' parts;
+                // emit the differing middle as 'startRange' /
+                // 'endRange' separated by the range literal.
+                $startPartsArr = self::partsArrayToList($startParts);
+                $endPartsArr = self::partsArrayToList($endParts);
+                $useCollapse = self::dateTimeFormatRangeShouldCollapse($startStr, $endStr);
+                $sLen = count($startPartsArr);
+                $eLen = count($endPartsArr);
+                $prefixLen = 0;
+                $suffixLen = 0;
+                if ($useCollapse) {
+                    while (
+                        $prefixLen < $sLen
+                        && $prefixLen < $eLen
+                        && self::dateTimePartsMatch(
+                            $startPartsArr[$prefixLen],
+                            $endPartsArr[$prefixLen],
+                        )
+                    ) {
+                        $prefixLen++;
+                    }
+                    while (
+                        $sLen - $suffixLen > $prefixLen
+                        && $eLen - $suffixLen > $prefixLen
+                        && self::dateTimePartsMatch(
+                            $startPartsArr[$sLen - $suffixLen - 1],
+                            $endPartsArr[$eLen - $suffixLen - 1],
+                        )
+                    ) {
+                        $suffixLen++;
+                    }
+                    // CLDR's interval pattern only collapses when
+                    // the differing range stops short of the year.
+                    // If year (or any field strictly higher than the
+                    // narrowest differing field) is in the diff,
+                    // V8 emits both endpoints in full.
+                    $diffRanks = [];
+                    for ($i = $prefixLen; $i < $sLen - $suffixLen; $i++) {
+                        $diffRanks[] = self::dateTimePartRank($startPartsArr[$i]['type']);
+                    }
+                    for ($i = $prefixLen; $i < $eLen - $suffixLen; $i++) {
+                        $diffRanks[] = self::dateTimePartRank($endPartsArr[$i]['type']);
+                    }
+                    $hasYearDiff = in_array(self::dateTimePartRank('year'), $diffRanks, true);
+                    if ($hasYearDiff) {
+                        $useCollapse = false;
+                    }
+                }
+                if ($useCollapse) {
+                    // Emit shared prefix.
+                    for ($i = 0; $i < $prefixLen; $i++) {
+                        $p = $startPartsArr[$i];
+                        $emit($p['type'], $p['value'], 'shared');
+                    }
+                    // Emit start-range middle.
+                    for ($i = $prefixLen; $i < $sLen - $suffixLen; $i++) {
+                        $p = $startPartsArr[$i];
+                        $emit($p['type'], $p['value'], 'startRange');
+                    }
+                    $emit('literal', " \u{2013} ", 'shared');
+                    // Emit end-range middle.
+                    for ($i = $prefixLen; $i < $eLen - $suffixLen; $i++) {
+                        $p = $endPartsArr[$i];
+                        $emit($p['type'], $p['value'], 'endRange');
+                    }
+                    // Emit shared suffix.
+                    for ($i = $sLen - $suffixLen; $i < $sLen; $i++) {
+                        $p = $startPartsArr[$i];
+                        $emit($p['type'], $p['value'], 'shared');
+                    }
+                } else {
+                    $appendTyped($startParts, 'startRange');
+                    $emit('literal', " \u{2013} ", 'shared');
+                    $appendTyped($endParts, 'endRange');
+                }
             }
             $result->set('length', new JsNumber((float) $idx));
             return $result;
@@ -4621,6 +4695,81 @@ class IntlObject
      * timestamp. Mirrors HandleDateTimeValue from the spec: undefined
      * is a TypeError, invalid Dates / NaN / Infinity are a RangeError.
      */
+    /**
+     * Convert a JsArray of DateTimeFormat parts into a PHP list of
+     * {type, value} associative arrays.
+     *
+     * @return list<array{type: string, value: string}>
+     */
+    private static function partsArrayToList(JsArray $parts): array
+    {
+        $out = [];
+        $count = (int) ($parts->get('length') instanceof JsNumber
+            ? $parts->get('length')->value
+            : 0);
+        for ($i = 0; $i < $count; $i++) {
+            $p = $parts->get((string) $i);
+            if (!$p instanceof JsObject) {
+                continue;
+            }
+            $type = $p->get('type');
+            $value = $p->get('value');
+            if ($type instanceof JsString && $value instanceof JsString) {
+                $out[] = ['type' => $type->value, 'value' => $value->value];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Whether two parts share both type and value (used by formatRangeToParts
+     * to identify shared prefix/suffix runs).
+     *
+     * @param array{type: string, value: string} $a
+     * @param array{type: string, value: string} $b
+     */
+    private static function dateTimePartsMatch(array $a, array $b): bool
+    {
+        return $a['type'] === $b['type'] && $a['value'] === $b['value'];
+    }
+
+    /**
+     * Rank ordering of DateTimeFormat part types from coarsest
+     * (era) to finest (fractionalSecond). Used by formatRangeToParts
+     * to detect which is the largest differing field — when it's
+     * year (or coarser) the spec keeps both endpoints in full.
+     */
+    private static function dateTimePartRank(string $type): int
+    {
+        $ranks = [
+            'era' => 0,
+            'relatedYear' => 1,
+            'year' => 2,
+            'yearName' => 2,
+            'month' => 3,
+            'weekday' => 3,
+            'day' => 4,
+            'dayPeriod' => 5,
+            'hour' => 6,
+            'minute' => 7,
+            'second' => 8,
+            'fractionalSecond' => 9,
+            'timeZoneName' => 10,
+        ];
+        return $ranks[$type] ?? 999;
+    }
+
+    /**
+     * Same heuristic as collapseDateRange: only collapse the parts
+     * sequence when at least one alphabetic token (month name,
+     * weekday) is present in either formatted string.
+     */
+    private static function dateTimeFormatRangeShouldCollapse(string $start, string $end): bool
+    {
+        return preg_match('/[A-Za-z]/u', $start) === 1
+            || preg_match('/[A-Za-z]/u', $end) === 1;
+    }
+
     /**
      * Collapse a DateTimeFormat formatRange pair by stripping the
      * shared prefix and suffix between the two formatted strings,
