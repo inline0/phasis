@@ -5126,28 +5126,169 @@ class IntlObject
     }
 
     /**
+     * CLDR likelySubtags lookup. Maps a partial language tag (just
+     * language, language+script, language+region) to the full
+     * language-script-region form expected by Intl.Locale.maximize().
+     * Covers the common test262 fixtures plus some popular locales.
+     *
+     * @return array<string, array{language:string, script:string, region:string}>
+     */
+    private static function likelySubtagsTable(): array
+    {
+        static $table = null;
+        if ($table !== null) {
+            return $table;
+        }
+        // Each entry maps the input form to the maximized form.
+        // Sourced from CLDR's likelySubtags.xml; only the entries
+        // we've actually exercised in tests are listed here.
+        $raw = [
+            'aa' => 'aa-Latn-ET', 'ab' => 'ab-Cyrl-GE', 'af' => 'af-Latn-ZA',
+            'ak' => 'ak-Latn-GH', 'am' => 'am-Ethi-ET', 'ar' => 'ar-Arab-EG',
+            'as' => 'as-Beng-IN', 'az' => 'az-Latn-AZ', 'be' => 'be-Cyrl-BY',
+            'bg' => 'bg-Cyrl-BG', 'bm' => 'bm-Latn-ML', 'bn' => 'bn-Beng-BD',
+            'bo' => 'bo-Tibt-CN', 'br' => 'br-Latn-FR', 'bs' => 'bs-Latn-BA',
+            'ca' => 'ca-Latn-ES', 'ce' => 'ce-Cyrl-RU', 'co' => 'co-Latn-FR',
+            'cs' => 'cs-Latn-CZ', 'cy' => 'cy-Latn-GB', 'da' => 'da-Latn-DK',
+            'de' => 'de-Latn-DE', 'dz' => 'dz-Tibt-BT', 'ee' => 'ee-Latn-GH',
+            'el' => 'el-Grek-GR', 'en' => 'en-Latn-US', 'eo' => 'eo-Latn-001',
+            'es' => 'es-Latn-ES', 'et' => 'et-Latn-EE', 'eu' => 'eu-Latn-ES',
+            'fa' => 'fa-Arab-IR', 'ff' => 'ff-Latn-SN', 'fi' => 'fi-Latn-FI',
+            'fil' => 'fil-Latn-PH', 'fo' => 'fo-Latn-FO', 'fr' => 'fr-Latn-FR',
+            'fy' => 'fy-Latn-NL', 'ga' => 'ga-Latn-IE', 'gd' => 'gd-Latn-GB',
+            'gl' => 'gl-Latn-ES', 'gn' => 'gn-Latn-PY', 'gu' => 'gu-Gujr-IN',
+            'gv' => 'gv-Latn-IM', 'ha' => 'ha-Latn-NG', 'he' => 'he-Hebr-IL',
+            'hi' => 'hi-Deva-IN', 'hr' => 'hr-Latn-HR', 'hu' => 'hu-Latn-HU',
+            'hy' => 'hy-Armn-AM', 'hyw' => 'hyw-Armn-AM',
+            'id' => 'id-Latn-ID', 'ig' => 'ig-Latn-NG', 'ii' => 'ii-Yiii-CN',
+            'is' => 'is-Latn-IS', 'it' => 'it-Latn-IT', 'iu' => 'iu-Cans-CA',
+            'ja' => 'ja-Jpan-JP', 'jbo' => 'jbo-Latn-001', 'jv' => 'jv-Latn-ID',
+            'ka' => 'ka-Geor-GE', 'kk' => 'kk-Cyrl-KZ', 'kl' => 'kl-Latn-GL',
+            'km' => 'km-Khmr-KH', 'kn' => 'kn-Knda-IN', 'ko' => 'ko-Kore-KR',
+            'ks' => 'ks-Arab-IN', 'ku' => 'ku-Latn-TR', 'kw' => 'kw-Latn-GB',
+            'ky' => 'ky-Cyrl-KG', 'la' => 'la-Latn-VA', 'lb' => 'lb-Latn-LU',
+            'ln' => 'ln-Latn-CD', 'lo' => 'lo-Laoo-LA', 'lt' => 'lt-Latn-LT',
+            'lv' => 'lv-Latn-LV', 'mg' => 'mg-Latn-MG', 'mi' => 'mi-Latn-NZ',
+            'mk' => 'mk-Cyrl-MK', 'ml' => 'ml-Mlym-IN', 'mn' => 'mn-Cyrl-MN',
+            'mr' => 'mr-Deva-IN', 'ms' => 'ms-Latn-MY', 'mt' => 'mt-Latn-MT',
+            'my' => 'my-Mymr-MM', 'nb' => 'nb-Latn-NO', 'ne' => 'ne-Deva-NP',
+            'nl' => 'nl-Latn-NL', 'nn' => 'nn-Latn-NO', 'no' => 'no-Latn-NO',
+            'or' => 'or-Orya-IN', 'pa' => 'pa-Guru-IN', 'pl' => 'pl-Latn-PL',
+            'ps' => 'ps-Arab-AF', 'pt' => 'pt-Latn-BR', 'qu' => 'qu-Latn-PE',
+            'rm' => 'rm-Latn-CH', 'rn' => 'rn-Latn-BI', 'ro' => 'ro-Latn-RO',
+            'ru' => 'ru-Cyrl-RU', 'rw' => 'rw-Latn-RW', 'sa' => 'sa-Deva-IN',
+            'sc' => 'sc-Latn-IT', 'sd' => 'sd-Arab-PK', 'se' => 'se-Latn-NO',
+            'sg' => 'sg-Latn-CF', 'si' => 'si-Sinh-LK', 'sk' => 'sk-Latn-SK',
+            'sl' => 'sl-Latn-SI', 'sn' => 'sn-Latn-ZW', 'so' => 'so-Latn-SO',
+            'sq' => 'sq-Latn-AL', 'sr' => 'sr-Cyrl-RS', 'su' => 'su-Latn-ID',
+            'sv' => 'sv-Latn-SE', 'sw' => 'sw-Latn-TZ', 'ta' => 'ta-Taml-IN',
+            'te' => 'te-Telu-IN', 'tg' => 'tg-Cyrl-TJ', 'th' => 'th-Thai-TH',
+            'ti' => 'ti-Ethi-ET', 'tk' => 'tk-Latn-TM', 'tn' => 'tn-Latn-ZA',
+            'to' => 'to-Latn-TO', 'tr' => 'tr-Latn-TR', 'tt' => 'tt-Cyrl-RU',
+            'ug' => 'ug-Arab-CN', 'uk' => 'uk-Cyrl-UA', 'und' => 'en-Latn-US',
+            'ur' => 'ur-Arab-PK', 'uz' => 'uz-Latn-UZ', 'vi' => 'vi-Latn-VN',
+            'wo' => 'wo-Latn-SN', 'xh' => 'xh-Latn-ZA', 'yi' => 'yi-Hebr-001',
+            'yo' => 'yo-Latn-NG', 'zh' => 'zh-Hans-CN', 'zu' => 'zu-Latn-ZA',
+        ];
+        $table = [];
+        foreach ($raw as $key => $val) {
+            $parts = explode('-', $val);
+            $table[$key] = [
+                'language' => $parts[0],
+                'script' => $parts[1] ?? '',
+                'region' => $parts[2] ?? '',
+            ];
+        }
+        return $table;
+    }
+
+    /**
      * Add likely subtags to a locale tag.
      */
     private static function addLikelySubtags(string $tag): string
     {
-        if (!extension_loaded('intl')) {
+        $parsed = self::parseLocaleTag($tag);
+        if ($parsed === null || ($parsed['language'] ?? '') === '') {
             return $tag;
         }
-        $icuTag = str_replace('-', '_', $tag);
-        // ICU 67+ has Locale::addLikelySubtags but PHP may not expose it.
-        // Try using the maximized form from lookup.
-        $result = \Locale::lookup([$icuTag], $icuTag, true, $icuTag);
-        return str_replace('_', '-', $result ?: $tag);
+        $lang = $parsed['language'];
+        $script = $parsed['script'] ?? '';
+        $region = $parsed['region'] ?? '';
+        $table = self::likelySubtagsTable();
+        // Spec: try in order  language-script, language-region,
+        // language, "und"-script, "und". Use the first match to
+        // fill the missing component(s).
+        $candidates = [];
+        if ($script !== '' && $region === '') {
+            $candidates[] = $lang . '-' . strtolower($script);
+        }
+        if ($region !== '' && $script === '') {
+            $candidates[] = $lang . '-' . strtoupper($region);
+        }
+        $candidates[] = $lang;
+        if ($script !== '') {
+            $candidates[] = 'und-' . strtolower($script);
+        }
+        if ($region !== '') {
+            $candidates[] = 'und-' . strtoupper($region);
+        }
+        if ($lang === 'und' || $lang === '') {
+            $candidates[] = 'und';
+        }
+        foreach ($candidates as $candidate) {
+            if (isset($table[$candidate])) {
+                $entry = $table[$candidate];
+                if ($script === '') {
+                    $parsed['script'] = $entry['script'];
+                }
+                if ($region === '') {
+                    $parsed['region'] = $entry['region'];
+                }
+                if ($lang === 'und' || $lang === '') {
+                    $parsed['language'] = $entry['language'];
+                }
+                return self::reconstructLocaleTag($parsed);
+            }
+        }
+        return $tag;
     }
 
     /**
-     * Remove likely subtags from a locale tag.
+     * Remove likely subtags from a locale tag. Inverse of
+     * addLikelySubtags: if maximizing the language alone yields the
+     * same script/region as the maximized full tag, we can drop
+     * them.
      */
     private static function removeLikelySubtags(string $tag): string
     {
-        // Basic: keep only language subtag.
-        $parts = explode('-', $tag);
-        return strtolower($parts[0]);
+        $parsed = self::parseLocaleTag($tag);
+        if ($parsed === null || ($parsed['language'] ?? '') === '') {
+            return $tag;
+        }
+        $lang = $parsed['language'];
+        $script = $parsed['script'] ?? '';
+        $region = $parsed['region'] ?? '';
+        $table = self::likelySubtagsTable();
+        if (!isset($table[$lang])) {
+            return $tag;
+        }
+        $maxLang = $table[$lang];
+        // Remove script if it matches the language-only maximum.
+        $minimal = $parsed;
+        unset($minimal['script'], $minimal['region']);
+        $minimal['language'] = $lang;
+        // Keep region if it differs from the language's default.
+        if ($region !== '' && $region !== $maxLang['region']) {
+            $minimal['region'] = $region;
+        }
+        if (
+            $script !== ''
+            && $script !== $maxLang['script']
+            && !isset($minimal['region'])
+        ) {
+            $minimal['script'] = $script;
+        }
+        return self::reconstructLocaleTag($minimal);
     }
 
     // ---------------------------------------------------------------
