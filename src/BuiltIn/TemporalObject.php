@@ -1296,6 +1296,7 @@ class TemporalObject
         $d('toZonedDateTime', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $item = $args[0] ?? JsUndefined::instance();
+            $useStartOfDay = false;
             $h = 0;
             $min = 0;
             $s = 0;
@@ -1304,15 +1305,17 @@ class TemporalObject
             $nsPart = 0;
             if ($item instanceof JsString) {
                 $timeZone = self::toTemporalTimeZoneIdentifier($item);
+                $useStartOfDay = true;
             } elseif ($item instanceof JsObject) {
-                // Read timeZone BEFORE plainTime per spec.
                 $tz = $item->get('timeZone');
                 if ($tz instanceof JsUndefined) {
                     throw new TypeError('missing timeZone property');
                 }
                 $timeZone = self::toTemporalTimeZoneIdentifier($tz);
                 $ptArg = $item->get('plainTime');
-                if (!($ptArg instanceof JsUndefined)) {
+                if ($ptArg instanceof JsUndefined) {
+                    $useStartOfDay = true;
+                } else {
                     $t = self::toPlainTime($ptArg);
                     $h = self::getSlotInt($t, '[[ISOHour]]');
                     $min = self::getSlotInt($t, '[[ISOMinute]]');
@@ -1328,13 +1331,13 @@ class TemporalObject
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            // PlainDate.toZonedDateTime always uses StartOfDay
-            // semantics: "compatible" disambiguation forward-shifts
-            // a skipped midnight (e.g. Brazilian DST that skipped
-            // 00:00 some years).
-            $ns = self::isoDateTimeToEpochNsDisambiguated(
-                $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone, 'compatible',
-            );
+            if ($useStartOfDay) {
+                $ns = self::startOfDayInTimeZone($y, $m, $dd, $timeZone);
+            } else {
+                $ns = self::isoDateTimeToEpochNsDisambiguated(
+                    $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone, 'compatible',
+                );
+            }
             return self::createZonedDateTimeObject($ns, $timeZone, $cal);
         }, 1);
 
@@ -2805,66 +2808,9 @@ class TemporalObject
                     );
                 }
                 if ($item instanceof JsObject) {
-                    $cal = 'iso8601';
-                    $calVal = $item->get('calendar');
-                    if (!($calVal instanceof JsUndefined)) {
-                        $cal = self::toCalendarSlotValue($calVal);
-                    }
-                    $month = $item->get('month');
-                    $mVal = null;
-                    if (!($month instanceof JsUndefined)) {
-                        $mNum = TypeConversion::toNumber($month);
-                        if (!is_finite($mNum)) {
-                            throw new RangeError('month must be finite');
-                        }
-                        $mVal = (int) $mNum;
-                    }
-                    $monthCode = $item->get('monthCode');
-                    $mcStr = null;
-                    $mcParsed = null;
-                    if (!($monthCode instanceof JsUndefined)) {
-                        $mcStr = TypeConversion::toString($monthCode);
-                        $mcParsed = self::parseMonthCodeSyntax($mcStr);
-                    }
-                    $year = $item->get('year');
-                    if ($year instanceof JsUndefined) {
-                        throw new TypeError('missing required property: year');
-                    }
-                    $yNum = TypeConversion::toNumber($year);
-                    if (!is_finite($yNum)) {
-                        throw new RangeError('year must be finite');
-                    }
-                    $y = (int) $yNum;
-                    if ($mVal === null && $mcStr === null) {
-                        throw new TypeError('missing required property: month or monthCode');
-                    }
-                    $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-                    $overflow = self::getOverflow($options);
-                    if ($mcParsed !== null) {
-                        [$mcMonth, $mcLeap] = $mcParsed;
-                        if ($mcMonth < 1 || $mcMonth > 12) {
-                            throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
-                        }
-                        static $pymFromLunisolar = ['hebrew', 'chinese', 'dangi'];
-                        if ($mcLeap && !in_array($cal, $pymFromLunisolar, true)) {
-                            throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
-                        }
-                        $m = $mcMonth;
-                        if ($mVal !== null && $mVal !== $m) {
-                            throw new RangeError("month and monthCode disagree");
-                        }
-                    } else {
-                        $m = $mVal;
-                    }
-                    if ($m < 1) {
-                        throw new RangeError("month {$m} out of range");
-                    }
-                    if ($overflow === 'constrain') {
-                        $m = min(12, $m);
-                    } elseif ($m > 12) {
-                        throw new RangeError("month {$m} out of range");
-                    }
-                    return self::createPlainYearMonthObject($y, $m, 1, $cal);
+                    // Read fields first, then read overflow, per spec.
+                    $rawOptions = $args[1] ?? JsUndefined::instance();
+                    return self::toPlainYearMonthWithLazyOptions($item, $rawOptions);
                 }
                 $result = self::toPlainYearMonth($item);
                 $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
@@ -8145,6 +8091,112 @@ class TemporalObject
         );
     }
 
+    private static function toPlainYearMonthWithLazyOptions(JsValue $item, JsValue $rawOptions): JsObject
+    {
+        if (!$item instanceof JsObject || $item->has('[[IsPlainYearMonth]]')) {
+            // Should not happen via from() since instances and primitives are handled before.
+            $options = self::getOptionsObject($rawOptions);
+            $overflow = self::getOverflow($options);
+            return self::toPlainYearMonth($item, $overflow);
+        }
+        $cal = 'iso8601';
+        $calVal = $item->get('calendar');
+        if (!($calVal instanceof JsUndefined)) {
+            $cal = self::toCalendarSlotValue($calVal);
+        }
+        $eraStr = null;
+        $eraYearNum = null;
+        $eraSet = false;
+        $eraYearSet = false;
+        if ($cal !== 'iso8601') {
+            $eraVal = $item->get('era');
+            if (!($eraVal instanceof JsUndefined)) {
+                $eraSet = true;
+                $eraStr = TypeConversion::toString($eraVal);
+            }
+            $eraYearVal = $item->get('eraYear');
+            if (!($eraYearVal instanceof JsUndefined)) {
+                $eraYearSet = true;
+                $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                    throw new RangeError('eraYear must be finite');
+                }
+                if (floor($eraYearNum) !== $eraYearNum) {
+                    throw new RangeError('eraYear must be an integer');
+                }
+            }
+            static $pymLazyEraCals = ['gregory', 'japanese', 'roc'];
+            if (in_array($cal, $pymLazyEraCals, true) && $eraSet !== $eraYearSet) {
+                throw new TypeError('era and eraYear must be provided together');
+            }
+        }
+        $month = $item->get('month');
+        $mVal = null;
+        if (!($month instanceof JsUndefined)) {
+            $mNum = TypeConversion::toNumber($month);
+            if (!is_finite($mNum)) {
+                throw new RangeError('month must be finite');
+            }
+            $mVal = (int) $mNum;
+        }
+        $monthCode = $item->get('monthCode');
+        $mcStr = null;
+        $mcParsed = null;
+        if (!($monthCode instanceof JsUndefined)) {
+            $mcStr = TypeConversion::toString($monthCode);
+            $mcParsed = self::parseMonthCodeSyntax($mcStr);
+        }
+        $year = $item->get('year');
+        if ($year instanceof JsUndefined) {
+            static $pymLazyDeriv = ['gregory', 'japanese', 'roc'];
+            if ($eraYearNum !== null && in_array($cal, $pymLazyDeriv, true)) {
+                $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                $yNum = in_array($eraLower, ['bc', 'bce'], true)
+                    ? (1 - $eraYearNum)
+                    : $eraYearNum;
+            } else {
+                throw new TypeError('missing required property: year');
+            }
+        } else {
+            $yNum = TypeConversion::toNumber($year);
+        }
+        if (!is_finite($yNum)) {
+            throw new RangeError('year must be finite');
+        }
+        $y = (int) $yNum;
+        if ($mVal === null && $mcStr === null) {
+            throw new TypeError('missing required property: month or monthCode');
+        }
+        // NOW read overflow from options (after all field reads).
+        $options = self::getOptionsObject($rawOptions);
+        $overflow = self::getOverflow($options);
+        if ($mcParsed !== null) {
+            [$mcMonth, $mcLeap] = $mcParsed;
+            static $pymLazyLunisolar = ['hebrew', 'chinese', 'dangi'];
+            if ($mcMonth < 1 || $mcMonth > 12) {
+                throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
+            }
+            if ($mcLeap && !in_array($cal, $pymLazyLunisolar, true)) {
+                throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
+            }
+            $m = $mcMonth;
+            if ($mVal !== null && $mVal !== $m) {
+                throw new RangeError('month and monthCode disagree');
+            }
+        } else {
+            $m = $mVal;
+        }
+        if ($m < 1) {
+            throw new RangeError("month {$m} out of range");
+        }
+        if ($overflow === 'constrain') {
+            $m = min(12, $m);
+        } elseif ($m > 12) {
+            throw new RangeError("month {$m} out of range");
+        }
+        return self::createPlainYearMonthObject($y, $m, 1, $cal);
+    }
+
     private static function toPlainYearMonth(JsValue $item, string $overflow = 'constrain'): JsObject
     {
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
@@ -8476,6 +8528,9 @@ class TemporalObject
                     $refYear = in_array($eraLower, ['bc', 'bce'], true)
                         ? (1 - (int) $eraYearNum)
                         : (int) $eraYearNum;
+                } elseif ($cal !== 'iso8601' && !$hasMonthCode) {
+                    // Non-ISO calendars require year info when month is given numerically.
+                    throw new TypeError('non-ISO calendar requires year (or era+eraYear)');
                 }
             }
 
@@ -8484,7 +8539,8 @@ class TemporalObject
                 if ($m < 1 || $m > 12) {
                     throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
                 }
-                if ($hasLeap) {
+                static $pmdLunisolar = ['hebrew', 'chinese', 'dangi'];
+                if ($hasLeap && !in_array($cal, $pmdLunisolar, true)) {
                     throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
                 }
                 // Check for monthCode/month conflict.
@@ -8567,7 +8623,27 @@ class TemporalObject
                 $d = (int) $dNum;
             }
 
-            // 3. month (read and coerce immediately)
+            // 3. era / eraYear (non-ISO calendars only).
+            $eraStr = null;
+            $eraYearNum = null;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+            }
+
+            // 4. month (read and coerce immediately)
             $monthVal = $item->get('month');
             $hasMonth = !($monthVal instanceof JsUndefined);
             $monthNum = 0;
@@ -8579,7 +8655,7 @@ class TemporalObject
                 $monthNum = (int) $mVal;
             }
 
-            // 4. monthCode (read and coerce immediately)
+            // 5. monthCode (read and coerce immediately)
             $monthCodeVal = $item->get('monthCode');
             $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
             $m = 0;
@@ -8594,7 +8670,7 @@ class TemporalObject
                 $hasLeap = $mcm[2] === 'L';
             }
 
-            // 5. year (read and coerce immediately)
+            // 6. year (read and coerce immediately)
             $yearVal = $item->get('year');
             $hasYear = !($yearVal instanceof JsUndefined);
             $refYear = 1972;
@@ -8604,6 +8680,18 @@ class TemporalObject
                     throw new RangeError('year must be finite');
                 }
                 $refYear = (int) $yVal;
+            } else {
+                static $pmdEraDerivCals2 = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pmdEraDerivCals2, true)
+                ) {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $refYear = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - (int) $eraYearNum)
+                        : (int) $eraYearNum;
+                    $hasYear = true;
+                }
             }
 
             // Validate required fields.
@@ -8612,6 +8700,10 @@ class TemporalObject
             }
             if (!$hasMonthCode && !$hasMonth) {
                 throw new TypeError('Required property month or monthCode missing');
+            }
+            // Non-ISO calendars require year info when month is given numerically.
+            if ($cal !== 'iso8601' && !$hasYear && !$hasMonthCode) {
+                throw new TypeError('non-ISO calendar requires year (or era+eraYear) when month is given numerically');
             }
 
             // Resolve month from monthCode or month.
@@ -8624,7 +8716,8 @@ class TemporalObject
                 if ($m < 1 || $m > 12) {
                     throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
                 }
-                if ($hasLeap) {
+                static $pmdLunisolar2 = ['hebrew', 'chinese', 'dangi'];
+                if ($hasLeap && !in_array($cal, $pmdLunisolar2, true)) {
                     throw new RangeError("monthCode '{$mStr}' is not valid for ISO 8601 calendar");
                 }
                 if ($hasMonth && $monthNum !== $m) {
