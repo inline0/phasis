@@ -1757,14 +1757,54 @@ class IntlObject
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRangeToParts');
             }
+            $startStr = extension_loaded('intl')
+                ? self::formatNumber($this_, $start) : (string) $start;
+            $endStr = extension_loaded('intl')
+                ? self::formatNumber($this_, $end) : (string) $end;
             $result = new JsArray();
-            // Simplified implementation.
-            $p1 = new JsObject();
-            $p1->set('type', new JsString('integer'));
-            $p1->set('value', new JsString((string) $start));
-            $p1->set('source', new JsString('startRange'));
-            $result->set('0', $p1);
-            $result->set('length', new JsNumber(1.0));
+            $idx = 0;
+            $emit = static function (string $type, string $value, string $source) use (
+                &$result,
+                &$idx,
+            ): void {
+                if ($value === '') {
+                    return;
+                }
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString($type));
+                self::defineDataProp($part, 'value', new JsString($value));
+                self::defineDataProp($part, 'source', new JsString($source));
+                $result->set((string) $idx++, $part);
+            };
+            $appendTyped = static function (
+                JsArray $partsArr,
+                string $source,
+            ) use (&$emit): void {
+                $count = (int) ($partsArr->get('length') instanceof JsNumber
+                    ? $partsArr->get('length')->value
+                    : 0);
+                for ($k = 0; $k < $count; $k++) {
+                    $p = $partsArr->get((string) $k);
+                    if (!$p instanceof JsObject) {
+                        continue;
+                    }
+                    $type = $p->get('type');
+                    $value = $p->get('value');
+                    if ($type instanceof JsString && $value instanceof JsString) {
+                        $emit($type->value, $value->value, $source);
+                    }
+                }
+            };
+            $startParts = self::numberFormatToParts($this_, $startStr, $start);
+            if ($startStr === $endStr) {
+                $appendTyped($startParts, 'shared');
+            } else {
+                $endParts = self::numberFormatToParts($this_, $endStr, $end);
+                $appendTyped($startParts, 'startRange');
+                $emit('literal', self::numberFormatRangeSeparator($this_), 'shared');
+                $appendTyped($endParts, 'endRange');
+            }
+            $result->set('length', new JsNumber((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty(
