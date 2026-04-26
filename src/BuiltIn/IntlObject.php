@@ -9872,7 +9872,40 @@ class IntlObject
         $segments = [];
         $isFirstSegment = true;
         $signNeedsAttaching = $sign < 0;
+        // Detect a "clock" run: when hours and minutes (or seconds)
+        // share a numeric / 2-digit style, render them as
+        // "H:MM[:SS]" with sub-second values fused into a fraction.
+        $clockUnits = ['hours', 'minutes', 'seconds'];
+        $clockNumeric = true;
+        foreach ($clockUnits as $u) {
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $st = self::extractInternalString($df, $unitSlot, 'short');
+            if (!in_array($st, ['numeric', '2-digit'], true)) {
+                $clockNumeric = false;
+                break;
+            }
+        }
+        $clockSkip = $clockNumeric
+            ? ['hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds']
+            : [];
         foreach ($units as $u => $singular) {
+            if (in_array($u, $clockSkip, true)) {
+                if ($u === 'hours') {
+                    // The clock segment appears at the "hours"
+                    // position in the spec's table-2 ordering.
+                    $clockSeg = self::renderClockSegment(
+                        $df,
+                        $values,
+                        $isFirstSegment && $signNeedsAttaching,
+                    );
+                    if ($clockSeg !== null) {
+                        $segments[] = $clockSeg;
+                        $signNeedsAttaching = false;
+                        $isFirstSegment = false;
+                    }
+                }
+                continue;
+            }
             $n = $values[$u];
             $displaySlot = '[[' . ucfirst($u) . 'Display]]';
             $display = self::extractInternalString($df, $displaySlot, 'auto');
@@ -9946,6 +9979,99 @@ class IntlObject
             'nl' => ' en ',
             default => null,
         };
+    }
+
+    /**
+     * Render the H:MM:SS[.fff] clock-style segment used by the
+     * "digital" DurationFormat style. Returns null when the
+     * resulting segment would be empty (all clock units are zero
+     * with display:"auto").
+     *
+     * @param array<string, float> $values
+     */
+    private static function renderClockSegment(
+        JsObject $df,
+        array $values,
+        bool $signNeedsAttaching,
+    ): ?string {
+        $hours = (int) abs($values['hours'] ?? 0.0);
+        $minutes = (int) abs($values['minutes'] ?? 0.0);
+        $seconds = (int) abs($values['seconds'] ?? 0.0);
+        $hoursDisplay = self::extractInternalString($df, '[[HoursDisplay]]', 'auto');
+        $minutesDisplay = self::extractInternalString($df, '[[MinutesDisplay]]', 'auto');
+        $secondsDisplay = self::extractInternalString($df, '[[SecondsDisplay]]', 'auto');
+        $hourStyle = self::extractInternalString($df, '[[Hours]]', 'numeric');
+        // Build the fractional suffix by combining sub-second units.
+        $msVal = (int) abs($values['milliseconds'] ?? 0.0);
+        $usVal = (int) abs($values['microseconds'] ?? 0.0);
+        $nsVal = (int) abs($values['nanoseconds'] ?? 0.0);
+        $fracTotalNs = $msVal * 1000000 + $usVal * 1000 + $nsVal;
+        $fdVal = $df->get('[[FractionalDigits]]');
+        $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
+        $fracStr = '';
+        if ($fdLimit === null) {
+            // Default: render only as many sub-second digits as needed.
+            if ($fracTotalNs > 0) {
+                $padded = str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT);
+                $fracStr = '.' . rtrim($padded, '0');
+            }
+        } elseif ($fdLimit > 0) {
+            $padded = str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT);
+            $fracStr = '.' . substr($padded, 0, $fdLimit);
+        }
+        // Decide whether each clock unit shows up. Each unit's
+        // display flag is independent; subsequent units are NOT
+        // auto-promoted to show when only one earlier unit is
+        // display:"always" — V8 only joins them with ":" when
+        // multiple non-zero / always-shown units actually appear.
+        $showHours = $hours !== 0 || $hoursDisplay === 'always';
+        $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
+        $showSeconds = $seconds !== 0 || $secondsDisplay === 'always'
+            || $fracStr !== '';
+        // Bridge gaps: "1h, 0m, 1s" all-displayed needs the middle
+        // zero to bridge so we render "1:00:01".
+        $shownCount = (int) $showHours + (int) $showMinutes + (int) $showSeconds;
+        if ($shownCount === 0) {
+            return null;
+        }
+        // When only ONE clock unit shows up, render it bare (no
+        // colons) so the test262 zero-clock fixtures get "0" rather
+        // than "0:00:00".
+        if ($shownCount === 1) {
+            $signPrefix = $signNeedsAttaching ? '-' : '';
+            if ($showHours) {
+                return $signPrefix . ($hourStyle === '2-digit'
+                    ? str_pad((string) $hours, 2, '0', STR_PAD_LEFT)
+                    : (string) $hours);
+            }
+            if ($showMinutes) {
+                return $signPrefix . (string) $minutes;
+            }
+            return $signPrefix . (string) $seconds . $fracStr;
+        }
+        // Promote intermediate zero units so the colon-joined run
+        // doesn't have gaps (e.g. h+s shown but not m → fill m).
+        if ($showHours && $showSeconds && !$showMinutes) {
+            $showMinutes = true;
+        }
+        $parts = [];
+        if ($showHours) {
+            $parts[] = $hourStyle === '2-digit'
+                ? str_pad((string) $hours, 2, '0', STR_PAD_LEFT)
+                : (string) $hours;
+        }
+        if ($showMinutes) {
+            $parts[] = $showHours
+                ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
+                : (string) $minutes;
+        }
+        if ($showSeconds) {
+            $parts[] = ($showMinutes || $showHours)
+                ? str_pad((string) $seconds, 2, '0', STR_PAD_LEFT) . $fracStr
+                : (string) $seconds . $fracStr;
+        }
+        $rendered = implode(':', $parts);
+        return ($signNeedsAttaching ? '-' : '') . $rendered;
     }
 
     private static function formatDurationSegment(
