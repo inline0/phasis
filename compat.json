@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-26T19:38:41+00:00",
-    "updatedAt": "2026-04-26T19:38:41+00:00",
+    "generatedAt": "2026-04-26T19:42:05+00:00",
+    "updatedAt": "2026-04-26T19:42:05+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "2c81220",
+        "commit": "f4f0101",
         "isDirty": true
     },
     "environment": {
@@ -201,14 +201,14 @@
             "json-modules"
         ],
         "totals": {
-            "pass": 48844,
-            "fail": 523,
+            "pass": 48861,
+            "fail": 526,
             "skip": 518,
             "blocked": 0,
-            "pending": 609,
+            "pending": 589,
             "running": 12,
-            "attempted": 49367,
-            "known": 49885,
+            "attempted": 49387,
+            "known": 49905,
             "total": 50506,
             "passRate": 98.9
         },
@@ -230,14 +230,14 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 21958,
-                "fail": 258,
+                "pass": 21963,
+                "fail": 261,
                 "skip": 14,
                 "blocked": 0,
-                "pending": 487,
+                "pending": 479,
                 "running": 12,
-                "attempted": 22216,
-                "known": 22230,
+                "attempted": 22224,
+                "known": 22238,
                 "total": 22729,
                 "passRate": 98.8
             },
@@ -286,16 +286,16 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1349,
+                "pass": 1361,
                 "fail": 173,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 110,
+                "pending": 98,
                 "running": 0,
-                "attempted": 1522,
-                "known": 1522,
+                "attempted": 1534,
+                "known": 1534,
                 "total": 1632,
-                "passRate": 88.6
+                "passRate": 88.7
             }
         ],
         "groups": [
@@ -692,17 +692,17 @@
             {
                 "name": "built-ins/Atomics",
                 "area": "built-ins",
-                "status": "running",
-                "pass": 252,
-                "fail": 58,
+                "status": "incomplete",
+                "pass": 257,
+                "fail": 61,
                 "skip": 6,
                 "blocked": 0,
-                "pending": 48,
-                "running": 12,
-                "attempted": 310,
-                "known": 316,
+                "pending": 52,
+                "running": 0,
+                "attempted": 318,
+                "known": 324,
                 "total": 376,
-                "passRate": 81.3
+                "passRate": 80.8
             },
             {
                 "name": "built-ins/BigInt",
@@ -1187,13 +1187,13 @@
             {
                 "name": "built-ins/RegExp/property-escapes/generated",
                 "area": "built-ins",
-                "status": "incomplete",
+                "status": "running",
                 "pass": 20,
                 "fail": 23,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 416,
-                "running": 0,
+                "pending": 404,
+                "running": 12,
                 "attempted": 43,
                 "known": 43,
                 "total": 459,
@@ -2643,16 +2643,16 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1206,
+                "pass": 1218,
                 "fail": 123,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 99,
+                "pending": 87,
                 "running": 0,
-                "attempted": 1329,
-                "known": 1329,
+                "attempted": 1341,
+                "known": 1341,
                 "total": 1428,
-                "passRate": 90.7
+                "passRate": 90.8
             },
             {
                 "name": "staging/source-phase-imports",

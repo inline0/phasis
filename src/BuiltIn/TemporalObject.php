@@ -3334,6 +3334,16 @@ class TemporalObject
             self::rejectObjectWithCalendarOrTimeZone($item);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
+            $instMonthCode = null;
+            if ($useCalendarNative) {
+                $cp = self::isoToCalendarParts($cal, $y, $m, $dd);
+                if ($cp !== null) {
+                    $m = $cp['month'];
+                    $dd = $cp['day'];
+                    $instMonthCode = $cp['monthCode'];
+                }
+            }
             // Read and convert partial fields immediately in alphabetical order.
             $dayVal = $item->get('day');
             $hasDay = !($dayVal instanceof JsUndefined);
@@ -3350,19 +3360,14 @@ class TemporalObject
             if (!$hasDay && !$hasMonth && !$hasMonthCode && !$hasYear) {
                 throw new TypeError('At least one property must be provided');
             }
-            // For non-ISO calendars, month alone is ambiguous (a
-            // calendar's month numbering can shift across years);
-            // monthCode is required when changing the month and
-            // year is required without a monthCode anchor.
+            // For ANY non-ISO calendar, month alone is ambiguous (the spec
+            // requires the user to commit to a monthCode when changing the
+            // month). gregory/japanese/roc still hit this path even though
+            // they share ISO storage.
             if ($cal !== 'iso8601') {
                 if ($hasMonth && !$hasMonthCode) {
                     throw new TypeError(
                         'PlainMonthDay.with on non-ISO calendar requires monthCode, not month',
-                    );
-                }
-                if ($hasMonthCode && !$hasYear && !$hasDay) {
-                    throw new TypeError(
-                        'PlainMonthDay.with on non-ISO calendar requires year alongside monthCode',
                     );
                 }
             }
@@ -3405,6 +3410,13 @@ class TemporalObject
                     if ($overflow !== 'constrain' && $overflow !== 'reject') {
                         throw new RangeError("Invalid overflow: {$overflow}");
                     }
+                }
+            }
+            if ($useCalendarNative) {
+                $mcForIso = $hasMonthCode ? $mcStr : $instMonthCode;
+                $iso = self::pmdReferenceIsoFor($cal, $mcForIso, $hasMonthCode ? null : ($hasMonth ? $m : null), $dd);
+                if ($iso !== null) {
+                    return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
                 }
             }
             if ($overflow === 'constrain') {
