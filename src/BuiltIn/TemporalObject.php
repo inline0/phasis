@@ -1318,7 +1318,13 @@ class TemporalObject
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $ns = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone);
+            // PlainDate.toZonedDateTime always uses StartOfDay
+            // semantics: "compatible" disambiguation forward-shifts
+            // a skipped midnight (e.g. Brazilian DST that skipped
+            // 00:00 some years).
+            $ns = self::isoDateTimeToEpochNsDisambiguated(
+                $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone, 'compatible',
+            );
             return self::createZonedDateTimeObject($ns, $timeZone, $cal);
         }, 1);
 
@@ -2257,7 +2263,7 @@ class TemporalObject
             $tzArg = $args[0] ?? JsUndefined::instance();
             $tzName = self::toTemporalTimeZoneIdentifier($tzArg);
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            // Read disambiguation option.
+            $disam = 'compatible';
             if ($options instanceof JsObject) {
                 $dv = $options->get('disambiguation');
                 if (!($dv instanceof JsUndefined)) {
@@ -2278,7 +2284,9 @@ class TemporalObject
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $epochNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $tzName);
+            $epochNs = self::isoDateTimeToEpochNsDisambiguated(
+                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $tzName, $disam,
+            );
             return self::createZonedDateTimeObject($epochNs, $tzName, $cal);
         }, 1);
 
@@ -9410,6 +9418,132 @@ class TemporalObject
         $epochNs = bcmul($epochSec, '1000000000', 0);
         $subNs = (string) ($ms * 1000000 + $us * 1000 + $ns);
         return bcadd($epochNs, $subNs, 0);
+    }
+
+    /**
+     * Convert wall-clock components to an epoch ns under the given
+     * timezone, applying the disambiguation policy at DST gaps and
+     * folds:
+     *   - "earlier"   pick the earlier UTC moment.
+     *   - "later"     pick the later UTC moment.
+     *   - "compatible" forward-shift in gaps, earlier in folds.
+     *   - "reject"    throw RangeError when ambiguous.
+     */
+    private static function isoDateTimeToEpochNsDisambiguated(
+        int $y,
+        int $m,
+        int $d,
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        int $us,
+        int $ns,
+        string $tz,
+        string $disam,
+    ): string {
+        $nsPart = (int) ($ms * 1000000 + $us * 1000 + $ns);
+        // Wall-clock seconds, as if the timezone were UTC.
+        $wallUtcSec = bcadd(
+            bcmul((string) self::isoDateToDays($y, $m, $d), '86400', 0),
+            (string) ($h * 3600 + $min * 60 + $s),
+            0,
+        );
+        // Probe the timezone's offset 12h before and 12h after the
+        // wall-clock instant to detect DST transitions in the
+        // window. If both probes return the same offset there's no
+        // ambiguity.
+        try {
+            $tzObj = self::resolveTimeZone($tz);
+            $beforeSec = bcsub($wallUtcSec, '43200', 0);
+            $afterSec = bcadd($wallUtcSec, '43200', 0);
+            $offBefore = (int) (new \DateTimeImmutable('@' . $beforeSec))
+                ->setTimezone($tzObj)->format('Z');
+            $offAfter = (int) (new \DateTimeImmutable('@' . $afterSec))
+                ->setTimezone($tzObj)->format('Z');
+        } catch (\Throwable) {
+            return self::isoDateTimeToEpochNs($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $tz);
+        }
+        if ($offBefore === $offAfter) {
+            $epochSec = bcsub($wallUtcSec, (string) $offBefore, 0);
+            return bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0);
+        }
+        // Compute the two candidate epochs (as if each offset were
+        // chosen) and verify which actually carry that offset at
+        // their resolved instant. A "valid" candidate's actual
+        // offset matches the offset used to compute it.
+        $epochWithBefore = bcsub($wallUtcSec, (string) $offBefore, 0);
+        $epochWithAfter = bcsub($wallUtcSec, (string) $offAfter, 0);
+        try {
+            $actualAtBefore = (int) (new \DateTimeImmutable('@' . $epochWithBefore))
+                ->setTimezone($tzObj)->format('Z');
+            $actualAtAfter = (int) (new \DateTimeImmutable('@' . $epochWithAfter))
+                ->setTimezone($tzObj)->format('Z');
+        } catch (\Throwable) {
+            return self::isoDateTimeToEpochNs($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $tz);
+        }
+        $beforeValid = $actualAtBefore === $offBefore;
+        $afterValid = $actualAtAfter === $offAfter;
+        if ($beforeValid && $afterValid) {
+            // Fold: both interpretations are valid. Pick by UTC order.
+            $earlierEpoch = bccomp($epochWithBefore, $epochWithAfter, 0) < 0
+                ? $epochWithBefore : $epochWithAfter;
+            $laterEpoch = bccomp($epochWithBefore, $epochWithAfter, 0) < 0
+                ? $epochWithAfter : $epochWithBefore;
+            if ($disam === 'reject') {
+                throw new RangeError(
+                    'wall-clock time is ambiguous in a DST fold and disambiguation is "reject"',
+                );
+            }
+            $epochSec = ($disam === 'later') ? $laterEpoch : $earlierEpoch;
+            return bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0);
+        }
+        if (!$beforeValid && !$afterValid) {
+            // Gap: neither interpretation is valid. The wall-clock
+            // time was skipped.
+            if ($disam === 'reject') {
+                throw new RangeError(
+                    'wall-clock time falls in a DST gap and disambiguation is "reject"',
+                );
+            }
+            $earlierEpoch = bccomp($epochWithBefore, $epochWithAfter, 0) < 0
+                ? $epochWithBefore : $epochWithAfter;
+            $laterEpoch = bccomp($epochWithBefore, $epochWithAfter, 0) < 0
+                ? $epochWithAfter : $epochWithBefore;
+            // For gap, "earlier" picks the moment with the wall-
+            // clock interpretation that points BEFORE the gap;
+            // "later"/"compatible" point AFTER. The "before" offset
+            // applied to the wall lands AT or BEFORE the
+            // transition; the "after" offset lands AT or AFTER.
+            // "earlier" disambiguation -> use the BEFORE offset's
+            // candidate, which lies AFTER the actual transition (so
+            // ironically the LATER UTC). The spec is:
+            //   earlier: pick offset that gives the earlier UTC
+            //   later:   pick offset that gives the later UTC
+            //   compatible (gap): later
+            $epochSec = ($disam === 'earlier') ? $earlierEpoch : $laterEpoch;
+            return bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0);
+        }
+        // Exactly one valid interpretation.
+        $epochSec = $beforeValid ? $epochWithBefore : $epochWithAfter;
+        return bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0);
+    }
+
+    /**
+     * Days from the proleptic Gregorian epoch (1970-01-01) to the
+     * given Y/M/D. Negative for dates before 1970. Used by the
+     * disambiguation helper to compute wall-clock UTC seconds
+     * without triggering DateTimeImmutable's timezone interpretation.
+     */
+    private static function isoDateToDays(int $y, int $m, int $d): int
+    {
+        // Howard Hinnant's days_from_civil algorithm.
+        $y -= ($m <= 2) ? 1 : 0;
+        $era = intdiv($y >= 0 ? $y : $y - 399, 400);
+        $yoe = $y - $era * 400;
+        $doy = intdiv(153 * ($m + ($m > 2 ? -3 : 9)) + 2, 5) + $d - 1;
+        $doe = $yoe * 365 + intdiv($yoe, 4) - intdiv($yoe, 100) + $doy;
+        return $era * 146097 + $doe - 719468;
     }
 
     /** Return the UTC offset in nanoseconds for the given timezone at a given epoch-ns instant. */
