@@ -6256,11 +6256,18 @@ class IntlObject
                 if (is_nan($rawIndex)) {
                     $rawIndex = 0.0;
                 }
+                // ToInteger BEFORE the range check, per spec: -0.1
+                // becomes -0 (== 0), so it's in range.
                 $utf16Length = self::utf8ByteToUtf16Index($str, strlen($str));
-                if (!is_finite($rawIndex) || $rawIndex < 0 || $rawIndex >= $utf16Length) {
+                if (!is_finite($rawIndex)) {
                     return JsUndefined::instance();
                 }
-                $index = (int) ($rawIndex >= 0 ? floor($rawIndex) : -floor(-$rawIndex));
+                $index = (int) ($rawIndex >= 0
+                    ? floor($rawIndex)
+                    : -floor(-$rawIndex));
+                if ($index < 0 || $index >= $utf16Length) {
+                    return JsUndefined::instance();
+                }
                 $byteIdx = self::utf16IndexToUtf8Byte($str, $index);
                 [$start, $end] = self::segmentBoundsAt($str, $byteIdx, $granularity);
                 $segment = substr($str, $start, $end - $start);
