@@ -8854,18 +8854,9 @@ class IntlObject
             $duration = $args[0] ?? JsUndefined::instance();
             // Run through the same validation as format() so invalid
             // input produces the spec-required TypeError / RangeError.
-            $rendered = self::durationFormatRender($this_, $duration);
-            $arr = new JsArray();
-            if ($rendered !== '') {
-                $part = new JsObject();
-                self::defineDataProp($part, 'type', new JsString('literal'));
-                self::defineDataProp($part, 'value', new JsString($rendered));
-                $arr->set('0', $part);
-                $arr->set('length', new JsNumber(1.0));
-            } else {
-                $arr->set('length', new JsNumber(0.0));
-            }
-            return $arr;
+            // Use the partitioned representation rather than the
+            // pre-joined string so the parts shape mirrors the spec.
+            return self::durationFormatToParts($this_, $duration);
         }, 1);
         $proto->defineOwnProperty(
             'formatToParts',
@@ -8938,6 +8929,183 @@ class IntlObject
      * by a list separator. A best-effort fallback for locales we
      * don't have CLDR unit data for.
      */
+    private static function durationFormatToParts(JsObject $df, JsValue $duration): JsArray
+    {
+        // Validate the input through the same gate as format(): this
+        // throws TypeError / RangeError for malformed durations.
+        $values = self::durationToValues($df, $duration);
+        $sign = self::durationOverallSign($values);
+        $style = self::extractInternalString($df, '[[Style]]', 'short');
+        $listSep = $style === 'narrow' ? ' ' : ', ';
+        $units = [
+            'years' => 'year', 'months' => 'month', 'weeks' => 'week',
+            'days' => 'day', 'hours' => 'hour', 'minutes' => 'minute',
+            'seconds' => 'second', 'milliseconds' => 'millisecond',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
+        ];
+        $arr = new JsArray();
+        $idx = 0;
+        $emit = static function (
+            string $type,
+            string $value,
+            ?string $unit = null,
+        ) use (&$arr, &$idx): void {
+            if ($value === '') {
+                return;
+            }
+            $part = new JsObject();
+            self::defineDataProp($part, 'type', new JsString($type));
+            self::defineDataProp($part, 'value', new JsString($value));
+            if ($unit !== null) {
+                self::defineDataProp($part, 'unit', new JsString($unit));
+            }
+            $arr->set((string) $idx++, $part);
+        };
+        $isFirstSegment = true;
+        $signNeedsAttaching = $sign < 0;
+        foreach ($units as $u => $singular) {
+            $n = $values[$u];
+            $displaySlot = '[[' . ucfirst($u) . 'Display]]';
+            $display = self::extractInternalString($df, $displaySlot, 'auto');
+            if ($n === 0.0 && $display !== 'always') {
+                continue;
+            }
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $unitStyle = self::extractInternalString($df, $unitSlot, 'short');
+            if (!$isFirstSegment) {
+                $emit('literal', $listSep);
+            }
+            $renderInt = (int) abs($n);
+            if ($isFirstSegment && $signNeedsAttaching) {
+                $emit('integer', '-' . $renderInt, $singular);
+                $signNeedsAttaching = false;
+            } else {
+                $emit('integer', (string) $renderInt, $singular);
+            }
+            $unitLabel = self::durationUnitLabelFor($u, $unitStyle, $singular);
+            if ($unitStyle === 'narrow') {
+                $emit('unit', $unitLabel, $singular);
+            } else {
+                // The intra-segment space carries the unit attribute,
+                // since it's part of the unit's pattern (only the
+                // inter-segment list separator is a bare literal).
+                $emit('literal', ' ', $singular);
+                $emit('unit', $unitLabel, $singular);
+            }
+            $isFirstSegment = false;
+        }
+        $arr->set('length', new JsNumber((float) $idx));
+        return $arr;
+    }
+
+    /** Resolve the unit label string used in the parts emission. */
+    private static function durationUnitLabelFor(string $unit, string $style, string $singular): string
+    {
+        static $shortLabels = [
+            'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
+            'days' => 'd', 'hours' => 'h', 'minutes' => 'min',
+            'seconds' => 's', 'milliseconds' => 'ms',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'ns',
+        ];
+        static $longLabels = [
+            'years' => 'years', 'months' => 'months', 'weeks' => 'weeks',
+            'days' => 'days', 'hours' => 'hours', 'minutes' => 'minutes',
+            'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'nanoseconds',
+        ];
+        if ($style === 'long') {
+            return $longLabels[$unit] ?? $singular;
+        }
+        return $shortLabels[$unit] ?? $singular;
+    }
+
+    /**
+     * Extract validated unit values from a duration object. Throws
+     * the same TypeError / RangeError gates as format().
+     *
+     * @return array<string, float>
+     */
+    private static function durationToValues(JsObject $df, JsValue $duration): array
+    {
+        // Reuse the validation pass from durationFormatRender by
+        // walking the input directly.
+        if ($duration instanceof JsString) {
+            throw new RangeError('Invalid duration string');
+        }
+        if (
+            $duration instanceof JsUndefined
+            || $duration instanceof JsNull
+            || $duration instanceof JsBoolean
+            || $duration instanceof JsNumber
+            || $duration instanceof \PhpJs\Value\JsBigInt
+            || $duration instanceof JsSymbol
+        ) {
+            throw new TypeError('Intl.DurationFormat requires a duration object');
+        }
+        if (!$duration instanceof JsObject) {
+            throw new TypeError('Intl.DurationFormat requires a duration object');
+        }
+        $units = [
+            'years', 'months', 'weeks', 'days',
+            'hours', 'minutes', 'seconds',
+            'milliseconds', 'microseconds', 'nanoseconds',
+        ];
+        $hasAnyDurationProp = false;
+        foreach ($units as $u) {
+            if (!$duration->get($u) instanceof JsUndefined) {
+                $hasAnyDurationProp = true;
+                break;
+            }
+        }
+        if (!$hasAnyDurationProp) {
+            throw new TypeError('Duration record requires at least one duration property');
+        }
+        $values = [];
+        $sign = 0;
+        foreach ($units as $u) {
+            $val = $duration->get($u);
+            if ($val instanceof JsUndefined) {
+                $values[$u] = 0.0;
+                continue;
+            }
+            if (!$val instanceof JsNumber) {
+                throw new TypeError("Duration {$u} must be a number");
+            }
+            $n = $val->value;
+            if (is_nan($n) || !is_finite($n) || floor($n) !== $n) {
+                throw new RangeError("Duration {$u} must be an integer");
+            }
+            if (in_array($u, ['years', 'months', 'weeks'], true) && abs($n) >= 4294967296.0) {
+                throw new RangeError("Duration {$u} is out of range");
+            }
+            $values[$u] = $n;
+            if ($n !== 0.0) {
+                $thisSign = $n > 0 ? 1 : -1;
+                if ($sign !== 0 && $thisSign !== $sign) {
+                    throw new RangeError('Duration values must share a sign');
+                }
+                $sign = $thisSign;
+            }
+        }
+        return $values;
+    }
+
+    /**
+     * @param array<string, float> $values
+     */
+    private static function durationOverallSign(array $values): int
+    {
+        foreach ($values as $n) {
+            if ($n < 0) {
+                return -1;
+            }
+            if ($n > 0) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+
     private static function durationFormatRender(JsObject $df, JsValue $duration): string
     {
         // Spec ToDurationRecord:
