@@ -10020,23 +10020,29 @@ class IntlObject
             $fracStr = '.' . substr($padded, 0, $fdLimit);
         }
         // Decide whether each clock unit shows up. Each unit's
-        // display flag is independent; subsequent units are NOT
-        // auto-promoted to show when only one earlier unit is
-        // display:"always" — V8 only joins them with ":" when
-        // multiple non-zero / always-shown units actually appear.
+        // display flag is independent; we then bridge gaps so
+        // colon-joined runs render contiguously.
         $showHours = $hours !== 0 || $hoursDisplay === 'always';
         $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
         $showSeconds = $seconds !== 0 || $secondsDisplay === 'always'
             || $fracStr !== '';
-        // Bridge gaps: "1h, 0m, 1s" all-displayed needs the middle
-        // zero to bridge so we render "1:00:01".
+        // V8 / spec: when seconds show, minutes appear too (for
+        // ":SS" form). Then if minutes show, hours follow only if
+        // hours has a non-zero value or always-display.
+        if ($showSeconds && !$showMinutes && $minutesDisplay !== 'auto') {
+            $showMinutes = true;
+        }
+        if ($showSeconds) {
+            // The spec emits ":SS" form whenever seconds appear, so
+            // promote minutes regardless of its display:auto flag.
+            $showMinutes = true;
+        }
         $shownCount = (int) $showHours + (int) $showMinutes + (int) $showSeconds;
         if ($shownCount === 0) {
             return null;
         }
-        // When only ONE clock unit shows up, render it bare (no
-        // colons) so the test262 zero-clock fixtures get "0" rather
-        // than "0:00:00".
+        // Single-unit clock renders bare (no colons) for fixtures
+        // like "{hours: 0}" with display:always returning just "0".
         if ($shownCount === 1) {
             $signPrefix = $signNeedsAttaching ? '-' : '';
             if ($showHours) {
@@ -10061,12 +10067,18 @@ class IntlObject
                 : (string) $hours;
         }
         if ($showMinutes) {
-            $parts[] = $showHours
+            // Pad minutes to 2-digit whenever it precedes seconds,
+            // OR follows hours, OR its own style is 2-digit.
+            $minStyle = self::extractInternalString($df, '[[Minutes]]', 'short');
+            $padMin = $showHours || $showSeconds || $minStyle === '2-digit';
+            $parts[] = $padMin
                 ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
                 : (string) $minutes;
         }
         if ($showSeconds) {
-            $parts[] = ($showMinutes || $showHours)
+            $secStyle = self::extractInternalString($df, '[[Seconds]]', 'short');
+            $padSec = $showMinutes || $showHours || $secStyle === '2-digit';
+            $parts[] = $padSec
                 ? str_pad((string) $seconds, 2, '0', STR_PAD_LEFT) . $fracStr
                 : (string) $seconds . $fracStr;
         }
