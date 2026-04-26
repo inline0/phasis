@@ -1766,15 +1766,13 @@ class IntlObject
                 ? self::formatNumber($this_, $start, $startBig) : (string) $start;
             $endStr = extension_loaded('intl')
                 ? self::formatNumber($this_, $end, $endBig) : (string) $end;
-            // Approximately sign: when distinct numeric inputs round
-            // to the same formatted output, the spec mandates an
-            // "approximately" prefix so the consumer can tell that
-            // the range collapsed only after rounding.
+            // Approximately sign: when both endpoints render to the
+            // same formatted output, the spec prepends an
+            // "approximately" prefix even when the numeric inputs
+            // were equal (the prefix doubles as "this is the only
+            // value in the range" indicator).
             if ($startStr === $endStr) {
-                if ($start !== $end) {
-                    return new JsString(self::numberFormatApproximatelyPrefix($this_) . $startStr);
-                }
-                return new JsString($startStr);
+                return new JsString(self::numberFormatApproximatelyPrefix($this_) . $startStr);
             }
             $sep = self::numberFormatRangeSeparator($this_);
             // Currency formatRange collapses shared affixes so the
@@ -1888,6 +1886,7 @@ class IntlObject
             };
             $startParts = self::numberFormatToParts($this_, $startStr, $start);
             if ($startStr === $endStr) {
+                $emit('approximatelySign', self::numberFormatApproximatelyPrefix($this_), 'shared');
                 $appendTyped($startParts, 'shared');
             } else {
                 $endParts = self::numberFormatToParts($this_, $endStr, $end);
