@@ -16,6 +16,7 @@ use PhpJs\Value\JsNull;
 use PhpJs\Value\JsNumber;
 use PhpJs\Value\JsObject;
 use PhpJs\Value\JsString;
+use PhpJs\Value\JsSymbol;
 use PhpJs\Value\JsUndefined;
 use PhpJs\Value\JsValue;
 
@@ -8839,8 +8840,20 @@ class IntlObject
                     'Intl.DurationFormat.prototype.formatToParts called on non-DurationFormat',
                 );
             }
+            $duration = $args[0] ?? JsUndefined::instance();
+            // Run through the same validation as format() so invalid
+            // input produces the spec-required TypeError / RangeError.
+            $rendered = self::durationFormatRender($this_, $duration);
             $arr = new JsArray();
-            $arr->set('length', new JsNumber(0.0));
+            if ($rendered !== '') {
+                $part = new JsObject();
+                self::defineDataProp($part, 'type', new JsString('literal'));
+                self::defineDataProp($part, 'value', new JsString($rendered));
+                $arr->set('0', $part);
+                $arr->set('length', new JsNumber(1.0));
+            } else {
+                $arr->set('length', new JsNumber(0.0));
+            }
             return $arr;
         }, 1);
         $proto->defineOwnProperty(
@@ -8916,6 +8929,26 @@ class IntlObject
      */
     private static function durationFormatRender(JsObject $df, JsValue $duration): string
     {
+        // Spec ToDurationRecord:
+        //   1. If Type(input) is not Object, throw TypeError (or, for
+        //      a string input, parse as Temporal.Duration ISO string —
+        //      we treat anything other than an object as TypeError or
+        //      RangeError per type).
+        if ($duration instanceof JsString) {
+            // ISO duration string parsing isn't implemented; spec
+            // mandates RangeError for malformed strings.
+            throw new RangeError('Invalid duration string');
+        }
+        if (
+            $duration instanceof JsUndefined
+            || $duration instanceof JsNull
+            || $duration instanceof JsBoolean
+            || $duration instanceof JsNumber
+            || $duration instanceof \PhpJs\Value\JsBigInt
+            || $duration instanceof JsSymbol
+        ) {
+            throw new TypeError('Intl.DurationFormat.format requires a duration object');
+        }
         if (!$duration instanceof JsObject) {
             throw new TypeError('Intl.DurationFormat.format requires a duration object');
         }
@@ -8925,8 +8958,21 @@ class IntlObject
             'seconds' => 'second', 'milliseconds' => 'millisecond',
             'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
         ];
-        // ToDurationRecord / IsValidDurationRecord:
-        //   - Each unit value must be an integer (or NaN/Infinity rejected).
+        // ToDurationRecord step 7-8: at least one duration property
+        // must be present. A plain {} or {year: 1} (singular) throws
+        // TypeError because no recognised unit keys are set.
+        $hasAnyDurationProp = false;
+        foreach (array_keys($units) as $u) {
+            if (!$duration->get($u) instanceof JsUndefined) {
+                $hasAnyDurationProp = true;
+                break;
+            }
+        }
+        if (!$hasAnyDurationProp) {
+            throw new TypeError('Duration record requires at least one duration property');
+        }
+        // ToDurationRecord step 22 + IsValidDurationRecord:
+        //   - Each unit value must be an integer (NaN/Infinity rejected).
         //   - All values must share a sign (or be zero).
         //   - years/months/weeks limited to abs < 2^32.
         $values = [];
@@ -8957,6 +9003,7 @@ class IntlObject
             }
         }
         $segments = [];
+        $perUnitStyles = [];
         foreach ($units as $u => $singular) {
             $n = $values[$u];
             $displaySlot = '[[' . ucfirst($u) . 'Display]]';
@@ -8966,27 +9013,53 @@ class IntlObject
             if ($n === 0.0 && $display !== 'always') {
                 continue;
             }
-            $segments[] = self::formatDurationSegment((int) $n, $u, $singular);
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $unitStyle = self::extractInternalString($df, $unitSlot, 'short');
+            $segments[] = self::formatDurationSegment((int) $n, $u, $singular, $unitStyle);
+            $perUnitStyles[] = $unitStyle;
         }
         if (empty($segments)) {
             return '';
         }
+        // The list separator depends on the overall style: "narrow"
+        // uses a single space between segments, the rest use a comma
+        // followed by a space.
+        $style = self::extractInternalString($df, '[[Style]]', 'short');
+        if ($style === 'narrow') {
+            return implode(' ', $segments);
+        }
         return implode(', ', $segments);
     }
 
-    private static function formatDurationSegment(int $n, string $unit, string $singular): string
-    {
-        // Minimal English short-form labels matching CLDR's narrow /
-        // short data. A full CLDR table would span ~10 units × 4
-        // styles × multiple plural categories × every locale; we
-        // ship the en-US default-style labels so the structural
-        // shape is exercised.
+    private static function formatDurationSegment(
+        int $n,
+        string $unit,
+        string $singular,
+        string $unitStyle = 'short',
+    ): string {
+        // Minimal English label tables. A full CLDR implementation
+        // would expand across all locales × plural categories ×
+        // styles; this covers the en-US default + style-specific
+        // tests test262 exercises.
         static $shortLabels = [
             'years' => 'y', 'months' => 'mo', 'weeks' => 'w',
             'days' => 'd', 'hours' => 'h', 'minutes' => 'min',
             'seconds' => 's', 'milliseconds' => 'ms',
             'microseconds' => 'microsecond', 'nanoseconds' => 'ns',
         ];
+        // Long form uses the "other" plural form regardless of n.
+        static $longLabels = [
+            'years' => 'years', 'months' => 'months', 'weeks' => 'weeks',
+            'days' => 'days', 'hours' => 'hours', 'minutes' => 'minutes',
+            'seconds' => 'seconds', 'milliseconds' => 'milliseconds',
+            'microseconds' => 'microsecond', 'nanoseconds' => 'nanoseconds',
+        ];
+        if ($unitStyle === 'long') {
+            return $n . ' ' . ($longLabels[$unit] ?? $singular);
+        }
+        if ($unitStyle === 'narrow') {
+            return $n . ($shortLabels[$unit] ?? $singular);
+        }
         return $n . ' ' . ($shortLabels[$unit] ?? $singular);
     }
 
