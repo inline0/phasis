@@ -4316,6 +4316,18 @@ class IntlObject
         ): JsValue {
             $dateArg = $args[0] ?? JsUndefined::instance();
 
+            // Temporal type dispatch: PlainDate/PlainDateTime/PlainTime/
+            // PlainYearMonth/PlainMonthDay/Instant/ZonedDateTime get
+            // their own validation + UTC-rendering paths so a plain
+            // type formats exactly the components it carries (the
+            // formatter's [[TimeZone]] is ignored for the plain types).
+            if ($dateArg instanceof JsObject && self::isTemporalDateLike($dateArg)) {
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Intl.DateTimeFormat.format requires a DateTimeFormat');
+                }
+                return new JsString(self::formatTemporal($this_, $dateArg));
+            }
+
             // Get timestamp from Date object or number. Per spec, the
             // value goes through ToNumber and is then validated via
             // TimeClip; non-finite numbers throw RangeError.
@@ -5121,6 +5133,342 @@ class IntlObject
         $result = $formatter->format($dt);
         $secFallback = (int) floor($timestampMs / 1000);
         return $result === false ? date('Y-m-d H:i:s', $secFallback) : $result;
+    }
+
+    /**
+     * Detect whether the given object is one of the Temporal types
+     * that DateTimeFormat should handle directly (PlainDate,
+     * PlainDateTime, PlainTime, PlainYearMonth, PlainMonthDay,
+     * Instant, ZonedDateTime). Identification is by internal slot
+     * since the prototype getters can be tampered with.
+     */
+    private static function isTemporalDateLike(JsObject $obj): bool
+    {
+        return $obj->has('[[IsPlainDate]]')
+            || $obj->has('[[IsPlainDateTime]]')
+            || $obj->has('[[IsPlainTime]]')
+            || $obj->has('[[IsPlainYearMonth]]')
+            || $obj->has('[[IsPlainMonthDay]]')
+            || $obj->has('[[IsZonedDateTime]]')
+            || (
+                $obj->has('[[EpochNanoseconds]]')
+                && !$obj->has('[[IsZonedDateTime]]')
+            );
+    }
+
+    /**
+     * Format a Temporal object using the DateTimeFormat options.
+     * Plain types render with a UTC IntlDateFormatter so the
+     * formatter's [[TimeZone]] option doesn't shift the components;
+     * Instant/ZonedDateTime use their epoch nanoseconds directly.
+     */
+    private static function formatTemporal(JsObject $dtf, JsObject $obj): string
+    {
+        if ($obj->has('[[IsZonedDateTime]]')) {
+            // Spec: Temporal.ZonedDateTime is rejected by format()
+            // and formatToParts(); the user must call its
+            // toLocaleString instead.
+            throw new TypeError('Temporal.ZonedDateTime is not supported in DateTimeFormat.format');
+        }
+        // Validate: PlainTime can't be used with date-only options;
+        // PlainDate can't be used with time-only options; etc.
+        self::checkTemporalOptionsCompat($dtf, $obj);
+
+        if ($obj->has('[[EpochNanoseconds]]')) {
+            // Instant: uses epoch nanoseconds; the formatter must
+            // have an explicit time zone set.
+            $epochNsStr = self::extractInternalString($obj, '[[EpochNanoseconds]]', '0');
+            $tsMs = self::epochNsToMs($epochNsStr);
+            return self::formatDateTimeMs($dtf, $tsMs);
+        }
+        // Plain types: assemble a UTC timestamp from the date/time
+        // slots, then format with a UTC-locked formatter whose
+        // pattern has been narrowed to the unit's representable
+        // fields (e.g. PlainDate strips time tokens; PlainTime
+        // strips date tokens).
+        [$y, $m, $d, $h, $min, $s, $ms] = self::temporalPlainComponents($obj);
+        $dt = new \DateTimeImmutable(
+            sprintf('%04d-%02d-%02dT%02d:%02d:%02d.%06dZ', $y, $m, $d, $h, $min, $s, $ms * 1000),
+            new \DateTimeZone('UTC'),
+        );
+        $formatter = self::temporalFormatterFor($dtf, $obj);
+        $result = $formatter->format($dt);
+        return $result === false ? '' : $result;
+    }
+
+    /**
+     * Build an IntlDateFormatter scoped to the fields a Temporal
+     * plain type can render. PlainDate keeps date pattern letters
+     * (yMd, weekday, era), drops time letters (hms, S, a). PlainTime
+     * is the inverse. Forces the time zone to UTC so the assembled
+     * components don't shift.
+     */
+    private static function temporalFormatterFor(JsObject $dtf, JsObject $obj): \IntlDateFormatter
+    {
+        $base = self::dateTimeFormatterFor($dtf);
+        $base->setTimeZone(new \DateTimeZone('UTC'));
+        $pattern = $base->getPattern();
+        if (!is_string($pattern) || $pattern === '') {
+            return $base;
+        }
+        $isPlainDate = $obj->has('[[IsPlainDate]]');
+        $isPlainTime = $obj->has('[[IsPlainTime]]');
+        $isPlainYearMonth = $obj->has('[[IsPlainYearMonth]]');
+        $isPlainMonthDay = $obj->has('[[IsPlainMonthDay]]');
+        $timeLetters = ['h', 'H', 'K', 'k', 'm', 's', 'S', 'a', 'B', 'z', 'Z', 'O', 'v', 'V', 'X', 'x'];
+        $dateLetters = ['G', 'y', 'Y', 'u', 'r', 'M', 'L', 'd', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W', 'Q', 'q', 'U'];
+        if ($isPlainDate || $isPlainYearMonth || $isPlainMonthDay) {
+            $stripLetters = $timeLetters;
+        } elseif ($isPlainTime) {
+            $stripLetters = $dateLetters;
+        } else {
+            return $base;
+        }
+        if ($isPlainYearMonth) {
+            $stripLetters = array_merge($stripLetters, ['d', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W']);
+        }
+        if ($isPlainMonthDay) {
+            $stripLetters = array_merge($stripLetters, ['G', 'y', 'Y', 'u', 'r', 'U']);
+        }
+        // Build a new skeleton from the surviving pattern letters and
+        // ask IntlDatePatternGenerator to produce a clean pattern.
+        // This drops orphan connector words like "at" / commas that
+        // the simple letter-strip approach can leave behind.
+        $skeleton = self::extractPatternSkeleton($pattern, $stripLetters);
+        $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
+        if ($skeleton !== '' && class_exists('IntlDatePatternGenerator')) {
+            try {
+                $gen = new \IntlDatePatternGenerator($locale);
+                $newPattern = $gen->getBestPattern($skeleton);
+                if (is_string($newPattern) && $newPattern !== '') {
+                    $base->setPattern($newPattern);
+                    return $base;
+                }
+            } catch (\Throwable) {
+            }
+        }
+        // Fallback: simple letter stripping.
+        $newPattern = self::stripPatternLetters($pattern, $stripLetters);
+        $base->setPattern($newPattern);
+        return $base;
+    }
+
+    /**
+     * Walk the pattern, collect each surviving letter run as a
+     * skeleton fragment (e.g. "MMM" + "d" + "y" → "MMMdy"). The
+     * resulting skeleton is what IntlDatePatternGenerator expects.
+     *
+     * @param list<string> $stripLetters
+     */
+    private static function extractPatternSkeleton(string $pattern, array $stripLetters): string
+    {
+        $stripSet = array_flip($stripLetters);
+        $out = '';
+        $len = strlen($pattern);
+        $inQuote = false;
+        $i = 0;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                if ($inQuote && $i + 1 < $len && $pattern[$i + 1] === "'") {
+                    $i += 2;
+                    continue;
+                }
+                $inQuote = !$inQuote;
+                $i++;
+                continue;
+            }
+            if ($inQuote) {
+                $i++;
+                continue;
+            }
+            $isLetter = ($c >= 'a' && $c <= 'z') || ($c >= 'A' && $c <= 'Z');
+            if (!$isLetter) {
+                $i++;
+                continue;
+            }
+            $j = $i;
+            while ($j < $len && $pattern[$j] === $c) {
+                $j++;
+            }
+            if (!isset($stripSet[$c])) {
+                $out .= substr($pattern, $i, $j - $i);
+            }
+            $i = $j;
+        }
+        return $out;
+    }
+
+    /**
+     * Remove the given pattern-letter runs from a CLDR pattern,
+     * keeping quoted literals intact and collapsing the surrounding
+     * separators (commas, "at", connector words) when possible.
+     *
+     * @param list<string> $letters
+     */
+    private static function stripPatternLetters(string $pattern, array $letters): string
+    {
+        $stripSet = array_flip($letters);
+        // Walk the pattern and collect tokens (quoted literals,
+        // unquoted runs of pattern letters, or unquoted "other"
+        // separators). Then drop tokens whose pattern letter is in
+        // the strip set, plus any separator tokens left dangling
+        // (e.g. "/" between two stripped runs).
+        $tokens = [];
+        $len = strlen($pattern);
+        $inQuote = false;
+        $i = 0;
+        while ($i < $len) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                if ($inQuote && $i + 1 < $len && $pattern[$i + 1] === "'") {
+                    $tokens[] = ['kind' => 'quote', 'value' => "''"];
+                    $i += 2;
+                    continue;
+                }
+                $inQuote = !$inQuote;
+                $i++;
+                continue;
+            }
+            if ($inQuote) {
+                $j = $i;
+                while ($j < $len && $pattern[$j] !== "'") {
+                    $j++;
+                }
+                $tokens[] = ['kind' => 'literal', 'value' => substr($pattern, $i, $j - $i)];
+                $i = $j;
+                continue;
+            }
+            // Pattern letter runs are ASCII A-Z / a-z only; UTF-8
+            // continuation bytes (0x80+) are non-letter separators.
+            $isLetter = ($c >= 'a' && $c <= 'z') || ($c >= 'A' && $c <= 'Z');
+            if ($isLetter) {
+                $j = $i;
+                while ($j < $len && $pattern[$j] === $c) {
+                    $j++;
+                }
+                $tokens[] = ['kind' => 'letter', 'letter' => $c, 'value' => substr($pattern, $i, $j - $i)];
+                $i = $j;
+                continue;
+            }
+            $j = $i;
+            while ($j < $len) {
+                $cc = $pattern[$j];
+                if ($cc === "'") {
+                    break;
+                }
+                $isLetterCC = ($cc >= 'a' && $cc <= 'z') || ($cc >= 'A' && $cc <= 'Z');
+                if ($isLetterCC) {
+                    break;
+                }
+                $j++;
+            }
+            $tokens[] = ['kind' => 'separator', 'value' => substr($pattern, $i, $j - $i)];
+            $i = $j;
+        }
+        // Mark letter tokens as kept or stripped.
+        foreach ($tokens as $idx => $t) {
+            if ($t['kind'] === 'letter' && isset($stripSet[$t['letter']])) {
+                $tokens[$idx]['kind'] = 'stripped';
+            }
+        }
+        // Drop separator tokens that no longer sit between two
+        // surviving letter tokens.
+        $hasKeptBefore = false;
+        $output = [];
+        $pendingSeparator = null;
+        foreach ($tokens as $t) {
+            if ($t['kind'] === 'separator') {
+                $pendingSeparator = $t['value'];
+                continue;
+            }
+            if ($t['kind'] === 'stripped') {
+                continue;
+            }
+            // Keeper (letter / literal / quote).
+            if ($pendingSeparator !== null && $hasKeptBefore) {
+                $output[] = $pendingSeparator;
+            }
+            $pendingSeparator = null;
+            $output[] = $t['value'];
+            $hasKeptBefore = true;
+        }
+        $assembled = implode('', $output);
+        // Collapse double whitespace that may have appeared.
+        $assembled = preg_replace('/[\s\x{00A0}\x{202F}]{2,}/u', ' ', $assembled) ?? $assembled;
+        return trim($assembled);
+    }
+
+    /**
+     * Decompose a Temporal plain type into [y, m, d, h, min, s, ms].
+     * Default missing components to safe values (year 1972 for
+     * PlainMonthDay, month/day 1/1 for PlainYearMonth, etc.).
+     *
+     * @return array{0:int,1:int,2:int,3:int,4:int,5:int,6:int}
+     */
+    private static function temporalPlainComponents(JsObject $obj): array
+    {
+        $getInt = static function (string $slot, int $default) use ($obj): int {
+            $v = $obj->get($slot);
+            return $v instanceof JsNumber ? (int) $v->value : $default;
+        };
+        $y = $getInt('[[ISOYear]]', 1972);
+        $m = $getInt('[[ISOMonth]]', 1);
+        $d = $getInt('[[ISODay]]', 1);
+        $h = $getInt('[[ISOHour]]', 0);
+        $min = $getInt('[[ISOMinute]]', 0);
+        $s = $getInt('[[ISOSecond]]', 0);
+        $ms = $getInt('[[ISOMillisecond]]', 0);
+        return [$y, $m, $d, $h, $min, $s, $ms];
+    }
+
+    /**
+     * Validate that the formatter's option set is compatible with
+     * the Temporal type being formatted. PlainDate can't be passed
+     * to a time-only formatter; PlainTime can't be passed to a
+     * date-only formatter; etc.
+     */
+    private static function checkTemporalOptionsCompat(JsObject $dtf, JsObject $obj): void
+    {
+        $hasTimeStyle = !$dtf->get('[[TimeStyle]]') instanceof JsUndefined;
+        $hasDateStyle = !$dtf->get('[[DateStyle]]') instanceof JsUndefined;
+        $hasHour = !$dtf->get('[[Hour]]') instanceof JsUndefined
+            || !$dtf->get('[[Minute]]') instanceof JsUndefined
+            || !$dtf->get('[[Second]]') instanceof JsUndefined;
+        $hasDate = !$dtf->get('[[Year]]') instanceof JsUndefined
+            || !$dtf->get('[[Month]]') instanceof JsUndefined
+            || !$dtf->get('[[Day]]') instanceof JsUndefined
+            || !$dtf->get('[[Weekday]]') instanceof JsUndefined;
+        if ($obj->has('[[IsPlainDate]]')) {
+            // PlainDate rejected by time-only formatters.
+            if ($hasTimeStyle && !$hasDateStyle) {
+                throw new TypeError('Temporal.PlainDate is not compatible with timeStyle');
+            }
+            if ($hasHour && !$hasDate && !$hasDateStyle) {
+                throw new TypeError('Temporal.PlainDate is not compatible with time-only formatter');
+            }
+        }
+        if ($obj->has('[[IsPlainTime]]')) {
+            if ($hasDateStyle && !$hasTimeStyle) {
+                throw new TypeError('Temporal.PlainTime is not compatible with dateStyle');
+            }
+            if ($hasDate && !$hasHour && !$hasTimeStyle) {
+                throw new TypeError('Temporal.PlainTime is not compatible with date-only formatter');
+            }
+        }
+    }
+
+    /**
+     * Convert an epoch-nanoseconds decimal string to milliseconds.
+     * Uses BC math so values past 2^53 don't lose precision.
+     */
+    private static function epochNsToMs(string $ns): float
+    {
+        if (function_exists('bcdiv')) {
+            $ms = bcdiv($ns, '1000000', 0);
+            return (float) $ms;
+        }
+        return (float) ($ns / 1000000);
     }
 
     /**
