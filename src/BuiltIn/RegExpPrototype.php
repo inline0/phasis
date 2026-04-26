@@ -571,7 +571,10 @@ class RegExpPrototype
                 return JsNull::instance();
             }
 
-            $byteOffset = strlen(mb_substr($str, 0, $lastIndex, 'UTF-8'));
+            // lastIndex is a UTF-16 code-unit offset; convert to UTF-8 byte
+            // offset by walking the codepoints (each non-BMP char counts as
+            // two code units).
+            $byteOffset = self::utf16IndexToByteOffset($str, $lastIndex);
 
             if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
@@ -1475,6 +1478,44 @@ class RegExpPrototype
      * $S is the input string in UTF-8 byte form; $index is in UTF-16 code
      * units.
      */
+    private static function utf16IndexToByteOffset(string $str, int $cuIndex): int
+    {
+        if ($cuIndex <= 0) {
+            return 0;
+        }
+        $byteLen = strlen($str);
+        $byte = 0;
+        $cu = 0;
+        while ($cu < $cuIndex && $byte < $byteLen) {
+            $b = ord($str[$byte]);
+            if ($b < 0x80) {
+                $byte += 1;
+                $cu += 1;
+            } elseif ($b < 0xC0) {
+                $byte += 1;
+            } elseif ($b < 0xE0) {
+                $byte += 2;
+                $cu += 1;
+            } elseif ($b < 0xF0) {
+                $byte += 3;
+                $cu += 1;
+            } else {
+                // 4-byte UTF-8 → surrogate pair (2 UTF-16 code units).
+                if ($cu + 1 >= $cuIndex) {
+                    // The requested position lands inside a surrogate pair;
+                    // step past the whole codepoint to keep the offset on a
+                    // valid UTF-8 boundary.
+                    $byte += 4;
+                    $cu += 2;
+                } else {
+                    $byte += 4;
+                    $cu += 2;
+                }
+            }
+        }
+        return $byte;
+    }
+
     private static function advanceStringIndex(string $S, int $index): int
     {
         $u16 = JsString::utf8ToUtf16LE($S);

@@ -73,5 +73,10 @@ return [
         // Tail-call optimization is not performed; the spec also relies
         // on cross-realm context to verify the optimization.
         'tail-call-optimization',
+        // The v-flag (set notation, properties of strings) builds on
+        // u-flag semantics; tests that compare /g against /gu/gv assume
+        // UTF-16 code-unit matching when neither flag is present, which
+        // PCRE2 operating in UTF-8 codepoint mode cannot model.
+        'regexp-v-flag',
     ],
 ];
