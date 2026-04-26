@@ -5311,72 +5311,50 @@ class TemporalObject
      */
     private static function zdtDeltaInDays(JsObject $zdt, string $endNs, string $startNs): float
     {
-        $tz = self::getSlotString($zdt, '[[TimeZone]]');
         $sign = bccomp($endNs, $startNs, 0);
         if ($sign === 0) {
             return 0.0;
         }
         $signMul = $sign > 0 ? 1 : -1;
-        $cur = $startNs;
-        $days = 0;
+        // Walk integer cal days from $zdt with wall-time preserved each step,
+        // so that DST gaps/folds change the boundary lengths but the anchor
+        // wall doesn't drift. The previous chain-of-cur approach inherited
+        // the constrained wall and produced a 24h boundary on a 23h day.
         $maxIter = 400 * 366;
-        for ($i = 0; $i < $maxIter; $i++) {
-            $parts = self::epochNsToISOParts($cur, $tz);
-            $ny = $parts['year'];
-            $nm = $parts['month'];
-            $nd = $parts['day'] + $signMul;
-            $dim = self::isoDaysInMonth($ny, $nm);
-            if ($nd > $dim) {
-                $nd = 1; $nm++;
-                if ($nm > 12) { $nm = 1; $ny++; }
-            } elseif ($nd < 1) {
-                $nm--;
-                if ($nm < 1) { $nm = 12; $ny--; }
-                $nd = self::isoDaysInMonth($ny, $nm);
-            }
-            $next = self::isoDateTimeToEpochNs(
-                $ny, $nm, $nd,
-                $parts['hour'], $parts['minute'], $parts['second'],
-                $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
-                $tz,
+        $days = 0;
+        for ($i = 1; $i < $maxIter; $i++) {
+            $stepDur = self::createDurationObject(
+                0, 0, 0, $signMul * $i, 0, 0, 0, 0, 0, 0,
             );
-            $compNext = bccomp($next, $endNs, 0);
-            $passesEnd = $signMul > 0 ? $compNext > 0 : $compNext < 0;
-            if ($passesEnd) {
-                // Leftover = remaining ns from cur to end.
-                // Divisor = length of one calendar day starting from cur
-                //   (always measured in the forward direction).
-                $leftover = bcsub($endNs, $cur, 0);
-                $forwardParts = self::epochNsToISOParts($cur, $tz);
-                $fy = $forwardParts['year'];
-                $fm = $forwardParts['month'];
-                $fd = $forwardParts['day'] + 1;
-                $fdim = self::isoDaysInMonth($fy, $fm);
-                if ($fd > $fdim) {
-                    $fd = 1; $fm++;
-                    if ($fm > 12) { $fm = 1; $fy++; }
-                }
-                $forwardNext = self::isoDateTimeToEpochNs(
-                    $fy, $fm, $fd,
-                    $forwardParts['hour'], $forwardParts['minute'], $forwardParts['second'],
-                    $forwardParts['millisecond'], $forwardParts['microsecond'], $forwardParts['nanosecond'],
-                    $tz,
-                );
-                $dayLen = bcsub($forwardNext, $cur, 0);
-                if (bccomp($dayLen, '0', 0) === 0) {
-                    return (float) $days;
-                }
-                $frac = (float) bcdiv($leftover, $dayLen, 25);
-                return (float) $days + $frac;
+            $stepNs = self::addDurationToZdt($zdt, $stepDur, 1, 'constrain');
+            $cmp = bccomp($stepNs, $endNs, 0);
+            $passes = $signMul > 0 ? $cmp > 0 : $cmp < 0;
+            if ($passes) {
+                break;
             }
-            $cur = $next;
-            $days += $signMul;
-            if ($compNext === 0) {
-                return (float) $days;
+            $days = $i;
+            if ($cmp === 0) {
+                return (float) ($signMul * $days);
             }
         }
-        $deltaNs = bcsub($endNs, $startNs, 0);
-        return (float) bcdiv($deltaNs, '86400000000000', 25);
+        $signedDays = $signMul * $days;
+        $startStepDur = self::createDurationObject(
+            0, 0, 0, $signedDays, 0, 0, 0, 0, 0, 0,
+        );
+        $startStepNs = self::addDurationToZdt($zdt, $startStepDur, 1, 'constrain');
+        $nextStepDur = self::createDurationObject(
+            0, 0, 0, $signedDays + $signMul, 0, 0, 0, 0, 0, 0,
+        );
+        $nextStepNs = self::addDurationToZdt($zdt, $nextStepDur, 1, 'constrain');
+        $dayLenNs = bcsub($nextStepNs, $startStepNs, 0);
+        $absDayLen = bccomp($dayLenNs, '0', 0) < 0 ? substr($dayLenNs, 1) : $dayLenNs;
+        if (bccomp($absDayLen, '0', 0) === 0) {
+            return (float) $signedDays;
+        }
+        $progressNs = bcsub($endNs, $startStepNs, 0);
+        $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
+        $frac = (float) bcdiv($absProgress, $absDayLen, 25);
+        return (float) $signedDays + (float) $signMul * $frac;
     }
 
     /** True if the given IANA zone has a real (offset-changing) transition
@@ -7404,6 +7382,102 @@ class TemporalObject
     /** Compute Duration.total with a relativeTo reference point. */
     private static function durationTotalWithRelativeTo(JsValue $dur, string $unit, JsValue $relativeTo): float
     {
+        // ZDT-aware totals: compute via actual epoch ns so that DST-shifted
+        // wall days and months contribute their real (23/24/25h) length.
+        if ($relativeTo instanceof JsObject && $relativeTo->has('[[IsZonedDateTime]]')) {
+            $tzZdt = self::getSlotString($relativeTo, '[[TimeZone]]');
+            $startNsZdt = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
+            $endNsZdt = self::addDurationToZdt($relativeTo, $dur, 1, 'constrain');
+            $deltaNsZdt = bcsub($endNsZdt, $startNsZdt, 0);
+            $signZdt = bccomp($deltaNsZdt, '0', 0) >= 0 ? 1 : -1;
+            $absDeltaZdt = $signZdt < 0 ? substr($deltaNsZdt, 1) : $deltaNsZdt;
+            $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
+            if (in_array($unit, $timeUnits, true)) {
+                $unitNsStr = self::temporalUnitToNs($unit);
+                return (float) ($signZdt < 0 ? '-' : '')
+                    . (string) ($unitNsStr === '1'
+                        ? $absDeltaZdt
+                        : bcdiv($absDeltaZdt, $unitNsStr, 25));
+            }
+            if ($unit === 'day' || $unit === 'week') {
+                $stepUnit = 'day';
+                $stepDays = 1;
+                $daysWalked = 0;
+                while (true) {
+                    $stepDur = self::createDurationObject(
+                        0, 0, 0, $signZdt * ($daysWalked + 1), 0, 0, 0, 0, 0, 0,
+                    );
+                    $stepNs = self::addDurationToZdt($relativeTo, $stepDur, 1, 'constrain');
+                    $cmp = bccomp($stepNs, $endNsZdt, 0);
+                    if ($signZdt > 0 ? $cmp > 0 : $cmp < 0) {
+                        break;
+                    }
+                    $daysWalked++;
+                    if ($daysWalked > 100000000) {
+                        break;
+                    }
+                }
+                $startStepDur = self::createDurationObject(
+                    0, 0, 0, $signZdt * $daysWalked, 0, 0, 0, 0, 0, 0,
+                );
+                $startStepNs = self::addDurationToZdt($relativeTo, $startStepDur, 1, 'constrain');
+                $nextStepDur = self::createDurationObject(
+                    0, 0, 0, $signZdt * ($daysWalked + 1), 0, 0, 0, 0, 0, 0,
+                );
+                $nextStepNs = self::addDurationToZdt($relativeTo, $nextStepDur, 1, 'constrain');
+                $dayLenNs = bcsub($nextStepNs, $startStepNs, 0);
+                $absDayLen = bccomp($dayLenNs, '0', 0) < 0 ? substr($dayLenNs, 1) : $dayLenNs;
+                $progressNs = bcsub($endNsZdt, $startStepNs, 0);
+                $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
+                $fracStr = bccomp($absDayLen, '0', 0) === 0
+                    ? '0'
+                    : bcdiv($absProgress, $absDayLen, 25);
+                $totalDays = (float) ((string) $daysWalked) + (float) $fracStr;
+                if ($unit === 'week') {
+                    return $signZdt * $totalDays / 7.0;
+                }
+                return (float) $signZdt * $totalDays;
+            }
+            if ($unit === 'month' || $unit === 'year') {
+                $stepCount = 0;
+                $stepField = $unit === 'year' ? 'years' : 'months';
+                while (true) {
+                    $stepDur = $unit === 'year'
+                        ? self::createDurationObject(
+                            $signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                        )
+                        : self::createDurationObject(
+                            0, $signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0,
+                        );
+                    $stepNs = self::addDurationToZdt($relativeTo, $stepDur, 1, 'constrain');
+                    $cmp = bccomp($stepNs, $endNsZdt, 0);
+                    if ($signZdt > 0 ? $cmp > 0 : $cmp < 0) {
+                        break;
+                    }
+                    $stepCount++;
+                    if ($stepCount > 100000000) {
+                        break;
+                    }
+                }
+                $startStepDur = $unit === 'year'
+                    ? self::createDurationObject($signZdt * $stepCount, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                    : self::createDurationObject(0, $signZdt * $stepCount, 0, 0, 0, 0, 0, 0, 0, 0);
+                $startStepNs = self::addDurationToZdt($relativeTo, $startStepDur, 1, 'constrain');
+                $nextStepDur = $unit === 'year'
+                    ? self::createDurationObject($signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                    : self::createDurationObject(0, $signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0);
+                $nextStepNs = self::addDurationToZdt($relativeTo, $nextStepDur, 1, 'constrain');
+                $stepLenNs = bcsub($nextStepNs, $startStepNs, 0);
+                $absStepLen = bccomp($stepLenNs, '0', 0) < 0 ? substr($stepLenNs, 1) : $stepLenNs;
+                $progressNs = bcsub($endNsZdt, $startStepNs, 0);
+                $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
+                $fracStr = bccomp($absStepLen, '0', 0) === 0
+                    ? '0'
+                    : bcdiv($absProgress, $absStepLen, 25);
+                $totalSteps = (float) ((string) $stepCount) + (float) $fracStr;
+                return (float) $signZdt * $totalSteps;
+            }
+        }
         // Parse relativeTo as a PlainDate or PlainDateTime.
         $refDate = null;
         if ($relativeTo instanceof JsObject && $relativeTo->has('[[IsPlainDate]]')) {
