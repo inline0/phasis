@@ -5270,12 +5270,12 @@ class IntlObject
 
     /**
      * Locale-blind fallback list-joiner approximating CLDR list patterns.
-     * Implements the well-known English templates for each
-     * (type, style) combination so test262's English fixtures pass.
+     * Implements the well-known English / Spanish templates for each
+     * (type, style) combination so test262's locale fixtures pass.
      *
      * @param list<string> $items
      */
-    private static function joinListItems(array $items, string $type, string $style): string
+    private static function joinListItems(array $items, string $type, string $style, string $locale = 'en'): string
     {
         $count = count($items);
         if ($count === 0) {
@@ -5284,7 +5284,7 @@ class IntlObject
         if ($count === 1) {
             return $items[0];
         }
-        [$pairSep, $startSep, $midSep, $endSep] = self::listSeparators($type, $style);
+        [$pairSep, $startSep, $midSep, $endSep] = self::listSeparators($type, $style, $locale);
         if ($count === 2) {
             return $items[0] . $pairSep . $items[1];
         }
@@ -5301,12 +5301,27 @@ class IntlObject
 
     /**
      * Return the (pair, start, middle, end) separator quadruple for the
-     * given list (type, style) combination. Mirrors English CLDR data.
+     * given list (type, style, locale) combination.
      *
      * @return array{0:string,1:string,2:string,3:string}
      */
-    private static function listSeparators(string $type, string $style): array
+    private static function listSeparators(string $type, string $style, string $locale = 'en'): array
     {
+        $lang = strtolower(strtok($locale, '-_'));
+        if ($lang === 'es') {
+            // Spanish CLDR: "y" / "o" rather than "and" / "or".
+            $endWord = $type === 'disjunction' ? ' o ' : ' y ';
+            if ($type === 'unit' && $style === 'narrow') {
+                return [' ', ' ', ' ', ' '];
+            }
+            // Spanish unit-short / unit-narrow drop the "y" / "o"
+            // word and use plain comma separators for 3+ items, but
+            // still use the word for the 2-item pair.
+            if ($type === 'unit' && $style === 'short') {
+                return [$endWord, ', ', ', ', ', '];
+            }
+            return [$endWord, ', ', ', ', $endWord];
+        }
         if ($type === 'unit' && $style === 'narrow') {
             return [' ', ' ', ' ', ' '];
         }
@@ -5424,7 +5439,8 @@ class IntlObject
             $items = self::stringListFromIterable($args[0] ?? JsUndefined::instance());
             $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
             $style = self::extractInternalString($this_, '[[Style]]', 'long');
-            return new JsString(self::joinListItems($items, $type, $style));
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            return new JsString(self::joinListItems($items, $type, $style, $locale));
         }, 1);
         $proto->defineOwnProperty('format', PropertyDescriptor::data($format, true, false, true));
 
@@ -5441,34 +5457,46 @@ class IntlObject
             $items = self::stringListFromIterable($args[0] ?? JsUndefined::instance());
             $type = self::extractInternalString($this_, '[[Type]]', 'conjunction');
             $style = self::extractInternalString($this_, '[[Style]]', 'long');
-            $combined = self::joinListItems($items, $type, $style);
+            $locale = self::extractInternalString($this_, '[[Locale]]', 'en');
+            $count = count($items);
             $result = new JsArray();
             $idx = 0;
-            $cursor = 0;
-            foreach ($items as $item) {
-                $pos = strpos($combined, $item, $cursor);
-                if ($pos === false) {
-                    continue;
-                }
-                if ($pos > $cursor) {
-                    $literal = substr($combined, $cursor, $pos - $cursor);
-                    $part = new JsObject();
-                    self::defineDataProp($part, 'type', new JsString('literal'));
-                    self::defineDataProp($part, 'value', new JsString($literal));
-                    $result->set((string) $idx++, $part);
+            $emit = static function (string $type, string $value) use (&$result, &$idx): void {
+                if ($value === '') {
+                    return;
                 }
                 $part = new JsObject();
-                self::defineDataProp($part, 'type', new JsString('element'));
-                self::defineDataProp($part, 'value', new JsString($item));
+                self::defineDataProp($part, 'type', new JsString($type));
+                self::defineDataProp($part, 'value', new JsString($value));
                 $result->set((string) $idx++, $part);
-                $cursor = $pos + strlen($item);
+            };
+            if ($count === 0) {
+                $result->set('length', new JsNumber(0.0));
+                return $result;
             }
-            if ($cursor < strlen($combined)) {
-                $part = new JsObject();
-                self::defineDataProp($part, 'type', new JsString('literal'));
-                self::defineDataProp($part, 'value', new JsString(substr($combined, $cursor)));
-                $result->set((string) $idx++, $part);
+            if ($count === 1) {
+                $emit('element', $items[0]);
+                $result->set('length', new JsNumber((float) $idx));
+                return $result;
             }
+            [$pairSep, $startSep, $midSep, $endSep] = self::listSeparators($type, $style, $locale);
+            if ($count === 2) {
+                $emit('element', $items[0]);
+                $emit('literal', $pairSep);
+                $emit('element', $items[1]);
+                $result->set('length', new JsNumber((float) $idx));
+                return $result;
+            }
+            // 3+ items: first, startSep, second, midSep*, last via endSep.
+            $emit('element', $items[0]);
+            $emit('literal', $startSep);
+            $emit('element', $items[1]);
+            for ($i = 2; $i < $count - 1; $i++) {
+                $emit('literal', $midSep);
+                $emit('element', $items[$i]);
+            }
+            $emit('literal', $endSep);
+            $emit('element', $items[$count - 1]);
             $result->set('length', new JsNumber((float) $idx));
             return $result;
         }, 1);
