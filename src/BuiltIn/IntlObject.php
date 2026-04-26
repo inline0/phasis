@@ -2852,7 +2852,20 @@ class IntlObject
                 $tzVal = $options->get('timeZone');
                 if (!$tzVal instanceof JsUndefined) {
                     $tz = TypeConversion::toString($tzVal);
-                    $isOffset = preg_match('/^[+-]\d{1,2}:?\d{0,2}$/', $tz) === 1;
+                    // Spec offset grammar: '+' / '-' followed by HH (2
+                    // digits, 00-23) and optional MM (2 digits 00-59,
+                    // optionally separated by a colon). One-digit
+                    // hours like "+3" are NOT valid.
+                    $isOffset = false;
+                    if (preg_match('/^([+-])(\d{2})(?::?(\d{2}))?$/', $tz, $offMatch) === 1) {
+                        $hh = (int) $offMatch[2];
+                        $mm = isset($offMatch[3]) && $offMatch[3] !== ''
+                            ? (int) $offMatch[3]
+                            : 0;
+                        if ($hh <= 23 && $mm <= 59) {
+                            $isOffset = true;
+                        }
+                    }
                     $canonical = null;
                     if (!$isOffset) {
                         $canonical = self::resolveTimeZoneIdentifier($tz);
@@ -2931,12 +2944,19 @@ class IntlObject
                                     "Invalid fractionalSecondDigits: {$fsd}"
                                 );
                             }
-                            $str = (string) (int) floor($fsd);
-                        } else {
-                            $str = TypeConversion::toString($val);
-                            if ($validValues !== null && !in_array($str, $validValues, true)) {
-                                throw new RangeError("Invalid {$prop}: {$str}");
-                            }
+                            $intVal = (int) floor($fsd);
+                            $hasExplicitFormatComponents = true;
+                            $obj->defineOwnProperty("[[{$prop}]]", PropertyDescriptor::data(
+                                new JsNumber((float) $intVal),
+                                false,
+                                false,
+                                false,
+                            ));
+                            continue;
+                        }
+                        $str = TypeConversion::toString($val);
+                        if ($validValues !== null && !in_array($str, $validValues, true)) {
+                            throw new RangeError("Invalid {$prop}: {$str}");
                         }
                         $hasExplicitFormatComponents = true;
                         if ($prop === 'hour') {
@@ -3334,13 +3354,22 @@ class IntlObject
                 );
             }
 
-            // Component options.
+            // Component options. fractionalSecondDigits is the only
+            // numeric one; the rest are strings from a finite set.
             foreach (
                 ['weekday', 'era', 'year', 'month', 'day', 'dayPeriod',
                 'hour', 'minute', 'second', 'fractionalSecondDigits', 'timeZoneName'] as $comp
             ) {
                 $val = $this_->get("[[{$comp}]]");
-                if (!$val instanceof JsUndefined) {
+                if ($val instanceof JsUndefined) {
+                    continue;
+                }
+                if ($comp === 'fractionalSecondDigits') {
+                    $num = $val instanceof JsNumber
+                        ? $val->value
+                        : TypeConversion::toNumber($val);
+                    self::defineDataProp($result, $comp, new JsNumber((float) $num));
+                } else {
                     self::defineDataProp($result, $comp, new JsString(TypeConversion::toString($val)));
                 }
             }
@@ -3780,8 +3809,9 @@ class IntlObject
         if ($v = $get('[[second]]')) {
             $sk .= $v === '2-digit' ? 'ss' : 's';
         }
-        if ($v = $get('[[fractionalSecondDigits]]')) {
-            $n = (int) $v;
+        $fsdVal = $dtf->get('[[fractionalSecondDigits]]');
+        if ($fsdVal instanceof JsNumber) {
+            $n = (int) $fsdVal->value;
             if ($n >= 1 && $n <= 3) {
                 $sk .= str_repeat('S', $n);
             }
