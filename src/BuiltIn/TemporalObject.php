@@ -4423,7 +4423,7 @@ class TemporalObject
         } else {
             try {
                 $tzObj = new \DateTimeZone($annotation);
-                $timeZone = $tzObj->getName();
+                $timeZone = self::canonicalizeIanaTimeZoneCase($tzObj->getName());
             } catch (\Throwable) {
                 // Might be a numeric offset like +05:30.
                 $timeZone = $annotation;
@@ -11250,6 +11250,35 @@ class TemporalObject
             && !$this_->has('[[IsZonedDateTime]]')
         ) {
             $optionsArg = self::ensureFullDateTimeOptions($optionsArg);
+        }
+        // Calendar mismatch: Plain types whose calendar isn't iso8601
+        // and disagrees with the resolved locale's calendar must
+        // throw per spec.
+        if (
+            $this_ instanceof JsObject
+            && (
+                $this_->has('[[IsPlainDate]]')
+                || $this_->has('[[IsPlainDateTime]]')
+                || $this_->has('[[IsPlainYearMonth]]')
+                || $this_->has('[[IsPlainMonthDay]]')
+            )
+        ) {
+            $instCal = $this_->get('[[Calendar]]');
+            $instCalStr = $instCal instanceof JsString ? $instCal->value : 'iso8601';
+            if ($instCalStr !== 'iso8601') {
+                $localeCal = self::resolveLocaleCalendar(
+                    $args[0] ?? JsUndefined::instance(),
+                );
+                if (
+                    $localeCal !== null
+                    && $localeCal !== 'iso8601'
+                    && $localeCal !== $instCalStr
+                ) {
+                    throw new RangeError(
+                        'Temporal type calendar does not match locale calendar',
+                    );
+                }
+            }
         }
         $proto = $dtfCtor->get('prototype');
         $obj = new JsObject($proto instanceof JsObject ? $proto : null);
