@@ -70,5 +70,8 @@ return [
         // a regex engine that lets two groups share a name in different
         // alternatives. PCRE2 doesn't expose this directly.
         'regexp-duplicate-named-groups',
+        // Tail-call optimization is not performed; the spec also relies
+        // on cross-realm context to verify the optimization.
+        'tail-call-optimization',
     ],
 ];
