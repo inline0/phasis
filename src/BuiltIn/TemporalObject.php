@@ -3333,7 +3333,10 @@ class TemporalObject
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
-            return new JsString(self::timeZoneOffsetString($ns, $tz));
+            // Preserve the exact sub-minute offset (no rounding)
+            // for the .offset getter; ISO string output uses the
+            // rounded form.
+            return new JsString(self::timeZoneOffsetString($ns, $tz, false));
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -9386,7 +9389,7 @@ class TemporalObject
         return $result;
     }
 
-    private static function timeZoneOffsetString(string $ns, string $tz): string
+    private static function timeZoneOffsetString(string $ns, string $tz, bool $roundToMinute = true): string
     {
         $negative = isset($ns[0]) && $ns[0] === '-';
         $abs = $negative ? substr($ns, 1) : $ns;
@@ -9403,14 +9406,24 @@ class TemporalObject
 
         $sign = $offset >= 0 ? '+' : '-';
         $absOffset = abs($offset);
-        // Spec FormatDateTimeUTCOffsetRounded rounds sub-minute
-        // offsets to the nearest minute (ties away from zero) so
-        // historical Africa/Monrovia (-00:44:30) becomes -00:45,
-        // matching V8.
-        $minutes = (int) round($absOffset / 60, 0, PHP_ROUND_HALF_UP);
-        $h = intdiv($minutes, 60);
-        $m = $minutes % 60;
-        return $sign . self::pad2($h) . ':' . self::pad2($m);
+        if ($roundToMinute) {
+            // Spec FormatDateTimeUTCOffsetRounded: ISO 8601 string
+            // serialization rounds sub-minute offsets to the nearest
+            // minute (ties away from zero).
+            $minutes = (int) round($absOffset / 60, 0, PHP_ROUND_HALF_UP);
+            $h = intdiv($minutes, 60);
+            $m = $minutes % 60;
+            return $sign . self::pad2($h) . ':' . self::pad2($m);
+        }
+        // ZDT.offset getter preserves the exact sub-minute offset.
+        $h = intdiv($absOffset, 3600);
+        $m = intdiv($absOffset % 3600, 60);
+        $s = $absOffset % 60;
+        $result = $sign . self::pad2($h) . ':' . self::pad2($m);
+        if ($s !== 0) {
+            $result .= ':' . self::pad2($s);
+        }
+        return $result;
     }
 
     // -----------------------------------------------------------------------
