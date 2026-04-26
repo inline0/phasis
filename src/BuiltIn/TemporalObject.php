@@ -4121,8 +4121,72 @@ class TemporalObject
                     throw new RangeError("Invalid direction: {$dir}");
                 }
             }
-            // Simplified: return null for now (full implementation requires timezone transition data).
-            return JsNull::instance();
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            // Numeric offsets and UTC have no transitions.
+            if ($tz === 'UTC' || $tz === 'GMT' || preg_match('/^[+-]\d{2}:\d{2}/', $tz)) {
+                return JsNull::instance();
+            }
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $epochSecStr = bcdiv($ns, '1000000000', 0);
+            // bcdiv with negatives: handle negative ns to floor-toward-zero.
+            $epochSec = (int) $epochSecStr;
+            try {
+                $tzObj = self::resolveTimeZone($tz);
+            } catch (\Throwable) {
+                return JsNull::instance();
+            }
+            $found = null;
+            // Cap on how far we walk: the spec range is bounded by
+            // the Instant range (~ ±9.2e18 ns ≈ 290 billion years),
+            // but in practice DST/TZDB records are within ±300y.
+            $maxSec = 9223372036; // ~292 years past epoch in seconds
+            if ($dir === 'next') {
+                $cur = $epochSec + 1;
+                $chunk = 200 * 365 * 86400; // 200 years
+                $bound = min($epochSec + $maxSec, PHP_INT_MAX - $chunk);
+                while ($cur < $bound) {
+                    $end = min($cur + $chunk, $bound);
+                    $transitions = $tzObj->getTransitions($cur, $end);
+                    if (is_array($transitions) && count($transitions) > 1) {
+                        for ($j = 1; $j < count($transitions); $j++) {
+                            $t = $transitions[$j];
+                            if (isset($t['ts']) && $t['ts'] > $epochSec) {
+                                $found = $t['ts'];
+                                break 2;
+                            }
+                        }
+                    }
+                    $cur = $end + 1;
+                }
+            } else {
+                $cur = $epochSec - 1;
+                $chunk = 200 * 365 * 86400;
+                $bound = max($epochSec - $maxSec, PHP_INT_MIN + $chunk);
+                while ($cur > $bound) {
+                    $start = max($cur - $chunk, $bound);
+                    $transitions = $tzObj->getTransitions($start, $cur);
+                    if (is_array($transitions) && count($transitions) > 1) {
+                        $candidate = null;
+                        for ($j = 1; $j < count($transitions); $j++) {
+                            $t = $transitions[$j];
+                            if (isset($t['ts']) && $t['ts'] < $epochSec) {
+                                $candidate = $t['ts'];
+                            }
+                        }
+                        if ($candidate !== null) {
+                            $found = $candidate;
+                            break;
+                        }
+                    }
+                    $cur = $start - 1;
+                }
+            }
+            if ($found === null) {
+                return JsNull::instance();
+            }
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $foundNs = bcmul((string) $found, '1000000000', 0);
+            return self::createZonedDateTimeObject($foundNs, $tz, $cal);
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.ZonedDateTime');
