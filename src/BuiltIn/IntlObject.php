@@ -1371,7 +1371,86 @@ class IntlObject
                     return (int) floor($n);
                 };
 
-                if (!$msdVal instanceof JsUndefined || !$xsdVal instanceof JsUndefined) {
+                $hasExplicitSig = !$msdVal instanceof JsUndefined || !$xsdVal instanceof JsUndefined;
+                $hasExplicitFrac = !$mfdVal instanceof JsUndefined || !$xfdVal instanceof JsUndefined;
+                $hasExplicitMixed = $hasExplicitSig && $hasExplicitFrac;
+                if ($hasExplicitMixed) {
+                    // Provisionally store BOTH sig and frac slots so
+                    // format() can recover them when the priority
+                    // dispatch is decided after reading
+                    // roundingPriority. RoundingType is set to
+                    // 'significantDigits' here and rewritten below.
+                    $minSig = $defaultNumberOption($msdVal, 1, 21, 1, 'minimumSignificantDigits');
+                    $maxSig = $defaultNumberOption($xsdVal, $minSig, 21, 21, 'maximumSignificantDigits');
+                    $obj->defineOwnProperty('[[MinimumSignificantDigits]]', PropertyDescriptor::data(
+                        new JsNumber((float) $minSig),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $obj->defineOwnProperty('[[MaximumSignificantDigits]]', PropertyDescriptor::data(
+                        new JsNumber((float) $maxSig),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $minFrac = $defaultNumberOption($mfdVal, 0, 100, 0, 'minimumFractionDigits');
+                    $maxFrac = $defaultNumberOption($xfdVal, 0, 100, max(3, $minFrac), 'maximumFractionDigits');
+                    $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
+                        new JsNumber((float) $minFrac),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $obj->defineOwnProperty('[[MaximumFractionDigits]]', PropertyDescriptor::data(
+                        new JsNumber((float) $maxFrac),
+                        false,
+                        false,
+                        false,
+                    ));
+                    // Provisional [[RoundingType]] = significantDigits;
+                    // rewritten below to morePrecision/lessPrecision
+                    // when the user requests a priority mode. Marked
+                    // configurable so the later overwrite takes
+                    // effect.
+                    $obj->defineOwnProperty('[[RoundingType]]', PropertyDescriptor::data(
+                        new JsString('significantDigits'),
+                        true,
+                        false,
+                        true,
+                    ));
+                    // Track which kind of constraints we have so the
+                    // format pipeline can branch (mins-only vs maxes-only
+                    // vs both).
+                    $hasMinSig = !$msdVal instanceof JsUndefined;
+                    $hasMaxSig = !$xsdVal instanceof JsUndefined;
+                    $hasMinFrac = !$mfdVal instanceof JsUndefined;
+                    $hasMaxFrac = !$xfdVal instanceof JsUndefined;
+                    $obj->defineOwnProperty('[[HasMinSig]]', PropertyDescriptor::data(
+                        new JsBoolean($hasMinSig),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $obj->defineOwnProperty('[[HasMaxSig]]', PropertyDescriptor::data(
+                        new JsBoolean($hasMaxSig),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $obj->defineOwnProperty('[[HasMinFrac]]', PropertyDescriptor::data(
+                        new JsBoolean($hasMinFrac),
+                        false,
+                        false,
+                        false,
+                    ));
+                    $obj->defineOwnProperty('[[HasMaxFrac]]', PropertyDescriptor::data(
+                        new JsBoolean($hasMaxFrac),
+                        false,
+                        false,
+                        false,
+                    ));
+                } elseif ($hasExplicitSig) {
                     // Significant digits mode.
                     $minSig = $defaultNumberOption($msdVal, 1, 21, 1, 'minimumSignificantDigits');
                     $maxSig = $defaultNumberOption($xsdVal, $minSig, 21, 21, 'maximumSignificantDigits');
@@ -1489,7 +1568,9 @@ class IntlObject
                     false,
                 ));
 
-                // roundingPriority
+                // roundingPriority — read in spec order (after the
+                // digit options) so the constructor option-read-order
+                // test sees the expected sequence.
                 $roundingPriority = 'auto';
                 $rpVal = $options->get('roundingPriority');
                 if (!$rpVal instanceof JsUndefined) {
@@ -1505,6 +1586,21 @@ class IntlObject
                     false,
                     false,
                 ));
+                // If both sig and frac options were provided AND the
+                // user requested a priority mode, switch the
+                // RoundingType slot to drive the dual-path dispatch
+                // in formatNumber.
+                if (
+                    $hasExplicitMixed
+                    && in_array($roundingPriority, ['morePrecision', 'lessPrecision'], true)
+                ) {
+                    $obj->defineOwnProperty('[[RoundingType]]', PropertyDescriptor::data(
+                        new JsString($roundingPriority),
+                        true,
+                        false,
+                        true,
+                    ));
+                }
 
                 // trailingZeroDisplay
                 $trailingZeroDisplay = 'auto';
@@ -3352,12 +3448,138 @@ class IntlObject
         return $sign . $intRendered . $decimalSym . $fracPart;
     }
 
+    /**
+     * Resolve roundingPriority by formatting the value via each
+     * rule (sig-only, frac-only) and picking per the spec.
+     *
+     * The spec algorithm (FormatApproximately) compares the rounding
+     * magnitude of each candidate and picks based on whether a min
+     * or max sig/frac is in play. We approximate it here:
+     *   - When BOTH a min and max for sig/frac are explicit (the
+     *     "fully-bounded" case), pick by fractional-digit count
+     *     (morePrecision = more, lessPrecision = fewer).
+     *   - When ONLY mins are provided (no max sig nor max frac),
+     *     morePrecision deterministically picks the sig path (and
+     *     vice versa for lessPrecision); this matches V8.
+     *   - For asymmetric configurations (e.g. minSig + maxFrac),
+     *     fall back to the same fractional-digit count comparison.
+     */
+    private static function formatNumberWithPriority(
+        JsObject $nf,
+        float $number,
+        ?string $bigIntStr,
+        string $priority,
+    ): string {
+        $hasMaxSig = $nf->get('[[HasMaxSig]]') instanceof JsBoolean
+            && $nf->get('[[HasMaxSig]]')->toBoolean();
+        $hasMaxFrac = $nf->get('[[HasMaxFrac]]') instanceof JsBoolean
+            && $nf->get('[[HasMaxFrac]]')->toBoolean();
+        $sigClone = self::cloneNumberFormatWithRoundingType($nf, 'significantDigits');
+        $fracClone = self::cloneNumberFormatWithRoundingType($nf, 'fractionDigits');
+        $sigStr = self::formatNumber($sigClone, $number, $bigIntStr);
+        $fracStr = self::formatNumber($fracClone, $number, $bigIntStr);
+        // Mins-only: deterministic sig vs frac dispatch.
+        if (!$hasMaxSig && !$hasMaxFrac) {
+            return $priority === 'morePrecision' ? $sigStr : $fracStr;
+        }
+        $sigFrac = self::countFractionDigits($sigStr);
+        $fracFrac = self::countFractionDigits($fracStr);
+        if ($priority === 'morePrecision') {
+            return $sigFrac >= $fracFrac ? $sigStr : $fracStr;
+        }
+        return $sigFrac <= $fracFrac ? $sigStr : $fracStr;
+    }
+
+    /**
+     * Build a shallow copy of the NumberFormat object whose
+     * [[RoundingType]] slot is overridden so a single roundingType
+     * codepath kicks in. The clone shares all other slots by
+     * reference (no deep copy needed for read-only formatting).
+     */
+    private static function cloneNumberFormatWithRoundingType(JsObject $nf, string $rt): JsObject
+    {
+        $clone = new JsObject($nf->getPrototype());
+        // Mark as initialised so brand checks pass downstream.
+        $clone->defineOwnProperty('[[InitializedNumberFormat]]', PropertyDescriptor::data(
+            new JsBoolean(true),
+            false,
+            false,
+            false,
+        ));
+        // Copy every internal-slot ([[X]]) from the source. Use the
+        // explicit slot list since getOwnPropertyNames hides internal
+        // slots (per spec, internal slots are not own property keys).
+        $slots = [
+            '[[Locale]]', '[[NumberingSystem]]', '[[Style]]',
+            '[[Currency]]', '[[CurrencyDisplay]]', '[[CurrencySign]]',
+            '[[Unit]]', '[[UnitDisplay]]',
+            '[[MinimumIntegerDigits]]',
+            '[[MinimumFractionDigits]]', '[[MaximumFractionDigits]]',
+            '[[MinimumSignificantDigits]]', '[[MaximumSignificantDigits]]',
+            '[[UseGrouping]]', '[[Notation]]', '[[CompactDisplay]]',
+            '[[SignDisplay]]', '[[RoundingMode]]',
+            '[[RoundingIncrement]]', '[[RoundingPriority]]',
+            '[[TrailingZeroDisplay]]',
+        ];
+        foreach ($slots as $slot) {
+            $val = $nf->get($slot);
+            if (!$val instanceof JsUndefined) {
+                $clone->defineOwnProperty($slot, PropertyDescriptor::data(
+                    $val,
+                    false,
+                    false,
+                    false,
+                ));
+            }
+        }
+        // Override RoundingType.
+        $clone->defineOwnProperty('[[RoundingType]]', PropertyDescriptor::data(
+            new JsString($rt),
+            false,
+            false,
+            false,
+        ));
+        return $clone;
+    }
+
+    /**
+     * Count digits to the right of the (locale) decimal separator
+     * in a formatted output. Walks the trailing digit run and
+     * checks the preceding character for a decimal separator.
+     */
+    private static function countFractionDigits(string $formatted): int
+    {
+        $len = strlen($formatted);
+        // Walk leftward over the trailing run of ASCII digits.
+        $i = $len;
+        while ($i > 0 && ctype_digit($formatted[$i - 1])) {
+            $i--;
+        }
+        $count = $len - $i;
+        if ($count === 0 || $i === 0) {
+            return 0;
+        }
+        // The character immediately preceding the digit run must be
+        // a decimal separator for those digits to be the fraction.
+        $prev = $formatted[$i - 1];
+        if ($prev === '.' || $prev === ',') {
+            return $count;
+        }
+        return 0;
+    }
+
     private static function formatNumber(JsObject $nf, float $number, ?string $bigIntStr = null): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
         $numberingSystem = self::extractInternalString($nf, '[[NumberingSystem]]', 'latn');
         $notation = self::extractInternalString($nf, '[[Notation]]', 'standard');
+        $rtTop = self::extractInternalString($nf, '[[RoundingType]]', 'fractionDigits');
+
+        // Mixed sig+frac priority modes: format both ways and pick.
+        if ($rtTop === 'morePrecision' || $rtTop === 'lessPrecision') {
+            return self::formatNumberWithPriority($nf, $number, $bigIntStr, $rtTop);
+        }
 
         // Engineering / scientific notations decompose into a
         // mantissa + locale-rendered exponent.
