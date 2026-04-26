@@ -1026,11 +1026,17 @@ class TemporalObject
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $era = self::deriveEra($cal, $y);
+            return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $eraYear = self::deriveEraYear($cal, $y);
+            return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
         $d = self::protoHelper($proto);
@@ -1848,11 +1854,17 @@ class TemporalObject
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $era = self::deriveEra($cal, $y);
+            return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $eraYear = self::deriveEraYear($cal, $y);
+            return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
         $d = self::protoHelper($proto);
@@ -2493,11 +2505,17 @@ class TemporalObject
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $era = self::deriveEra($cal, $y);
+            return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $y = self::getSlotInt($this_, '[[ISOYear]]');
+            $eraYear = self::deriveEraYear($cal, $y);
+            return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
         $d = self::protoHelper($proto);
@@ -3362,11 +3380,21 @@ class TemporalObject
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $era = self::deriveEra($cal, $parts['year']);
+            return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            return JsUndefined::instance();
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $eraYear = self::deriveEraYear($cal, $parts['year']);
+            return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
         $d = self::protoHelper($proto);
@@ -11807,6 +11835,49 @@ class TemporalObject
             $result->set($k, new JsString('numeric'));
         }
         return $result;
+    }
+
+    /**
+     * Derive the era string for a Temporal type's getter from
+     * its ISO year and calendar id. Returns null when the calendar
+     * doesn't carry eras.
+     */
+    private static function deriveEra(string $cal, int $isoYear): ?string
+    {
+        switch ($cal) {
+            case 'gregory':
+                return $isoYear >= 1 ? 'gregory' : 'gregory-inverse';
+            case 'roc':
+                return $isoYear >= 1912 ? 'roc' : 'roc-inverse';
+            case 'japanese':
+                // Japanese calendar has multiple eras (heisei, reiwa,
+                // etc.) plus a CE/BCE-style fallback. Without full
+                // era-table support, fall back to gregory mapping
+                // for years outside the modern era range.
+                return $isoYear >= 1 ? 'reiwa' : 'japanese-inverse';
+        }
+        return null;
+    }
+
+    /**
+     * Derive the eraYear value for a Temporal type's getter.
+     */
+    private static function deriveEraYear(string $cal, int $isoYear): ?int
+    {
+        switch ($cal) {
+            case 'gregory':
+                return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
+            case 'roc':
+                // Republic of China era starts in 1912.
+                return $isoYear >= 1912
+                    ? ($isoYear - 1911)
+                    : (1912 - $isoYear);
+            case 'japanese':
+                // Approximation: Reiwa era starts 2019. Without era
+                // tables, keep the year offset positive.
+                return $isoYear >= 2019 ? ($isoYear - 2018) : (2019 - $isoYear);
+        }
+        return null;
     }
 
     /**
