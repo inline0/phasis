@@ -4926,7 +4926,7 @@ class TemporalObject
     {
         $upper = strtoupper($tz);
         if ($upper === 'UTC' || $upper === 'GMT') {
-            return $upper;
+            return 'UTC';
         }
         // Normalize numeric offsets to +HH:MM form.
         if (preg_match('/^([+-])(\d{2}):?(\d{2})?$/', $tz, $m)) {
@@ -4934,6 +4934,18 @@ class TemporalObject
             $h = $m[2];
             $min = $m[3] ?? '00';
             return "{$sign}{$h}:{$min}";
+        }
+        // For named IANA zones, resolve to the primary (canonical)
+        // identifier so Link names compare equal to their target.
+        // ICU's IntlTimeZone::getCanonicalID handles all TZDB Links.
+        if (class_exists('IntlTimeZone', false)) {
+            try {
+                $canonical = \IntlTimeZone::getCanonicalID($tz);
+                if (is_string($canonical) && $canonical !== '') {
+                    return $canonical;
+                }
+            } catch (\Throwable) {
+            }
         }
         return $tz;
     }
