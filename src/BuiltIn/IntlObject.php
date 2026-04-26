@@ -2197,11 +2197,16 @@ class IntlObject
      */
     private static function formatScientificNumber(JsObject $nf, float $number, string $notation): string
     {
-        if (is_nan($number)) {
-            return 'NaN';
-        }
-        if (!is_finite($number)) {
-            return $number < 0 ? '-∞' : '∞';
+        if (is_nan($number) || !is_finite($number)) {
+            // Use the locale's NaN / Infinity symbols for consistency
+            // with the standard formatter.
+            $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
+            $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
+            if (is_nan($number)) {
+                return $sf->getSymbol(\NumberFormatter::NAN_SYMBOL) ?: 'NaN';
+            }
+            $infSym = $sf->getSymbol(\NumberFormatter::INFINITY_SYMBOL) ?: '∞';
+            return $number < 0 ? ('-' . $infSym) : $infSym;
         }
         $sign = $number < 0 ? '-' : '';
         $abs = abs($number);
