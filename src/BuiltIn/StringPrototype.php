@@ -2177,18 +2177,56 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $that = isset($args[0]) ? TypeConversion::toString($args[0]) : 'undefined';
-            // Use ICU Collator for locale-aware comparison when available.
-            if (class_exists(\Collator::class)) {
-                $collator = new \Collator('');
-                // Enable normalization so canonically equivalent strings compare equal.
-                $collator->setAttribute(\Collator::NORMALIZATION_MODE, \Collator::ON);
-                $cmp = $collator->compare($str, $that);
-                if ($cmp === false) {
-                    $cmp = strcmp($str, $that);
+            $localesArg = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+            $optionsArg = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+            // Delegate to Intl.Collator when available so locale /
+            // options validation matches the spec exactly. localeCompare
+            // is "Same as Intl.Collator(locales, options).compare(this, that)".
+            if (class_exists(\Collator::class) && extension_loaded('intl')) {
+                $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+                $intlObj = $env?->get('Intl', false);
+                if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                    $colCtor = $intlObj->get('Collator');
+                    if ($colCtor instanceof \PhpJs\Value\JsFunction) {
+                        $colProto = $colCtor->get('prototype');
+                        $colObj = new \PhpJs\Value\JsObject(
+                            $colProto instanceof \PhpJs\Value\JsObject ? $colProto : null,
+                        );
+                        $colObj->defineOwnProperty(
+                            '[[NewTarget]]',
+                            \PhpJs\Object\PropertyDescriptor::data($colCtor, false, false, false),
+                        );
+                        ($colCtor->getNativeCallable())($colObj, [$localesArg, $optionsArg]);
+                        $interp = \PhpJs\Engine::getCurrentInterpreter();
+                        $compareGetter = $colProto instanceof \PhpJs\Value\JsObject
+                            ? $colProto->getOwnPropertyDescriptor('compare')
+                            : null;
+                        if (
+                            $interp !== null
+                            && $compareGetter !== null
+                            && $compareGetter->get instanceof \PhpJs\Value\JsFunction
+                        ) {
+                            $bound = $interp->callFunction(
+                                $compareGetter->get,
+                                $colObj,
+                                [],
+                            );
+                            if ($bound instanceof \PhpJs\Value\JsFunction) {
+                                $result = $interp->callFunction(
+                                    $bound,
+                                    \PhpJs\Value\JsUndefined::instance(),
+                                    [new JsString($str), new JsString($that)],
+                                );
+                                if ($result instanceof JsNumber) {
+                                    return $result;
+                                }
+                            }
+                        }
+                    }
                 }
-            } else {
-                $cmp = strcmp($str, $that);
             }
+            // Fallback: PHP strcmp with no locale awareness.
+            $cmp = strcmp($str, $that);
             if ($cmp < 0) {
                 return new JsNumber(-1.0);
             }
