@@ -3783,7 +3783,7 @@ class TemporalObject
                 throw new TypeError('at least one property required');
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
-            // Read disambiguation option.
+            $disam = 'compatible';
             if ($options instanceof JsObject) {
                 $dv = $options->get('disambiguation');
                 if (!($dv instanceof JsUndefined)) {
@@ -3793,7 +3793,6 @@ class TemporalObject
                         throw new RangeError("Invalid disambiguation: {$disam}");
                     }
                 }
-                // Read offset option.
                 $offOpt = $options->get('offset');
                 if (!($offOpt instanceof JsUndefined)) {
                     $offsetStr = TypeConversion::toString($offOpt);
@@ -3816,7 +3815,9 @@ class TemporalObject
                 self::validateISODate($y, $m, $dd);
                 self::validateISOTime($h, $min, $s, $ms, $us, $nsPart);
             }
-            $newNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz);
+            $newNs = self::isoDateTimeToEpochNsDisambiguated(
+                $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz, $disam,
+            );
             return self::createZonedDateTimeObject($newNs, $tz, $cal);
         }, 1);
 
@@ -3940,6 +3941,7 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $newOpts = self::readDifferenceOptionsAlphabetical($opts, false);
+            self::requireMatchingTimeZonesForCalendarUnits($this_, $other, $newOpts);
             return self::zonedDateTimeDifference($ns1, $ns2, $tz, $newOpts);
         }, 1);
 
@@ -3952,6 +3954,7 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $opts = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $newOpts = self::readDifferenceOptionsAlphabetical($opts, true);
+            self::requireMatchingTimeZonesForCalendarUnits($this_, $other, $newOpts);
             $dur = self::zonedDateTimeDifference($ns1, $ns2, $tz, $newOpts);
             return self::negateDuration($dur);
         }, 1);
@@ -11613,6 +11616,40 @@ class TemporalObject
         if ($cal1 !== $cal2) {
             throw new RangeError(
                 "calendar IDs do not match: {$cal1} vs {$cal2}",
+            );
+        }
+    }
+
+    /**
+     * For ZDT.since/until: when the requested largestUnit is a
+     * calendar unit (year/month/week/day), the two operands' time
+     * zones must canonicalize to the same id, since otherwise the
+     * day-boundary alignment isn't well defined.
+     */
+    private static function requireMatchingTimeZonesForCalendarUnits(
+        JsValue $a,
+        JsValue $b,
+        ?JsValue $opts,
+    ): void {
+        if (!$opts instanceof JsObject) {
+            return;
+        }
+        $lu = $opts->get('largestUnit');
+        $luStr = $lu instanceof JsString ? $lu->value : 'hour';
+        $calendarUnits = ['year', 'years', 'month', 'months', 'week', 'weeks', 'day', 'days', 'auto'];
+        if (!in_array($luStr, $calendarUnits, true)) {
+            return;
+        }
+        if (!$a instanceof JsObject || !$b instanceof JsObject) {
+            return;
+        }
+        $tz1 = self::getSlotString($a, '[[TimeZone]]');
+        $tz2 = self::getSlotString($b, '[[TimeZone]]');
+        $canon1 = self::normalizeTimeZoneId($tz1);
+        $canon2 = self::normalizeTimeZoneId($tz2);
+        if ($canon1 !== $canon2) {
+            throw new RangeError(
+                "time zones do not canonicalize to the same id: {$tz1} vs {$tz2}",
             );
         }
     }
