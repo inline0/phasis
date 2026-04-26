@@ -680,6 +680,19 @@ class TemporalObject
                 // when the duration is non-zero (spec: RejectDateTimeRange before computing total).
                 self::validatePlainRelativeToRange($plainRelativeToDate, $this_);
             }
+            // ZDT relativeTo with cal-unit duration and unit "day": use ZDT-aware
+            // delta so DST transitions affect the day count.
+            if (
+                $relativeTo !== null
+                && $relativeTo instanceof JsObject
+                && $relativeTo->has('[[IsZonedDateTime]]')
+                && $unit === 'day'
+                && $hasCalUnit
+            ) {
+                $startNs = self::getSlotString($relativeTo, '[[EpochNanoseconds]]');
+                $endNs = self::addDurationToZdt($relativeTo, $this_, 1, 'constrain');
+                return new JsNumber(self::zdtDeltaInDays($relativeTo, $endNs, $startNs));
+            }
             if ($relativeTo !== null && in_array($unit, $calUnits, true)) {
                 return new JsNumber(self::durationTotalWithRelativeTo($this_, $unit, $relativeTo));
             }
