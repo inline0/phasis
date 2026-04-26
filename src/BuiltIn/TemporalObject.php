@@ -529,6 +529,10 @@ class TemporalObject
                     $zonedRelativeTo = $rtv;
                 }
                 $relativeTo = self::toRelativeToPlainDate($rtv);
+                if (self::$relativeToZdtCache !== null) {
+                    $zonedRelativeTo = self::$relativeToZdtCache;
+                    self::$relativeToZdtCache = null;
+                }
             }
             // 3. roundingIncrement
             $increment = self::getRoundingIncrement($roundTo);
@@ -638,6 +642,10 @@ class TemporalObject
                         }
                     } else {
                         $plainRelativeToDate = self::toRelativeToPlainDate($relativeTo);
+                    }
+                    if (self::$relativeToZdtCache !== null) {
+                        $relativeTo = self::$relativeToZdtCache;
+                        self::$relativeToZdtCache = null;
                     }
                 }
                 $u = $totalOf->get('unit');
@@ -866,7 +874,12 @@ class TemporalObject
                     } else {
                         $refDate = self::toRelativeToPlainDate($relativeTo);
                     }
-                    // If ZDT relativeTo, also build a refDate for the cal-unit branch below.
+                    // Property bag with timeZone: toRelativeToPlainDate stashed
+                    // the ZDT in a side-channel; promote relativeTo to that ZDT.
+                    if (self::$relativeToZdtCache !== null) {
+                        $relativeTo = self::$relativeToZdtCache;
+                        self::$relativeToZdtCache = null;
+                    }
                     if (
                         $refDate === null
                         && $relativeTo instanceof JsObject
@@ -943,6 +956,20 @@ class TemporalObject
                     $total1 = bcadd(bcmul((string) $jd1, '86400000000000', 0), $timeNs1, 0);
                     $total2 = bcadd(bcmul((string) $jd2, '86400000000000', 0), $timeNs2, 0);
                     return new JsNumber((float) bccomp($total1, $total2, 0));
+                }
+                // ZDT relativeTo with day-bearing durations: compute end epochs
+                // via ZDT-aware add so DST transitions affect the comparison.
+                $oneHasDay = self::getDurationField($one, 'days') !== 0;
+                $twoHasDay = self::getDurationField($two, 'days') !== 0;
+                if (
+                    $relativeTo !== null
+                    && $relativeTo instanceof JsObject
+                    && $relativeTo->has('[[IsZonedDateTime]]')
+                    && ($oneHasDay || $twoHasDay)
+                ) {
+                    $end1 = self::addDurationToZdt($relativeTo, $one, 1, 'constrain');
+                    $end2 = self::addDurationToZdt($relativeTo, $two, 1, 'constrain');
+                    return new JsNumber((float) bccomp($end1, $end2, 0));
                 }
                 $ns1 = self::durationToTotalNs($one);
                 $ns2 = self::durationToTotalNs($two);
@@ -7639,8 +7666,13 @@ class TemporalObject
      * Strings with bracketed IANA annotation are parsed as ZonedDateTime then date extracted.
      * Z offset without IANA annotation is rejected.
      */
+    /** Side-channel: when toRelativeToPlainDate sees a timeZone in the
+     * property bag, it stashes the corresponding ZDT here for the caller. */
+    private static ?JsObject $relativeToZdtCache = null;
+
     private static function toRelativeToPlainDate(JsValue $item): JsObject
     {
+        self::$relativeToZdtCache = null;
         if ($item instanceof JsObject) {
             if (
                 $item->has('[[IsPlainDate]]') || $item->has('[[IsPlainDateTime]]')
@@ -7842,17 +7874,20 @@ class TemporalObject
                 throw new RangeError('reject minus zero as extended year');
             }
             [$y, $m, $d] = self::constrainISODate($y, $m, $d);
-            // If timeZone present, validate offset match (sub-minute fuzzy is rejected
-            // for property bags) and treat as a zoned-relative reference. We still
-            // return a PlainDate here; offset mismatch raises RangeError.
-            if ($hasTz && $offStr !== null) {
+            // If timeZone present, validate the offset (no fuzzy match in property
+            // bags) and stash the resulting ZDT in the side-channel cache so the
+            // caller can promote relativeTo to a ZDT without re-reading fields.
+            if ($hasTz) {
                 $timeZone = self::toTemporalTimeZoneIdentifier($tzVal);
                 $epochFromWall = self::isoDateTimeToEpochNs($y, $m, $d, $hourInt, $minInt, $secInt, $milliInt, $microInt, $nanoInt, $timeZone);
-                $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
-                $givenOffsetNs = self::parseOffsetToNs($offStr);
-                if ($givenOffsetNs !== $actualOffsetNs) {
-                    throw new RangeError("offset property \"{$offStr}\" does not match time zone \"{$timeZone}\"");
+                if ($offStr !== null) {
+                    $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
+                    $givenOffsetNs = self::parseOffsetToNs($offStr);
+                    if ($givenOffsetNs !== $actualOffsetNs) {
+                        throw new RangeError("offset property \"{$offStr}\" does not match time zone \"{$timeZone}\"");
+                    }
                 }
+                self::$relativeToZdtCache = self::createZonedDateTimeObject($epochFromWall, $timeZone, $cal);
             }
             return self::createPlainDateObject($y, $m, $d, $cal);
         }
