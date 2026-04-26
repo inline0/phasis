@@ -1653,10 +1653,28 @@ class IntlObject
             array $args,
         ): JsValue {
             $number = $args[0] ?? JsUndefined::instance();
-            $numVal = TypeConversion::toNumber($number);
+            // BigInt is a valid format() argument per the v3 spec —
+            // route it through numericArgToFloat to avoid the
+            // BigInt→Number TypeError ToNumber emits. Preserve the
+            // BigInt's full decimal string so PHP NumberFormatter
+            // doesn't truncate values exceeding the double mantissa
+            // range (90071...910 → ...900). Values that fit in a
+            // double (|x| ≤ 2^53) round-trip cleanly through the
+            // regular float pipeline so sig-digit / fraction-digit
+            // options work end-to-end.
+            $bigStr = null;
+            if ($number instanceof \PhpJs\Value\JsBigInt) {
+                $abs = ltrim($number->value, '-');
+                $fitsInDouble = strlen($abs) < 16
+                    || (strlen($abs) === 16 && strcmp($abs, '9007199254740992') <= 0);
+                if (!$fitsInDouble) {
+                    $bigStr = $number->value;
+                }
+            }
+            $numVal = self::numericArgToFloat($number);
 
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
-                return new JsString(self::formatNumber($this_, $numVal));
+                return new JsString(self::formatNumber($this_, $numVal, $bigStr));
             }
             // Fallback.
             if (is_nan($numVal)) {
@@ -2988,7 +3006,54 @@ class IntlObject
         return TypeConversion::toNumber($val);
     }
 
-    private static function formatNumber(JsObject $nf, float $number): string
+    /**
+     * Render a BigInt's decimal string using the locale's grouping
+     * separator and (for unusual numbering systems) digit set, while
+     * honouring useGrouping / minimumIntegerDigits. Sub-thousand
+     * values aren't grouped, matching CLDR's "min2" behaviour for
+     * useGrouping when the leading group is single-digit.
+     */
+    private static function renderBigIntStringLocaleAware(
+        string $bigIntStr,
+        \NumberFormatter $formatter,
+        JsObject $nf,
+    ): string {
+        $sign = '';
+        $digits = $bigIntStr;
+        if (str_starts_with($digits, '-')) {
+            $sign = '-';
+            $digits = substr($digits, 1);
+        } elseif (str_starts_with($digits, '+')) {
+            $digits = substr($digits, 1);
+        }
+        $minInt = (int) self::extractInternalNumber($nf, '[[MinimumIntegerDigits]]', 1);
+        if ($minInt > strlen($digits)) {
+            $digits = str_repeat('0', $minInt - strlen($digits)) . $digits;
+        }
+        $useGrouping = self::extractInternalString($nf, '[[UseGrouping]]', 'auto');
+        $groupSym = $formatter->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
+        $shouldGroup = match ($useGrouping) {
+            'false' => false,
+            'always' => true,
+            'min2' => strlen($digits) > 4,
+            default => strlen($digits) > 3,
+        };
+        if (!$shouldGroup || $groupSym === false || $groupSym === '') {
+            return $sign . $digits;
+        }
+        // Split from the right into 3-digit groups (Indian numbering
+        // systems use 2-3-3 but we'd handle that separately).
+        $out = '';
+        $len = strlen($digits);
+        for ($i = $len; $i > 0; $i -= 3) {
+            $start = max(0, $i - 3);
+            $chunk = substr($digits, $start, $i - $start);
+            $out = $chunk . ($out === '' ? '' : $groupSym . $out);
+        }
+        return $sign . $out;
+    }
+
+    private static function formatNumber(JsObject $nf, float $number, ?string $bigIntStr = null): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
@@ -3146,7 +3211,19 @@ class IntlObject
                 $result = $formatter->formatCurrency($number, $currency);
             }
         } else {
-            $result = $formatter->format($number);
+            // BigInt: render the full decimal string with locale
+            // grouping / decimal symbols so values past the double
+            // mantissa range (90071...910 → ...900) keep their
+            // precision.
+            if ($bigIntStr !== null) {
+                $result = self::renderBigIntStringLocaleAware(
+                    $bigIntStr,
+                    $formatter,
+                    $nf,
+                );
+            } else {
+                $result = $formatter->format($number);
+            }
             if ($result === false) {
                 $result = (string) $number;
             }

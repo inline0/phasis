@@ -338,14 +338,59 @@ class Engine
             \PhpJs\Object\PropertyDescriptor::data($bigIntValOf, true, false, true),
         );
 
-        // BigInt.prototype.toLocaleString() - same as toString() per spec.
+        // BigInt.prototype.toLocaleString() — delegates to Intl.NumberFormat
+        // when intl is available, matching V8's behaviour. Falls back to
+        // the raw decimal string in non-intl environments.
         $bigIntLocale = \PhpJs\Value\JsFunction::fromCallable(
             'toLocaleString',
             function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                if ($this_ instanceof \PhpJs\Value\JsBigInt) {
-                    return new \PhpJs\Value\JsString($this_->value);
+                if (!$this_ instanceof \PhpJs\Value\JsBigInt) {
+                    throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
                 }
-                throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
+                if (extension_loaded('intl')) {
+                    $env = self::getCurrentInterpreter()?->getGlobalEnv();
+                    $intlObj = $env?->get('Intl', false);
+                    if ($intlObj instanceof \PhpJs\Value\JsObject) {
+                        $nfCtor = $intlObj->get('NumberFormat');
+                        if ($nfCtor instanceof \PhpJs\Value\JsFunction) {
+                            $nfProto = $nfCtor->get('prototype');
+                            $nfObj = new \PhpJs\Value\JsObject(
+                                $nfProto instanceof \PhpJs\Value\JsObject ? $nfProto : null,
+                            );
+                            $nfObj->defineOwnProperty(
+                                '[[NewTarget]]',
+                                \PhpJs\Object\PropertyDescriptor::data($nfCtor, false, false, false),
+                            );
+                            ($nfCtor->getNativeCallable())($nfObj, [
+                                $args[0] ?? \PhpJs\Value\JsUndefined::instance(),
+                                $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+                            ]);
+                            $interp = self::getCurrentInterpreter();
+                            $formatGetter = $nfProto instanceof \PhpJs\Value\JsObject
+                                ? $nfProto->getOwnPropertyDescriptor('format')
+                                : null;
+                            if (
+                                $interp !== null
+                                && $formatGetter !== null
+                                && $formatGetter->get instanceof \PhpJs\Value\JsFunction
+                            ) {
+                                $bound = $interp->callFunction(
+                                    $formatGetter->get,
+                                    $nfObj,
+                                    [],
+                                );
+                                if ($bound instanceof \PhpJs\Value\JsFunction) {
+                                    return $interp->callFunction(
+                                        $bound,
+                                        \PhpJs\Value\JsUndefined::instance(),
+                                        [$this_],
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                return new \PhpJs\Value\JsString($this_->value);
             },
         );
         $bigIntProto->defineOwnProperty(
