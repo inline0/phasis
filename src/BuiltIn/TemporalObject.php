@@ -1159,14 +1159,18 @@ class TemporalObject
             self::requirePlainDate($this_);
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $era = self::deriveEra($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $era = self::deriveEra($cal, $y, $m, $d);
             return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $eraYear = self::deriveEraYear($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $eraYear = self::deriveEraYear($cal, $y, $m, $d);
             return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
@@ -1245,7 +1249,7 @@ class TemporalObject
             // native field space. Defaults come from the ICU-derived parts
             // of the stored ISO date; user overrides replace those fields;
             // the result is converted back to ISO via ICU.
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
             if ($useCalendarNative) {
                 $isoY0 = self::getSlotInt($this_, '[[ISOYear]]');
                 $isoM0 = self::getSlotInt($this_, '[[ISOMonth]]');
@@ -2095,14 +2099,18 @@ class TemporalObject
             self::requirePlainDateTime($this_);
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $era = self::deriveEra($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $era = self::deriveEra($cal, $y, $m, $d);
             return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $eraYear = self::deriveEraYear($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $eraYear = self::deriveEraYear($cal, $y, $m, $d);
             return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
@@ -2306,7 +2314,7 @@ class TemporalObject
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
             if ($useCalendarNative) {
                 $iy = self::getSlotInt($this_, '[[ISOYear]]');
                 $im = self::getSlotInt($this_, '[[ISOMonth]]');
@@ -2825,14 +2833,18 @@ class TemporalObject
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $era = self::deriveEra($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $era = self::deriveEra($cal, $y, $m, $d);
             return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $eraYear = self::deriveEraYear($cal, $y);
+            $m = self::getSlotInt($this_, '[[ISOMonth]]');
+            $d = self::getSlotInt($this_, '[[ISODay]]');
+            $eraYear = self::deriveEraYear($cal, $y, $m, $d);
             return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
@@ -2947,7 +2959,7 @@ class TemporalObject
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
             $instMonthCode = null;
             if ($useCalendarNative) {
                 $iy = self::getSlotInt($this_, '[[ISOYear]]');
@@ -3756,7 +3768,7 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $era = self::deriveEra($cal, $parts['year']);
+            $era = self::deriveEra($cal, $parts['year'], $parts['month'], $parts['day']);
             return $era === null ? JsUndefined::instance() : new JsString($era);
         });
         self::defineGetter($proto, 'eraYear', function (JsValue $this_): JsValue {
@@ -3765,7 +3777,7 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $eraYear = self::deriveEraYear($cal, $parts['year']);
+            $eraYear = self::deriveEraYear($cal, $parts['year'], $parts['month'], $parts['day']);
             return $eraYear === null ? JsUndefined::instance() : new JsNumber((float) $eraYear);
         });
 
@@ -4084,7 +4096,7 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true);
             $instMonthCode = null;
             if ($useCalendarNative) {
                 $cp = self::isoToCalendarParts($cal, $parts['year'], $parts['month'], $parts['day']);
@@ -4955,7 +4967,7 @@ class TemporalObject
         }
         // For non-ISO non-gregory calendars, convert calendar-native fields to
         // ISO via ICU before applying overflow / wall-time math.
-        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
             $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mo, $d);
             if ($isoParts !== null) {
                 $y = $isoParts['year'];
@@ -7988,7 +8000,7 @@ class TemporalObject
             }
             // For non-ISO calendars, convert calendar-native (year, month, day)
             // to ISO via ICU before storing.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $isoParts = self::calendarPartsToIso($cal, $y, $hasMonthCode ? $mcStr : null, $hasMonthCode ? null : $m, $d);
                 if ($isoParts !== null) {
                     return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
@@ -8764,7 +8776,7 @@ class TemporalObject
             // For non-ISO calendars (excluding gregory/roc which use ISO
             // year/month/day directly), convert calendar-native fields to ISO
             // via ICU before storing.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $monthExplicit ? $m : null, $d);
                 if ($isoParts !== null) {
                     if ($overflow === 'constrain') {
@@ -8999,7 +9011,7 @@ class TemporalObject
         }
         // Non-ISO non-gregory calendars: convert calendar-native (year, month, day=1)
         // to ISO via ICU and store the resulting ISO date.
-        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+        if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
             $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
             if ($isoParts !== null) {
                 return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
@@ -9126,7 +9138,7 @@ class TemporalObject
                 throw new RangeError("month {$m} out of range");
             }
             // Non-ISO non-gregory: convert calendar fields to ISO via ICU.
-            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
                 if ($isoParts !== null) {
                     return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
@@ -11203,7 +11215,7 @@ class TemporalObject
         // Gregorian-like calendars use the ISO year/month/day directly (with
         // year 0 allowed). ICU here would shift across the Julian/Gregorian
         // boundary or into year 1 BCE, neither of which matches the spec.
-        if (in_array($calendar, ['gregory', 'roc'], true)) {
+        if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
             $monthCode = 'M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
             return [
                 'year' => $y,
@@ -11271,7 +11283,7 @@ class TemporalObject
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
             return ['year' => $year, 'month' => $m, 'day' => $day];
         }
-        if (in_array($calendar, ['gregory', 'roc'], true)) {
+        if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
             return ['year' => $year, 'month' => $m, 'day' => $day];
         }
@@ -13342,7 +13354,38 @@ class TemporalObject
      * its ISO year and calendar id. Returns null when the calendar
      * doesn't carry eras.
      */
-    private static function deriveEra(string $cal, int $isoYear): ?string
+    /**
+     * Japanese imperial era table: each entry is [era, startY, startM, startD,
+     * baseISOYear]. The last era continues forward; eras before meiji fall
+     * back to japanese-inverse (BCE-style).
+     */
+    private static function japaneseEras(): array
+    {
+        // Each row: [era name, ISO start (Y, M, D), eraYear=1 base ISO year]
+        return [
+            ['reiwa',  2019, 5,  1, 2019],
+            ['heisei', 1989, 1,  8, 1989],
+            ['showa',  1926, 12, 25, 1926],
+            ['taisho', 1912, 7,  30, 1912],
+            ['meiji',  1868, 9,  8,  1868],
+        ];
+    }
+
+    private static function japaneseEraFor(int $y, int $m, int $d): ?array
+    {
+        foreach (self::japaneseEras() as $era) {
+            [, $sy, $sm, $sd] = $era;
+            if ($y > $sy
+                || ($y === $sy && $m > $sm)
+                || ($y === $sy && $m === $sm && $d >= $sd)
+            ) {
+                return $era;
+            }
+        }
+        return null;
+    }
+
+    private static function deriveEra(string $cal, int $isoYear, int $isoMonth = 1, int $isoDay = 1): ?string
     {
         switch ($cal) {
             case 'gregory':
@@ -13350,11 +13393,11 @@ class TemporalObject
             case 'roc':
                 return $isoYear >= 1912 ? 'roc' : 'roc-inverse';
             case 'japanese':
-                // Japanese calendar has multiple eras (heisei, reiwa,
-                // etc.) plus a CE/BCE-style fallback. Without full
-                // era-table support, fall back to gregory mapping
-                // for years outside the modern era range.
-                return $isoYear >= 1 ? 'reiwa' : 'japanese-inverse';
+                $era = self::japaneseEraFor($isoYear, $isoMonth, $isoDay);
+                if ($era !== null) {
+                    return $era[0];
+                }
+                return $isoYear >= 1 ? 'japanese' : 'japanese-inverse';
         }
         return null;
     }
@@ -13362,20 +13405,21 @@ class TemporalObject
     /**
      * Derive the eraYear value for a Temporal type's getter.
      */
-    private static function deriveEraYear(string $cal, int $isoYear): ?int
+    private static function deriveEraYear(string $cal, int $isoYear, int $isoMonth = 1, int $isoDay = 1): ?int
     {
         switch ($cal) {
             case 'gregory':
                 return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
             case 'roc':
-                // Republic of China era starts in 1912.
                 return $isoYear >= 1912
                     ? ($isoYear - 1911)
                     : (1912 - $isoYear);
             case 'japanese':
-                // Approximation: Reiwa era starts 2019. Without era
-                // tables, keep the year offset positive.
-                return $isoYear >= 2019 ? ($isoYear - 2018) : (2019 - $isoYear);
+                $era = self::japaneseEraFor($isoYear, $isoMonth, $isoDay);
+                if ($era !== null) {
+                    return $isoYear - $era[4] + 1;
+                }
+                return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
         }
         return null;
     }
