@@ -373,15 +373,26 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec 9.1.13 OrdinaryCreateFromConstructor:
-                // use GetPrototypeFromConstructor(newTarget, intrinsic).
-                // newTarget.prototype wins; if it's not an Object we
-                // fall back to target.prototype (the intrinsic default).
-                $ntProto = $newTarget->get('prototype');
-                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
-                if ($useProto === null) {
+                // Per spec [[Construct]]: ECMAScript function targets
+                // call OrdinaryCreateFromConstructor BEFORE the body
+                // runs (so `this` inside the body has newTarget's
+                // prototype). Built-in targets defer the creation
+                // until after argument validation, so a poisoned
+                // newTarget.prototype getter shouldn't fire on a
+                // RangeError-bound path. We detect built-ins via
+                // isNative() and fall back to lazy proto-lookup
+                // after the body completes.
+                $isNativeTarget = $target instanceof JsFunction && $target->isNative();
+                if ($isNativeTarget) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                } else {
+                    $ntProto = $newTarget->get('prototype');
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                    if ($useProto === null) {
+                        $targetProto = $target->get('prototype');
+                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    }
                 }
                 $newObj = new JsObject($useProto);
                 $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
@@ -394,6 +405,15 @@ class ReflectObject
                 $result = $target->call($newObj, $callArgs);
                 if ($result instanceof JsObject && $result !== $newObj) {
                     return $result;
+                }
+                // Built-in target with deferred prototype lookup:
+                // apply newTarget.prototype now that the body has
+                // succeeded.
+                if ($isNativeTarget && $newTarget !== $target) {
+                    $ntProto = $newTarget->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $newObj->setPrototype($ntProto);
+                    }
                 }
                 return $result instanceof JsObject ? $result : $newObj;
             }, 2),
