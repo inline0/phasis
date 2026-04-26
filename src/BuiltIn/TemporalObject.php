@@ -1031,19 +1031,67 @@ class TemporalObject
         });
         self::defineGetter($proto, 'year', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['year']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISOYear]]'));
         });
         self::defineGetter($proto, 'month', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['month']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISOMonth]]'));
         });
         self::defineGetter($proto, 'monthCode', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsString($parts['monthCode']);
+                }
+            }
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             return new JsString('M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT));
         });
         self::defineGetter($proto, 'day', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            if ($cal !== 'iso8601') {
+                $parts = self::isoToCalendarParts(
+                    $cal,
+                    self::getSlotInt($this_, '[[ISOYear]]'),
+                    self::getSlotInt($this_, '[[ISOMonth]]'),
+                    self::getSlotInt($this_, '[[ISODay]]'),
+                );
+                if ($parts !== null) {
+                    return new JsNumber((float) $parts['day']);
+                }
+            }
             return new JsNumber((float) self::getSlotInt($this_, '[[ISODay]]'));
         });
         self::defineGetter($proto, 'dayOfWeek', function (JsValue $this_): JsValue {
@@ -7711,6 +7759,14 @@ class TemporalObject
                 $options = self::getOptionsObject($rawOptions);
                 $overflow = self::getOverflow($options);
             }
+            // For non-ISO calendars, convert calendar-native (year, month, day)
+            // to ISO via ICU before storing.
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+                $isoParts = self::calendarPartsToIso($cal, $y, $hasMonthCode ? $mcStr : null, $hasMonthCode ? null : $m, $d);
+                if ($isoParts !== null) {
+                    return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
+                }
+            }
             if ($overflow === 'constrain') {
                 [$y, $m, $d] = self::constrainISODate($y, $m, $d);
             } else {
@@ -10877,6 +10933,19 @@ class TemporalObject
                 'isLeapMonth' => false,
             ];
         }
+        // Gregorian-like calendars use the ISO year/month/day directly (with
+        // year 0 allowed). ICU here would shift across the Julian/Gregorian
+        // boundary or into year 1 BCE, neither of which matches the spec.
+        if (in_array($calendar, ['gregory', 'roc'], true)) {
+            $monthCode = 'M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
+            return [
+                'year' => $y,
+                'month' => $m,
+                'monthCode' => $monthCode,
+                'day' => $d,
+                'isLeapMonth' => false,
+            ];
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -10921,6 +10990,101 @@ class TemporalObject
     {
         $days = self::isoDateToDays($y, $m, $d);
         return (float) ((int) $days * 86400 * 1000);
+    }
+
+    /**
+     * Convert calendar-native (year, monthCode|month, day) to ISO (y, m, d)
+     * via ICU. Returns null if conversion is unavailable. Caller is
+     * responsible for choosing between monthCode and a 1-indexed month
+     * number; for ICU we always need a 0-indexed integer month.
+     */
+    private static function calendarPartsToIso(string $calendar, int $year, ?string $monthCode, ?int $monthNum, int $day): ?array
+    {
+        if ($calendar === 'iso8601') {
+            $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
+            return ['year' => $year, 'month' => $m, 'day' => $day];
+        }
+        if (in_array($calendar, ['gregory', 'roc'], true)) {
+            $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
+            return ['year' => $year, 'month' => $m, 'day' => $day];
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        // Resolve ICU 0-indexed month from monthCode (preferred) or month number.
+        $icuMonth = null;
+        $isLeapMonth = false;
+        if ($monthCode !== null) {
+            if (preg_match('/^M(\d{2})(L?)$/', $monthCode, $mm)) {
+                $codeNum = (int) $mm[1];
+                $isLeapMonth = $mm[2] === 'L';
+                if ($calendar === 'hebrew') {
+                    if ($codeNum >= 1 && $codeNum <= 5 && !$isLeapMonth) {
+                        $icuMonth = $codeNum - 1;
+                    } elseif ($codeNum === 5 && $isLeapMonth) {
+                        $icuMonth = 5; // Adar I (only valid in leap year).
+                    } elseif ($codeNum >= 6 && $codeNum <= 12 && !$isLeapMonth) {
+                        $icuMonth = $codeNum;
+                    }
+                } else {
+                    // Most calendars: M01..MNN → ICU 0..NN-1.
+                    $icuMonth = $codeNum - 1;
+                }
+            }
+        } elseif ($monthNum !== null) {
+            // 1-indexed month → ICU 0-indexed (most calendars).
+            if ($calendar === 'hebrew') {
+                $isLeap = self::isHebrewLeapYear($year);
+                if ($isLeap) {
+                    // Spec months: 1..5=Tishri..Shevat, 6=AdarI, 7=AdarII, ..., 13=Elul.
+                    if ($monthNum >= 1 && $monthNum <= 5) {
+                        $icuMonth = $monthNum - 1;
+                    } elseif ($monthNum === 6) {
+                        $icuMonth = 5; // Adar I
+                    } elseif ($monthNum >= 7 && $monthNum <= 13) {
+                        $icuMonth = $monthNum - 1;
+                    }
+                } else {
+                    // Non-leap: 1..12.
+                    if ($monthNum >= 1 && $monthNum <= 5) {
+                        $icuMonth = $monthNum - 1;
+                    } elseif ($monthNum >= 6 && $monthNum <= 12) {
+                        $icuMonth = $monthNum;
+                    }
+                }
+            } else {
+                $icuMonth = $monthNum - 1;
+            }
+        }
+        if ($icuMonth === null) {
+            return null;
+        }
+        try {
+            $icuCal = $calendar;
+            static $aliasMap = [
+                'islamicc' => 'islamic-civil',
+                'ethioaa' => 'ethiopic-amete-alem',
+            ];
+            if (isset($aliasMap[$calendar])) {
+                $icuCal = $aliasMap[$calendar];
+            }
+            $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $cal->setDate($year, $icuMonth, $day);
+            $epochMs = $cal->getTime();
+            $epochSec = (int) ($epochMs / 1000);
+            $isoStr = gmdate('Y-m-d', $epochSec);
+            $parts = explode('-', $isoStr);
+            return [
+                'year' => (int) $parts[0],
+                'month' => (int) $parts[1],
+                'day' => (int) $parts[2],
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** True if the Hebrew year has 13 months (leap). */
