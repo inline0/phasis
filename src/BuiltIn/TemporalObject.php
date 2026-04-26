@@ -4351,33 +4351,18 @@ class TemporalObject
             $cal = self::getSlotString($this_, '[[Calendar]]');
             // Round using wall-clock time, not epoch ns.
             if ($unit === 'day') {
-                // Round to day boundaries in the timezone.
+                // Round to actual day boundaries in the timezone (which may
+                // not be 00:00 if midnight falls in a DST gap).
                 $parts = self::epochNsToISOParts($ns, $tz);
-                $startNs = self::isoDateTimeToEpochNs(
-                    $parts['year'],
-                    $parts['month'],
-                    $parts['day'],
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    $tz,
-                );
+                $startNs = self::startOfDayInTimeZone($parts['year'], $parts['month'], $parts['day'], $tz);
                 self::validateInstantRange($startNs);
-                $endNs = self::isoDateTimeToEpochNs(
-                    $parts['year'],
-                    $parts['month'],
-                    $parts['day'] + 1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    $tz,
-                );
+                $ny = $parts['year']; $nm = $parts['month']; $nd = $parts['day'] + 1;
+                $dim = self::isoDaysInMonth($ny, $nm);
+                if ($nd > $dim) {
+                    $nd = 1; $nm++;
+                    if ($nm > 12) { $nm = 1; $ny++; }
+                }
+                $endNs = self::startOfDayInTimeZone($ny, $nm, $nd, $tz);
                 self::validateInstantRange($endNs);
                 $dayNs = bcsub($endNs, $startNs, 0);
                 $timeInDay = bcsub($ns, $startNs, 0);
