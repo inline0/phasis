@@ -9593,7 +9593,41 @@ class IntlObject
         };
         $isFirstSegment = true;
         $signNeedsAttaching = $sign < 0;
+        // Detect a clock run (numeric/2-digit hours/minutes/seconds)
+        // and emit it inline as a series of integer/literal parts
+        // joined by ":" with a fractional tail when sub-second
+        // values are present.
+        $clockUnits = ['hours', 'minutes', 'seconds'];
+        $clockNumeric = true;
+        foreach ($clockUnits as $u) {
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $st = self::extractInternalString($df, $unitSlot, 'short');
+            if (!in_array($st, ['numeric', '2-digit'], true)) {
+                $clockNumeric = false;
+                break;
+            }
+        }
+        $clockSkip = $clockNumeric
+            ? ['hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds']
+            : [];
         foreach ($units as $u => $singular) {
+            if (in_array($u, $clockSkip, true)) {
+                if ($u === 'hours') {
+                    $sigEmitted = self::emitClockParts(
+                        $df,
+                        $values,
+                        $emit,
+                        $isFirstSegment,
+                        $signNeedsAttaching,
+                        $listSep,
+                    );
+                    if ($sigEmitted) {
+                        $signNeedsAttaching = false;
+                        $isFirstSegment = false;
+                    }
+                }
+                continue;
+            }
             $n = $values[$u];
             $displaySlot = '[[' . ucfirst($u) . 'Display]]';
             $display = self::extractInternalString($df, $displaySlot, 'auto');
@@ -9625,6 +9659,107 @@ class IntlObject
         }
         $arr->set('length', new JsNumber((float) $idx));
         return $arr;
+    }
+
+    /**
+     * Emit the H:MM:SS[.fff] parts sequence for a digital-style
+     * clock run. Returns true when at least one clock part was
+     * emitted.
+     *
+     * @param array<string, float> $values
+     * @param callable(string, string, ?string=): void $emit
+     */
+    private static function emitClockParts(
+        JsObject $df,
+        array $values,
+        callable $emit,
+        bool $isFirstSegment,
+        bool $signNeedsAttaching,
+        string $listSep,
+    ): bool {
+        $hours = (int) abs($values['hours'] ?? 0.0);
+        $minutes = (int) abs($values['minutes'] ?? 0.0);
+        $seconds = (int) abs($values['seconds'] ?? 0.0);
+        $hoursDisplay = self::extractInternalString($df, '[[HoursDisplay]]', 'auto');
+        $minutesDisplay = self::extractInternalString($df, '[[MinutesDisplay]]', 'auto');
+        $secondsDisplay = self::extractInternalString($df, '[[SecondsDisplay]]', 'auto');
+        $hourStyle = self::extractInternalString($df, '[[Hours]]', 'numeric');
+        $msVal = (int) abs($values['milliseconds'] ?? 0.0);
+        $usVal = (int) abs($values['microseconds'] ?? 0.0);
+        $nsVal = (int) abs($values['nanoseconds'] ?? 0.0);
+        $fracTotalNs = $msVal * 1000000 + $usVal * 1000 + $nsVal;
+        if ($fracTotalNs >= 1000000000) {
+            $seconds += intdiv($fracTotalNs, 1000000000);
+            $fracTotalNs %= 1000000000;
+        }
+        $fdVal = $df->get('[[FractionalDigits]]');
+        $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
+        $fracDigits = '';
+        if ($fdLimit === null) {
+            if ($fracTotalNs > 0) {
+                $fracDigits = rtrim(
+                    str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT),
+                    '0',
+                );
+            }
+        } elseif ($fdLimit > 0) {
+            $fracDigits = substr(
+                str_pad((string) $fracTotalNs, 9, '0', STR_PAD_LEFT),
+                0,
+                $fdLimit,
+            );
+        }
+        $showHours = $hours !== 0 || $hoursDisplay === 'always';
+        $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
+        $showSeconds = $seconds !== 0 || $secondsDisplay === 'always' || $fracDigits !== '';
+        if ($showSeconds) {
+            $showMinutes = true;
+        }
+        $shownCount = (int) $showHours + (int) $showMinutes + (int) $showSeconds;
+        if ($shownCount === 0) {
+            return false;
+        }
+        if ($showHours && $showSeconds && !$showMinutes) {
+            $showMinutes = true;
+        }
+        if (!$isFirstSegment) {
+            $emit('literal', $listSep);
+        }
+        if ($signNeedsAttaching) {
+            $emit('minusSign', '-', 'second');
+        }
+        $emitted = false;
+        if ($showHours) {
+            $hourStr = $hourStyle === '2-digit'
+                ? str_pad((string) $hours, 2, '0', STR_PAD_LEFT)
+                : (string) $hours;
+            $emit('integer', $hourStr, 'hour');
+            $emitted = true;
+        }
+        if ($showMinutes) {
+            if ($emitted) {
+                $emit('literal', ':', 'hour');
+            }
+            $minStr = ($showHours || $showSeconds)
+                ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
+                : (string) $minutes;
+            $emit('integer', $minStr, 'minute');
+            $emitted = true;
+        }
+        if ($showSeconds) {
+            if ($emitted) {
+                $emit('literal', ':', 'minute');
+            }
+            $secStr = ($showMinutes || $showHours)
+                ? str_pad((string) $seconds, 2, '0', STR_PAD_LEFT)
+                : (string) $seconds;
+            $emit('integer', $secStr, 'second');
+            if ($fracDigits !== '') {
+                $emit('decimal', '.', 'second');
+                $emit('fraction', $fracDigits, 'second');
+            }
+        }
+        return true;
     }
 
     /** Resolve the unit label string used in the parts emission. */
@@ -10006,11 +10141,19 @@ class IntlObject
         $minutesDisplay = self::extractInternalString($df, '[[MinutesDisplay]]', 'auto');
         $secondsDisplay = self::extractInternalString($df, '[[SecondsDisplay]]', 'auto');
         $hourStyle = self::extractInternalString($df, '[[Hours]]', 'numeric');
-        // Build the fractional suffix by combining sub-second units.
+        // Combine sub-second units into total nanoseconds and carry
+        // the integer-second portion up into the seconds slot, so
+        // {seconds:56, milliseconds:1234567} renders as "1290.567"
+        // not "56.1234567".
         $msVal = (int) abs($values['milliseconds'] ?? 0.0);
         $usVal = (int) abs($values['microseconds'] ?? 0.0);
         $nsVal = (int) abs($values['nanoseconds'] ?? 0.0);
         $fracTotalNs = $msVal * 1000000 + $usVal * 1000 + $nsVal;
+        if ($fracTotalNs >= 1000000000) {
+            $extraSeconds = intdiv($fracTotalNs, 1000000000);
+            $fracTotalNs %= 1000000000;
+            $seconds += $extraSeconds;
+        }
         $fdVal = $df->get('[[FractionalDigits]]');
         $fdLimit = $fdVal instanceof JsNumber ? (int) $fdVal->value : null;
         $fracStr = '';
