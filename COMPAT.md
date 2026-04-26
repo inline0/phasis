@@ -4,13 +4,13 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-26T19:09:26+00:00`
+- Snapshot time: `2026-04-26T19:14:26+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `9f61db0` (dirty)
+- Git: `main` @ `11a6ea1` (dirty)
 
 ## Summary
 

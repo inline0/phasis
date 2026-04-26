@@ -2305,18 +2305,37 @@ class TemporalObject
                 throw new TypeError('argument must be an object');
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
-            $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $m = self::getSlotInt($this_, '[[ISOMonth]]');
-            $dd = self::getSlotInt($this_, '[[ISODay]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            if ($useCalendarNative) {
+                $iy = self::getSlotInt($this_, '[[ISOYear]]');
+                $im = self::getSlotInt($this_, '[[ISOMonth]]');
+                $id = self::getSlotInt($this_, '[[ISODay]]');
+                $instParts = self::isoToCalendarParts($cal, $iy, $im, $id);
+                if ($instParts === null) {
+                    $useCalendarNative = false;
+                }
+            }
+            if ($useCalendarNative) {
+                $y = $instParts['year'];
+                $m = $instParts['month'];
+                $dd = $instParts['day'];
+                $instMonthCode = $instParts['monthCode'];
+            } else {
+                $y = self::getSlotInt($this_, '[[ISOYear]]');
+                $m = self::getSlotInt($this_, '[[ISOMonth]]');
+                $dd = self::getSlotInt($this_, '[[ISODay]]');
+                $instMonthCode = null;
+            }
             $h = self::getSlotInt($this_, '[[ISOHour]]');
             $min = self::getSlotInt($this_, '[[ISOMinute]]');
             $s = self::getSlotInt($this_, '[[ISOSecond]]');
             $ms = self::getSlotInt($this_, '[[ISOMillisecond]]');
             $us = self::getSlotInt($this_, '[[ISOMicrosecond]]');
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
-            $cal = self::getSlotString($this_, '[[Calendar]]');
             $any = false;
             $monthWasSet = false;
+            $userMonthCode = null;
             // Read fields in ALPHABETICAL order per spec:
             // day, hour, microsecond, millisecond, minute, month, monthCode, nanosecond, second, year
             $allFields = [
@@ -2342,11 +2361,14 @@ class TemporalObject
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($mcv);
-                $mcMonth = self::parseMonthCode($mc);
-                if ($monthWasSet && $m !== $mcMonth) {
+                $mcMonth = self::parseMonthCode($mc, $cal);
+                if ($monthWasSet && $m !== $mcMonth && !$useCalendarNative) {
                     throw new RangeError('month and monthCode must agree');
                 }
-                $m = $mcMonth;
+                if (!$useCalendarNative) {
+                    $m = $mcMonth;
+                }
+                $userMonthCode = $mc;
                 $any = true;
             }
             $nsv = $item->get('nanosecond');
@@ -2392,6 +2414,27 @@ class TemporalObject
                     if ($overflow !== 'constrain' && $overflow !== 'reject') {
                         throw new RangeError("Invalid overflow: {$overflow}");
                     }
+                }
+            }
+            if ($useCalendarNative) {
+                $mcForIso = $userMonthCode ?? ($monthWasSet ? null : $instMonthCode);
+                $monthForIso = $userMonthCode === null ? $m : null;
+                $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, $dd);
+                if ($isoParts !== null) {
+                    if ($overflow === 'constrain') {
+                        $h = max(0, min(23, $h));
+                        $min = max(0, min(59, $min));
+                        $s = max(0, min(59, $s));
+                        $ms = max(0, min(999, $ms));
+                        $us = max(0, min(999, $us));
+                        $ns = max(0, min(999, $ns));
+                    } else {
+                        self::validateISOTime($h, $min, $s, $ms, $us, $ns);
+                    }
+                    return self::createPlainDateTimeObject(
+                        $isoParts['year'], $isoParts['month'], $isoParts['day'],
+                        $h, $min, $s, $ms, $us, $ns, $cal,
+                    );
                 }
             }
             if ($overflow === 'constrain') {
@@ -2903,14 +2946,33 @@ class TemporalObject
                 throw new TypeError('argument must be an object');
             }
             self::rejectObjectWithCalendarOrTimeZone($item);
-            $y = self::getSlotInt($this_, '[[ISOYear]]');
-            $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $refDay = self::getSlotInt($this_, '[[ISODay]]');
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $instMonthCode = null;
+            if ($useCalendarNative) {
+                $iy = self::getSlotInt($this_, '[[ISOYear]]');
+                $im = self::getSlotInt($this_, '[[ISOMonth]]');
+                $id = self::getSlotInt($this_, '[[ISODay]]');
+                $instParts = self::isoToCalendarParts($cal, $iy, $im, $id);
+                if ($instParts === null) {
+                    $useCalendarNative = false;
+                }
+            }
+            if ($useCalendarNative) {
+                $y = $instParts['year'];
+                $m = $instParts['month'];
+                $refDay = $instParts['day'];
+                $instMonthCode = $instParts['monthCode'];
+            } else {
+                $y = self::getSlotInt($this_, '[[ISOYear]]');
+                $m = self::getSlotInt($this_, '[[ISOMonth]]');
+                $refDay = self::getSlotInt($this_, '[[ISODay]]');
+            }
             $any = false;
+            $userMonthCode = null;
+            $monthFromVal = null;
             // Read in alphabetical order: month, monthCode, year.
             $monthVal = $item->get('month');
-            $monthFromVal = null;
             if (!($monthVal instanceof JsUndefined)) {
                 $mNum = TypeConversion::toNumber($monthVal);
                 if (!is_finite($mNum)) {
@@ -2923,12 +2985,14 @@ class TemporalObject
             $monthCodeVal = $item->get('monthCode');
             if (!($monthCodeVal instanceof JsUndefined)) {
                 $mc = TypeConversion::toString($monthCodeVal);
-                $monthFromCode = self::parseMonthCode($mc);
-                // If both month and monthCode are provided, they must agree.
-                if ($monthFromVal !== null && $monthFromVal !== $monthFromCode) {
+                $monthFromCode = self::parseMonthCode($mc, $cal);
+                if ($monthFromVal !== null && $monthFromVal !== $monthFromCode && !$useCalendarNative) {
                     throw new RangeError("month and monthCode disagree");
                 }
-                $m = $monthFromCode;
+                if (!$useCalendarNative) {
+                    $m = $monthFromCode;
+                }
+                $userMonthCode = $mc;
                 $any = true;
             }
             $yearVal = $item->get('year');
@@ -2943,12 +3007,19 @@ class TemporalObject
             if (!$any) {
                 throw new TypeError('At least one temporal property must be provided');
             }
-            // Validate bounds before options.
             if ($m < 1) {
                 throw new RangeError('month must be >= 1');
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $overflow = self::getOverflow($options);
+            if ($useCalendarNative) {
+                $mcForIso = $userMonthCode ?? ($monthFromVal !== null ? null : $instMonthCode);
+                $monthForIso = $userMonthCode === null ? $m : null;
+                $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, 1);
+                if ($isoParts !== null) {
+                    return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
+                }
+            }
             if ($overflow === 'constrain') {
                 $m = max(1, min(12, $m));
             } elseif ($m > 12) {
@@ -4013,9 +4084,24 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $y = $parts['year'];
-            $m = $parts['month'];
-            $dd = $parts['day'];
+            $useCalendarNative = $cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true);
+            $instMonthCode = null;
+            if ($useCalendarNative) {
+                $cp = self::isoToCalendarParts($cal, $parts['year'], $parts['month'], $parts['day']);
+                if ($cp === null) {
+                    $useCalendarNative = false;
+                }
+            }
+            if ($useCalendarNative) {
+                $y = $cp['year'];
+                $m = $cp['month'];
+                $dd = $cp['day'];
+                $instMonthCode = $cp['monthCode'];
+            } else {
+                $y = $parts['year'];
+                $m = $parts['month'];
+                $dd = $parts['day'];
+            }
             $h = $parts['hour'];
             $min = $parts['minute'];
             $s = $parts['second'];
@@ -4025,6 +4111,7 @@ class TemporalObject
             $any = false;
             $monthChanged = false;
             $monthCodeChanged = false;
+            $userMonthCode = null;
             $origMonth = $m;
             // Read fields in alphabetical order, converting each immediately.
             $dv = $item->get('day');
@@ -4063,14 +4150,17 @@ class TemporalObject
             }
             $mcv = $item->get('monthCode');
             if (!($mcv instanceof JsUndefined)) {
-                $mcMonth = self::parseMonthCode(TypeConversion::toString($mcv));
+                $mcStr0 = TypeConversion::toString($mcv);
+                $mcMonth = self::parseMonthCode($mcStr0, $cal);
                 $any = true;
                 $monthCodeChanged = true;
-                // If both month and monthCode are set and disagree, throw.
-                if ($monthChanged && $m !== $mcMonth) {
+                if ($monthChanged && $m !== $mcMonth && !$useCalendarNative) {
                     throw new RangeError('month and monthCode must agree');
                 }
-                $m = $mcMonth;
+                if (!$useCalendarNative) {
+                    $m = $mcMonth;
+                }
+                $userMonthCode = $mcStr0;
             }
             $nsv = $item->get('nanosecond');
             if (!($nsv instanceof JsUndefined)) {
@@ -4129,6 +4219,18 @@ class TemporalObject
                 }
             }
             $overflow = self::getOverflow($options);
+            // For non-ISO non-gregory calendars, convert calendar-native fields
+            // back to ISO via ICU before applying time overflow.
+            if ($useCalendarNative) {
+                $mcForIso = $userMonthCode ?? ($monthChanged ? null : $instMonthCode);
+                $monthForIso = $userMonthCode === null ? $m : null;
+                $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, $dd);
+                if ($isoParts !== null) {
+                    $y = $isoParts['year'];
+                    $m = $isoParts['month'];
+                    $dd = $isoParts['day'];
+                }
+            }
             if ($overflow === 'constrain') {
                 [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
                 $h = max(0, min(23, $h));
