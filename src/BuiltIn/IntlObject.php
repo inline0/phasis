@@ -9807,7 +9807,10 @@ class IntlObject
             $emit('literal', $listSep);
         }
         if ($signNeedsAttaching) {
-            $emit('minusSign', '-', 'second');
+            // The minus sign rides on the first clock unit that
+            // actually appears (hour > minute > second).
+            $signUnit = $showHours ? 'hour' : ($showMinutes ? 'minute' : 'second');
+            $emit('minusSign', '-', $signUnit);
         }
         $emitted = false;
         if ($showHours) {
