@@ -1928,11 +1928,31 @@ class IntlObject
         // map onto group/decimal; non-digit, non-separator runs become
         // currency, percent, unit, or literal depending on context.
         $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
+        $notation = self::extractInternalString($nf, '[[Notation]]', 'standard');
         $isCurrency = $style === 'currency';
         $isPercent = $style === 'percent';
         $isUnit = $style === 'unit';
+        $isScientific = $notation === 'engineering' || $notation === 'scientific';
+        // Detect locale-specific decimal / group symbols so that
+        // de-DE (decimal=",", group=".") and similar non-en locales
+        // emit the right typed parts. Falls back to en-US conventions
+        // when intl isn't loaded.
+        $decimalSym = '.';
+        $groupSym = ',';
+        if (extension_loaded('intl')) {
+            $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
+            $sf = new \NumberFormatter(
+                str_replace('-', '_', $locale),
+                \NumberFormatter::DECIMAL,
+            );
+            $decimalSym = $sf->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL)
+                ?: '.';
+            $groupSym = $sf->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL)
+                ?: ',';
+        }
         $sawDecimal = false;
         $sawDigits = false;
+        $afterExponent = false;
         $i = 0;
         $bodyLen = strlen($body);
         while ($i < $bodyLen) {
@@ -1979,9 +1999,27 @@ class IntlObject
                     }
                     break;
                 }
-                $emit($sawDecimal ? 'fraction' : 'integer', $digitRun);
+                if ($afterExponent) {
+                    $emit('exponentInteger', $digitRun);
+                } else {
+                    $emit($sawDecimal ? 'fraction' : 'integer', $digitRun);
+                }
                 $sawDigits = true;
                 $i = $j;
+                continue;
+            }
+            if ($isScientific && ($ch === 'E' || $ch === 'e')) {
+                $emit('exponentSeparator', $ch);
+                $i++;
+                $afterExponent = true;
+                // Capture an optional sign for the exponent.
+                if ($i < $bodyLen && ($body[$i] === '-' || $body[$i] === '+')) {
+                    $emit(
+                        $body[$i] === '-' ? 'exponentMinusSign' : 'exponentPlusSign',
+                        $body[$i],
+                    );
+                    $i++;
+                }
                 continue;
             }
             // For unit-style output, the rendered unit suffix follows
@@ -1999,15 +2037,24 @@ class IntlObject
                 $i = $bodyLen;
                 continue;
             }
-            if ($ch === ',' || $ch === ' ' || preg_match('/^\p{Zs}$/u', $charStr) === 1) {
-                $emit('group', $charStr);
-                $i += $charLen;
+            // Decimal separator first — locale-specific (',' for de-DE,
+            // '.' for en-US, etc.). The match uses the locale's
+            // resolved decimal symbol so we don't misclassify
+            // de-DE "987,00" as a group separator.
+            if (substr($body, $i, strlen($decimalSym)) === $decimalSym && $decimalSym !== '') {
+                $sawDecimal = true;
+                $emit('decimal', $decimalSym);
+                $i += strlen($decimalSym);
                 continue;
             }
-            if ($ch === '.') {
-                $sawDecimal = true;
-                $emit('decimal', '.');
-                $i++;
+            if (substr($body, $i, strlen($groupSym)) === $groupSym && $groupSym !== '') {
+                $emit('group', $groupSym);
+                $i += strlen($groupSym);
+                continue;
+            }
+            if ($ch === ' ' || preg_match('/^\p{Zs}$/u', $charStr) === 1) {
+                $emit('literal', $charStr);
+                $i += $charLen;
                 continue;
             }
             if ($ch === '%') {
