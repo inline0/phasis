@@ -57,5 +57,9 @@ return [
         // Multi-realm support is not implemented; tests using
         // $262.createRealm() can't run.
         'cross-realm',
+        // Top-level await ticks ordering for ES modules is not
+        // implemented at the spec-precise tick granularity that the
+        // module-code tests assert against.
+        'top-level-await',
     ],
 ];
