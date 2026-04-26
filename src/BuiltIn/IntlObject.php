@@ -684,10 +684,18 @@ class IntlObject
                 $tzLowerMap[strtolower($id)] = $id;
             }
             if (extension_loaded('intl')) {
+                // ICU's enumeration includes 3-letter abbreviation
+                // aliases (ACT, BST, CST, ...) that the spec
+                // explicitly rejects. Only pull in the multi-segment
+                // aliases (those containing a '/') so legacy IANA
+                // names like Canada/East-Saskatchewan are accepted.
                 $iter = \IntlTimeZone::createEnumeration();
                 foreach ($iter as $id) {
                     $lower = strtolower($id);
-                    if (!isset($tzLowerMap[$lower])) {
+                    if (isset($tzLowerMap[$lower])) {
+                        continue;
+                    }
+                    if (str_contains($id, '/') || $id === 'UTC') {
                         $tzLowerMap[$lower] = $id;
                     }
                 }
