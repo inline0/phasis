@@ -774,11 +774,18 @@ class IntlObject
             if (extension_loaded('intl')) {
                 $available = \ResourceBundle::getLocales('');
             }
+            // Use [[DefineOwnProperty]] (data descriptors) so a
+            // tainted Array.prototype setter on index 0 doesn't fire
+            // — the spec creates each entry via CreateDataProperty,
+            // not [[Set]].
             $result = new JsArray();
             $count = 0;
             foreach ($canonicalized as $tag) {
                 if ($available === []) {
-                    $result->set((string) $count, new JsString($tag));
+                    $result->defineOwnProperty(
+                        (string) $count,
+                        PropertyDescriptor::data(new JsString($tag), true, true, true),
+                    );
                     $count++;
                     continue;
                 }
@@ -787,7 +794,10 @@ class IntlObject
                 if ($best === '' || $best === null) {
                     continue;
                 }
-                $result->set((string) $count, new JsString($tag));
+                $result->defineOwnProperty(
+                    (string) $count,
+                    PropertyDescriptor::data(new JsString($tag), true, true, true),
+                );
                 $count++;
             }
             $result->set('length', new JsNumber((float) $count));
@@ -5576,7 +5586,10 @@ class IntlObject
             $cats = self::pluralCategoriesForLocale($localeForCats, $type);
             $categories = new JsArray();
             foreach ($cats as $i => $cat) {
-                $categories->set((string) $i, new JsString($cat));
+                $categories->defineOwnProperty(
+                    (string) $i,
+                    PropertyDescriptor::data(new JsString($cat), true, true, true),
+                );
             }
             $categories->set('length', new JsNumber((float) count($cats)));
             self::defineDataProp($result, 'pluralCategories', $categories);
