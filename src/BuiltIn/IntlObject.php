@@ -7635,6 +7635,9 @@ class IntlObject
             'ab' => 'ab-Cyrl-GE', 'af' => 'af-Latn-ZA',
             'ak' => 'ak-Latn-GH', 'am' => 'am-Ethi-ET', 'ar' => 'ar-Arab-EG',
             'as' => 'as-Beng-IN', 'az' => 'az-Latn-AZ', 'be' => 'be-Cyrl-BY',
+            'pap' => 'pap-Latn-CW',
+            'und-CW' => 'pap-Latn-CW', 'und-AW' => 'pap-Latn-AW',
+            'pap-AW' => 'pap-Latn-AW',
             'bg' => 'bg-Cyrl-BG', 'bm' => 'bm-Latn-ML', 'bn' => 'bn-Beng-BD',
             'bo' => 'bo-Tibt-CN', 'br' => 'br-Latn-FR', 'bs' => 'bs-Latn-BA',
             'ca' => 'ca-Latn-ES', 'ce' => 'ce-Cyrl-RU', 'co' => 'co-Latn-FR',
@@ -7678,6 +7681,8 @@ class IntlObject
             'ur' => 'ur-Arab-PK', 'uz' => 'uz-Latn-UZ', 'vi' => 'vi-Latn-VN',
             'wo' => 'wo-Latn-SN', 'xh' => 'xh-Latn-ZA', 'yi' => 'yi-Hebr-001',
             'yo' => 'yo-Latn-NG', 'zh' => 'zh-Hans-CN', 'zu' => 'zu-Latn-ZA',
+            'zh-Hant' => 'zh-Hant-TW', 'zh-TW' => 'zh-Hant-TW',
+            'und-Hant' => 'zh-Hant-TW', 'und-TW' => 'zh-Hant-TW',
             // Additional Chinese language varieties.
             'hak' => 'hak-Hans-CN', 'nan' => 'nan-Hans-CN',
             'wuu' => 'wuu-Hans-CN', 'hsn' => 'hsn-Hans-CN',
