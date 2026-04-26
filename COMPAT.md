@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-26T19:57:40+00:00`
+- Snapshot time: `2026-04-26T20:03:10+00:00`
 - Chunk size: `250`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `b894a96` (dirty)
+- Git: `main` @ `a183219` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 48916 | 550 | 518 | 0 | 513 | 9 | 49466 | 49984 | 50506 | 98.9% |
+| 48930 | 553 | 518 | 0 | 499 | 6 | 49483 | 50001 | 50506 | 98.9% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | INCOMPLETE | 1068 | 8 | 0 | 0 | 3 | 0 | 99.3% |
-| built-ins | RUNNING | 21979 | 281 | 14 | 0 | 446 | 9 | 98.7% |
+| built-ins | RUNNING | 21986 | 284 | 14 | 0 | 439 | 6 | 98.7% |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
-| intl402 | INCOMPLETE | 1511 | 50 | 0 | 0 | 5 | 0 | 96.8% |
+| intl402 | INCOMPLETE | 1515 | 50 | 0 | 0 | 1 | 0 | 96.8% |
 | language | INCOMPLETE | 22847 | 32 | 504 | 0 | 1 | 0 | 99.9% |
-| staging | INCOMPLETE | 1397 | 177 | 0 | 0 | 58 | 0 | 88.8% |
+| staging | INCOMPLETE | 1400 | 177 | 0 | 0 | 55 | 0 | 88.8% |
 
 ## Group Coverage
 
@@ -59,7 +59,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/AsyncGeneratorFunction | PARTIAL | 22 | 1 | 0 | 0 | 0 | 0 | 95.7% |
 | built-ins/AsyncGeneratorPrototype | PARTIAL | 45 | 3 | 0 | 0 | 0 | 0 | 93.8% |
 | built-ins/AsyncIteratorPrototype | PASS | 10 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Atomics | INCOMPLETE | 264 | 62 | 6 | 0 | 44 | 0 | 81.0% |
+| built-ins/Atomics | RUNNING | 269 | 65 | 6 | 0 | 30 | 6 | 80.5% |
 | built-ins/BigInt | PASS | 75 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Boolean | PASS | 51 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/DataView | PARTIAL | 547 | 3 | 0 | 0 | 0 | 0 | 99.5% |
@@ -92,7 +92,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/match-indices | PARTIAL | 13 | 1 | 0 | 0 | 0 | 0 | 92.9% |
 | built-ins/RegExp/named-groups | PARTIAL | 32 | 4 | 0 | 0 | 0 | 0 | 88.9% |
 | built-ins/RegExp/property-escapes | PASS | 143 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/RegExp/property-escapes/generated | RUNNING | 20 | 42 | 0 | 0 | 388 | 9 | 32.3% |
+| built-ins/RegExp/property-escapes/generated | INCOMPLETE | 20 | 42 | 0 | 0 | 397 | 0 | 32.3% |
 | built-ins/RegExp/prototype | PARTIAL | 473 | 14 | 0 | 0 | 0 | 0 | 97.1% |
 | built-ins/RegExp/regexp-modifiers | PARTIAL | 60 | 10 | 0 | 0 | 0 | 0 | 85.7% |
 | built-ins/RegExp/unicodeSets | PARTIAL | 85 | 28 | 0 | 0 | 0 | 0 | 75.2% |
@@ -114,7 +114,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Temporal/PlainTime | PASS | 457 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/PlainYearMonth | PASS | 465 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/ZonedDateTime | PASS | 805 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Temporal/toStringTag | PENDING | 0 | 0 | 0 | 0 | 2 | 0 | n/a |
+| built-ins/Temporal/toStringTag | PASS | 2 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/ThrowTypeError | PASS | 14 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/TypedArray | PARTIAL | 1397 | 29 | 0 | 0 | 0 | 0 | 98.0% |
 | built-ins/TypedArrayConstructors | PARTIAL | 733 | 3 | 0 | 0 | 0 | 0 | 99.6% |
@@ -135,7 +135,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/undefined | PASS | 8 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | harness | PARTIAL | 114 | 2 | 0 | 0 | 0 | 0 | 98.3% |
 | intl402 | PARTIAL | 21 | 1 | 0 | 0 | 0 | 0 | 95.5% |
-| intl402/Array | PENDING | 0 | 0 | 0 | 0 | 2 | 0 | n/a |
+| intl402/Array | PASS | 2 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/BigInt | PASS | 11 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Collator | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Date | PASS | 12 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -146,7 +146,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | intl402/ListFormat | PASS | 81 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Locale | PASS | 147 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Number | PASS | 7 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/NumberFormat | INCOMPLETE | 249 | 1 | 0 | 0 | 2 | 0 | 99.6% |
+| intl402/NumberFormat | PARTIAL | 251 | 1 | 0 | 0 | 0 | 0 | 99.6% |
 | intl402/PluralRules | PASS | 50 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/RelativeTimeFormat | PASS | 79 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Segmenter | PASS | 78 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PARTIAL | 2 | 1 | 0 | 0 | 0 | 0 | 66.7% |
 | staging/explicit-resource-management | PARTIAL | 53 | 1 | 0 | 0 | 0 | 0 | 98.1% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | INCOMPLETE | 1246 | 126 | 0 | 0 | 56 | 0 | 90.8% |
+| staging/sm | INCOMPLETE | 1249 | 126 | 0 | 0 | 53 | 0 | 90.8% |
 | staging/source-phase-imports | PENDING | 0 | 0 | 0 | 0 | 1 | 0 | n/a |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 

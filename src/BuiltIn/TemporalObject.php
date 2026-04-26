@@ -1153,6 +1153,16 @@ class TemporalObject
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $leap = self::calendarInLeapYear(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+            if ($leap !== null) {
+                return new JsBoolean($leap);
+            }
             return new JsBoolean(self::isoIsLeapYear(self::getSlotInt($this_, '[[ISOYear]]')));
         });
         self::defineGetter($proto, 'era', function (JsValue $this_): JsValue {
@@ -11404,6 +11414,126 @@ class TemporalObject
     }
 
     /**
+     * For chinese / dangi leap years, return the ICU MONTH index that has a
+     * leap-month form (0..11). Returns null if no leap month exists.
+     */
+    private static function chineseLeapMonthIndex(string $calendar, int $extendedYear): ?int
+    {
+        if (!in_array($calendar, ['chinese', 'dangi'], true)) {
+            return null;
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        try {
+            for ($m = 0; $m < 12; $m++) {
+                $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
+                if (!$probe instanceof \IntlCalendar) {
+                    return null;
+                }
+                $probe->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $extendedYear);
+                $probe->set(\IntlCalendar::FIELD_MONTH, $m);
+                $probe->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
+                $probe->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
+                $ms = $probe->getTime();
+                $verify = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
+                if (!$verify instanceof \IntlCalendar) {
+                    return null;
+                }
+                $verify->setTime($ms);
+                if (
+                    $verify->get(\IntlCalendar::FIELD_EXTENDED_YEAR) === $extendedYear
+                    && $verify->get(\IntlCalendar::FIELD_MONTH) === $m
+                    && $verify->get(\IntlCalendar::FIELD_IS_LEAP_MONTH) === 1
+                ) {
+                    return $m;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+        return null;
+    }
+
+    /**
+     * True when the calendar year (in calendar-native terms) is a leap year.
+     */
+    private static function calendarInLeapYear(string $calendar, int $isoY, int $isoM, int $isoD): ?bool
+    {
+        if ($calendar === 'iso8601' || in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
+            return self::isoIsLeapYear($isoY);
+        }
+        if ($calendar === 'hebrew') {
+            $parts = self::isoToCalendarParts($calendar, $isoY, $isoM, $isoD);
+            if ($parts === null) {
+                return null;
+            }
+            return self::isHebrewLeapYear($parts['year']);
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        try {
+            $icuCalName = $calendar;
+            static $aliasMapInLY = [
+                'islamicc' => 'islamic-civil',
+                'ethioaa' => 'ethiopic-amete-alem',
+            ];
+            if (isset($aliasMapInLY[$calendar])) {
+                $icuCalName = $aliasMapInLY[$calendar];
+            }
+            $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $cal->setTime(self::isoDateToEpochMs($isoY, $isoM, $isoD));
+            // Chinese / Dangi leap years insert one leap month flagged via
+            // IS_LEAP_MONTH (the MONTH field still ranges 0-11). Probe each
+            // position with IS_LEAP_MONTH=1 and check whether ICU preserves
+            // the flag.
+            if (in_array($calendar, ['chinese', 'dangi'], true)) {
+                $extYear = $cal->get(\IntlCalendar::FIELD_EXTENDED_YEAR);
+                for ($m = 0; $m < 12; $m++) {
+                    $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
+                    if (!$probe instanceof \IntlCalendar) {
+                        return null;
+                    }
+                    $probe->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $extYear);
+                    $probe->set(\IntlCalendar::FIELD_MONTH, $m);
+                    $probe->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
+                    $probe->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
+                    $ms = $probe->getTime();
+                    $verify = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
+                    if (!$verify instanceof \IntlCalendar) {
+                        return null;
+                    }
+                    $verify->setTime($ms);
+                    if (
+                        $verify->get(\IntlCalendar::FIELD_EXTENDED_YEAR) === $extYear
+                        && $verify->get(\IntlCalendar::FIELD_MONTH) === $m
+                        && $verify->get(\IntlCalendar::FIELD_IS_LEAP_MONTH) === 1
+                    ) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            // Coptic / Ethiopic leap year: every 4 years, M13 has 6 days.
+            if (in_array($calendar, ['coptic', 'ethiopic', 'ethioaa'], true)) {
+                return $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR) > 365;
+            }
+            // Persian: 365 vs 366 days.
+            if ($calendar === 'persian' || $calendar === 'indian') {
+                return $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR) > 365;
+            }
+            // Islamic / others: no canonical leap concept; default false.
+            return false;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Actual days-in-month for a calendar year/month combination via ICU.
      * Returns null if conversion is unavailable.
      */
@@ -11573,7 +11703,27 @@ class TemporalObject
             }
         } elseif ($monthNum !== null) {
             // 1-indexed month → ICU 0-indexed (most calendars).
-            if ($calendar === 'hebrew') {
+            if (in_array($calendar, ['chinese', 'dangi'], true)) {
+                // In a leap year, month positions 1..13 chronologically include
+                // the leap month between certain non-leap months.
+                $leapIcu = self::chineseLeapMonthIndex($calendar, $year);
+                if ($leapIcu === null) {
+                    // Non-leap year: 1..12 → ICU 0..11.
+                    $icuMonth = $monthNum - 1;
+                } else {
+                    // Leap year: chronologically months 1..(leapIcu+1) → non-leap
+                    // ICU 0..leapIcu; month (leapIcu+2) → leap version of leapIcu;
+                    // months (leapIcu+3)..13 → ICU (leapIcu+1)..11.
+                    if ($monthNum >= 1 && $monthNum <= $leapIcu + 1) {
+                        $icuMonth = $monthNum - 1;
+                    } elseif ($monthNum === $leapIcu + 2) {
+                        $icuMonth = $leapIcu;
+                        $isLeapMonth = true;
+                    } elseif ($monthNum >= $leapIcu + 3 && $monthNum <= 13) {
+                        $icuMonth = $monthNum - 2;
+                    }
+                }
+            } elseif ($calendar === 'hebrew') {
                 $isLeap = self::isHebrewLeapYear($year);
                 if ($isLeap) {
                     // Spec months: 1..5=Tishri..Shevat, 6=AdarI, 7=AdarII, ..., 13=Elul.
@@ -11648,37 +11798,32 @@ class TemporalObject
     }
 
     /** Convert ICU 0-indexed month to spec monthCode for the given calendar. */
-    private static function calendarMonthToCode(string $calendar, int $year, int $icuMonth): string
+    private static function calendarMonthToCode(string $calendar, int $year, int $icuMonth, bool $isLeap = false): string
     {
         if ($calendar === 'hebrew') {
-            // ICU month index 0-12. M01-M05 = 0-4, M05L = 5 (leap only),
-            // M06-M12 = 6-12. In a non-leap year ICU collapses position 5
-            // into 6 (Adar), so callers should not see a 5 here, but if they
-            // do we treat it as M06.
             if ($icuMonth >= 0 && $icuMonth <= 4) {
                 return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
             }
             if ($icuMonth === 5) {
                 return self::isHebrewLeapYear($year) ? 'M05L' : 'M06';
             }
-            // 6..12 → M06..M12.
             return 'M' . str_pad((string) $icuMonth, 2, '0', STR_PAD_LEFT);
         }
         if (in_array($calendar, ['chinese', 'dangi'], true)) {
-            // ICU 0-12; leap month indicator requires deeper detection. Default
-            // to the 1-indexed numeric form. Caller may override on leap.
-            return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
+            // ICU month is 0..11 for the non-leap month code; leap month
+            // shares the same MONTH index but with IS_LEAP_MONTH=1, exposed
+            // by the spec as M(NN)L.
+            $base = 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
+            return $isLeap ? $base . 'L' : $base;
         }
-        // Default: ICU month 0..N → M01..M(N+1).
         return 'M' . str_pad((string) ($icuMonth + 1), 2, '0', STR_PAD_LEFT);
     }
 
     /** Calendar-specific 1-indexed month number (matches the spec's `month` getter). */
-    private static function calendarMonthToOneBased(string $calendar, int $year, int $icuMonth): int
+    private static function calendarMonthToOneBased(string $calendar, int $year, int $icuMonth, bool $isLeap = false): int
     {
         if ($calendar === 'hebrew') {
             if (self::isHebrewLeapYear($year)) {
-                // Spec ordering: 1=M01, ..., 5=M05, 6=M05L (leap), 7=M06, ..., 13=M12.
                 if ($icuMonth >= 0 && $icuMonth <= 4) {
                     return $icuMonth + 1;
                 }
@@ -11687,8 +11832,6 @@ class TemporalObject
                 }
                 return $icuMonth + 1;
             }
-            // Non-leap: 12 months. ICU 0-4 → 1-5; 5/6 → 6; 7-12 → 7-12... wait actually
-            // for non-leap year the spec uses month numbers 1..12 (no M05L).
             if ($icuMonth >= 0 && $icuMonth <= 4) {
                 return $icuMonth + 1;
             }
@@ -11696,6 +11839,23 @@ class TemporalObject
                 return 6;
             }
             return $icuMonth;
+        }
+        if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            $leapIcu = self::chineseLeapMonthIndex($calendar, $year);
+            if ($leapIcu === null) {
+                return $icuMonth + 1;
+            }
+            // Leap year: chronological positions:
+            //  ICU 0..leapIcu      → 1..(leapIcu+1)  (non-leap)
+            //  ICU leapIcu (L)     → leapIcu+2       (leap)
+            //  ICU (leapIcu+1)..11 → (leapIcu+3)..13 (non-leap)
+            if ($isLeap) {
+                return $leapIcu + 2;
+            }
+            if ($icuMonth <= $leapIcu) {
+                return $icuMonth + 1;
+            }
+            return $icuMonth + 2;
         }
         return $icuMonth + 1;
     }
