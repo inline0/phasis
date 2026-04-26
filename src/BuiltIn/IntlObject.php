@@ -1664,15 +1664,7 @@ class IntlObject
             // double (|x| ≤ 2^53) round-trip cleanly through the
             // regular float pipeline so sig-digit / fraction-digit
             // options work end-to-end.
-            $bigStr = null;
-            if ($number instanceof \PhpJs\Value\JsBigInt) {
-                $abs = ltrim($number->value, '-');
-                $fitsInDouble = strlen($abs) < 16
-                    || (strlen($abs) === 16 && strcmp($abs, '9007199254740992') <= 0);
-                if (!$fitsInDouble) {
-                    $bigStr = $number->value;
-                }
-            }
+            $bigStr = self::extractHighPrecisionNumeric($number);
             $numVal = self::numericArgToFloat($number);
 
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
@@ -1765,10 +1757,15 @@ class IntlObject
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRange');
             }
+            // ToIntlMathematicalValue: preserve a high-precision
+            // decimal string when the input is a numeric string or
+            // a BigInt that doesn't fit into a double.
+            $startBig = self::extractHighPrecisionNumeric($startVal);
+            $endBig = self::extractHighPrecisionNumeric($endVal);
             $startStr = extension_loaded('intl')
-                ? self::formatNumber($this_, $start) : (string) $start;
+                ? self::formatNumber($this_, $start, $startBig) : (string) $start;
             $endStr = extension_loaded('intl')
-                ? self::formatNumber($this_, $end) : (string) $end;
+                ? self::formatNumber($this_, $end, $endBig) : (string) $end;
             // Approximately sign: when distinct numeric inputs round
             // to the same formatted output, the spec mandates an
             // "approximately" prefix so the consumer can tell that
@@ -1780,6 +1777,24 @@ class IntlObject
                 return new JsString($startStr);
             }
             $sep = self::numberFormatRangeSeparator($this_);
+            // Currency formatRange with an explicit sign collapses
+            // the shared sign+currency prefix off the end value:
+            // "+$2.90 – +$3.10" becomes "+$2.90–3.10" because the
+            // en-dash is the locale's range pattern once the prefix
+            // is shared. Without an explicit sign, V8 keeps the
+            // currency on both endpoints ("$3 – $5"), so we only
+            // collapse when the start string starts with a sign.
+            $style = self::extractInternalString($this_, '[[Style]]', 'decimal');
+            $signDisplay = self::extractInternalString($this_, '[[SignDisplay]]', 'auto');
+            $hasExplicitSign = ($signDisplay === 'always' || $signDisplay === 'exceptZero')
+                && (str_starts_with($startStr, '+') || str_starts_with($startStr, '-'));
+            if ($style === 'currency' && $hasExplicitSign) {
+                $shared = self::sharedCurrencyPrefix($startStr, $endStr);
+                if ($shared !== '' && str_starts_with($endStr, $shared)) {
+                    $endStr = substr($endStr, strlen($shared));
+                    $sep = self::numberFormatRangeSeparatorCollapsed($this_);
+                }
+            }
             return new JsString($startStr . $sep . $endStr);
         }, 2);
         $proto->defineOwnProperty(
@@ -2980,6 +2995,67 @@ class IntlObject
         return '~';
     }
 
+    /**
+     * Pull a precision-preserving decimal string from a numeric
+     * argument when one is available (BigInt, or a string already
+     * containing a decimal representation that exceeds double
+     * precision). Returns null when the regular float pipeline is
+     * sufficient.
+     */
+    private static function extractHighPrecisionNumeric(JsValue $val): ?string
+    {
+        if ($val instanceof \PhpJs\Value\JsBigInt) {
+            $abs = ltrim($val->value, '-');
+            $fitsInDouble = strlen($abs) < 16
+                || (strlen($abs) === 16 && strcmp($abs, '9007199254740992') <= 0);
+            return $fitsInDouble ? null : $val->value;
+        }
+        if ($val instanceof JsString) {
+            $s = trim($val->value);
+            if (preg_match('/^[+-]?\d+(?:\.\d+)?$/', $s) !== 1) {
+                return null;
+            }
+            $absDigits = ltrim(str_replace(['+', '-', '.'], '', $s), '0');
+            if (strlen($absDigits) >= 16) {
+                return $s;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The longest shared currency prefix between two formatted
+     * range endpoints. We walk left-to-right while the characters
+     * agree and stop once we hit the first numeric digit.
+     */
+    private static function sharedCurrencyPrefix(string $a, string $b): string
+    {
+        $shared = '';
+        $len = min(strlen($a), strlen($b));
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $a[$i];
+            if ($ch !== $b[$i]) {
+                break;
+            }
+            // Stop once we reach the first digit so the second value
+            // keeps its mantissa.
+            if (ctype_digit($ch)) {
+                break;
+            }
+            $shared .= $ch;
+        }
+        return $shared;
+    }
+
+    /**
+     * Collapsed range separator (no surrounding spaces) used when
+     * the end value's prefix has already been stripped.
+     */
+    private static function numberFormatRangeSeparatorCollapsed(JsObject $nf): string
+    {
+        return "\u{2013}";
+    }
+
     private static function numberFormatRangeSeparator(JsObject $nf): string
     {
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
@@ -3014,11 +3090,11 @@ class IntlObject
     }
 
     /**
-     * Render a BigInt's decimal string using the locale's grouping
-     * separator and (for unusual numbering systems) digit set, while
-     * honouring useGrouping / minimumIntegerDigits. Sub-thousand
-     * values aren't grouped, matching CLDR's "min2" behaviour for
-     * useGrouping when the leading group is single-digit.
+     * Render a high-precision numeric string (BigInt or decimal
+     * literal) using the locale's grouping / decimal symbols while
+     * honouring useGrouping / minimumIntegerDigits. Decimal inputs
+     * keep their full fractional precision (only the integer part
+     * is grouped; the fractional part is unchanged).
      */
     private static function renderBigIntStringLocaleAware(
         string $bigIntStr,
@@ -3026,38 +3102,74 @@ class IntlObject
         JsObject $nf,
     ): string {
         $sign = '';
-        $digits = $bigIntStr;
-        if (str_starts_with($digits, '-')) {
-            $sign = '-';
-            $digits = substr($digits, 1);
-        } elseif (str_starts_with($digits, '+')) {
-            $digits = substr($digits, 1);
+        $rest = $bigIntStr;
+        if (str_starts_with($rest, '-')) {
+            // Probe the formatter to learn the locale's actual sign
+            // prefix (RTL locales like Arabic emit U+200E + "-").
+            $probe = $formatter->format(-1);
+            $rest = substr($rest, 1);
+            if (is_string($probe) && preg_match('/^([^0-9]+)/u', $probe, $m) === 1) {
+                $sign = $m[1];
+            } else {
+                $sign = '-';
+            }
+        } elseif (str_starts_with($rest, '+')) {
+            $rest = substr($rest, 1);
+        }
+        $dotPos = strpos($rest, '.');
+        if ($dotPos === false) {
+            $intPart = $rest;
+            $fracPart = '';
+        } else {
+            $intPart = substr($rest, 0, $dotPos);
+            $fracPart = substr($rest, $dotPos + 1);
         }
         $minInt = (int) self::extractInternalNumber($nf, '[[MinimumIntegerDigits]]', 1);
-        if ($minInt > strlen($digits)) {
-            $digits = str_repeat('0', $minInt - strlen($digits)) . $digits;
+        if ($minInt > strlen($intPart)) {
+            $intPart = str_repeat('0', $minInt - strlen($intPart)) . $intPart;
         }
         $useGrouping = self::extractInternalString($nf, '[[UseGrouping]]', 'auto');
         $groupSym = $formatter->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
         $shouldGroup = match ($useGrouping) {
             'false' => false,
             'always' => true,
-            'min2' => strlen($digits) > 4,
-            default => strlen($digits) > 3,
+            'min2' => strlen($intPart) > 4,
+            default => strlen($intPart) > 3,
         };
-        if (!$shouldGroup || $groupSym === false || $groupSym === '') {
-            return $sign . $digits;
+        $intRendered = $intPart;
+        if ($shouldGroup && $groupSym !== false && $groupSym !== '') {
+            // Split from the right into 3-digit groups.
+            $intRendered = '';
+            $len = strlen($intPart);
+            for ($i = $len; $i > 0; $i -= 3) {
+                $start = max(0, $i - 3);
+                $chunk = substr($intPart, $start, $i - $start);
+                $intRendered = $chunk . ($intRendered === '' ? '' : $groupSym . $intRendered);
+            }
         }
-        // Split from the right into 3-digit groups (Indian numbering
-        // systems use 2-3-3 but we'd handle that separately).
-        $out = '';
-        $len = strlen($digits);
-        for ($i = $len; $i > 0; $i -= 3) {
-            $start = max(0, $i - 3);
-            $chunk = substr($digits, $start, $i - $start);
-            $out = $chunk . ($out === '' ? '' : $groupSym . $out);
+        // Honour minimumFractionDigits / maximumFractionDigits when
+        // rendering the decimal portion. The integer portion is
+        // already rendered above, so the fraction part is independent.
+        $rt = self::extractInternalString($nf, '[[RoundingType]]', 'fractionDigits');
+        if ($rt === 'fractionDigits') {
+            $minFrac = (int) self::extractInternalNumber($nf, '[[MinimumFractionDigits]]', 0);
+            $maxFrac = (int) self::extractInternalNumber($nf, '[[MaximumFractionDigits]]', 3);
+            if ($maxFrac < strlen($fracPart)) {
+                $fracPart = substr($fracPart, 0, $maxFrac);
+                $fracPart = rtrim($fracPart, '0');
+            }
+            if (strlen($fracPart) < $minFrac) {
+                $fracPart = str_pad($fracPart, $minFrac, '0');
+            }
         }
-        return $sign . $out;
+        if ($fracPart === '') {
+            return $sign . $intRendered;
+        }
+        $decimalSym = $formatter->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
+        if ($decimalSym === false || $decimalSym === '') {
+            $decimalSym = '.';
+        }
+        return $sign . $intRendered . $decimalSym . $fracPart;
     }
 
     private static function formatNumber(JsObject $nf, float $number, ?string $bigIntStr = null): string
