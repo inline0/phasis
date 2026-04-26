@@ -9834,26 +9834,16 @@ class IntlObject
         };
         $isFirstSegment = true;
         $signNeedsAttaching = $sign < 0;
-        // Detect a clock run (numeric/2-digit hours/minutes/seconds)
-        // and emit it inline as a series of integer/literal parts
-        // joined by ":" with a fractional tail when sub-second
-        // values are present.
-        $clockUnits = ['hours', 'minutes', 'seconds'];
-        $clockNumeric = true;
-        foreach ($clockUnits as $u) {
-            $unitSlot = '[[' . ucfirst($u) . ']]';
-            $st = self::extractInternalString($df, $unitSlot, 'short');
-            if (!in_array($st, ['numeric', '2-digit'], true)) {
-                $clockNumeric = false;
-                break;
-            }
-        }
-        $clockSkip = $clockNumeric
-            ? ['hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds']
-            : [];
+        // Detect a clock run: the LONGEST trailing suffix of
+        // hours/minutes/seconds whose unit styles are all numeric or
+        // 2-digit. With at least two such units we render them
+        // inline as a colon-joined clock segment (e.g. minutes &
+        // seconds collapse to "M:SS" even when hours is short).
+        $clockSkip = self::detectClockUnitsToSkip($df);
+        $clockEmitAt = $clockSkip !== [] ? $clockSkip[0] : null;
         foreach ($units as $u => $singular) {
             if (in_array($u, $clockSkip, true)) {
-                if ($u === 'hours') {
+                if ($u === $clockEmitAt) {
                     $sigEmitted = self::emitClockParts(
                         $df,
                         $values,
@@ -10267,28 +10257,18 @@ class IntlObject
         // Detect a "clock" run: when hours and minutes (or seconds)
         // share a numeric / 2-digit style, render them as
         // "H:MM[:SS]" with sub-second values fused into a fraction.
-        $clockUnits = ['hours', 'minutes', 'seconds'];
-        $clockNumeric = true;
-        foreach ($clockUnits as $u) {
-            $unitSlot = '[[' . ucfirst($u) . ']]';
-            $st = self::extractInternalString($df, $unitSlot, 'short');
-            if (!in_array($st, ['numeric', '2-digit'], true)) {
-                $clockNumeric = false;
-                break;
-            }
-        }
-        $clockSkip = $clockNumeric
-            ? ['hours', 'minutes', 'seconds', 'milliseconds', 'microseconds', 'nanoseconds']
-            : [];
+        $clockSkip = self::detectClockUnitsToSkip($df);
+        $clockEmitAt = $clockSkip !== [] ? $clockSkip[0] : null;
         foreach ($units as $u => $singular) {
             if (in_array($u, $clockSkip, true)) {
-                if ($u === 'hours') {
-                    // The clock segment appears at the "hours"
-                    // position in the spec's table-2 ordering.
+                if ($u === $clockEmitAt) {
+                    // The clock segment appears at the position of
+                    // its first unit (hour or minute).
                     $clockSeg = self::renderClockSegment(
                         $df,
                         $values,
                         $isFirstSegment && $signNeedsAttaching,
+                        $clockSkip,
                     );
                     if ($clockSeg !== null) {
                         $segments[] = $clockSeg;
@@ -10379,6 +10359,53 @@ class IntlObject
     }
 
     /**
+     * Determine which units belong to the colon-joined clock
+     * segment. Walks from seconds upward through the clock units,
+     * keeping any that have numeric / 2-digit styles. Returns the
+     * list of units (including milliseconds/microseconds/nanoseconds
+     * when seconds is numeric) that the regular per-unit emission
+     * loop should skip.
+     *
+     * @return list<string>
+     */
+    private static function detectClockUnitsToSkip(JsObject $df): array
+    {
+        $clockUnits = ['hours', 'minutes', 'seconds'];
+        $isNumeric = static function (string $style): bool {
+            return $style === 'numeric' || $style === '2-digit';
+        };
+        // Walk seconds → minutes → hours, accepting consecutive
+        // numeric/2-digit units. Stop on the first non-numeric one
+        // (everything above it stays out of the clock).
+        $accepted = [];
+        for ($i = count($clockUnits) - 1; $i >= 0; $i--) {
+            $u = $clockUnits[$i];
+            $unitSlot = '[[' . ucfirst($u) . ']]';
+            $st = self::extractInternalString($df, $unitSlot, 'short');
+            if (!$isNumeric($st)) {
+                break;
+            }
+            $accepted[] = $u;
+        }
+        // Need at least two clock units to justify the colon-joined
+        // form; a lone numeric "seconds" alone renders as a normal
+        // segment.
+        if (count($accepted) < 2) {
+            return [];
+        }
+        $accepted = array_reverse($accepted);
+        // Sub-second slots only join the clock when seconds is in
+        // the run (the spec ties their fractional tail to seconds).
+        if (in_array('seconds', $accepted, true)) {
+            $accepted = array_merge(
+                $accepted,
+                ['milliseconds', 'microseconds', 'nanoseconds'],
+            );
+        }
+        return $accepted;
+    }
+
+    /**
      * Render the H:MM:SS[.fff] clock-style segment used by the
      * "digital" DurationFormat style. Returns null when the
      * resulting segment would be empty (all clock units are zero
@@ -10390,10 +10417,15 @@ class IntlObject
         JsObject $df,
         array $values,
         bool $signNeedsAttaching,
+        ?array $clockSkip = null,
     ): ?string {
-        $hours = (int) abs($values['hours'] ?? 0.0);
-        $minutes = (int) abs($values['minutes'] ?? 0.0);
-        $seconds = (int) abs($values['seconds'] ?? 0.0);
+        $clockSkip ??= ['hours', 'minutes', 'seconds'];
+        $hourInClock = in_array('hours', $clockSkip, true);
+        $minuteInClock = in_array('minutes', $clockSkip, true);
+        $secondInClock = in_array('seconds', $clockSkip, true);
+        $hours = $hourInClock ? (int) abs($values['hours'] ?? 0.0) : 0;
+        $minutes = $minuteInClock ? (int) abs($values['minutes'] ?? 0.0) : 0;
+        $seconds = $secondInClock ? (int) abs($values['seconds'] ?? 0.0) : 0;
         $hoursDisplay = self::extractInternalString($df, '[[HoursDisplay]]', 'auto');
         $minutesDisplay = self::extractInternalString($df, '[[MinutesDisplay]]', 'auto');
         $secondsDisplay = self::extractInternalString($df, '[[SecondsDisplay]]', 'auto');
@@ -10431,11 +10463,13 @@ class IntlObject
         // is 0 (per spec note: fractionalDigits doesn't gate the
         // seconds slot's appearance).
         $hasSubSecondValue = $fracTotalNs > 0;
-        $showHours = $hours !== 0 || $hoursDisplay === 'always';
-        $showMinutes = $minutes !== 0 || $minutesDisplay === 'always';
-        $showSeconds = $seconds !== 0 || $secondsDisplay === 'always'
-            || $fracStr !== ''
-            || $hasSubSecondValue;
+        $showHours = $hourInClock && ($hours !== 0 || $hoursDisplay === 'always');
+        $showMinutes = $minuteInClock
+            && ($minutes !== 0 || $minutesDisplay === 'always');
+        $showSeconds = $secondInClock
+            && ($seconds !== 0 || $secondsDisplay === 'always'
+                || $fracStr !== ''
+                || $hasSubSecondValue);
         // V8 / spec: when seconds show, minutes appear too (for
         // ":SS" form). Then if minutes show, hours follow only if
         // hours has a non-zero value or always-display.
@@ -10477,10 +10511,10 @@ class IntlObject
                 : (string) $hours;
         }
         if ($showMinutes) {
-            // Pad minutes to 2-digit whenever it precedes seconds,
-            // OR follows hours, OR its own style is 2-digit.
+            // Pad minutes when its own style is 2-digit OR when a
+            // higher clock unit (hours) precedes it.
             $minStyle = self::extractInternalString($df, '[[Minutes]]', 'short');
-            $padMin = $showHours || $showSeconds || $minStyle === '2-digit';
+            $padMin = $showHours || $minStyle === '2-digit';
             $parts[] = $padMin
                 ? str_pad((string) $minutes, 2, '0', STR_PAD_LEFT)
                 : (string) $minutes;
