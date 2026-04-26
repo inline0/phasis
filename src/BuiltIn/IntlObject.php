@@ -2919,9 +2919,22 @@ class IntlObject
                 foreach ($components as $prop => $validValues) {
                     $val = $options->get($prop);
                     if (!$val instanceof JsUndefined) {
-                        $str = TypeConversion::toString($val);
-                        if ($validValues !== null && !in_array($str, $validValues, true)) {
-                            throw new RangeError("Invalid {$prop}: {$str}");
+                        // fractionalSecondDigits accepts integers in
+                        // [1, 3]; ToNumber + range check happens
+                        // before stringifying for the [[…]] slot.
+                        if ($prop === 'fractionalSecondDigits') {
+                            $fsd = TypeConversion::toNumber($val);
+                            if (is_nan($fsd) || $fsd < 1 || $fsd > 3) {
+                                throw new RangeError(
+                                    "Invalid fractionalSecondDigits: {$fsd}"
+                                );
+                            }
+                            $str = (string) (int) floor($fsd);
+                        } else {
+                            $str = TypeConversion::toString($val);
+                            if ($validValues !== null && !in_array($str, $validValues, true)) {
+                                throw new RangeError("Invalid {$prop}: {$str}");
+                            }
                         }
                         $hasExplicitFormatComponents = true;
                         if ($prop === 'hour') {
