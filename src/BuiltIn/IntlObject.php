@@ -924,11 +924,21 @@ class IntlObject
                     false,
                 ));
 
-                // collation
+                // collation: validate the type-value grammar but
+                // silently drop the reserved "standard"/"search"
+                // identifiers (V8 falls back to "default" rather than
+                // throwing). User-driven search collation is selected
+                // via usage:"search".
                 $collation = 'default';
                 $collVal = $options->get('collation');
                 if (!$collVal instanceof JsUndefined) {
-                    $collation = TypeConversion::toString($collVal);
+                    $collRaw = TypeConversion::toString($collVal);
+                    if (!self::isValidUnicodeTypeValue($collRaw)) {
+                        throw new RangeError("Invalid collation: {$collRaw}");
+                    }
+                    if (!in_array($collRaw, ['standard', 'search'], true)) {
+                        $collation = $collRaw;
+                    }
                 }
                 $obj->defineOwnProperty('[[Collation]]', PropertyDescriptor::data(
                     new JsString($collation),
@@ -2528,13 +2538,17 @@ class IntlObject
                     false,
                 ));
 
-                // numberingSystem
+                // numberingSystem: only keep ICU-supported numeric
+                // systems (drop algorithmic ones like armn / hebr).
                 $numberingSystem = 'latn';
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
-                    $numberingSystem = TypeConversion::toString($nsVal);
-                    if (!self::isValidUnicodeTypeValue($numberingSystem)) {
-                        throw new RangeError("Invalid numberingSystem: {$numberingSystem}");
+                    $nsRaw = TypeConversion::toString($nsVal);
+                    if (!self::isValidUnicodeTypeValue($nsRaw)) {
+                        throw new RangeError("Invalid numberingSystem: {$nsRaw}");
+                    }
+                    if (in_array($nsRaw, self::getSupportedNumberingSystems(), true)) {
+                        $numberingSystem = $nsRaw;
                     }
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
@@ -5761,6 +5775,9 @@ class IntlObject
                     $ns = TypeConversion::toString($nsVal);
                     if (!self::isValidUnicodeTypeValue($ns)) {
                         throw new RangeError("Invalid numberingSystem: {$ns}");
+                    }
+                    if (in_array($ns, self::getSupportedNumberingSystems(), true)) {
+                        $numberingSystem = $ns;
                     }
                 }
 
