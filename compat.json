@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-26T18:57:58+00:00",
-    "updatedAt": "2026-04-26T18:57:58+00:00",
+    "generatedAt": "2026-04-26T19:02:30+00:00",
+    "updatedAt": "2026-04-26T19:02:30+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "d9f882f",
+        "commit": "4f1d5ac",
         "isDirty": true
     },
     "environment": {
@@ -201,14 +201,14 @@
             "json-modules"
         ],
         "totals": {
-            "pass": 48349,
-            "fail": 424,
+            "pass": 48417,
+            "fail": 450,
             "skip": 507,
             "blocked": 0,
-            "pending": 1178,
-            "running": 48,
-            "attempted": 48773,
-            "known": 49280,
+            "pending": 1085,
+            "running": 47,
+            "attempted": 48867,
+            "known": 49374,
             "total": 50506,
             "passRate": 99.1
         },
@@ -230,14 +230,14 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 21732,
-                "fail": 194,
+                "pass": 21751,
+                "fail": 206,
                 "skip": 3,
                 "blocked": 0,
-                "pending": 752,
-                "running": 48,
-                "attempted": 21926,
-                "known": 21929,
+                "pending": 722,
+                "running": 47,
+                "attempted": 21957,
+                "known": 21960,
                 "total": 22729,
                 "passRate": 99.1
             },
@@ -286,16 +286,16 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1191,
-                "fail": 138,
+                "pass": 1240,
+                "fail": 152,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 303,
+                "pending": 240,
                 "running": 0,
-                "attempted": 1329,
-                "known": 1329,
+                "attempted": 1392,
+                "known": 1392,
                 "total": 1632,
-                "passRate": 89.6
+                "passRate": 89.1
             }
         ],
         "groups": [
@@ -693,16 +693,16 @@
                 "name": "built-ins/Atomics",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 185,
-                "fail": 15,
+                "pass": 204,
+                "fail": 27,
                 "skip": 3,
                 "blocked": 0,
-                "pending": 173,
+                "pending": 142,
                 "running": 0,
-                "attempted": 200,
-                "known": 203,
+                "attempted": 231,
+                "known": 234,
                 "total": 376,
-                "passRate": 92.5
+                "passRate": 88.3
             },
             {
                 "name": "built-ins/BigInt",
@@ -1192,8 +1192,8 @@
                 "fail": 7,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 384,
-                "running": 48,
+                "pending": 385,
+                "running": 47,
                 "attempted": 27,
                 "known": 27,
                 "total": 459,
@@ -2643,16 +2643,16 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1062,
-                "fail": 93,
+                "pass": 1111,
+                "fail": 107,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 273,
+                "pending": 210,
                 "running": 0,
-                "attempted": 1155,
-                "known": 1155,
+                "attempted": 1218,
+                "known": 1218,
                 "total": 1428,
-                "passRate": 91.9
+                "passRate": 91.2
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2818,6 +2818,19 @@
                 ]
             },
             {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 20.659,
+                "filesCount": 16,
+                "sampleFiles": [
+                    "test262/test/staging/sm/String/split-undefined-separator.js",
+                    "test262/test/staging/sm/String/split-xregexp.js",
+                    "...",
+                    "test262/test/staging/sm/Symbol/enumeration-order.js",
+                    "test262/test/staging/sm/Symbol/enumeration.js"
+                ]
+            },
+            {
                 "group": "built-ins/encodeURI",
                 "kind": "normal",
                 "durationSec": 20.185,
@@ -2932,19 +2945,6 @@
                     "...",
                     "test262/test/staging/sm/Iterator/prototype/find/check-fn-after-getting-iterator.js",
                     "test262/test/staging/sm/Iterator/prototype/find/coerce-result-to-boolean.js"
-                ]
-            },
-            {
-                "group": "language/statements",
-                "kind": "normal",
-                "durationSec": 12.927,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/statements/try/scope-catch-param-var-none.js",
-                    "test262/test/language/statements/try/static-init-await-binding-invalid.js",
-                    "...",
-                    "test262/test/language/statements/with/S12.10_A1.10_T5.js",
-                    "test262/test/language/statements/with/S12.10_A1.11_T1.js"
                 ]
             }
         ]

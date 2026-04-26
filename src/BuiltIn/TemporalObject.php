@@ -8984,6 +8984,13 @@ class TemporalObject
             } elseif ($m > 12) {
                 throw new RangeError("month {$m} out of range");
             }
+            // Non-ISO non-gregory: convert calendar fields to ISO via ICU.
+            if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc'], true)) {
+                $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
+                if ($isoParts !== null) {
+                    return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
+                }
+            }
             return self::createPlainYearMonthObject($y, $m, 1, $cal);
         }
         // Reject primitives per spec.
@@ -9082,7 +9089,13 @@ class TemporalObject
         if ($cal !== 'iso8601' && !self::isValidCalendar($cal)) {
             throw new RangeError("Invalid calendar: {$cal}");
         }
-        return self::createPlainYearMonthObject($y, $mo, 1, $cal);
+        // For non-ISO calendars, preserve the parsed day component as the
+        // reference ISO day so getters land on the correct calendar M/d.
+        $refDay = 1;
+        if ($cal !== 'iso8601' && isset($m[3]) && $m[3] !== '') {
+            $refDay = (int) $m[3];
+        }
+        return self::createPlainYearMonthObject($y, $mo, $refDay, $cal);
     }
 
     private static function toPlainMonthDay(JsValue $item, string $overflow = 'constrain'): JsObject
