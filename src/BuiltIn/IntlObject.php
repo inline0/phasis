@@ -3399,30 +3399,9 @@ class IntlObject
             $parts->set('length', new JsNumber((float) $idx));
             return $parts;
         }
-        // Build a fresh formatter mirroring the DTF's options so
-        // `getPattern()` reflects the same skeleton format() uses.
-        $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
-        $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
-        if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
-            $tz = 'GMT' . $tz;
-        }
-        $dateStyle = $dtf->get('[[DateStyle]]');
-        $timeStyle = $dtf->get('[[TimeStyle]]');
-        $mapStyle = static function (?string $s): int {
-            return match ($s) {
-                'full' => \IntlDateFormatter::FULL,
-                'long' => \IntlDateFormatter::LONG,
-                'medium' => \IntlDateFormatter::MEDIUM,
-                'short' => \IntlDateFormatter::SHORT,
-                default => \IntlDateFormatter::NONE,
-            };
-        };
-        $dateFmt = $mapStyle($dateStyle instanceof JsString ? $dateStyle->value : null);
-        $timeFmt = $mapStyle($timeStyle instanceof JsString ? $timeStyle->value : null);
-        if ($dateFmt === \IntlDateFormatter::NONE && $timeFmt === \IntlDateFormatter::NONE) {
-            $dateFmt = $timeFmt = \IntlDateFormatter::MEDIUM;
-        }
-        $formatter = new \IntlDateFormatter($locale, $dateFmt, $timeFmt, $tz);
+        // Reuse the same formatter the format() pipeline used so
+        // `getPattern()` reflects the same skeleton.
+        $formatter = self::dateTimeFormatterFor($dtf);
         $pattern = $formatter->getPattern();
         if ($pattern === false || $pattern === '') {
             $emit('literal', $formatted);
@@ -3599,27 +3578,29 @@ class IntlObject
      */
     private static function formatDateTime(JsObject $dtf, int $timestamp): string
     {
+        $formatter = self::dateTimeFormatterFor($dtf);
+        $result = $formatter->format($timestamp);
+        return $result === false ? date('Y-m-d H:i:s', $timestamp) : $result;
+    }
+
+    /**
+     * Construct an IntlDateFormatter that mirrors the DTF's options.
+     * Honours dateStyle / timeStyle as preset constants, otherwise
+     * builds a custom skeleton from the explicit component slots
+     * ([[year]], [[hour]], [[dayPeriod]], ...) via IntlDatePatternGenerator.
+     */
+    private static function dateTimeFormatterFor(JsObject $dtf): \IntlDateFormatter
+    {
         $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
         $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
-        // ICU rejects "+HH:MM" / "-HH:MM" identifiers but accepts the
-        // "GMT+HH:MM" form. Translate offset-style time zones so
-        // IntlDateFormatter doesn't throw `No such time zone`.
         if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
             $tz = 'GMT' . $tz;
         }
-
-        $dateStyle = null;
-        $dsVal = $dtf->get('[[DateStyle]]');
-        if (!$dsVal instanceof JsUndefined) {
-            $dateStyle = TypeConversion::toString($dsVal);
-        }
-        $timeStyle = null;
-        $tsVal = $dtf->get('[[TimeStyle]]');
-        if (!$tsVal instanceof JsUndefined) {
-            $timeStyle = TypeConversion::toString($tsVal);
-        }
-
-        $mapStyle = function (?string $s): int {
+        $dateStyle = $dtf->get('[[DateStyle]]');
+        $timeStyle = $dtf->get('[[TimeStyle]]');
+        $dateStyle = $dateStyle instanceof JsString ? $dateStyle->value : null;
+        $timeStyle = $timeStyle instanceof JsString ? $timeStyle->value : null;
+        $mapStyle = static function (?string $s): int {
             return match ($s) {
                 'full' => \IntlDateFormatter::FULL,
                 'long' => \IntlDateFormatter::LONG,
@@ -3628,19 +3609,132 @@ class IntlObject
                 default => \IntlDateFormatter::NONE,
             };
         };
-
-        $dateFmt = $mapStyle($dateStyle);
-        $timeFmt = $mapStyle($timeStyle);
-
-        // If neither dateStyle nor timeStyle, use a default medium format.
-        if ($dateStyle === null && $timeStyle === null) {
-            $dateFmt = \IntlDateFormatter::MEDIUM;
-            $timeFmt = \IntlDateFormatter::MEDIUM;
+        if ($dateStyle !== null || $timeStyle !== null) {
+            return new \IntlDateFormatter(
+                $locale,
+                $mapStyle($dateStyle),
+                $mapStyle($timeStyle),
+                $tz,
+            );
         }
+        // Build a CLDR skeleton from the explicit component slots.
+        $skeleton = self::dateTimeSkeletonFromOptions($dtf);
+        if ($skeleton === '') {
+            return new \IntlDateFormatter(
+                $locale,
+                \IntlDateFormatter::MEDIUM,
+                \IntlDateFormatter::MEDIUM,
+                $tz,
+            );
+        }
+        $pattern = '';
+        if (class_exists('IntlDatePatternGenerator')) {
+            try {
+                $gen = new \IntlDatePatternGenerator($locale);
+                $pattern = $gen->getBestPattern($skeleton);
+            } catch (\Throwable) {
+                // Fall through to skeleton-as-pattern below.
+            }
+        }
+        if ($pattern === '' || $pattern === false) {
+            $pattern = $skeleton;
+        }
+        return new \IntlDateFormatter(
+            $locale,
+            \IntlDateFormatter::FULL,
+            \IntlDateFormatter::FULL,
+            $tz,
+            \IntlDateFormatter::GREGORIAN,
+            $pattern,
+        );
+    }
 
-        $formatter = new \IntlDateFormatter($locale, $dateFmt, $timeFmt, $tz);
-        $result = $formatter->format($timestamp);
-        return $result === false ? date('Y-m-d H:i:s', $timestamp) : $result;
+    /**
+     * Build a CLDR skeleton string from the DTF's explicit component
+     * internal slots. Each slot maps onto its CLDR letter at the
+     * count appropriate to the requested width:
+     * - year: 'numeric' -> y, '2-digit' -> yy
+     * - month: 'numeric' -> M, '2-digit' -> MM, 'narrow' -> MMMMM, 'short' -> MMM, 'long' -> MMMM
+     * - hour: 'numeric' -> h, '2-digit' -> hh (or H/HH for h23/h24)
+     * - and so on.
+     */
+    private static function dateTimeSkeletonFromOptions(JsObject $dtf): string
+    {
+        $get = static function (string $slot) use ($dtf): ?string {
+            $val = $dtf->get($slot);
+            return $val instanceof JsString ? $val->value : null;
+        };
+        $sk = '';
+        if ($v = $get('[[era]]')) {
+            $sk .= match ($v) {
+                'narrow' => 'GGGGG',
+                'long' => 'GGGG',
+                default => 'G',
+            };
+        }
+        if ($v = $get('[[year]]')) {
+            $sk .= $v === '2-digit' ? 'yy' : 'y';
+        }
+        if ($v = $get('[[month]]')) {
+            $sk .= match ($v) {
+                '2-digit' => 'MM',
+                'narrow' => 'MMMMM',
+                'short' => 'MMM',
+                'long' => 'MMMM',
+                default => 'M',
+            };
+        }
+        if ($v = $get('[[day]]')) {
+            $sk .= $v === '2-digit' ? 'dd' : 'd';
+        }
+        if ($v = $get('[[weekday]]')) {
+            $sk .= match ($v) {
+                'narrow' => 'EEEEE',
+                'long' => 'EEEE',
+                default => 'EEE',
+            };
+        }
+        if ($v = $get('[[hour]]')) {
+            $hourCycle = $get('[[HourCycle]]') ?? 'h12';
+            $hourLetter = match ($hourCycle) {
+                'h11' => 'K',
+                'h12' => 'h',
+                'h23' => 'H',
+                'h24' => 'k',
+                default => 'h',
+            };
+            $sk .= $v === '2-digit' ? $hourLetter . $hourLetter : $hourLetter;
+        }
+        if ($v = $get('[[minute]]')) {
+            $sk .= $v === '2-digit' ? 'mm' : 'm';
+        }
+        if ($v = $get('[[second]]')) {
+            $sk .= $v === '2-digit' ? 'ss' : 's';
+        }
+        if ($v = $get('[[fractionalSecondDigits]]')) {
+            $n = (int) $v;
+            if ($n >= 1 && $n <= 3) {
+                $sk .= str_repeat('S', $n);
+            }
+        }
+        if ($v = $get('[[dayPeriod]]')) {
+            $sk .= match ($v) {
+                'narrow' => 'BBBBB',
+                'long' => 'BBBB',
+                default => 'B',
+            };
+        }
+        if ($v = $get('[[timeZoneName]]')) {
+            $sk .= match ($v) {
+                'long' => 'zzzz',
+                'shortOffset' => 'O',
+                'longOffset' => 'OOOO',
+                'shortGeneric' => 'v',
+                'longGeneric' => 'vvvv',
+                default => 'z',
+            };
+        }
+        return $sk;
     }
 
     // ---------------------------------------------------------------
