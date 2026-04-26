@@ -3368,31 +3368,22 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $startNs = self::isoDateTimeToEpochNs(
-                $parts['year'],
-                $parts['month'],
-                $parts['day'],
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                $tz,
-            );
+            $startNs = self::startOfDayInTimeZone($parts['year'], $parts['month'], $parts['day'], $tz);
             self::validateInstantRange($startNs);
-            $nextDate = self::isoDateTimeToEpochNs(
-                $parts['year'],
-                $parts['month'],
-                $parts['day'] + 1,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                $tz,
-            );
+            // Next day's start is also the actual start-of-day in the zone.
+            $ny = $parts['year'];
+            $nm = $parts['month'];
+            $nd = $parts['day'] + 1;
+            $dim = self::isoDaysInMonth($ny, $nm);
+            if ($nd > $dim) {
+                $nd = 1;
+                $nm += 1;
+                if ($nm > 12) {
+                    $nm = 1;
+                    $ny += 1;
+                }
+            }
+            $nextDate = self::startOfDayInTimeZone($ny, $nm, $nd, $tz);
             self::validateInstantRange($nextDate);
             $dayNs = bcsub($nextDate, $startNs, 0);
             return new JsNumber((float) bcdiv($dayNs, '3600000000000', 10));
@@ -3722,21 +3713,17 @@ class TemporalObject
             $parts = self::epochNsToISOParts($ns, $tz);
             $timeArg = $args[0] ?? JsUndefined::instance();
             if ($timeArg instanceof JsUndefined) {
-                $h = 0;
-                $min = 0;
-                $s = 0;
-                $ms = 0;
-                $us = 0;
-                $nsPart = 0;
-            } else {
-                $t = self::toPlainTime($timeArg);
-                $h = self::getSlotInt($t, '[[ISOHour]]');
-                $min = self::getSlotInt($t, '[[ISOMinute]]');
-                $s = self::getSlotInt($t, '[[ISOSecond]]');
-                $ms = self::getSlotInt($t, '[[ISOMillisecond]]');
-                $us = self::getSlotInt($t, '[[ISOMicrosecond]]');
-                $nsPart = self::getSlotInt($t, '[[ISONanosecond]]');
+                // Use the actual start-of-day in the time zone (may not be 00:00 if midnight is in a DST gap).
+                $newNs = self::startOfDayInTimeZone($parts['year'], $parts['month'], $parts['day'], $tz);
+                return self::createZonedDateTimeObject($newNs, $tz, $cal);
             }
+            $t = self::toPlainTime($timeArg);
+            $h = self::getSlotInt($t, '[[ISOHour]]');
+            $min = self::getSlotInt($t, '[[ISOMinute]]');
+            $s = self::getSlotInt($t, '[[ISOSecond]]');
+            $ms = self::getSlotInt($t, '[[ISOMillisecond]]');
+            $us = self::getSlotInt($t, '[[ISOMicrosecond]]');
+            $nsPart = self::getSlotInt($t, '[[ISONanosecond]]');
             $newNs = self::isoDateTimeToEpochNs(
                 $parts['year'],
                 $parts['month'],
@@ -3902,18 +3889,7 @@ class TemporalObject
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            $startNs = self::isoDateTimeToEpochNs(
-                $parts['year'],
-                $parts['month'],
-                $parts['day'],
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                $tz,
-            );
+            $startNs = self::startOfDayInTimeZone($parts['year'], $parts['month'], $parts['day'], $tz);
             return self::createZonedDateTimeObject($startNs, $tz, $cal);
         }, 0);
 
@@ -4543,6 +4519,8 @@ class TemporalObject
         }
         // Validate options (in alphabetical order: disambiguation, offset, overflow).
         $overflow = 'constrain';
+        $options = null;
+        $offsetOpt = 'reject';
         if ($rawOptions !== null) {
             $options = self::getOptionsObject($rawOptions);
             if ($options instanceof JsObject) {
@@ -4555,9 +4533,9 @@ class TemporalObject
                 }
                 $offOpt = $options->get('offset');
                 if (!($offOpt instanceof JsUndefined)) {
-                    $offOptStr = TypeConversion::toString($offOpt);
-                    if (!in_array($offOptStr, ['prefer', 'use', 'ignore', 'reject'], true)) {
-                        throw new RangeError("Invalid offset option: {$offOptStr}");
+                    $offsetOpt = TypeConversion::toString($offOpt);
+                    if (!in_array($offsetOpt, ['prefer', 'use', 'ignore', 'reject'], true)) {
+                        throw new RangeError("Invalid offset option: {$offsetOpt}");
                     }
                 }
                 $overflow = self::getOverflow($options);
@@ -4577,18 +4555,22 @@ class TemporalObject
             }
             self::rejectISOTime($h, $min, $s, $ms, $us, $ns);
         }
-        // Validate that the offset property agrees with the timezone (default: reject).
-        if ($offsetStr !== null) {
+        $epochFromWall = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
+        if ($offsetStr !== null && $offsetOpt !== 'ignore') {
             $givenOffsetNs = self::parseOffsetToNs($offsetStr);
-            // Compute what offset the timezone would have at this wall time.
-            $epochNsFromWall = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
-            $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochNsFromWall);
-            if ($givenOffsetNs !== $actualOffsetNs) {
+            $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
+            $exactMatch = $givenOffsetNs === $actualOffsetNs;
+            if (!$exactMatch && $offsetOpt === 'reject') {
                 throw new RangeError("offset property \"{$offsetStr}\" does not match time zone \"{$timeZone}\"");
             }
+            if ($offsetOpt === 'use') {
+                $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $normalizedOffset);
+                return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+            }
+            // prefer or reject: use the timezone's wall-time interpretation.
         }
-        $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
-        return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+        return self::createZonedDateTimeObject($epochFromWall, $timeZone, $cal);
     }
 
     private static function toZonedDateTimeNs(JsValue $item): string
@@ -4727,34 +4709,184 @@ class TemporalObject
                             throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
                         }
                     }
-                } else {
-                    // Named time zone: check if offset matches the wall time in the zone.
+                    if ($offsetOption === 'prefer' || $offsetOption === 'reject') {
+                        $wallUtcNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
+                        $nsPerDayMinusOne = bcsub('86400000000000', '1', 0);
+                        $upperBound = bcadd(self::NS_MAX, $nsPerDayMinusOne, 0);
+                        if (bccomp($wallUtcNs, self::NS_MIN, 0) < 0 || bccomp($wallUtcNs, $upperBound, 0) > 0) {
+                            throw new RangeError("wall-clock time of \"{$str}\" is outside the representable range of ZonedDateTime");
+                        }
+                    }
                     $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                    $epochFromOffset = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
-                    $epochFromWall = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
-                    if ($epochFromOffset !== $epochFromWall && $offsetOption === 'reject') {
+                    $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                } else {
+                    // Named time zone: check if offset matches any wall-time interpretation in the zone.
+                    $wallUtcNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
+                    $candidates = self::getPossibleEpochNanoseconds($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+                    $minutePrecision = (bool) preg_match('/^[+-]\d{2}:\d{2}$/', $offset)
+                        || (bool) preg_match('/^[+-]\d{4}$/', $offset);
+                    $exactCandidate = null;
+                    $fuzzyCandidate = null;
+                    foreach ($candidates as $candNs) {
+                        $candOffsetNs = (int) bcsub($wallUtcNs, $candNs, 0);
+                        if ($givenOffsetNs === $candOffsetNs) {
+                            $exactCandidate = $candNs;
+                            break;
+                        }
+                        if ($minutePrecision && $fuzzyCandidate === null) {
+                            $absSec = abs(intdiv($candOffsetNs, 1_000_000_000));
+                            $sign = $candOffsetNs >= 0 ? 1 : -1;
+                            $roundedSec = (int) round($absSec / 60, 0, PHP_ROUND_HALF_UP) * 60;
+                            $roundedNs = $sign * $roundedSec * 1_000_000_000;
+                            if ($givenOffsetNs === $roundedNs) {
+                                $fuzzyCandidate = $candNs;
+                            }
+                        }
+                    }
+                    $matchCandidate = $exactCandidate ?? $fuzzyCandidate;
+                    if ($matchCandidate === null && $offsetOption === 'reject') {
                         throw new RangeError("offset does not match the time zone annotation for ZonedDateTime string: {$str}");
                     }
-                }
-                if ($offsetOption === 'prefer' || $offsetOption === 'reject') {
-                    // The wall-clock time must produce an epoch ns that, interpreted via the
-                    // timezone, resolves to an instant in valid range. For fixed-offset zones
-                    // this means wall-ns must lie in [NS_MIN, NS_MAX + nsPerDay - 1].
-                    $wallUtcNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, 'UTC');
-                    $nsPerDayMinusOne = bcsub('86400000000000', '1', 0);
-                    $upperBound = bcadd(self::NS_MAX, $nsPerDayMinusOne, 0);
-                    if (bccomp($wallUtcNs, self::NS_MIN, 0) < 0 || bccomp($wallUtcNs, $upperBound, 0) > 0) {
-                        throw new RangeError("wall-clock time of \"{$str}\" is outside the representable range of ZonedDateTime");
+                    if ($offsetOption === 'prefer' || $offsetOption === 'reject') {
+                        $nsPerDayMinusOne = bcsub('86400000000000', '1', 0);
+                        $upperBound = bcadd(self::NS_MAX, $nsPerDayMinusOne, 0);
+                        if (bccomp($wallUtcNs, self::NS_MIN, 0) < 0 || bccomp($wallUtcNs, $upperBound, 0) > 0) {
+                            throw new RangeError("wall-clock time of \"{$str}\" is outside the representable range of ZonedDateTime");
+                        }
+                    }
+                    if ($offsetOption === 'use') {
+                        $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                        $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                    } elseif ($matchCandidate !== null) {
+                        $epochNs = $matchCandidate;
+                    } else {
+                        $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                        $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
                     }
                 }
-                $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
             }
         } else {
             // No offset or ignore: use wall time in the annotation timezone.
-            $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+            // Date-only strings: use the actual start of day in the zone, which
+            // may not be 00:00 if midnight falls in a DST gap (e.g. America/Toronto
+            // 1919-03-31, where the day starts at 00:30).
+            if (!$hasTimePart) {
+                $epochNs = self::startOfDayInTimeZone($year, $month, $day, $timeZone);
+            } else {
+                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+            }
         }
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
+    }
+
+    /** Find the first instant on the given calendar day in the time zone. */
+    private static function startOfDayInTimeZone(int $year, int $month, int $day, string $timeZone): string
+    {
+        if (self::isFixedOffset($timeZone)) {
+            return self::isoDateTimeToEpochNs($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone);
+        }
+        $candidates = self::getPossibleEpochNanoseconds($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone);
+        if (count($candidates) > 0) {
+            // Return the earliest instant.
+            $first = $candidates[0];
+            foreach ($candidates as $c) {
+                if (bccomp($c, $first, 0) < 0) {
+                    $first = $c;
+                }
+            }
+            return $first;
+        }
+        // No valid midnight (gap). Find the transition that ended the gap; that's the start of day.
+        try {
+            $tz = self::resolveTimeZone($timeZone);
+        } catch (\Throwable) {
+            return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
+        }
+        if (!$tz instanceof \DateTimeZone) {
+            return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
+        }
+        // Search for transitions in (-12h, +12h) window around midnight.
+        $dayUtcSec = bcadd(bcmul((string) self::isoDateToDays($year, $month, $day), '86400', 0), '0', 0);
+        $startSec = (int) bcsub($dayUtcSec, '43200', 0);
+        $endSec = (int) bcadd($dayUtcSec, '43200', 0);
+        $transitions = $tz->getTransitions($startSec, $endSec);
+        if ($transitions === false) {
+            return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
+        }
+        // Find a transition whose post-transition wall time falls within this calendar day.
+        foreach ($transitions as $t) {
+            if ($t['ts'] >= $startSec && $t['ts'] <= $endSec) {
+                $tns = bcmul((string) $t['ts'], '1000000000', 0);
+                $offsetAtTNs = $t['offset'] * 1_000_000_000;
+                $wallUtcEquivNs = bcadd($tns, (string) $offsetAtTNs, 0);
+                $dayStartUtcNs = bcmul($dayUtcSec, '1000000000', 0);
+                $dayEndUtcNs = bcadd($dayStartUtcNs, '86400000000000', 0);
+                if (bccomp($wallUtcEquivNs, $dayStartUtcNs, 0) >= 0 && bccomp($wallUtcEquivNs, $dayEndUtcNs, 0) < 0) {
+                    return $tns;
+                }
+            }
+        }
+        return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
+    }
+
+    /**
+     * Return all possible epoch nanoseconds for the given wall clock components
+     * in the given time zone. Empty when the wall time falls in a DST gap; one
+     * entry for normal times; two for folds.
+     */
+    private static function getPossibleEpochNanoseconds(
+        int $y,
+        int $m,
+        int $d,
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        int $us,
+        int $ns,
+        string $tz,
+    ): array {
+        $nsPart = (int) ($ms * 1000000 + $us * 1000 + $ns);
+        $wallUtcSec = bcadd(
+            bcmul((string) self::isoDateToDays($y, $m, $d), '86400', 0),
+            (string) ($h * 3600 + $min * 60 + $s),
+            0,
+        );
+        try {
+            $tzObj = self::resolveTimeZone($tz);
+            $beforeSec = bcsub($wallUtcSec, '43200', 0);
+            $afterSec = bcadd($wallUtcSec, '43200', 0);
+            $offBefore = (int) (new \DateTimeImmutable('@' . $beforeSec))
+                ->setTimezone($tzObj)->format('Z');
+            $offAfter = (int) (new \DateTimeImmutable('@' . $afterSec))
+                ->setTimezone($tzObj)->format('Z');
+        } catch (\Throwable) {
+            return [self::isoDateTimeToEpochNs($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $tz)];
+        }
+        if ($offBefore === $offAfter) {
+            $epochSec = bcsub($wallUtcSec, (string) $offBefore, 0);
+            return [bcadd(bcmul($epochSec, '1000000000', 0), (string) $nsPart, 0)];
+        }
+        $epochWithBefore = bcsub($wallUtcSec, (string) $offBefore, 0);
+        $epochWithAfter = bcsub($wallUtcSec, (string) $offAfter, 0);
+        try {
+            $actualAtBefore = (int) (new \DateTimeImmutable('@' . $epochWithBefore))
+                ->setTimezone($tzObj)->format('Z');
+            $actualAtAfter = (int) (new \DateTimeImmutable('@' . $epochWithAfter))
+                ->setTimezone($tzObj)->format('Z');
+        } catch (\Throwable) {
+            return [];
+        }
+        $beforeValid = $actualAtBefore === $offBefore;
+        $afterValid = $actualAtAfter === $offAfter;
+        $candidates = [];
+        if ($beforeValid) {
+            $candidates[] = bcadd(bcmul($epochWithBefore, '1000000000', 0), (string) $nsPart, 0);
+        }
+        if ($afterValid) {
+            $candidates[] = bcadd(bcmul($epochWithAfter, '1000000000', 0), (string) $nsPart, 0);
+        }
+        return $candidates;
     }
 
     private static function createZonedDateTimeObject(string $ns, string $timeZone, string $cal): JsObject
@@ -5159,17 +5291,31 @@ class TemporalObject
         }
         // For named IANA zones, resolve to the primary (canonical)
         // identifier so Link names compare equal to their target.
-        // ICU's IntlTimeZone::getCanonicalID handles all TZDB Links.
+        $canonical = $tz;
         if (class_exists('IntlTimeZone', false)) {
             try {
-                $canonical = \IntlTimeZone::getCanonicalID($tz);
-                if (is_string($canonical) && $canonical !== '') {
-                    return $canonical;
+                $icuCanonical = \IntlTimeZone::getCanonicalID($tz);
+                if (is_string($icuCanonical) && $icuCanonical !== '') {
+                    $canonical = $icuCanonical;
                 }
             } catch (\Throwable) {
             }
         }
-        return $tz;
+        // Per the IANA backzone override, some Pacific zones canonicalize differently
+        // from ICU's defaults.
+        static $backzoneOverrides = [
+            'Pacific/Truk' => 'Pacific/Chuuk',
+            'Pacific/Ponape' => 'Pacific/Pohnpei',
+        ];
+        if (isset($backzoneOverrides[$canonical])) {
+            $canonical = $backzoneOverrides[$canonical];
+        }
+        // Per spec, zones whose primary identifier is Etc/UTC, Etc/GMT, or GMT
+        // are remapped to "UTC".
+        if ($canonical === 'Etc/UTC' || $canonical === 'Etc/GMT' || $canonical === 'GMT') {
+            return 'UTC';
+        }
+        return $canonical;
     }
 
     private static function zonedDateTimeParts(JsValue $zdt): array
