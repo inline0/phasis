@@ -3104,7 +3104,7 @@ class IntlObject
             $timestamp = (int) ($timestampMs / 1000);
 
             if ($this_ instanceof JsObject && extension_loaded('intl')) {
-                $formatted = self::formatDateTime($this_, $timestamp);
+                $formatted = self::formatDateTimeMs($this_, (float) $timestampMs);
                 return new JsString($formatted);
             }
 
@@ -3174,7 +3174,7 @@ class IntlObject
             }
             $timestamp = (int) ($timestampMs / 1000);
             $formatted = extension_loaded('intl')
-                ? self::formatDateTime($this_, $timestamp)
+                ? self::formatDateTimeMs($this_, (float) $timestampMs)
                 : date('n/j/Y, g:i:s A', $timestamp);
             // Decompose the formatted output into spec-shaped parts
             // by walking the underlying ICU pattern in lockstep.
@@ -3578,9 +3578,37 @@ class IntlObject
      */
     private static function formatDateTime(JsObject $dtf, int $timestamp): string
     {
+        return self::formatDateTimeMs($dtf, $timestamp * 1000.0);
+    }
+
+    /**
+     * Millisecond-precision variant. Used by callers that have
+     * fractional-second inputs (Date.format, formatToParts) so the
+     * CLDR `S`/`SS`/`SSS` pattern letters resolve correctly.
+     */
+    private static function formatDateTimeMs(JsObject $dtf, float $timestampMs): string
+    {
         $formatter = self::dateTimeFormatterFor($dtf);
-        $result = $formatter->format($timestamp);
-        return $result === false ? date('Y-m-d H:i:s', $timestamp) : $result;
+        $dt = self::dateTimeFromTimestampMs($timestampMs);
+        $result = $formatter->format($dt);
+        $secFallback = (int) floor($timestampMs / 1000);
+        return $result === false ? date('Y-m-d H:i:s', $secFallback) : $result;
+    }
+
+    /**
+     * Build a DateTimeImmutable from a millisecond-precision
+     * timestamp using the formatter's resolved time zone.
+     */
+    private static function dateTimeFromTimestampMs(int|float $ms): \DateTimeImmutable
+    {
+        $sec = (int) floor($ms / 1000);
+        $micros = (int) round((($ms / 1000) - $sec) * 1_000_000);
+        if ($micros < 0) {
+            $micros += 1_000_000;
+            $sec--;
+        }
+        $dt = new \DateTimeImmutable('@' . $sec, new \DateTimeZone('UTC'));
+        return $dt->modify('+' . $micros . ' microseconds');
     }
 
     /**
