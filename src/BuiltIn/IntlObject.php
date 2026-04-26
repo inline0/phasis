@@ -2296,6 +2296,113 @@ class IntlObject
     }
 
     /**
+     * Render a number in compact notation (en-US "1K" / "1 million"
+     * style). For locales we don't have CLDR data for, falls back
+     * to the en-US labels.
+     */
+    private static function formatCompactNumber(JsObject $nf, float $number): ?string
+    {
+        if (is_nan($number)) {
+            return 'NaN';
+        }
+        if (!is_finite($number)) {
+            return $number < 0 ? '-∞' : '∞';
+        }
+        $absN = abs($number);
+        // CLDR compact tiers: 1K, 10K, 100K, 1M, 10M, 100M, 1B, ...
+        // Each tier divides by 10^3, 10^4, 10^5, 10^6, etc. Pick
+        // the largest tier whose threshold ≤ |x|.
+        $compactDisplay = self::extractInternalString($nf, '[[CompactDisplay]]', 'short');
+        if ($absN < 1000) {
+            // Use significant-digit formatting (max 3 sig digits)
+            // for sub-thousand values.
+            return self::formatCompactBelowThousand($nf, $number);
+        }
+        $tiers = [
+            12 => ['short' => 'T', 'long' => ' trillion'],
+            9 => ['short' => 'B', 'long' => ' billion'],
+            6 => ['short' => 'M', 'long' => ' million'],
+            3 => ['short' => 'K', 'long' => ' thousand'],
+        ];
+        $exp = (int) floor(log10($absN));
+        $tier = 0;
+        foreach ($tiers as $power => $_) {
+            if ($exp >= $power) {
+                $tier = $power;
+                break;
+            }
+        }
+        $scaled = $absN / 10 ** $tier;
+        // CLDR's compact pattern uses progressively more digits as
+        // the scaled value grows: under 10 -> 2 sig (with decimal),
+        // 10-99 -> 2 sig integer, 100+ -> 3 sig integer. Bumping
+        // through a tier (999.5K -> 1M) is handled below.
+        $sigDigits = $scaled < 10 ? 2 : ($scaled < 100 ? 2 : 3);
+        $rounded = self::roundToSignificant($scaled, $sigDigits);
+        if ($rounded >= 1000) {
+            $rounded /= 1000;
+            $nextTier = $tier + 3;
+            if (isset($tiers[$nextTier])) {
+                $tier = $nextTier;
+            } else {
+                $rounded *= 1000;
+            }
+        }
+        $sign = $number < 0 ? '-' : '';
+        if ($rounded < 10) {
+            $rounded10 = round($rounded * 10) / 10;
+            $rendered = rtrim(rtrim(sprintf('%.1f', $rounded10), '0'), '.');
+            if ($rendered === '') {
+                $rendered = '0';
+            }
+        } else {
+            $rendered = (string) (int) round($rounded);
+        }
+        $suffix = $tiers[$tier][$compactDisplay] ?? $tiers[$tier]['short'];
+        return $sign . $rendered . $suffix;
+    }
+
+    /** Helper for sub-thousand compact rendering — uses up to 2 sig digits. */
+    private static function formatCompactBelowThousand(JsObject $nf, float $number): string
+    {
+        $absN = abs($number);
+        $sign = $number < 0 ? '-' : '';
+        if ($absN === 0.0) {
+            return '0';
+        }
+        // CLDR compact short for sub-thousand emits the value
+        // with up to 2 significant digits, except integers and
+        // 100+ which keep their full digit count.
+        if ($absN >= 100) {
+            return $sign . (string) (int) round($absN);
+        }
+        if ($absN >= 10) {
+            return $sign . (string) (int) round($absN);
+        }
+        if ($absN >= 1) {
+            $rounded = round($absN, 1);
+            $rendered = rtrim(rtrim(sprintf('%.1f', $rounded), '0'), '.');
+            return $sign . $rendered;
+        }
+        // < 1: round to 2 sig digits.
+        $rounded = self::roundToSignificant($absN, 2);
+        $rendered = rtrim(sprintf('%.10f', $rounded), '0');
+        $rendered = rtrim($rendered, '.');
+        return $sign . ($rendered === '' ? '0' : $rendered);
+    }
+
+    /** Round a positive value to N significant digits, returning a float. */
+    private static function roundToSignificant(float $value, int $sig): float
+    {
+        if ($value === 0.0) {
+            return 0.0;
+        }
+        $exp = (int) floor(log10(abs($value)));
+        $factor = 10 ** ($sig - 1 - $exp);
+        return round($value * $factor) / $factor;
+    }
+
+    /**
      * Coerce a numeric argument to a PHP float, accepting BigInt
      * (cast via its string value) so that
      * `Intl.NumberFormat.prototype.formatRange(23n, 12n)` doesn't
@@ -2318,10 +2425,17 @@ class IntlObject
         $notation = self::extractInternalString($nf, '[[Notation]]', 'standard');
 
         // Engineering / scientific notations decompose into a
-        // mantissa + locale-rendered exponent. Compact notation is
-        // outside our reach without CLDR pattern data.
+        // mantissa + locale-rendered exponent.
         if ($notation === 'engineering' || $notation === 'scientific') {
             return self::formatScientificNumber($nf, $number, $notation);
+        }
+        // Compact notation: covers en-US short/long; other locales
+        // share the same structure with localised suffix labels.
+        if ($notation === 'compact') {
+            $compact = self::formatCompactNumber($nf, $number);
+            if ($compact !== null) {
+                return self::applySignDisplay($nf, $compact, $number);
+            }
         }
 
         $fmtStyle = match ($style) {
