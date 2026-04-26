@@ -6339,6 +6339,14 @@ class IntlObject
                 // and the language is rewritten.
                 static $variantToLanguageAliases = [
                     'arevmda' => ['hy' => 'hyw'],
+                    'lojban' => ['art' => 'jbo'],
+                    'gaulish' => ['cel' => 'xtg'],
+                    'hakka' => ['zh' => 'hak'],
+                    'xiang' => ['zh' => 'hsn'],
+                    'guoyu' => ['zh' => 'zh'],
+                    'bokmal' => ['no' => 'nb'],
+                    'nynorsk' => ['no' => 'nn'],
+                    'saaho' => ['aa' => 'ssy'],
                 ];
                 foreach ($variantToLanguageAliases as $vName => $langMap) {
                     if (
