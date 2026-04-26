@@ -10288,9 +10288,19 @@ class IntlObject
             'hours', 'minutes', 'seconds',
             'milliseconds', 'microseconds', 'nanoseconds',
         ];
+        // Per spec ToDurationRecord: when input is a Temporal.Duration,
+        // bypass the prototype getters and read the internal slots
+        // directly. Detected via the [[IsDuration]] brand.
+        $isTemporalDuration = $duration->has('[[IsDuration]]');
+        $readUnit = static function (string $u) use ($duration, $isTemporalDuration): JsValue {
+            if ($isTemporalDuration) {
+                return $duration->get('[[' . $u . ']]');
+            }
+            return $duration->get($u);
+        };
         $hasAnyDurationProp = false;
         foreach ($units as $u) {
-            if (!$duration->get($u) instanceof JsUndefined) {
+            if (!$readUnit($u) instanceof JsUndefined) {
                 $hasAnyDurationProp = true;
                 break;
             }
@@ -10301,7 +10311,7 @@ class IntlObject
         $values = [];
         $sign = 0;
         foreach ($units as $u) {
-            $val = $duration->get($u);
+            $val = $readUnit($u);
             if ($val instanceof JsUndefined) {
                 $values[$u] = 0.0;
                 continue;
@@ -10402,12 +10412,22 @@ class IntlObject
             'seconds' => 'second', 'milliseconds' => 'millisecond',
             'microseconds' => 'microsecond', 'nanoseconds' => 'nanosecond',
         ];
+        // ToDurationRecord: when input is a Temporal.Duration, bypass
+        // the prototype's getters and read internal slots directly so
+        // userland prototype tampering can't observe the read.
+        $isTemporalDuration = $duration->has('[[IsDuration]]');
+        $readUnit = static function (string $u) use ($duration, $isTemporalDuration): JsValue {
+            if ($isTemporalDuration) {
+                return $duration->get('[[' . $u . ']]');
+            }
+            return $duration->get($u);
+        };
         // ToDurationRecord step 7-8: at least one duration property
         // must be present. A plain {} or {year: 1} (singular) throws
         // TypeError because no recognised unit keys are set.
         $hasAnyDurationProp = false;
         foreach (array_keys($units) as $u) {
-            if (!$duration->get($u) instanceof JsUndefined) {
+            if (!$readUnit($u) instanceof JsUndefined) {
                 $hasAnyDurationProp = true;
                 break;
             }
@@ -10422,7 +10442,7 @@ class IntlObject
         $values = [];
         $sign = 0;
         foreach ($units as $u => $_singular) {
-            $val = $duration->get($u);
+            $val = $readUnit($u);
             if ($val instanceof JsUndefined) {
                 $values[$u] = 0.0;
                 continue;
