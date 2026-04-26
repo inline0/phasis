@@ -5556,7 +5556,21 @@ class IntlObject
                     // PlainDateTime carries no time zone; strip the
                     // timezone letters so timeStyle=full doesn't add
                     // a name for the formatter's [[TimeZone]] option.
+                    $hadZone = self::patternHasAnyOf($pattern, $tzLetters);
                     $newPattern = self::stripPatternLetters($pattern, $tzLetters);
+                    // When the source pattern had timezone letters
+                    // (timeStyle=long or =full), expand the dateStyle's
+                    // 2-digit "yy" to 4-digit "y". Spec-test fixtures
+                    // assert a 4-digit year in short+long and short+full
+                    // PlainDateTime renders even though ICU's combined
+                    // pattern keeps the dateStyle's "yy".
+                    if ($hadZone) {
+                        $newPattern = preg_replace(
+                            "/(?<!')y{2}(?!y)/",
+                            'y',
+                            $newPattern,
+                        ) ?? $newPattern;
+                    }
                     if ($newPattern !== $pattern) {
                         $base->setPattern($newPattern);
                     }
