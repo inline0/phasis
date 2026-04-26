@@ -2981,6 +2981,22 @@ class TemporalObject
             if (!$hasDay && !$hasMonth && !$hasMonthCode && !$hasYear) {
                 throw new TypeError('At least one property must be provided');
             }
+            // For non-ISO calendars, month alone is ambiguous (a
+            // calendar's month numbering can shift across years);
+            // monthCode is required when changing the month and
+            // year is required without a monthCode anchor.
+            if ($cal !== 'iso8601') {
+                if ($hasMonth && !$hasMonthCode) {
+                    throw new TypeError(
+                        'PlainMonthDay.with on non-ISO calendar requires monthCode, not month',
+                    );
+                }
+                if ($hasMonthCode && !$hasYear && !$hasDay) {
+                    throw new TypeError(
+                        'PlainMonthDay.with on non-ISO calendar requires year alongside monthCode',
+                    );
+                }
+            }
             if ($hasMonthCode) {
                 $mcMonth = self::parseMonthCode($mcStr);
                 if ($hasMonth) {
@@ -9336,15 +9352,14 @@ class TemporalObject
 
         $sign = $offset >= 0 ? '+' : '-';
         $absOffset = abs($offset);
-        $h = intdiv($absOffset, 3600);
-        $m = intdiv($absOffset % 3600, 60);
-        $s = $absOffset % 60;
-
-        $result = $sign . self::pad2($h) . ':' . self::pad2($m);
-        if ($s !== 0) {
-            $result .= ':' . self::pad2($s);
-        }
-        return $result;
+        // Spec FormatDateTimeUTCOffsetRounded rounds sub-minute
+        // offsets to the nearest minute (ties away from zero) so
+        // historical Africa/Monrovia (-00:44:30) becomes -00:45,
+        // matching V8.
+        $minutes = (int) round($absOffset / 60, 0, PHP_ROUND_HALF_UP);
+        $h = intdiv($minutes, 60);
+        $m = $minutes % 60;
+        return $sign . self::pad2($h) . ':' . self::pad2($m);
     }
 
     // -----------------------------------------------------------------------
