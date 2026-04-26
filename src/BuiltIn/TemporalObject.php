@@ -4360,6 +4360,25 @@ class TemporalObject
         // PrepareTemporalFields: read and convert each field in alphabetical order.
         $dayV = $item->get('day');
         $d = ($dayV instanceof JsUndefined) ? null : self::toTemporalInteger($dayV, 'day');
+        // era/eraYear (non-ISO calendars only).
+        $eraStr = null;
+        $eraYearNum = null;
+        if ($cal !== 'iso8601') {
+            $eraVal = $item->get('era');
+            if (!($eraVal instanceof JsUndefined)) {
+                $eraStr = TypeConversion::toString($eraVal);
+            }
+            $eraYearVal = $item->get('eraYear');
+            if (!($eraYearVal instanceof JsUndefined)) {
+                $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                    throw new RangeError('eraYear must be finite');
+                }
+                if (floor($eraYearNum) !== $eraYearNum) {
+                    throw new RangeError('eraYear must be an integer');
+                }
+            }
+        }
         $hourV = $item->get('hour');
         $h = ($hourV instanceof JsUndefined) ? 0 : self::toTemporalInteger($hourV, 'hour');
         $microsecondV = $item->get('microsecond');
@@ -4405,6 +4424,12 @@ class TemporalObject
             throw new TypeError('ZonedDateTime from object requires timeZone');
         }
         $timeZone = self::toTemporalTimeZoneIdentifier($tzV);
+        if ($y === null && $eraYearNum !== null && $cal !== 'iso8601') {
+            $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+            $y = in_array($eraLower, ['bc', 'bce'], true)
+                ? (1 - (int) $eraYearNum)
+                : (int) $eraYearNum;
+        }
         if ($y === null || $d === null) {
             throw new TypeError('ZonedDateTime from object requires year and day');
         }
@@ -6883,26 +6908,56 @@ class TemporalObject
             // Property bag: read and convert fields in ALPHABETICAL order per spec.
             // Each field is get + valueOf/toString immediately.
             $calVal = $item->get('calendar');
+            $cal = 'iso8601';
+            if (!($calVal instanceof JsUndefined)) {
+                $cal = self::toCalendarSlotValue($calVal);
+            }
             $dayVal = $item->get('day');
             if ($dayVal instanceof JsUndefined) {
                 throw new TypeError('missing required property: day');
             }
             $dNum = TypeConversion::toNumber($dayVal);
+            // era/eraYear (non-ISO calendars only).
+            $eraStr = null;
+            $eraYearNum = null;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+            }
             $monthVal = $item->get('month');
             $hasMonth = !($monthVal instanceof JsUndefined);
             $mNum = $hasMonth ? TypeConversion::toNumber($monthVal) : null;
             $monthCodeVal = $item->get('monthCode');
             $hasMonthCode = !($monthCodeVal instanceof JsUndefined);
             $mcStr = $hasMonthCode ? TypeConversion::toString($monthCodeVal) : null;
-            // Validate monthCode syntax early (before year conversion).
             if ($hasMonthCode) {
                 self::parseMonthCodeSyntax($mcStr);
             }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
+                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - $eraYearNum)
+                        : $eraYearNum;
+                } else {
+                    throw new TypeError('missing required property: year');
+                }
+            } else {
+                $yNum = TypeConversion::toNumber($yearVal);
             }
-            $yNum = TypeConversion::toNumber($yearVal);
             // Now validate and resolve fields.
             if (!$hasMonth && !$hasMonthCode) {
                 throw new TypeError('missing required property: month');
@@ -6935,10 +6990,6 @@ class TemporalObject
                 throw new RangeError('day must be finite');
             }
             $d = (int) $dNum;
-            $cal = 'iso8601';
-            if (!($calVal instanceof JsUndefined)) {
-                $cal = self::toCalendarSlotValue($calVal);
-            }
             if ($rawOptions !== null) {
                 $options = self::getOptionsObject($rawOptions);
                 $overflow = self::getOverflow($options);
@@ -7498,6 +7549,28 @@ class TemporalObject
                 throw new RangeError('day must be finite');
             }
             $d = (int) $dNum;
+            // Read era and eraYear (per spec alphabetical ordering)
+            // only for non-ISO calendars; ISO doesn't have eras and
+            // reading these properties on an ISO property bag would
+            // disturb the canonical observable read order.
+            $eraStr = null;
+            $eraYearNum = null;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+            }
             // Read time fields (for PlainDateTime path).
             $h = 0;
             $min = 0;
@@ -7571,13 +7644,26 @@ class TemporalObject
             }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
+                // For non-ISO calendars, era+eraYear can substitute
+                // for year (Gregorian: ce/ad → year=eraYear,
+                // bc/bce → year = 1 - eraYear).
+                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    if (in_array($eraLower, ['bc', 'bce'], true)) {
+                        $y = 1 - (int) $eraYearNum;
+                    } else {
+                        $y = (int) $eraYearNum;
+                    }
+                } else {
+                    throw new TypeError('missing required property: year');
+                }
+            } else {
+                $yNum = TypeConversion::toNumber($yearVal);
+                if (!is_finite($yNum)) {
+                    throw new RangeError('year must be finite');
+                }
+                $y = (int) $yNum;
             }
-            $yNum = TypeConversion::toNumber($yearVal);
-            if (!is_finite($yNum)) {
-                throw new RangeError('year must be finite');
-            }
-            $y = (int) $yNum;
             // Now validate monthCode suitability (after year type check).
             if ($mcStr !== null) {
                 $validatedMonth = self::parseMonthCode($mcStr);
@@ -7725,6 +7811,26 @@ class TemporalObject
             if (!($calVal instanceof JsUndefined)) {
                 $cal = self::toCalendarSlotValue($calVal);
             }
+            // era/eraYear (non-ISO calendars only) per alphabetical
+            // spec ordering. Validation happens immediately.
+            $eraStr = null;
+            $eraYearNum = null;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+            }
             $month = $item->get('month');
             $mVal = null;
             if (!($month instanceof JsUndefined)) {
@@ -7743,9 +7849,17 @@ class TemporalObject
             }
             $year = $item->get('year');
             if ($year instanceof JsUndefined) {
-                throw new TypeError('missing required property: year');
+                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - $eraYearNum)
+                        : $eraYearNum;
+                } else {
+                    throw new TypeError('missing required property: year');
+                }
+            } else {
+                $yNum = TypeConversion::toNumber($year);
             }
-            $yNum = TypeConversion::toNumber($year);
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
             }
@@ -7897,65 +8011,94 @@ class TemporalObject
             );
         }
         if ($item instanceof JsObject) {
-            // Validate calendar property if present.
+            // Validate calendar property if present (read first per spec).
             $calVal = $item->get('calendar');
             $cal = 'iso8601';
             if (!($calVal instanceof JsUndefined)) {
                 $cal = self::toCalendarSlotValue($calVal);
             }
-
-            $monthCode = $item->get('monthCode');
+            // PrepareTemporalFields: alphabetical with immediate
+            // valueOf/toString.
             $day = $item->get('day');
-            $month = $item->get('month');
-            $year = $item->get('year');
-
-            $hasMonthCode = !($monthCode instanceof JsUndefined);
             $hasDay = !($day instanceof JsUndefined);
+            $dNum = null;
+            if ($hasDay) {
+                $dNum = TypeConversion::toNumber($day);
+            }
+            // era/eraYear (non-ISO calendars only).
+            $eraStr = null;
+            $eraYearNum = null;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+            }
+            $month = $item->get('month');
             $hasMonth = !($month instanceof JsUndefined);
+            $mNumRaw = null;
+            if ($hasMonth) {
+                $mNumRaw = TypeConversion::toNumber($month);
+            }
+            $monthCode = $item->get('monthCode');
+            $hasMonthCode = !($monthCode instanceof JsUndefined);
+            $mcStrRaw = null;
+            if ($hasMonthCode) {
+                $mcStrRaw = TypeConversion::toString($monthCode);
+            }
+            $year = $item->get('year');
             $hasYear = !($year instanceof JsUndefined);
-
-            if (!$hasDay && !$hasMonthCode && !$hasMonth) {
-                throw new TypeError('Required property month or monthCode missing');
+            $yValRaw = null;
+            if ($hasYear) {
+                $yValRaw = TypeConversion::toNumber($year);
             }
-            if ($hasDay && !$hasMonthCode && !$hasMonth) {
-                throw new TypeError('Required property month or monthCode missing');
-            }
+            // Validate required properties now that all reads are done.
             if (!$hasDay) {
                 throw new TypeError('Required property day missing');
             }
-
-            $d = TypeConversion::toNumber($day);
-            if (!is_finite($d)) {
+            if (!$hasMonth && !$hasMonthCode) {
+                throw new TypeError('Required property month or monthCode missing');
+            }
+            if (!is_finite($dNum)) {
                 throw new RangeError('day must be finite');
             }
-            $d = (int) $d;
-
+            $d = (int) $dNum;
             if ($hasMonthCode) {
-                $mStr = TypeConversion::toString($monthCode);
-                // Syntax check: must match M\d{2} or M\d{2}L.
-                if (!preg_match('/^M(\d{2})(L?)$/', $mStr, $mcm)) {
-                    throw new RangeError("Invalid monthCode: {$mStr}");
+                if (!preg_match('/^M(\d{2})(L?)$/', $mcStrRaw, $mcm)) {
+                    throw new RangeError("Invalid monthCode: {$mcStrRaw}");
                 }
                 $m = (int) $mcm[1];
                 $hasLeap = $mcm[2] === 'L';
+                $mStr = $mcStrRaw;
             } else {
-                $mVal = TypeConversion::toNumber($month);
-                if (!is_finite($mVal)) {
+                if (!is_finite($mNumRaw)) {
                     throw new RangeError('month must be finite');
                 }
-                $m = (int) $mVal;
+                $m = (int) $mNumRaw;
                 $hasLeap = false;
                 $mStr = '';
             }
-
-            // Year type validation happens before month code suitability.
             $refYear = 1972;
             if ($hasYear) {
-                $yVal = TypeConversion::toNumber($year);
-                if (!is_finite($yVal)) {
+                if (!is_finite($yValRaw)) {
                     throw new RangeError('year must be finite');
                 }
-                $refYear = (int) $yVal;
+                $refYear = (int) $yValRaw;
+            } elseif ($eraYearNum !== null && $cal !== 'iso8601') {
+                $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                $refYear = in_array($eraLower, ['bc', 'bce'], true)
+                    ? (1 - (int) $eraYearNum)
+                    : (int) $eraYearNum;
             }
 
             // Now validate month code suitability (semantic check).
@@ -11720,19 +11863,41 @@ class TemporalObject
             $instCal = $this_->get('[[Calendar]]');
             $instCalStr = $instCal instanceof JsString ? $instCal->value : 'iso8601';
             // PlainMonthDay carries no year, so even an ISO instance
-            // must reject a non-ISO locale calendar (the calendar
-            // determines how M01 day 1 is interpreted). Other types
+            // must reject a non-ISO locale calendar. Other types
             // accept ISO instances on any locale.
             $isStrict = $this_->has('[[IsPlainMonthDay]]');
             if ($instCalStr !== 'iso8601' || $isStrict) {
-                $localeCal = self::resolveLocaleCalendar(
-                    $args[0] ?? JsUndefined::instance(),
-                );
+                // Resolve the formatter's effective calendar by
+                // accounting for an explicit options.calendar
+                // override; without it, fall back to the locale's
+                // default.
+                $effectiveCal = null;
+                $optsArgVal = $optionsArg ?? JsUndefined::instance();
+                if ($optsArgVal instanceof JsObject) {
+                    $calOpt = $optsArgVal->get('calendar');
+                    if ($calOpt instanceof JsString) {
+                        $effectiveCal = strtolower($calOpt->value);
+                        // Apply CLDR aliases.
+                        static $calAliasLs = [
+                            'islamicc' => 'islamic-civil',
+                            'gregorian' => 'gregory',
+                            'ethiopic-amete-alem' => 'ethioaa',
+                        ];
+                        if (isset($calAliasLs[$effectiveCal])) {
+                            $effectiveCal = $calAliasLs[$effectiveCal];
+                        }
+                    }
+                }
+                if ($effectiveCal === null) {
+                    $effectiveCal = self::resolveLocaleCalendar(
+                        $args[0] ?? JsUndefined::instance(),
+                    );
+                }
                 if (
-                    $localeCal !== null
-                    && $localeCal !== $instCalStr
+                    $effectiveCal !== null
+                    && $effectiveCal !== $instCalStr
                     && (
-                        $localeCal !== 'iso8601'
+                        $effectiveCal !== 'iso8601'
                         || $instCalStr !== 'iso8601'
                     )
                 ) {
