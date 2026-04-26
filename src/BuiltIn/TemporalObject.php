@@ -167,9 +167,10 @@ class TemporalObject
             return new JsString(self::instantToString($ns, 'auto', 'trunc'));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             $ns = self::requireInstant($this_);
-            return new JsString(self::instantToString($ns, 'auto', 'trunc'));
+            $fallback = self::instantToString($ns, 'auto', 'trunc');
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -1069,12 +1070,13 @@ class TemporalObject
             return new JsString(self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDate($this_);
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
-            return new JsString(self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd));
+            $fallback = self::padISOYear($y) . '-' . self::pad2($m) . '-' . self::pad2($dd);
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -1521,9 +1523,10 @@ class TemporalObject
             return new JsString(self::plainTimeToString($this_, 'auto', 'trunc'));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requirePlainTime($this_);
-            return new JsString(self::plainTimeToString($this_, 'auto', 'trunc'));
+            $fallback = self::plainTimeToString($this_, 'auto', 'trunc');
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -1924,9 +1927,10 @@ class TemporalObject
             return new JsString(self::plainDateTimeToString($this_, 'auto', 'trunc', 'auto'));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsString(self::plainDateTimeToString($this_, 'auto', 'trunc', 'auto'));
+            $fallback = self::plainDateTimeToString($this_, 'auto', 'trunc', 'auto');
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -2524,11 +2528,12 @@ class TemporalObject
             return new JsString(self::padISOYear($y) . '-' . self::pad2($m));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
             $y = self::getSlotInt($this_, '[[ISOYear]]');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
-            return new JsString(self::padISOYear($y) . '-' . self::pad2($m));
+            $fallback = self::padISOYear($y) . '-' . self::pad2($m);
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -2906,11 +2911,12 @@ class TemporalObject
             return new JsString(self::pad2($m) . '-' . self::pad2($dd));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsPlainMonthDay]]', 'Temporal.PlainMonthDay');
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
             $dd = self::getSlotInt($this_, '[[ISODay]]');
-            return new JsString(self::pad2($m) . '-' . self::pad2($dd));
+            $fallback = self::pad2($m) . '-' . self::pad2($dd);
+            return self::temporalToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -10904,5 +10910,62 @@ class TemporalObject
                 PropertyDescriptor::data(new JsString($tag), false, false, true),
             );
         }
+    }
+
+    /**
+     * Delegate Temporal.<Type>.prototype.toLocaleString to a freshly
+     * constructed Intl.DateTimeFormat instance, calling its bound
+     * format(this). Used by all Temporal types whose toLocaleString
+     * should produce a localised rendering instead of the ISO string.
+     */
+    private static function temporalToLocaleString(
+        JsValue $this_,
+        array $args,
+        string $fallback,
+    ): JsString {
+        if (!extension_loaded('intl')) {
+            return new JsString($fallback);
+        }
+        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $intlObj = $env?->get('Intl', false);
+        if (!$intlObj instanceof JsObject) {
+            return new JsString($fallback);
+        }
+        $dtfCtor = $intlObj->get('DateTimeFormat');
+        if (!$dtfCtor instanceof JsFunction) {
+            return new JsString($fallback);
+        }
+        $proto = $dtfCtor->get('prototype');
+        $obj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $obj->defineOwnProperty(
+            '[[NewTarget]]',
+            PropertyDescriptor::data($dtfCtor, false, false, false),
+        );
+        ($dtfCtor->getNativeCallable())($obj, [
+            $args[0] ?? JsUndefined::instance(),
+            $args[1] ?? JsUndefined::instance(),
+        ]);
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $formatGetter = $proto instanceof JsObject
+            ? $proto->getOwnPropertyDescriptor('format')
+            : null;
+        if (
+            $interp !== null
+            && $formatGetter !== null
+            && $formatGetter->get instanceof JsFunction
+        ) {
+            $bound = $interp->callFunction($formatGetter->get, $obj, []);
+            if ($bound instanceof JsFunction) {
+                $result = $interp->callFunction(
+                    $bound,
+                    JsUndefined::instance(),
+                    [$this_],
+                );
+                if ($result instanceof JsString) {
+                    return $result;
+                }
+            }
+        }
+        return new JsString($fallback);
     }
 }
