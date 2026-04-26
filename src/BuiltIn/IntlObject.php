@@ -9721,6 +9721,33 @@ class IntlObject
                 $sign = $thisSign;
             }
         }
+        // IsValidDurationRecord step 16-17: total nanoseconds must
+        // have abs < 2^53 × 10^9. Use BC math for precise summation
+        // so the boundary case (max-time-duration just under 2^53
+        // seconds) doesn't suffer from float rounding.
+        if (function_exists('bcadd') && function_exists('bcmul')) {
+            $totalNs = '0';
+            $unitsToNs = [
+                'days' => '86400000000000',
+                'hours' => '3600000000000',
+                'minutes' => '60000000000',
+                'seconds' => '1000000000',
+                'milliseconds' => '1000000',
+                'microseconds' => '1000',
+                'nanoseconds' => '1',
+            ];
+            foreach ($unitsToNs as $u => $factor) {
+                $val = $values[$u] ?? 0.0;
+                if ($val !== 0.0) {
+                    $valStr = sprintf('%.0F', $val);
+                    $totalNs = bcadd($totalNs, bcmul($valStr, $factor, 0), 0);
+                }
+            }
+            $abs = ltrim($totalNs, '-');
+            if (bccomp($abs, '9007199254740992000000000', 0) >= 0) {
+                throw new RangeError('Duration normalized seconds out of range');
+            }
+        }
         return $values;
     }
 
@@ -9813,6 +9840,33 @@ class IntlObject
                     throw new RangeError('Duration values must share a sign');
                 }
                 $sign = $thisSign;
+            }
+        }
+        // IsValidDurationRecord step 16-17: total nanoseconds must
+        // have abs < 2^53 × 10^9. Use BC math for precise summation
+        // so the boundary case (max-time-duration just under 2^53
+        // seconds) doesn't suffer from float rounding.
+        if (function_exists('bcadd') && function_exists('bcmul')) {
+            $totalNs = '0';
+            $unitsToNs = [
+                'days' => '86400000000000',
+                'hours' => '3600000000000',
+                'minutes' => '60000000000',
+                'seconds' => '1000000000',
+                'milliseconds' => '1000000',
+                'microseconds' => '1000',
+                'nanoseconds' => '1',
+            ];
+            foreach ($unitsToNs as $u => $factor) {
+                $val = $values[$u] ?? 0.0;
+                if ($val !== 0.0) {
+                    $valStr = sprintf('%.0F', $val);
+                    $totalNs = bcadd($totalNs, bcmul($valStr, $factor, 0), 0);
+                }
+            }
+            $abs = ltrim($totalNs, '-');
+            if (bccomp($abs, '9007199254740992000000000', 0) >= 0) {
+                throw new RangeError('Duration normalized seconds out of range');
             }
         }
         $segments = [];
