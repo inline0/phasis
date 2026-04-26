@@ -1869,6 +1869,7 @@ class IntlObject
         ): JsValue {
             if (
                 !$this_ instanceof JsObject
+                || $this_ instanceof \PhpJs\Value\JsProxy
                 || $this_->get('[[InitializedNumberFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.NumberFormat.prototype.resolvedOptions called on non-NumberFormat');
@@ -3976,8 +3977,14 @@ class IntlObject
         $resolvedOptions = JsFunction::fromCallable('resolvedOptions', function (
             JsValue $this_,
         ): JsValue {
+            // Spec brand check: proxies don't have internal slots, so
+            // a proxy wrapping a DateTimeFormat must NOT be accepted
+            // unless we implemented the normative-optional fallback
+            // symbol unwrap. Throw TypeError to match the
+            // "non-implementor" branch the test allows.
             if (
                 !$this_ instanceof JsObject
+                || $this_ instanceof \PhpJs\Value\JsProxy
                 || $this_->get('[[InitializedDateTimeFormat]]') instanceof JsUndefined
             ) {
                 throw new TypeError('Intl.DateTimeFormat.prototype.resolvedOptions called on non-DateTimeFormat');
