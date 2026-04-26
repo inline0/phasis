@@ -1118,7 +1118,7 @@ class TemporalObject
             $dd = self::getSlotInt($this_, '[[ISODay]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $any = false;
-            // Read fields in ALPHABETICAL order per spec: day, month, monthCode, year.
+            // Read fields in ALPHABETICAL order per spec: day, era, eraYear, month, monthCode, year.
             $dv = $item->get('day');
             if (!($dv instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($dv);
@@ -1127,6 +1127,34 @@ class TemporalObject
                 }
                 $dd = (int) $n;
                 $any = true;
+            }
+            $eraStr = null;
+            $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
+                    $eraStr = TypeConversion::toString($eraVal);
+                    $any = true;
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                    $any = true;
+                }
+                static $pdWithEras = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pdWithEras, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError('era and eraYear must be provided together');
+                }
             }
             $mv = $item->get('month');
             if (!($mv instanceof JsUndefined)) {
@@ -1148,13 +1176,22 @@ class TemporalObject
                 $any = true;
             }
             $yv = $item->get('year');
-            if (!($yv instanceof JsUndefined)) {
+            $yearProvided = !($yv instanceof JsUndefined);
+            if ($yearProvided) {
                 $n = TypeConversion::toNumber($yv);
                 if (!is_finite($n)) {
                     throw new RangeError('year must be finite');
                 }
                 $y = (int) $n;
                 $any = true;
+            } elseif ($eraYearNum !== null) {
+                static $pdWithEraDeriv = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pdWithEraDeriv, true)) {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $y = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (int) (1 - $eraYearNum)
+                        : (int) $eraYearNum;
+                }
             }
             if (!$any) {
                 throw new TypeError('at least one date property required');
