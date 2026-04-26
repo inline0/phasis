@@ -3248,15 +3248,46 @@ class IntlObject
             $startStr = '';
             $endStr = '';
             if (extension_loaded('intl') && $this_ instanceof JsObject) {
-                $startStr = self::formatDateTime($this_, (int) round($startMs / 1000));
-                $endStr = self::formatDateTime($this_, (int) round($endMs / 1000));
+                $startStr = self::formatDateTimeMs($this_, (float) $startMs);
+                $endStr = self::formatDateTimeMs($this_, (float) $endMs);
             }
+            // Decompose start (and end, if different) into typed
+            // parts so consumers can read individual fields.
+            $appendTyped = static function (
+                JsArray $partsArr,
+                string $source,
+            ) use (&$emit): void {
+                $count = (int) ($partsArr->get('length') instanceof JsNumber
+                    ? $partsArr->get('length')->value
+                    : 0);
+                for ($k = 0; $k < $count; $k++) {
+                    $p = $partsArr->get((string) $k);
+                    if (!$p instanceof JsObject) {
+                        continue;
+                    }
+                    $type = $p->get('type');
+                    $value = $p->get('value');
+                    if ($type instanceof JsString && $value instanceof JsString) {
+                        $emit($type->value, $value->value, $source);
+                    }
+                }
+            };
+            $startParts = self::dateTimeFormatToParts(
+                $this_,
+                $startStr,
+                (int) round($startMs / 1000),
+            );
             if ($startStr === $endStr) {
-                $emit('literal', $startStr, 'shared');
+                $appendTyped($startParts, 'shared');
             } else {
-                $emit('literal', $startStr, 'startRange');
+                $endParts = self::dateTimeFormatToParts(
+                    $this_,
+                    $endStr,
+                    (int) round($endMs / 1000),
+                );
+                $appendTyped($startParts, 'startRange');
                 $emit('literal', " \u{2013} ", 'shared');
-                $emit('literal', $endStr, 'endRange');
+                $appendTyped($endParts, 'endRange');
             }
             $result->set('length', new JsNumber((float) $idx));
             return $result;
