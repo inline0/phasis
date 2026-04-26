@@ -3471,19 +3471,12 @@ class TemporalObject
                     $parts = self::roundISODateTime($parts, $digitsToNs[$fractionalSecondDigits], $roundingMode, $tz);
                 }
             }
-            // Recompute epoch ns from rounded parts for offset.
-            $roundedNs = self::isoDateTimeToEpochNs(
-                $parts['year'],
-                $parts['month'],
-                $parts['day'],
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
-                $tz,
-            );
+            // Use the ORIGINAL ns to compute the offset so that the
+            // disambiguation choice (e.g. fall-back DST where the
+            // wall-clock time exists twice) matches the stored
+            // instant. Re-deriving from local components via
+            // isoDateTimeToEpochNs would always pick the earlier
+            // occurrence and emit the wrong offset.
             $timeStr = self::formatISOTime(
                 $parts['hour'],
                 $parts['minute'],
@@ -3495,7 +3488,7 @@ class TemporalObject
                 'trunc',
             );
             $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
-            $offsetStr = self::timeZoneOffsetString($roundedNs, $tz);
+            $offsetStr = self::timeZoneOffsetString($ns, $tz);
             // Handle smallestUnit=minute: omit seconds from time.
             if ($smallestUnit === 'minute') {
                 $timeStr = self::pad2($parts['hour']) . ':' . self::pad2($parts['minute']);
@@ -4127,9 +4120,16 @@ class TemporalObject
                 return JsNull::instance();
             }
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            // Truncate-toward-floor for negative ns so the epoch
+            // second comparison remains correct under sub-second
+            // offsets.
             $epochSecStr = bcdiv($ns, '1000000000', 0);
-            // bcdiv with negatives: handle negative ns to floor-toward-zero.
+            $remainder = bcmod($ns, '1000000000');
+            if (bccomp($ns, '0', 0) < 0 && $remainder !== '0') {
+                $epochSecStr = bcsub($epochSecStr, '1', 0);
+            }
             $epochSec = (int) $epochSecStr;
+            $hasNonZeroSubSec = $remainder !== '0';
             try {
                 $tzObj = self::resolveTimeZone($tz);
             } catch (\Throwable) {
@@ -4140,9 +4140,17 @@ class TemporalObject
             // the Instant range (~ ±9.2e18 ns ≈ 290 billion years),
             // but in practice DST/TZDB records are within ±300y.
             $maxSec = 9223372036; // ~292 years past epoch in seconds
+            // For nanosecond-precision input, "next" means strictly
+            // later than the input ns; "previous" means strictly
+            // earlier. A transition at ts=N is at ns N*1e9, which
+            // equals our input only when remainder is 0.
+            // - For "next": skip transitions with ts <= epochSec.
+            // - For "previous": skip transitions with ts >= epochSec
+            //   (when remainder is 0); when remainder > 0 the same
+            //   ts is technically less than our ns so it qualifies.
             if ($dir === 'next') {
                 $cur = $epochSec + 1;
-                $chunk = 200 * 365 * 86400; // 200 years
+                $chunk = 200 * 365 * 86400;
                 $bound = min($epochSec + $maxSec, PHP_INT_MAX - $chunk);
                 while ($cur < $bound) {
                     $end = min($cur + $chunk, $bound);
@@ -4159,7 +4167,11 @@ class TemporalObject
                     $cur = $end + 1;
                 }
             } else {
-                $cur = $epochSec - 1;
+                // Probing window must include the input second when
+                // ns has a sub-second remainder so "previous" can
+                // locate a transition that fired at the same second.
+                $startProbe = $hasNonZeroSubSec ? $epochSec : $epochSec - 1;
+                $cur = $startProbe;
                 $chunk = 200 * 365 * 86400;
                 $bound = max($epochSec - $maxSec, PHP_INT_MIN + $chunk);
                 while ($cur > $bound) {
@@ -4169,8 +4181,15 @@ class TemporalObject
                         $candidate = null;
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            if (isset($t['ts']) && $t['ts'] < $epochSec) {
-                                $candidate = $t['ts'];
+                            if (!isset($t['ts'])) {
+                                continue;
+                            }
+                            $ts = $t['ts'];
+                            $isStrictlyEarlier = $hasNonZeroSubSec
+                                ? $ts <= $epochSec
+                                : $ts < $epochSec;
+                            if ($isStrictlyEarlier) {
+                                $candidate = $ts;
                             }
                         }
                         if ($candidate !== null) {
