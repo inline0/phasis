@@ -1539,7 +1539,7 @@ class IntlObject
             ) {
                 throw new TypeError('Intl.NumberFormat.prototype.format called on non-NumberFormat');
             }
-            $boundFormat = JsFunction::fromCallable('format', function (
+            $boundFormat = JsFunction::fromCallable('', function (
                 JsValue $unused,
                 array $innerArgs,
             ) use (
@@ -2672,7 +2672,7 @@ class IntlObject
             ) {
                 throw new TypeError('Intl.DateTimeFormat.prototype.format called on non-DateTimeFormat');
             }
-            $boundFormat = JsFunction::fromCallable('format', function (
+            $boundFormat = JsFunction::fromCallable('', function (
                 JsValue $unused,
                 array $innerArgs,
             ) use (
