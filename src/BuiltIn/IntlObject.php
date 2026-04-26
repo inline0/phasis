@@ -3628,18 +3628,24 @@ class IntlObject
 
     /**
      * Build a DateTimeImmutable from a millisecond-precision
-     * timestamp using the formatter's resolved time zone.
+     * timestamp using the formatter's resolved time zone. Spec
+     * TimeClip applies ToIntegerOrInfinity (truncate toward zero),
+     * so a value of -0.9 collapses to 0 rather than -1.
      */
     private static function dateTimeFromTimestampMs(int|float $ms): \DateTimeImmutable
     {
-        $sec = (int) floor($ms / 1000);
-        $micros = (int) round((($ms / 1000) - $sec) * 1_000_000);
+        $msInt = $ms >= 0 ? (int) floor($ms) : (int) ceil($ms);
+        $sec = (int) ($msInt / 1000);
+        $micros = ($msInt - $sec * 1000) * 1000;
         if ($micros < 0) {
             $micros += 1_000_000;
             $sec--;
         }
         $dt = new \DateTimeImmutable('@' . $sec, new \DateTimeZone('UTC'));
-        return $dt->modify('+' . $micros . ' microseconds');
+        if ($micros !== 0) {
+            $dt = $dt->modify('+' . $micros . ' microseconds');
+        }
+        return $dt;
     }
 
     /**
