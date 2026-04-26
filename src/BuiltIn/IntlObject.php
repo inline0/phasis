@@ -4179,13 +4179,7 @@ class IntlObject
                 throw new TypeError('Intl.Locale.prototype.maximize called on non-Locale');
             }
             $tag = self::extractInternalString($this_, '[[LocaleTag]]', 'en');
-            if (extension_loaded('intl')) {
-                $maximized = \Locale::composeLocale(\Locale::parseLocale(str_replace('-', '_', $tag)));
-                // Try to add likely subtags.
-                $maximized = self::addLikelySubtags($tag);
-            } else {
-                $maximized = $tag;
-            }
+            $maximized = self::addLikelySubtags($tag);
             // Construct a new Locale object by calling the constructor directly.
             $newObj = new JsObject($this_->getPrototype());
             $newObj->set('[[NewTarget]]', $constructor);
@@ -5189,11 +5183,95 @@ class IntlObject
             'ur' => 'ur-Arab-PK', 'uz' => 'uz-Latn-UZ', 'vi' => 'vi-Latn-VN',
             'wo' => 'wo-Latn-SN', 'xh' => 'xh-Latn-ZA', 'yi' => 'yi-Hebr-001',
             'yo' => 'yo-Latn-NG', 'zh' => 'zh-Hans-CN', 'zu' => 'zu-Latn-ZA',
+            // Language + script that doesn't follow language alone:
+            // CLDR defaults each pair to a specific region.
+            'en-shaw' => 'en-Shaw-GB',
+            'en-arab' => 'en-Arab-US',
+            'zh-hant' => 'zh-Hant-TW',
+            'zh-hans' => 'zh-Hans-CN',
+            'sr-latn' => 'sr-Latn-RS',
+            'sr-cyrl' => 'sr-Cyrl-RS',
+            'az-arab' => 'az-Arab-IR',
+            'az-cyrl' => 'az-Cyrl-RU',
+            'mn-mong' => 'mn-Mong-CN',
+            // und-Script entries: pick the most-common language for
+            // each script.
+            'und-arab' => 'ar-Arab-EG',
+            'und-armn' => 'hy-Armn-AM',
+            'und-beng' => 'bn-Beng-BD',
+            'und-cans' => 'cr-Cans-CA',
+            'und-cyrl' => 'ru-Cyrl-RU',
+            'und-deva' => 'hi-Deva-IN',
+            'und-ethi' => 'am-Ethi-ET',
+            'und-geor' => 'ka-Geor-GE',
+            'und-grek' => 'el-Grek-GR',
+            'und-gujr' => 'gu-Gujr-IN',
+            'und-guru' => 'pa-Guru-IN',
+            'und-hans' => 'zh-Hans-CN',
+            'und-hant' => 'zh-Hant-TW',
+            'und-hebr' => 'he-Hebr-IL',
+            'und-hira' => 'ja-Jpan-JP',
+            'und-jpan' => 'ja-Jpan-JP',
+            'und-kana' => 'ja-Jpan-JP',
+            'und-khmr' => 'km-Khmr-KH',
+            'und-knda' => 'kn-Knda-IN',
+            'und-kore' => 'ko-Kore-KR',
+            'und-laoo' => 'lo-Laoo-LA',
+            'und-latn' => 'en-Latn-US',
+            'und-mlym' => 'ml-Mlym-IN',
+            'und-mong' => 'mn-Mong-CN',
+            'und-mymr' => 'my-Mymr-MM',
+            'und-orya' => 'or-Orya-IN',
+            'und-shaw' => 'en-Shaw-GB',
+            'und-sinh' => 'si-Sinh-LK',
+            'und-taml' => 'ta-Taml-IN',
+            'und-telu' => 'te-Telu-IN',
+            'und-thaa' => 'dv-Thaa-MV',
+            'und-thai' => 'th-Thai-TH',
+            'und-tibt' => 'bo-Tibt-CN',
+            'und-yiii' => 'ii-Yiii-CN',
+            // und-Region defaults: pick the most-common language for
+            // each region (CLDR's likelySubtags emphasises the
+            // primary language used).
+            'und-419' => 'es-Latn-419',
+            'und-001' => 'en-Latn-US',
+            'und-150' => 'en-Latn-150',
+            'und-AT' => 'de-Latn-AT', 'und-AR' => 'es-Latn-AR',
+            'und-AU' => 'en-Latn-AU', 'und-BE' => 'nl-Latn-BE',
+            'und-BO' => 'es-Latn-BO', 'und-BR' => 'pt-Latn-BR',
+            'und-CA' => 'en-Latn-CA', 'und-CH' => 'de-Latn-CH',
+            'und-CL' => 'es-Latn-CL', 'und-CN' => 'zh-Hans-CN',
+            'und-CO' => 'es-Latn-CO', 'und-CR' => 'es-Latn-CR',
+            'und-DE' => 'de-Latn-DE', 'und-DK' => 'da-Latn-DK',
+            'und-DO' => 'es-Latn-DO', 'und-EC' => 'es-Latn-EC',
+            'und-EG' => 'ar-Arab-EG', 'und-ES' => 'es-Latn-ES',
+            'und-FR' => 'fr-Latn-FR', 'und-GB' => 'en-Latn-GB',
+            'und-GR' => 'el-Grek-GR', 'und-GT' => 'es-Latn-GT',
+            'und-HK' => 'zh-Hant-HK', 'und-HN' => 'es-Latn-HN',
+            'und-IE' => 'en-Latn-IE', 'und-IL' => 'he-Hebr-IL',
+            'und-IN' => 'hi-Deva-IN', 'und-IT' => 'it-Latn-IT',
+            'und-JP' => 'ja-Jpan-JP', 'und-KR' => 'ko-Kore-KR',
+            'und-MX' => 'es-Latn-MX', 'und-NL' => 'nl-Latn-NL',
+            'und-NO' => 'nb-Latn-NO', 'und-NZ' => 'en-Latn-NZ',
+            'und-PA' => 'es-Latn-PA', 'und-PE' => 'es-Latn-PE',
+            'und-PL' => 'pl-Latn-PL', 'und-PT' => 'pt-Latn-PT',
+            'und-PY' => 'gn-Latn-PY', 'und-RO' => 'ro-Latn-RO',
+            'und-RU' => 'ru-Cyrl-RU', 'und-SE' => 'sv-Latn-SE',
+            'und-SG' => 'en-Latn-SG', 'und-TH' => 'th-Thai-TH',
+            'und-TR' => 'tr-Latn-TR', 'und-TW' => 'zh-Hant-TW',
+            'und-UA' => 'uk-Cyrl-UA', 'und-US' => 'en-Latn-US',
+            'und-UY' => 'es-Latn-UY', 'und-VE' => 'es-Latn-VE',
+            'und-VN' => 'vi-Latn-VN',
+            // und-Script-Region specifics where the language differs
+            // from the script's default (CLDR fixedSubtags).
+            'und-cyrl-ro' => 'bg-Cyrl-RO',
+            'und-arab-bg' => 'ar-Arab-EG',
         ];
         $table = [];
         foreach ($raw as $key => $val) {
             $parts = explode('-', $val);
-            $table[$key] = [
+            // Lookup is performed with lowercased candidate keys.
+            $table[strtolower($key)] = [
                 'language' => $parts[0],
                 'script' => $parts[1] ?? '',
                 'region' => $parts[2] ?? '',
@@ -5215,80 +5293,124 @@ class IntlObject
         $script = $parsed['script'] ?? '';
         $region = $parsed['region'] ?? '';
         $table = self::likelySubtagsTable();
-        // Spec: try in order  language-script, language-region,
-        // language, "und"-script, "und". Use the first match to
-        // fill the missing component(s).
+        // Spec UTS35 likelySubtags lookup order: try the most
+        // specific (lang-script-region) first, then drop one
+        // component at a time. The "und" fallback only fires when
+        // no language-bearing key matched.
+        // Build candidate keys all-lowercase so the table lookup is
+        // case-insensitive irrespective of how the caller cased the
+        // identifier.
+        $low = static fn(string $s): string => strtolower($s);
         $candidates = [];
-        if ($script !== '' && $region === '') {
-            $candidates[] = $lang . '-' . strtolower($script);
-        }
-        if ($region !== '' && $script === '') {
-            $candidates[] = $lang . '-' . strtoupper($region);
-        }
-        $candidates[] = $lang;
-        if ($script !== '') {
-            $candidates[] = 'und-' . strtolower($script);
+        if ($script !== '' && $region !== '') {
+            $candidates[] = $low($lang . '-' . $script . '-' . $region);
         }
         if ($region !== '') {
-            $candidates[] = 'und-' . strtoupper($region);
+            $candidates[] = $low($lang . '-' . $region);
         }
+        if ($script !== '') {
+            $candidates[] = $low($lang . '-' . $script);
+        }
+        $candidates[] = $low($lang);
+        if ($script !== '' && $region !== '') {
+            $candidates[] = $low('und-' . $script . '-' . $region);
+        }
+        if ($script !== '') {
+            $candidates[] = $low('und-' . $script);
+        }
+        if ($region !== '') {
+            $candidates[] = $low('und-' . $region);
+        }
+        // Only fall through to the 'und' bare key when the input
+        // language is itself unknown; otherwise unrecognised
+        // identifiers (like "posix") are returned unchanged.
         if ($lang === 'und' || $lang === '') {
             $candidates[] = 'und';
         }
         foreach ($candidates as $candidate) {
-            if (isset($table[$candidate])) {
-                $entry = $table[$candidate];
-                if ($script === '') {
-                    $parsed['script'] = $entry['script'];
-                }
-                if ($region === '') {
-                    $parsed['region'] = $entry['region'];
-                }
-                if ($lang === 'und' || $lang === '') {
-                    $parsed['language'] = $entry['language'];
-                }
-                return self::reconstructLocaleTag($parsed);
+            if (!isset($table[$candidate])) {
+                continue;
             }
+            $entry = $table[$candidate];
+            if ($lang === 'und' || $lang === '') {
+                $parsed['language'] = $entry['language'];
+            }
+            if ($script === '') {
+                $parsed['script'] = $entry['script'];
+            }
+            if ($region === '') {
+                $parsed['region'] = $entry['region'];
+            }
+            return self::reconstructLocaleTag($parsed);
         }
         return $tag;
     }
 
     /**
-     * Remove likely subtags from a locale tag. Inverse of
-     * addLikelySubtags: if maximizing the language alone yields the
-     * same script/region as the maximized full tag, we can drop
-     * them.
+     * Implements UTS35 RemoveLikelySubtags: maximize the input,
+     * then try shorter forms (lang, lang+region, lang+script) and
+     * return the first whose maximized language-script-region
+     * triple equals the original maximum. Variants / extensions
+     * are preserved on the result.
      */
     private static function removeLikelySubtags(string $tag): string
     {
-        $parsed = self::parseLocaleTag($tag);
-        if ($parsed === null || ($parsed['language'] ?? '') === '') {
+        $maxTag = self::addLikelySubtags($tag);
+        $maxParsed = self::parseLocaleTag($maxTag);
+        if ($maxParsed === null || ($maxParsed['language'] ?? '') === '') {
             return $tag;
         }
-        $lang = $parsed['language'];
-        $script = $parsed['script'] ?? '';
-        $region = $parsed['region'] ?? '';
-        $table = self::likelySubtagsTable();
-        if (!isset($table[$lang])) {
-            return $tag;
+        $lang = $maxParsed['language'];
+        $script = $maxParsed['script'] ?? '';
+        $region = $maxParsed['region'] ?? '';
+        $maxTriple = self::languageScriptRegionTriple($maxParsed);
+
+        $tries = [$lang];
+        if ($region !== '') {
+            $tries[] = $lang . '-' . $region;
         }
-        $maxLang = $table[$lang];
-        // Remove script if it matches the language-only maximum.
-        $minimal = $parsed;
-        unset($minimal['script'], $minimal['region']);
-        $minimal['language'] = $lang;
-        // Keep region if it differs from the language's default.
-        if ($region !== '' && $region !== $maxLang['region']) {
-            $minimal['region'] = $region;
+        if ($script !== '') {
+            $tries[] = $lang . '-' . $script;
         }
-        if (
-            $script !== ''
-            && $script !== $maxLang['script']
-            && !isset($minimal['region'])
-        ) {
-            $minimal['script'] = $script;
+        foreach ($tries as $candidate) {
+            $candidateParsed = self::parseLocaleTag(self::addLikelySubtags($candidate));
+            if (
+                $candidateParsed !== null
+                && self::languageScriptRegionTriple($candidateParsed) === $maxTriple
+            ) {
+                return self::reapplyTrailing($maxParsed, $candidate);
+            }
         }
-        return self::reconstructLocaleTag($minimal);
+        return $maxTag;
+    }
+
+    /** Build a "language-script-region" comparison key. */
+    private static function languageScriptRegionTriple(array $parsed): string
+    {
+        return ($parsed['language'] ?? '')
+            . '|' . ($parsed['script'] ?? '')
+            . '|' . ($parsed['region'] ?? '');
+    }
+
+    /**
+     * Re-attach variants / extensions / private-use tags from the
+     * maximized parse onto a shorter base tag string.
+     */
+    private static function reapplyTrailing(array $parsed, string $base): string
+    {
+        $baseParsed = self::parseLocaleTag($base);
+        if ($baseParsed === null) {
+            return $base;
+        }
+        foreach (['variants', 'unicodeAttributes', 'unicodeKeywords',
+            'otherExtensions', 'privateUse', 'calendar', 'collation',
+            'firstDayOfWeek', 'hourCycle', 'caseFirst', 'numeric',
+            'numberingSystem'] as $key) {
+            if (isset($parsed[$key])) {
+                $baseParsed[$key] = $parsed[$key];
+            }
+        }
+        return self::reconstructLocaleTag($baseParsed);
     }
 
     // ---------------------------------------------------------------
