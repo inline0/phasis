@@ -7908,19 +7908,26 @@ class IntlObject
                 throw new RangeError("Invalid code for DisplayNames.of: {$code}");
             }
 
+            $fallback = self::extractInternalString($this_, '[[Fallback]]', 'code');
             if (extension_loaded('intl')) {
                 $icuLocale = str_replace('-', '_', $locale);
                 $displayName = match ($type) {
                     'language' => \Locale::getDisplayLanguage(str_replace('-', '_', $code), $icuLocale),
                     'region' => \Locale::getDisplayRegion('und_' . strtoupper($code), $icuLocale),
                     'script' => \Locale::getDisplayScript('und_' . ucfirst(strtolower($code)), $icuLocale),
+                    'currency' => self::displayNameForCurrency($code, $icuLocale),
                     default => $code,
                 };
-                if ($displayName !== '' && $displayName !== false) {
+                if ($displayName !== '' && $displayName !== false && $displayName !== null) {
                     return new JsString($displayName);
                 }
             }
 
+            // Per spec: fallback "none" returns undefined for an
+            // unrecognised code; "code" returns the code itself.
+            if ($fallback === 'none') {
+                return JsUndefined::instance();
+            }
             return new JsString($code);
         }, 1);
         $proto->defineOwnProperty('of', PropertyDescriptor::data($of, true, false, true));
@@ -8113,6 +8120,30 @@ class IntlObject
             return [', ', ', ', ', ', ', '];
         }
         return [' and ', ', ', ', ', ', and '];
+    }
+
+    /**
+     * Look up the locale's display name for an ISO 4217 currency
+     * code. ICU's `\NumberFormatter::CURRENCY_SYMBOL` lookup echoes
+     * the code back for unknown currencies, so we cross-check
+     * against our supported-currencies list to know whether the
+     * locale data actually recognises the code.
+     */
+    private static function displayNameForCurrency(string $code, string $icuLocale): ?string
+    {
+        $upper = strtoupper($code);
+        if (!class_exists(\NumberFormatter::class)) {
+            return null;
+        }
+        if (!in_array($upper, self::getSupportedCurrencies(), true)) {
+            return null;
+        }
+        $fmt = new \NumberFormatter($icuLocale . '@currency=' . $upper, \NumberFormatter::CURRENCY);
+        $sym = $fmt->getSymbol(\NumberFormatter::CURRENCY_SYMBOL);
+        if ($sym === false || $sym === '') {
+            return $upper;
+        }
+        return $sym;
     }
 
     private static function installListFormat(JsObject $intl): void
