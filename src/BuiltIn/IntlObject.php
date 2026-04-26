@@ -651,21 +651,15 @@ class IntlObject
     /** @return list<string> */
     private static function getSupportedTimeZones(): array
     {
-        if (extension_loaded('intl')) {
-            $iter = \IntlTimeZone::createEnumeration();
-            $result = [];
-            foreach ($iter as $tz) {
-                // Filter to IANA time zone names (contain '/').
-                if (str_contains($tz, '/') || $tz === 'UTC') {
-                    $result[] = $tz;
-                }
-            }
-            if (!empty($result)) {
-                return $result;
-            }
+        // PHP's listIdentifiers() returns the canonical IANA names
+        // (excluding deprecated aliases like
+        // 'Canada/East-Saskatchewan' that ICU still enumerates),
+        // matching the spec's CanonicalizeTimeZoneName output.
+        $result = \DateTimeZone::listIdentifiers();
+        if (!in_array('UTC', $result, true)) {
+            $result[] = 'UTC';
         }
-        // Fallback: use PHP's timezone identifiers.
-        return \DateTimeZone::listIdentifiers();
+        return $result;
     }
 
     /**
