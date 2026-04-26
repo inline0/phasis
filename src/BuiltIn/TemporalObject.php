@@ -3104,13 +3104,56 @@ class TemporalObject
             if (!$item instanceof JsObject) {
                 throw new TypeError('argument must be an object');
             }
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            // Read era/eraYear (alphabetical, before year) for
+            // era-using calendars so an Infinity eraYear surfaces
+            // as RangeError before missing-year would fire as
+            // TypeError. Same scope as the property-bag readers.
+            $eraStr = null;
+            $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
+            if ($cal !== 'iso8601') {
+                $eraVal = $item->get('era');
+                if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
+                    $eraStr = TypeConversion::toString($eraVal);
+                }
+                $eraYearVal = $item->get('eraYear');
+                if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
+                    $eraYearNum = TypeConversion::toNumber($eraYearVal);
+                    if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
+                        throw new RangeError('eraYear must be finite');
+                    }
+                    if (floor($eraYearNum) !== $eraYearNum) {
+                        throw new RangeError('eraYear must be an integer');
+                    }
+                }
+                static $pmdToPdEraCals = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pmdToPdEraCals, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError('era and eraYear must be provided together');
+                }
+            }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                throw new TypeError('year is required');
-            }
-            $yNum = TypeConversion::toNumber($yearVal);
-            if (!is_finite($yNum)) {
-                throw new RangeError('year must be finite');
+                static $pmdToPdEraDeriv = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pmdToPdEraDeriv, true)
+                ) {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - $eraYearNum)
+                        : $eraYearNum;
+                } else {
+                    throw new TypeError('year is required');
+                }
+            } else {
+                $yNum = TypeConversion::toNumber($yearVal);
+                if (!is_finite($yNum)) {
+                    throw new RangeError('year must be finite');
+                }
             }
             $y = (int) $yNum;
             $m = self::getSlotInt($this_, '[[ISOMonth]]');
@@ -3124,7 +3167,7 @@ class TemporalObject
                 $y,
                 $m,
                 $dd,
-                self::getSlotString($this_, '[[Calendar]]'),
+                $cal,
             );
         }, 1);
 
