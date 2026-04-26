@@ -4363,13 +4363,17 @@ class TemporalObject
         // era/eraYear (non-ISO calendars only).
         $eraStr = null;
         $eraYearNum = null;
+        $eraSet = false;
+        $eraYearSet = false;
         if ($cal !== 'iso8601') {
             $eraVal = $item->get('era');
             if (!($eraVal instanceof JsUndefined)) {
+                $eraSet = true;
                 $eraStr = TypeConversion::toString($eraVal);
             }
             $eraYearVal = $item->get('eraYear');
             if (!($eraYearVal instanceof JsUndefined)) {
+                $eraYearSet = true;
                 $eraYearNum = TypeConversion::toNumber($eraYearVal);
                 if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
                     throw new RangeError('eraYear must be finite');
@@ -4377,6 +4381,10 @@ class TemporalObject
                 if (floor($eraYearNum) !== $eraYearNum) {
                     throw new RangeError('eraYear must be an integer');
                 }
+            }
+            static $zdtErasUseEras = ['gregory', 'japanese', 'roc'];
+            if (in_array($cal, $zdtErasUseEras, true) && $eraSet !== $eraYearSet) {
+                throw new TypeError('era and eraYear must be provided together');
             }
         }
         $hourV = $item->get('hour');
@@ -6920,13 +6928,17 @@ class TemporalObject
             // era/eraYear (non-ISO calendars only).
             $eraStr = null;
             $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
             if ($cal !== 'iso8601') {
                 $eraVal = $item->get('era');
                 if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
                     $eraStr = TypeConversion::toString($eraVal);
                 }
                 $eraYearVal = $item->get('eraYear');
                 if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
                     $eraYearNum = TypeConversion::toNumber($eraYearVal);
                     if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
                         throw new RangeError('eraYear must be finite');
@@ -6934,6 +6946,15 @@ class TemporalObject
                     if (floor($eraYearNum) !== $eraYearNum) {
                         throw new RangeError('eraYear must be an integer');
                     }
+                }
+                // For calendars that use eras (gregory, japanese,
+                // roc, etc.), the two fields must be both present
+                // or both absent.
+                static $erasUseEras = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $erasUseEras, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError(
+                        'era and eraYear must be provided together',
+                    );
                 }
             }
             $monthVal = $item->get('month');
@@ -7555,13 +7576,17 @@ class TemporalObject
             // disturb the canonical observable read order.
             $eraStr = null;
             $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
             if ($cal !== 'iso8601') {
                 $eraVal = $item->get('era');
                 if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
                     $eraStr = TypeConversion::toString($eraVal);
                 }
                 $eraYearVal = $item->get('eraYear');
                 if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
                     $eraYearNum = TypeConversion::toNumber($eraYearVal);
                     if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
                         throw new RangeError('eraYear must be finite');
@@ -7569,6 +7594,12 @@ class TemporalObject
                     if (floor($eraYearNum) !== $eraYearNum) {
                         throw new RangeError('eraYear must be an integer');
                     }
+                }
+                static $pdtErasUseEras = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pdtErasUseEras, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError(
+                        'era and eraYear must be provided together',
+                    );
                 }
             }
             // Read time fields (for PlainDateTime path).
@@ -7815,13 +7846,17 @@ class TemporalObject
             // spec ordering. Validation happens immediately.
             $eraStr = null;
             $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
             if ($cal !== 'iso8601') {
                 $eraVal = $item->get('era');
                 if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
                     $eraStr = TypeConversion::toString($eraVal);
                 }
                 $eraYearVal = $item->get('eraYear');
                 if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
                     $eraYearNum = TypeConversion::toNumber($eraYearVal);
                     if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
                         throw new RangeError('eraYear must be finite');
@@ -7829,6 +7864,10 @@ class TemporalObject
                     if (floor($eraYearNum) !== $eraYearNum) {
                         throw new RangeError('eraYear must be an integer');
                     }
+                }
+                static $pymErasUseEras = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pymErasUseEras, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError('era and eraYear must be provided together');
                 }
             }
             $month = $item->get('month');
