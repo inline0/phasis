@@ -6314,47 +6314,6 @@ class IntlObject
     }
 
     /**
-     * Detect whether a CESU-8-encoded string contains a lone surrogate
-     * (0xD800-0xDFFF), which our internal representation stores as
-     * the 3-byte sequence 0xED, 0xA0-0xBF, 0x80-0xBF.
-     */
-    private static function stringContainsLoneSurrogate(string $str): bool
-    {
-        $len = strlen($str);
-        for ($i = 0; $i + 2 < $len; $i++) {
-            if (
-                ord($str[$i]) === 0xED
-                && (ord($str[$i + 1]) & 0xE0) === 0xA0
-                && (ord($str[$i + 2]) & 0xC0) === 0x80
-            ) {
-                $high = ord($str[$i + 1]) & 0x1F;
-                // High-surrogate range = 0xD800..0xDBFF (high bits 0xA0..0xAF
-                // when masked here); low surrogate 0xDC00..0xDFFF (0xB0..0xBF).
-                // For a SURROGATE PAIR we'd see a high then a low — only flag
-                // it as lone when the next 3 bytes aren't the matching low.
-                if ($high < 0x10) {
-                    // High surrogate — check if followed by low.
-                    if ($i + 5 >= $len) {
-                        return true;
-                    }
-                    if (
-                        ord($str[$i + 3]) === 0xED
-                        && (ord($str[$i + 4]) & 0xF0) === 0xB0
-                    ) {
-                        // High + low pair, skip past the pair.
-                        $i += 5;
-                        continue;
-                    }
-                    return true;
-                }
-                // Low surrogate without preceding high.
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Convert a UTF-8 byte offset into the equivalent UTF-16 code-unit
      * index. JS strings expose UTF-16 indices, so segment results need
      * the byte offset returned by IntlBreakIterator translated before
