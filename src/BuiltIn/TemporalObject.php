@@ -4432,7 +4432,12 @@ class TemporalObject
             throw new TypeError('ZonedDateTime from object requires timeZone');
         }
         $timeZone = self::toTemporalTimeZoneIdentifier($tzV);
-        if ($y === null && $eraYearNum !== null && $cal !== 'iso8601') {
+        static $zdtEraDerivCals = ['gregory', 'japanese', 'roc'];
+        if (
+            $y === null
+            && $eraYearNum !== null
+            && in_array($cal, $zdtEraDerivCals, true)
+        ) {
             $eraLower = $eraStr === null ? '' : strtolower($eraStr);
             $y = in_array($eraLower, ['bc', 'bce'], true)
                 ? (1 - (int) $eraYearNum)
@@ -6968,7 +6973,11 @@ class TemporalObject
             }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                static $pdEraCals = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pdEraCals, true)
+                ) {
                     $eraLower = $eraStr === null ? '' : strtolower($eraStr);
                     $yNum = in_array($eraLower, ['bc', 'bce'], true)
                         ? (1 - $eraYearNum)
@@ -7675,10 +7684,16 @@ class TemporalObject
             }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                // For non-ISO calendars, era+eraYear can substitute
-                // for year (Gregorian: ce/ad → year=eraYear,
-                // bc/bce → year = 1 - eraYear).
-                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                // For era-using calendars, era+eraYear can
+                // substitute for year (Gregorian: ce/ad → year=eraYear,
+                // bc/bce → year = 1 - eraYear). For calendars that
+                // don't use eras (hebrew/islamic/chinese), an absent
+                // year is always a TypeError.
+                static $pdtEraDerivCals = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pdtEraDerivCals, true)
+                ) {
                     $eraLower = $eraStr === null ? '' : strtolower($eraStr);
                     if (in_array($eraLower, ['bc', 'bce'], true)) {
                         $y = 1 - (int) $eraYearNum;
@@ -7888,7 +7903,11 @@ class TemporalObject
             }
             $year = $item->get('year');
             if ($year instanceof JsUndefined) {
-                if ($eraYearNum !== null && $cal !== 'iso8601') {
+                static $pymEraDerivCals = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pymEraDerivCals, true)
+                ) {
                     $eraLower = $eraStr === null ? '' : strtolower($eraStr);
                     $yNum = in_array($eraLower, ['bc', 'bce'], true)
                         ? (1 - $eraYearNum)
@@ -8133,11 +8152,17 @@ class TemporalObject
                     throw new RangeError('year must be finite');
                 }
                 $refYear = (int) $yValRaw;
-            } elseif ($eraYearNum !== null && $cal !== 'iso8601') {
-                $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                $refYear = in_array($eraLower, ['bc', 'bce'], true)
-                    ? (1 - (int) $eraYearNum)
-                    : (int) $eraYearNum;
+            } else {
+                static $pmdEraDerivCals = ['gregory', 'japanese', 'roc'];
+                if (
+                    $eraYearNum !== null
+                    && in_array($cal, $pmdEraDerivCals, true)
+                ) {
+                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                    $refYear = in_array($eraLower, ['bc', 'bce'], true)
+                        ? (1 - (int) $eraYearNum)
+                        : (int) $eraYearNum;
+                }
             }
 
             // Now validate month code suitability (semantic check).
