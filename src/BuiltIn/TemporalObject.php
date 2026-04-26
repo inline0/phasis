@@ -5870,6 +5870,62 @@ class TemporalObject
                 $resolvedOpts->set('smallestUnit', new JsString($smallestUnit));
             }
             $dur = self::plainDateTimeDifference($dt1, $dt2, $resolvedOpts);
+            // For ZDT difference where the timezone has a DST transition
+            // inside the duration window, replace the sub-day portion of the
+            // result with the real UTC elapsed ns from "start + date duration"
+            // → target so DST gaps/folds shorten or lengthen it.
+            if (
+                !self::isFixedOffset($tz)
+                && self::tzHasTransitionBetween($tz, $ns1, $ns2)
+            ) {
+                $dateOnly = self::createDurationObject(
+                    self::getDurationField($dur, 'years'),
+                    self::getDurationField($dur, 'months'),
+                    self::getDurationField($dur, 'weeks'),
+                    self::getDurationField($dur, 'days'),
+                    0, 0, 0, 0, 0, 0,
+                );
+                $startObj = self::createZonedDateTimeObject($ns1, $tz, 'iso8601');
+                $afterDates = self::addDurationToZdt($startObj, $dateOnly, 1, 'constrain');
+                $subDayNs = bcsub($ns2, $afterDates, 0);
+                // Sign sanity: date portion and sub-day must agree in sign,
+                // otherwise leave the original PDT-derived duration alone.
+                $dateSign = self::durationSign($dateOnly);
+                $subSign = bccomp($subDayNs, '0', 0);
+                if ($dateSign === 0 || $subSign === 0 || (($dateSign > 0) === ($subSign > 0))) {
+                    $unitNsMap = [
+                        'hour' => '3600000000000',
+                        'minute' => '60000000000',
+                        'second' => '1000000000',
+                        'millisecond' => '1000000',
+                        'microsecond' => '1000',
+                        'nanosecond' => '1',
+                        'day' => '86400000000000',
+                    ];
+                    $rounded = $subDayNs;
+                    $smallest = $smallestUnit ?? 'nanosecond';
+                    if (isset($unitNsMap[$smallest])) {
+                        $unitNs = $unitNsMap[$smallest];
+                        $incNs = bcmul((string) (isset($riNum) ? $riNum : 1), $unitNs, 0);
+                        if ($incNs !== '0' && $incNs !== '1') {
+                            $rounded = self::roundNs($subDayNs, $incNs, $rmStr ?? 'trunc');
+                        }
+                    }
+                    $timePart = self::nsToTimeDuration($rounded, 'hour');
+                    $dur = self::createDurationObject(
+                        self::getDurationField($dur, 'years'),
+                        self::getDurationField($dur, 'months'),
+                        self::getDurationField($dur, 'weeks'),
+                        self::getDurationField($dur, 'days'),
+                        self::getDurationField($timePart, 'hours'),
+                        self::getDurationField($timePart, 'minutes'),
+                        self::getDurationField($timePart, 'seconds'),
+                        self::getDurationField($timePart, 'milliseconds'),
+                        self::getDurationField($timePart, 'microseconds'),
+                        self::getDurationField($timePart, 'nanoseconds'),
+                    );
+                }
+            }
             // Validate ceiling for day-level increments.
             if (isset($riNum) && $riNum > 1 && ($smallestUnit === 'day' || $smallestUnit === 'days')) {
                 $incrNsForCheck = bcmul((string) $riNum, '86400000000000', 0);
