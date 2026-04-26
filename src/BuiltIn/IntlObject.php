@@ -2034,17 +2034,33 @@ class IntlObject
                 continue;
             }
             // For unit-style output, the rendered unit suffix follows
-            // the digits joined by a no-break space (we emit it that
-            // way in formatNumber). Once we've already seen at least
-            // one digit run, treat the remaining tail as the unit
-            // part instead of breaking it up into group/literal/etc.
-            if ($isUnit && $sawDigits) {
+            // the digits, optionally separated by a (no-break) space.
+            // After the digits and any decimal separator/fraction run
+            // have been emitted, peel off the unit tail. We detect
+            // the boundary by looking ahead for a non-digit /
+            // non-separator character; the leading whitespace before
+            // the unit becomes a `literal` part to match V8's parts
+            // shape, and narrow-display unit lookups stay alongside.
+            if (
+                $isUnit
+                && $sawDigits
+                && ($ch !== '.' || $sawDecimal)
+                && substr($body, $i, strlen($decimalSym)) !== $decimalSym
+                && substr($body, $i, strlen($groupSym)) !== $groupSym
+            ) {
                 $tailRun = substr($body, $i);
-                // Strip a leading no-break space / regular space
-                // separator so the unit value matches V8's CLDR
-                // output ("%", "km/h", ...).
-                $tailRun = ltrim($tailRun, " \u{00A0}");
-                $emit('unit', $tailRun);
+                if ($tailRun !== '') {
+                    // Split off the leading separator (NBSP / space)
+                    // as a `literal` part, then the rest is the unit.
+                    if (preg_match('/^([\s\x{00A0}]+)(.*)$/u', $tailRun, $m) === 1) {
+                        $emit('literal', $m[1]);
+                        if ($m[2] !== '') {
+                            $emit('unit', $m[2]);
+                        }
+                    } else {
+                        $emit('unit', $tailRun);
+                    }
+                }
                 $i = $bodyLen;
                 continue;
             }
@@ -2151,8 +2167,7 @@ class IntlObject
     /**
      * Best-effort CLDR-shaped en-US label for a Unit Identifier.
      * Compound units (foo-per-bar) render as "shortFoo/shortBar"
-     * via per-unit recursion. Anything else falls back to the
-     * raw identifier.
+     * for short/narrow; long form joins "{long-num} per {long-den}".
      */
     private static function renderUnitLabel(string $unit, string $display): string
     {
@@ -2161,6 +2176,13 @@ class IntlObject
         }
         if (str_contains($unit, '-per-')) {
             [$num, $den] = explode('-per-', $unit, 2);
+            if ($display === 'long') {
+                $numLong = self::renderUnitLabel($num, 'long');
+                // Use the singular short identifier-derived form for
+                // the denominator (English: "per hour", not "per hours").
+                $denLong = self::renderUnitLabel($den, 'long-singular');
+                return $numLong . ' per ' . $denLong;
+            }
             return self::renderUnitLabel($num, $display) . '/'
                 . self::renderUnitLabel($den, $display);
         }
@@ -2185,7 +2207,58 @@ class IntlObject
         if ($display === 'narrow' || $display === 'short') {
             return $shortLabels[$unit] ?? $unit;
         }
-        return $unit;
+        if ($display === 'long-singular') {
+            // Singular English form used in compound denominators.
+            static $longSingular = [
+                'acre' => 'acre', 'bit' => 'bit', 'byte' => 'byte',
+                'celsius' => 'degree Celsius', 'centimeter' => 'centimeter',
+                'day' => 'day', 'degree' => 'degree',
+                'fahrenheit' => 'degree Fahrenheit',
+                'fluid-ounce' => 'fluid ounce', 'foot' => 'foot',
+                'gallon' => 'gallon', 'gigabit' => 'gigabit',
+                'gigabyte' => 'gigabyte', 'gram' => 'gram',
+                'hectare' => 'hectare', 'hour' => 'hour', 'inch' => 'inch',
+                'kilobit' => 'kilobit', 'kilobyte' => 'kilobyte',
+                'kilogram' => 'kilogram', 'kilometer' => 'kilometer',
+                'liter' => 'liter', 'megabit' => 'megabit',
+                'megabyte' => 'megabyte', 'meter' => 'meter',
+                'mile' => 'mile', 'mile-scandinavian' => 'Scandinavian mile',
+                'milliliter' => 'milliliter', 'millimeter' => 'millimeter',
+                'millisecond' => 'millisecond', 'minute' => 'minute',
+                'month' => 'month', 'nanosecond' => 'nanosecond',
+                'ounce' => 'ounce', 'percent' => 'percent',
+                'petabyte' => 'petabyte', 'pound' => 'pound',
+                'second' => 'second', 'stone' => 'stone',
+                'terabit' => 'terabit', 'terabyte' => 'terabyte',
+                'week' => 'week', 'yard' => 'yard', 'year' => 'year',
+            ];
+            return $longSingular[$unit] ?? $unit;
+        }
+        // Long form: pluralised English unit name.
+        static $longLabels = [
+            'acre' => 'acres', 'bit' => 'bits', 'byte' => 'bytes',
+            'celsius' => 'degrees Celsius', 'centimeter' => 'centimeters',
+            'day' => 'days', 'degree' => 'degrees',
+            'fahrenheit' => 'degrees Fahrenheit',
+            'fluid-ounce' => 'fluid ounces', 'foot' => 'feet',
+            'gallon' => 'gallons', 'gigabit' => 'gigabits',
+            'gigabyte' => 'gigabytes', 'gram' => 'grams',
+            'hectare' => 'hectares', 'hour' => 'hours', 'inch' => 'inches',
+            'kilobit' => 'kilobits', 'kilobyte' => 'kilobytes',
+            'kilogram' => 'kilograms', 'kilometer' => 'kilometers',
+            'liter' => 'liters', 'megabit' => 'megabits',
+            'megabyte' => 'megabytes', 'meter' => 'meters',
+            'mile' => 'miles', 'mile-scandinavian' => 'Scandinavian miles',
+            'milliliter' => 'milliliters', 'millimeter' => 'millimeters',
+            'millisecond' => 'milliseconds', 'minute' => 'minutes',
+            'month' => 'months', 'nanosecond' => 'nanoseconds',
+            'ounce' => 'ounces', 'percent' => 'percent',
+            'petabyte' => 'petabytes', 'pound' => 'pounds',
+            'second' => 'seconds', 'stone' => 'stone',
+            'terabit' => 'terabits', 'terabyte' => 'terabytes',
+            'week' => 'weeks', 'yard' => 'yards', 'year' => 'years',
+        ];
+        return $longLabels[$unit] ?? $unit;
     }
 
     /** Round a positive mantissa to N significant digits, no trailing zeros. */
@@ -2303,9 +2376,10 @@ class IntlObject
 
         // Unit style: ICU doesn't expose a units-formatter via PHP, so
         // we format the number with the same options as decimal style
-        // and suffix the unit with a thin no-break space, mirroring
-        // the en-US CLDR pattern. Locale-specific unit translations
-        // require the CLDR unit data we don't ship.
+        // and suffix the unit. CLDR's English templates use:
+        //   - narrow: <number><unit-symbol>      (no separator)
+        //   - short: <number><space><unit-symbol>
+        //   - long:  <number><space><unit-name>
         if ($style === 'unit') {
             $bareResult = $formatter->format($number);
             if ($bareResult === false) {
@@ -2314,9 +2388,10 @@ class IntlObject
             $unit = self::extractInternalString($nf, '[[Unit]]', '');
             $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
             $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
+            $separator = $unitDisplay === 'narrow' ? '' : ' ';
             $result = $unitLabel === ''
                 ? $bareResult
-                : $bareResult . "\u{00A0}" . $unitLabel;
+                : $bareResult . $separator . $unitLabel;
             $result = self::normalizeIntlInfinity($result, $number);
             $result = self::applySignDisplay($nf, $result, $number);
             return $result;
