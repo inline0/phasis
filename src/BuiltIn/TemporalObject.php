@@ -608,7 +608,8 @@ class TemporalObject
                 // For PlainDate relativeTo, validate midnight is in PDT range when duration is non-zero.
                 self::validatePlainRelativeToRange($relativeTo, $this_);
             }
-            return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $relativeTo);
+            $rtForRound = $zonedRelativeTo ?? $relativeTo;
+            return self::roundDuration($this_, $unit, $roundingMode, $increment, $largestUnit, $rtForRound);
         }, 1);
 
         $d('total', function (JsValue $this_, array $args): JsValue {
@@ -5060,6 +5061,38 @@ class TemporalObject
         return (float) bcdiv($deltaNs, '86400000000000', 25);
     }
 
+    /** True if the given IANA zone has a real (offset-changing) transition
+     * within (startNs, endNs]. Used to decide whether DST-aware day arithmetic
+     * is needed; unchanged offsets bypass the slow path. */
+    private static function tzHasTransitionBetween(string $tz, string $startNs, string $endNs): bool
+    {
+        try {
+            $tzObj = self::resolveTimeZone($tz);
+        } catch (\Throwable) {
+            return false;
+        }
+        if (!$tzObj instanceof \DateTimeZone) {
+            return false;
+        }
+        $startSec = (int) bcdiv($startNs, '1000000000', 0);
+        $endSec = (int) bcdiv($endNs, '1000000000', 0);
+        if ($startSec > $endSec) {
+            $tmp = $startSec; $startSec = $endSec; $endSec = $tmp;
+        }
+        $transitions = $tzObj->getTransitions($startSec, $endSec);
+        if (!is_array($transitions) || count($transitions) < 2) {
+            return false;
+        }
+        for ($j = 1; $j < count($transitions); $j++) {
+            $prev = $transitions[$j - 1];
+            $cur = $transitions[$j];
+            if (isset($cur['offset'], $prev['offset']) && $cur['offset'] !== $prev['offset']) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Find the first instant on the given calendar day in the time zone. */
     private static function startOfDayInTimeZone(int $year, int $month, int $day, string $timeZone): string
     {
@@ -7322,26 +7355,60 @@ class TemporalObject
             || $hasCalUnit;
         if ($needsCalendar && $relativeTo !== null) {
             $refDate = $relativeTo;
-            // Balance time into whole days + sub-day remainder.
-            $tNsBc = self::durationToTotalNs(self::createDurationObject(
-                0,
-                0,
-                0,
-                0,
-                self::getDurationField($dur, 'hours'),
-                self::getDurationField($dur, 'minutes'),
-                self::getDurationField($dur, 'seconds'),
-                self::getDurationField($dur, 'milliseconds'),
-                self::getDurationField($dur, 'microseconds'),
-                self::getDurationField($dur, 'nanoseconds'),
-            ));
-            $dayNsBc = '86400000000000';
-            $tsign = bccomp($tNsBc, '0', 0) < 0 ? -1 : 1;
-            $absTNs = $tsign < 0 ? substr($tNsBc, 1) : $tNsBc;
-            $extraDays = (int) bcdiv($absTNs, $dayNsBc, 0);
-            $remTNs = bcsub($absTNs, bcmul((string) $extraDays, $dayNsBc, 0), 0);
-            $extraDays *= $tsign;
-            $remTime = self::nsToTimeDuration($tsign < 0 ? '-' . $remTNs : $remTNs, 'hour');
+            $isZdtRelativeTo = $refDate instanceof JsObject
+                && $refDate->has('[[IsZonedDateTime]]');
+            $zdtTzIsDst = false;
+            if ($isZdtRelativeTo) {
+                $tz = self::getSlotString($refDate, '[[TimeZone]]');
+                $startEpochNs = self::getSlotString($refDate, '[[EpochNanoseconds]]');
+                $endEpochNs = self::addDurationToZdt($refDate, $dur, 1, 'constrain');
+                $zdtTzIsDst = !self::isFixedOffset($tz)
+                    && self::tzHasTransitionBetween($tz, $startEpochNs, $endEpochNs);
+                // plainDateAdd / plainDateDifference operate on PlainDate;
+                // derive the wall-date counterpart.
+                $parts = self::zonedDateTimeParts($refDate);
+                $refDate = self::createPlainDateObject(
+                    $parts['year'],
+                    $parts['month'],
+                    $parts['day'],
+                    self::getSlotString($relativeTo, '[[Calendar]]'),
+                );
+            }
+            // For DST-bearing ZDT, do not pre-convert time to days; ZDT-aware
+            // logic later will handle variable day lengths. Fixed-offset and
+            // PlainDate relativeTo can use the regular 24h conversion.
+            if ($isZdtRelativeTo && $zdtTzIsDst) {
+                $extraDays = 0;
+                $remTime = self::createDurationObject(
+                    0, 0, 0, 0,
+                    self::getDurationField($dur, 'hours'),
+                    self::getDurationField($dur, 'minutes'),
+                    self::getDurationField($dur, 'seconds'),
+                    self::getDurationField($dur, 'milliseconds'),
+                    self::getDurationField($dur, 'microseconds'),
+                    self::getDurationField($dur, 'nanoseconds'),
+                );
+            } else {
+                $tNsBc = self::durationToTotalNs(self::createDurationObject(
+                    0,
+                    0,
+                    0,
+                    0,
+                    self::getDurationField($dur, 'hours'),
+                    self::getDurationField($dur, 'minutes'),
+                    self::getDurationField($dur, 'seconds'),
+                    self::getDurationField($dur, 'milliseconds'),
+                    self::getDurationField($dur, 'microseconds'),
+                    self::getDurationField($dur, 'nanoseconds'),
+                ));
+                $dayNsBc = '86400000000000';
+                $tsign = bccomp($tNsBc, '0', 0) < 0 ? -1 : 1;
+                $absTNs = $tsign < 0 ? substr($tNsBc, 1) : $tNsBc;
+                $extraDays = (int) bcdiv($absTNs, $dayNsBc, 0);
+                $remTNs = bcsub($absTNs, bcmul((string) $extraDays, $dayNsBc, 0), 0);
+                $extraDays *= $tsign;
+                $remTime = self::nsToTimeDuration($tsign < 0 ? '-' . $remTNs : $remTNs, 'hour');
+            }
             // Date-only duration with time-balanced extra days.
             $dateDur = self::createDurationObject(
                 self::getDurationField($dur, 'years'),
@@ -7375,7 +7442,11 @@ class TemporalObject
                 self::getDurationField($remTime, 'microseconds'),
                 self::getDurationField($remTime, 'nanoseconds'),
             );
-            return self::roundCalendarDuration($combined, $unit, $roundingMode, $increment, $largestUnit, $refDate);
+            // Pass the original ZDT (when present) so DST-aware logic can act.
+            // Fixed-offset zones don't need DST treatment; pass PlainDate to
+            // keep the existing behavior.
+            $refForRound = ($isZdtRelativeTo && $zdtTzIsDst) ? $relativeTo : $refDate;
+            return self::roundCalendarDuration($combined, $unit, $roundingMode, $increment, $largestUnit, $refForRound);
         }
 
         // Time-only: convert to ns, round, redistribute.
@@ -9943,11 +10014,28 @@ class TemporalObject
                 default => $roundingMode,
             };
         }
-        if ($smallestUnit === 'year') {
-            // Compute fractional year per spec: remaining days / year-boundary days.
+        // Resolve year/month/day for the ref calendar context. For a ZDT, use
+        // its wall-time components.
+        $refIsZdt = $ref instanceof JsObject && $ref->has('[[IsZonedDateTime]]');
+        // DST-aware path is only needed when the ZDT's time zone can actually
+        // produce non-24h days. UTC and fixed offset zones are always 24h.
+        $refIsDstZdt = false;
+        if ($refIsZdt) {
+            $refTz = self::getSlotString($ref, '[[TimeZone]]');
+            $refIsDstZdt = !self::isFixedOffset($refTz);
+        }
+        if ($refIsZdt) {
+            $refParts = self::zonedDateTimeParts($ref);
+            $refY = $refParts['year'];
+            $refM = $refParts['month'];
+            $refD = $refParts['day'];
+        } else {
             $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
             $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
             $refD = $ref instanceof JsObject && $ref->has('[[ISODay]]') ? self::getSlotInt($ref, '[[ISODay]]') : 1;
+        }
+        if ($smallestUnit === 'year') {
+            // Compute fractional year per spec: remaining days / year-boundary days.
             // yearStart = ref + absYears years (in the forward direction).
             $ysY = $refY + $absYears * $sign;
             $ysM = $refM;
@@ -9978,8 +10066,6 @@ class TemporalObject
             return self::createDurationObject($sign * $roundedYears, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
         if ($smallestUnit === 'month') {
-            $refY = $ref instanceof JsObject && $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
-            $refM = $ref instanceof JsObject && $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
             // The fractional month comes from the "remainder" days. For positive durations,
             // $ref is the start, and the span goes forward $absMonths months then $absDays days.
             // The relevant daysInMonth is at ref + absMonths.
@@ -10101,13 +10187,22 @@ class TemporalObject
                 $timeNsBc = substr($timeNsBc, 1);
             }
         }
-        // Balance time into days if largestUnit allows it.
+        // Balance time into days if largestUnit allows it. With ZDT relativeTo
+        // we must NOT pre-collapse time to days at fixed 24h; under DST a
+        // wall-clock day can be 23/24/25 hours, and the spec preserves whole
+        // days in calendar arithmetic only.
         $extraDays = 0;
-        if (in_array($largestUnit, ['year', 'month', 'week', 'day'], true)) {
+        if (in_array($largestUnit, ['year', 'month', 'week', 'day'], true) && !$refIsDstZdt) {
             $extraDays = (int) bcdiv($timeNsBc, $dayNs, 0);
             $timeNsBc = bcsub($timeNsBc, bcmul((string) $extraDays, $dayNs, 0), 0);
         }
-        $timePart = self::nsToTimeDuration($timeNsBc, $largestUnit);
+        // For ZDT context, treat the time portion at hour granularity so that
+        // 24h doesn't silently turn into 1 day under DST when the wall day is
+        // 23 or 25 hours.
+        $timePartLU = $refIsDstZdt && in_array($largestUnit, ['year', 'month', 'week', 'day'], true)
+            ? 'hour'
+            : $largestUnit;
+        $timePart = self::nsToTimeDuration($timeNsBc, $timePartLU);
         $finalDays = $absDays + $extraDays;
         $finalWeeks = $absWeeks;
         $finalMonths = $absMonths;
@@ -10117,8 +10212,8 @@ class TemporalObject
             $finalDays = $finalDays % 7;
         }
         if (in_array($largestUnit, ['year', 'month'], true) && $finalDays > 0 && $ref instanceof JsObject) {
-            $rY = $ref->has('[[ISOYear]]') ? self::getSlotInt($ref, '[[ISOYear]]') : 2000;
-            $rM = $ref->has('[[ISOMonth]]') ? self::getSlotInt($ref, '[[ISOMonth]]') : 1;
+            $rY = $refY;
+            $rM = $refM;
             $ctm = $rY * 12 + ($rM - 1) + ($finalYears * 12) + $finalMonths;
             $cY = intdiv($ctm, 12);
             $cM = ($ctm % 12) + 1;
