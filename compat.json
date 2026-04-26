@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-26T19:42:05+00:00",
-    "updatedAt": "2026-04-26T19:42:05+00:00",
+    "generatedAt": "2026-04-26T19:55:06+00:00",
+    "updatedAt": "2026-04-26T19:55:06+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "f4f0101",
+        "commit": "7b08d5b",
         "isDirty": true
     },
     "environment": {
@@ -201,14 +201,14 @@
             "json-modules"
         ],
         "totals": {
-            "pass": 48861,
-            "fail": 526,
+            "pass": 48913,
+            "fail": 547,
             "skip": 518,
             "blocked": 0,
-            "pending": 589,
-            "running": 12,
-            "attempted": 49387,
-            "known": 49905,
+            "pending": 519,
+            "running": 9,
+            "attempted": 49460,
+            "known": 49978,
             "total": 50506,
             "passRate": 98.9
         },
@@ -230,14 +230,14 @@
             {
                 "name": "built-ins",
                 "status": "running",
-                "pass": 21963,
-                "fail": 261,
+                "pass": 21979,
+                "fail": 278,
                 "skip": 14,
                 "blocked": 0,
-                "pending": 479,
-                "running": 12,
-                "attempted": 22224,
-                "known": 22238,
+                "pending": 449,
+                "running": 9,
+                "attempted": 22257,
+                "known": 22271,
                 "total": 22729,
                 "passRate": 98.8
             },
@@ -272,28 +272,28 @@
             {
                 "name": "language",
                 "status": "incomplete",
-                "pass": 22844,
+                "pass": 22847,
                 "fail": 32,
                 "skip": 504,
                 "blocked": 0,
-                "pending": 4,
+                "pending": 1,
                 "running": 0,
-                "attempted": 22876,
-                "known": 23380,
+                "attempted": 22879,
+                "known": 23383,
                 "total": 23384,
                 "passRate": 99.9
             },
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1361,
-                "fail": 173,
+                "pass": 1394,
+                "fail": 177,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 98,
+                "pending": 61,
                 "running": 0,
-                "attempted": 1534,
-                "known": 1534,
+                "attempted": 1571,
+                "known": 1571,
                 "total": 1632,
                 "passRate": 88.7
             }
@@ -693,16 +693,16 @@
                 "name": "built-ins/Atomics",
                 "area": "built-ins",
                 "status": "incomplete",
-                "pass": 257,
-                "fail": 61,
+                "pass": 264,
+                "fail": 62,
                 "skip": 6,
                 "blocked": 0,
-                "pending": 52,
+                "pending": 44,
                 "running": 0,
-                "attempted": 318,
-                "known": 324,
+                "attempted": 326,
+                "known": 332,
                 "total": 376,
-                "passRate": 80.8
+                "passRate": 81
             },
             {
                 "name": "built-ins/BigInt",
@@ -1067,17 +1067,17 @@
             {
                 "name": "built-ins/RegExp/CharacterClassEscapes",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "incomplete",
+                "pass": 6,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 12,
+                "pending": 6,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 6,
+                "known": 6,
                 "total": 12,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/RegExp/Symbol.species",
@@ -1189,15 +1189,15 @@
                 "area": "built-ins",
                 "status": "running",
                 "pass": 20,
-                "fail": 23,
+                "fail": 39,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 404,
-                "running": 12,
-                "attempted": 43,
-                "known": 43,
+                "pending": 391,
+                "running": 9,
+                "attempted": 59,
+                "known": 59,
                 "total": 459,
-                "passRate": 46.5
+                "passRate": 33.9
             },
             {
                 "name": "built-ins/RegExp/prototype",
@@ -1367,17 +1367,17 @@
             {
                 "name": "built-ins/Temporal",
                 "area": "built-ins",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 3,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 3,
+                "known": 3,
                 "total": 3,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "built-ins/Temporal/Duration",
@@ -2222,17 +2222,17 @@
             {
                 "name": "language/export",
                 "area": "language",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 3,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 3,
+                "known": 3,
                 "total": 3,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "language/expressions",
@@ -2522,17 +2522,17 @@
             {
                 "name": "staging",
                 "area": "staging",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 3,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 3,
+                "known": 3,
                 "total": 3,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "staging/Intl402",
@@ -2597,17 +2597,17 @@
             {
                 "name": "staging/decorators",
                 "area": "staging",
-                "status": "pending",
-                "pass": 0,
-                "fail": 0,
+                "status": "partial",
+                "pass": 2,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 3,
+                "known": 3,
                 "total": 3,
-                "passRate": 0
+                "passRate": 66.7
             },
             {
                 "name": "staging/explicit-resource-management",
@@ -2627,30 +2627,30 @@
             {
                 "name": "staging/set-methods",
                 "area": "staging",
-                "status": "pending",
-                "pass": 0,
+                "status": "pass",
+                "pass": 3,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 3,
+                "pending": 0,
                 "running": 0,
-                "attempted": 0,
-                "known": 0,
+                "attempted": 3,
+                "known": 3,
                 "total": 3,
-                "passRate": 0
+                "passRate": 100
             },
             {
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1218,
-                "fail": 123,
+                "pass": 1243,
+                "fail": 126,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 87,
+                "pending": 59,
                 "running": 0,
-                "attempted": 1341,
-                "known": 1341,
+                "attempted": 1369,
+                "known": 1369,
                 "total": 1428,
                 "passRate": 90.8
             },
@@ -2717,6 +2717,62 @@
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Wancho.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Warang_Citi.js",
                     "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Yezidi.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 113.982,
+                "filesCount": 4,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypriot.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cypro_Minoan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Deseret.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 86.019,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bhaiksuki.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Brahmi.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 85.008,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Osmanya.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Pahawh_Hmong.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Palmyrene.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 84.997,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Sentence_Terminal.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Soft_Dotted.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Terminal_Punctuation.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 84.43,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Siddham.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_SignWriting.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sinhala.js"
                 ]
             },
             {
@@ -2798,6 +2854,28 @@
                 ]
             },
             {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "normal",
+                "durationSec": 28.002,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-positive-cases.js",
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js",
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-positive-cases.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "normal",
+                "durationSec": 27.43,
+                "filesCount": 3,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js",
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-positive-cases.js",
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-negative-cases.js"
+                ]
+            },
+            {
                 "group": "language/literals",
                 "kind": "normal",
                 "durationSec": 22.98,
@@ -2860,97 +2938,6 @@
                     "...",
                     "test262/test/staging/sm/Symbol/enumeration-order.js",
                     "test262/test/staging/sm/Symbol/enumeration.js"
-                ]
-            },
-            {
-                "group": "built-ins/encodeURI",
-                "kind": "normal",
-                "durationSec": 20.185,
-                "filesCount": 31,
-                "sampleFiles": [
-                    "test262/test/built-ins/encodeURI/S15.1.3.3_A1.1_T1.js",
-                    "test262/test/built-ins/encodeURI/S15.1.3.3_A1.1_T2.js",
-                    "...",
-                    "test262/test/built-ins/encodeURI/not-a-constructor.js",
-                    "test262/test/built-ins/encodeURI/prop-desc.js"
-                ]
-            },
-            {
-                "group": "language/expressions",
-                "kind": "normal",
-                "durationSec": 20.152,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/expressions/async-generator/yield-star-next-not-callable-symbol-throw.js",
-                    "test262/test/language/expressions/async-generator/yield-star-next-not-callable-undefined-throw.js",
-                    "...",
-                    "test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js",
-                    "test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js"
-                ]
-            },
-            {
-                "group": "built-ins/encodeURIComponent",
-                "kind": "normal",
-                "durationSec": 19.998,
-                "filesCount": 31,
-                "sampleFiles": [
-                    "test262/test/built-ins/encodeURIComponent/S15.1.3.4_A1.1_T1.js",
-                    "test262/test/built-ins/encodeURIComponent/S15.1.3.4_A1.1_T2.js",
-                    "...",
-                    "test262/test/built-ins/encodeURIComponent/not-a-constructor.js",
-                    "test262/test/built-ins/encodeURIComponent/prop-desc.js"
-                ]
-            },
-            {
-                "group": "language/identifiers",
-                "kind": "normal",
-                "durationSec": 17.921,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/identifiers/other_id_continue-escaped.js",
-                    "test262/test/language/identifiers/other_id_continue.js",
-                    "...",
-                    "test262/test/language/identifiers/vals-eng-alpha-upper-via-escape-hex4.js",
-                    "test262/test/language/identifiers/vals-eng-alpha-upper.js"
-                ]
-            },
-            {
-                "group": "intl402/NumberFormat",
-                "kind": "normal",
-                "durationSec": 17.83,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/intl402/NumberFormat/builtin.js",
-                    "test262/test/intl402/NumberFormat/casing-numbering-system-options.js",
-                    "...",
-                    "test262/test/intl402/NumberFormat/throws-for-maximumFractionDigits-over-limit.js",
-                    "test262/test/intl402/NumberFormat/throws-for-maximumFractionDigits-under-limit.js"
-                ]
-            },
-            {
-                "group": "built-ins/TypedArray",
-                "kind": "normal",
-                "durationSec": 16.911,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/array-arg-targetbuffer-detached-throws.js",
-                    "test262/test/built-ins/TypedArray/prototype/set/BigInt/bigint-tobigint64.js",
-                    "...",
-                    "test262/test/built-ins/TypedArray/prototype/sort/prop-desc.js",
-                    "test262/test/built-ins/TypedArray/prototype/sort/resizable-buffer-default-comparator.js"
-                ]
-            },
-            {
-                "group": "language/comments",
-                "kind": "normal",
-                "durationSec": 15.873,
-                "filesCount": 52,
-                "sampleFiles": [
-                    "test262/test/language/comments/S7.4_A1_T1.js",
-                    "test262/test/language/comments/S7.4_A1_T2.js",
-                    "...",
-                    "test262/test/language/comments/multi-line-html-close-extra.js",
-                    "test262/test/language/comments/single-line-html-close-without-lt.js"
                 ]
             }
         ]
