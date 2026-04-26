@@ -6005,6 +6005,27 @@ class IntlObject
         $calendarKind = $needsTraditional
             ? \IntlDateFormatter::TRADITIONAL
             : \IntlDateFormatter::GREGORIAN;
+        // Use a proleptic Gregorian calendar (no Julian/Gregorian cutover
+        // in 1582) so ECMAScript dates before 1582 format with the right
+        // year/era. ICU's default GregorianCalendar treats pre-1582 dates
+        // as Julian, which can shift the year by several units for very
+        // ancient timestamps.
+        $prolepticCalendar = null;
+        if (!$needsTraditional && class_exists('IntlGregorianCalendar')) {
+            try {
+                $prolepticCalendar = \IntlGregorianCalendar::createInstance(
+                    'UTC',
+                    $locale,
+                );
+                if ($prolepticCalendar instanceof \IntlGregorianCalendar) {
+                    $prolepticCalendar->setGregorianChange(PHP_INT_MIN);
+                } else {
+                    $prolepticCalendar = null;
+                }
+            } catch (\Throwable) {
+                $prolepticCalendar = null;
+            }
+        }
         $tz = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
         if (preg_match('/^[+-]\d{2}:\d{2}$/', $tz) === 1) {
             $tz = 'GMT' . $tz;
@@ -6022,13 +6043,22 @@ class IntlObject
                 default => \IntlDateFormatter::NONE,
             };
         };
+        $calendarParam = $prolepticCalendar ?? $calendarKind;
+        if ($prolepticCalendar !== null) {
+            try {
+                $prolepticCalendar->setTimeZone(new \DateTimeZone($tz));
+            } catch (\Throwable) {
+                // If the timezone is unrecognised, drop back to the kind.
+                $calendarParam = $calendarKind;
+            }
+        }
         if ($dateStyle !== null || $timeStyle !== null) {
             $base = new \IntlDateFormatter(
                 $locale,
                 $mapStyle($dateStyle),
                 $mapStyle($timeStyle),
                 $tz,
-                $calendarKind,
+                $calendarParam,
             );
             // Honour an explicit hour12 / hourCycle override against
             // the locale's CLDR-derived time pattern. Without this the
@@ -6058,7 +6088,7 @@ class IntlObject
                 \IntlDateFormatter::MEDIUM,
                 \IntlDateFormatter::MEDIUM,
                 $tz,
-                $calendarKind,
+                $calendarParam,
             );
         }
         $pattern = '';
@@ -6089,7 +6119,7 @@ class IntlObject
             \IntlDateFormatter::FULL,
             \IntlDateFormatter::FULL,
             $tz,
-            $calendarKind,
+            $calendarParam,
             $pattern,
         );
     }
