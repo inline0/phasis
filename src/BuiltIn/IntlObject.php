@@ -2586,18 +2586,21 @@ class IntlObject
                     false,
                 ));
 
+                // Resolve the locale with all DTF-relevant `-u-`
+                // keywords kept; the per-option overrides are
+                // detected later (after the option reads happen
+                // in the spec-mandated order) and applied via a
+                // post-pass that strips any keyword the user
+                // overrode through a constructor option. The final
+                // [[Locale]] write happens after all option reads.
                 $resolvedLocale = self::resolveLocale($locales, ["ca", "nu", "hc"]);
-                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
-                    new JsString($resolvedLocale),
-                    false,
-                    false,
-                    false,
-                ));
 
                 // calendar
                 $calendar = 'gregory';
+                $userCalendar = false;
                 $calVal = $options->get('calendar');
                 if (!$calVal instanceof JsUndefined) {
+                    $userCalendar = true;
                     $calRaw = TypeConversion::toString($calVal);
                     // The identifier grammar is ASCII alphanum / '-'
                     // only; capital dotted I and similar non-ASCII
@@ -2625,8 +2628,10 @@ class IntlObject
                 // numberingSystem: only keep ICU-supported numeric
                 // systems (drop algorithmic ones like armn / hebr).
                 $numberingSystem = 'latn';
+                $userNumberingSystem = false;
                 $nsVal = $options->get('numberingSystem');
                 if (!$nsVal instanceof JsUndefined) {
+                    $userNumberingSystem = true;
                     $nsRaw = TypeConversion::toString($nsVal);
                     if (!self::isValidUnicodeTypeValue($nsRaw)) {
                         throw new RangeError("Invalid numberingSystem: {$nsRaw}");
@@ -2646,18 +2651,45 @@ class IntlObject
                 // CreateDateTimeFormat steps 12-13 / 29 (in that order).
                 $h12Val = $options->get('hour12');
                 $hour12 = null;
+                $userHour12 = false;
                 if (!$h12Val instanceof JsUndefined) {
+                    $userHour12 = true;
                     $hour12 = TypeConversion::toBoolean($h12Val);
                 }
                 $hourCycle = null;
+                $userHourCycle = false;
                 $hcVal = $options->get('hourCycle');
                 if (!$hcVal instanceof JsUndefined) {
+                    $userHourCycle = true;
                     $hc = TypeConversion::toString($hcVal);
                     if (!in_array($hc, ['h11', 'h12', 'h23', 'h24'], true)) {
                         throw new RangeError("Invalid hourCycle: {$hc}");
                     }
                     $hourCycle = $hc;
                 }
+                // If a constructor option overrode any of the
+                // relevant -u- keywords, strip them from the
+                // resolved locale before storing [[Locale]].
+                $overrideKeys = [];
+                if ($userCalendar) {
+                    $overrideKeys[] = 'ca';
+                }
+                if ($userNumberingSystem) {
+                    $overrideKeys[] = 'nu';
+                }
+                if ($userHour12 || $userHourCycle) {
+                    $overrideKeys[] = 'hc';
+                }
+                if (!empty($overrideKeys)) {
+                    $remaining = array_values(array_diff(['ca', 'nu', 'hc'], $overrideKeys));
+                    $resolvedLocale = self::filterUnicodeExtensions($resolvedLocale, $remaining);
+                }
+                $obj->defineOwnProperty('[[Locale]]', PropertyDescriptor::data(
+                    new JsString($resolvedLocale),
+                    false,
+                    false,
+                    false,
+                ));
 
                 // timeZone: must be a recognized identifier per the IANA
                 // tz database (or a UTC offset). Identifiers are
