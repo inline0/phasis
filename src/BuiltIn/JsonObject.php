@@ -562,7 +562,8 @@ class JsonObject
             // Per spec, include `source` whenever the current value is
             // SameValue with the originally-parsed value, even if the reviver
             // replaced it with a structurally-equal primitive.
-            if (isset($sourceMap[$mapKey])
+            if (
+                isset($sourceMap[$mapKey])
                 && \PhpJs\Spec\AbstractOperations::sameValue($sourceMap[$mapKey][1], $val)
             ) {
                 $context->defineOwnProperty('source', PropertyDescriptor::data(

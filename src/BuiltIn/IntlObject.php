@@ -1816,7 +1816,11 @@ class IntlObject
                 ? self::formatNumber($this_, $end) : (string) $end;
             $result = new JsArray();
             $idx = 0;
-            $emit = static function (string $type, string $value, string $source) use (
+            $emit = static function (
+                string $type,
+                string $value,
+                string $source
+            ) use (
                 &$result,
                 &$idx,
             ): void {
@@ -3913,7 +3917,11 @@ class IntlObject
             $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
             $result = new JsArray();
             $idx = 0;
-            $emit = static function (string $type, string $value, string $source) use (
+            $emit = static function (
+                string $type,
+                string $value,
+                string $source
+            ) use (
                 &$result,
                 &$idx,
             ): void {
@@ -7129,10 +7137,12 @@ class IntlObject
         if ($baseParsed === null) {
             return $base;
         }
-        foreach (['variants', 'unicodeAttributes', 'unicodeKeywords',
+        foreach (
+            ['variants', 'unicodeAttributes', 'unicodeKeywords',
             'otherExtensions', 'privateUse', 'calendar', 'collation',
             'firstDayOfWeek', 'hourCycle', 'caseFirst', 'numeric',
-            'numberingSystem'] as $key) {
+            'numberingSystem'] as $key
+        ) {
             if (isset($parsed[$key])) {
                 $baseParsed[$key] = $parsed[$key];
             }
@@ -8714,7 +8724,8 @@ class IntlObject
                         } else {
                             $unitDisplay = 'numeric';
                         }
-                    } elseif ($style === 'digital'
+                    } elseif (
+                        $style === 'digital'
                         && ($u === 'hours' || $u === 'minutes' || $u === 'seconds')
                     ) {
                         $unitDisplay = 'numeric';
