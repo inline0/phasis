@@ -714,9 +714,10 @@ class TemporalObject
             return new JsString(self::durationToString($this_, 'auto', 'trunc'));
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requireDuration($this_);
-            return new JsString(self::durationToString($this_, 'auto', 'trunc'));
+            $fallback = self::durationToString($this_, 'auto', 'trunc');
+            return self::durationToLocaleString($this_, $args, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -3494,30 +3495,25 @@ class TemporalObject
             return new JsString($result);
         }, 0);
 
-        $d('toLocaleString', function (JsValue $this_): JsValue {
+        $d('toLocaleString', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            // Fallback to toString.
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
-            $timeStr = self::formatISOTime(
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
-                'auto',
-                'trunc'
+            // Per spec ZonedDateTime.toLocaleString resolves the
+            // formatter's timeZone to the ZDT's own zone, requires
+            // matching calendar, and adds timeZoneName when defaults
+            // apply. Format the underlying instant via Intl.DateTimeFormat.
+            $instant = self::createInstantFromNs($ns);
+            $optionsArg = self::resolveZonedDateTimeOptions(
+                $args[1] ?? JsUndefined::instance(),
+                $tz,
+                $cal,
+                $args[0] ?? JsUndefined::instance(),
             );
-            $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
-            $offsetStr = self::timeZoneOffsetString($ns, $tz);
-            $result = "{$dateStr}T{$timeStr}{$offsetStr}[{$tz}]";
-            if ($cal !== 'iso8601') {
-                $result .= "[u-ca={$cal}]";
-            }
-            return new JsString($result);
+            $argsForward = [$args[0] ?? JsUndefined::instance(), $optionsArg];
+            $fallback = self::zonedDateTimeIsoFallback($ns, $tz, $cal);
+            return self::temporalToLocaleString($instant, $argsForward, $fallback);
         }, 0);
 
         $d('valueOf', function (JsValue $this_): JsValue {
@@ -7593,8 +7589,20 @@ class TemporalObject
                 throw new RangeError("UTC offset without time is not valid for PlainYearMonth");
             }
         }
+        // Per spec, a non-ISO calendar annotation requires the
+        // string to either include time-of-day OR be a complete
+        // YYYY-MM-DD date — V8 accepts the date-only form. A bare
+        // YYYY-MM on a non-ISO calendar still throws.
         if (!$hasTime && $cal !== 'iso8601') {
-            throw new RangeError("non-iso8601 calendar annotation requires a date-time string");
+            $isDateOnlyComplete = (bool) preg_match(
+                '/^(?:[+-]\d{6}|\d{4})-?\d{2}-?\d{2}/',
+                $noAnnot,
+            );
+            if (!$isDateOnlyComplete) {
+                throw new RangeError(
+                    "non-iso8601 calendar annotation requires year/month/day"
+                );
+            }
         }
         // Time part with optional UTC offset in extended form (hh[:mm[:ss[.fff]]]).
         $offsetOpt = '(?:[+-]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?)?';
@@ -8184,6 +8192,17 @@ class TemporalObject
             throw new RangeError(
                 "reject more than one calendar annotation if any critical: {$str}"
             );
+        }
+        // Canonicalize CLDR aliases on the parsed calendar id so
+        // downstream "calendar must be iso8601" checks see the
+        // resolved form (islamicc → islamic-civil, etc.).
+        static $calAliasNorm = [
+            'islamicc' => 'islamic-civil',
+            'ethiopic-amete-alem' => 'ethioaa',
+            'gregorian' => 'gregory',
+        ];
+        if (isset($calAliasNorm[$cal])) {
+            $cal = $calAliasNorm[$cal];
         }
         // Count timezone annotations (non-key-value: no '=').
         $tzCount = 0;
@@ -10943,6 +10962,196 @@ class TemporalObject
             $n,
             PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
         );
+    }
+
+    /**
+     * Build the options object used by ZonedDateTime.toLocaleString.
+     * Per spec the formatter inherits the ZDT's time zone (and
+     * throws on a mismatch), the calendar must agree, and when no
+     * date/time components are explicit defaults add a full
+     * datetime + timeZoneName: "short".
+     */
+    private static function resolveZonedDateTimeOptions(
+        JsValue $options,
+        string $zdtTz,
+        string $zdtCal,
+        ?JsValue $localeArg = null,
+    ): JsValue {
+        if ($options instanceof JsUndefined) {
+            $resolved = JsObject::createNullPrototype();
+        } elseif ($options instanceof JsObject) {
+            $resolved = new JsObject($options->getPrototype());
+            foreach ($options->getOwnPropertyNames() as $name) {
+                $val = $options->get($name);
+                if (!$val instanceof JsUndefined) {
+                    $resolved->set($name, $val);
+                }
+            }
+        } else {
+            return $options;
+        }
+        // Calendar mismatch is rejected per spec.
+        $optCal = $resolved->get('calendar');
+        if ($optCal instanceof JsString) {
+            $optCalStr = strtolower($optCal->value);
+            $optCalNorm = match ($optCalStr) {
+                'islamicc' => 'islamic-civil',
+                'gregorian' => 'gregory',
+                'ethiopic-amete-alem' => 'ethioaa',
+                default => $optCalStr,
+            };
+            if ($optCalNorm !== $zdtCal && $zdtCal !== 'iso8601') {
+                throw new RangeError('calendar option does not match Temporal.ZonedDateTime calendar');
+            }
+            if ($zdtCal === 'iso8601') {
+                $resolved->set('calendar', new JsString($optCalNorm));
+            }
+        } elseif ($zdtCal !== 'iso8601') {
+            // Probe the locale's resolved calendar: if it doesn't
+            // match the ZDT's, throw — Intl.DateTimeFormat would
+            // otherwise silently re-interpret the date.
+            $resolvedLocaleCal = self::resolveLocaleCalendar($localeArg);
+            if (
+                $resolvedLocaleCal !== null
+                && $resolvedLocaleCal !== 'iso8601'
+                && $resolvedLocaleCal !== $zdtCal
+            ) {
+                throw new RangeError(
+                    'Temporal.ZonedDateTime calendar does not match locale calendar',
+                );
+            }
+            $resolved->set('calendar', new JsString($zdtCal));
+        }
+        // TimeZone option: spec rejects any user-supplied timeZone
+        // (even one matching the ZDT) so the formatter inherits
+        // the instance's zone unambiguously.
+        $optTz = $resolved->get('timeZone');
+        if (!$optTz instanceof JsUndefined) {
+            throw new TypeError(
+                'Intl.DateTimeFormat options must not have a timeZone property when formatting Temporal.ZonedDateTime',
+            );
+        }
+        $resolved->set('timeZone', new JsString($zdtTz));
+        // Default skeleton when nothing explicit was set.
+        $relevant = [
+            'weekday', 'year', 'month', 'day', 'dayPeriod', 'hour',
+            'minute', 'second', 'fractionalSecondDigits', 'dateStyle',
+            'timeStyle',
+        ];
+        $needDefaults = true;
+        foreach ($relevant as $k) {
+            if (!$resolved->get($k) instanceof JsUndefined) {
+                $needDefaults = false;
+                break;
+            }
+        }
+        if ($needDefaults) {
+            foreach (['year', 'month', 'day', 'hour', 'minute', 'second'] as $k) {
+                $resolved->set($k, new JsString('numeric'));
+            }
+            if ($resolved->get('timeZoneName') instanceof JsUndefined) {
+                $resolved->set('timeZoneName', new JsString('short'));
+            }
+        }
+        return $resolved;
+    }
+
+    /**
+     * Probe the resolved calendar for the given locale argument by
+     * constructing an Intl.DateTimeFormat and reading
+     * resolvedOptions().calendar. Returns null if Intl isn't loaded.
+     */
+    private static function resolveLocaleCalendar(?JsValue $localeArg): ?string
+    {
+        if (!extension_loaded('intl')) {
+            return null;
+        }
+        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $intlObj = $env?->get('Intl', false);
+        if (!$intlObj instanceof JsObject) {
+            return null;
+        }
+        $dtfCtor = $intlObj->get('DateTimeFormat');
+        if (!$dtfCtor instanceof JsFunction) {
+            return null;
+        }
+        $proto = $dtfCtor->get('prototype');
+        $obj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $obj->defineOwnProperty(
+            '[[NewTarget]]',
+            PropertyDescriptor::data($dtfCtor, false, false, false),
+        );
+        ($dtfCtor->getNativeCallable())($obj, [
+            $localeArg ?? JsUndefined::instance(),
+            JsUndefined::instance(),
+        ]);
+        $resolved = $obj->get('[[Calendar]]');
+        return $resolved instanceof JsString ? $resolved->value : null;
+    }
+
+    private static function zonedDateTimeIsoFallback(string $ns, string $tz, string $cal): string
+    {
+        $parts = self::epochNsToISOParts($ns, $tz);
+        $timeStr = self::formatISOTime(
+            $parts['hour'],
+            $parts['minute'],
+            $parts['second'],
+            $parts['millisecond'],
+            $parts['microsecond'],
+            $parts['nanosecond'],
+            'auto',
+            'trunc'
+        );
+        $dateStr = self::padISOYear($parts['year']) . '-' . self::pad2($parts['month']) . '-' . self::pad2($parts['day']);
+        $offsetStr = self::timeZoneOffsetString($ns, $tz);
+        $result = "{$dateStr}T{$timeStr}{$offsetStr}[{$tz}]";
+        if ($cal !== 'iso8601') {
+            $result .= "[u-ca={$cal}]";
+        }
+        return $result;
+    }
+
+    /**
+     * Delegate Temporal.Duration.prototype.toLocaleString to a
+     * freshly constructed Intl.DurationFormat instance, calling
+     * its format(this) so locale-aware output matches V8.
+     */
+    private static function durationToLocaleString(
+        JsValue $this_,
+        array $args,
+        string $fallback,
+    ): JsString {
+        if (!extension_loaded('intl')) {
+            return new JsString($fallback);
+        }
+        $env = \PhpJs\Engine::getCurrentInterpreter()?->getGlobalEnv();
+        $intlObj = $env?->get('Intl', false);
+        if (!$intlObj instanceof JsObject) {
+            return new JsString($fallback);
+        }
+        $dfCtor = $intlObj->get('DurationFormat');
+        if (!$dfCtor instanceof JsFunction) {
+            return new JsString($fallback);
+        }
+        $proto = $dfCtor->get('prototype');
+        $obj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $obj->defineOwnProperty(
+            '[[NewTarget]]',
+            PropertyDescriptor::data($dfCtor, false, false, false),
+        );
+        ($dfCtor->getNativeCallable())($obj, [
+            $args[0] ?? JsUndefined::instance(),
+            $args[1] ?? JsUndefined::instance(),
+        ]);
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        $formatFn = $proto instanceof JsObject ? $proto->get('format') : null;
+        if ($interp !== null && $formatFn instanceof JsFunction) {
+            $result = $interp->callFunction($formatFn, $obj, [$this_]);
+            if ($result instanceof JsString) {
+                return $result;
+            }
+        }
+        return new JsString($fallback);
     }
 
     /**
