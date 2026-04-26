@@ -2094,6 +2094,9 @@ class IntlObject
         if ($ug === 'false') {
             $formatter->setAttribute(\NumberFormatter::GROUPING_USED, 0);
         }
+        // useGrouping "min2" is post-processed below since ICU's
+        // minimumGroupingDigits attribute isn't reliably exposed via
+        // PHP across versions.
 
         // Map the spec's roundingMode to ICU's ROUNDING_MODE.
         // ICU's default is HALFEVEN, but the spec default is halfExpand,
@@ -2184,8 +2187,39 @@ class IntlObject
         // the textual marker before applying signDisplay.
         $result = self::normalizeIntlInfinity($result, $number);
         $result = self::applySignDisplay($nf, $result, $number);
+        // useGrouping "min2": strip the leading group separator if
+        // the leading group is a single digit (e.g. en-US "1,000"
+        // -> "1000", de-DE "1.000" -> "1000").
+        if ($ug === 'min2' && is_finite($number)) {
+            $result = self::stripMin2GroupingSeparator($result);
+        }
 
         return $result;
+    }
+
+    /**
+     * For useGrouping "min2", remove the FIRST group separator if the
+     * leading group has exactly one digit. Pure ASCII / Unicode-digit
+     * walk that doesn't disturb a sign prefix or suffix.
+     */
+    private static function stripMin2GroupingSeparator(string $formatted): string
+    {
+        if ($formatted === '') {
+            return $formatted;
+        }
+        // Match: optional sign / paren, one digit, separator, three digits
+        // followed by either end-of-string or a non-digit.
+        $pattern = '/^([^\p{Nd}]*)(\p{Nd})([^\p{Nd}\s])(\p{Nd}{3})(?=$|[^\p{Nd}])/u';
+        $altPattern = '/^([^\p{Nd}]*)(\p{Nd})(\s)(\p{Nd}{3})(?=$|[^\p{Nd}])/u';
+        // The separator could be a thin space, a comma, a period, a
+        // U+202F narrow no-break space, etc. Try both patterns.
+        if (preg_match($pattern, $formatted, $m) === 1) {
+            return $m[1] . $m[2] . $m[4] . substr($formatted, strlen($m[0]));
+        }
+        if (preg_match($altPattern, $formatted, $m) === 1) {
+            return $m[1] . $m[2] . $m[4] . substr($formatted, strlen($m[0]));
+        }
+        return $formatted;
     }
 
     /**
