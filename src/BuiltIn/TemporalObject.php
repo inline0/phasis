@@ -11482,6 +11482,104 @@ class TemporalObject
     }
 
     /**
+     * Calendar-aware (years, months, days) for two ISO dates with sml ≤ lrg.
+     * Walks via ICU add(YEAR/MONTH) so leap months and variable year lengths
+     * are honored. Returns null when ICU is unavailable or arithmetic fails.
+     */
+    private static function calendarYearsMonthsDaysBetween(
+        string $calendar,
+        int $smlY,
+        int $smlM,
+        int $smlD,
+        int $lrgY,
+        int $lrgM,
+        int $lrgD,
+        string $largestUnit,
+    ): ?array {
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        static $aliasMap = [
+            'gregory' => 'gregorian',
+            'islamicc' => 'islamic-civil',
+            'ethioaa' => 'ethiopic-amete-alem',
+        ];
+        $icuCal = $aliasMap[$calendar] ?? $calendar;
+        try {
+            $startMs = self::isoDateToEpochMs($smlY, $smlM, $smlD);
+            $endMs = self::isoDateToEpochMs($lrgY, $lrgM, $lrgD);
+            $startCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            if (!$startCal instanceof \IntlCalendar) {
+                return null;
+            }
+            $startCal->setTime($startMs);
+            $endCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
+            if (!$endCal instanceof \IntlCalendar) {
+                return null;
+            }
+            $endCal->setTime($endMs);
+            $yearField = in_array($calendar, ['chinese', 'dangi'], true)
+                ? \IntlCalendar::FIELD_EXTENDED_YEAR
+                : \IntlCalendar::FIELD_YEAR;
+
+            $years = 0;
+            if ($largestUnit === 'year') {
+                $bound = max(0, $endCal->get($yearField) - $startCal->get($yearField) + 1);
+                $lo = 0;
+                $hi = $bound;
+                while ($lo < $hi) {
+                    $mid = intdiv($lo + $hi + 1, 2);
+                    $probe = clone $startCal;
+                    $probe->add(\IntlCalendar::FIELD_YEAR, $mid);
+                    if ($probe->getTime() <= $endMs) {
+                        $lo = $mid;
+                    } else {
+                        $hi = $mid - 1;
+                    }
+                }
+                $years = $lo;
+            }
+
+            $anchorCal = clone $startCal;
+            if ($years > 0) {
+                $anchorCal->add(\IntlCalendar::FIELD_YEAR, $years);
+            }
+
+            $months = 0;
+            $bound = max(0, ($endCal->get($yearField) - $anchorCal->get($yearField) + 1) * 13);
+            if ($bound === 0 && $anchorCal->getTime() < $endMs) {
+                $bound = 13;
+            }
+            $lo = 0;
+            $hi = $bound;
+            while ($lo < $hi) {
+                $mid = intdiv($lo + $hi + 1, 2);
+                $probe = clone $anchorCal;
+                $probe->add(\IntlCalendar::FIELD_MONTH, $mid);
+                if ($probe->getTime() <= $endMs) {
+                    $lo = $mid;
+                } else {
+                    $hi = $mid - 1;
+                }
+            }
+            $months = $lo;
+
+            $finalCal = clone $anchorCal;
+            if ($months > 0) {
+                $finalCal->add(\IntlCalendar::FIELD_MONTH, $months);
+            }
+            $finalMs = $finalCal->getTime();
+            $days = (int) round(($endMs - $finalMs) / 86400000);
+            if ($days < 0) {
+                return null;
+            }
+            return [$years, $months, $days];
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * For chinese / dangi leap years, return the ICU MONTH index that has a
      * leap-month form (0..11). Returns null if no leap month exists.
      */
@@ -12661,7 +12759,30 @@ class TemporalObject
         $months = 0;
         $weeks = 0;
         $days = 0;
-        if ($largestUnit === 'year' || $largestUnit === 'month') {
+        $skipIsoYearMonth = false;
+        if (
+            ($largestUnit === 'year' || $largestUnit === 'month')
+            && $natSign > 0
+            && !in_array($cal1, ['iso8601', 'gregory', 'roc', 'japanese'], true)
+        ) {
+            $calRes = self::calendarYearsMonthsDaysBetween(
+                $cal1,
+                $smlY,
+                $smlM,
+                $smlD,
+                $lrgY,
+                $lrgM,
+                $lrgD,
+                $largestUnit,
+            );
+            if ($calRes !== null) {
+                [$years, $months, $days] = $calRes;
+                $skipIsoYearMonth = true;
+            }
+        }
+        if ($skipIsoYearMonth) {
+            // years/months/days already set by calendar-aware helper.
+        } elseif ($largestUnit === 'year' || $largestUnit === 'month') {
             if ($natSign > 0) {
                 // Forward: anchor = date1 (smaller). Add months, clamp to anchor day.
                 $totalMonths = ($lrgY * 12 + $lrgM) - ($smlY * 12 + $smlM);
