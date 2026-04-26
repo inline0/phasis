@@ -30,6 +30,16 @@ use PhpJs\Value\JsValue;
  */
 class AtomicsObject
 {
+    /**
+     * Pending waitAsync waiters, keyed by buffer object hash + index.
+     * Each entry holds the JsPromise to resolve when notified, plus the
+     * original timeout (0/finite/infinite) so timed-out resolutions can
+     * be modelled too.
+     *
+     * @var list<array{buffer: JsSharedArrayBuffer, index: int, promise: JsPromise}>
+     */
+    private static array $waitAsyncQueue = [];
+
     /** Integer typed array type names that Atomics operates on. */
     private const INTEGER_TYPES = [
         'Int8Array', 'Uint8Array', 'Int16Array', 'Uint16Array',
@@ -332,26 +342,48 @@ class AtomicsObject
             $args[0] ?? JsUndefined::instance(),
             waitable: true,
         );
-        self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
+        $index = self::validateAtomicAccess($ta, $args[1] ?? JsUndefined::instance());
 
-        // count argument is validated but unused.
         $countArg = $args[2] ?? JsUndefined::instance();
-        if (!$countArg instanceof JsUndefined) {
-            $count = TypeConversion::toIntegerOrInfinity($countArg);
-            if ($count < 0) {
-                // Per spec: if count < 0, use 0. But toIntegerOrInfinity already handles this.
-                // No error thrown, count is clamped to >= 0.
-            }
-        }
+        $count = $countArg instanceof JsUndefined
+            ? PHP_INT_MAX
+            : (int) min(PHP_INT_MAX, max(0.0, TypeConversion::toIntegerOrInfinity($countArg)));
 
-        return new JsNumber(0.0);
+        $buffer = $ta->getBuffer();
+        $woken = 0;
+        if (!$buffer instanceof JsSharedArrayBuffer) {
+            return new JsNumber(0.0);
+        }
+        // Walk the queue in registration order; resolve up to $count waiters
+        // whose buffer + index match.
+        $remaining = [];
+        foreach (self::$waitAsyncQueue as $entry) {
+            if (
+                $woken < $count
+                && $entry['buffer'] === $buffer
+                && $entry['index'] === $index
+                && $entry['promise']->getState() === JsPromise::STATE_PENDING
+            ) {
+                $entry['promise']->resolve(new JsString('ok'));
+                $woken++;
+                continue;
+            }
+            $remaining[] = $entry;
+        }
+        self::$waitAsyncQueue = $remaining;
+        return new JsNumber((float) $woken);
     }
 
     /**
      * Atomics.waitAsync(int32Array, index, value, timeout?).
      *
-     * Single-threaded: returns {async: false, value: "not-equal"} or
-     * {async: false, value: "timed-out"} immediately.
+     * Single-threaded: returns {async: false, value: "not-equal"} when the
+     * current value doesn't match expected, {async: false, value: "timed-out"}
+     * when timeout is 0, and {async: true, value: <pending Promise>} when the
+     * value matches and a positive timeout is passed. The pending Promise
+     * resolves to "ok" when Atomics.notify wakes the waiter, or "timed-out"
+     * if a finite timeout elapses (we don't model elapsed wall-clock time;
+     * finite timeouts resolve to "timed-out" via a microtask).
      */
     private static function waitAsyncFn(JsValue $this_, array $args): JsValue
     {
@@ -373,29 +405,71 @@ class AtomicsObject
         $isBigInt = $ta->getTypeName() === 'BigInt64Array';
         $current = $ta->getIndex($index);
 
-        $resultStr = 'timed-out';
+        $valuesMatch = true;
         if ($isBigInt) {
             $expected = TypeConversion::toBigInt($valueArg);
             $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
-            if ($currentBig->value !== $expected->value) {
-                $resultStr = 'not-equal';
-            }
+            $valuesMatch = $currentBig->value === $expected->value;
         } else {
             $expected = (int) TypeConversion::toNumber($valueArg);
             $currentNum = (int) TypeConversion::toNumber($current);
-            if ($currentNum !== $expected) {
-                $resultStr = 'not-equal';
-            }
+            $valuesMatch = $currentNum === $expected;
         }
 
-        // Per spec: returns {async: false, value: resultStr} when resolved synchronously.
-        $result = new JsObject();
-        $result->set('async', new JsBoolean(false));
-        $result->set('value', new JsString($resultStr));
+        $timeoutArg = $args[3] ?? JsUndefined::instance();
+        $timeoutNum = $timeoutArg instanceof JsUndefined
+            ? NAN
+            : TypeConversion::toNumber($timeoutArg);
+        $timeoutIsZero = !is_nan($timeoutNum) && $timeoutNum <= 0.0;
 
+        if (!$valuesMatch) {
+            return self::makeWaitAsyncResult(false, new JsString('not-equal'));
+        }
+        if ($timeoutIsZero) {
+            return self::makeWaitAsyncResult(false, new JsString('timed-out'));
+        }
+        // Otherwise: build a real Promise and register the waiter so a
+        // matching Atomics.notify resolves it.
+        $promise = new JsPromise();
+        self::$waitAsyncQueue[] = [
+            'buffer' => $ta->getBuffer(),
+            'index' => $index,
+            'promise' => $promise,
+        ];
+        // Finite, non-infinite timeouts resolve to "timed-out" once the
+        // current synchronous turn completes — we don't model wall-clock
+        // sleep, so this is the closest spec-compatible behaviour for
+        // single-threaded code that doesn't notify.
+        if (!is_nan($timeoutNum) && is_finite($timeoutNum) && $timeoutNum > 0.0) {
+            JsPromise::scheduleCallback(static function () use ($promise): void {
+                if ($promise->getState() !== JsPromise::STATE_PENDING) {
+                    return;
+                }
+                self::removeWaitAsyncEntry($promise);
+                $promise->resolve(new JsString('timed-out'));
+            });
+        }
+        return self::makeWaitAsyncResult(true, $promise);
+    }
+
+    private static function makeWaitAsyncResult(bool $async, JsValue $value): JsObject
+    {
+        $result = new JsObject();
+        $result->set('async', new JsBoolean($async));
+        $result->set('value', $value);
         return $result;
+    }
+
+    private static function removeWaitAsyncEntry(JsPromise $promise): void
+    {
+        foreach (self::$waitAsyncQueue as $i => $entry) {
+            if ($entry['promise'] === $promise) {
+                array_splice(self::$waitAsyncQueue, $i, 1);
+                return;
+            }
+        }
     }
 
     /**
