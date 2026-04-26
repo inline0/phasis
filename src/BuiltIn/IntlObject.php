@@ -2544,25 +2544,11 @@ class IntlObject
                         $hourCycle = 'h23';
                     }
                 }
-                if ($hourCycle !== null) {
-                    $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
-                        new JsString($hourCycle),
-                        false,
-                        false,
-                        false,
-                    ));
-                }
-                // Remember hour12 for later so we can default the cycle
-                // when a `hour` component is requested but no cycle is
-                // specified.
-                if ($hour12 !== null) {
-                    $obj->defineOwnProperty('[[Hour12]]', PropertyDescriptor::data(
-                        new JsBoolean($hour12),
-                        false,
-                        false,
-                        false,
-                    ));
-                }
+                // Defer writing [[HourCycle]] / [[Hour12]] until we
+                // know whether a hour component is actually present
+                // -- the slots only matter when the formatted output
+                // includes hours, so resolvedOptions never returns
+                // hourCycle / hour12 for a date-only formatter.
 
                 // Date/time component options.
                 $components = [
@@ -2599,23 +2585,31 @@ class IntlObject
                         ));
                     }
                 }
-                // When `hour` is requested but no cycle is set, fall
-                // back to the locale's CLDR default ("h12" for most
-                // locales, "h11" for ja, "h23" for some others). This
-                // matches V8's behaviour and keeps resolvedOptions's
-                // hourCycle non-undefined whenever hour is included.
-                if ($hasHour && $hourCycle === null) {
-                    $localeLang = strtolower(strtok($resolvedLocale, '-_'));
-                    static $localeDefaultHc = [
-                        'ja' => 'h11',
-                    ];
-                    $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
+                // When `hour` is requested but no cycle was supplied,
+                // fall back to the locale's CLDR default ("h12" for
+                // most locales, "h11" for ja, "h23" for some others).
+                if ($hasHour) {
+                    if ($hourCycle === null) {
+                        $localeLang = strtolower(strtok($resolvedLocale, '-_'));
+                        static $localeDefaultHc = [
+                            'ja' => 'h11',
+                        ];
+                        $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
+                    }
                     $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
                         new JsString($hourCycle),
                         false,
                         false,
                         false,
                     ));
+                    if ($hour12 !== null) {
+                        $obj->defineOwnProperty('[[Hour12]]', PropertyDescriptor::data(
+                            new JsBoolean($hour12),
+                            false,
+                            false,
+                            false,
+                        ));
+                    }
                 }
 
                 // formatMatcher: "basic" or "best fit" (default).
