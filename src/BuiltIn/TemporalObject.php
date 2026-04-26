@@ -3882,6 +3882,7 @@ class TemporalObject
         $d('until', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
+            self::requireMatchingCalendars($this_, $other);
             $ns1 = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
@@ -3893,6 +3894,7 @@ class TemporalObject
         $d('since', function (JsValue $this_, array $args): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $other = self::toZonedDateTime($args[0] ?? JsUndefined::instance());
+            self::requireMatchingCalendars($this_, $other);
             $ns1 = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $ns2 = self::getSlotString($other, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
@@ -8494,6 +8496,13 @@ class TemporalObject
         int $sign = 1,
         ?JsValue $anchor = null,
     ): JsObject {
+        $cal1 = self::getSlotString($dt1, '[[Calendar]]');
+        $cal2 = self::getSlotString($dt2, '[[Calendar]]');
+        if ($cal1 !== $cal2) {
+            throw new RangeError(
+                "calendar IDs do not match: {$cal1} vs {$cal2}",
+            );
+        }
         $ns1 = self::isoDateTimeToEpochNs(
             self::getSlotInt($dt1, '[[ISOYear]]'),
             self::getSlotInt($dt1, '[[ISOMonth]]'),
@@ -9753,6 +9762,13 @@ class TemporalObject
 
     private static function plainYearMonthDifference(JsValue $ym1, JsValue $ym2, JsValue $options): JsObject
     {
+        $cal1 = self::getSlotString($ym1, '[[Calendar]]');
+        $cal2 = self::getSlotString($ym2, '[[Calendar]]');
+        if ($cal1 !== $cal2) {
+            throw new RangeError(
+                "calendar IDs do not match: {$cal1} vs {$cal2}",
+            );
+        }
         $opts = self::getOptionsObject($options);
         $y1 = self::getSlotInt($ym1, '[[ISOYear]]');
         $m1 = self::getSlotInt($ym1, '[[ISOMonth]]');
@@ -9914,6 +9930,14 @@ class TemporalObject
 
     private static function plainDateDifference(JsValue $date1, JsValue $date2, JsValue $options, int $sign): JsObject
     {
+        // Spec: calendar IDs of both operands must match for since/until.
+        $cal1 = self::getSlotString($date1, '[[Calendar]]');
+        $cal2 = self::getSlotString($date2, '[[Calendar]]');
+        if ($cal1 !== $cal2) {
+            throw new RangeError(
+                "calendar IDs do not match: {$cal1} vs {$cal2}",
+            );
+        }
         $opts = self::getOptionsObject($options);
         $y1 = self::getSlotInt($date1, '[[ISOYear]]');
         $m1 = self::getSlotInt($date1, '[[ISOMonth]]');
@@ -11198,6 +11222,24 @@ class TemporalObject
             $result->set($k, new JsString('numeric'));
         }
         return $result;
+    }
+
+    /**
+     * Throw RangeError when two Temporal operands carry different
+     * calendar IDs, used as a guard for since/until/equals.
+     */
+    private static function requireMatchingCalendars(JsValue $a, JsValue $b): void
+    {
+        if (!$a instanceof JsObject || !$b instanceof JsObject) {
+            return;
+        }
+        $cal1 = self::getSlotString($a, '[[Calendar]]');
+        $cal2 = self::getSlotString($b, '[[Calendar]]');
+        if ($cal1 !== $cal2) {
+            throw new RangeError(
+                "calendar IDs do not match: {$cal1} vs {$cal2}",
+            );
+        }
     }
 
     private static function setToStringTag(JsObject $obj, string $tag): void
