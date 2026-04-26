@@ -2834,8 +2834,12 @@ class TemporalObject
                     $overflow = self::getOverflow($options);
                     if ($mcParsed !== null) {
                         [$mcMonth, $mcLeap] = $mcParsed;
-                        if ($mcMonth < 1 || $mcMonth > 12 || $mcLeap) {
+                        if ($mcMonth < 1 || $mcMonth > 12) {
                             throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
+                        }
+                        static $pymFromLunisolar = ['hebrew', 'chinese', 'dangi'];
+                        if ($mcLeap && !in_array($cal, $pymFromLunisolar, true)) {
+                            throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
                         }
                         $m = $mcMonth;
                         if ($mVal !== null && $mVal !== $m) {
@@ -7955,8 +7959,15 @@ class TemporalObject
             }
             if ($mcParsed !== null) {
                 [$mcMonth, $mcLeap] = $mcParsed;
-                if ($mcMonth < 1 || $mcMonth > 12 || $mcLeap) {
+                // Leap-month suffix 'L' is only allowed on lunisolar
+                // calendars (Hebrew, Chinese, Dangi). Other calendars
+                // reject monthCodes ending in L.
+                static $pymLunisolar = ['hebrew', 'chinese', 'dangi'];
+                if ($mcMonth < 1 || $mcMonth > 12) {
                     throw new RangeError("monthCode '{$mcStr}' is not valid for ISO 8601 calendar");
+                }
+                if ($mcLeap && !in_array($cal, $pymLunisolar, true)) {
+                    throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
                 }
                 $m = $mcMonth;
                 if ($mVal !== null && $mVal !== $m) {
@@ -8608,11 +8619,20 @@ class TemporalObject
      * Parse and fully validate a monthCode string for ISO 8601 calendar.
      * Returns month number 1-12.
      */
-    private static function parseMonthCode(string $mc): int
+    private static function parseMonthCode(string $mc, string $cal = 'iso8601'): int
     {
         [$month, $isLeap] = self::parseMonthCodeSyntax($mc);
-        if ($month < 1 || $month > 12 || $isLeap) {
+        if ($month < 1 || $month > 12) {
             throw new RangeError("monthCode '{$mc}' is not valid for ISO 8601 calendar");
+        }
+        if ($isLeap) {
+            // Leap months exist only in lunisolar calendars.
+            static $lunisolarCals = ['hebrew', 'chinese', 'dangi'];
+            if (!in_array($cal, $lunisolarCals, true)) {
+                throw new RangeError(
+                    "monthCode '{$mc}' leap-month suffix is not valid for calendar '{$cal}'",
+                );
+            }
         }
         return $month;
     }
