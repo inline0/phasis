@@ -985,7 +985,9 @@ class TemporalObject
         });
         self::defineGetter($proto, 'weekOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            [$week] = self::isoWeekOfYear(
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            [$week] = self::calendarWeekOfYear(
+                $cal,
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
                 self::getSlotInt($this_, '[[ISODay]]'),
@@ -994,7 +996,9 @@ class TemporalObject
         });
         self::defineGetter($proto, 'yearOfWeek', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            [, $yearOfWeek] = self::isoWeekOfYear(
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            [, $yearOfWeek] = self::calendarWeekOfYear(
+                $cal,
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
                 self::getSlotInt($this_, '[[ISODay]]'),
@@ -1811,7 +1815,9 @@ class TemporalObject
         });
         self::defineGetter($proto, 'weekOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            [$week] = self::isoWeekOfYear(
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            [$week] = self::calendarWeekOfYear(
+                $cal,
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
                 self::getSlotInt($this_, '[[ISODay]]'),
@@ -1820,7 +1826,9 @@ class TemporalObject
         });
         self::defineGetter($proto, 'yearOfWeek', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            [, $yearOfWeek] = self::isoWeekOfYear(
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            [, $yearOfWeek] = self::calendarWeekOfYear(
+                $cal,
                 self::getSlotInt($this_, '[[ISOYear]]'),
                 self::getSlotInt($this_, '[[ISOMonth]]'),
                 self::getSlotInt($this_, '[[ISODay]]'),
@@ -3343,16 +3351,18 @@ class TemporalObject
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            [$week] = self::isoWeekOfYear($parts['year'], $parts['month'], $parts['day']);
+            [$week] = self::calendarWeekOfYear($cal, $parts['year'], $parts['month'], $parts['day']);
             return $week === null ? JsUndefined::instance() : new JsNumber((float) $week);
         });
         self::defineGetter($proto, 'yearOfWeek', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            [, $yearOfWeek] = self::isoWeekOfYear($parts['year'], $parts['month'], $parts['day']);
+            [, $yearOfWeek] = self::calendarWeekOfYear($cal, $parts['year'], $parts['month'], $parts['day']);
             return $yearOfWeek === null ? JsUndefined::instance() : new JsNumber((float) $yearOfWeek);
         });
         self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
@@ -3846,6 +3856,7 @@ class TemporalObject
             }
             $options = self::getOptionsObject($args[1] ?? JsUndefined::instance());
             $disam = 'compatible';
+            $offsetOpt = 'prefer';
             if ($options instanceof JsObject) {
                 $dv = $options->get('disambiguation');
                 if (!($dv instanceof JsUndefined)) {
@@ -3857,10 +3868,10 @@ class TemporalObject
                 }
                 $offOpt = $options->get('offset');
                 if (!($offOpt instanceof JsUndefined)) {
-                    $offsetStr = TypeConversion::toString($offOpt);
+                    $offsetOpt = TypeConversion::toString($offOpt);
                     $validOff = ['prefer', 'use', 'ignore', 'reject'];
-                    if (!in_array($offsetStr, $validOff, true)) {
-                        throw new RangeError("Invalid offset option: {$offsetStr}");
+                    if (!in_array($offsetOpt, $validOff, true)) {
+                        throw new RangeError("Invalid offset option: {$offsetOpt}");
                     }
                 }
             }
@@ -3876,6 +3887,33 @@ class TemporalObject
             } else {
                 self::validateISODate($y, $m, $dd);
                 self::validateISOTime($h, $min, $s, $ms, $us, $nsPart);
+            }
+            // If an offset was provided in the property bag, use it according to the offset option.
+            if ($offsetFieldStr !== null && $offsetOpt !== 'ignore') {
+                $givenOffsetNs = self::parseOffsetToNs($offsetFieldStr);
+                if ($offsetOpt === 'use') {
+                    $normalizedOffset = self::normalizeOffset($givenOffsetNs);
+                    $newNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $normalizedOffset);
+                    return self::createZonedDateTimeObject($newNs, $tz, $cal);
+                }
+                // 'prefer' and 'reject': check exact match against any candidate.
+                $candidates = self::getPossibleEpochNanoseconds($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz);
+                $wallUtcNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, 'UTC');
+                $exactCandidate = null;
+                foreach ($candidates as $candNs) {
+                    $candOffsetNs = (int) bcsub($wallUtcNs, $candNs, 0);
+                    if ($givenOffsetNs === $candOffsetNs) {
+                        $exactCandidate = $candNs;
+                        break;
+                    }
+                }
+                if ($exactCandidate !== null) {
+                    return self::createZonedDateTimeObject($exactCandidate, $tz, $cal);
+                }
+                if ($offsetOpt === 'reject') {
+                    throw new RangeError("offset property does not match any valid offset for the time zone");
+                }
+                // prefer: fall through to disambiguated wall-time interpretation.
             }
             $newNs = self::isoDateTimeToEpochNsDisambiguated(
                 $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz, $disam,
@@ -4217,7 +4255,11 @@ class TemporalObject
                 // Use a hard floor of year 1700 → +∞ since there are
                 // no recorded transitions before that for any zone.
                 $minProbeSec = -8520336000; // ~1700-01-01T00:00:00Z
-                $cur = max($epochSec + 1, $minProbeSec);
+                // For sub-second remainders we want transitions at ts >= epochSec+1.
+                // For exact-second inputs we want ts > epochSec.
+                // Probe starting at epochSec - 1 so PHP's "state-at-start" entry sits
+                // before any transition AT epochSec, then transitions[1+] include it.
+                $cur = max($epochSec - 1, $minProbeSec);
                 $chunk = 200 * 365 * 86400;
                 $bound = min(max($epochSec, 0) + $maxSec, PHP_INT_MAX - $chunk);
                 while ($cur < $bound) {
@@ -4226,10 +4268,20 @@ class TemporalObject
                     if (is_array($transitions) && count($transitions) > 1) {
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            if (isset($t['ts']) && $t['ts'] > $epochSec) {
-                                $found = $t['ts'];
-                                break 2;
+                            if (!isset($t['ts'])) {
+                                continue;
                             }
+                            $tsNs = bcmul((string) $t['ts'], '1000000000', 0);
+                            if (bccomp($tsNs, $ns, 0) <= 0) {
+                                continue;
+                            }
+                            // Skip pseudo-transitions where the offset doesn't actually change.
+                            $prev = $transitions[$j - 1];
+                            if (isset($prev['offset']) && $prev['offset'] === $t['offset']) {
+                                continue;
+                            }
+                            $found = $t['ts'];
+                            break 2;
                         }
                     }
                     $cur = $end + 1;
@@ -4256,9 +4308,14 @@ class TemporalObject
                             $isStrictlyEarlier = $hasNonZeroSubSec
                                 ? $ts <= $epochSec
                                 : $ts < $epochSec;
-                            if ($isStrictlyEarlier) {
-                                $candidate = $ts;
+                            if (!$isStrictlyEarlier) {
+                                continue;
                             }
+                            $prev = $transitions[$j - 1];
+                            if (isset($prev['offset']) && $prev['offset'] === $t['offset']) {
+                                continue;
+                            }
+                            $candidate = $ts;
                         }
                         if ($candidate !== null) {
                             $found = $candidate;
@@ -5633,6 +5690,35 @@ class TemporalObject
         } catch (\Throwable) {
             return [null, null];
         }
+    }
+
+    /**
+     * Calendar-aware week of year.
+     * - "iso8601": ISO 8601 week numbering.
+     * - "gregory": Gregorian (locale-default) week numbering via ICU.
+     * - Others: undefined (no well-defined week-numbering system).
+     * @return array{0: ?int, 1: ?int} [weekOfYear, yearOfWeek]
+     */
+    private static function calendarWeekOfYear(string $calendar, int $year, int $month, int $day): array
+    {
+        if ($calendar === 'iso8601') {
+            return self::isoWeekOfYear($year, $month, $day);
+        }
+        if ($calendar === 'gregory') {
+            if (!class_exists('IntlCalendar', false)) {
+                return self::isoWeekOfYear($year, $month, $day);
+            }
+            try {
+                $cal = \IntlCalendar::createInstance('UTC', 'en@calendar=gregorian');
+                $cal->setDateTime($year, $month - 1, $day, 0, 0, 0);
+                $weekNum = $cal->get(\IntlCalendar::FIELD_WEEK_OF_YEAR);
+                $yearWoY = $cal->get(\IntlCalendar::FIELD_YEAR_WOY);
+                return [(int) $weekNum, (int) $yearWoY];
+            } catch (\Throwable) {
+                return self::isoWeekOfYear($year, $month, $day);
+            }
+        }
+        return [null, null];
     }
 
     private static function validateISODate(int $y, int $m, int $d): void
@@ -10096,10 +10182,14 @@ class TemporalObject
 
     private static function timeZoneOffsetString(string $ns, string $tz, bool $roundToMinute = true): string
     {
-        $negative = isset($ns[0]) && $ns[0] === '-';
-        $abs = $negative ? substr($ns, 1) : $ns;
-        $secStr = bcdiv($abs, '1000000000', 0);
-        $epochSec = $negative ? '-' . $secStr : $secStr;
+        // Floor-divide ns to seconds so that sub-second amounts of negative ns
+        // round toward -∞ (matching the actual epoch second).
+        $secStr = bcdiv($ns, '1000000000', 0);
+        $remainder = bcmod($ns, '1000000000');
+        if (bccomp($ns, '0', 0) < 0 && $remainder !== '0') {
+            $secStr = bcsub($secStr, '1', 0);
+        }
+        $epochSec = $secStr;
 
         try {
             $dt = new \DateTimeImmutable('@' . $epochSec);
