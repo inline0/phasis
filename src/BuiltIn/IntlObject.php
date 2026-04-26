@@ -9405,7 +9405,13 @@ class IntlObject
                     // Per-unit display: "always" or "auto".
                     $displaySlot = '[[' . ucfirst($u) . 'Display]]';
                     $displayKey = $u . 'Display';
-                    $displayDefault = !$val instanceof JsUndefined ? 'always' : 'auto';
+                    // Per spec: hours/minutes/seconds in "digital"
+                    // base style default to display:"always" so the
+                    // fixed-width clock layout always appears.
+                    $isClockUnit = in_array($u, ['hours', 'minutes', 'seconds'], true);
+                    $displayDefault = !$val instanceof JsUndefined
+                        ? 'always'
+                        : (($style === 'digital' && $isClockUnit) ? 'always' : 'auto');
                     $dVal = $options->get($displayKey);
                     if (!$dVal instanceof JsUndefined) {
                         $d = TypeConversion::toString($dVal);
