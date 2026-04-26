@@ -9903,12 +9903,49 @@ class IntlObject
         }
         // The list separator depends on the overall style: "narrow"
         // uses a single space between segments, the rest use a comma
-        // followed by a space.
+        // followed by a space, with a locale-specific connector
+        // before the last item (Spanish "y", etc.).
         $style = self::extractInternalString($df, '[[Style]]', 'short');
         if ($style === 'narrow') {
             return implode(' ', $segments);
         }
+        $locale = self::extractInternalString($df, '[[Locale]]', 'en');
+        $count = count($segments);
+        if ($count === 1) {
+            return $segments[0];
+        }
+        // The locale connector ("y", "et", "und") is only used in
+        // "long" style per CLDR; "short" / "default" use plain
+        // comma-space separators.
+        $listConnector = $style === 'long'
+            ? self::durationFormatListConnector($locale)
+            : null;
+        if ($listConnector !== null) {
+            $head = array_slice($segments, 0, $count - 1);
+            $tail = $segments[$count - 1];
+            return implode(', ', $head) . $listConnector . $tail;
+        }
         return implode(', ', $segments);
+    }
+
+    /**
+     * Locale-specific connector inserted before the last list item
+     * in a DurationFormat output. Mirrors CLDR's listPatterns "end"
+     * pattern. Returns null for locales that use a plain comma-space
+     * (English).
+     */
+    private static function durationFormatListConnector(string $locale): ?string
+    {
+        $lang = strtolower(strtok($locale, '-_'));
+        return match ($lang) {
+            'es', 'gl', 'ca', 'eu' => ' y ',
+            'pt' => ' e ',
+            'fr' => ' et ',
+            'de' => ' und ',
+            'it' => ' e ',
+            'nl' => ' en ',
+            default => null,
+        };
     }
 
     private static function formatDurationSegment(
