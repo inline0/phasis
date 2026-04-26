@@ -2400,14 +2400,13 @@ class IntlObject
             $unit = self::extractInternalString($nf, '[[Unit]]', '');
             $unitDisplay = self::extractInternalString($nf, '[[UnitDisplay]]', 'short');
             $unitLabel = self::renderUnitLabel($unit, $unitDisplay);
-            // CLDR's CJK-family locales (zh, ja, ko) attach the unit
-            // symbol with no space even in short style.
+            // CLDR Korean attaches the unit symbol with no space in
+            // short / narrow style (V8 emits "-987km/h" for ko-KR).
+            // Other CJK locales keep the space.
             $localeForUnit = self::extractInternalString($nf, '[[Locale]]', 'en');
             $localeLang = strtolower(strtok($localeForUnit, '-_'));
-            $cjkNoSpace = in_array($localeLang, ['zh', 'ja', 'ko'], true);
-            $separator = ($unitDisplay === 'narrow' || ($cjkNoSpace && $unitDisplay !== 'long'))
-                ? ''
-                : ' ';
+            $koNoSpace = $localeLang === 'ko' && $unitDisplay !== 'long';
+            $separator = ($unitDisplay === 'narrow' || $koNoSpace) ? '' : ' ';
             $result = $unitLabel === ''
                 ? $bareResult
                 : $bareResult . $separator . $unitLabel;
