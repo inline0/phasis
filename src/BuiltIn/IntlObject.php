@@ -1726,7 +1726,8 @@ class IntlObject
             if ($startStr === $endStr) {
                 return new JsString($startStr);
             }
-            return new JsString($startStr . "\u{2013}" . $endStr);
+            $sep = self::numberFormatRangeSeparator($this_);
+            return new JsString($startStr . $sep . $endStr);
         }, 2);
         $proto->defineOwnProperty(
             'formatRange',
@@ -2410,6 +2411,34 @@ class IntlObject
         $exp = (int) floor(log10(abs($value)));
         $factor = 10 ** ($sig - 1 - $exp);
         return round($value * $factor) / $factor;
+    }
+
+    /**
+     * Pick the locale-appropriate range separator for
+     * NumberFormat.prototype.formatRange. CLDR's ranges
+     * pattern uses different separators per locale; the
+     * common cases:
+     *   - en-* (most): "{0}–{1}" without spaces, but currency
+     *     style adds surrounding spaces ("$3 – $5").
+     *   - pt-PT: "{0} - {1}" with regular hyphen.
+     *   - other locales: en-dash separator.
+     */
+    private static function numberFormatRangeSeparator(JsObject $nf): string
+    {
+        $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
+        $lang = strtolower(strtok($locale, '-_'));
+        $region = '';
+        if (preg_match('/^[a-z]{2,3}(?:-[a-z]{4})?-([a-z]{2}|\d{3})/i', $locale, $m) === 1) {
+            $region = strtoupper($m[1]);
+        }
+        $style = self::extractInternalString($nf, '[[Style]]', 'decimal');
+        if ($lang === 'pt' && $region === 'PT') {
+            return ' - ';
+        }
+        if ($style === 'currency') {
+            return ' – ';
+        }
+        return '–';
     }
 
     /**
