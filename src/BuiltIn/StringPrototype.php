@@ -759,6 +759,19 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $locale = self::pickToLocaleCaseLocale($args[0] ?? null);
+            $lang = $locale !== null ? strtolower(strtok($locale, '-_')) : null;
+            // Lithuanian: insert U+0307 immediately after lowercased I/J/Į
+            // when the following combining sequence contains a class 230 mark
+            // (with possible class 220 marks between). ICU's lt-Lower
+            // transliterator returns the marks in canonical order, so the dot
+            // ends up *after* class 220 — the spec demands it right after the
+            // base letter. Hand-roll the rule.
+            if ($lang === 'lt') {
+                $ltResult = self::lithuanianLower($str);
+                if ($ltResult !== null) {
+                    return new JsString($ltResult);
+                }
+            }
             $result = self::applyLocaleCaseTransliterator($str, $locale, 'Lower');
             if ($result !== null) {
                 return new JsString($result);
@@ -772,12 +785,109 @@ class StringPrototype
         return function (JsValue $this_, array $args): JsValue {
             $str = self::extractString($this_);
             $locale = self::pickToLocaleCaseLocale($args[0] ?? null);
+            $lang = $locale !== null ? strtolower(strtok($locale, '-_')) : null;
+            if ($lang === 'lt') {
+                $ltResult = self::lithuanianUpper($str);
+                if ($ltResult !== null) {
+                    return new JsString($ltResult);
+                }
+            }
             $result = self::applyLocaleCaseTransliterator($str, $locale, 'Upper');
             if ($result !== null) {
                 return new JsString($result);
             }
             return new JsString(mb_strtoupper($str, 'UTF-8'));
         };
+    }
+
+    private static function lithuanianLower(string $str): ?string
+    {
+        if (!class_exists(\IntlChar::class)) {
+            return null;
+        }
+        $cps = mb_str_split($str, 1, 'UTF-8');
+        $n = count($cps);
+        $result = '';
+        for ($i = 0; $i < $n; $i++) {
+            $cp = mb_ord($cps[$i], 'UTF-8');
+            if ($cp === 0x0049 || $cp === 0x004A || $cp === 0x012E) {
+                $hasClass230 = false;
+                for ($j = $i + 1; $j < $n; $j++) {
+                    $cpJ = mb_ord($cps[$j], 'UTF-8');
+                    $ccc = \IntlChar::getCombiningClass($cpJ);
+                    if ($ccc === 0) {
+                        break;
+                    }
+                    if ($ccc === 230) {
+                        $hasClass230 = true;
+                        break;
+                    }
+                }
+                $lower = match ($cp) {
+                    0x0049 => 0x0069,
+                    0x004A => 0x006A,
+                    0x012E => 0x012F,
+                };
+                $result .= mb_chr($lower, 'UTF-8');
+                if ($hasClass230) {
+                    $result .= mb_chr(0x0307, 'UTF-8');
+                }
+                continue;
+            }
+            // Precomposed I-with-accent-above: decompose to i + U+0307 + accent.
+            $precomposed = match ($cp) {
+                0x00CC => [0x0069, 0x0307, 0x0300],
+                0x00CD => [0x0069, 0x0307, 0x0301],
+                0x0128 => [0x0069, 0x0307, 0x0303],
+                default => null,
+            };
+            if ($precomposed !== null) {
+                foreach ($precomposed as $rcp) {
+                    $result .= mb_chr($rcp, 'UTF-8');
+                }
+                continue;
+            }
+            $result .= mb_strtolower($cps[$i], 'UTF-8');
+        }
+        return $result;
+    }
+
+    private static function lithuanianUpper(string $str): ?string
+    {
+        if (!class_exists(\IntlChar::class)) {
+            return null;
+        }
+        // SpecialCasing.txt: when uppercasing in lt, U+0307 (combining dot
+        // above) is removed if preceded by a Soft_Dotted character with no
+        // intervening class 0 or class 230 character. Walk backward when we
+        // see U+0307 to apply that condition.
+        $cps = mb_str_split($str, 1, 'UTF-8');
+        $n = count($cps);
+        $result = '';
+        for ($i = 0; $i < $n; $i++) {
+            $cp = mb_ord($cps[$i], 'UTF-8');
+            if ($cp === 0x0307) {
+                $afterSoftDotted = false;
+                for ($j = $i - 1; $j >= 0; $j--) {
+                    $cpJ = mb_ord($cps[$j], 'UTF-8');
+                    $ccc = \IntlChar::getCombiningClass($cpJ);
+                    if ($ccc === 0) {
+                        if (\IntlChar::hasBinaryProperty($cpJ, \IntlChar::PROPERTY_SOFT_DOTTED)) {
+                            $afterSoftDotted = true;
+                        }
+                        break;
+                    }
+                    if ($ccc === 230) {
+                        break;
+                    }
+                }
+                if ($afterSoftDotted) {
+                    continue;
+                }
+            }
+            $result .= mb_strtoupper($cps[$i], 'UTF-8');
+        }
+        return $result;
     }
 
     /**

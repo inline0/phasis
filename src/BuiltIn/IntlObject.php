@@ -391,6 +391,17 @@ class IntlObject
             $this_ instanceof JsObject
             && !$this_->get('[[NewTarget]]') instanceof JsUndefined
         ) {
+            // Per spec OrdinaryCreateFromConstructor: GetPrototypeFromConstructor
+            // is called on NewTarget, which Gets the "prototype" property. A
+            // poisoned getter on NewTarget.prototype must surface here, before
+            // any option validation in the constructor body.
+            $newTarget = $this_->get('[[NewTarget]]');
+            if ($newTarget instanceof JsObject) {
+                $ntProto = $newTarget->get('prototype');
+                if ($ntProto instanceof JsObject) {
+                    $this_->setPrototype($ntProto);
+                }
+            }
             return $this_;
         }
         return new JsObject($proto);
@@ -8910,6 +8921,11 @@ class IntlObject
                     throw new TypeError('Constructor Intl.DisplayNames requires \'new\'');
                 }
 
+                // Per spec: OrdinaryCreateFromConstructor (which calls
+                // Get(NewTarget, "prototype")) runs before reading options,
+                // so a poisoned prototype getter must throw first.
+                $obj = self::instanceFromConstructor($this_, $proto);
+
                 $localesArg = $args[0] ?? JsUndefined::instance();
                 $optionsArg = $args[1] ?? JsUndefined::instance();
 
@@ -8964,7 +8980,6 @@ class IntlObject
                     $languageDisplay = $ld;
                 }
 
-                $obj = self::instanceFromConstructor($this_, $proto);
                 $obj->defineOwnProperty('[[InitializedDisplayNames]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
