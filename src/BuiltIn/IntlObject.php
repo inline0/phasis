@@ -4254,6 +4254,15 @@ class IntlObject
                             false,
                         ));
                     }
+                    // Mark these defaults so Temporal augmentation
+                    // can distinguish user-explicit options from
+                    // implicit fallbacks.
+                    $obj->defineOwnProperty('[[ComponentsDefaulted]]', PropertyDescriptor::data(
+                        new JsBoolean(true),
+                        false,
+                        false,
+                        false,
+                    ));
                 }
 
                 // Now that dateStyle/timeStyle are known, decide
@@ -4405,6 +4414,13 @@ class IntlObject
                 );
             }
             $dateArg = $args[0] ?? JsUndefined::instance();
+            // Temporal types route through formatTemporal (UTC-locked
+            // formatter, plain-type pattern narrowing).
+            if ($dateArg instanceof JsObject && self::isTemporalDateLike($dateArg)) {
+                $formatted = self::formatTemporal($this_, $dateArg);
+                $timestamp = 0;
+                return self::dateTimeFormatToParts($this_, $formatted, $timestamp, $dateArg);
+            }
             $timestampMs = null;
             if ($dateArg instanceof JsObject && $dateArg->has('getTime')) {
                 $getTime = $dateArg->get('getTime');
@@ -4453,11 +4469,46 @@ class IntlObject
             if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
                 throw new TypeError('formatRange arguments cannot be undefined');
             }
-            $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
-            $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
+            // ToDateTimeFormattable per spec: keep Temporal types,
+            // ToNumber everything else. ToNumber happens BEFORE
+            // SameTemporalType checks so a poisoned valueOf still
+            // fires when one arg is Temporal and the other isn't.
+            // The NaN/range check is deferred until AFTER the kind
+            // check so a same-kind mismatch surfaces as TypeError,
+            // not RangeError.
+            $startTemp = $startVal instanceof JsObject
+                && self::isTemporalDateLike($startVal)
+                ? $startVal : null;
+            $endTemp = $endVal instanceof JsObject
+                && self::isTemporalDateLike($endVal)
+                ? $endVal : null;
+            $startNum = $startTemp === null ? TypeConversion::toNumber($startVal) : 0.0;
+            $endNum = $endTemp === null ? TypeConversion::toNumber($endVal) : 0.0;
+            if (($startTemp !== null) !== ($endTemp !== null)) {
+                throw new TypeError('formatRange arguments must be the same kind');
+            }
+            $startMs = 0.0;
+            $endMs = 0.0;
+            if ($startTemp === null) {
+                if (is_nan($startNum) || !is_finite($startNum) || abs($startNum) > 8.64e15) {
+                    throw new RangeError('Invalid startDate');
+                }
+                if (is_nan($endNum) || !is_finite($endNum) || abs($endNum) > 8.64e15) {
+                    throw new RangeError('Invalid endDate');
+                }
+                $startMs = $startNum;
+                $endMs = $endNum;
+            }
             $startStr = '';
             $endStr = '';
-            if (extension_loaded('intl') && $this_ instanceof JsObject) {
+            if ($startTemp !== null && $endTemp !== null) {
+                self::checkSameTemporalType($startTemp, $endTemp);
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Intl.DateTimeFormat receiver required');
+                }
+                $startStr = self::formatTemporal($this_, $startTemp);
+                $endStr = self::formatTemporal($this_, $endTemp);
+            } elseif (extension_loaded('intl') && $this_ instanceof JsObject) {
                 $startStr = self::formatDateTimeMs($this_, (float) $startMs);
                 $endStr = self::formatDateTimeMs($this_, (float) $endMs);
             } else {
@@ -4467,9 +4518,6 @@ class IntlObject
             if ($startStr === $endStr) {
                 return new JsString($startStr);
             }
-            // Collapse shared prefix/suffix so "Jan 3, 2019 – Jan 5,
-            // 2019" becomes "Jan 3 – 5, 2019" per CLDR's range
-            // pattern when only the day differs.
             $collapsed = self::collapseDateRange($startStr, $endStr);
             return new JsString($collapsed);
         }, 2);
@@ -4489,8 +4537,48 @@ class IntlObject
             if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
                 throw new TypeError('formatRangeToParts arguments cannot be undefined');
             }
-            $startMs = self::dateTimeFormatRangeArgToMs($startVal, 'startDate');
-            $endMs = self::dateTimeFormatRangeArgToMs($endVal, 'endDate');
+            // Mirror formatRange: ToNumber the non-Temporal args
+            // BEFORE SameTemporalType so a poisoned valueOf is
+            // observed even when the kinds differ; defer NaN/range
+            // until after the kind check.
+            $startTemp = $startVal instanceof JsObject
+                && self::isTemporalDateLike($startVal)
+                ? $startVal : null;
+            $endTemp = $endVal instanceof JsObject
+                && self::isTemporalDateLike($endVal)
+                ? $endVal : null;
+            $startNum = $startTemp === null ? TypeConversion::toNumber($startVal) : 0.0;
+            $endNum = $endTemp === null ? TypeConversion::toNumber($endVal) : 0.0;
+            if (($startTemp !== null) !== ($endTemp !== null)) {
+                throw new TypeError('formatRangeToParts arguments must be the same kind');
+            }
+            $startMs = 0.0;
+            $endMs = 0.0;
+            if ($startTemp === null) {
+                if (is_nan($startNum) || !is_finite($startNum) || abs($startNum) > 8.64e15) {
+                    throw new RangeError('Invalid startDate');
+                }
+                if (is_nan($endNum) || !is_finite($endNum) || abs($endNum) > 8.64e15) {
+                    throw new RangeError('Invalid endDate');
+                }
+                $startMs = $startNum;
+                $endMs = $endNum;
+            }
+            $startStr = '';
+            $endStr = '';
+            $temporalArg = null;
+            if ($startTemp !== null && $endTemp !== null) {
+                self::checkSameTemporalType($startTemp, $endTemp);
+                if (!$this_ instanceof JsObject) {
+                    throw new TypeError('Intl.DateTimeFormat receiver required');
+                }
+                $startStr = self::formatTemporal($this_, $startTemp);
+                $endStr = self::formatTemporal($this_, $endTemp);
+                $temporalArg = $startTemp;
+            } elseif (extension_loaded('intl') && $this_ instanceof JsObject) {
+                $startStr = self::formatDateTimeMs($this_, (float) $startMs);
+                $endStr = self::formatDateTimeMs($this_, (float) $endMs);
+            }
             $result = new JsArray();
             $idx = 0;
             $emit = static function (
@@ -4507,12 +4595,6 @@ class IntlObject
                 self::defineDataProp($part, 'source', new JsString($source));
                 $result->set((string) $idx++, $part);
             };
-            $startStr = '';
-            $endStr = '';
-            if (extension_loaded('intl') && $this_ instanceof JsObject) {
-                $startStr = self::formatDateTimeMs($this_, (float) $startMs);
-                $endStr = self::formatDateTimeMs($this_, (float) $endMs);
-            }
             // Decompose start (and end, if different) into typed
             // parts so consumers can read individual fields.
             $appendTyped = static function (
@@ -4538,6 +4620,7 @@ class IntlObject
                 $this_,
                 $startStr,
                 (int) round($startMs / 1000),
+                $temporalArg,
             );
             if ($startStr === $endStr) {
                 $appendTyped($startParts, 'shared');
@@ -4546,6 +4629,7 @@ class IntlObject
                     $this_,
                     $endStr,
                     (int) round($endMs / 1000),
+                    $temporalArg,
                 );
                 // Walk start/end parts in lockstep to find a shared
                 // prefix and shared suffix (where every (type, value)
@@ -4874,13 +4958,75 @@ class IntlObject
         $endDiff = substr($end, $prefixEnd, $endTail - $prefixEnd);
         $sharedSuffix = substr($start, $startTail);
         // Don't collapse if the differing slice ends mid-token (e.g.
-        // common prefix runs into the digits of a year).
-        $prefixOk = $sharedPrefix === ''
-            || !ctype_digit(substr($sharedPrefix, -1));
-        $suffixOk = $sharedSuffix === ''
-            || !ctype_digit($sharedSuffix[0]);
-        if (!$prefixOk || !$suffixOk) {
+        // common prefix runs into the digits of a year). When the
+        // shared prefix ends with a digit, walk back through digits
+        // to find a clean boundary (whitespace or punctuation that
+        // signals a field separator). For "8/4/2021, 1" → shared
+        // becomes "8/4/2021, " (clean ", " boundary). For "Mar 4, 2"
+        // walking back lands on "Mar 4, " — but the trailing "20"
+        // is the start of the year, and the differing portion would
+        // become "2019"/"2020" (year-only diff). To avoid collapsing
+        // in that case, only walk back past digits that immediately
+        // follow whitespace + a comma (the date+time separator
+        // pattern in CLDR).
+        if ($sharedPrefix !== '' && ctype_digit(substr($sharedPrefix, -1))) {
+            // Walk back over the digit run so the differing slice
+            // starts at a clean token boundary. Require ", " before
+            // the digits (CLDR's date+time separator) AND require
+            // the differing slice to contain alphabetic content
+            // (AM/PM, weekday name, era) — without that, the diff
+            // is a pure-digit field like a year and V8 emits both
+            // endpoints in full instead of collapsing.
+            $back = strlen($sharedPrefix) - 1;
+            while ($back >= 0 && ctype_digit($sharedPrefix[$back])) {
+                $back--;
+            }
+            $boundaryOk = $back >= 1
+                && $sharedPrefix[$back] === ' '
+                && $sharedPrefix[$back - 1] === ',';
+            if (!$boundaryOk) {
+                return $start . " \u{2013} " . $end;
+            }
+            $newPrefixEnd = $back + 1;
+            $extraStart = substr($sharedPrefix, $newPrefixEnd);
+            $tentativeStartDiff = $extraStart . $startDiff;
+            $tentativeEndDiff = $extraStart . $endDiff;
+            $diffHasAlpha = preg_match('/[A-Za-z]/u', $tentativeStartDiff) === 1
+                || preg_match('/[A-Za-z]/u', $tentativeEndDiff) === 1;
+            if (!$diffHasAlpha) {
+                return $start . " \u{2013} " . $end;
+            }
+            $startDiff = $tentativeStartDiff;
+            $endDiff = $tentativeEndDiff;
+            $sharedPrefix = substr($sharedPrefix, 0, $newPrefixEnd);
+        }
+        if ($sharedSuffix !== '' && ctype_digit($sharedSuffix[0])) {
             return $start . " \u{2013} " . $end;
+        }
+        // If the shared suffix begins mid-token (alphabetic char with
+        // an alphabetic neighbour on either side), it's collapsing
+        // through what is actually different content (e.g. "AM"/"PM"
+        // share a trailing "M" but the "A"/"P" before it differ).
+        if ($sharedSuffix !== '' && ctype_alpha($sharedSuffix[0])) {
+            $startEnd = $startDiff !== '' ? substr($startDiff, -1) : '';
+            $endEnd = $endDiff !== '' ? substr($endDiff, -1) : '';
+            if (
+                ($startEnd !== '' && ctype_alpha($startEnd))
+                || ($endEnd !== '' && ctype_alpha($endEnd))
+            ) {
+                // Walk forward through the alphabetic suffix until
+                // we hit non-alpha; merge those alpha bytes into
+                // each diff so the comparison is whole-token.
+                $forward = 0;
+                $sLenSuffix = strlen($sharedSuffix);
+                while ($forward < $sLenSuffix && ctype_alpha($sharedSuffix[$forward])) {
+                    $forward++;
+                }
+                $extraEnd = substr($sharedSuffix, 0, $forward);
+                $startDiff .= $extraEnd;
+                $endDiff .= $extraEnd;
+                $sharedSuffix = substr($sharedSuffix, $forward);
+            }
         }
         // Only collapse when the format has at least one alphabetic
         // token somewhere (month name or weekday). Numeric-only
@@ -4918,8 +5064,12 @@ class IntlObject
      * "G" -> era, "S" -> fractionalSecond. Unknown tokens collapse
      * to literal.
      */
-    private static function dateTimeFormatToParts(JsObject $dtf, string $formatted, int $timestamp): JsArray
-    {
+    private static function dateTimeFormatToParts(
+        JsObject $dtf,
+        string $formatted,
+        int $timestamp,
+        ?JsObject $temporal = null,
+    ): JsArray {
         $parts = new JsArray();
         $idx = 0;
         $emit = static function (string $type, string $value) use (&$parts, &$idx): void {
@@ -4938,8 +5088,12 @@ class IntlObject
             return $parts;
         }
         // Reuse the same formatter the format() pipeline used so
-        // `getPattern()` reflects the same skeleton.
-        $formatter = self::dateTimeFormatterFor($dtf);
+        // `getPattern()` reflects the same skeleton. For Temporal
+        // plain types, narrow the pattern the same way formatTemporal
+        // does so the parts walk against the actual emitted glyphs.
+        $formatter = $temporal !== null
+            ? self::temporalFormatterFor($dtf, $temporal)
+            : self::dateTimeFormatterFor($dtf);
         $pattern = $formatter->getPattern();
         if ($pattern === false || $pattern === '') {
             $emit('literal', $formatted);
@@ -5142,6 +5296,38 @@ class IntlObject
      * Instant, ZonedDateTime). Identification is by internal slot
      * since the prototype getters can be tampered with.
      */
+    /**
+     * Throw if two Temporal objects don't share the same brand
+     * (per spec, formatRange requires both args to be the same
+     * kind: both PlainDate, both Instant, etc.).
+     */
+    private static function checkSameTemporalType(JsValue $a, JsValue $b): void
+    {
+        if (!$a instanceof JsObject || !$b instanceof JsObject) {
+            return;
+        }
+        $brands = [
+            '[[IsPlainDate]]', '[[IsPlainDateTime]]', '[[IsPlainTime]]',
+            '[[IsPlainYearMonth]]', '[[IsPlainMonthDay]]',
+            '[[IsZonedDateTime]]',
+        ];
+        foreach ($brands as $brand) {
+            if ($a->has($brand) !== $b->has($brand)) {
+                throw new TypeError(
+                    'formatRange Temporal arguments must be the same type',
+                );
+            }
+        }
+        // Instant: detected by [[EpochNanoseconds]] without ZDT.
+        $aIsInstant = $a->has('[[EpochNanoseconds]]') && !$a->has('[[IsZonedDateTime]]');
+        $bIsInstant = $b->has('[[EpochNanoseconds]]') && !$b->has('[[IsZonedDateTime]]');
+        if ($aIsInstant !== $bIsInstant) {
+            throw new TypeError(
+                'formatRange Temporal arguments must be the same type',
+            );
+        }
+    }
+
     private static function isTemporalDateLike(JsObject $obj): bool
     {
         return $obj->has('[[IsPlainDate]]')
@@ -5212,29 +5398,64 @@ class IntlObject
             return $base;
         }
         $isPlainDate = $obj->has('[[IsPlainDate]]');
+        $isPlainDateTime = $obj->has('[[IsPlainDateTime]]');
         $isPlainTime = $obj->has('[[IsPlainTime]]');
         $isPlainYearMonth = $obj->has('[[IsPlainYearMonth]]');
         $isPlainMonthDay = $obj->has('[[IsPlainMonthDay]]');
+        $isInstant = $obj->has('[[EpochNanoseconds]]') && !$obj->has('[[IsZonedDateTime]]');
         $timeLetters = ['h', 'H', 'K', 'k', 'm', 's', 'S', 'a', 'B', 'z', 'Z', 'O', 'v', 'V', 'X', 'x'];
         $dateLetters = ['G', 'y', 'Y', 'u', 'r', 'M', 'L', 'd', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W', 'Q', 'q', 'U'];
-        if ($isPlainDate || $isPlainYearMonth || $isPlainMonthDay) {
+        $stripLetters = [];
+        $augmentSkeleton = '';
+        $forceSkeleton = '';
+        $userExplicit = self::dtfHasExplicitOptions($dtf);
+        if ($isPlainDate) {
             $stripLetters = $timeLetters;
+            if (!$userExplicit) {
+                $forceSkeleton = 'yMd';
+            }
         } elseif ($isPlainTime) {
             $stripLetters = $dateLetters;
+            if (!$userExplicit) {
+                $forceSkeleton = 'hms';
+            }
+        } elseif ($isPlainYearMonth) {
+            $stripLetters = array_merge($timeLetters, ['d', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W']);
+            if (!$userExplicit) {
+                $forceSkeleton = 'yM';
+            }
+        } elseif ($isPlainMonthDay) {
+            $stripLetters = array_merge($timeLetters, ['G', 'y', 'Y', 'u', 'r', 'U']);
+            if (!$userExplicit) {
+                $forceSkeleton = 'Md';
+            }
+        } elseif ($isPlainDateTime || $isInstant) {
+            // PlainDateTime/Instant: when the formatter has NO
+            // explicit options (default {year, month, day}), augment
+            // so the full datetime renders. If the user set
+            // dateStyle/timeStyle or any individual component,
+            // respect that exactly.
+            if ($userExplicit) {
+                return $base;
+            }
+            $hasDate = self::patternHasAnyOf($pattern, $dateLetters);
+            $hasTime = self::patternHasAnyOf($pattern, $timeLetters);
+            if ($hasDate && !$hasTime) {
+                $augmentSkeleton = 'hms';
+            } elseif ($hasTime && !$hasDate) {
+                $augmentSkeleton = 'yMd';
+            } else {
+                return $base;
+            }
         } else {
             return $base;
         }
-        if ($isPlainYearMonth) {
-            $stripLetters = array_merge($stripLetters, ['d', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W']);
+        $skeleton = $forceSkeleton !== ''
+            ? $forceSkeleton
+            : self::extractPatternSkeleton($pattern, $stripLetters);
+        if ($augmentSkeleton !== '') {
+            $skeleton .= $augmentSkeleton;
         }
-        if ($isPlainMonthDay) {
-            $stripLetters = array_merge($stripLetters, ['G', 'y', 'Y', 'u', 'r', 'U']);
-        }
-        // Build a new skeleton from the surviving pattern letters and
-        // ask IntlDatePatternGenerator to produce a clean pattern.
-        // This drops orphan connector words like "at" / commas that
-        // the simple letter-strip approach can leave behind.
-        $skeleton = self::extractPatternSkeleton($pattern, $stripLetters);
         $locale = str_replace('-', '_', self::extractInternalString($dtf, '[[Locale]]', 'en'));
         if ($skeleton !== '' && class_exists('IntlDatePatternGenerator')) {
             try {
@@ -5247,10 +5468,61 @@ class IntlObject
             } catch (\Throwable) {
             }
         }
-        // Fallback: simple letter stripping.
-        $newPattern = self::stripPatternLetters($pattern, $stripLetters);
-        $base->setPattern($newPattern);
+        if ($stripLetters !== []) {
+            $newPattern = self::stripPatternLetters($pattern, $stripLetters);
+            $base->setPattern($newPattern);
+        }
         return $base;
+    }
+
+    /**
+     * Detect whether the user passed explicit format options to the
+     * DateTimeFormat constructor. Used by Temporal augmentation to
+     * decide if PlainDateTime should add the missing date/time kind.
+     * The constructor sets [[ComponentsDefaulted]] = true when it
+     * had to fall back to year/month/day defaults; that flag plus
+     * the absence of any date/time style is what marks an explicit
+     * user choice as "no, none of these".
+     */
+    private static function dtfHasExplicitOptions(JsObject $dtf): bool
+    {
+        $defaulted = $dtf->get('[[ComponentsDefaulted]]');
+        if ($defaulted instanceof JsBoolean && $defaulted->value === true) {
+            return false;
+        }
+        $slots = [
+            '[[DateStyle]]', '[[TimeStyle]]', '[[year]]', '[[month]]',
+            '[[day]]', '[[weekday]]', '[[era]]', '[[hour]]', '[[minute]]',
+            '[[second]]', '[[fractionalSecondDigits]]', '[[dayPeriod]]',
+            '[[timeZoneName]]',
+        ];
+        foreach ($slots as $slot) {
+            if (!$dtf->get($slot) instanceof JsUndefined) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param list<string> $letters
+     */
+    private static function patternHasAnyOf(string $pattern, array $letters): bool
+    {
+        $set = array_flip($letters);
+        $len = strlen($pattern);
+        $inQuote = false;
+        for ($i = 0; $i < $len; $i++) {
+            $c = $pattern[$i];
+            if ($c === "'") {
+                $inQuote = !$inQuote;
+                continue;
+            }
+            if (!$inQuote && isset($set[$c])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -5430,30 +5702,60 @@ class IntlObject
      */
     private static function checkTemporalOptionsCompat(JsObject $dtf, JsObject $obj): void
     {
+        // When the formatter's components were defaulted (no user
+        // options), it adapts to the Temporal type so any plain
+        // type renders without throwing.
+        $defaulted = $dtf->get('[[ComponentsDefaulted]]');
+        if ($defaulted instanceof JsBoolean && $defaulted->value === true) {
+            return;
+        }
         $hasTimeStyle = !$dtf->get('[[TimeStyle]]') instanceof JsUndefined;
         $hasDateStyle = !$dtf->get('[[DateStyle]]') instanceof JsUndefined;
-        $hasHour = !$dtf->get('[[Hour]]') instanceof JsUndefined
-            || !$dtf->get('[[Minute]]') instanceof JsUndefined
-            || !$dtf->get('[[Second]]') instanceof JsUndefined;
-        $hasDate = !$dtf->get('[[Year]]') instanceof JsUndefined
-            || !$dtf->get('[[Month]]') instanceof JsUndefined
-            || !$dtf->get('[[Day]]') instanceof JsUndefined
-            || !$dtf->get('[[Weekday]]') instanceof JsUndefined;
+        $hasYear = !$dtf->get('[[year]]') instanceof JsUndefined;
+        $hasMonth = !$dtf->get('[[month]]') instanceof JsUndefined;
+        $hasDay = !$dtf->get('[[day]]') instanceof JsUndefined;
+        $hasWeekday = !$dtf->get('[[weekday]]') instanceof JsUndefined;
+        $hasEra = !$dtf->get('[[era]]') instanceof JsUndefined;
+        $hasHour = !$dtf->get('[[hour]]') instanceof JsUndefined;
+        $hasMinute = !$dtf->get('[[minute]]') instanceof JsUndefined;
+        $hasSecond = !$dtf->get('[[second]]') instanceof JsUndefined;
+        $hasFractionalSec = !$dtf->get('[[fractionalSecondDigits]]') instanceof JsUndefined;
+        $hasDayPeriod = !$dtf->get('[[dayPeriod]]') instanceof JsUndefined;
+        $hasAnyTime = $hasHour || $hasMinute || $hasSecond
+            || $hasFractionalSec || $hasDayPeriod || $hasTimeStyle;
+        $hasAnyDate = $hasYear || $hasMonth || $hasDay || $hasWeekday
+            || $hasEra || $hasDateStyle;
+        // Spec rule: throw when the intersection of the formatter's
+        // requested fields and the Temporal type's data model is
+        // empty. The type can still render with extra-but-irrelevant
+        // formatter fields as long as at least one field overlaps.
         if ($obj->has('[[IsPlainDate]]')) {
-            // PlainDate rejected by time-only formatters.
-            if ($hasTimeStyle && !$hasDateStyle) {
-                throw new TypeError('Temporal.PlainDate is not compatible with timeStyle');
-            }
-            if ($hasHour && !$hasDate && !$hasDateStyle) {
-                throw new TypeError('Temporal.PlainDate is not compatible with time-only formatter');
+            // PlainDate carries year/month/day/weekday/era.
+            if (!$hasAnyDate) {
+                throw new TypeError('Temporal.PlainDate has no overlap with formatter options');
             }
         }
         if ($obj->has('[[IsPlainTime]]')) {
-            if ($hasDateStyle && !$hasTimeStyle) {
-                throw new TypeError('Temporal.PlainTime is not compatible with dateStyle');
+            // PlainTime carries hour/minute/second/fractionalSec/dayPeriod.
+            if (!$hasAnyTime) {
+                throw new TypeError('Temporal.PlainTime has no overlap with formatter options');
             }
-            if ($hasDate && !$hasHour && !$hasTimeStyle) {
-                throw new TypeError('Temporal.PlainTime is not compatible with date-only formatter');
+        }
+        if ($obj->has('[[IsPlainYearMonth]]')) {
+            // PlainYearMonth carries year/month/era.
+            // Reject formatters that ONLY ask for day/weekday or any
+            // time field with no year/month/era overlap. dateStyle is
+            // an implicit overlap because it includes month+year.
+            $hasYearMonth = $hasYear || $hasMonth || $hasEra || $hasDateStyle;
+            if (!$hasYearMonth) {
+                throw new TypeError('Temporal.PlainYearMonth has no overlap with formatter options');
+            }
+        }
+        if ($obj->has('[[IsPlainMonthDay]]')) {
+            // PlainMonthDay carries month/day.
+            $hasMonthDay = $hasMonth || $hasDay || $hasDateStyle;
+            if (!$hasMonthDay) {
+                throw new TypeError('Temporal.PlainMonthDay has no overlap with formatter options');
             }
         }
     }
