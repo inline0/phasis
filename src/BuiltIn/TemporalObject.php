@@ -1354,10 +1354,29 @@ class TemporalObject
                 $y = (int) $n;
                 $any = true;
             } elseif ($eraYearNum !== null) {
-                static $pdWithEraDeriv = ['gregory', 'japanese', 'roc'];
-                if (in_array($cal, $pdWithEraDeriv, true)) {
-                    $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $y = in_array($eraLower, ['bc', 'bce'], true)
+                $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                if ($cal === 'japanese') {
+                    $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                    if ($isoYear !== null) {
+                        $y = $isoYear;
+                    } elseif (in_array($eraLower, ['bc', 'bce', 'japanese-inverse'], true)) {
+                        $y = (int) (1 - $eraYearNum);
+                    } else {
+                        $y = (int) $eraYearNum;
+                    }
+                } elseif ($cal === 'roc') {
+                    $y = ($eraLower === 'roc-inverse' || $eraLower === 'before-roc')
+                        ? (int) (1912 - $eraYearNum)
+                        : (int) (1911 + $eraYearNum);
+                } elseif ($cal === 'gregory') {
+                    $y = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                        ? (int) (1 - $eraYearNum)
+                        : (int) $eraYearNum;
+                } elseif ($cal === 'coptic' || $cal === 'ethiopic' || $cal === 'ethioaa') {
+                    // ICU handles these eras inside the calendar field
+                    // mapping; pass eraYear through as the calendar year
+                    // (with -inverse flipping the sign).
+                    $y = ($eraLower !== '' && str_ends_with($eraLower, '-inverse'))
                         ? (int) (1 - $eraYearNum)
                         : (int) $eraYearNum;
                 }
@@ -8139,7 +8158,14 @@ class TemporalObject
             }
             $yearVal = $item->get('year');
             if ($yearVal instanceof JsUndefined) {
-                static $pdEraCals = ['gregory', 'japanese', 'roc'];
+                static $pdEraCals = [
+                    'gregory', 'japanese', 'roc',
+                    'coptic', 'ethiopic', 'ethioaa',
+                    'islamic', 'islamic-civil', 'islamic-tbla',
+                    'islamic-rgsa', 'islamic-umalqura', 'islamicc',
+                    'persian', 'indian', 'buddhist',
+                    'hebrew', 'chinese', 'dangi',
+                ];
                 if (
                     $eraYearNum !== null
                     && in_array($cal, $pdEraCals, true)
@@ -8164,9 +8190,19 @@ class TemporalObject
                         } else {
                             $yNum = 1911 + $eraYearNum;
                         }
-                    } else {
-                        // gregory
+                    } elseif ($cal === 'gregory') {
                         $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                            ? (1 - $eraYearNum)
+                            : $eraYearNum;
+                    } else {
+                        // Other calendars (coptic, ethiopic, islamic, etc.)
+                        // pass eraYear through as the calendar year, with
+                        // -inverse / -bc style flipping the sign.
+                        $yNum = (
+                            $eraLower !== ''
+                            && (str_ends_with($eraLower, '-inverse')
+                                || in_array($eraLower, ['bc', 'bce', 'before-roc'], true))
+                        )
                             ? (1 - $eraYearNum)
                             : $eraYearNum;
                     }
