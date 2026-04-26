@@ -11438,14 +11438,22 @@ class TemporalObject
         ) {
             $instCal = $this_->get('[[Calendar]]');
             $instCalStr = $instCal instanceof JsString ? $instCal->value : 'iso8601';
-            if ($instCalStr !== 'iso8601') {
+            // PlainMonthDay carries no year, so even an ISO instance
+            // must reject a non-ISO locale calendar (the calendar
+            // determines how M01 day 1 is interpreted). Other types
+            // accept ISO instances on any locale.
+            $isStrict = $this_->has('[[IsPlainMonthDay]]');
+            if ($instCalStr !== 'iso8601' || $isStrict) {
                 $localeCal = self::resolveLocaleCalendar(
                     $args[0] ?? JsUndefined::instance(),
                 );
                 if (
                     $localeCal !== null
-                    && $localeCal !== 'iso8601'
                     && $localeCal !== $instCalStr
+                    && (
+                        $localeCal !== 'iso8601'
+                        || $instCalStr !== 'iso8601'
+                    )
                 ) {
                     throw new RangeError(
                         'Temporal type calendar does not match locale calendar',
