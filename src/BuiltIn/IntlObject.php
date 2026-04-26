@@ -1704,8 +1704,8 @@ class IntlObject
             if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
                 throw new TypeError('formatRange arguments cannot be undefined');
             }
-            $start = TypeConversion::toNumber($startVal);
-            $end = TypeConversion::toNumber($endVal);
+            $start = self::numericArgToFloat($startVal);
+            $end = self::numericArgToFloat($endVal);
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRange');
             }
@@ -1741,8 +1741,8 @@ class IntlObject
             if ($startVal instanceof JsUndefined || $endVal instanceof JsUndefined) {
                 throw new TypeError('formatRangeToParts arguments cannot be undefined');
             }
-            $start = TypeConversion::toNumber($startVal);
-            $end = TypeConversion::toNumber($endVal);
+            $start = self::numericArgToFloat($startVal);
+            $end = self::numericArgToFloat($endVal);
             if (is_nan($start) || is_nan($end)) {
                 throw new RangeError('Invalid number for formatRangeToParts');
             }
@@ -2293,6 +2293,21 @@ class IntlObject
         // Strip trailing zeros and a stranded decimal point.
         $formatted = rtrim(rtrim($formatted, '0'), '.');
         return $formatted === '' ? '0' : $formatted;
+    }
+
+    /**
+     * Coerce a numeric argument to a PHP float, accepting BigInt
+     * (cast via its string value) so that
+     * `Intl.NumberFormat.prototype.formatRange(23n, 12n)` doesn't
+     * trip the BigInt-to-Number TypeError. Other values fall through
+     * the standard ToNumber pipeline.
+     */
+    private static function numericArgToFloat(JsValue $val): float
+    {
+        if ($val instanceof \PhpJs\Value\JsBigInt) {
+            return (float) $val->value;
+        }
+        return TypeConversion::toNumber($val);
     }
 
     private static function formatNumber(JsObject $nf, float $number): string
