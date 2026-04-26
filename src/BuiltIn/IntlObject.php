@@ -2697,6 +2697,21 @@ class IntlObject
     private static function compactTierTableFor(string $locale, string $compactDisplay): array
     {
         $lang = strtolower(strtok($locale, '-_'));
+        $region = '';
+        if (preg_match('/^[a-z]{2,3}(?:-[a-z]{4})?-([a-z]{2}|\d{3})/i', $locale, $rm) === 1) {
+            $region = strtoupper($rm[1]);
+        }
+        // English-India uses the Indian numbering compact (lakh,
+        // crore) for the SHORT compactDisplay; the LONG form keeps
+        // the western thousand/million labels.
+        if ($lang === 'en' && $region === 'IN' && $compactDisplay !== 'long') {
+            return [
+                3 => ['one' => 'K', 'sep' => ''],
+                5 => ['one' => 'L', 'sep' => ''],
+                7 => ['one' => 'Cr', 'sep' => ''],
+                12 => ['one' => 'TCr', 'sep' => ''],
+            ];
+        }
         $nbsp = "\u{00A0}";
         if ($lang === 'de') {
             if ($compactDisplay === 'long') {
