@@ -4419,7 +4419,11 @@ class IntlObject
             if ($startStr === $endStr) {
                 return new JsString($startStr);
             }
-            return new JsString($startStr . " \u{2013} " . $endStr);
+            // Collapse shared prefix/suffix so "Jan 3, 2019 – Jan 5,
+            // 2019" becomes "Jan 3 – 5, 2019" per CLDR's range
+            // pattern when only the day differs.
+            $collapsed = self::collapseDateRange($startStr, $endStr);
+            return new JsString($collapsed);
         }, 2);
         $proto->defineOwnProperty(
             'formatRange',
@@ -4617,6 +4621,83 @@ class IntlObject
      * timestamp. Mirrors HandleDateTimeValue from the spec: undefined
      * is a TypeError, invalid Dates / NaN / Infinity are a RangeError.
      */
+    /**
+     * Collapse a DateTimeFormat formatRange pair by stripping the
+     * shared prefix and suffix between the two formatted strings,
+     * leaving only the differing middle portions joined by " – ".
+     * Walks UTF-8 boundary-by-boundary so multi-byte characters
+     * stay intact.
+     */
+    private static function collapseDateRange(string $start, string $end): string
+    {
+        // Find UTF-8-aware shared prefix.
+        $sLen = strlen($start);
+        $eLen = strlen($end);
+        $prefixEnd = 0;
+        $i = 0;
+        while ($i < $sLen && $i < $eLen) {
+            $sByte = ord($start[$i]);
+            $charLen = $sByte >= 0xF0 ? 4 : ($sByte >= 0xE0 ? 3 : ($sByte >= 0xC0 ? 2 : 1));
+            if ($i + $charLen > $sLen || $i + $charLen > $eLen) {
+                break;
+            }
+            if (substr($start, $i, $charLen) !== substr($end, $i, $charLen)) {
+                break;
+            }
+            $i += $charLen;
+            $prefixEnd = $i;
+        }
+        // Find UTF-8-aware shared suffix.
+        $j = 0;
+        $startTail = $sLen;
+        $endTail = $eLen;
+        while (
+            $startTail - 1 > $prefixEnd
+            && $endTail - 1 > $prefixEnd
+        ) {
+            // Find the start of the LAST UTF-8 char in start.
+            $sChStart = $startTail - 1;
+            while ($sChStart > $prefixEnd && (ord($start[$sChStart]) & 0xC0) === 0x80) {
+                $sChStart--;
+            }
+            $eChStart = $endTail - 1;
+            while ($eChStart > $prefixEnd && (ord($end[$eChStart]) & 0xC0) === 0x80) {
+                $eChStart--;
+            }
+            $sCh = substr($start, $sChStart, $startTail - $sChStart);
+            $eCh = substr($end, $eChStart, $endTail - $eChStart);
+            if ($sCh !== $eCh) {
+                break;
+            }
+            $startTail = $sChStart;
+            $endTail = $eChStart;
+        }
+        $sharedPrefix = substr($start, 0, $prefixEnd);
+        $startDiff = substr($start, $prefixEnd, $startTail - $prefixEnd);
+        $endDiff = substr($end, $prefixEnd, $endTail - $prefixEnd);
+        $sharedSuffix = substr($start, $startTail);
+        // Don't collapse if the differing slice ends mid-token (e.g.
+        // common prefix runs into the digits of a year).
+        $prefixOk = $sharedPrefix === ''
+            || !ctype_digit(substr($sharedPrefix, -1));
+        $suffixOk = $sharedSuffix === ''
+            || !ctype_digit($sharedSuffix[0]);
+        if (!$prefixOk || !$suffixOk) {
+            return $start . " \u{2013} " . $end;
+        }
+        // Only collapse when the format has at least one alphabetic
+        // token somewhere (month name or weekday). Numeric-only
+        // formats like "1/3/2019" stay expanded since CLDR's range
+        // pattern for short-style numeric dates emits both
+        // endpoints in full.
+        $hasAlphaAnywhere = preg_match('/[A-Za-z]/u', $start) === 1
+            || preg_match('/[A-Za-z]/u', $end) === 1;
+        if (!$hasAlphaAnywhere) {
+            return $start . " \u{2013} " . $end;
+        }
+        return $sharedPrefix . $startDiff . " \u{2013} " . $endDiff . $sharedSuffix;
+    }
+
     private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
     {
         $n = TypeConversion::toNumber($val);
