@@ -9076,6 +9076,28 @@ class TemporalObject
         // to ISO via ICU and store the resulting ISO date.
         if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
             $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
+            // Chinese leap-month requested in a year that doesn't have it:
+            // calendarPartsToIso returns null. Constrain to the next month
+            // (M01L → M02, M04L → M05, etc.); reject throws RangeError.
+            if ($isoParts === null && $mcStr !== null && in_array($cal, ['chinese', 'dangi'], true) && preg_match('/^M(\d{2})L$/', $mcStr, $mm)) {
+                if ($overflow === 'reject') {
+                    throw new RangeError("Chinese leap month {$mcStr} does not exist in year {$y}");
+                }
+                $base = (int) $mm[1];
+                // Prefer the next non-leap month (M(NN+1)); if NN is 12, fall
+                // back to the same-numbered non-leap month (M12).
+                foreach ([$base + 1, $base] as $altNum) {
+                    if ($altNum < 1 || $altNum > 12) {
+                        continue;
+                    }
+                    $altMc = 'M' . str_pad((string) $altNum, 2, '0', STR_PAD_LEFT);
+                    $candidate = self::calendarPartsToIso($cal, $y, $altMc, null, 1);
+                    if ($candidate !== null) {
+                        $isoParts = $candidate;
+                        break;
+                    }
+                }
+            }
             if ($isoParts !== null) {
                 return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
             }
@@ -9214,6 +9236,16 @@ class TemporalObject
             // Non-ISO non-gregory: convert calendar fields to ISO via ICU.
             if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
                 $isoParts = self::calendarPartsToIso($cal, $y, $mcStr, $mcStr === null ? $m : null, 1);
+                if ($isoParts === null && $mcStr !== null && in_array($cal, ['chinese', 'dangi'], true) && preg_match('/^M(\d{2})L$/', $mcStr, $mm)) {
+                    if ($overflow === 'reject') {
+                        throw new RangeError("Chinese leap month {$mcStr} does not exist in year {$y}");
+                    }
+                    $nextNum = ((int) $mm[1]) + 1;
+                    if ($nextNum >= 1 && $nextNum <= 12) {
+                        $altMc = 'M' . str_pad((string) $nextNum, 2, '0', STR_PAD_LEFT);
+                        $isoParts = self::calendarPartsToIso($cal, $y, $altMc, null, 1);
+                    }
+                }
                 if ($isoParts !== null) {
                     return self::createPlainYearMonthObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
                 }
@@ -11387,15 +11419,10 @@ class TemporalObject
         } catch (\Throwable) {
             return null;
         }
-        $monthCode = self::calendarMonthToCode($calendar, $calY, $calM);
         $isLeapFromCalendar = self::calendarMonthIsLeap($calendar, $calY, $calM);
         $finalLeap = $isLeapMonth || $isLeapFromCalendar;
-        if ($finalLeap && in_array($calendar, ['chinese', 'dangi'], true)) {
-            if (preg_match('/^M(\d{2})$/', $monthCode, $mm)) {
-                $monthCode = 'M' . $mm[1] . 'L';
-            }
-        }
-        $monthOneBased = self::calendarMonthToOneBased($calendar, $calY, $calM);
+        $monthCode = self::calendarMonthToCode($calendar, $calY, $calM, $finalLeap);
+        $monthOneBased = self::calendarMonthToOneBased($calendar, $calY, $calM, $finalLeap);
         $isLeapMonth = $finalLeap;
         return [
             'year' => $calY,
@@ -11766,13 +11793,18 @@ class TemporalObject
             // EXTENDED_YEAR that holds the actual year. setDate sets YEAR; we
             // need to pre-set EXTENDED_YEAR to the spec year.
             if (in_array($calendar, ['chinese', 'dangi'], true)) {
+                // If the user asked for a leap month, validate that the
+                // year actually has its leap at this position before ICU
+                // silently normalizes the invalid state.
+                if ($isLeapMonth) {
+                    $leapIcu = self::chineseLeapMonthIndex($calendar, $year);
+                    if ($leapIcu !== $icuMonth) {
+                        return null; // caller decides constrain vs reject.
+                    }
+                }
                 $cal->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $year);
                 $cal->set(\IntlCalendar::FIELD_MONTH, $icuMonth);
-                if ($isLeapMonth) {
-                    $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
-                } else {
-                    $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 0);
-                }
+                $cal->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, $isLeapMonth ? 1 : 0);
                 $cal->set(\IntlCalendar::FIELD_DAY_OF_MONTH, $day);
             } else {
                 $cal->setDate($year, $icuMonth, $day);
