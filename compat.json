@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-26T19:19:09+00:00",
-    "updatedAt": "2026-04-26T19:19:09+00:00",
+    "generatedAt": "2026-04-26T19:26:16+00:00",
+    "updatedAt": "2026-04-26T19:26:16+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "060b5a6",
+        "commit": "9df15b2",
         "isDirty": true
     },
     "environment": {
@@ -201,14 +201,14 @@
             "json-modules"
         ],
         "totals": {
-            "pass": 48696,
-            "fail": 475,
+            "pass": 48726,
+            "fail": 493,
             "skip": 517,
             "blocked": 0,
-            "pending": 784,
-            "running": 34,
-            "attempted": 49171,
-            "known": 49688,
+            "pending": 746,
+            "running": 24,
+            "attempted": 49219,
+            "known": 49736,
             "total": 50506,
             "passRate": 99
         },
@@ -231,15 +231,15 @@
                 "name": "built-ins",
                 "status": "running",
                 "pass": 21895,
-                "fail": 230,
+                "fail": 246,
                 "skip": 13,
                 "blocked": 0,
-                "pending": 557,
-                "running": 34,
-                "attempted": 22125,
-                "known": 22138,
+                "pending": 559,
+                "running": 16,
+                "attempted": 22141,
+                "known": 22154,
                 "total": 22729,
-                "passRate": 99
+                "passRate": 98.9
             },
             {
                 "name": "harness",
@@ -285,17 +285,17 @@
             },
             {
                 "name": "staging",
-                "status": "incomplete",
-                "pass": 1277,
-                "fail": 153,
+                "status": "running",
+                "pass": 1307,
+                "fail": 155,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 202,
-                "running": 0,
-                "attempted": 1430,
-                "known": 1430,
+                "pending": 162,
+                "running": 8,
+                "attempted": 1462,
+                "known": 1462,
                 "total": 1632,
-                "passRate": 89.3
+                "passRate": 89.4
             }
         ],
         "groups": [
@@ -1189,15 +1189,15 @@
                 "area": "built-ins",
                 "status": "running",
                 "pass": 20,
-                "fail": 7,
+                "fail": 23,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 398,
-                "running": 34,
-                "attempted": 27,
-                "known": 27,
+                "pending": 400,
+                "running": 16,
+                "attempted": 43,
+                "known": 43,
                 "total": 459,
-                "passRate": 74.1
+                "passRate": 46.5
             },
             {
                 "name": "built-ins/RegExp/prototype",
@@ -2642,17 +2642,17 @@
             {
                 "name": "staging/sm",
                 "area": "staging",
-                "status": "incomplete",
-                "pass": 1136,
-                "fail": 108,
+                "status": "running",
+                "pass": 1166,
+                "fail": 110,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 184,
-                "running": 0,
-                "attempted": 1244,
-                "known": 1244,
+                "pending": 144,
+                "running": 8,
+                "attempted": 1276,
+                "known": 1276,
                 "total": 1428,
-                "passRate": 91.3
+                "passRate": 91.4
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2687,6 +2687,38 @@
         ],
         "blockedChunks": [],
         "slowChunks": [
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 221.445,
+                "filesCount": 8,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Arabic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Armenian.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Avestan.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Balinese.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bamum.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bassa_Vah.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Batak.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Bengali.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/property-escapes/generated",
+                "kind": "normal",
+                "durationSec": 221.256,
+                "filesCount": 8,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Toto.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Tulu_Tigalari.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Ugaritic.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vai.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Vithkuqi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Wancho.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Warang_Citi.js",
+                    "test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Yezidi.js"
+                ]
+            },
             {
                 "group": "language/literals",
                 "kind": "normal",
@@ -2919,32 +2951,6 @@
                     "...",
                     "test262/test/language/comments/multi-line-html-close-extra.js",
                     "test262/test/language/comments/single-line-html-close-without-lt.js"
-                ]
-            },
-            {
-                "group": "language/statements",
-                "kind": "normal",
-                "durationSec": 14.844,
-                "filesCount": 250,
-                "sampleFiles": [
-                    "test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-empty-iter.js",
-                    "test262/test/language/statements/for/dstr/let-ary-ptrn-elem-ary-rest-init.js",
-                    "...",
-                    "test262/test/language/statements/function/13.2-18-1.js",
-                    "test262/test/language/statements/function/13.2-18-s.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 14.587,
-                "filesCount": 125,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/fractions.js",
-                    "test262/test/staging/sm/Date/makeday-year-month-is-infinity.js",
-                    "...",
-                    "test262/test/staging/sm/Iterator/prototype/find/check-fn-after-getting-iterator.js",
-                    "test262/test/staging/sm/Iterator/prototype/find/coerce-result-to-boolean.js"
                 ]
             }
         ]

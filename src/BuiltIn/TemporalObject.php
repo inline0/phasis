@@ -7953,9 +7953,31 @@ class TemporalObject
                     && in_array($cal, $pdEraCals, true)
                 ) {
                     $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
-                        ? (1 - $eraYearNum)
-                        : $eraYearNum;
+                    if ($cal === 'japanese') {
+                        $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                        if ($isoYear === null) {
+                            // Unrecognized era: treat as gregory-style.
+                            $yNum = in_array($eraLower, ['bc', 'bce', 'japanese-inverse'], true)
+                                ? (1 - $eraYearNum)
+                                : $eraYearNum;
+                        } else {
+                            $yNum = (float) $isoYear;
+                        }
+                    } elseif ($cal === 'roc') {
+                        $base = $eraLower === 'roc-inverse' || $eraLower === 'before-roc' ? -1 : 1;
+                        $yNum = $base * $eraYearNum + 1911 * ($base > 0 ? 1 : -1);
+                        // Simpler: roc 1 = 1912; before-roc 1 = 1911.
+                        if ($eraLower === 'roc-inverse' || $eraLower === 'before-roc') {
+                            $yNum = 1912 - $eraYearNum;
+                        } else {
+                            $yNum = 1911 + $eraYearNum;
+                        }
+                    } else {
+                        // gregory
+                        $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                            ? (1 - $eraYearNum)
+                            : $eraYearNum;
+                    }
                 } else {
                     throw new TypeError('missing required property: year');
                 }
@@ -7969,7 +7991,7 @@ class TemporalObject
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
             }
-            if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
+            if (is_float($yNum) && $yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
                 throw new RangeError('reject minus zero as extended year');
             }
             $y = (int) $yNum;
@@ -8288,7 +8310,7 @@ class TemporalObject
             }
             $d = (int) $dNum;
             // Check for -0 year.
-            if (is_float($yNum) && $yNum === 0.0 && (1 / $yNum) < 0) {
+            if (is_float($yNum) && $yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
                 throw new RangeError('reject minus zero as extended year');
             }
             [$y, $m, $d] = self::constrainISODate($y, $m, $d);
@@ -13369,6 +13391,20 @@ class TemporalObject
             ['taisho', 1912, 7,  30, 1912],
             ['meiji',  1868, 9,  8,  1868],
         ];
+    }
+
+    /**
+     * Convert (eraName, eraYear) into an ISO year using the Japanese era table.
+     * Returns null when the era is not recognized.
+     */
+    private static function japaneseEraToIsoYear(string $era, int $eraYear): ?int
+    {
+        foreach (self::japaneseEras() as $row) {
+            if ($row[0] === $era) {
+                return $row[4] + $eraYear - 1;
+            }
+        }
+        return null;
     }
 
     private static function japaneseEraFor(int $y, int $m, int $d): ?array
