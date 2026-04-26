@@ -287,14 +287,16 @@ class IntlObject
         $payload = $m[2];
         $tail = $m[3] ?? '';
         // Walk the payload one segment at a time, dropping keyword
-        // value-runs whose 2-char key isn't allowed.
+        // value-runs whose 2-char key isn't allowed. Attributes
+        // (leading 3-8 char tokens) are spec-defined as having no
+        // semantic effect, so they're dropped entirely from the
+        // resolved locale.
         $tokens = explode('-', $payload);
         $kept = [];
         $i = 0;
         $count = count($tokens);
-        // Leading attributes (length >= 3) are kept verbatim.
         while ($i < $count && strlen($tokens[$i]) >= 3) {
-            $kept[] = $tokens[$i];
+            // Skip attributes (no key, just a value).
             $i++;
         }
         while ($i < $count) {
