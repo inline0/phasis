@@ -4554,12 +4554,30 @@ class TemporalObject
             if ($upper === 'UTC' || $upper === 'GMT') {
                 return $upper;
             }
+            // Reject the legacy 3-letter abbreviations that ICU/Java
+            // accept but IANA doesn't (ACT, AET, BST, etc.). These
+            // would otherwise be interpreted by PHP DateTimeZone as
+            // historical BC entries.
+            static $invalidLegacy = [
+                'ACT', 'AET', 'AGT', 'ART', 'AST', 'BET', 'BST',
+                'CAT', 'CNT', 'CST', 'CTT', 'EAT', 'ECT', 'IET',
+                'IST', 'JST', 'MIT', 'NET', 'NST', 'PLT', 'PNT',
+                'PRT', 'PST', 'SST', 'VST',
+            ];
+            if (in_array($upper, $invalidLegacy, true)) {
+                throw new RangeError("Invalid time zone: {$str}");
+            }
+            // Resolve case-insensitively against the full TZDB list
+            // (including legacy Links like GMT+0, Zulu) BEFORE
+            // calling new DateTimeZone($str), since PHP's parser
+            // would interpret "GMT+0" as the +00:00 offset.
+            $caseMatched = self::canonicalizeIanaTimeZoneCase($str);
+            if ($caseMatched !== $str || self::ianaTimeZoneExists($str)) {
+                return $caseMatched;
+            }
             try {
                 $tz = new \DateTimeZone($str);
                 $name = $tz->getName();
-                // PHP preserves the input case; canonicalize against
-                // the IANA TZDB by walking listIdentifiers when the
-                // returned name doesn't match a known canonical form.
                 return self::canonicalizeIanaTimeZoneCase($name);
             } catch (\Throwable) {
                 throw new RangeError("Invalid time zone: {$str}");
@@ -4579,22 +4597,31 @@ class TemporalObject
         throw new RangeError("Invalid time zone: {$str}");
     }
 
+    private static function ianaTimeZoneExists(string $name): bool
+    {
+        return self::canonicalizeIanaTimeZoneCase($name) !== $name
+            || self::canonicalizeIanaTimeZoneCase(strtolower($name)) !== strtolower($name);
+    }
+
     /**
      * Map a case-insensitive IANA timezone name to its canonical
-     * form (matched against DateTimeZone::listIdentifiers()).
-     * "eTc/gMt+1" → "Etc/GMT+1", "america/new_york" → "America/New_York".
+     * form. Walks `DateTimeZone::listIdentifiers(ALL_WITH_BC)` so
+     * legacy Link names ("GMT+0", "Zulu", "America/Buenos_Aires"
+     * etc.) round-trip with their input casing.
      */
     private static function canonicalizeIanaTimeZoneCase(string $name): string
     {
         static $caseMap = null;
         if ($caseMap === null) {
             $caseMap = [];
-            foreach (\DateTimeZone::listIdentifiers() as $id) {
+            $allConst = defined('DateTimeZone::ALL_WITH_BC')
+                ? \DateTimeZone::ALL_WITH_BC
+                : 4095;
+            foreach (\DateTimeZone::listIdentifiers($allConst) as $id) {
                 $caseMap[strtolower($id)] = $id;
             }
-            // Etc/GMT+N and Etc/GMT-N for offsets are not in
-            // listIdentifiers as raw entries on every PHP build;
-            // walk a known range and add them explicitly.
+            // Etc/GMT±N for offsets aren't always exposed via
+            // listIdentifiers, so add them explicitly.
             for ($n = 1; $n <= 14; $n++) {
                 $plus = "Etc/GMT+{$n}";
                 $minus = "Etc/GMT-{$n}";
