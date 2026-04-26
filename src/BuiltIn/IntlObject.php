@@ -9498,6 +9498,67 @@ class IntlObject
      * by a list separator. A best-effort fallback for locales we
      * don't have CLDR unit data for.
      */
+    /**
+     * Parse an ISO 8601 duration string into a unit-keyed array.
+     * Returns null when the string isn't a well-formed duration.
+     * The fractional-seconds portion (decimal after S) is split into
+     * milliseconds / microseconds / nanoseconds at 3 / 6 / 9 digits.
+     *
+     * @return array<string, int>|null
+     */
+    private static function parseIsoDurationString(string $s): ?array
+    {
+        if (
+            preg_match(
+                '/^([+-])?P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)(?:\.(\d{1,9}))?S)?)?$/',
+                $s,
+                $m,
+            ) !== 1
+        ) {
+            return null;
+        }
+        $sign = ($m[1] ?? '') === '-' ? -1 : 1;
+        $years = (int) ($m[2] !== '' ? $m[2] : 0);
+        $months = (int) ($m[3] !== '' ? $m[3] : 0);
+        $weeks = (int) ($m[4] !== '' ? $m[4] : 0);
+        $days = (int) ($m[5] !== '' ? $m[5] : 0);
+        $hours = (int) ($m[6] !== '' ? $m[6] : 0);
+        $minutes = (int) ($m[7] !== '' ? $m[7] : 0);
+        $seconds = (int) ($m[8] !== '' ? $m[8] : 0);
+        $ms = 0;
+        $us = 0;
+        $ns = 0;
+        $frac = $m[9] ?? '';
+        if ($frac !== '') {
+            $frac = str_pad($frac, 9, '0');
+            $ms = (int) substr($frac, 0, 3);
+            $us = (int) substr($frac, 3, 3);
+            $ns = (int) substr($frac, 6, 3);
+        }
+        return [
+            'years' => $sign * $years,
+            'months' => $sign * $months,
+            'weeks' => $sign * $weeks,
+            'days' => $sign * $days,
+            'hours' => $sign * $hours,
+            'minutes' => $sign * $minutes,
+            'seconds' => $sign * $seconds,
+            'milliseconds' => $sign * $ms,
+            'microseconds' => $sign * $us,
+            'nanoseconds' => $sign * $ns,
+        ];
+    }
+
+    /** Build a JS-side duration object from a parsed ISO record. */
+    private static function durationRecordToObject(array $values): JsObject
+    {
+        $obj = new JsObject();
+        foreach ($values as $key => $n) {
+            $obj->set($key, new JsNumber((float) $n));
+        }
+        return $obj;
+    }
+
     private static function durationFormatToParts(JsObject $df, JsValue $duration): JsArray
     {
         // Validate the input through the same gate as format(): this
@@ -9596,10 +9657,15 @@ class IntlObject
      */
     private static function durationToValues(JsObject $df, JsValue $duration): array
     {
-        // Reuse the validation pass from durationFormatRender by
-        // walking the input directly.
+        // String input: parse as ISO 8601 duration. Reuse the
+        // record-to-object bridge so the rest of this function can
+        // read property values uniformly.
         if ($duration instanceof JsString) {
-            throw new RangeError('Invalid duration string');
+            $parsed = self::parseIsoDurationString($duration->value);
+            if ($parsed === null) {
+                throw new RangeError('Invalid duration string');
+            }
+            $duration = self::durationRecordToObject($parsed);
         }
         if (
             $duration instanceof JsUndefined
@@ -9677,15 +9743,15 @@ class IntlObject
 
     private static function durationFormatRender(JsObject $df, JsValue $duration): string
     {
-        // Spec ToDurationRecord:
-        //   1. If Type(input) is not Object, throw TypeError (or, for
-        //      a string input, parse as Temporal.Duration ISO string —
-        //      we treat anything other than an object as TypeError or
-        //      RangeError per type).
+        // Spec ToDurationRecord: a string input is parsed as an
+        // ISO 8601 duration ("P[nY][nM][nW][nD][T[nH][nM][nS]]");
+        // anything else non-Object throws TypeError.
         if ($duration instanceof JsString) {
-            // ISO duration string parsing isn't implemented; spec
-            // mandates RangeError for malformed strings.
-            throw new RangeError('Invalid duration string');
+            $parsed = self::parseIsoDurationString($duration->value);
+            if ($parsed === null) {
+                throw new RangeError('Invalid duration string');
+            }
+            $duration = self::durationRecordToObject($parsed);
         }
         if (
             $duration instanceof JsUndefined
