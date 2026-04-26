@@ -2269,13 +2269,22 @@ class IntlObject
         // ICU's default is HALFEVEN, but the spec default is halfExpand,
         // so we always explicitly set this.
         $rm = self::extractInternalString($nf, '[[RoundingMode]]', 'halfExpand');
+        // halfCeil / halfFloor depend on sign: at the half-way point,
+        // halfCeil rounds toward +∞ (so positives go up / away from
+        // zero, negatives go up / toward zero), halfFloor rounds
+        // toward -∞.
+        $isNegative = $number < 0 || ($number === 0.0 && self::isNegativeZero($number));
         $icuMode = match ($rm) {
             'ceil' => \NumberFormatter::ROUND_CEILING,
             'floor' => \NumberFormatter::ROUND_FLOOR,
             'trunc' => \NumberFormatter::ROUND_DOWN,
             'expand' => \NumberFormatter::ROUND_UP,
-            'halfCeil' => \NumberFormatter::ROUND_HALFUP,
-            'halfFloor' => \NumberFormatter::ROUND_HALFDOWN,
+            'halfCeil' => $isNegative
+                ? \NumberFormatter::ROUND_HALFDOWN
+                : \NumberFormatter::ROUND_HALFUP,
+            'halfFloor' => $isNegative
+                ? \NumberFormatter::ROUND_HALFUP
+                : \NumberFormatter::ROUND_HALFDOWN,
             'halfTrunc' => \NumberFormatter::ROUND_HALFDOWN,
             'halfEven' => \NumberFormatter::ROUND_HALFEVEN,
             default => \NumberFormatter::ROUND_HALFUP,
