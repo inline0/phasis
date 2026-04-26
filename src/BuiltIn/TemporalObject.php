@@ -8988,9 +8988,20 @@ class TemporalObject
             static $pymLazyDeriv = ['gregory', 'japanese', 'roc'];
             if ($eraYearNum !== null && in_array($cal, $pymLazyDeriv, true)) {
                 $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                $yNum = in_array($eraLower, ['bc', 'bce'], true)
-                    ? (1 - $eraYearNum)
-                    : $eraYearNum;
+                if ($cal === 'japanese') {
+                    $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                    $yNum = $isoYear !== null
+                        ? (float) $isoYear
+                        : (in_array($eraLower, ['japanese-inverse'], true) ? (1 - $eraYearNum) : $eraYearNum);
+                } elseif ($cal === 'roc') {
+                    $yNum = in_array($eraLower, ['roc-inverse', 'before-roc'], true)
+                        ? (1912 - $eraYearNum)
+                        : (1911 + $eraYearNum);
+                } else {
+                    $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                        ? (1 - $eraYearNum)
+                        : $eraYearNum;
+                }
             } else {
                 throw new TypeError('missing required property: year');
             }
@@ -9016,6 +9027,16 @@ class TemporalObject
             if ($mcLeap && !in_array($cal, $pymLazyLunisolar, true)) {
                 throw new RangeError("monthCode '{$mcStr}' leap-month suffix is not valid for calendar '{$cal}'");
             }
+            // Hebrew M05L only exists in leap years.
+            if ($mcLeap && $cal === 'hebrew' && !self::isHebrewLeapYear($y)) {
+                if ($overflow === 'reject') {
+                    throw new RangeError("monthCode '{$mcStr}' is not valid in Hebrew non-leap year {$y}");
+                }
+                // Constrain leaks down to Adar (M06).
+                $mcMonth = 6;
+                $mcLeap = false;
+                $mcStr = 'M06';
+            }
             $m = $mcMonth;
             if ($mVal !== null && $mVal !== $m) {
                 throw new RangeError('month and monthCode disagree');
@@ -9026,9 +9047,11 @@ class TemporalObject
         if ($m < 1) {
             throw new RangeError("month {$m} out of range");
         }
+        // Hebrew leap years allow month=13.
+        $maxMonth = ($cal === 'hebrew' && self::isHebrewLeapYear($y)) ? 13 : 12;
         if ($overflow === 'constrain') {
-            $m = min(12, $m);
-        } elseif ($m > 12) {
+            $m = min($maxMonth, $m);
+        } elseif ($m > $maxMonth) {
             throw new RangeError("month {$m} out of range");
         }
         // Non-ISO non-gregory calendars: convert calendar-native (year, month, day=1)
@@ -9113,9 +9136,20 @@ class TemporalObject
                     && in_array($cal, $pymEraDerivCals, true)
                 ) {
                     $eraLower = $eraStr === null ? '' : strtolower($eraStr);
-                    $yNum = in_array($eraLower, ['bc', 'bce'], true)
-                        ? (1 - $eraYearNum)
-                        : $eraYearNum;
+                    if ($cal === 'japanese') {
+                        $isoYear = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                        $yNum = $isoYear !== null
+                            ? (float) $isoYear
+                            : (in_array($eraLower, ['japanese-inverse'], true) ? (1 - $eraYearNum) : $eraYearNum);
+                    } elseif ($cal === 'roc') {
+                        $yNum = in_array($eraLower, ['roc-inverse', 'before-roc'], true)
+                            ? (1912 - $eraYearNum)
+                            : (1911 + $eraYearNum);
+                    } else {
+                        $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                            ? (1 - $eraYearNum)
+                            : $eraYearNum;
+                    }
                 } else {
                     throw new TypeError('missing required property: year');
                 }
