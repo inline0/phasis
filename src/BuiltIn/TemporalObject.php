@@ -8722,13 +8722,17 @@ class TemporalObject
             // 3. era / eraYear (non-ISO calendars only).
             $eraStr = null;
             $eraYearNum = null;
+            $eraSet = false;
+            $eraYearSet = false;
             if ($cal !== 'iso8601') {
                 $eraVal = $item->get('era');
                 if (!($eraVal instanceof JsUndefined)) {
+                    $eraSet = true;
                     $eraStr = TypeConversion::toString($eraVal);
                 }
                 $eraYearVal = $item->get('eraYear');
                 if (!($eraYearVal instanceof JsUndefined)) {
+                    $eraYearSet = true;
                     $eraYearNum = TypeConversion::toNumber($eraYearVal);
                     if (is_nan($eraYearNum) || !is_finite($eraYearNum)) {
                         throw new RangeError('eraYear must be finite');
@@ -8736,6 +8740,10 @@ class TemporalObject
                     if (floor($eraYearNum) !== $eraYearNum) {
                         throw new RangeError('eraYear must be an integer');
                     }
+                }
+                static $pmdLazyEraCals = ['gregory', 'japanese', 'roc'];
+                if (in_array($cal, $pmdLazyEraCals, true) && $eraSet !== $eraYearSet) {
+                    throw new TypeError('era and eraYear must be provided together');
                 }
             }
 
