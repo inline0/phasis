@@ -7409,35 +7409,43 @@ class TemporalObject
             }
             // hour
             $hourVal = $item->get('hour');
+            $hourInt = 0;
             if (!($hourVal instanceof JsUndefined)) {
                 $hn = TypeConversion::toNumber($hourVal);
                 if (!is_finite($hn)) {
                     throw new RangeError("hour must be finite");
                 }
+                $hourInt = (int) $hn;
             }
             // microsecond
             $microVal = $item->get('microsecond');
+            $microInt = 0;
             if (!($microVal instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($microVal);
                 if (!is_finite($n)) {
                     throw new RangeError("microsecond must be finite");
                 }
+                $microInt = (int) $n;
             }
             // millisecond
             $milliVal = $item->get('millisecond');
+            $milliInt = 0;
             if (!($milliVal instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($milliVal);
                 if (!is_finite($n)) {
                     throw new RangeError("millisecond must be finite");
                 }
+                $milliInt = (int) $n;
             }
             // minute
             $minVal = $item->get('minute');
+            $minInt = 0;
             if (!($minVal instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($minVal);
                 if (!is_finite($n)) {
                     throw new RangeError("minute must be finite");
                 }
+                $minInt = (int) $n;
             }
             // month (with valueOf)
             $monthVal = $item->get('month');
@@ -7456,11 +7464,13 @@ class TemporalObject
             }
             // nanosecond
             $nanoVal = $item->get('nanosecond');
+            $nanoInt = 0;
             if (!($nanoVal instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($nanoVal);
                 if (!is_finite($n)) {
                     throw new RangeError("nanosecond must be finite");
                 }
+                $nanoInt = (int) $n;
             }
             // offset: convert with ToString inline per spec.
             $offsetVal = $item->get('offset');
@@ -7479,11 +7489,13 @@ class TemporalObject
             }
             // second
             $secVal = $item->get('second');
+            $secInt = 0;
             if (!($secVal instanceof JsUndefined)) {
                 $n = TypeConversion::toNumber($secVal);
                 if (!is_finite($n)) {
                     throw new RangeError("second must be finite");
                 }
+                $secInt = (int) $n;
             }
             // timeZone
             $tzVal = $item->get('timeZone');
@@ -7551,13 +7563,7 @@ class TemporalObject
             // return a PlainDate here; offset mismatch raises RangeError.
             if ($hasTz && $offStr !== null) {
                 $timeZone = self::toTemporalTimeZoneIdentifier($tzVal);
-                $h = ($hourVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($hourVal);
-                $minNum = ($minVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($minVal);
-                $sNum = ($secVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($secVal);
-                $msNum = ($milliVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($milliVal);
-                $usNum = ($microVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($microVal);
-                $nsNum = ($nanoVal instanceof JsUndefined) ? 0 : (int) TypeConversion::toNumber($nanoVal);
-                $epochFromWall = self::isoDateTimeToEpochNs($y, $m, $d, $h, $minNum, $sNum, $msNum, $usNum, $nsNum, $timeZone);
+                $epochFromWall = self::isoDateTimeToEpochNs($y, $m, $d, $hourInt, $minInt, $secInt, $milliInt, $microInt, $nanoInt, $timeZone);
                 $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
                 $givenOffsetNs = self::parseOffsetToNs($offStr);
                 if ($givenOffsetNs !== $actualOffsetNs) {
@@ -12442,10 +12448,12 @@ class TemporalObject
         ) {
             $instCal = $this_->get('[[Calendar]]');
             $instCalStr = $instCal instanceof JsString ? $instCal->value : 'iso8601';
-            // PlainMonthDay carries no year, so even an ISO instance
-            // must reject a non-ISO locale calendar. Other types
-            // accept ISO instances on any locale.
-            $isStrict = $this_->has('[[IsPlainMonthDay]]');
+            // PlainMonthDay (no year) and PlainYearMonth (no day) require
+            // the formatter's calendar to match the instance's calendar:
+            // even ISO instances reject a non-ISO locale calendar. Plain
+            // date/datetime accept ISO instances on any locale.
+            $isStrict = $this_->has('[[IsPlainMonthDay]]')
+                || $this_->has('[[IsPlainYearMonth]]');
             if ($instCalStr !== 'iso8601' || $isStrict) {
                 // Resolve the formatter's effective calendar by
                 // accounting for an explicit options.calendar
