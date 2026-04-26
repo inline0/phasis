@@ -4136,10 +4136,13 @@ class TemporalObject
                 return JsNull::instance();
             }
             $found = null;
-            // Cap on how far we walk: the spec range is bounded by
-            // the Instant range (~ ±9.2e18 ns ≈ 290 billion years),
-            // but in practice DST/TZDB records are within ±300y.
-            $maxSec = 9223372036; // ~292 years past epoch in seconds
+            // The Temporal.Instant range is ±8.64e21 ns ≈ ±274,000y.
+            // We walk in 200-year chunks until we find a transition
+            // or run off the end of the Instant range. Practically,
+            // PHP's TZDB only has transitions back to ~1700, but
+            // capping at ±5,000 years ensures the loop terminates
+            // even for zones with no recorded transitions.
+            $maxSec = 5000 * 365 * 86400;
             // For nanosecond-precision input, "next" means strictly
             // later than the input ns; "previous" means strictly
             // earlier. A transition at ts=N is at ns N*1e9, which
@@ -4149,9 +4152,12 @@ class TemporalObject
             //   (when remainder is 0); when remainder > 0 the same
             //   ts is technically less than our ns so it qualifies.
             if ($dir === 'next') {
-                $cur = $epochSec + 1;
+                // Use a hard floor of year 1700 → +∞ since there are
+                // no recorded transitions before that for any zone.
+                $minProbeSec = -8520336000; // ~1700-01-01T00:00:00Z
+                $cur = max($epochSec + 1, $minProbeSec);
                 $chunk = 200 * 365 * 86400;
-                $bound = min($epochSec + $maxSec, PHP_INT_MAX - $chunk);
+                $bound = min(max($epochSec, 0) + $maxSec, PHP_INT_MAX - $chunk);
                 while ($cur < $bound) {
                     $end = min($cur + $chunk, $bound);
                     $transitions = $tzObj->getTransitions($cur, $end);
@@ -4205,6 +4211,15 @@ class TemporalObject
             }
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $foundNs = bcmul((string) $found, '1000000000', 0);
+            // Reject if the found transition lies outside the
+            // Instant range; per spec there's no transition beyond
+            // the representable range.
+            if (
+                bccomp($foundNs, self::NS_MAX, 0) > 0
+                || bccomp($foundNs, self::NS_MIN, 0) < 0
+            ) {
+                return JsNull::instance();
+            }
             return self::createZonedDateTimeObject($foundNs, $tz, $cal);
         }, 1);
 
