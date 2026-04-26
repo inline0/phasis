@@ -3527,12 +3527,27 @@ class IntlObject
         if (!$hasMaxSig && !$hasMaxFrac) {
             return $priority === 'morePrecision' ? $sigStr : $fracStr;
         }
-        $sigFrac = self::countFractionDigits($sigStr);
-        $fracFrac = self::countFractionDigits($fracStr);
-        if ($priority === 'morePrecision') {
-            return $sigFrac >= $fracFrac ? $sigStr : $fracStr;
+        // Spec compares each path's rounding magnitude (the place value of
+        // the last digit kept after rounding, not the trimmed display):
+        //   sigMag = e - (maxSd - 1), where e = floor(log10(|x|))
+        //   fracMag = -maxFd
+        // morePrecision keeps the smaller (more negative) magnitude.
+        $maxSdSlot = $nf->get('[[MaximumSignificantDigits]]');
+        $maxSd = $maxSdSlot instanceof JsNumber ? (int) $maxSdSlot->value : 21;
+        $maxFdSlot = $nf->get('[[MaximumFractionDigits]]');
+        $maxFd = $maxFdSlot instanceof JsNumber ? (int) $maxFdSlot->value : 0;
+        $absVal = abs($number);
+        if ($absVal === 0.0 || !is_finite($absVal)) {
+            $sigMag = 0;
+        } else {
+            $e = (int) floor(log10($absVal));
+            $sigMag = $e - ($maxSd - 1);
         }
-        return $sigFrac <= $fracFrac ? $sigStr : $fracStr;
+        $fracMag = -$maxFd;
+        if ($priority === 'morePrecision') {
+            return $sigMag <= $fracMag ? $sigStr : $fracStr;
+        }
+        return $sigMag <= $fracMag ? $fracStr : $sigStr;
     }
 
     /**
