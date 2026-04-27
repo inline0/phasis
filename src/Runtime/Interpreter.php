@@ -4328,43 +4328,8 @@ class Interpreter
             // user has assigned a different value via `o.caller = 1`,
             // leave it alone — the forbidden-extension test verifies that
             // user-assigned values survive across a call.
-            $isEngineDefaultCaller = static function (?PropertyDescriptor $d) use ($callerFn): bool {
-                if (
-                    $d === null
-                    || !$d->isDataDescriptor()
-                    || ($d->writable ?? false) !== true
-                    || ($d->enumerable ?? true) !== false
-                    || ($d->configurable ?? false) !== true
-                ) {
-                    return false;
-                }
-                $v = $d->value;
-                return $v instanceof JsNull
-                    || ($v instanceof JsFunction && $v === $callerFn);
-            };
-            $isEngineDefaultArguments = static function (?PropertyDescriptor $d): bool {
-                if (
-                    $d === null
-                    || !$d->isDataDescriptor()
-                    || ($d->writable ?? false) !== true
-                    || ($d->enumerable ?? true) !== false
-                    || ($d->configurable ?? false) !== true
-                ) {
-                    return false;
-                }
-                $v = $d->value;
-                // Null is the install-time default; an arguments object
-                // means a previous (recursive) call set it.
-                if ($v instanceof JsNull) {
-                    return true;
-                }
-                if ($v instanceof JsObject) {
-                    return $v->getOwnPropertyDescriptor('[[IsArguments]]') !== null;
-                }
-                return false;
-            };
-            $autoUpdateCaller = $isEngineDefaultCaller($savedCaller);
-            $autoUpdateArguments = $isEngineDefaultArguments($savedArguments);
+            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
+            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
 
             $callerIsStrictMode = $this->strictMode
                 || ($callerFn instanceof JsFunction && $callerFn->isStrict());
@@ -5377,6 +5342,56 @@ class Interpreter
      * binding semantics are not detectable and we can reuse the
      * loop env across iterations.
      */
+    /**
+     * Annex B legacy `function.caller`: detect whether the descriptor
+     * still holds the engine's default shape (data, writable, non-
+     * enumerable, configurable, with null or a recognized prior caller
+     * function value). User-assigned values are left untouched on entry
+     * and exit.
+     */
+    private static function isEngineDefaultCaller(?PropertyDescriptor $d, ?JsFunction $callerFn): bool
+    {
+        if (
+            $d === null
+            || !$d->isDataDescriptor()
+            || ($d->writable ?? false) !== true
+            || ($d->enumerable ?? true) !== false
+            || ($d->configurable ?? false) !== true
+        ) {
+            return false;
+        }
+        $v = $d->value;
+        return $v instanceof JsNull
+            || ($v instanceof JsFunction && $v === $callerFn);
+    }
+
+    /**
+     * Annex B legacy `function.arguments`: detect whether the descriptor
+     * holds the engine's default shape, with either null (install-time)
+     * or a previously recorded arguments object. User-overridden values
+     * survive the call unchanged.
+     */
+    private static function isEngineDefaultArguments(?PropertyDescriptor $d): bool
+    {
+        if (
+            $d === null
+            || !$d->isDataDescriptor()
+            || ($d->writable ?? false) !== true
+            || ($d->enumerable ?? true) !== false
+            || ($d->configurable ?? false) !== true
+        ) {
+            return false;
+        }
+        $v = $d->value;
+        if ($v instanceof JsNull) {
+            return true;
+        }
+        if ($v instanceof JsObject) {
+            return $v->getOwnPropertyDescriptor('[[IsArguments]]') !== null;
+        }
+        return false;
+    }
+
     private function nodeContainsClosure(?Node $node): bool
     {
         if ($node === null) {
