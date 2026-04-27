@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\Bytecode;
 
+use PhpJs\Ast\Expression\ArrayExpression;
 use PhpJs\Ast\Expression\AssignmentExpression;
 use PhpJs\Ast\Expression\BinaryExpression;
 use PhpJs\Ast\Expression\CallExpression;
@@ -11,8 +12,13 @@ use PhpJs\Ast\Expression\ConditionalExpression;
 use PhpJs\Ast\Expression\Identifier;
 use PhpJs\Ast\Expression\Literal;
 use PhpJs\Ast\Expression\MemberExpression;
+use PhpJs\Ast\Expression\NewExpression;
+use PhpJs\Ast\Expression\ObjectExpression;
 use PhpJs\Ast\Expression\PrivateIdentifier;
+use PhpJs\Ast\Expression\Property;
 use PhpJs\Ast\Expression\SpreadElement;
+use PhpJs\Ast\Expression\TemplateElement;
+use PhpJs\Ast\Expression\TemplateLiteral;
 use PhpJs\Ast\Expression\ThisExpression;
 use PhpJs\Ast\Node;
 use PhpJs\Ast\Declaration\FunctionDeclaration;
@@ -787,7 +793,140 @@ final class Compiler
             }
             return;
         }
+        if ($node instanceof ObjectExpression) {
+            $this->compileObjectLiteral($node);
+            return;
+        }
+        if ($node instanceof ArrayExpression) {
+            $this->compileArrayLiteral($node);
+            return;
+        }
+        if ($node instanceof TemplateLiteral) {
+            $this->compileTemplate($node);
+            return;
+        }
+        if ($node instanceof NewExpression) {
+            $this->compileNew($node);
+            return;
+        }
         throw new CompilerBailout('unsupported expression: ' . $node->type());
+    }
+
+    private function compileObjectLiteral(ObjectExpression $node): void
+    {
+        $this->emit(Op::NEW_OBJECT);
+        // Stack: [obj]
+        foreach ($node->properties as $prop) {
+            if ($prop instanceof SpreadElement) {
+                throw new CompilerBailout('spread in object literal');
+            }
+            if (!$prop instanceof Property) {
+                throw new CompilerBailout('object literal: ' . get_class($prop));
+            }
+            if ($prop->kind !== 'init') {
+                throw new CompilerBailout('getter/setter literal');
+            }
+            if ($prop->method) {
+                throw new CompilerBailout('method shorthand');
+            }
+            if ($prop->computed) {
+                // [expr]: val — push key, push val, SET_COMPUTED.
+                $this->compileExpression($prop->key);
+                $this->compileExpression($prop->value);
+                $this->emit(Op::SET_COMPUTED);
+                continue;
+            }
+            // Static name (Identifier or string Literal).
+            if ($prop->key instanceof Identifier) {
+                $name = $prop->key->name;
+            } elseif ($prop->key instanceof Literal) {
+                if (!is_string($prop->key->value) && !is_int($prop->key->value) && !is_float($prop->key->value)) {
+                    throw new CompilerBailout('non-string-or-numeric literal key');
+                }
+                $name = (string) $prop->key->value;
+            } else {
+                throw new CompilerBailout('non-identifier non-literal key');
+            }
+            // `__proto__: value` is the special prototype-set sugar
+            // when shorthand=false and method=false; the tree-walker
+            // handles it via setPrototype rather than defining a
+            // property. Bail to keep the spec semantics correct.
+            if ($name === '__proto__' && !$prop->shorthand && !$prop->method) {
+                throw new CompilerBailout('__proto__ literal');
+            }
+            $this->compileExpression($prop->value);
+            $this->emit(Op::SET_PROP, $this->internName($name));
+        }
+        // Stack: [obj] (unchanged net by SET_PROP / SET_COMPUTED).
+    }
+
+    private function compileArrayLiteral(ArrayExpression $node): void
+    {
+        // Use NEW_ARRAY <count> for dense literals with no holes /
+        // spread. Sparse / spread arrays bail.
+        $count = count($node->elements);
+        $hasHoles = false;
+        $hasSpread = false;
+        foreach ($node->elements as $el) {
+            if ($el === null) {
+                $hasHoles = true;
+            } elseif ($el instanceof SpreadElement) {
+                $hasSpread = true;
+            }
+        }
+        if ($hasHoles || $hasSpread) {
+            throw new CompilerBailout('array literal with hole/spread');
+        }
+        foreach ($node->elements as $el) {
+            $this->compileExpression($el);
+        }
+        $this->emit(Op::NEW_ARRAY, $count);
+    }
+
+    private function compileTemplate(TemplateLiteral $node): void
+    {
+        // Untagged template: alternate quasis and expressions, build a
+        // string by concatenation. ToString happens via ADD's string
+        // path when one operand is a string.
+        $quasis = $node->quasis;
+        $expressions = $node->expressions;
+        $count = count($quasis);
+        if ($count === 0) {
+            $this->emit(Op::LOAD_CONST, $this->internConst(new JsString(''), 's:'));
+            return;
+        }
+        for ($i = 0; $i < $count; $i++) {
+            $part = $quasis[$i];
+            if (!$part instanceof TemplateElement) {
+                throw new CompilerBailout('template element shape');
+            }
+            $cookedRaw = $part->cooked;
+            $idx = $this->internConst(new JsString($cookedRaw), 's:' . $cookedRaw);
+            $this->emit(Op::LOAD_CONST, $idx);
+            if ($i > 0) {
+                // After the first quasi, concatenate with whatever
+                // is already on the stack from the previous expr.
+                $this->emit(Op::ADD);
+            }
+            if ($i < count($expressions)) {
+                $this->compileExpression($expressions[$i]);
+                $this->emit(Op::ADD);
+            }
+        }
+    }
+
+    private function compileNew(NewExpression $node): void
+    {
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof SpreadElement) {
+                throw new CompilerBailout('spread in new');
+            }
+        }
+        $this->compileExpression($node->callee);
+        foreach ($node->arguments as $arg) {
+            $this->compileExpression($arg);
+        }
+        $this->emit(Op::NEW_CALL, count($node->arguments));
     }
 
     private function compileUpdate(UpdateExpression $node): void

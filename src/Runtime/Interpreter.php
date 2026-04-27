@@ -5859,6 +5859,50 @@ class Interpreter
         return $this->getPropertyWithPrimitiveReceiver($boxed, $name, false, null, $obj);
     }
 
+    /**
+     * Helpers the bytecode VM uses to delegate spec-correct branches
+     * back into the tree-walker. Same-instance reuse keeps allocation
+     * cost identical to the AST path.
+     */
+    public function vmNewObject(): JsObject
+    {
+        if ($this->cachedObjectPrototype === null) {
+            if ($this->globalEnv->has('__ObjectPrototype__')) {
+                $p = $this->globalEnv->get('__ObjectPrototype__');
+                if ($p instanceof JsObject) {
+                    $this->cachedObjectPrototype = $p;
+                }
+            }
+        }
+        return new JsObject($this->cachedObjectPrototype);
+    }
+
+    /**
+     * @param list<JsValue> $args
+     */
+    public function vmNewExpression(JsValue $callee, array $args): JsValue
+    {
+        if ($callee instanceof \PhpJs\Value\JsProxy) {
+            return $callee->construct($args, $callee);
+        }
+        if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
+            throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
+        }
+        // Mirror evalNewExpression's setup: build the new object,
+        // pass it as `this`, post-process the return per spec.
+        $proto = $callee->get('prototype');
+        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $newObj->defineOwnProperty(
+            '[[NewTarget]]',
+            \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
+        );
+        $result = $this->callFunction($callee, $newObj, $args);
+        if ($result instanceof JsObject) {
+            return $result;
+        }
+        return $newObj;
+    }
+
     public function vmLookupPrimitiveComputed(JsValue $obj, JsValue $key): JsValue
     {
         $resolved = TypeConversion::toPropertyKey($key);

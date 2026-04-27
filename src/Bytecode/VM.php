@@ -499,6 +499,66 @@ final class VM
                     break;
                 }
 
+                case Op::NEW_OBJECT:
+                    $stack[$sp++] = $this->interp->vmNewObject();
+                    $pc++;
+                    break;
+                case Op::NEW_ARRAY: {
+                    $count = $code[$pc + 1];
+                    $base = $sp - $count;
+                    $items = [];
+                    for ($i = 0; $i < $count; $i++) {
+                        $items[] = $stack[$base + $i];
+                    }
+                    $sp = $base;
+                    $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
+                    $pc += 2;
+                    break;
+                }
+                case Op::SET_PROP: {
+                    // Stack: [obj, val] -> [obj]; effect: obj.name = val.
+                    $val = $stack[--$sp];
+                    $obj = $stack[$sp - 1]; // peek
+                    $name = $names[$code[$pc + 1]];
+                    if ($obj instanceof JsObject) {
+                        $obj->defineOwnDataPropertyFast($name, $val);
+                    }
+                    $pc += 2;
+                    break;
+                }
+                case Op::SET_COMPUTED: {
+                    // Stack: [obj, key, val] -> [obj].
+                    $val = $stack[--$sp];
+                    $key = $stack[--$sp];
+                    $obj = $stack[$sp - 1];
+                    if ($obj instanceof JsObject) {
+                        $resolved = TypeConversion::toPropertyKey($key);
+                        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+                            $obj->setBySymbol($resolved, $val);
+                        } else {
+                            $name = $resolved instanceof JsString
+                                ? $resolved->value
+                                : TypeConversion::toString($resolved);
+                            $obj->defineOwnDataPropertyFast($name, $val);
+                        }
+                    }
+                    $pc++;
+                    break;
+                }
+                case Op::NEW_CALL: {
+                    $argc = $code[$pc + 1];
+                    $base = $sp - $argc;
+                    $args = [];
+                    for ($i = 0; $i < $argc; $i++) {
+                        $args[] = $stack[$base + $i];
+                    }
+                    $callee = $stack[$base - 1];
+                    $sp = $base - 1;
+                    $stack[$sp++] = $this->interp->vmNewExpression($callee, $args);
+                    $pc += 2;
+                    break;
+                }
+
                 case Op::CALL_METHOD: {
                     $argc = $code[$pc + 1];
                     $nameIdx = $code[$pc + 2];
