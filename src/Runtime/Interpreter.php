@@ -110,6 +110,18 @@ class Interpreter
     /** Cached %StringPrototype% lookup; used by string member/method access. */
     private ?JsObject $cachedStringPrototype = null;
 
+    /**
+     * Whether the program currently being executed is provably free
+     * of direct `eval` calls. When true (the common case), the
+     * Identifier resolution cache `Identifier::$resolvedDepth` can be
+     * trusted. A direct eval flips this off because eval-injected
+     * `var` bindings can change which env owns a name, invalidating
+     * depths cached previously. Default true; the first eval call
+     * (or a parse-time scan of the program for `eval` references)
+     * sets it false and prevents further cache reads.
+     */
+    private bool $programIsEvalFree = true;
+
     /** When true, hoistDeclarations skips Annex B block-function hoisting. */
     private bool $skipAnnexBHoisting = false;
 
@@ -281,6 +293,22 @@ class Interpreter
         // Detect strict mode from directive prologue.
         if ($this->hasUseStrictDirective($program->body)) {
             $this->strictMode = true;
+        }
+
+        // Pre-scan: if the program contains any reference to the
+        // identifier `eval` (used as a callee, captured into a
+        // variable, etc.), treat the whole program as eval-tainted.
+        // The Identifier scope-depth cache is only consulted when
+        // this flag stays true; an eval-tainted program could have
+        // var bindings injected mid-execution that move where a
+        // name resolves to. A `with` statement under `programIsEvalFree`
+        // is fine — that path is gated separately by
+        // hasAnyWithObjectInChain at lookup time.
+        if (
+            $this->programIsEvalFree
+            && $this->programReferencesEval($program->body)
+        ) {
+            $this->programIsEvalFree = false;
         }
 
         // Validate strict mode restrictions (reserved words, with, etc.)
@@ -831,10 +859,41 @@ class Interpreter
         // Neither identifier reads nor literals can return the
         // optional-chain sentinel.
         if ($node instanceof Identifier) {
-            if ($node->name === 'undefined') {
+            $name = $node->name;
+            if ($name === 'undefined') {
                 return JsUndefined::instance();
             }
-            return $env->get($node->name, $this->strictMode);
+            // Identifier scope-depth cache: if we have already
+            // resolved this Identifier in a structurally identical
+            // env chain, jump directly to the owning env. Safe only
+            // when no with-env is reachable (with intercepts dynamically)
+            // and the program is provably free of direct eval (which
+            // could reshuffle which env owns a name mid-execution).
+            if (
+                $node->resolvedDepth !== null
+                && $this->programIsEvalFree
+                && !$env->hasAnyWithObjectInChain()
+            ) {
+                $cached = $env->getAtDepth($name, $node->resolvedDepth);
+                if ($cached !== null) {
+                    return $cached;
+                }
+                // Fall through: the cached depth no longer points to
+                // this binding (e.g. a let-shadowed inner block).
+                // Refresh below.
+            }
+            // First or fallback resolution.
+            if (
+                $this->programIsEvalFree
+                && !$env->hasAnyWithObjectInChain()
+            ) {
+                $found = $env->findBindingDepth($name);
+                if ($found !== null) {
+                    $node->resolvedDepth = $found[1];
+                    return $found[0];
+                }
+            }
+            return $env->get($name, $this->strictMode);
         }
         if ($node instanceof Literal) {
             return $node->cached ?? $this->evalLiteral($node);
@@ -5691,6 +5750,50 @@ class Interpreter
         }
         if ($v instanceof JsObject) {
             return $v->getOwnPropertyDescriptor('[[IsArguments]]') !== null;
+        }
+        return false;
+    }
+
+    /**
+     * Whether the program body references the identifier `eval`
+     * anywhere — used as a callee, captured into a variable, passed
+     * as an argument, etc. Conservatively treats any such reference
+     * as a potential direct-eval site, disabling the Identifier
+     * scope-depth cache. `with` statements are not considered here:
+     * they are gated separately via hasAnyWithObjectInChain at
+     * lookup time, which is O(1) thanks to the precomputed flag.
+     *
+     * @param Node[] $statements
+     */
+    private function programReferencesEval(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof Node && $this->subtreeReferencesEval($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function subtreeReferencesEval(Node $node): bool
+    {
+        if ($node instanceof Identifier && $node->name === 'eval') {
+            return true;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->subtreeReferencesEval($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->subtreeReferencesEval($item)) {
+                        return true;
+                    }
+                }
+            }
         }
         return false;
     }

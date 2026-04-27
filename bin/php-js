@@ -79,6 +79,7 @@ function astToArray(object $node): array
             || $name === 'bodyHasClosure'
             || $name === 'hoistsLexicalCache'
             || $name === 'hoistsVarOrFuncCache'
+            || $name === 'resolvedDepth'
         ) {
             continue;
         }

@@ -353,6 +353,89 @@ class Environment
      * CallExpression this-value (WithBaseObject) without re-running
      * the HasProperty trap.
      */
+    /**
+     * Walk $depth `parent` hops and return the binding directly from
+     * that env's bindings array. Used by the Identifier scope-depth
+     * cache to skip the full chain walk and the slow-path branch
+     * tower in `get()` once an identifier has been resolved once.
+     *
+     * Caller is responsible for the safety preconditions: no
+     * with-environment in the chain, the program is provably free of
+     * direct eval, and $depth was filled in by a previous successful
+     * resolution. Returns null when something has shifted (e.g. a
+     * later var hoist created a binding at a different depth) so the
+     * caller can fall back to the slow path and refresh the cache.
+     */
+    public function getAtDepth(string $name, int $depth): ?JsValue
+    {
+        $cur = $this;
+        while ($depth > 0 && $cur !== null) {
+            $cur = $cur->parent;
+            $depth--;
+        }
+        if ($cur === null) {
+            return null;
+        }
+        if (
+            isset($cur->bindings[$name])
+            && !isset($cur->tdz[$name])
+            && $cur->withObject === null
+        ) {
+            return $cur->bindings[$name];
+        }
+        return null;
+    }
+
+    /**
+     * Walk the chain to find the env that owns $name and return both
+     * the value and the number of hops it took. Used by the Identifier
+     * scope-depth cache: the first lookup populates the cache; the
+     * caller then uses `getAtDepth` for all subsequent reads.
+     *
+     * Returns [value, depth] on success, or null if unresolvable / the
+     * binding sits behind a feature the depth cache cannot represent
+     * (with-object trap, import binding, linked global object).
+     *
+     * @return array{0: JsValue, 1: int}|null
+     */
+    public function findBindingDepth(string $name): ?array
+    {
+        $cur = $this;
+        $depth = 0;
+        while ($cur !== null) {
+            // with-objects intercept dynamically; never cache through them.
+            if ($cur->withObject !== null) {
+                return null;
+            }
+            if (isset($cur->bindings[$name])) {
+                if (isset($cur->tdz[$name])) {
+                    return null;
+                }
+                // Linked-object globals are dynamic via globalThis writes;
+                // do not memoise their depth.
+                if (
+                    $cur->linkedObject !== null
+                    && $cur->parent === null
+                    && !isset($cur->constants[$name])
+                    && !isset($cur->lexical[$name])
+                    && $cur->linkedObject->hasOwnProperty($name)
+                ) {
+                    return null;
+                }
+                return [$cur->bindings[$name], $depth];
+            }
+            if (
+                $cur->importBindings !== []
+                && array_key_exists($name, $cur->importBindings)
+            ) {
+                return null;
+            }
+            $cur = $cur->parent;
+            $depth++;
+        }
+        return null;
+    }
+
     public function get(
         string $name,
         bool $strict = false,
