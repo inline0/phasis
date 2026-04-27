@@ -166,17 +166,18 @@ class ShadowRealmConstructor
                     );
                 }
 
-                // Per spec: coerce specifier and exportName via ToString
-                // before attempting the import. Tests rely on this so they
-                // can observe the .valueOf/.toString hooks running in the
-                // expected order — we have to fire those side effects even
-                // when we can't resolve the module.
-                \PhpJs\Spec\TypeConversion::toString(
-                    $args[0] ?? \PhpJs\Value\JsUndefined::instance(),
-                );
-                \PhpJs\Spec\TypeConversion::toString(
-                    $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
-                );
+                // Per spec ShadowRealm.prototype.importValue:
+                //   1. Let specifierString be ? ToString(specifier).
+                //   2. If Type(exportName) is not String, throw TypeError.
+                // The exportName check is a Type test (not a coercion),
+                // so a non-string with a throwing toString must throw
+                // TypeError without invoking the toString hook.
+                $specifier = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $exportName = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                \PhpJs\Spec\TypeConversion::toString($specifier);
+                if (!$exportName instanceof JsString) {
+                    throw new TypeError('ShadowRealm.prototype.importValue exportName must be a string');
+                }
 
                 // importValue requires ES modules which we don't support.
                 // Throw TypeError per spec behavior when import fails.
