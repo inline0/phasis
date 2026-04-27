@@ -9740,6 +9740,12 @@ class TemporalObject
                 if ($iso !== null) {
                     return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
                 }
+                // No valid reference ISO landed in calendar — invalid M-d
+                // for this calendar (e.g. hebrew M01L, which is not a real
+                // leap month).
+                throw new RangeError(
+                    "Invalid PlainMonthDay for calendar '{$cal}'",
+                );
             }
             return self::createPlainMonthDayObject($m, $d, 1972, $cal);
         }
@@ -9958,6 +9964,9 @@ class TemporalObject
                 if ($iso !== null) {
                     return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
                 }
+                throw new RangeError(
+                    "Invalid PlainMonthDay for calendar '{$cal}'",
+                );
             }
             return self::createPlainMonthDayObject($m, $d, 1972, $cal);
         }
@@ -12123,33 +12132,42 @@ class TemporalObject
         // only every few years).
         $bestIso = null;
         $maxLookback = in_array($cal, ['chinese', 'dangi', 'hebrew'], true) ? 30 : 8;
-        for ($delta = 1; $delta >= -$maxLookback; $delta--) {
-            $tryYear = $approxYear + $delta;
-            $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $day);
-            if ($iso === null) {
-                continue;
-            }
-            // Roundtrip: ISO -> calendar should yield matching M-d.
-            $back = self::isoToCalendarParts($cal, $iso['year'], $iso['month'], $iso['day']);
-            if ($back === null) {
-                continue;
-            }
-            if ($monthCode !== null && $back['monthCode'] !== $monthCode) {
-                continue;
-            }
-            if ($monthNum !== null && $back['month'] !== $monthNum) {
-                continue;
-            }
-            if ($back['day'] !== $day) {
-                continue;
-            }
-            if ($iso['year'] <= 1972) {
-                if ($bestIso === null
-                    || $iso['year'] > $bestIso['year']
-                    || ($iso['year'] === $bestIso['year'] && $iso['month'] > $bestIso['month'])
-                ) {
-                    $bestIso = $iso;
+        // When the requested day is more than the calendar month allows
+        // (e.g. day 31 in islamic-civil M02 which has 29), step the day
+        // down one at a time until the roundtrip lines up — that mirrors
+        // the spec's "constrain" semantics for PlainMonthDay.from.
+        for ($tryDay = $day; $tryDay >= 1; $tryDay--) {
+            for ($delta = 1; $delta >= -$maxLookback; $delta--) {
+                $tryYear = $approxYear + $delta;
+                $iso = self::calendarPartsToIso($cal, $tryYear, $monthCode, $monthNum, $tryDay);
+                if ($iso === null) {
+                    continue;
                 }
+                // Roundtrip: ISO -> calendar should yield matching M-d.
+                $back = self::isoToCalendarParts($cal, $iso['year'], $iso['month'], $iso['day']);
+                if ($back === null) {
+                    continue;
+                }
+                if ($monthCode !== null && $back['monthCode'] !== $monthCode) {
+                    continue;
+                }
+                if ($monthNum !== null && $back['month'] !== $monthNum) {
+                    continue;
+                }
+                if ($back['day'] !== $tryDay) {
+                    continue;
+                }
+                if ($iso['year'] <= 1972) {
+                    if ($bestIso === null
+                        || $iso['year'] > $bestIso['year']
+                        || ($iso['year'] === $bestIso['year'] && $iso['month'] > $bestIso['month'])
+                    ) {
+                        $bestIso = $iso;
+                    }
+                }
+            }
+            if ($bestIso !== null) {
+                return $bestIso;
             }
         }
         return $bestIso;
