@@ -735,6 +735,11 @@ class Interpreter
     {
         $result = JsUndefined::instance();
         foreach ($statements as $stmt) {
+            // Same ExpressionStatement fast path as executeBody.
+            if ($stmt instanceof ExpressionStatement) {
+                $result = $this->evaluate($stmt->expression, $env);
+                continue;
+            }
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
                 return $this->handleAbrupt($completion);
