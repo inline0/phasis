@@ -244,9 +244,11 @@ class AtomicsObject
             $currentBig = ($current instanceof \PhpJs\Value\JsBigInt)
                 ? $current
                 : TypeConversion::toBigInt($current);
-
-            // Compare as BigInt values.
-            if ($currentBig->value === $expectedBig->value) {
+            // Truncate expected to the typed array's element width so a
+            // BigInt like -5n on a BigUint64Array matches the stored
+            // 2^64-5 (the array's element coercion).
+            $expectedTruncBig = self::truncateBigIntForElementType($typeName, $expectedBig->value);
+            if ($currentBig->value === $expectedTruncBig) {
                 $ta->setIndex($index, $replacementBig);
             }
         } else {
@@ -254,12 +256,66 @@ class AtomicsObject
             $replacementNum = TypeConversion::toIntegerOrInfinity($replacement);
             $currentNum = (int) TypeConversion::toNumber($current);
 
-            if ($currentNum === $expectedNum) {
+            // Per spec, the comparison happens after both expected and
+            // current are coerced to the typed array's raw bytes. Truncate
+            // expected to the same range the storage layer would use so
+            // values like 12345 in an Int8Array (stored as 57) still pass
+            // the equality check when expectedValue passes 12345.
+            $expectedTruncated = self::truncateForElementType($typeName, $expectedNum);
+            if ($currentNum === $expectedTruncated) {
                 $ta->setIndex($index, new JsNumber($replacementNum));
             }
         }
 
         return $current;
+    }
+
+    private static function truncateBigIntForElementType(string $typeName, string $value): string
+    {
+        // Use bcmath for arbitrary precision modulo + sign-extension.
+        if ($typeName === 'BigInt64Array') {
+            $mod = bcmod($value, '18446744073709551616'); // 2^64
+            if (bccomp($mod, '0', 0) < 0) {
+                $mod = bcadd($mod, '18446744073709551616', 0);
+            }
+            // Sign-extend to int64 range.
+            if (bccomp($mod, '9223372036854775808', 0) >= 0) {
+                $mod = bcsub($mod, '18446744073709551616', 0);
+            }
+            return $mod;
+        }
+        if ($typeName === 'BigUint64Array') {
+            $mod = bcmod($value, '18446744073709551616');
+            if (bccomp($mod, '0', 0) < 0) {
+                $mod = bcadd($mod, '18446744073709551616', 0);
+            }
+            return $mod;
+        }
+        return $value;
+    }
+
+    private static function truncateForElementType(string $typeName, int $value): int
+    {
+        switch ($typeName) {
+            case 'Int8Array':
+                $b = $value & 0xFF;
+                return $b >= 0x80 ? $b - 0x100 : $b;
+            case 'Uint8Array':
+            case 'Uint8ClampedArray':
+                return $value & 0xFF;
+            case 'Int16Array':
+                $b = $value & 0xFFFF;
+                return $b >= 0x8000 ? $b - 0x10000 : $b;
+            case 'Uint16Array':
+                return $value & 0xFFFF;
+            case 'Int32Array':
+                $b = $value & 0xFFFFFFFF;
+                return $b >= 0x80000000 ? $b - 0x100000000 : $b;
+            case 'Uint32Array':
+                return $value & 0xFFFFFFFF;
+            default:
+                return $value;
+        }
     }
 
     /**
