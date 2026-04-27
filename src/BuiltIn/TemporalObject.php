@@ -4600,53 +4600,7 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
-            // Step 1: Add years and months to the calendar date (with overflow/constrain).
-            $y = $parts['year'] + self::getDurationField($dur, 'years');
-            $m = $parts['month'] + self::getDurationField($dur, 'months');
-            // Normalize month overflow.
-            while ($m > 12) {
-                $m -= 12;
-                $y++;
-            }
-            while ($m < 1) {
-                $m += 12;
-                $y--;
-            }
-            $maxDay = self::isoDaysInMonth($y, $m);
-            if ($overflow === 'reject' && $parts['day'] > $maxDay) {
-                throw new RangeError("Day {$parts['day']} is out of range for month {$m} in year {$y}");
-            }
-            $dd = min($parts['day'], $maxDay);
-            // Step 2: Get epoch ns for the date/time result after year/month addition.
-            $intermediateNs = self::isoDateTimeToEpochNs(
-                $y,
-                $m,
-                $dd,
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
-                $tz,
-            );
-            // Step 3: Add weeks, days, and sub-day components as nanoseconds.
-            $subDayNs = self::durationToTotalNs(
-                self::createDurationObject(
-                    0,
-                    0,
-                    self::getDurationField($dur, 'weeks'),
-                    self::getDurationField($dur, 'days'),
-                    self::getDurationField($dur, 'hours'),
-                    self::getDurationField($dur, 'minutes'),
-                    self::getDurationField($dur, 'seconds'),
-                    self::getDurationField($dur, 'milliseconds'),
-                    self::getDurationField($dur, 'microseconds'),
-                    self::getDurationField($dur, 'nanoseconds'),
-                )
-            );
-            $result = bcadd($intermediateNs, $subDayNs, 0);
+            $result = self::zdtAddOrSubtract($ns, $tz, $dur, 1, $overflow);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -4659,52 +4613,7 @@ class TemporalObject
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
-            $parts = self::epochNsToISOParts($ns, $tz);
-            // Step 1: Subtract years and months from the calendar date.
-            $y = $parts['year'] - self::getDurationField($dur, 'years');
-            $m = $parts['month'] - self::getDurationField($dur, 'months');
-            while ($m > 12) {
-                $m -= 12;
-                $y++;
-            }
-            while ($m < 1) {
-                $m += 12;
-                $y--;
-            }
-            $maxDay = self::isoDaysInMonth($y, $m);
-            if ($overflow === 'reject' && $parts['day'] > $maxDay) {
-                throw new RangeError("Day {$parts['day']} is out of range for month {$m} in year {$y}");
-            }
-            $dd = min($parts['day'], $maxDay);
-            // Step 2: Get epoch ns for the date/time after year/month subtraction.
-            $intermediateNs = self::isoDateTimeToEpochNs(
-                $y,
-                $m,
-                $dd,
-                $parts['hour'],
-                $parts['minute'],
-                $parts['second'],
-                $parts['millisecond'],
-                $parts['microsecond'],
-                $parts['nanosecond'],
-                $tz,
-            );
-            // Step 3: Subtract weeks, days, and sub-day components as nanoseconds.
-            $subDayNs = self::durationToTotalNs(
-                self::createDurationObject(
-                    0,
-                    0,
-                    self::getDurationField($dur, 'weeks'),
-                    self::getDurationField($dur, 'days'),
-                    self::getDurationField($dur, 'hours'),
-                    self::getDurationField($dur, 'minutes'),
-                    self::getDurationField($dur, 'seconds'),
-                    self::getDurationField($dur, 'milliseconds'),
-                    self::getDurationField($dur, 'microseconds'),
-                    self::getDurationField($dur, 'nanoseconds'),
-                )
-            );
-            $result = bcsub($intermediateNs, $subDayNs, 0);
+            $result = self::zdtAddOrSubtract($ns, $tz, $dur, -1, $overflow);
             self::validateInstantRange($result);
             return self::createZonedDateTimeObject($result, $tz, $cal);
         }, 1);
@@ -5417,6 +5326,87 @@ class TemporalObject
      * months, weeks, and days are calendar arithmetic on the wall time;
      * hours and below are added as nanoseconds afterward.
      */
+    /**
+     * ZDT.add / ZDT.subtract shared core. Applies years/months/weeks/days
+     * as wall-time calendar arithmetic (with disambiguation), then
+     * applies time fields (hours and below) as nanosecond offsets.
+     * Without this, days collapse to 24-hour blocks and DST gaps /
+     * date-line transitions (Pacific/Apia 2011) skew by one day.
+     */
+    private static function zdtAddOrSubtract(string $epochNs, string $tz, JsValue $dur, int $sign, string $overflow): string
+    {
+        $parts = self::epochNsToISOParts($epochNs, $tz);
+        $y = $parts['year'] + $sign * self::getDurationField($dur, 'years');
+        $m = $parts['month'] + $sign * self::getDurationField($dur, 'months');
+        while ($m > 12) {
+            $m -= 12;
+            $y++;
+        }
+        while ($m < 1) {
+            $m += 12;
+            $y--;
+        }
+        $weeksDays = $sign * (
+            self::getDurationField($dur, 'weeks') * 7
+            + self::getDurationField($dur, 'days')
+        );
+        $dd = $parts['day'] + $weeksDays;
+        // Constrain day to the new month's max BEFORE the day-shift loop
+        // so years/months arithmetic from a 31-day month into a 30-day
+        // month doesn't carry the extra day forward.
+        $maxDay = self::isoDaysInMonth($y, $m);
+        if ($parts['day'] > $maxDay) {
+            if ($overflow === 'reject') {
+                throw new RangeError("Day {$parts['day']} is out of range for month {$m} in year {$y}");
+            }
+            $dd = $maxDay + $weeksDays;
+        }
+        // Normalize day overflow into the calendar.
+        while (true) {
+            if ($dd < 1) {
+                $m--;
+                if ($m < 1) {
+                    $m = 12;
+                    $y--;
+                }
+                $dd += self::isoDaysInMonth($y, $m);
+                continue;
+            }
+            $dim = self::isoDaysInMonth($y, $m);
+            if ($dd > $dim) {
+                $dd -= $dim;
+                $m++;
+                if ($m > 12) {
+                    $m = 1;
+                    $y++;
+                }
+                continue;
+            }
+            break;
+        }
+        $intermediateNs = self::isoDateTimeToEpochNs(
+            $y, $m, $dd,
+            $parts['hour'], $parts['minute'], $parts['second'],
+            $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+            $tz,
+        );
+        $subDayNs = self::durationToTotalNs(
+            self::createDurationObject(
+                0, 0, 0, 0,
+                self::getDurationField($dur, 'hours'),
+                self::getDurationField($dur, 'minutes'),
+                self::getDurationField($dur, 'seconds'),
+                self::getDurationField($dur, 'milliseconds'),
+                self::getDurationField($dur, 'microseconds'),
+                self::getDurationField($dur, 'nanoseconds'),
+            )
+        );
+        if ($sign > 0) {
+            return bcadd($intermediateNs, $subDayNs, 0);
+        }
+        return bcsub($intermediateNs, $subDayNs, 0);
+    }
+
     private static function addDurationToZdt(JsObject $zdt, JsValue $dur, int $sign, string $overflow = 'constrain'): string
     {
         $ns = self::getSlotString($zdt, '[[EpochNanoseconds]]');
