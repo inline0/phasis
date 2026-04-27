@@ -8224,7 +8224,7 @@ class TemporalObject
             }
             $y = (int) $yNum;
             if ($hasMonthCode) {
-                $mcMonth = self::parseMonthCode($mcStr);
+                $mcMonth = self::parseMonthCode($mcStr, $cal);
                 if ($hasMonth) {
                     if (!is_finite($mNum)) {
                         throw new RangeError('month must be finite');
@@ -8254,6 +8254,17 @@ class TemporalObject
                 $isoParts = self::calendarPartsToIso($cal, $y, $hasMonthCode ? $mcStr : null, $hasMonthCode ? null : $m, $d);
                 if ($isoParts !== null) {
                     return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
+                }
+                // calendarPartsToIso couldn't form a valid date in this
+                // calendar (e.g. invalid leap monthCode like M01L for
+                // hebrew). Reject under "reject", and also reject for
+                // "constrain" since silently falling back to ISO would
+                // produce a date that doesn't even exist in the requested
+                // calendar.
+                if ($overflow === 'reject' || $hasMonthCode) {
+                    throw new RangeError(
+                        "Invalid date components for calendar '{$cal}'",
+                    );
                 }
             }
             if ($overflow === 'constrain') {
