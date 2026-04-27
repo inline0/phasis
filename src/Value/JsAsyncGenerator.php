@@ -384,6 +384,11 @@ class JsAsyncGenerator extends JsObject
         if ($this->requestQueue !== []) {
             $this->queuePendingDrain = true;
         }
+        if ($suspended instanceof AwaitSuspension) {
+            $request = new JsPromise();
+            $this->handleAwaitSuspension($suspended->value, $request);
+            return $request;
+        }
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
@@ -555,6 +560,11 @@ class JsAsyncGenerator extends JsObject
         if ($this->requestQueue !== []) {
             $this->queuePendingDrain = true;
         }
+        if ($suspended instanceof AwaitSuspension) {
+            $request = new JsPromise();
+            $this->handleAwaitSuspension($suspended->value, $request);
+            return $request;
+        }
         if ($suspended instanceof YieldDelegateResult) {
             return JsPromise::resolved($suspended->result);
         }
@@ -684,6 +694,10 @@ class JsAsyncGenerator extends JsObject
             }
 
             // Fiber suspended.
+            if ($suspended instanceof AwaitSuspension) {
+                $this->handleAwaitSuspension($suspended->value, $queued);
+                continue;
+            }
             if ($suspended instanceof YieldDelegateResult) {
                 $queued->resolve($suspended->result);
             } else {

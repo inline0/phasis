@@ -6168,7 +6168,7 @@ class Interpreter
             if ($receivedType === 'normal') {
                 $innerResult = $this->callFunction($nextMethod, $iterator, [$receivedValue]);
                 if ($isAsyncGen) {
-                    $innerResult = $this->awaitValue($innerResult);
+                    $innerResult = $this->awaitInGenerator($innerResult);
                 }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
@@ -6195,7 +6195,7 @@ class Interpreter
                 }
                 $innerResult = $this->callFunction($throwMethod, $iterator, [$receivedValue]);
                 if ($isAsyncGen) {
-                    $innerResult = $this->awaitValue($innerResult);
+                    $innerResult = $this->awaitInGenerator($innerResult);
                 }
                 if (!$innerResult instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
@@ -6215,7 +6215,7 @@ class Interpreter
                 } else {
                     $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
                     if ($isAsyncGen) {
-                        $innerResult = $this->awaitValue($innerResult);
+                        $innerResult = $this->awaitInGenerator($innerResult);
                     }
                 }
                 if (!$innerResult instanceof JsObject) {
@@ -8876,27 +8876,50 @@ class Interpreter
                 return \PhpJs\Value\JsPromise::rejected($jsErr);
             }
         }
-        // Unwrap: if value is a Promise/thenable, await it.
-        try {
-            $unwrapped = $this->awaitValue($value);
-        } catch (\Throwable $e) {
-            $jsErr = $e instanceof \PhpJs\Exceptions\JsThrowable
-                ? $e->jsValue : $this->phpExceptionToJsValue($e);
-            // Per spec: close iterator when value promise rejects and !done.
-            // Suppress close errors; the original rejection takes priority.
-            if (!$done && $syncIterator !== null) {
-                try {
-                    $this->iteratorClose($syncIterator);
-                } catch (\Throwable) {
-                    // Suppressed per spec.
-                }
-            }
-            return \PhpJs\Value\JsPromise::rejected($jsErr);
+        // Per spec 27.1.4.4: AsyncFromSyncIteratorContinuation builds valueWrapper
+        // via PromiseResolve, attaches an onFulfilled reaction that constructs
+        // the iter result, then resolves a separate promise capability. The
+        // layered scheduling adds one microtask tick for valueWrapper to settle
+        // and another for the outer capability to resolve from onFulfilled —
+        // collapsing it loses the tick that for-await Await observers depend on.
+        $outer = new \PhpJs\Value\JsPromise();
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            $valueWrapper = $value;
+        } else {
+            $valueWrapper = new \PhpJs\Value\JsPromise();
+            $valueWrapper->resolve($value);
         }
-        $result = new JsObject();
-        $result->set('value', $unwrapped);
-        $result->set('done', new JsBoolean($done));
-        return \PhpJs\Value\JsPromise::resolved($result);
+        $iteratorRef = $syncIterator;
+        $onFulfilled = JsFunction::fromCallable(
+            '',
+            static function (JsValue $this_, array $args) use ($outer, $done): JsValue {
+                $v = $args[0] ?? JsUndefined::instance();
+                $iter = new JsObject();
+                $iter->set('value', $v);
+                $iter->set('done', new JsBoolean($done));
+                $outer->resolve($iter);
+                return JsUndefined::instance();
+            },
+            1
+        );
+        $closeOnReject = !$done && $iteratorRef !== null;
+        $onRejected = JsFunction::fromCallable(
+            '',
+            function (JsValue $this_, array $args) use ($outer, $iteratorRef, $closeOnReject): JsValue {
+                $reason = $args[0] ?? JsUndefined::instance();
+                if ($closeOnReject && $iteratorRef !== null) {
+                    try {
+                        $this->iteratorClose($iteratorRef);
+                    } catch (\Throwable) {
+                    }
+                }
+                $outer->reject($reason);
+                return JsUndefined::instance();
+            },
+            1
+        );
+        $valueWrapper->then([$onFulfilled, $onRejected]);
+        return $outer;
     }
 
     // iteratorClose is defined below at line ~9621.
@@ -8910,7 +8933,32 @@ class Interpreter
     private function forAwaitUnwrap(JsValue $value, Environment $env): JsValue
     {
         $fiber = \Fiber::getCurrent();
-        if ($fiber !== null && $env->getEnclosingFunctionKind() === 'async') {
+        $kind = $env->getEnclosingFunctionKind();
+        if ($fiber !== null && ($kind === 'async' || $kind === 'async-generator')) {
+            try {
+                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $this->throwJsValue($e->jsValue);
+            }
+            if ($resumed instanceof JsValue) {
+                return $resumed;
+            }
+            return JsUndefined::instance();
+        }
+        return $this->awaitValue($value);
+    }
+
+    /**
+     * Await a value from inside an async-generator yield* loop. When running
+     * on a fiber, suspend via AwaitSuspension so the generator's driver can
+     * subscribe to the awaited value (which may be a pending promise that only
+     * resolves once the surrounding microtask drain finishes). Falls back to
+     * synchronous awaitValue when no fiber is active (e.g. unit tests).
+     */
+    private function awaitInGenerator(JsValue $value): JsValue
+    {
+        $fiber = \Fiber::getCurrent();
+        if ($fiber !== null) {
             try {
                 $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
