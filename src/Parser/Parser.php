@@ -3101,7 +3101,22 @@ class Parser
             // now we see it's a field, the key we parsed IS the field key.
             $value = null;
             if ($this->eat(TokenType::Equal)) {
-                $value = $this->parseAssignmentExpression();
+                // Per spec: a class FieldDefinition initializer is parsed in a
+                // function-like context that does NOT inherit the surrounding
+                // [Yield] / [Await] grammar parameters, even when the
+                // enclosing context is a generator or async function. So
+                // `class { x = await }` inside an async function reads
+                // `await` as an Identifier reference, not as AwaitExpression.
+                $prevYield = $this->inGenerator;
+                $prevAsync = $this->inAsync;
+                $this->inGenerator = false;
+                $this->inAsync = false;
+                try {
+                    $value = $this->parseAssignmentExpression();
+                } finally {
+                    $this->inGenerator = $prevYield;
+                    $this->inAsync = $prevAsync;
+                }
                 // Per §15.7.1 early errors: a class field initializer
                 // cannot contain `SuperCall` or reference `arguments`
                 // (except inside a nested function/class boundary).
