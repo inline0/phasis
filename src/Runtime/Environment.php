@@ -460,6 +460,46 @@ class Environment
             return;
         }
 
+        // Inlined parent walk for the common closure-write case:
+        // current scope is "simple" and missing the binding; an outer
+        // simple scope owns it. Mirrors the same loop in get().
+        if (
+            $this->withObject === null
+            && $this->importBindings === []
+            && !array_key_exists($name, $this->bindings)
+            && $this->linkedObject === null
+        ) {
+            $cursor = $this->parent;
+            while ($cursor !== null) {
+                if (
+                    $cursor->withObject === null
+                    && isset($cursor->bindings[$name])
+                    && !isset($cursor->tdz[$name])
+                    && !isset($cursor->constants[$name])
+                    && ($cursor->linkedObject === null || $cursor->parent !== null)
+                ) {
+                    $cursor->bindings[$name] = $value;
+                    return;
+                }
+                if (
+                    $cursor->withObject !== null
+                    || $cursor->importBindings !== []
+                    || array_key_exists($name, $cursor->bindings)
+                    || $cursor->linkedObject !== null
+                ) {
+                    // Delegate to the slow path on the env that broke
+                    // the loop; preserves spec behaviour for with /
+                    // import / linked-global / TDZ collisions.
+                    $cursor->set($name, $value, $strict);
+                    return;
+                }
+                $cursor = $cursor->parent;
+            }
+            // Walked to the root with no binding found anywhere. Fall
+            // through to the original tail (sloppy creates implicit
+            // global; strict throws).
+        }
+
         // "with" object environment record: delegate to the binding object.
         if ($this->withObject !== null) {
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
