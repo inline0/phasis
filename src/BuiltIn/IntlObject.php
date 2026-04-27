@@ -5118,6 +5118,22 @@ class IntlObject
         if (!$hasAlphaAnywhere) {
             return $start . " \u{2013} " . $end;
         }
+        // V8 / CLDR's dateTimeFormat repeats AM/PM (and other alphabetic
+        // dayPeriod tokens) on both sides of a range when the diffs are
+        // distinct full date / time fields. Detect that case and emit
+        // the suffix on both sides instead of collapsing.
+        if (
+            $sharedSuffix !== ''
+            && preg_match('/^\s+[A-Za-z]/u', $sharedSuffix) === 1
+            && (
+                str_contains($startDiff, ', ')
+                || str_contains($endDiff, ', ')
+                || preg_match('/\d:\d/', $startDiff) === 1
+                || preg_match('/\d:\d/', $endDiff) === 1
+            )
+        ) {
+            return $sharedPrefix . $startDiff . $sharedSuffix . " \u{2013} " . $endDiff . $sharedSuffix;
+        }
         return $sharedPrefix . $startDiff . " \u{2013} " . $endDiff . $sharedSuffix;
     }
 
