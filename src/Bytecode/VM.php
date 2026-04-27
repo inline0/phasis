@@ -474,7 +474,7 @@ final class VM
                     break;
 
                 // ---- Calls / return -------------------------------------
-                case Op::CALL: {
+                case Op::CALL:
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
                     $args = [];
@@ -495,13 +495,12 @@ final class VM
                     );
                     $pc += 2;
                     break;
-                }
 
                 case Op::NEW_OBJECT:
                     $stack[$sp++] = $this->interp->vmNewObject();
                     $pc++;
                     break;
-                case Op::NEW_ARRAY: {
+                case Op::NEW_ARRAY:
                     $count = $code[$pc + 1];
                     $base = $sp - $count;
                     $items = [];
@@ -512,8 +511,7 @@ final class VM
                     $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
                     $pc += 2;
                     break;
-                }
-                case Op::SET_PROP: {
+                case Op::SET_PROP:
                     // Stack: [obj, val] -> [obj]; effect: obj.name = val.
                     $val = $stack[--$sp];
                     $obj = $stack[$sp - 1]; // peek
@@ -523,8 +521,7 @@ final class VM
                     }
                     $pc += 2;
                     break;
-                }
-                case Op::SET_COMPUTED: {
+                case Op::SET_COMPUTED:
                     // Stack: [obj, key, val] -> [obj].
                     $val = $stack[--$sp];
                     $key = $stack[--$sp];
@@ -542,8 +539,7 @@ final class VM
                     }
                     $pc++;
                     break;
-                }
-                case Op::NEW_CALL: {
+                case Op::NEW_CALL:
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
                     $args = [];
@@ -555,9 +551,8 @@ final class VM
                     $stack[$sp++] = $this->interp->vmNewExpression($callee, $args);
                     $pc += 2;
                     break;
-                }
 
-                case Op::CALL_METHOD: {
+                case Op::CALL_METHOD:
                     // Stack: [..., obj, method, arg0, ..., argN-1]
                     // The method was already loaded (LOAD_MEMBER) so
                     // any TypeError for a null/undefined receiver
@@ -591,23 +586,20 @@ final class VM
                     );
                     $pc += 2;
                     break;
-                }
 
-                case Op::LOAD_MEMBER: {
+                case Op::LOAD_MEMBER:
                     $obj = $stack[--$sp];
                     $name = $names[$code[$pc + 1]];
                     $stack[$sp++] = $this->lookupMember($obj, $name);
                     $pc += 2;
                     break;
-                }
-                case Op::LOAD_COMPUTED: {
+                case Op::LOAD_COMPUTED:
                     $key = $stack[--$sp];
                     $obj = $stack[--$sp];
                     $stack[$sp++] = $this->lookupComputed($obj, $key);
                     $pc++;
                     break;
-                }
-                case Op::STORE_MEMBER: {
+                case Op::STORE_MEMBER:
                     $val = $stack[--$sp];
                     $obj = $stack[--$sp];
                     $name = $names[$code[$pc + 1]];
@@ -615,8 +607,7 @@ final class VM
                     $stack[$sp++] = $val;
                     $pc += 2;
                     break;
-                }
-                case Op::STORE_COMPUTED: {
+                case Op::STORE_COMPUTED:
                     $val = $stack[--$sp];
                     $key = $stack[--$sp];
                     $obj = $stack[--$sp];
@@ -624,16 +615,14 @@ final class VM
                     $stack[$sp++] = $val;
                     $pc++;
                     break;
-                }
 
-                case Op::MAKE_FUNCTION: {
+                case Op::MAKE_FUNCTION:
                     $stack[$sp++] = $this->interp->vmMakeFunction(
                         $nestedFns[$code[$pc + 1]],
                         $env,
                     );
                     $pc += 2;
                     break;
-                }
 
                 case Op::THROW:
                     $val = $stack[--$sp];

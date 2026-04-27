@@ -236,8 +236,10 @@ final class Compiler
         if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
             throw new CompilerBailout('try/catch'); // Phase later
         }
-        if ($node instanceof \PhpJs\Ast\Expression\YieldExpression
-            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression) {
+        if (
+            $node instanceof \PhpJs\Ast\Expression\YieldExpression
+            || $node instanceof \PhpJs\Ast\Expression\AwaitExpression
+        ) {
             throw new CompilerBailout('yield/await');
         }
         // Don't recurse into nested function/arrow/class bodies —
