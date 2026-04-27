@@ -37,6 +37,39 @@ class RegExpPrototype
     private static ?JsValue $intrinsicExec = null;
 
     /**
+     * Annex B legacy state (input, lastMatch, etc.) shared between the
+     * RegExp constructor's static accessors and exec(). Engine.php
+     * installs the accessors that read these slots; a successful match
+     * here writes them back via recordLegacyMatch.
+     */
+    public static string $legacyInput = '';
+    public static string $legacyLastMatch = '';
+    public static string $legacyLeftContext = '';
+    public static string $legacyRightContext = '';
+    public static string $legacyLastParen = '';
+    /** @var list<string> */
+    public static array $legacyGroups = [];
+
+    /**
+     * @param list<string> $groups
+     */
+    public static function recordLegacyMatch(
+        string $input,
+        string $lastMatch,
+        string $leftContext,
+        string $rightContext,
+        string $lastParen,
+        array $groups,
+    ): void {
+        self::$legacyInput = $input;
+        self::$legacyLastMatch = $lastMatch;
+        self::$legacyLeftContext = $leftContext;
+        self::$legacyRightContext = $rightContext;
+        self::$legacyLastParen = $lastParen;
+        self::$legacyGroups = $groups;
+    }
+
+    /**
      * Clear the cached %RegExpStringIteratorPrototype% so fresh realms get a
      * prototype whose [[Prototype]] points at the realm's own %IteratorPrototype%.
      */
@@ -724,6 +757,30 @@ class RegExpPrototype
                         true,
                     ));
                 }
+
+                // Annex B legacy: record state for RegExp.lastMatch / $1..$9 etc.
+                $matchByteEnd = $matches[0][1] + strlen((string) $matches[0][0]);
+                $leftCtxBytes = substr($str, 0, $matches[0][1]);
+                $rightCtxBytes = (string) substr($str, $matchByteEnd);
+                $groupStrings = [];
+                $lastNonEmpty = '';
+                foreach ($matches as $key => $match) {
+                    if (is_int($key) && $key > 0) {
+                        $g = ($match[1] === -1 || $match[0] === null) ? '' : (string) $match[0];
+                        $groupStrings[] = $g;
+                        if ($g !== '') {
+                            $lastNonEmpty = $g;
+                        }
+                    }
+                }
+                self::recordLegacyMatch(
+                    $str,
+                    (string) $matches[0][0],
+                    $leftCtxBytes,
+                    $rightCtxBytes,
+                    $lastNonEmpty,
+                    $groupStrings,
+                );
 
                 return $result;
             }

@@ -957,40 +957,41 @@ class Engine
      */
     private function installLegacyRegExpStatics(JsFunction $ctor): void
     {
-        $state = [
-            'input' => '',
-            'lastMatch' => '',
-            'lastParen' => '',
-            'leftContext' => '',
-            'rightContext' => '',
-            'groups' => [],
+        $stateKeyMap = [
+            'input' => 'legacyInput',
+            'lastMatch' => 'legacyLastMatch',
+            'lastParen' => 'legacyLastParen',
+            'leftContext' => 'legacyLeftContext',
+            'rightContext' => 'legacyRightContext',
         ];
 
-        $makeGetter = function (string $stateKey) use ($ctor, &$state): JsFunction {
+        $makeGetter = function (string $stateKey) use ($ctor, $stateKeyMap): JsFunction {
             return JsFunction::fromCallable(
                 'get ' . $stateKey,
-                function (JsValue $this_) use ($ctor, $stateKey, &$state): JsValue {
+                function (JsValue $this_) use ($ctor, $stateKey, $stateKeyMap): JsValue {
                     if ($this_ !== $ctor) {
                         throw new \PhpJs\Exceptions\TypeError(
                             'Method get RegExp.' . $stateKey . ' called on incompatible receiver',
                         );
                     }
-                    return new JsString($state[$stateKey]);
+                    $field = $stateKeyMap[$stateKey];
+                    return new JsString(\PhpJs\BuiltIn\RegExpPrototype::$$field);
                 },
                 0,
             );
         };
 
-        $makeSetter = function (string $stateKey) use ($ctor, &$state): JsFunction {
+        $makeSetter = function (string $stateKey) use ($ctor, $stateKeyMap): JsFunction {
             return JsFunction::fromCallable(
                 'set ' . $stateKey,
-                function (JsValue $this_, array $args) use ($ctor, $stateKey, &$state): JsValue {
+                function (JsValue $this_, array $args) use ($ctor, $stateKey, $stateKeyMap): JsValue {
                     if ($this_ !== $ctor) {
                         throw new \PhpJs\Exceptions\TypeError(
                             'Method set RegExp.' . $stateKey . ' called on incompatible receiver',
                         );
                     }
-                    $state[$stateKey] = isset($args[0])
+                    $field = $stateKeyMap[$stateKey];
+                    \PhpJs\BuiltIn\RegExpPrototype::$$field = isset($args[0])
                         ? TypeConversion::toString($args[0])
                         : '';
                     return JsUndefined::instance();
@@ -1031,13 +1032,13 @@ class Engine
             $idx = $i;
             $getter = JsFunction::fromCallable(
                 'get $' . $i,
-                function (JsValue $this_) use ($ctor, $idx, &$state): JsValue {
+                function (JsValue $this_) use ($ctor, $idx): JsValue {
                     if ($this_ !== $ctor) {
                         throw new \PhpJs\Exceptions\TypeError(
                             'Method get RegExp.$' . $idx . ' called on incompatible receiver',
                         );
                     }
-                    return new JsString($state['groups'][$idx - 1] ?? '');
+                    return new JsString(\PhpJs\BuiltIn\RegExpPrototype::$legacyGroups[$idx - 1] ?? '');
                 },
                 0,
             );
