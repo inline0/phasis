@@ -1539,7 +1539,7 @@ class Parser
      * invalid shorthand reserved-word identifiers, e.g. `({ class } = x)`
      * must throw SyntaxError because `class` is not a valid BindingIdentifier.
      */
-    private static function validateAssignmentTargetObjectShorthand(ObjectExpression $obj): void
+    private function validateAssignmentTargetObjectShorthand(ObjectExpression $obj): void
     {
         foreach ($obj->properties as $prop) {
             if (
@@ -1550,6 +1550,23 @@ class Parser
             ) {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     "Unexpected reserved word '{$prop->key->name}' as shorthand property",
+                    $prop->key->location,
+                );
+            }
+            // In strict mode, `eval` and `arguments` are not valid
+            // BindingIdentifiers (per §13.1.1 / §13.15.1). When the
+            // surrounding object literal is refined into an
+            // AssignmentPattern, the shorthand property's value-side becomes
+            // a BindingIdentifier and the strict-mode rejection applies.
+            if (
+                $this->strictMode
+                && $prop instanceof Property
+                && $prop->shorthand
+                && $prop->key instanceof Identifier
+                && ($prop->key->name === 'eval' || $prop->key->name === 'arguments')
+            ) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    "Unexpected '{$prop->key->name}' as binding identifier in strict mode",
                     $prop->key->location,
                 );
             }
@@ -4239,7 +4256,7 @@ class Parser
             // For destructuring assignment (LHS is an object/array literal),
             // validate that shorthand properties cannot use reserved words.
             if ($op->value === '=' && $left instanceof ObjectExpression) {
-                self::validateAssignmentTargetObjectShorthand($left);
+                $this->validateAssignmentTargetObjectShorthand($left);
             }
             return new AssignmentExpression($left->location, $op->value, $left, $right, $leftParenthesized);
         }
@@ -7124,17 +7141,11 @@ class Parser
                     new \PhpJs\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
                 );
             }
-            // 'eval' and 'arguments' are restricted as IdentifierReference
-            // in strict mode (per §13.1.1).
-            if (
-                $this->strictMode
-                && ($key->name === 'eval' || $key->name === 'arguments')
-            ) {
-                throw new ParseError(
-                    "Unexpected '{$key->name}' as binding identifier in strict mode",
-                    new \PhpJs\Lexer\Token(TokenType::Identifier, $key->name, $key->location),
-                );
-            }
+            // 'eval' and 'arguments' as shorthand here are IdentifierReferences
+            // — valid in strict mode. They become BindingIdentifiers only if
+            // the surrounding ObjectExpression is later refined into an
+            // AssignmentPattern, in which case
+            // validateAssignmentTargetObjectShorthand throws.
             // `await` cannot be IdentifierReference inside static blocks,
             // async functions, or module top-level.
             if (
