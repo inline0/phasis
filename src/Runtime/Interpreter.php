@@ -755,7 +755,10 @@ class Interpreter
                 $anyNonEmpty = true;
             }
         }
-        return new Completion(CompletionType::Normal, $result, empty: !$anyNonEmpty);
+        if (!$anyNonEmpty) {
+            return Completion::normalEmpty();
+        }
+        return new Completion(CompletionType::Normal, $result, empty: false);
     }
 
     private function executeStatement(Node $node, Environment $env): Completion
@@ -785,10 +788,7 @@ class Interpreter
             $node instanceof ContinueStatement => Completion::continue($node->label),
             $node instanceof LabeledStatement => $this->execLabeledStatement($node, $env),
             $node instanceof WithStatement => $this->execWithStatement($node, $env),
-            $node instanceof EmptyStatement => new Completion(
-                CompletionType::Normal,
-                JsUndefined::instance(), empty: true,
-            ),
+            $node instanceof EmptyStatement => Completion::normalEmpty(),
             $node instanceof DebuggerStatement => Completion::normal(JsUndefined::instance()),
             $node instanceof ImportDeclaration => Completion::normal(JsUndefined::instance()),
             $node instanceof ExportDeclaration => $this->execExportDeclaration($node, $env),
@@ -7632,7 +7632,7 @@ class Interpreter
             }
         }
         // Per spec §14.3.2.1: VariableStatement → NormalCompletion(empty).
-        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+        return Completion::normalEmpty();
     }
 
     /**
