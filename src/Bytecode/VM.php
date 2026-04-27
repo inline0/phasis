@@ -85,15 +85,14 @@ final class VM
             $obj->set($name, $value, $this->interp->isStrictMode());
             return;
         }
-        // Primitive base: boxing semantics — use the tree-walker
-        // assignment path indirectly via toObject.
-        $wrapper = TypeConversion::toObject($obj);
-        if ($wrapper instanceof JsObject) {
-            $success = $wrapper->internalSet($name, $value, $obj);
-            if (!$success && $this->interp->isStrictMode()) {
-                throw new TypeError("Cannot assign to read only property '{$name}'");
-            }
-        }
+        // Primitive base: spec PutValue calls [[Set]] on the boxed
+        // wrapper with the original primitive as the receiver. The
+        // wrapper's [[Set]] walks the prototype chain looking for a
+        // setter; with no setter, OrdinarySet returns false because
+        // the receiver is not an Object that can host a new property.
+        // Strict mode then throws TypeError. Defer to the
+        // Interpreter helper that owns this branch in the tree-walker.
+        $this->interp->vmPrimitiveSet($obj, $name, $value);
     }
 
     private function writeComputed(JsValue $obj, JsValue $key, JsValue $value): void
@@ -108,12 +107,10 @@ final class VM
                 $obj->internalSetBySymbol($resolved, $value, $obj);
                 return;
             }
-            // Symbol-keyed write on a primitive: spec-correct path
-            // throws or silently fails; mirror toObject + strict check.
-            $wrapper = TypeConversion::toObject($obj);
-            if ($wrapper instanceof JsObject) {
-                $wrapper->internalSetBySymbol($resolved, $value, $obj);
-            }
+            // Symbol-keyed write on a primitive needs the same
+            // walk-the-chain dance as the string-keyed primitive
+            // case; defer to the tree-walker helper.
+            $this->interp->vmPrimitiveSetSymbol($obj, $resolved, $value);
             return;
         }
         $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);

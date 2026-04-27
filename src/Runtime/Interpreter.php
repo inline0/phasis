@@ -5905,6 +5905,90 @@ class Interpreter
     }
 
     /**
+     * VM helper: spec-correct [[Set]] for a primitive receiver. The
+     * tree-walker handles this inside Reference::setValue by walking
+     * the wrapper's prototype chain manually (since JsObject::
+     * internalSet requires a JsObject receiver). Replicate the same
+     * walk here so the VM's STORE_MEMBER on a Symbol/Number/Boolean
+     * primitive surfaces the spec-mandated TypeError in strict mode.
+     */
+    public function vmPrimitiveSet(JsValue $obj, string $name, JsValue $value): void
+    {
+        $strict = $this->strictMode;
+        $wrapper = TypeConversion::toObject($obj);
+        if (!$wrapper instanceof JsObject) {
+            return;
+        }
+        $cursor = $wrapper;
+        $handled = false;
+        while ($cursor !== null) {
+            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+                $handled = $cursor->internalSet($name, $value, $wrapper);
+                break;
+            }
+            $desc = $cursor->getOwnPropertyDescriptor($name);
+            if ($desc !== null) {
+                if ($desc->set !== null) {
+                    $desc->set->call($obj, [$value]);
+                    $handled = true;
+                } elseif ($desc->get !== null) {
+                    $handled = false; // accessor without setter
+                } else {
+                    // Data property on prototype: would need to create
+                    // a new own property on the receiver; primitives
+                    // can't host own properties, so this is a no-op
+                    // (sloppy) / TypeError (strict).
+                    $handled = false;
+                }
+                break;
+            }
+            $cursor = $cursor->getPrototype();
+        }
+        if (!$handled && $strict) {
+            throw new TypeError(
+                "Cannot assign to read only property '{$name}' of a primitive"
+            );
+        }
+    }
+
+    /**
+     * Symbol-keyed primitive [[Set]] for the VM (same shape as
+     * vmPrimitiveSet but for Symbol keys).
+     */
+    public function vmPrimitiveSetSymbol(JsValue $obj, JsSymbol $sym, JsValue $value): void
+    {
+        $strict = $this->strictMode;
+        $wrapper = TypeConversion::toObject($obj);
+        if (!$wrapper instanceof JsObject) {
+            return;
+        }
+        $cursor = $wrapper;
+        $handled = false;
+        while ($cursor !== null) {
+            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+                $handled = $cursor->internalSetBySymbol($sym, $value, $wrapper);
+                break;
+            }
+            $desc = $cursor->getSymbolPropertyDescriptor($sym);
+            if ($desc !== null) {
+                if ($desc->set !== null) {
+                    $desc->set->call($obj, [$value]);
+                    $handled = true;
+                } else {
+                    $handled = false;
+                }
+                break;
+            }
+            $cursor = $cursor->getPrototype();
+        }
+        if (!$handled && $strict) {
+            throw new TypeError(
+                'Cannot assign to read only symbol property of a primitive'
+            );
+        }
+    }
+
+    /**
      * Helpers the bytecode VM uses to delegate spec-correct branches
      * back into the tree-walker. Same-instance reuse keeps allocation
      * cost identical to the AST path.
