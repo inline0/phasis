@@ -1804,7 +1804,27 @@ class Interpreter
             && !$env->hasAnyWithObjectInChain()
         ) {
             $name = $node->left->name;
-            $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            // Reuse the Identifier scope-depth cache for writes too:
+            // when programIsEvalFree, the depth previously memoised
+            // by an Identifier read points at the same env we want
+            // to write to. Skip the chain walk in resolveBindingEnvironment.
+            if (
+                $this->programIsEvalFree
+                && $node->left->resolvedDepth !== null
+            ) {
+                $bindingEnv = $env->envAtDepth($node->left->resolvedDepth);
+                if (
+                    $bindingEnv === null
+                    || (!$bindingEnv->hasOwnBinding($name)
+                        && !($bindingEnv->getLinkedObject() !== null
+                             && $bindingEnv->getParent() === null
+                             && $bindingEnv->getLinkedObject()->hasOwnProperty($name)))
+                ) {
+                    $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+                }
+            } else {
+                $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            }
             if ($bindingEnv !== null) {
                 if (
                     $node->right instanceof ClassExpression
@@ -1855,7 +1875,23 @@ class Interpreter
             && !$env->hasAnyWithObjectInChain()
         ) {
             $name = $node->left->name;
-            $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            if (
+                $this->programIsEvalFree
+                && $node->left->resolvedDepth !== null
+            ) {
+                $bindingEnv = $env->envAtDepth($node->left->resolvedDepth);
+                if (
+                    $bindingEnv === null
+                    || (!$bindingEnv->hasOwnBinding($name)
+                        && !($bindingEnv->getLinkedObject() !== null
+                             && $bindingEnv->getParent() === null
+                             && $bindingEnv->getLinkedObject()->hasOwnProperty($name)))
+                ) {
+                    $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+                }
+            } else {
+                $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            }
             if ($bindingEnv !== null) {
                 $leftVal = $bindingEnv->get($name, $this->strictMode);
                 $right = $this->evaluate($node->right, $env);

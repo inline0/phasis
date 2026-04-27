@@ -354,6 +354,23 @@ class Environment
      * the HasProperty trap.
      */
     /**
+     * Walk $depth `parent` hops and return that env directly. Used
+     * by the Identifier scope-depth cache for the assignment side:
+     * the caller writes via `$envAtDepth->set` (or directly into
+     * bindings) once the depth has been memoised on the Identifier
+     * AST node. Same safety preconditions as getAtDepth.
+     */
+    public function envAtDepth(int $depth): ?Environment
+    {
+        $cur = $this;
+        while ($depth > 0 && $cur !== null) {
+            $cur = $cur->parent;
+            $depth--;
+        }
+        return $cur;
+    }
+
+    /**
      * Walk $depth `parent` hops and return the binding directly from
      * that env's bindings array. Used by the Identifier scope-depth
      * cache to skip the full chain walk and the slow-path branch
