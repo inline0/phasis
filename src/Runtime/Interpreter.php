@@ -4527,8 +4527,9 @@ class Interpreter
                 }
             }
 
-            // Bind parameters
-            $this->bindParameters($params, $args, $fnEnv);
+            // Bind parameters (pass the cached hasParamExpressions to skip
+            // the re-walk inside bindParameters).
+            $this->bindParameters($params, $args, $fnEnv, $hasDefaultParams);
 
             // Set up mapped arguments aliasing per spec 10.4.4.7:
             // In sloppy mode with simple parameters, arguments[i] and the
@@ -5249,12 +5250,14 @@ class Interpreter
         }
     }
 
-    private function bindParameters(array $params, array $args, Environment $env): void
+    private function bindParameters(array $params, array $args, Environment $env, ?bool $hasParamExpressions = null): void
     {
         // Per spec §10.2.1: when there are parameter default expressions,
         // all parameter names are initially in TDZ. Each is initialized in order,
         // so a default like `x = x` sees `x` as TDZ and throws ReferenceError.
-        if ($this->hasParameterExpressions($params)) {
+        // The caller in the hot path passes the cached result so we avoid
+        // re-walking the param list here.
+        if ($hasParamExpressions ?? $this->hasParameterExpressions($params)) {
             foreach ($params as $param) {
                 $target = $param instanceof RestElement
                     ? $param->argument
@@ -5265,8 +5268,16 @@ class Interpreter
             }
         }
 
-        for ($i = 0; $i < count($params); $i++) {
+        $paramCount = count($params);
+        for ($i = 0; $i < $paramCount; $i++) {
             $param = $params[$i];
+            // Fast path: simple Identifier param. The vast majority of
+            // params are plain `(x, y, z)` and the bindPattern dispatch
+            // is wasted work for them.
+            if ($param instanceof Identifier) {
+                $env->defineVar($param->name, $args[$i] ?? JsUndefined::instance());
+                continue;
+            }
             $value = $args[$i] ?? JsUndefined::instance();
 
             if ($param instanceof RestElement) {
