@@ -1021,10 +1021,12 @@ class StringPrototype
             // Per spec step 7: ToString(separator) must be called before
             // checking if lim is 0. This ensures side effects from the
             // coercion are observable even when the result is unused.
+            // The spec requires the conversion happens exactly once, so cache
+            // the result for the non-regex branch below.
             $isRegExp = $separator instanceof JsObject && $separator->has('source');
+            $separatorString = null;
             if (!$isRegExp) {
-                // Trigger ToString(separator) which may throw.
-                TypeConversion::toString($separator);
+                $separatorString = TypeConversion::toString($separator);
             }
 
             // If lim is 0, return an empty array.
@@ -1124,7 +1126,7 @@ class StringPrototype
                 return JsArray::fromArray($result);
             }
 
-            $sep = TypeConversion::toString($separator);
+            $sep = $separatorString ?? TypeConversion::toString($separator);
 
             if ($sep === '') {
                 // Split into individual characters.
