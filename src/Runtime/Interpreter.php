@@ -6065,53 +6065,74 @@ class Interpreter
     private function evalAwaitExpression(AwaitExpression $node, Environment $env): JsValue
     {
         $value = $this->evaluate($node->argument, $env);
+        return $this->resolveAwaitedValue($value);
+    }
 
-        // If awaiting a JsPromise, extract its state. Top-level await and
-        // awaits in our synchronous interpreter don't suspend execution, so
-        // drain pending microtasks to let chained .then handlers settle the
-        // awaited promise before we inspect it.
-        if ($value instanceof \PhpJs\Value\JsPromise) {
-            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
-                \PhpJs\Value\JsPromise::drainMicrotasks();
+    /**
+     * Drive an awaited value through PromiseResolve semantics: drain
+     * microtasks for pending promises, follow resolution chains, and
+     * invoke thenable.then so a promise that resolves to a thenable
+     * gets its then() callback fired before the await returns.
+     *
+     * Top-level await and awaits in our synchronous interpreter don't
+     * actually suspend the interpreter, so we need to settle the chain
+     * synchronously while preserving spec-observable side effects.
+     */
+    private function resolveAwaitedValue(JsValue $value): JsValue
+    {
+        $iterations = 0;
+        while ($iterations++ < 32) {
+            if ($value instanceof \PhpJs\Value\JsPromise) {
+                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                }
+                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                    $this->throwJsValue($value->getResolvedValue());
+                }
+                $next = $value->getResolvedValue();
+                if ($next === $value) {
+                    return $next;
+                }
+                $value = $next;
+                continue;
             }
-            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                $this->throwJsValue($value->getResolvedValue());
-            }
-            return $value->getResolvedValue();
-        }
 
-        // If awaiting a thenable (object with .then method), resolve it.
-        if ($value instanceof JsObject) {
-            $thenMethod = $value->get('then');
-            if ($thenMethod instanceof JsFunction) {
-                $resolved = JsUndefined::instance();
-                $rejected = null;
-                $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
-                    $resolved = $args[0] ?? JsUndefined::instance();
-                    return JsUndefined::instance();
-                };
-                $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
-                    $rejected = $args[0] ?? JsUndefined::instance();
-                    return JsUndefined::instance();
-                };
-                // CreateResolvingFunctions: anonymous built-ins per spec.
-                $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
-                $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
-                try {
-                    $thenMethod->call($value, [$resolveFn, $rejectFn]);
-                } catch (\Throwable $e) {
-                    if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
-                        $this->throwJsValue($e->jsValue);
+            if ($value instanceof JsObject) {
+                $thenMethod = $value->get('then');
+                if ($thenMethod instanceof JsFunction) {
+                    $resolved = JsUndefined::instance();
+                    $rejected = null;
+                    $resolveHandler = function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                        $resolved = $args[0] ?? JsUndefined::instance();
+                        return JsUndefined::instance();
+                    };
+                    $rejectHandler = function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                        $rejected = $args[0] ?? JsUndefined::instance();
+                        return JsUndefined::instance();
+                    };
+                    $resolveFn = JsFunction::fromCallable('', $resolveHandler, 1);
+                    $rejectFn = JsFunction::fromCallable('', $rejectHandler, 1);
+                    try {
+                        $thenMethod->call($value, [$resolveFn, $rejectFn]);
+                    } catch (\Throwable $e) {
+                        if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                            $this->throwJsValue($e->jsValue);
+                        }
+                        throw $e;
                     }
-                    throw $e;
+                    if ($rejected !== null) {
+                        $this->throwJsValue($rejected);
+                    }
+                    if ($resolved === $value) {
+                        return $resolved;
+                    }
+                    $value = $resolved;
+                    continue;
                 }
-                if ($rejected !== null) {
-                    $this->throwJsValue($rejected);
-                }
-                return $resolved;
             }
-        }
 
+            return $value;
+        }
         return $value;
     }
 
