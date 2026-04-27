@@ -1988,6 +1988,17 @@ class ArrayConstructor
 
                 $iterMethodCallable = $iteratorMethod instanceof JsFunction
                     || $iteratorMethod instanceof \PhpJs\Value\JsHTMLDDA;
+                // Per spec GetMethod: if V is not undefined/null and not
+                // callable, throw TypeError. Primitives like a string or
+                // number set as @@iterator must reject Array.from instead
+                // of silently falling through to the array-like path.
+                if (
+                    !$iterMethodCallable
+                    && !($iteratorMethod instanceof JsUndefined)
+                    && !($iteratorMethod instanceof JsNull)
+                ) {
+                    throw new TypeError('Array.from: Symbol.iterator is not a function');
+                }
                 if ($iterMethodCallable) {
                     // Create the result object.
                     if ($isConstructor) {
