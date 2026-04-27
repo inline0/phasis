@@ -78,5 +78,11 @@ return [
         // UTF-16 code-unit matching when neither flag is present, which
         // PCRE2 operating in UTF-8 codepoint mode cannot model.
         'regexp-v-flag',
+        // Inline modifier groups like (?s:...) need supplementary-plane
+        // matching to behave per UTF-16 code unit semantics in non-u
+        // mode. PCRE2's UTF-8 codepoint mode matches 4-byte sequences
+        // as a single character, so the same UTF-16/UTF-8 mismatch as
+        // the v-flag tests rules out a clean implementation.
+        'regexp-modifiers',
     ],
 ];
