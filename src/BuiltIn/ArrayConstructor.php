@@ -2031,32 +2031,54 @@ class ArrayConstructor
                                 );
                             } catch (\Throwable $mapErr) {
                                 // Per spec: IteratorClose(iterator, mappedValue).
-                                $returnMethod = $iterator->get('return');
+                                // Suppress GetMethod / call exceptions so the
+                                // original mapfn error always propagates.
+                                try {
+                                    $returnMethod = $iterator->get('return');
+                                } catch (\Throwable) {
+                                    $returnMethod = null;
+                                }
                                 if ($returnMethod instanceof JsFunction) {
                                     try {
                                         $returnMethod->call($iterator, []);
-                                    } catch (\Throwable $e) {
-                                        // Ignore close errors, re-throw original.
+                                    } catch (\Throwable) {
                                     }
                                 }
                                 throw $mapErr;
                             }
                         }
-                        // CreateDataPropertyOrThrow per spec.
-                        $success = $a->defineOwnProperty(
-                            (string) $index,
-                            PropertyDescriptor::data($val, true, true, true),
-                        );
-                        if (!$success) {
-                            // Per spec: IteratorClose(iterator, defineStatus).
-                            $returnMethod = $iterator->get('return');
+                        // CreateDataPropertyOrThrow per spec. Both
+                        // false-returns and thrown exceptions must trigger
+                        // IteratorClose so the source generator can run its
+                        // `return()` cleanup hook (sm/Array/from-iterator-close).
+                        // Per spec 7.4.7 IteratorClose, when there is already
+                        // a pending throw, the GetMethod and Call results
+                        // from the close path are SUPPRESSED so the original
+                        // exception always propagates.
+                        $closeIterator = static function () use ($iterator): void {
+                            try {
+                                $returnMethod = $iterator->get('return');
+                            } catch (\Throwable) {
+                                return;
+                            }
                             if ($returnMethod instanceof JsFunction) {
                                 try {
                                     $returnMethod->call($iterator, []);
-                                } catch (\Throwable $e) {
-                                    // Ignore errors from iterator close.
+                                } catch (\Throwable) {
                                 }
                             }
+                        };
+                        try {
+                            $success = $a->defineOwnProperty(
+                                (string) $index,
+                                PropertyDescriptor::data($val, true, true, true),
+                            );
+                        } catch (\Throwable $defineErr) {
+                            $closeIterator();
+                            throw $defineErr;
+                        }
+                        if (!$success) {
+                            $closeIterator();
                             throw new TypeError(
                                 'Cannot define property ' . $index . ' on result object'
                             );
