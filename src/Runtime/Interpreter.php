@@ -1608,6 +1608,27 @@ class Interpreter
             }
         }
 
+        // Fast path: `i++` / `++i` / `i--` / `--i` on a plain Identifier
+        // when there is no with-environment in scope. Skips the Reference
+        // allocation, the deferred-key path, and the with-trap dance for
+        // the case that dominates loop counters.
+        if (
+            $node->argument instanceof Identifier
+            && $this->withEnvObjects === []
+            && $node->argument->name !== 'undefined'
+        ) {
+            $name = $node->argument->name;
+            $current = $env->get($name, $this->strictMode);
+            if ($current instanceof JsNumber) {
+                $delta = $node->operator === '++' ? 1.0 : -1.0;
+                $newValue = new JsNumber($current->value + $delta);
+                $env->set($name, $newValue, $this->strictMode);
+                return $node->prefix ? $newValue : $current;
+            }
+            // Non-number paths (BigInt, ToNumeric coercion) fall through
+            // to the spec path below.
+        }
+
         $ref = $this->resolveReference($node->argument, $env);
 
         // Per spec 6.2.4.4: if the reference base is null or undefined, throw
@@ -4497,17 +4518,34 @@ class Interpreter
                 // Per spec 10.2.11: non-simple parameter lists produce unmapped
                 // arguments objects (poison-pill callee), same as strict mode.
                 $unmapped = $this->strictMode || $this->isNonSimpleParameterList($params);
-                $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
-                $fnEnv->defineVar('arguments', $argsObj);
-                // Annex B legacy: while the call is active, function.arguments
-                // reflects the current arguments object rather than null.
-                if ($setCallerProp && $autoUpdateArguments) {
-                    $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
-                        $argsObj,
-                        true,
-                        false,
-                        true,
-                    ));
+                // Fast path: if the body never references `arguments`,
+                // doesn't `eval`, and isn't expected to be patched, skip
+                // the full arguments-object construction. The hot path on
+                // recursive functions like fib was spending real time
+                // here. We still create a placeholder undefined binding
+                // when the legacy `function.arguments` getter would
+                // otherwise capture a stale value.
+                $needsArgsObject = $setCallerProp && $autoUpdateArguments;
+                if (!$needsArgsObject) {
+                    if ($fn->bodyUsesArgumentsCache === null) {
+                        $fn->bodyUsesArgumentsCache = $this->bodyUsesArguments(
+                            $fn->getBody(),
+                            $params,
+                        );
+                    }
+                    $needsArgsObject = $fn->bodyUsesArgumentsCache;
+                }
+                if ($needsArgsObject) {
+                    $argsObj = $this->makeArgumentsObject($args, $fn, $unmapped);
+                    $fnEnv->defineVar('arguments', $argsObj);
+                    if ($setCallerProp && $autoUpdateArguments) {
+                        $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
+                            $argsObj,
+                            true,
+                            false,
+                            true,
+                        ));
+                    }
                 }
             }
 
@@ -4546,9 +4584,10 @@ class Interpreter
                 foreach ($params as $p) {
                     $this->copyParamBindings($p, $fnEnv, $bodyEnv);
                 }
-                // arguments in body env should still be available.
-                if (!$fn->isArrow()) {
-                    $bodyEnv->defineVar('arguments', $fnEnv->get('arguments'));
+                // arguments in body env should still be available, but only
+                // when we actually built the arguments object on entry.
+                if (!$fn->isArrow() && $argsObj !== null) {
+                    $bodyEnv->defineVar('arguments', $argsObj);
                 }
                 // Force-hoist var names into bodyEnv so they shadow parent bindings.
                 // This is necessary because the body environment is separate from
@@ -5323,6 +5362,81 @@ class Interpreter
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof AssignmentProperty && $this->patternHasDefaults($prop->value)) {
                     return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Check whether a function body or its parameter list references the
+     * `arguments` object (directly, via `eval`, or through a `with` block
+     * that could shadow lookups). Used by executeFunction to skip building
+     * the arguments-exotic object when the function provably does not
+     * observe it. Result is cached per JsFunction.
+     *
+     * @param Node[] $params
+     */
+    private function bodyUsesArguments(mixed $body, array $params = []): bool
+    {
+        foreach ($params as $param) {
+            if ($param instanceof Node && $this->nodeReferencesArguments($param)) {
+                return true;
+            }
+        }
+        if ($body === null) {
+            return false;
+        }
+        if (is_array($body)) {
+            foreach ($body as $stmt) {
+                if ($stmt instanceof Node && $this->nodeReferencesArguments($stmt)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if ($body instanceof Node) {
+            return $this->nodeReferencesArguments($body);
+        }
+        return false;
+    }
+
+    private function nodeReferencesArguments(Node $node): bool
+    {
+        if ($node instanceof Identifier) {
+            // Direct eval can introspect arguments, so any `eval` reference
+            // is treated as a use. Identifier `arguments` is the obvious case.
+            return $node->name === 'arguments' || $node->name === 'eval';
+        }
+        if ($node instanceof WithStatement) {
+            // `with` introduces a dynamic binding layer; conservatively
+            // assume the body could read arguments through it.
+            return true;
+        }
+        // Stop at nested non-arrow function and class boundaries: those
+        // create their own arguments binding (or, for classes, none).
+        // Arrow functions inherit the enclosing arguments per spec, so
+        // we DO descend into them.
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof FunctionDeclaration
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeReferencesArguments($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeReferencesArguments($item)) {
+                        return true;
+                    }
                 }
             }
         }

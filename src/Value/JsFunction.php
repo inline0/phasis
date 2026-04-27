@@ -472,6 +472,14 @@ class JsFunction extends JsObject
      */
     public ?bool $effectiveStrictCache = null;
 
+    /**
+     * Memoised: true when the function body references the `arguments`
+     * identifier or uses `eval`. When false, executeFunction can skip
+     * the (expensive) arguments-object construction entirely. Lazy-set
+     * by the interpreter on first call.
+     */
+    public ?bool $bodyUsesArgumentsCache = null;
+
     public function isArrow(): bool
     {
         return $this->isArrow;
