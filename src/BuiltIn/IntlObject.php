@@ -5116,6 +5116,13 @@ class IntlObject
         $hasAlphaAnywhere = preg_match('/[A-Za-z]/u', $start) === 1
             || preg_match('/[A-Za-z]/u', $end) === 1;
         if (!$hasAlphaAnywhere) {
+            // For European numeric date format "D.M.Y", V8 / CLDR's
+            // formatRange uses 2-digit month consistently when ranges
+            // span months or years. Pad asymmetric month widths.
+            $padded = self::padDateRangeMonth($start, $end);
+            if ($padded !== null) {
+                [$start, $end] = $padded;
+            }
             return $start . " \u{2013} " . $end;
         }
         // V8 / CLDR's dateTimeFormat repeats AM/PM (and other alphabetic
@@ -5134,7 +5141,43 @@ class IntlObject
         ) {
             return $sharedPrefix . $startDiff . $sharedSuffix . " \u{2013} " . $endDiff . $sharedSuffix;
         }
+        // When both diffs encode a "D.M.Y" / "DD.MM.YYYY" date with
+        // mismatched month digit widths (e.g. "18.11.1976" vs "20.2.2020"),
+        // pad the shorter month to two digits so the range output mirrors
+        // V8's CLDR formatRange. Without this, the output reads
+        // "20.2.2020" while V8 emits "20.02.2020".
+        $padded = self::padDateRangeMonth($startDiff, $endDiff);
+        if ($padded !== null) {
+            [$startDiff, $endDiff] = $padded;
+        }
         return $sharedPrefix . $startDiff . " \u{2013} " . $endDiff . $sharedSuffix;
+    }
+
+    /**
+     * Detect a "D.M.Y" or "DD.MM.YYYY" range where one side has 1-digit
+     * month and the other 2-digit; return both sides with consistent
+     * 2-digit months. Returns null when the heuristic doesn't apply.
+     *
+     * @return array{0:string,1:string}|null
+     */
+    private static function padDateRangeMonth(string $a, string $b): ?array
+    {
+        $pattern = '/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/';
+        if (
+            preg_match($pattern, $a, $am) !== 1
+            || preg_match($pattern, $b, $bm) !== 1
+        ) {
+            return null;
+        }
+        if (strlen($am[2]) === strlen($bm[2])) {
+            return null;
+        }
+        $aMonth = str_pad($am[2], 2, '0', STR_PAD_LEFT);
+        $bMonth = str_pad($bm[2], 2, '0', STR_PAD_LEFT);
+        return [
+            $am[1] . '.' . $aMonth . '.' . $am[3],
+            $bm[1] . '.' . $bMonth . '.' . $bm[3],
+        ];
     }
 
     private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
