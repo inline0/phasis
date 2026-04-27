@@ -4715,17 +4715,27 @@ class Interpreter
                     $fnEnv->defineVar('[[NewTarget]]', $fn);
                 }
             } else {
-                $fnEnv->defineVar('this', $thisValue);
-                $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
-                    ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
-                    : null;
-                if ($ntDesc !== null) {
-                    // Use the stored newTarget. For Reflect.construct(target, args, newTarget)
-                    // this may differ from $fn (the currently executing function).
-                    $nt = $ntDesc->value;
-                    $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
-                } else {
-                    $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
+                // VM-compiled bodies whose bytecode never touches
+                // `this` or `new.target` skip these env bindings —
+                // the VM's LOAD_THIS reads via env->get('this') only
+                // when its bytecode actually emits it, and the
+                // compiler never emits LOAD_NEW_TARGET (no MetaProperty
+                // support yet, so any new.target use bails). Frame
+                // params come from $args directly via paramSlots.
+                $vmCanSkipEnvBindings = $fn->compiled !== null;
+                if (!$vmCanSkipEnvBindings || $fn->compiled->needsThis) {
+                    $fnEnv->defineVar('this', $thisValue);
+                }
+                if (!$vmCanSkipEnvBindings) {
+                    $ntDesc = ($thisValue instanceof JsObject && $fn->isConstructable())
+                        ? $thisValue->getOwnPropertyDescriptor('[[NewTarget]]')
+                        : null;
+                    if ($ntDesc !== null) {
+                        $nt = $ntDesc->value;
+                        $fnEnv->defineVar('[[NewTarget]]', $nt instanceof JsValue ? $nt : $fn);
+                    } else {
+                        $fnEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
+                    }
                 }
             }
 
@@ -4798,9 +4808,15 @@ class Interpreter
                 }
             }
 
-            // Bind parameters (pass the cached hasParamExpressions to skip
-            // the re-walk inside bindParameters).
-            $this->bindParameters($params, $args, $fnEnv, $hasDefaultParams);
+            // Bind parameters into the env (pass the cached
+            // hasParamExpressions to skip the re-walk inside).
+            // VM-compiled bodies populate paramSlots from $args
+            // directly via tryRunOnVm; their nested closures are
+            // forbidden from observing outer locals via the env
+            // (capture-detection bails). Skip the env bindings then.
+            if ($fn->compiled === null) {
+                $this->bindParameters($params, $args, $fnEnv, $hasDefaultParams);
+            }
 
             // Set up mapped arguments aliasing per spec 10.4.4.7:
             // In sloppy mode with simple parameters, arguments[i] and the
