@@ -1138,18 +1138,32 @@ class TemporalObject
         });
         self::defineGetter($proto, 'daysInMonth', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return new JsNumber((float) self::isoDaysInMonth(
-                self::getSlotInt($this_, '[[ISOYear]]'),
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-            ));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInMonthForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInMonth($iy, $im)));
         });
         self::defineGetter($proto, 'daysInYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return new JsNumber((float) self::isoDaysInYear(self::getSlotInt($this_, '[[ISOYear]]')));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInYearForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInYear($iy)));
         });
         self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return new JsNumber(12.0);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $count = self::calendarMonthsInYear(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+            return new JsNumber((float) ($count ?? 12));
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
@@ -1351,7 +1365,10 @@ class TemporalObject
                 if (!is_finite($n)) {
                     throw new RangeError('year must be finite');
                 }
-                $y = (int) $n;
+                // For ROC the field-bag year is in calendar units
+                // ("民國" year 1 = 1912 AD); translate to ISO so the
+                // rest of the path sees the ISO year.
+                $y = $cal === 'roc' ? ((int) $n + 1911) : (int) $n;
                 $any = true;
             } elseif ($eraYearNum !== null) {
                 $eraLower = $eraStr === null ? '' : strtolower($eraStr);
@@ -1405,6 +1422,23 @@ class TemporalObject
                 // user supplied month/monthCode this call.
                 $mcForIso = $userMonthCode ?? ($userMonthSet ? null : $instMonthCode);
                 $monthForIso = $userMonthCode === null ? $m : null;
+                // Constrain or reject day-out-of-range BEFORE letting ICU
+                // roll over to the next month. Without this, with({day:32})
+                // on a 31-day month silently advances to month+1, day:1
+                // instead of clamping to the actual month-max.
+                $maxDay = self::calendarDaysInMonth($cal, $y, $mcForIso, $monthForIso);
+                if ($maxDay !== null && $dd > $maxDay) {
+                    if ($overflow === 'reject') {
+                        throw new RangeError("day {$dd} is out of range for month");
+                    }
+                    $dd = $maxDay;
+                }
+                if ($maxDay !== null && $dd < 1) {
+                    if ($overflow === 'reject') {
+                        throw new RangeError("day {$dd} is out of range for month");
+                    }
+                    $dd = 1;
+                }
                 $isoParts = self::calendarPartsToIso($cal, $y, $mcForIso, $monthForIso, $dd);
                 if ($isoParts !== null) {
                     return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
@@ -2105,20 +2139,32 @@ class TemporalObject
         });
         self::defineGetter($proto, 'daysInMonth', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber((float) self::isoDaysInMonth(
-                self::getSlotInt($this_, '[[ISOYear]]'),
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-            ));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInMonthForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInMonth($iy, $im)));
         });
         self::defineGetter($proto, 'daysInYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber(
-                (float) self::isoDaysInYear(self::getSlotInt($this_, '[[ISOYear]]')),
-            );
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInYearForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInYear($iy)));
         });
         self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber(12.0);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $count = self::calendarMonthsInYear(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+            return new JsNumber((float) ($count ?? 12));
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
@@ -2844,15 +2890,32 @@ class TemporalObject
         });
         self::defineGetter($proto, 'daysInMonth', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return new JsNumber((float) self::isoDaysInMonth(self::getSlotInt($this_, '[[ISOYear]]'), self::getSlotInt($this_, '[[ISOMonth]]')));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInMonthForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInMonth($iy, $im)));
         });
         self::defineGetter($proto, 'daysInYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return new JsNumber((float) self::isoDaysInYear(self::getSlotInt($this_, '[[ISOYear]]')));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $count = self::calendarDaysInYearForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($count ?? self::isoDaysInYear($iy)));
         });
         self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
-            return new JsNumber(12.0);
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $count = self::calendarMonthsInYear(
+                $cal,
+                self::getSlotInt($this_, '[[ISOYear]]'),
+                self::getSlotInt($this_, '[[ISOMonth]]'),
+                self::getSlotInt($this_, '[[ISODay]]'),
+            );
+            return new JsNumber((float) ($count ?? 12));
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsPlainYearMonth]]', 'Temporal.PlainYearMonth');
@@ -3703,15 +3766,19 @@ class TemporalObject
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            return new JsNumber((float) self::isoDaysInMonth($parts['year'], $parts['month']));
+            $count = self::calendarDaysInMonthForIso($cal, $parts['year'], $parts['month'], $parts['day']);
+            return new JsNumber((float) ($count ?? self::isoDaysInMonth($parts['year'], $parts['month'])));
         });
         self::defineGetter($proto, 'daysInYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            return new JsNumber((float) self::isoDaysInYear($parts['year']));
+            $count = self::calendarDaysInYearForIso($cal, $parts['year'], $parts['month'], $parts['day']);
+            return new JsNumber((float) ($count ?? self::isoDaysInYear($parts['year'])));
         });
         self::defineGetter($proto, 'inLeapYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -3740,7 +3807,12 @@ class TemporalObject
         });
         self::defineGetter($proto, 'monthsInYear', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
-            return new JsNumber(12.0);
+            $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
+            $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $parts = self::epochNsToISOParts($ns, $tz);
+            $count = self::calendarMonthsInYear($cal, $parts['year'], $parts['month'], $parts['day']);
+            return new JsNumber((float) ($count ?? 12));
         });
         self::defineGetter($proto, 'daysInWeek', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -4254,6 +4326,7 @@ class TemporalObject
                 if (!self::isValidOffsetString($offsetFieldStr)) {
                     throw new RangeError("Invalid offset string: {$offsetFieldStr}");
                 }
+                $any = true;
             }
             $sv = $item->get('second');
             if (!($sv instanceof JsUndefined)) {
@@ -4340,6 +4413,33 @@ class TemporalObject
                     throw new RangeError("offset property does not match any valid offset for the time zone");
                 }
                 // prefer: fall through to disambiguated wall-time interpretation.
+            } elseif ($offsetOpt !== 'ignore') {
+                // No offset field supplied: prefer the instance's
+                // existing offset to disambiguate (per spec, "use",
+                // "prefer", and "reject" all keep the original offset
+                // when no field-bag offset is present and a candidate
+                // matches; "use" additionally falls back to the raw
+                // offset even with no matching candidate).
+                $instOffsetNs = self::getUtcOffsetNsForTimestamp($tz, $ns);
+                $candidates = self::getPossibleEpochNanoseconds($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz);
+                $wallUtcNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, 'UTC');
+                $exactCandidate = null;
+                foreach ($candidates as $candNs) {
+                    $candOffsetNs = (int) bcsub($wallUtcNs, $candNs, 0);
+                    if ($instOffsetNs === $candOffsetNs) {
+                        $exactCandidate = $candNs;
+                        break;
+                    }
+                }
+                if ($exactCandidate !== null) {
+                    return self::createZonedDateTimeObject($exactCandidate, $tz, $cal);
+                }
+                if ($offsetOpt === 'use') {
+                    $normalizedOffset = self::normalizeOffset($instOffsetNs);
+                    $newNs = self::isoDateTimeToEpochNs($y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $normalizedOffset);
+                    return self::createZonedDateTimeObject($newNs, $tz, $cal);
+                }
+                // prefer / reject: fall through to disambiguation.
             }
             $newNs = self::isoDateTimeToEpochNsDisambiguated(
                 $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz, $disam,
@@ -8311,6 +8411,13 @@ class TemporalObject
                     );
                 }
             }
+            // Translate roc calendar-year to ISO year. The calendarPartsToIso
+            // path handles non-iso/non-gregory calendars; gregory and
+            // japanese map year directly to ISO. ROC is the exception:
+            // year fields are 1-based from 1912 ("民國" year 1).
+            if ($cal === 'roc') {
+                $y += 1911;
+            }
             if ($overflow === 'constrain') {
                 [$y, $m, $d] = self::constrainISODate($y, $m, $d);
             } else {
@@ -9935,7 +10042,10 @@ class TemporalObject
                 if (!is_finite($yVal)) {
                     throw new RangeError('year must be finite');
                 }
-                $refYear = (int) $yVal;
+                // ROC field-bag year is 1-based from 1912 ("民國" 1 =
+                // 1912 AD). All downstream day/month math wants the ISO
+                // year, so translate up front.
+                $refYear = $cal === 'roc' ? ((int) $yVal + 1911) : (int) $yVal;
                 if ($eraYearNum !== null) {
                     static $pmdEraDerivCals3 = ['gregory', 'japanese', 'roc'];
                     if (in_array($cal, $pmdEraDerivCals3, true)) {
@@ -11864,10 +11974,15 @@ class TemporalObject
         // Gregorian-like calendars use the ISO year/month/day directly (with
         // year 0 allowed). ICU here would shift across the Julian/Gregorian
         // boundary or into year 1 BCE, neither of which matches the spec.
+        // For ROC the "year" is offset from 1911 (ROC year 1 = 1912 AD).
+        // For Japanese the "year" stays Gregorian-equal because the era
+        // disambiguates Heisei/Reiwa/etc., and the spec exposes the
+        // Gregorian-like proleptic year via the .year getter.
         if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
             $monthCode = 'M' . str_pad((string) $m, 2, '0', STR_PAD_LEFT);
+            $calYear = $calendar === 'roc' ? ($y - 1911) : $y;
             return [
-                'year' => $y,
+                'year' => $calYear,
                 'month' => $m,
                 'monthCode' => $monthCode,
                 'day' => $d,
@@ -11897,8 +12012,13 @@ class TemporalObject
             $cal->setTime($epochMs);
             // Chinese/Dangi have YEAR (1-60 sexagenary cycle) and
             // EXTENDED_YEAR (the actual year). The Temporal spec uses the
-            // extended year.
-            if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            // extended year. Coptic/Ethiopic likewise: FIELD_YEAR is the
+            // era-relative year (positive in both eras), but Temporal
+            // wants the proleptic / extended year (negative for ISO
+            // dates predating year 1 of the positive era). EthioAA is
+            // the inverse: its FIELD_YEAR already counts from the Amete
+            // Alem epoch (year ~5500 BCE) so EXT_YEAR is wrong there.
+            if (in_array($calendar, ['chinese', 'dangi', 'coptic', 'ethiopic'], true)) {
                 $calY = $cal->get(\IntlCalendar::FIELD_EXTENDED_YEAR);
             } else {
                 $calY = $cal->get(\IntlCalendar::FIELD_YEAR);
@@ -12076,6 +12196,103 @@ class TemporalObject
     /**
      * True when the calendar year (in calendar-native terms) is a leap year.
      */
+    /**
+     * Number of days in the calendar month containing the given ISO
+     * date. Returns null when ICU can't model the calendar; callers
+     * fall back to ISO month length.
+     */
+    private static function calendarDaysInMonthForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
+    {
+        if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
+            return self::isoDaysInMonth($isoY, $isoM);
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        static $aliasMap = [
+            'islamicc' => 'islamic-civil',
+            'ethioaa' => 'ethiopic-amete-alem',
+        ];
+        $icuName = $aliasMap[$calendar] ?? $calendar;
+        try {
+            $cal = \IntlCalendar::createInstance(
+                'UTC',
+                "en@calendar={$icuName}",
+            );
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
+            $cal->setTime($epochMs);
+            return (int) $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_MONTH);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Number of days in the calendar year containing the given ISO
+     * date. Returns null when ICU can't model the calendar.
+     */
+    private static function calendarDaysInYearForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
+    {
+        if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
+            return self::isoDaysInYear($isoY);
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        static $aliasMap = [
+            'islamicc' => 'islamic-civil',
+            'ethioaa' => 'ethiopic-amete-alem',
+        ];
+        $icuName = $aliasMap[$calendar] ?? $calendar;
+        try {
+            $cal = \IntlCalendar::createInstance(
+                'UTC',
+                "en@calendar={$icuName}",
+            );
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
+            $cal->setTime($epochMs);
+            return (int) $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Number of months in the calendar year containing the given ISO date.
+     * Returns null when ICU can't model the calendar; callers fall back
+     * to 12 in that case.
+     */
+    private static function calendarMonthsInYear(string $calendar, int $isoY, int $isoM, int $isoD): ?int
+    {
+        if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
+            return 12;
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        if (in_array($calendar, ['coptic', 'ethiopic', 'ethioaa'], true)) {
+            return 13;
+        }
+        // Hebrew: 13 in leap years, 12 otherwise.
+        if ($calendar === 'hebrew') {
+            $leap = self::calendarInLeapYear($calendar, $isoY, $isoM, $isoD);
+            return $leap === true ? 13 : 12;
+        }
+        // Chinese / Dangi: 13 in years with a leap month, 12 otherwise.
+        if (in_array($calendar, ['chinese', 'dangi'], true)) {
+            $leap = self::calendarInLeapYear($calendar, $isoY, $isoM, $isoD);
+            return $leap === true ? 13 : 12;
+        }
+        // Islamic variants, persian, indian: 12.
+        return 12;
+    }
+
     private static function calendarInLeapYear(string $calendar, int $isoY, int $isoM, int $isoD): ?bool
     {
         if ($calendar === 'iso8601' || in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
@@ -12309,7 +12526,8 @@ class TemporalObject
         }
         if (in_array($calendar, ['gregory', 'roc', 'japanese'], true)) {
             $m = $monthNum ?? ($monthCode !== null && preg_match('/^M(\d{2})/', $monthCode, $mm) ? (int) $mm[1] : 0);
-            return ['year' => $year, 'month' => $m, 'day' => $day];
+            $isoYear = $calendar === 'roc' ? ($year + 1911) : $year;
+            return ['year' => $isoYear, 'month' => $m, 'day' => $day];
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -12921,7 +13139,25 @@ class TemporalObject
         $extraDays = (int) bcdiv($totalTimeNs, '86400000000000', 0);
         $days += $extraDays;
 
-        // Add years and months first.
+        // For non-iso/gregory-like calendars, route year/month addition
+        // through ICU so the calendar's actual month/year boundaries
+        // (e.g. coptic's 13-month year, hebrew's 12 vs 13, chinese
+        // sexagenary leap months) are honoured. For ISO/gregory/roc/
+        // japanese, fall through to ISO arithmetic below.
+        $useCalendarMath = $cal !== 'iso8601'
+            && !in_array($cal, ['gregory', 'roc', 'japanese'], true)
+            && extension_loaded('intl')
+            && ($years !== 0 || $months !== 0);
+        if ($useCalendarMath) {
+            $isoAfter = self::calendarAddYearsMonthsIso($cal, $y, $m, $d, $years, $months, $overflow);
+            if ($isoAfter !== null) {
+                [$y, $m, $d] = $isoAfter;
+                $years = 0;
+                $months = 0;
+            }
+        }
+
+        // Add years and months first (ISO path).
         $y += $years;
         $m += $months;
 
@@ -12961,6 +13197,70 @@ class TemporalObject
 
         self::validateISODate($y, $m, $d);
         return self::createPlainDateObject($y, $m, $d, $cal);
+    }
+
+    /**
+     * Add `years` years and `months` months in the given calendar's
+     * native month/year space, then return the resulting [iso year,
+     * iso month, iso day]. Day clamps to the resulting month's max
+     * unless `overflow === 'reject'`. Returns null when ICU can't
+     * model the calendar.
+     *
+     * @return array{0:int,1:int,2:int}|null
+     */
+    private static function calendarAddYearsMonthsIso(
+        string $calendar,
+        int $isoY,
+        int $isoM,
+        int $isoD,
+        int $years,
+        int $months,
+        string $overflow,
+    ): ?array {
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        static $aliasMap = [
+            'gregory' => 'gregorian',
+            'islamicc' => 'islamic-civil',
+            'ethioaa' => 'ethiopic-amete-alem',
+        ];
+        $icuName = $aliasMap[$calendar] ?? $calendar;
+        try {
+            $cal = \IntlCalendar::createInstance(
+                'UTC',
+                "en@calendar={$icuName}",
+            );
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
+            $cal->setTime($epochMs);
+            $startDay = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
+            if ($years !== 0) {
+                $cal->add(\IntlCalendar::FIELD_YEAR, $years);
+            }
+            if ($months !== 0) {
+                $cal->add(\IntlCalendar::FIELD_MONTH, $months);
+            }
+            // ICU's add() already constrains to the month max if the
+            // start day exceeds it, but that's the implicit "constrain"
+            // mode we want anyway. For "reject", check the final day.
+            $finalDay = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
+            if ($overflow === 'reject' && $finalDay !== $startDay) {
+                throw new RangeError("Day {$startDay} out of range after calendar arithmetic");
+            }
+            $resultMs = $cal->getTime();
+            $secs = (int) ($resultMs / 1000.0);
+            $dt = (new \DateTimeImmutable('@' . $secs))->setTimezone(new \DateTimeZone('UTC'));
+            return [
+                (int) $dt->format('Y'),
+                (int) $dt->format('n'),
+                (int) $dt->format('j'),
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private static function plainYearMonthDifference(JsValue $ym1, JsValue $ym2, JsValue $options): JsObject
@@ -14513,8 +14813,69 @@ class TemporalObject
                     return $era[0];
                 }
                 return $isoYear >= 1 ? 'japanese' : 'japanese-inverse';
+            case 'coptic':
+                $eraIdx = self::icuEraIndexForIso($cal, $isoYear, $isoMonth, $isoDay);
+                if ($eraIdx === 1) {
+                    return 'coptic';
+                }
+                if ($eraIdx === 0) {
+                    return 'coptic-inverse';
+                }
+                return null;
+            case 'ethiopic':
+                $eraIdx = self::icuEraIndexForIso($cal, $isoYear, $isoMonth, $isoDay);
+                if ($eraIdx === 1) {
+                    return 'ethiopic';
+                }
+                if ($eraIdx === 0) {
+                    return 'ethioaa';
+                }
+                return null;
+            case 'ethioaa':
+            case 'ethiopic-amete-alem':
+                return 'ethioaa';
         }
         return null;
+    }
+
+    /**
+     * Look up the ICU era index for an ISO date in the given calendar.
+     * Used by deriveEra to flip coptic-inverse / ethioaa for ISO dates
+     * predating the calendar's positive epoch.
+     */
+    private static function icuEraIndexForIso(string $cal, int $isoYear, int $isoMonth, int $isoDay): ?int
+    {
+        if (!extension_loaded('intl')) {
+            return null;
+        }
+        $icuName = $cal === 'ethioaa' ? 'ethiopic-amete-alem' : $cal;
+        try {
+            $icuCal = \IntlCalendar::createInstance(
+                'UTC',
+                "@calendar={$icuName}",
+            );
+            if (!$icuCal instanceof \IntlCalendar) {
+                return null;
+            }
+            $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
+            $icuCal->setTime($sec * 1000.0);
+            return (int) $icuCal->get(\IntlCalendar::FIELD_ERA);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Convert an ISO calendar date to Unix epoch seconds at midnight UTC.
+     * Avoids gmmktime which is locale-quirk for negative years.
+     */
+    private static function isoToUnixSeconds(int $year, int $month, int $day): int
+    {
+        $a = (14 - $month) > 0 ? intdiv(14 - $month, 12) : -intdiv($month - 14, 12);
+        $y = $year + 4800 - $a;
+        $m = $month + 12 * $a - 3;
+        $jdn = $day + intdiv(153 * $m + 2, 5) + 365 * $y + intdiv($y, 4) - intdiv($y, 100) + intdiv($y, 400) - 32045;
+        return ($jdn - 2440588) * 86400;
     }
 
     /**
@@ -14535,8 +14896,42 @@ class TemporalObject
                     return $isoYear - $era[4] + 1;
                 }
                 return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
+            case 'coptic':
+            case 'ethiopic':
+            case 'ethioaa':
+            case 'ethiopic-amete-alem':
+                $year = self::icuYearForIso($cal, $isoYear, $isoMonth, $isoDay);
+                return $year;
         }
         return null;
+    }
+
+    /**
+     * Look up the ICU YEAR field (not extended year) for an ISO date.
+     * For coptic/ethiopic/ethioaa the YEAR field already counts within
+     * the active era (era 0 yields a positive year flipping at the
+     * inverse epoch boundary).
+     */
+    private static function icuYearForIso(string $cal, int $isoYear, int $isoMonth, int $isoDay): ?int
+    {
+        if (!extension_loaded('intl')) {
+            return null;
+        }
+        $icuName = $cal === 'ethioaa' ? 'ethiopic-amete-alem' : $cal;
+        try {
+            $icuCal = \IntlCalendar::createInstance(
+                'UTC',
+                "@calendar={$icuName}",
+            );
+            if (!$icuCal instanceof \IntlCalendar) {
+                return null;
+            }
+            $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
+            $icuCal->setTime($sec * 1000.0);
+            return (int) $icuCal->get(\IntlCalendar::FIELD_YEAR);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

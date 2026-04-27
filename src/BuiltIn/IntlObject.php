@@ -734,6 +734,53 @@ class IntlObject
     }
 
     /**
+     * Determine a locale's preferred default hour cycle (h11/h12/h23/h24)
+     * by inspecting the "j" pattern returned by IntlDatePatternGenerator.
+     * The first unquoted hour-letter run identifies the cycle:
+     *   H -> h23, k -> h24, h -> h12, K -> h11.
+     */
+    private static function resolveLocaleHourCycle(string $resolvedLocale): ?string
+    {
+        if (!class_exists('IntlDatePatternGenerator')) {
+            return null;
+        }
+        $loc = str_replace('-', '_', $resolvedLocale);
+        $loc = preg_replace('/_(?:u|x)_.*$/', '', $loc) ?? $loc;
+        try {
+            $gen = new \IntlDatePatternGenerator($loc);
+            $j = $gen->getBestPattern('j');
+        } catch (\Throwable) {
+            return null;
+        }
+        if (!is_string($j) || $j === '') {
+            return null;
+        }
+        $inQuote = false;
+        $len = strlen($j);
+        for ($i = 0; $i < $len; $i++) {
+            $c = $j[$i];
+            if ($c === "'") {
+                $inQuote = !$inQuote;
+                continue;
+            }
+            if ($inQuote) {
+                continue;
+            }
+            switch ($c) {
+                case 'H':
+                    return 'h23';
+                case 'k':
+                    return 'h24';
+                case 'h':
+                    return 'h12';
+                case 'K':
+                    return 'h11';
+            }
+        }
+        return null;
+    }
+
+    /**
      * Normalise an offset-style time-zone string ("+05", "+0530", "-0530")
      * to the canonical "+HH:MM" form the spec mandates.
      */
@@ -4308,11 +4355,8 @@ class IntlObject
                 $impliesHour = $hasHour || $timeStyle !== null;
                 if ($impliesHour) {
                     if ($hourCycle === null) {
-                        $localeLang = strtolower(strtok($resolvedLocale, '-_'));
-                        static $localeDefaultHc = [
-                            'ja' => 'h11',
-                        ];
-                        $hourCycle = $localeDefaultHc[$localeLang] ?? 'h12';
+                        $hourCycle = self::resolveLocaleHourCycle($resolvedLocale)
+                            ?? 'h12';
                     }
                     $obj->defineOwnProperty('[[HourCycle]]', PropertyDescriptor::data(
                         new JsString($hourCycle),
@@ -5523,10 +5567,12 @@ class IntlObject
         } elseif ($isPlainTime) {
             // Plain types carry no time zone; strip date letters AND
             // timezone letters so timeStyle=full doesn't tack on a
-            // timezone name from the formatter's [[TimeZone]].
+            // timezone name from the formatter's [[TimeZone]]. The "j"
+            // skeleton in jms tells ICU to pick the locale's preferred
+            // hour cycle (h vs H) instead of forcing 12-hour everywhere.
             $stripLetters = array_merge($dateLetters, $tzLetters);
             if (!$userExplicit) {
-                $forceSkeleton = 'hms';
+                $forceSkeleton = 'jms';
             }
         } elseif ($isPlainYearMonth) {
             $stripLetters = array_merge($timeLetters, ['d', 'D', 'F', 'g', 'E', 'e', 'c', 'w', 'W']);
@@ -5580,7 +5626,9 @@ class IntlObject
             $hasDate = self::patternHasAnyOf($pattern, $dateLetters);
             $hasTime = self::patternHasAnyOf($pattern, $timeLetters);
             if ($hasDate && !$hasTime) {
-                $augmentSkeleton = 'hms';
+                // "j" picks the locale's preferred hour cycle so de-AT
+                // gets HH:mm:ss while en-US gets h:mm:ss a.
+                $augmentSkeleton = 'jms';
             } elseif ($hasTime && !$hasDate) {
                 $augmentSkeleton = 'yMd';
             } else {
@@ -6054,9 +6102,18 @@ class IntlObject
         $prolepticCalendar = null;
         if (!$needsTraditional && class_exists('IntlGregorianCalendar')) {
             try {
+                // Strip BCP47 -u-…/-x-… subtags (after `_u_` or `_x_` in
+                // ICU underscore form) so createInstance returns a real
+                // IntlGregorianCalendar. With `@calendar=` or `_u_ca_X`
+                // present, ICU returns a base IntlCalendar instead, which
+                // doesn't expose setGregorianChange.
+                $localeForCal = preg_replace('/_(?:u|x)_.*$/', '', $locale);
+                if (!is_string($localeForCal)) {
+                    $localeForCal = $locale;
+                }
                 $prolepticCalendar = \IntlGregorianCalendar::createInstance(
                     'UTC',
-                    $locale,
+                    $localeForCal,
                 );
                 if ($prolepticCalendar instanceof \IntlGregorianCalendar) {
                     $prolepticCalendar->setGregorianChange(PHP_INT_MIN);
