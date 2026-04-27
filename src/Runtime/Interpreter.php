@@ -111,6 +111,12 @@ class Interpreter
     private ?JsObject $cachedStringPrototype = null;
 
     /**
+     * Lazy-built bytecode VM dispatcher. Reused across all VM-executed
+     * function calls; instantiated on first need.
+     */
+    private ?\PhpJs\Bytecode\VM $vm = null;
+
+    /**
      * Whether the program currently being executed is provably free
      * of direct `eval` calls. When true (the common case), the
      * Identifier resolution cache `Identifier::$resolvedDepth` can be
@@ -1081,7 +1087,7 @@ class Interpreter
      * Otherwise call ToNumeric on both. If types differ, throw TypeError.
      * BigInt + BigInt uses pure-PHP string arithmetic. Number + Number uses float addition.
      */
-    private function addOperator(JsValue $left, JsValue $right): JsValue
+    public function addOperator(JsValue $left, JsValue $right): JsValue
     {
         $lprim = TypeConversion::toPrimitive($left);
         $rprim = TypeConversion::toPrimitive($right);
@@ -1116,7 +1122,7 @@ class Interpreter
      * corresponding arbitrary-precision operation. If both are Number,
      * delegates to the existing float-based helpers. Mixed types throw TypeError.
      */
-    private function numericBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
+    public function numericBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
     {
         $lnum = TypeConversion::toNumeric($left);
         $rnum = TypeConversion::toNumeric($right);
@@ -1199,7 +1205,7 @@ class Interpreter
      * Per spec: ToNumeric both sides. If both BigInt, perform BigInt bitwise op.
      * If types differ, throw TypeError.
      */
-    private function bitwiseBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
+    public function bitwiseBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
     {
         $lnum = TypeConversion::toNumeric($left);
         $rnum = TypeConversion::toNumeric($right);
@@ -1228,7 +1234,7 @@ class Interpreter
      * Per spec: ToNumeric both sides. If both BigInt, perform BigInt shift.
      * BigInt >>> is always a TypeError. If types differ, throw TypeError.
      */
-    private function bitwiseShift(JsValue $left, JsValue $right, string $op): JsValue
+    public function bitwiseShift(JsValue $left, JsValue $right, string $op): JsValue
     {
         $lnum = TypeConversion::toNumeric($left);
         $rnum = TypeConversion::toNumeric($right);
@@ -1389,7 +1395,7 @@ class Interpreter
      * uses float exponentiation with IEEE 754 special cases. Mixed
      * types throw TypeError per spec.
      */
-    private function exponentiate(JsValue $left, JsValue $right): JsValue
+    public function exponentiate(JsValue $left, JsValue $right): JsValue
     {
         $lnum = TypeConversion::toNumeric($left);
         $rnum = TypeConversion::toNumeric($right);
@@ -1423,7 +1429,7 @@ class Interpreter
         return new JsNumber(@($base ** $exp));
     }
 
-    private function relational(JsValue $x, JsValue $y, string $op): JsValue
+    public function relational(JsValue $x, JsValue $y, string $op): JsValue
     {
         $result = AbstractOperations::abstractRelational($x, $y, $op === '<' || $op === '>=');
         if ($result === null) {
@@ -4889,6 +4895,22 @@ class Interpreter
                 $this->currentParamNames = $savedParamNames;
                 $savedTailPos = $this->inTailPosition;
                 $this->inTailPosition = $this->strictMode;
+
+                // Bytecode VM fast path: lazy-compile this body the
+                // first time we see it; subsequent calls dispatch via
+                // the flat-bytecode loop instead of recursive AST
+                // walking. Compilation bailouts fall back here, and
+                // any runtime feature the compiler refused (eval,
+                // with, generators, etc.) also keeps using executeBody.
+                $vmReturn = $this->tryRunOnVm($fn, $fnEnv, $thisValue, $args);
+                if ($vmReturn !== null) {
+                    $this->inTailPosition = $savedTailPos;
+                    if ($vmReturn instanceof TailCallThunk) {
+                        return $vmReturn;
+                    }
+                    return $this->derivedConstructorReturn($fn, $fnEnv, $vmReturn);
+                }
+
                 $completion = $this->executeBody($body->body, $fnEnv);
                 $this->inTailPosition = $savedTailPos;
                 $completion = $this->applyDisposals($fnEnv, $completion);
@@ -5776,6 +5798,147 @@ class Interpreter
             return false;
         }
         return false;
+    }
+
+    /**
+     * Slow-path member read used by the bytecode VM when the receiver
+     * is a primitive (string / number / boolean / bigint / symbol) or
+     * a Symbol-wrapper object: just synthesise a MemberExpression
+     * dispatch by calling the existing tree-walker helper rather than
+     * duplicating the auto-box / prototype-walk logic.
+     */
+    public function vmLookupPrimitiveMember(JsValue $obj, string $name): JsValue
+    {
+        $synth = new MemberExpression(
+            location: new \PhpJs\Lexer\SourceLocation(0, 0, 0),
+            object: new ThisExpression(new \PhpJs\Lexer\SourceLocation(0, 0, 0)),
+            property: new Identifier(new \PhpJs\Lexer\SourceLocation(0, 0, 0), $name),
+            computed: false,
+            optional: false,
+        );
+        // Re-use evalMemberExpression's full path by stashing $obj as
+        // the value of `this` for a one-shot scope. Cheaper to inline
+        // the relevant branches here:
+        if ($obj instanceof JsString) {
+            if ($name === 'length') {
+                return new JsNumber((float) $obj->length());
+            }
+            if (ctype_digit($name)) {
+                $idx = (int) $name;
+                $u16 = JsString::utf8ToUtf16LE($obj->value);
+                $u16Len = (int) (strlen($u16) / 2);
+                if ($idx >= 0 && $idx < $u16Len) {
+                    $codeUnit = ord($u16[$idx * 2]) | (ord($u16[$idx * 2 + 1]) << 8);
+                    return new JsString(JsString::utf16CodeUnitToUtf8($codeUnit));
+                }
+                return JsUndefined::instance();
+            }
+            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            if ($proto instanceof JsObject) {
+                $val = $proto->getWithValueReceiver($name, $obj);
+                if (!$val instanceof JsUndefined) {
+                    return $val;
+                }
+            }
+            return JsUndefined::instance();
+        }
+        if ($obj instanceof JsObject) {
+            // Symbol-wrapper → fall through to the full slow path.
+            $primSlot = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            if ($primSlot !== null && $primSlot->value instanceof JsSymbol) {
+                $val = $this->lookupSymbolPrototypeProperty($primSlot->value, $name, false, null);
+                if ($val !== null) {
+                    return $val;
+                }
+            }
+            return $obj->get($name);
+        }
+        // Number / Boolean / Symbol / BigInt primitive: route through
+        // the auto-box helper that the tree-walker uses.
+        $boxed = TypeConversion::toObject($obj);
+        return $this->getPropertyWithPrimitiveReceiver($boxed, $name, false, null, $obj);
+    }
+
+    public function vmLookupPrimitiveComputed(JsValue $obj, JsValue $key): JsValue
+    {
+        $resolved = TypeConversion::toPropertyKey($key);
+        if ($resolved instanceof JsSymbol) {
+            if ($obj instanceof JsObject) {
+                return $obj->getBySymbol($resolved);
+            }
+            $boxed = TypeConversion::toObject($obj);
+            return $this->getPropertyWithPrimitiveReceiver($boxed, '', true, $resolved, $obj);
+        }
+        $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);
+        return $this->vmLookupPrimitiveMember($obj, $name);
+    }
+
+    /**
+     * Try to dispatch a function body through the bytecode VM.
+     * Returns the function's return JsValue (or TailCallThunk) on
+     * success, or null when the function is not (or cannot be)
+     * compiled — letting the caller fall back to executeBody.
+     *
+     * Compilation is lazy: the first call attempts to lower the body
+     * via `Compiler::compile`. Bailouts mark the JsFunction so we
+     * never retry. A successful compile populates `$fn->compiled` and
+     * is reused on every subsequent call.
+     *
+     * @param list<JsValue> $args
+     */
+    private function tryRunOnVm(
+        JsFunction $fn,
+        Environment $fnEnv,
+        JsValue $thisValue,
+        array $args,
+    ): ?JsValue {
+        if ($fn->compileFailed) {
+            return null;
+        }
+        if ($fn->compiled === null) {
+            // Phase 2 compiler is conservative: any unsupported AST
+            // node throws CompilerBailout; fail-closed and never retry.
+            try {
+                $compiler = new \PhpJs\Bytecode\Compiler();
+                $fn->compiled = $compiler->compile($fn);
+            } catch (\PhpJs\Bytecode\CompilerBailout) {
+                $fn->compileFailed = true;
+                return null;
+            } catch (\Throwable $e) {
+                // Defensive: a compiler bug must never break the
+                // tree-walker fallback. Mark uncompilable and let the
+                // body run normally.
+                $fn->compileFailed = true;
+                return null;
+            }
+        }
+        $cf = $fn->compiled;
+        $undef = JsUndefined::instance();
+        // The VM resolves `this` lazily via env->get('this') inside
+        // LOAD_THIS, matching the tree-walker's evalThisExpression
+        // (which surfaces TDZ throws at the right point and walks
+        // the closure for arrow lexical-this). Frame->thisValue is
+        // unused by the dispatcher today; left in for future opcodes
+        // (e.g. SUPER_CALL) that need the receiver directly.
+        $frame = new \PhpJs\Bytecode\Frame(
+            env: $fnEnv,
+            thisValue: $thisValue,
+            slotCount: $cf->slotCount,
+            undefined: $undef,
+        );
+        // Wire parameter slots: the compiler assigned each parameter
+        // a numbered slot in $paramSlots; the runtime args go straight
+        // into those slots without going through env->defineVar.
+        $paramSlots = $cf->paramSlots;
+        $argCount = count($args);
+        $paramCount = count($paramSlots);
+        for ($i = 0; $i < $paramCount; $i++) {
+            $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
+        }
+        if ($this->vm === null) {
+            $this->vm = new \PhpJs\Bytecode\VM($this);
+        }
+        return $this->vm->execute($cf, $frame);
     }
 
     /**

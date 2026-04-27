@@ -627,6 +627,17 @@ class Environment
         // "with" object environment record: delegate to the binding object.
         if ($this->withObject !== null) {
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
+                // Per spec 9.1.1.2.5 SetMutableBinding step 2: re-run
+                // HasProperty after the @@unscopables getter has had a
+                // chance to mutate the binding object (e.g. delete the
+                // property). When the binding has vanished and we're
+                // in strict mode, throw ReferenceError.
+                if (!$this->withObject->has($name)) {
+                    if ($strict) {
+                        throw new ReferenceError("{$name} is not defined");
+                    }
+                    return;
+                }
                 $this->withObject->set($name, $value, $strict);
                 return;
             }

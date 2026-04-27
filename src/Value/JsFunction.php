@@ -500,6 +500,15 @@ class JsFunction extends JsObject
     public ?bool $bodyNeedsHoistingCache = null;
 
     /**
+     * Bytecode-compilation cache. Compiler attempts to lower the body
+     * on first call: success populates $compiled; structural bailouts
+     * (eval/with/generators/async/etc.) leave $compiled null AND set
+     * $compileFailed so the second call avoids the wasted attempt.
+     */
+    public ?\PhpJs\Bytecode\CompiledFunction $compiled = null;
+    public bool $compileFailed = false;
+
+    /**
      * Memoised: results of isNonSimpleParameterList and
      * hasParameterExpressions analyses on this function's parameter
      * list. Both are pure functions of $params, which never changes

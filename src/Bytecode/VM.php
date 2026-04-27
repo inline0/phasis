@@ -1,0 +1,566 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs\Bytecode;
+
+use PhpJs\Exceptions\InternalError;
+use PhpJs\Exceptions\TypeError;
+use PhpJs\Runtime\Interpreter;
+use PhpJs\Spec\AbstractOperations;
+use PhpJs\Spec\TypeConversion;
+use PhpJs\Value\JsBoolean;
+use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNull;
+use PhpJs\Value\JsNumber;
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
+use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsValue;
+
+/**
+ * Bytecode dispatcher. One PHP function call per JsFunction
+ * invocation, regardless of how many AST nodes the function body
+ * contains. Hot ops (numeric arithmetic / comparison / locals)
+ * stay inside the switch with no method dispatch; spec fallback
+ * delegates to existing Interpreter helpers.
+ */
+final class VM
+{
+    public function __construct(private readonly Interpreter $interp)
+    {
+    }
+
+    /**
+     * Property-read helper shared by LOAD_MEMBER (with a literal name)
+     * and CALL_METHOD (which fetches the callee). For plain
+     * (non-Symbol-wrapper) JsObjects we use the inlined own-data
+     * fast path that JsObject::get already provides. Symbol wrappers
+     * and primitive bases route through the Interpreter's
+     * full-member-access helper.
+     */
+    private function lookupMember(JsValue $obj, string $name): JsValue
+    {
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            $type = $obj instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot read properties of {$type} (reading '{$name}')");
+        }
+        if ($obj instanceof JsObject) {
+            $primSlot = $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]');
+            if ($primSlot !== null && $primSlot->value instanceof \PhpJs\Value\JsSymbol) {
+                return $this->interp->vmLookupPrimitiveMember($obj, $name);
+            }
+            return $obj->get($name);
+        }
+        return $this->interp->vmLookupPrimitiveMember($obj, $name);
+    }
+
+    private function lookupComputed(JsValue $obj, JsValue $key): JsValue
+    {
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            $type = $obj instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot read properties of {$type}");
+        }
+        $resolved = TypeConversion::toPropertyKey($key);
+        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+            if ($obj instanceof JsObject) {
+                return $obj->getBySymbol($resolved);
+            }
+            return $this->slowComputedRead($obj, $key);
+        }
+        $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);
+        if ($obj instanceof JsObject) {
+            return $obj->get($name);
+        }
+        return $this->slowMemberRead($obj, $name);
+    }
+
+    private function writeMember(JsValue $obj, string $name, JsValue $value): void
+    {
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            $type = $obj instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot set properties of {$type} (setting '{$name}')");
+        }
+        if ($obj instanceof JsObject) {
+            $obj->set($name, $value, $this->interp->isStrictMode());
+            return;
+        }
+        // Primitive base: boxing semantics — use the tree-walker
+        // assignment path indirectly via toObject.
+        $wrapper = TypeConversion::toObject($obj);
+        if ($wrapper instanceof JsObject) {
+            $success = $wrapper->internalSet($name, $value, $obj);
+            if (!$success && $this->interp->isStrictMode()) {
+                throw new TypeError("Cannot assign to read only property '{$name}'");
+            }
+        }
+    }
+
+    private function writeComputed(JsValue $obj, JsValue $key, JsValue $value): void
+    {
+        if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
+            $type = $obj instanceof JsNull ? 'null' : 'undefined';
+            throw new TypeError("Cannot set properties of {$type}");
+        }
+        $resolved = TypeConversion::toPropertyKey($key);
+        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+            if ($obj instanceof JsObject) {
+                $obj->internalSetBySymbol($resolved, $value, $obj);
+                return;
+            }
+            // Symbol-keyed write on a primitive: spec-correct path
+            // throws or silently fails; mirror toObject + strict check.
+            $wrapper = TypeConversion::toObject($obj);
+            if ($wrapper instanceof JsObject) {
+                $wrapper->internalSetBySymbol($resolved, $value, $obj);
+            }
+            return;
+        }
+        $name = $resolved instanceof JsString ? $resolved->value : TypeConversion::toString($resolved);
+        $this->writeMember($obj, $name, $value);
+    }
+
+    /**
+     * Fall back to the tree-walker's full member-read path for
+     * primitive bases (string indexing, prototype chain, primitive
+     * auto-box) by routing through Interpreter::lookupMemberFallback.
+     * Avoids re-implementing the long branch ladder in the VM.
+     */
+    private function slowMemberRead(JsValue $obj, string $name): JsValue
+    {
+        return $this->interp->vmLookupPrimitiveMember($obj, $name);
+    }
+
+    private function slowComputedRead(JsValue $obj, JsValue $key): JsValue
+    {
+        return $this->interp->vmLookupPrimitiveComputed($obj, $key);
+    }
+
+    public function execute(CompiledFunction $cf, Frame $frame): JsValue
+    {
+        $code = $cf->code;
+        $consts = $cf->consts;
+        $names = $cf->names;
+        $stack = $frame->stack;
+        $sp = $frame->sp;
+        $locals = $frame->locals;
+        $env = $frame->env;
+        $thisValue = $frame->thisValue;
+        $strict = $this->interp->isStrictMode();
+        $undef = JsUndefined::instance();
+        $null = JsNull::instance();
+        $true = JsBoolean::of(true);
+        $false = JsBoolean::of(false);
+
+        $pc = 0;
+
+        while (true) {
+            $op = $code[$pc];
+            switch ($op) {
+                case Op::POP:
+                    $sp--;
+                    $pc++;
+                    break;
+                case Op::DUP:
+                    $stack[$sp] = $stack[$sp - 1];
+                    $sp++;
+                    $pc++;
+                    break;
+
+                case Op::LOAD_CONST:
+                    $stack[$sp++] = $consts[$code[$pc + 1]];
+                    $pc += 2;
+                    break;
+                case Op::LOAD_UNDEF:
+                    $stack[$sp++] = $undef;
+                    $pc++;
+                    break;
+                case Op::LOAD_NULL:
+                    $stack[$sp++] = $null;
+                    $pc++;
+                    break;
+                case Op::LOAD_TRUE:
+                    $stack[$sp++] = $true;
+                    $pc++;
+                    break;
+                case Op::LOAD_FALSE:
+                    $stack[$sp++] = $false;
+                    $pc++;
+                    break;
+                case Op::LOAD_THIS:
+                    // Resolve this via the env chain so derived-
+                    // constructor TDZ throws (and arrow lexical-this
+                    // walks) fire at the right point — matching the
+                    // tree-walker's evalThisExpression.
+                    $stack[$sp++] = $env->get('this');
+                    $pc++;
+                    break;
+
+                case Op::LOAD_LOCAL:
+                    $stack[$sp++] = $locals[$code[$pc + 1]];
+                    $pc += 2;
+                    break;
+                case Op::STORE_LOCAL:
+                    $locals[$code[$pc + 1]] = $stack[--$sp];
+                    $pc += 2;
+                    break;
+
+                case Op::LOAD_NAME:
+                    $stack[$sp++] = $env->get($names[$code[$pc + 1]], $strict);
+                    $pc += 2;
+                    break;
+                case Op::STORE_NAME:
+                    $env->set($names[$code[$pc + 1]], $stack[--$sp], $strict);
+                    $pc += 2;
+                    break;
+
+                // ---- Arithmetic ------------------------------------------
+                case Op::ADD:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                        ? new JsNumber($l->value + $r->value)
+                        : $this->interp->addOperator($l, $r);
+                    $pc++;
+                    break;
+                case Op::SUB:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                        ? new JsNumber($l->value - $r->value)
+                        : $this->interp->numericBinaryOp($l, $r, '-');
+                    $pc++;
+                    break;
+                case Op::MUL:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                        ? new JsNumber($l->value * $r->value)
+                        : $this->interp->numericBinaryOp($l, $r, '*');
+                    $pc++;
+                    break;
+                case Op::DIV:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '/');
+                    $pc++;
+                    break;
+                case Op::MOD:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '%');
+                    $pc++;
+                    break;
+                case Op::POW:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                    $pc++;
+                    break;
+
+                // ---- Comparison ------------------------------------------
+                case Op::LT:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv < $rv);
+                    } else {
+                        $stack[$sp++] = $this->interp->relational($l, $r, '<');
+                    }
+                    $pc++;
+                    break;
+                case Op::GT:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv > $rv);
+                    } else {
+                        $stack[$sp++] = $this->interp->relational($r, $l, '>');
+                    }
+                    $pc++;
+                    break;
+                case Op::LE:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv <= $rv);
+                    } else {
+                        $stack[$sp++] = $this->interp->relational($r, $l, '<=');
+                    }
+                    $pc++;
+                    break;
+                case Op::GE:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv >= $rv);
+                    } else {
+                        $stack[$sp++] = $this->interp->relational($l, $r, '>=');
+                    }
+                    $pc++;
+                    break;
+                case Op::EQ:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = JsBoolean::of(AbstractOperations::abstractEquals($l, $r));
+                    $pc++;
+                    break;
+                case Op::NEQ:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = JsBoolean::of(!AbstractOperations::abstractEquals($l, $r));
+                    $pc++;
+                    break;
+                case Op::SEQ:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(
+                            $lv === $rv && !is_nan($lv)
+                        );
+                    } else {
+                        $stack[$sp++] = JsBoolean::of(AbstractOperations::strictEquals($l, $r));
+                    }
+                    $pc++;
+                    break;
+                case Op::SNEQ:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $lv = $l->value;
+                        $rv = $r->value;
+                        $stack[$sp++] = JsBoolean::of(
+                            $lv !== $rv || is_nan($lv)
+                        );
+                    } else {
+                        $stack[$sp++] = JsBoolean::of(!AbstractOperations::strictEquals($l, $r));
+                    }
+                    $pc++;
+                    break;
+
+                // ---- Bitwise --------------------------------------------
+                case Op::BAND:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '&');
+                    $pc++;
+                    break;
+                case Op::BOR:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '|');
+                    $pc++;
+                    break;
+                case Op::BXOR:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '^');
+                    $pc++;
+                    break;
+                case Op::SHL:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '<<');
+                    $pc++;
+                    break;
+                case Op::SHR:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>');
+                    $pc++;
+                    break;
+                case Op::USHR:
+                    $r = $stack[--$sp];
+                    $l = $stack[--$sp];
+                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>>');
+                    $pc++;
+                    break;
+
+                // ---- Unary ----------------------------------------------
+                case Op::NOT:
+                    $v = $stack[--$sp];
+                    $stack[$sp++] = JsBoolean::of(!TypeConversion::toBoolean($v));
+                    $pc++;
+                    break;
+                case Op::NEG:
+                    $v = $stack[--$sp];
+                    if ($v instanceof JsNumber) {
+                        $stack[$sp++] = new JsNumber(-$v->value);
+                    } else {
+                        $n = TypeConversion::toNumeric($v);
+                        if ($n instanceof JsNumber) {
+                            $stack[$sp++] = new JsNumber(-$n->value);
+                        } else {
+                            // BigInt or other: defer to the spec helper
+                            // for full correctness.
+                            $stack[$sp++] = $this->interp->numericBinaryOp(
+                                new JsNumber(0.0),
+                                $v,
+                                '-',
+                            );
+                        }
+                    }
+                    $pc++;
+                    break;
+                case Op::POS:
+                    $v = $stack[--$sp];
+                    if ($v instanceof JsNumber) {
+                        $stack[$sp++] = $v;
+                    } else {
+                        $stack[$sp++] = new JsNumber(TypeConversion::toNumber($v));
+                    }
+                    $pc++;
+                    break;
+
+                // ---- Control flow ---------------------------------------
+                case Op::JUMP:
+                    $pc += $code[$pc + 1];
+                    break;
+                case Op::JUMP_IF_TRUE:
+                    $v = $stack[--$sp];
+                    if (TypeConversion::toBoolean($v)) {
+                        $pc += $code[$pc + 1];
+                    } else {
+                        $pc += 2;
+                    }
+                    break;
+                case Op::JUMP_IF_FALSE:
+                    $v = $stack[--$sp];
+                    if (!TypeConversion::toBoolean($v)) {
+                        $pc += $code[$pc + 1];
+                    } else {
+                        $pc += 2;
+                    }
+                    break;
+                case Op::JUMP_IF_TRUTHY_KEEP:
+                    $v = $stack[$sp - 1];
+                    if (TypeConversion::toBoolean($v)) {
+                        $pc += $code[$pc + 1];
+                    } else {
+                        $sp--;
+                        $pc += 2;
+                    }
+                    break;
+                case Op::JUMP_IF_FALSY_KEEP:
+                    $v = $stack[$sp - 1];
+                    if (!TypeConversion::toBoolean($v)) {
+                        $pc += $code[$pc + 1];
+                    } else {
+                        $sp--;
+                        $pc += 2;
+                    }
+                    break;
+
+                // ---- Calls / return -------------------------------------
+                case Op::CALL: {
+                    $argc = $code[$pc + 1];
+                    $base = $sp - $argc;
+                    $args = [];
+                    for ($i = 0; $i < $argc; $i++) {
+                        $args[] = $stack[$base + $i];
+                    }
+                    $callee = $stack[$base - 1];
+                    $sp = $base - 1;
+                    if (!$callee instanceof JsFunction) {
+                        throw new TypeError(
+                            (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
+                        );
+                    }
+                    $stack[$sp++] = $this->interp->callFunction(
+                        $callee,
+                        $undef,
+                        $args,
+                    );
+                    $pc += 2;
+                    break;
+                }
+
+                case Op::CALL_METHOD: {
+                    $argc = $code[$pc + 1];
+                    $nameIdx = $code[$pc + 2];
+                    $base = $sp - $argc;
+                    $args = [];
+                    for ($i = 0; $i < $argc; $i++) {
+                        $args[] = $stack[$base + $i];
+                    }
+                    $receiver = $stack[$base - 1];
+                    $sp = $base - 1;
+                    $method = $this->lookupMember($receiver, $names[$nameIdx]);
+                    if (!$method instanceof JsFunction) {
+                        // Defer to the spec-correct error path with
+                        // the receiver as `this`. JsObject::get path
+                        // will surface the descriptive type-error
+                        // message for non-function callees.
+                        if (
+                            $method instanceof \PhpJs\Value\JsProxy
+                            && $method->isCallable()
+                        ) {
+                            $stack[$sp++] = $method->apply($receiver, $args);
+                            $pc += 3;
+                            break;
+                        }
+                        throw new TypeError(
+                            $names[$nameIdx] . ' is not a function'
+                        );
+                    }
+                    $stack[$sp++] = $this->interp->callFunction(
+                        $method,
+                        $receiver,
+                        $args,
+                    );
+                    $pc += 3;
+                    break;
+                }
+
+                case Op::LOAD_MEMBER: {
+                    $obj = $stack[--$sp];
+                    $name = $names[$code[$pc + 1]];
+                    $stack[$sp++] = $this->lookupMember($obj, $name);
+                    $pc += 2;
+                    break;
+                }
+                case Op::LOAD_COMPUTED: {
+                    $key = $stack[--$sp];
+                    $obj = $stack[--$sp];
+                    $stack[$sp++] = $this->lookupComputed($obj, $key);
+                    $pc++;
+                    break;
+                }
+                case Op::STORE_MEMBER: {
+                    $val = $stack[--$sp];
+                    $obj = $stack[--$sp];
+                    $name = $names[$code[$pc + 1]];
+                    $this->writeMember($obj, $name, $val);
+                    $stack[$sp++] = $val;
+                    $pc += 2;
+                    break;
+                }
+                case Op::STORE_COMPUTED: {
+                    $val = $stack[--$sp];
+                    $key = $stack[--$sp];
+                    $obj = $stack[--$sp];
+                    $this->writeComputed($obj, $key, $val);
+                    $stack[$sp++] = $val;
+                    $pc++;
+                    break;
+                }
+
+                case Op::RET:
+                    return $stack[--$sp];
+
+                default:
+                    throw new InternalError('VM: unknown opcode ' . $op);
+            }
+        }
+    }
+}
