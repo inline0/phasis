@@ -21,6 +21,21 @@ class JsSymbol implements JsValue
 
     public static function getSymbolPrototype(): ?JsObject
     {
+        // Prefer the live Symbol.prototype from the current realm's
+        // global env so getPrototypeOf on a symbol returns the calling
+        // realm's prototype, not a stale one from a sibling Engine
+        // (e.g. a ShadowRealm) that wrote the static last.
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        if ($interp !== null) {
+            $env = $interp->getGlobalEnv();
+            $symVal = $env?->get('Symbol', false);
+            if ($symVal instanceof JsObject) {
+                $protoVal = $symVal->get('prototype');
+                if ($protoVal instanceof JsObject) {
+                    return $protoVal;
+                }
+            }
+        }
         return self::$symbolPrototype;
     }
 

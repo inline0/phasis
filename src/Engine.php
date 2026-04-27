@@ -1031,10 +1031,20 @@ class Engine
     {
         $parser = new Parser($source);
         $program = $parser->parse();
-        $result = $this->interpreter->execute($program);
-        // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
-        \PhpJs\Value\JsPromise::drainMicrotasks();
-        return $this->toPhp($result);
+        // Restore this engine's interpreter as the active one so realm-
+        // sensitive lookups (Symbol.prototype etc.) resolve against this
+        // realm's globals rather than a sibling Engine that wrote the
+        // static last (e.g. a ShadowRealm constructed earlier).
+        $previousInterpreter = self::$currentInterpreter;
+        self::$currentInterpreter = $this->interpreter;
+        try {
+            $result = $this->interpreter->execute($program);
+            // Drain any microtasks (deferred .then() handlers) scheduled during evaluation.
+            \PhpJs\Value\JsPromise::drainMicrotasks();
+            return $this->toPhp($result);
+        } finally {
+            self::$currentInterpreter = $previousInterpreter;
+        }
     }
 
     /**
@@ -1186,6 +1196,15 @@ class Engine
     public static function getCurrentInterpreter(): ?\PhpJs\Runtime\Interpreter
     {
         return self::$currentInterpreter;
+    }
+
+    /**
+     * Restore the active interpreter after a sibling Engine
+     * (typically a ShadowRealm) wrote the static during construction.
+     */
+    public static function setCurrentInterpreter(?\PhpJs\Runtime\Interpreter $interpreter): void
+    {
+        self::$currentInterpreter = $interpreter;
     }
 
     /**

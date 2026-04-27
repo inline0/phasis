@@ -39,9 +39,16 @@ class ShadowRealmConstructor
                 }
 
                 $realm = new JsObject($proto);
-                // Store a fresh Engine instance as the realm's execution context.
+                // Snapshot the outer realm's current interpreter so the
+                // Engine constructor's "current = me" assignment doesn't
+                // leave the static pointing at the inner realm after the
+                // SR is constructed.
+                $outerInterp = Engine::getCurrentInterpreter();
                 $engine = new Engine();
                 $engine->setLimit('maxLoopIterations', 2_000_000);
+                if ($outerInterp !== null) {
+                    Engine::setCurrentInterpreter($outerInterp);
+                }
                 $realm->setInternalProperty('[[ShadowRealmEngine]]', $engine);
                 return $realm;
             },
@@ -197,15 +204,26 @@ class ShadowRealmConstructor
     {
         $parser = new \PhpJs\Parser\Parser($sourceText);
         $program = $parser->parse();
-        $interpreter = Engine::getCurrentInterpreter();
+        $callerInterpreter = Engine::getCurrentInterpreter();
 
-        // Execute in the shadow realm's engine.
+        // Execute in the shadow realm's engine. Switch the static
+        // currentInterpreter pointer so realm-sensitive lookups
+        // (Symbol.prototype, error wrapping) resolve against SR's
+        // globals, then capture SR's interpreter for the result wrap
+        // BEFORE restoring the caller realm.
         $innerInterpreter = $engine->getInterpreter();
-        $innerEnv = $engine->getGlobalEnv();
-        $rawResult = $innerInterpreter->execute($program);
-
-        // Wrap the result per GetWrappedValue semantics.
-        return self::getWrappedValue($rawResult);
+        Engine::setCurrentInterpreter($innerInterpreter);
+        try {
+            $rawResult = $innerInterpreter->execute($program);
+        } finally {
+            Engine::setCurrentInterpreter($innerInterpreter);
+        }
+        try {
+            return self::getWrappedValue($rawResult);
+        } finally {
+            // Restore the caller's interpreter before returning.
+            Engine::setCurrentInterpreter($callerInterpreter);
+        }
     }
 
     /**
@@ -286,14 +304,22 @@ class ShadowRealmConstructor
      */
     private static function createWrappedFunction(JsFunction $targetFn): JsFunction
     {
+        // Snapshot the realm interpreter where the target function was
+        // captured so cross-realm calls run with the correct globalEnv
+        // (Symbol.prototype lookups, error wrapping, etc.). Without this,
+        // the wrapped function uses whatever Engine wrote the static
+        // currentInterpreter last, which leaks the outer realm into SR.
+        $targetInterp = Engine::getCurrentInterpreter();
         $wrapped = JsFunction::fromCallable(
             '',
-            function (JsValue $this_, array $args) use ($targetFn): JsValue {
+            function (JsValue $this_, array $args) use ($targetFn, $targetInterp): JsValue {
                 $wrappedArgs = self::wrapArguments($args);
-                $interp = Engine::getCurrentInterpreter();
+                $interp = $targetInterp ?? Engine::getCurrentInterpreter();
                 if ($interp === null) {
                     throw new TypeError('No interpreter available');
                 }
+                $previous = Engine::getCurrentInterpreter();
+                Engine::setCurrentInterpreter($interp);
                 try {
                     $result = $interp->callFunction(
                         $targetFn,
@@ -302,6 +328,8 @@ class ShadowRealmConstructor
                     );
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
                     throw new TypeError($e->getMessage());
+                } finally {
+                    Engine::setCurrentInterpreter($previous);
                 }
                 return self::getWrappedValue($result);
             },
@@ -342,6 +370,17 @@ class ShadowRealmConstructor
      */
     private static function copyWrappedProperties(JsFunction $wrapped, JsObject $target): void
     {
+        // Per spec CopyNameAndLength step 3: HasOwnProperty(Target, "length").
+        // For a Proxy this calls the getOwnPropertyDescriptor trap; if that
+        // trap throws, we must surface the failure as a TypeError in the
+        // caller realm (WrappedFunctionCreate step 8).
+        try {
+            $target->getOwnPropertyDescriptor('length');
+        } catch (\PhpJs\Exceptions\JsThrowable) {
+            throw new TypeError('WrappedFunctionCreate: target length descriptor threw');
+        } catch (\Throwable $e) {
+            throw new TypeError('WrappedFunctionCreate: ' . $e->getMessage());
+        }
         // Per spec CopyNameAndLength: Get(target, "length") is observable.
         // If it throws, WrappedFunctionCreate must throw a TypeError in the
         // caller realm (step 8). Value handling: +Infinity → +Infinity,
