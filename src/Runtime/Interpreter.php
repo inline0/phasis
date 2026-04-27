@@ -262,6 +262,17 @@ class Interpreter
             if ($this->strictMode) {
                 $varEnv = $this->globalEnv->createChild();
                 $lexEnv = $varEnv->createChild();
+                // Per spec PerformEval step 10: strict indirect eval gets
+                // its own DeclarativeEnvironment for var/function declarations.
+                // Pre-declare all var names in varEnv as own bindings so
+                // hoistDeclarations does not skip them when an outer scope
+                // (e.g. global) already has a same-named binding.
+                $strictVarNames = $this->collectEvalVarNames($program->body);
+                foreach ($strictVarNames as $vn) {
+                    if (!$varEnv->hasOwnBinding($vn)) {
+                        $varEnv->defineVar($vn, JsUndefined::instance());
+                    }
+                }
                 $this->hoistDeclarations($program->body, $varEnv);
                 $this->hoistEvalLexicalDeclarations($program->body, $lexEnv);
                 return $this->executeStatements($program->body, $lexEnv);
