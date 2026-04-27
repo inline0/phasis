@@ -107,6 +107,9 @@ class Interpreter
      */
     private ?JsObject $cachedObjectPrototype = null;
 
+    /** Cached %StringPrototype% lookup; used by string member/method access. */
+    private ?JsObject $cachedStringPrototype = null;
+
     /** When true, hoistDeclarations skips Annex B block-function hoisting. */
     private bool $skipAnnexBHoisting = false;
 
@@ -2069,8 +2072,8 @@ class Interpreter
                     ? $node->callee->property->name : ''));
 
             // String method calls: look up on __StringPrototype__
-            if ($rawObj instanceof JsString && !$isSymbolCallKey && $env->has('__StringPrototype__')) {
-                $proto = $env->get('__StringPrototype__');
+            if ($rawObj instanceof JsString && !$isSymbolCallKey) {
+                $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
                 if ($proto instanceof JsObject) {
                     $method = $proto->get($key);
                     if ($method instanceof JsFunction) {
@@ -6009,15 +6012,13 @@ class Interpreter
             // primitive string as their `this` (per spec OrdinaryGet for a
             // primitive receiver). Method-call this-binding is handled by
             // the CallExpression evaluator, not here.
-            if ($env->has('__StringPrototype__')) {
-                $proto = $env->get('__StringPrototype__');
-                if ($proto instanceof JsObject) {
-                    $val = $isSymbolKey && $rawKey instanceof JsSymbol
-                        ? $proto->getBySymbolWithReceiver($rawKey, $obj)
-                        : $proto->getWithValueReceiver($key, $obj);
-                    if (!$val instanceof JsUndefined) {
-                        return $val;
-                    }
+            $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
+            if ($proto instanceof JsObject) {
+                $val = $isSymbolKey && $rawKey instanceof JsSymbol
+                    ? $proto->getBySymbolWithReceiver($rawKey, $obj)
+                    : $proto->getWithValueReceiver($key, $obj);
+                if (!$val instanceof JsUndefined) {
+                    return $val;
                 }
             }
             return JsUndefined::instance();
@@ -6232,20 +6233,31 @@ class Interpreter
         return $arr;
     }
 
+    /**
+     * Resolve a global `__XxxPrototype__` binding once and reuse the
+     * JsObject reference. Used by hot paths that fetch the same
+     * intrinsic prototype on every invocation (object literals,
+     * string/number/etc. method dispatch).
+     */
+    private function resolveCachedPrototype(string $name): ?JsObject
+    {
+        if ($this->globalEnv->has($name)) {
+            $p = $this->globalEnv->get($name);
+            if ($p instanceof JsObject) {
+                return $p;
+            }
+        }
+        return null;
+    }
+
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue
     {
         // Cache the global Object.prototype lookup. The binding is in
         // globalEnv and doesn't change across an Engine instance, so
         // looking it up via env-walk on every literal is wasted work.
-        if ($this->cachedObjectPrototype === null) {
-            if ($this->globalEnv->has('__ObjectPrototype__')) {
-                $p = $this->globalEnv->get('__ObjectPrototype__');
-                if ($p instanceof JsObject) {
-                    $this->cachedObjectPrototype = $p;
-                }
-            }
-        }
-        $obj = new JsObject($this->cachedObjectPrototype);
+        $obj = new JsObject(
+            $this->cachedObjectPrototype ??= $this->resolveCachedPrototype('__ObjectPrototype__'),
+        );
 
         foreach ($node->properties as $prop) {
             if ($prop instanceof SpreadElement) {
