@@ -1104,11 +1104,12 @@ class TemporalObject
         });
         self::defineGetter($proto, 'dayOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
-            return new JsNumber((float) self::isoDayOfYear(
-                self::getSlotInt($this_, '[[ISOYear]]'),
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-                self::getSlotInt($this_, '[[ISODay]]'),
-            ));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $doy = self::calendarDayOfYearForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($doy ?? self::isoDayOfYear($iy, $im, $id)));
         });
         self::defineGetter($proto, 'weekOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDate($this_);
@@ -2105,11 +2106,12 @@ class TemporalObject
         });
         self::defineGetter($proto, 'dayOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
-            return new JsNumber((float) self::isoDayOfYear(
-                self::getSlotInt($this_, '[[ISOYear]]'),
-                self::getSlotInt($this_, '[[ISOMonth]]'),
-                self::getSlotInt($this_, '[[ISODay]]'),
-            ));
+            $cal = self::getSlotString($this_, '[[Calendar]]');
+            $iy = self::getSlotInt($this_, '[[ISOYear]]');
+            $im = self::getSlotInt($this_, '[[ISOMonth]]');
+            $id = self::getSlotInt($this_, '[[ISODay]]');
+            $doy = self::calendarDayOfYearForIso($cal, $iy, $im, $id);
+            return new JsNumber((float) ($doy ?? self::isoDayOfYear($iy, $im, $id)));
         });
         self::defineGetter($proto, 'weekOfYear', function (JsValue $this_): JsValue {
             self::requirePlainDateTime($this_);
@@ -3759,8 +3761,10 @@ class TemporalObject
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
             $ns = self::getSlotString($this_, '[[EpochNanoseconds]]');
             $tz = self::getSlotString($this_, '[[TimeZone]]');
+            $cal = self::getSlotString($this_, '[[Calendar]]');
             $parts = self::epochNsToISOParts($ns, $tz);
-            return new JsNumber((float) self::isoDayOfYear($parts['year'], $parts['month'], $parts['day']));
+            $doy = self::calendarDayOfYearForIso($cal, $parts['year'], $parts['month'], $parts['day']);
+            return new JsNumber((float) ($doy ?? self::isoDayOfYear($parts['year'], $parts['month'], $parts['day'])));
         });
         self::defineGetter($proto, 'daysInMonth', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -10124,6 +10128,27 @@ class TemporalObject
 
             static $pmdHas13MonthsConstrain = ['coptic', 'ethioaa', 'ethiopic'];
             $maxMonth = in_array($cal, $pmdHas13MonthsConstrain, true) ? 13 : 12;
+            // For lunisolar calendars (hebrew/chinese/dangi), the month
+            // count varies year-to-year. With an explicit year, cap by
+            // that year's actual monthsInYear so month:15 in a leap
+            // hebrew year clamps to 13 (Elul) rather than 12 (Av).
+            if (
+                $hasYear
+                && in_array($cal, ['hebrew', 'chinese', 'dangi'], true)
+            ) {
+                $isoForCount = self::calendarPartsToIso($cal, $refYear, null, 1, 1);
+                if ($isoForCount !== null) {
+                    $miyForRefYear = self::calendarMonthsInYear(
+                        $cal,
+                        $isoForCount['year'],
+                        $isoForCount['month'],
+                        $isoForCount['day'],
+                    );
+                    if ($miyForRefYear !== null) {
+                        $maxMonth = $miyForRefYear;
+                    }
+                }
+            }
             // When the user provided a year, the day limit is that year's
             // actual days-in-month (not the calendar-wide max).
             $useYearDim = $hasYear && in_array($cal, ['iso8601', 'gregory', 'roc', 'japanese'], true);
@@ -10171,7 +10196,31 @@ class TemporalObject
                         $d = min($d, $maxD);
                     }
                 }
-                $iso = self::pmdReferenceIsoFor($cal, $hasMonthCode ? $mStr : null, $hasMonthCode ? null : $m, $d);
+                // When the user supplied year+month (no monthCode) for a
+                // lunisolar calendar, resolve the monthCode in that year's
+                // space so a PMD constructed in a leap year carries the
+                // correct ML / non-L suffix. Otherwise PMD throws away the
+                // year and the search around 1972 may pick a non-leap year.
+                $resolvedMonthCode = $hasMonthCode ? $mStr : null;
+                if (
+                    !$hasMonthCode
+                    && $hasYear
+                    && in_array($cal, ['hebrew', 'chinese', 'dangi'], true)
+                ) {
+                    $resolved = self::calendarPartsToIso($cal, $refYear, null, $m, $d);
+                    if ($resolved !== null) {
+                        $back = self::isoToCalendarParts($cal, $resolved['year'], $resolved['month'], $resolved['day']);
+                        if ($back !== null) {
+                            $resolvedMonthCode = $back['monthCode'];
+                        }
+                    }
+                }
+                $iso = self::pmdReferenceIsoFor(
+                    $cal,
+                    $resolvedMonthCode,
+                    $resolvedMonthCode === null ? $m : null,
+                    $d,
+                );
                 if ($iso !== null) {
                     return self::createPlainMonthDayObject($iso['month'], $iso['day'], $iso['year'], $cal);
                 }
@@ -10435,8 +10484,11 @@ class TemporalObject
     private static function parseMonthCode(string $mc, string $cal = 'iso8601'): int
     {
         [$month, $isLeap] = self::parseMonthCodeSyntax($mc);
-        if ($month < 1 || $month > 12) {
-            throw new RangeError("monthCode '{$mc}' is not valid for ISO 8601 calendar");
+        // Coptic / Ethiopic / EthioAA have a 13th epagomenal month;
+        // their valid monthCodes are M01..M13. Other calendars cap at 12.
+        $maxMonth = in_array($cal, ['coptic', 'ethiopic', 'ethioaa'], true) ? 13 : 12;
+        if ($month < 1 || $month > $maxMonth) {
+            throw new RangeError("monthCode '{$mc}' is not valid for calendar '{$cal}'");
         }
         if ($isLeap) {
             // Leap months exist only in lunisolar calendars.
@@ -10444,6 +10496,13 @@ class TemporalObject
             if (!in_array($cal, $lunisolarCals, true)) {
                 throw new RangeError(
                     "monthCode '{$mc}' leap-month suffix is not valid for calendar '{$cal}'",
+                );
+            }
+            // Hebrew: only M05L (Adar I) exists. Reject M01L-M04L,
+            // M06L-M12L unconditionally.
+            if ($cal === 'hebrew' && $month !== 5) {
+                throw new RangeError(
+                    "monthCode '{$mc}' is not a valid hebrew leap-month code",
                 );
             }
         }
@@ -12197,6 +12256,41 @@ class TemporalObject
      * True when the calendar year (in calendar-native terms) is a leap year.
      */
     /**
+     * 1-indexed day-of-year in the given calendar's space. Returns null
+     * when ICU can't model the calendar; callers fall back to ISO
+     * day-of-year. iso8601/gregory/roc/japanese/buddhist short-circuit
+     * to the ISO value (their year boundaries match).
+     */
+    private static function calendarDayOfYearForIso(string $calendar, int $isoY, int $isoM, int $isoD): ?int
+    {
+        if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
+            return self::isoDayOfYear($isoY, $isoM, $isoD);
+        }
+        if (!class_exists('IntlCalendar', false)) {
+            return null;
+        }
+        static $aliasMap = [
+            'islamicc' => 'islamic-civil',
+            'ethioaa' => 'ethiopic-amete-alem',
+        ];
+        $icuName = $aliasMap[$calendar] ?? $calendar;
+        try {
+            $cal = \IntlCalendar::createInstance(
+                'UTC',
+                "en@calendar={$icuName}",
+            );
+            if (!$cal instanceof \IntlCalendar) {
+                return null;
+            }
+            $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
+            $cal->setTime($epochMs);
+            return (int) $cal->get(\IntlCalendar::FIELD_DAY_OF_YEAR);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
      * Number of days in the calendar month containing the given ISO
      * date. Returns null when ICU can't model the calendar; callers
      * fall back to ISO month length.
@@ -12361,7 +12455,15 @@ class TemporalObject
             if ($calendar === 'persian' || $calendar === 'indian') {
                 return $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR) > 365;
             }
-            // Islamic / others: no canonical leap concept; default false.
+            // Islamic variants: 354 vs 355 days (the "kabisat" extra day on
+            // Dhu al-Hijjah). Treat any year exceeding 354 days as a leap.
+            if (in_array(
+                $calendar,
+                ['islamic', 'islamic-civil', 'islamic-tbla', 'islamic-rgsa', 'islamic-umalqura', 'islamicc'],
+                true,
+            )) {
+                return $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR) > 354;
+            }
             return false;
         } catch (\Throwable) {
             return null;
