@@ -3400,6 +3400,12 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.with called on incompatible receiver"
                     );
                 }
+                // Per spec step 3: ValidateTypedArray throws when buffer is detached.
+                if ($this_->getBuffer()->isDetached()) {
+                    throw new TypeError(
+                        "Cannot perform {$typeName}.prototype.with on a detached ArrayBuffer"
+                    );
+                }
                 // Per spec %TypedArray%.prototype.with (ES2023+):
                 //   4. Let len be TypedArrayLength(taRecord).
                 //   5. Let relativeIndex be ? ToIntegerOrInfinity(index).
