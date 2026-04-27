@@ -100,6 +100,13 @@ class Interpreter
     /** @var array<string, bool> Current function parameter names for Annex B hoisting. */
     private array $currentParamNames = [];
 
+    /**
+     * Cached %ObjectPrototype% lookup from the global env. Accessed by
+     * every object-literal evaluation; the binding never changes during
+     * an Engine instance's lifetime, so we lazy-resolve once and reuse.
+     */
+    private ?JsObject $cachedObjectPrototype = null;
+
     /** When true, hoistDeclarations skips Annex B block-function hoisting. */
     private bool $skipAnnexBHoisting = false;
 
@@ -6227,10 +6234,18 @@ class Interpreter
 
     private function evalObjectExpression(ObjectExpression $node, Environment $env): JsValue
     {
-        $objProto = $env->has('__ObjectPrototype__')
-            ? $env->get('__ObjectPrototype__')
-            : null;
-        $obj = new JsObject($objProto instanceof JsObject ? $objProto : null);
+        // Cache the global Object.prototype lookup. The binding is in
+        // globalEnv and doesn't change across an Engine instance, so
+        // looking it up via env-walk on every literal is wasted work.
+        if ($this->cachedObjectPrototype === null) {
+            if ($this->globalEnv->has('__ObjectPrototype__')) {
+                $p = $this->globalEnv->get('__ObjectPrototype__');
+                if ($p instanceof JsObject) {
+                    $this->cachedObjectPrototype = $p;
+                }
+            }
+        }
+        $obj = new JsObject($this->cachedObjectPrototype);
 
         foreach ($node->properties as $prop) {
             if ($prop instanceof SpreadElement) {
