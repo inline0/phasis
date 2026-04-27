@@ -141,6 +141,14 @@ class TypedArrayConstructor
                     ? (float) $len
                     : TypeConversion::toIntegerOrInfinity($endArg);
 
+                // Per spec, after the coercions a `valueOf` may have detached
+                // the source buffer; re-validate before the slice copy.
+                if ($this_->isDetached()) {
+                    throw new TypeError(
+                        'Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer'
+                    );
+                }
+
                 // Compute the slice parameters.
                 [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
 
@@ -695,6 +703,12 @@ class TypedArrayConstructor
                     }
                 } else {
                     $byteLength = TypeConversion::toIndex($lenArg);
+                    // ToIndex may detach via valueOf; re-validate per spec.
+                    if ($buffer->isDetached()) {
+                        throw new TypeError(
+                            'Cannot construct DataView on a detached ArrayBuffer'
+                        );
+                    }
                     if (($byteOffset + $byteLength) > $bufLen) {
                         throw new RangeError('Invalid DataView length');
                     }
@@ -2450,6 +2464,10 @@ class TypedArrayConstructor
                         $srcLen = 0;
                     }
 
+                    // Per spec, after the length getter ran, the underlying
+                    // buffer may have been detached. Re-validate before the
+                    // size check; a detached target throws TypeError.
+                    $this_->validateNotDetached();
                     if ($srcLen + $offset > $this_->getLength()) {
                         throw new RangeError('Source is too large');
                     }

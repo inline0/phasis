@@ -114,10 +114,18 @@ class AtomicsObject
 
     /**
      * Validate and convert an index for Atomics operations.
+     *
+     * Per spec ValidateAtomicAccess, ToIndex(requestIndex) is called before
+     * the bounds check. ToIndex may invoke a `valueOf` that detaches the
+     * underlying buffer, so we must re-validate the buffer (TypeError on
+     * detached) before falling through to the RangeError bounds check.
      */
     private static function validateAtomicAccess(JsTypedArray $ta, JsValue $requestIndex): int
     {
         $index = TypeConversion::toIndex($requestIndex);
+        // Detached-buffer check after coercion: a `valueOf`-driven detach
+        // surfaces as a TypeError per sm/Atomics/detached-buffers.js.
+        $ta->validateNotDetached();
         $length = $ta->getLength();
 
         if ($index < 0 || $index >= $length) {

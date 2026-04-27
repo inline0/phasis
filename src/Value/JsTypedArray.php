@@ -707,6 +707,23 @@ class JsTypedArray extends JsObject
         return array_merge($keys, parent::ownKeys());
     }
 
+    /**
+     * Override so Object.keys / Object.values / Object.entries see the
+     * typed array's integer indices. JsObject's default only lists keys
+     * from the property map, which doesn't store TypedArray elements.
+     *
+     * @return list<string>
+     */
+    public function getOwnPropertyNames(): array
+    {
+        $keys = [];
+        $len = $this->getLength();
+        for ($i = 0; $i < $len; $i++) {
+            $keys[] = (string) $i;
+        }
+        return array_merge($keys, parent::getOwnPropertyNames());
+    }
+
     /** @return list<string> */
     public function getOwnEnumerableKeys(): array
     {
