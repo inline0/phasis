@@ -6374,7 +6374,9 @@ class Interpreter
                 // CreateDataPropertyOrThrow which uses [[DefineOwnProperty]],
                 // NOT [[Set]]. Using set() would trigger prototype accessors
                 // (e.g. __proto__ setter or non-writable prototype properties).
-                $obj->defineOwnProperty($key, PropertyDescriptor::data($value));
+                // Fast path skips the PropertyDescriptor::data wrapper plus
+                // the merge-branch allocation inside defineOwnProperty.
+                $obj->defineOwnDataPropertyFast($key, $value);
             }
         }
 

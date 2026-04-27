@@ -1107,6 +1107,40 @@ class JsObject implements JsValue
     }
 
     /**
+     * Fast path for defining a brand-new enumerable, writable, configurable
+     * data property. Used by object literal evaluation where the spec
+     * (CreateDataPropertyOrThrow) always produces this exact shape and the
+     * full defineOwnProperty merge logic is unnecessary. Skips the existing-
+     * descriptor branch and the rebuilt-descriptor allocation that the
+     * generic path emits even when the input is already complete.
+     *
+     * Returns false only if the object is non-extensible.
+     */
+    public function defineOwnDataPropertyFast(string $name, JsValue $value): bool
+    {
+        if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
+            // Module namespaces have specialised semantics; fall back.
+            return $this->defineOwnProperty($name, PropertyDescriptor::data($value));
+        }
+        if (!$this->extensible && $this->properties->get($name) === null) {
+            return false;
+        }
+        // If a descriptor already exists, fall back to the merge path so
+        // configurability / writability / accessor↔data conversion semantics
+        // stay correct.
+        if ($this->properties->get($name) !== null) {
+            return $this->defineOwnProperty($name, PropertyDescriptor::data($value));
+        }
+        $this->properties->set($name, new PropertyDescriptor(
+            value: $value,
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        ));
+        return true;
+    }
+
+    /**
      * OrdinaryDefineOwnProperty per ES spec 10.1.6.
      *
      * Merges the incoming descriptor with any existing descriptor,
