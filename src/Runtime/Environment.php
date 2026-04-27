@@ -125,6 +125,25 @@ class Environment
     }
 
     /**
+     * Whether this env or any ancestor has a `with`-object attached to
+     * it. Used by the assignment fast path to bail out: with-bindings
+     * dynamically intercept name lookups via the binding object's
+     * [[HasProperty]] trap, so we cannot capture the binding env without
+     * consulting them.
+     */
+    public function hasAnyWithObjectInChain(): bool
+    {
+        $cur = $this;
+        while ($cur !== null) {
+            if ($cur->withObject !== null) {
+                return true;
+            }
+            $cur = $cur->parent;
+        }
+        return false;
+    }
+
+    /**
      * Install an immutable indirect import binding. Reads resolve via the
      * provided closure at access time; writes throw TypeError (per spec,
      * imports are read-only).

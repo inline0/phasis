@@ -1712,14 +1712,64 @@ class Interpreter
             return $value;
         }
 
+        // Fast path: simple assignment (`x = rhs`) where LHS is a plain
+        // Identifier and no with-environments are reachable from the
+        // current scope chain. The hasAnyWithObjectInChain check covers
+        // the case where the function was defined inside a `with` and
+        // is still walking that with-env via its closure even after the
+        // with statement has exited. Captures the binding env before RHS
+        // evaluation, then writes through it. Name-inference rules
+        // (13.15.2 step 1.e) for anonymous function / class expressions
+        // are preserved.
+        if (
+            $node->operator === '='
+            && $node->left instanceof Identifier
+            && $this->withEnvObjects === []
+            && $node->left->name !== 'eval'
+            && $node->left->name !== 'arguments'
+            && !$node->leftParenthesized
+            && !$env->hasAnyWithObjectInChain()
+        ) {
+            $name = $node->left->name;
+            $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            if ($bindingEnv !== null) {
+                if (
+                    $node->right instanceof ClassExpression
+                    && $node->right->id === null
+                ) {
+                    $right = $this->evalClassExpression($node->right, $env, $name);
+                } else {
+                    $right = $this->evaluate($node->right, $env);
+                }
+                if (
+                    $right instanceof JsFunction
+                    && $this->isAnonymousFunctionDefinitionNode($node->right)
+                    && !$this->hasExplicitNameProperty($right)
+                ) {
+                    $right->setName($name);
+                }
+                $bindingEnv->set($name, $right, $this->strictMode);
+                return $right;
+            }
+            // Unresolvable LHS: in strict mode, the spec throws
+            // ReferenceError before evaluating RHS. Fall through to the
+            // slow path so it can produce that error correctly.
+            if ($this->strictMode) {
+                throw new ReferenceError("{$name} is not defined");
+            }
+            // Sloppy: evaluate RHS and let the slow path implicitly
+            // create the global binding.
+        }
+
         // Fast path: compound assignment (`x += y`) where LHS is a plain
-        // Identifier and no with-environments are active. We capture the
-        // binding environment up front, so even if the RHS injects a
-        // shadowing binding via eval (`x *= (eval("var x = 2"), 4)`)
-        // the PutValue still targets the originally-resolved environment
-        // — matching the spec's "Reference frozen before initializer"
-        // requirement. Skips Reference allocation, the deferred-key
-        // dance, and the with-trap dispatch entirely.
+        // Identifier and no with-environments are reachable from the
+        // current scope chain. We capture the binding environment up
+        // front, so even if the RHS injects a shadowing binding via eval
+        // (`x *= (eval("var x = 2"), 4)`) the PutValue still targets the
+        // originally-resolved environment — matching the spec's
+        // "Reference frozen before initializer" requirement. Skips
+        // Reference allocation, the deferred-key dance, and the with-
+        // trap dispatch entirely.
         if (
             $node->operator !== '='
             && $node->operator !== '&&='
@@ -1729,6 +1779,7 @@ class Interpreter
             && $this->withEnvObjects === []
             && $node->left->name !== 'eval'
             && $node->left->name !== 'arguments'
+            && !$env->hasAnyWithObjectInChain()
         ) {
             $name = $node->left->name;
             $bindingEnv = $this->resolveBindingEnvironment($env, $name);
