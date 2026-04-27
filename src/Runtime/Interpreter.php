@@ -4545,11 +4545,20 @@ class Interpreter
             // and DO propagate the function to the var scope, overwriting
             // the implicit arguments. This project's oracle is V8, so we
             // follow V8 and skip adding "arguments" to parameterNames.
+            //
+            // currentParamNames is read only by hoistDeclarations'
+            // canHoist check. If the body trips no hoisting at all
+            // (cached on JsFunction for BlockStatement bodies), the
+            // swap is pure overhead — skip it.
+            $needsParamNames = $body instanceof BlockStatement
+                && $fn->bodyNeedsHoistingCache !== false;
             $savedParamNames = $this->currentParamNames;
-            $this->currentParamNames = [];
-            foreach ($params as $p) {
-                foreach ($this->patternBoundNames($p) as $pName) {
-                    $this->currentParamNames[$pName] = true;
+            if ($needsParamNames) {
+                $this->currentParamNames = [];
+                foreach ($params as $p) {
+                    foreach ($this->patternBoundNames($p) as $pName) {
+                        $this->currentParamNames[$pName] = true;
+                    }
                 }
             }
 
