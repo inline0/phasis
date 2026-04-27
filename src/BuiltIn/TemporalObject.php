@@ -12278,12 +12278,17 @@ class TemporalObject
             $epochMs = $cal->getTime();
             $epochSec = (int) ($epochMs / 1000);
             $isoStr = gmdate('Y-m-d', $epochSec);
-            $parts = explode('-', $isoStr);
-            return [
-                'year' => (int) $parts[0],
-                'month' => (int) $parts[1],
-                'day' => (int) $parts[2],
-            ];
+            // gmdate prefixes negative ISO years with "-", so a naive
+            // explode("-") splits it into ["", "Y", "m", "d"]. Match the
+            // signed year explicitly.
+            if (preg_match('/^(-?\d+)-(\d{2})-(\d{2})$/', $isoStr, $m) === 1) {
+                return [
+                    'year' => (int) $m[1],
+                    'month' => (int) $m[2],
+                    'day' => (int) $m[3],
+                ];
+            }
+            return null;
         } catch (\Throwable) {
             return null;
         }
