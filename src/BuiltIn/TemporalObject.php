@@ -8161,10 +8161,6 @@ class TemporalObject
                 static $pdEraCals = [
                     'gregory', 'japanese', 'roc',
                     'coptic', 'ethiopic', 'ethioaa',
-                    'islamic', 'islamic-civil', 'islamic-tbla',
-                    'islamic-rgsa', 'islamic-umalqura', 'islamicc',
-                    'persian', 'indian', 'buddhist',
-                    'hebrew', 'chinese', 'dangi',
                 ];
                 if (
                     $eraYearNum !== null
