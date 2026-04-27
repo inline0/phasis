@@ -456,7 +456,7 @@ class JsAsyncGenerator extends JsObject
      */
     private function drainRequestQueue(): void
     {
-        while ($this->requestQueue !== [] && !$this->executing) {
+        while ($this->requestQueue !== [] && !$this->executing && !$this->awaitingYieldPromise) {
             [$type, $value, $queued] = array_shift($this->requestQueue);
 
             if ($this->done) {
@@ -568,7 +568,15 @@ class JsAsyncGenerator extends JsObject
                 $queued->resolve($suspended->result);
             } else {
                 $yieldedValue = $suspended instanceof JsValue ? $suspended : JsUndefined::instance();
-                $yieldResult = $this->asyncGeneratorYieldResult($yieldedValue);
+                // Pass $queued as the resolution target so deferred yield
+                // resolution settles the queued promise directly, avoiding an
+                // extra chain microtask between the yield-deferred promise
+                // and the queued request's promise.
+                $yieldResult = $this->asyncGeneratorYieldResult($yieldedValue, $queued);
+                if ($yieldResult === $queued) {
+                    // The deferred path already targets $queued; nothing more to do.
+                    continue;
+                }
                 if ($yieldResult->getState() === JsPromise::STATE_FULFILLED) {
                     $queued->resolve($yieldResult->getResolvedValue());
                 } elseif ($yieldResult->getState() === JsPromise::STATE_REJECTED) {
@@ -592,7 +600,7 @@ class JsAsyncGenerator extends JsObject
      * When the yielded value is a pending promise, sets $awaitingYieldPromise = true
      * so subsequent next/return/throw calls are queued until the promise resolves.
      */
-    private function asyncGeneratorYieldResult(JsValue $value): JsPromise
+    private function asyncGeneratorYieldResult(JsValue $value, ?JsPromise $target = null): JsPromise
     {
         if (!($value instanceof JsPromise)) {
             // Per AsyncGeneratorYield step 5, Await(value) runs. For thenables
@@ -604,7 +612,24 @@ class JsAsyncGenerator extends JsObject
                 $promise->resolve($value);
                 $value = $promise;
             } else {
-                return JsPromise::resolved($this->makeResult($value, false));
+                // Plain value: per AsyncGeneratorYield step 5, Await(value) is
+                // performed which incurs one microtask tick before resolving
+                // the request promise. Defer through the microtask queue and
+                // mark the generator as awaiting so subsequent next/return
+                // calls enqueue rather than re-entering the fiber. When called
+                // from drainRequestQueue, $target is the queued request's
+                // promise so we resolve it directly instead of chaining.
+                $this->awaitingYieldPromise = true;
+                $outer = $target ?? new JsPromise();
+                $iterResult = $this->makeResult($value, false);
+                JsPromise::scheduleCallback(function () use ($outer, $iterResult): void {
+                    $this->awaitingYieldPromise = false;
+                    $outer->resolve($iterResult);
+                    if ($this->requestQueue !== [] && !$this->executing) {
+                        $this->drainRequestQueue();
+                    }
+                });
+                return $outer;
             }
         }
 

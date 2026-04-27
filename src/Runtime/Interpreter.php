@@ -4627,15 +4627,12 @@ class Interpreter
         }
 
         if ($suspended instanceof \PhpJs\Value\AwaitSuspension) {
-            $awaited = $suspended->value;
-            $self = $this;
-            // Schedule the resumption through the microtask queue so
-            // synchronous code that ran before the await observes the
-            // suspension. PromiseResolve folds promises and thenables
-            // into a single Promise we can subscribe to.
-            \PhpJs\Value\JsPromise::scheduleCallback(static function () use ($self, $fiber, $promise, $awaited): void {
-                $self->settleAwaitedAndResume($fiber, $promise, $awaited);
-            });
+            // Per spec Await(value): synchronously do PromiseResolve and
+            // PerformPromiseThen, then suspend. The .then path itself queues
+            // the resumption as a microtask, so we attach handlers
+            // synchronously here. Wrapping in scheduleCallback would add
+            // an extra tick that breaks await/microtask interleaving.
+            $this->settleAwaitedAndResume($fiber, $promise, $suspended->value);
             return;
         }
 
@@ -4652,18 +4649,12 @@ class Interpreter
         \PhpJs\Value\JsPromise $promise,
         JsValue $awaited,
     ): void {
-        // Fold into a Promise. Already-resolved Promises and plain
-        // values are resumed synchronously; thenables and pending
-        // promises subscribe via .then.
+        // Per spec Await(value): PromiseResolve folds promises and thenables
+        // into a single Promise; PerformPromiseThen attaches the resumption
+        // handlers. .then on a fulfilled promise itself queues the handler
+        // through one microtask, so we always go through .then to get spec
+        // tick-ordering for await of fulfilled promises and plain values.
         $resolverPromise = $this->promiseResolve($awaited);
-        if ($resolverPromise->getState() === \PhpJs\Value\JsPromise::STATE_FULFILLED) {
-            $this->driveAsyncFiber($fiber, $promise, false, $resolverPromise->getResolvedValue());
-            return;
-        }
-        if ($resolverPromise->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-            $this->driveAsyncFiber($fiber, $promise, false, JsUndefined::instance(), true, $resolverPromise->getResolvedValue());
-            return;
-        }
         $self = $this;
         $resolverPromise->then([
             JsFunction::fromCallable('', static function (JsValue $this_, array $a) use ($self, $fiber, $promise): JsValue {
@@ -5993,10 +5984,21 @@ class Interpreter
         // Per spec AsyncGeneratorYield step 5: Await(value). If the awaited
         // value rejects, the yield expression completes abruptly (throw),
         // allowing enclosing try/catch to handle it and closing the
-        // generator otherwise.
+        // generator otherwise. We only pre-await when the value is settled
+        // synchronously; for a still-pending promise we hand the value off
+        // to JsAsyncGenerator::asyncGeneratorYieldResult which will await
+        // the promise and resolve the request promise asynchronously.
         $isAsyncGen = $env->getEnclosingFunctionKind() === 'async-generator';
         if ($isAsyncGen) {
-            $value = $this->awaitValue($value);
+            if (
+                $value instanceof \PhpJs\Value\JsPromise
+                && $value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
+            ) {
+                // Leave the pending promise alone; asyncGeneratorYieldResult
+                // will subscribe and resolve the request asynchronously.
+            } else {
+                $value = $this->awaitValue($value);
+            }
         }
 
         // Suspend the Fiber, yielding the value to JsGenerator::next().
@@ -6871,14 +6873,27 @@ class Interpreter
                 }
                 if ($method instanceof JsFunction) {
                     $result = $method->call($resource, []);
-                    if ($isAsync && $result instanceof \PhpJs\Value\JsPromise) {
-                        \PhpJs\Value\JsPromise::drainMicrotasks();
-                        // Propagate a rejected dispose promise as a thrown
-                        // value so it gets chained into a SuppressedError if
-                        // an outer error is already pending, or surfaces as
-                        // the error otherwise.
-                        if ($result->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                            throw new \PhpJs\Exceptions\JsThrowable($result->getResolvedValue());
+                    if ($isAsync) {
+                        // Per spec, an async dispose always Awaits the result,
+                        // even when it is a non-promise. If we are running
+                        // inside an async function Fiber, suspend per dispose
+                        // so each Await yields a microtask tick to the caller.
+                        $fiber = \Fiber::getCurrent();
+                        if ($fiber !== null && $env->getEnclosingFunctionKind() === 'async') {
+                            try {
+                                \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($result));
+                            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                                throw $e;
+                            }
+                        } elseif ($result instanceof \PhpJs\Value\JsPromise) {
+                            \PhpJs\Value\JsPromise::drainMicrotasks();
+                            // Propagate a rejected dispose promise as a thrown
+                            // value so it gets chained into a SuppressedError
+                            // if an outer error is already pending, or surfaces
+                            // as the error otherwise.
+                            if ($result->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                                throw new \PhpJs\Exceptions\JsThrowable($result->getResolvedValue());
+                            }
                         }
                     }
                 } else {
