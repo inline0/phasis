@@ -5530,6 +5530,20 @@ class IntlObject
         // fields (e.g. PlainDate strips time tokens; PlainTime
         // strips date tokens).
         [$y, $m, $d, $h, $min, $s, $ms] = self::temporalPlainComponents($obj);
+        // Per spec, PlainDateTime.toLocaleString with a formatter that
+        // declares an explicit timeZone runs the wall time through
+        // "compatible" disambiguation in that zone. For a date that
+        // falls in a DST gap (e.g. 2020-03-08 02:30 in LA), this
+        // shifts the rendered time forward into the post-gap offset.
+        if ($obj->has('[[IsPlainDateTime]]')) {
+            $tzVal = self::extractInternalString($dtf, '[[TimeZone]]', 'UTC');
+            if ($tzVal !== 'UTC' && extension_loaded('intl')) {
+                $shifted = self::compatibleAdjustForTimeZone($y, $m, $d, $h, $min, $s, $ms, $tzVal);
+                if ($shifted !== null) {
+                    [$y, $m, $d, $h, $min, $s, $ms] = $shifted;
+                }
+            }
+        }
         $dt = new \DateTimeImmutable(
             sprintf('%04d-%02d-%02dT%02d:%02d:%02d.%06dZ', $y, $m, $d, $h, $min, $s, $ms * 1000),
             new \DateTimeZone('UTC'),
@@ -5537,6 +5551,54 @@ class IntlObject
         $formatter = self::temporalFormatterFor($dtf, $obj);
         $result = $formatter->format($dt);
         return $result === false ? '' : $result;
+    }
+
+    /**
+     * Apply "compatible" disambiguation: if the wall time is skipped
+     * by a forward DST transition in the named time zone, shift to
+     * the later side; if it's repeated by a back transition, keep the
+     * earlier side. Returns adjusted components or null if intl can't
+     * resolve the zone. This mirrors Temporal's GetEpochNanosecondsFor
+     * with disambiguation: "compatible".
+     *
+     * @return array{0:int,1:int,2:int,3:int,4:int,5:int,6:int}|null
+     */
+    private static function compatibleAdjustForTimeZone(
+        int $y,
+        int $mo,
+        int $d,
+        int $h,
+        int $min,
+        int $s,
+        int $ms,
+        string $tz,
+    ): ?array {
+        try {
+            $zone = new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            return null;
+        }
+        // Build a wall-time DateTime in the named zone to detect a gap.
+        // PHP normalises a non-existent local time forward (the same as
+        // "compatible"), so format() round-trips to the post-gap clock.
+        try {
+            $dt = new \DateTimeImmutable(
+                sprintf('%04d-%02d-%02dT%02d:%02d:%02d', $y, $mo, $d, $h, $min, $s),
+                $zone,
+            );
+        } catch (\Throwable) {
+            return null;
+        }
+        $rh = (int) $dt->format('H');
+        $rmin = (int) $dt->format('i');
+        $rs = (int) $dt->format('s');
+        $ry = (int) $dt->format('Y');
+        $rmo = (int) $dt->format('n');
+        $rd = (int) $dt->format('j');
+        if ($rh === $h && $rmin === $min && $rs === $s) {
+            return null;
+        }
+        return [$ry, $rmo, $rd, $rh, $rmin, $rs, $ms];
     }
 
     /**
