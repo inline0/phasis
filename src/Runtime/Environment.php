@@ -574,7 +574,7 @@ class Environment
             && isset($this->bindings[$name])
             && !isset($this->tdz[$name])
             && !isset($this->constants[$name])
-            && ($this->linkedObject === null || $this->parent !== null)
+            && $this->linkedObject === null
         ) {
             $this->bindings[$name] = $value;
             return;
@@ -583,6 +583,10 @@ class Environment
         // Inlined parent walk for the common closure-write case:
         // current scope is "simple" and missing the binding; an outer
         // simple scope owns it. Mirrors the same loop in get().
+        // Bails out when an env has a linkedObject because that's used
+        // both for the global object env (where we need writability
+        // checks) and for the named-function-expression immutability
+        // trick — both rely on the slow path.
         if (
             $this->withObject === null
             && $this->importBindings === []
@@ -596,7 +600,7 @@ class Environment
                     && isset($cursor->bindings[$name])
                     && !isset($cursor->tdz[$name])
                     && !isset($cursor->constants[$name])
-                    && ($cursor->linkedObject === null || $cursor->parent !== null)
+                    && $cursor->linkedObject === null
                 ) {
                     $cursor->bindings[$name] = $value;
                     return;
