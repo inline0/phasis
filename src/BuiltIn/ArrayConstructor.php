@@ -2253,9 +2253,23 @@ class ArrayConstructor
                             // iterator path), await each value as a thenable.
                             // For native async iterables, the value is left
                             // as-is (the iterator already awaited the next()
-                            // promise).
+                            // promise). If the await rejects, close the
+                            // iterator (run its finally / return method)
+                            // before re-throwing so generators get a chance
+                            // to clean up.
                             if (!$isAsyncIter) {
-                                $val = self::awaitValue($val);
+                                try {
+                                    $val = self::awaitValue($val);
+                                } catch (\Throwable $awaitErr) {
+                                    $returnMethod = $iterator->get('return');
+                                    if ($returnMethod instanceof JsFunction) {
+                                        try {
+                                            $returnMethod->call($iterator, []);
+                                        } catch (\Throwable) {
+                                        }
+                                    }
+                                    throw $awaitErr;
+                                }
                             }
                             if ($mapFn !== null) {
                                 try {
