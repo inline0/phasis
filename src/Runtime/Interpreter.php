@@ -4590,10 +4590,20 @@ class Interpreter
                 // a var declaration in a nested function always creates a binding
                 // in the function's own scope, even when a parent scope (e.g. global)
                 // has a const/let binding with the same name.
-                $this->forceHoistVarNames($body->body, $fnEnv);
-                $this->hoistDeclarations($body->body, $fnEnv);
+                //
+                // Trivial bodies (just a return / throw / expression with no
+                // var/let/const/function/class declarations and no nested
+                // control flow that could contain them) trip none of the
+                // three hoist passes. Skip them on subsequent calls.
+                if ($fn->bodyNeedsHoistingCache === null) {
+                    $fn->bodyNeedsHoistingCache = $this->bodyNeedsHoisting($body->body);
+                }
+                if ($fn->bodyNeedsHoistingCache) {
+                    $this->forceHoistVarNames($body->body, $fnEnv);
+                    $this->hoistDeclarations($body->body, $fnEnv);
+                    $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
+                }
                 $this->currentParamNames = $savedParamNames;
-                $this->hoistEvalLexicalDeclarations($body->body, $fnEnv);
                 $savedTailPos = $this->inTailPosition;
                 $this->inTailPosition = $this->strictMode;
                 $completion = $this->executeBody($body->body, $fnEnv);
@@ -5347,6 +5357,96 @@ class Interpreter
      * binding semantics are not detectable and we can reuse the
      * loop env across iterations.
      */
+    /**
+     * Whether a function body (top-level statements) declares anything
+     * the prologue passes (forceHoistVarNames / hoistDeclarations /
+     * hoistEvalLexicalDeclarations) would act on. Recurses into the
+     * control-flow nodes those passes descend into (if, for, for-in,
+     * for-of, while, do-while, with, block, labeled, switch, try,
+     * export); does NOT enter nested function/class bodies (each has
+     * its own prologue scan). Returns true on any var/let/const/using/
+     * function/class declaration. False means the three hoist calls
+     * are pure overhead.
+     *
+     * @param Node[] $statements
+     */
+    private function bodyNeedsHoisting(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->statementHoists($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function statementHoists(Node $stmt): bool
+    {
+        if ($stmt instanceof ExportDeclaration && $stmt->declaration !== null) {
+            $stmt = $stmt->declaration;
+        }
+        if (
+            $stmt instanceof VariableDeclaration
+            || $stmt instanceof FunctionDeclaration
+            || $stmt instanceof ClassDeclaration
+        ) {
+            return true;
+        }
+        if ($stmt instanceof BlockStatement) {
+            return $this->bodyNeedsHoisting($stmt->body);
+        }
+        if ($stmt instanceof IfStatement) {
+            return $this->statementHoists($stmt->consequent)
+                || ($stmt->alternate !== null && $this->statementHoists($stmt->alternate));
+        }
+        if ($stmt instanceof ForStatement) {
+            if ($stmt->init instanceof VariableDeclaration) {
+                return true;
+            }
+            return $this->statementHoists($stmt->body);
+        }
+        if ($stmt instanceof ForInStatement || $stmt instanceof ForOfStatement) {
+            if ($stmt->left instanceof VariableDeclaration) {
+                return true;
+            }
+            return $this->statementHoists($stmt->body);
+        }
+        if ($stmt instanceof WhileStatement || $stmt instanceof DoWhileStatement) {
+            return $this->statementHoists($stmt->body);
+        }
+        if ($stmt instanceof WithStatement) {
+            return $this->statementHoists($stmt->body);
+        }
+        if ($stmt instanceof LabeledStatement) {
+            return $this->statementHoists($stmt->body);
+        }
+        if ($stmt instanceof SwitchStatement) {
+            foreach ($stmt->cases as $case) {
+                foreach ($case->consequent as $s) {
+                    if ($this->statementHoists($s)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        if ($stmt instanceof TryStatement) {
+            if ($this->bodyNeedsHoisting($stmt->block->body)) {
+                return true;
+            }
+            if ($stmt->handler !== null && $stmt->handler->body instanceof BlockStatement) {
+                if ($this->bodyNeedsHoisting($stmt->handler->body->body)) {
+                    return true;
+                }
+            }
+            if ($stmt->finalizer !== null && $this->bodyNeedsHoisting($stmt->finalizer->body)) {
+                return true;
+            }
+            return false;
+        }
+        return false;
+    }
+
     /**
      * Annex B legacy `function.caller`: detect whether the descriptor
      * still holds the engine's default shape (data, writable, non-
@@ -8530,7 +8630,8 @@ class Interpreter
         if ($node->bodyHasClosure === null) {
             $node->bodyHasClosure = $this->nodeContainsClosure($node->body)
                 || $this->nodeContainsClosure($node->update)
-                || $this->nodeContainsClosure($node->test);
+                || $this->nodeContainsClosure($node->test)
+                || $this->nodeContainsClosure($node->init);
         }
         $iterEnv = $loopEnv;
         $perIterEnvNeeded = $perIterationBindings !== [] && $node->bodyHasClosure;

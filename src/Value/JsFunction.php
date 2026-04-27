@@ -489,6 +489,16 @@ class JsFunction extends JsObject
      */
     public ?bool $setCallerPropCache = null;
 
+    /**
+     * Memoised: whether the body contains anything that would change
+     * environment bindings during prologue (var/let/const/using
+     * declarations, function declarations, class declarations) or
+     * that the hoist-pass walkers descend into looking for nested
+     * hoistables. Functions like `fib(n)` whose body is `return ...`
+     * trip none of the hoist passes and can skip them entirely.
+     */
+    public ?bool $bodyNeedsHoistingCache = null;
+
     public function isArrow(): bool
     {
         return $this->isArrow;
