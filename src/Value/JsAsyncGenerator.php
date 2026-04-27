@@ -170,6 +170,13 @@ class JsAsyncGenerator extends JsObject
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
             }
+            if ($e->awaited) {
+                // The yield* delegate already performed the spec-required
+                // Awaits before propagating. Skip AsyncGeneratorAwaitReturn
+                // to avoid an extra microtask tick / `then` getter access.
+                $request->resolve($this->makeResult($e->value, true));
+                return;
+            }
             $this->asyncGeneratorAwaitReturn($e->value, $request);
             return;
         } catch (GeneratorThrowSignal $e) {
@@ -254,14 +261,24 @@ class JsAsyncGenerator extends JsObject
             JsFunction::fromCallable('', function (JsValue $t, array $a) use ($request): JsValue {
                 $this->awaitingYieldPromise = false;
                 $this->stepFiber('next', $a[0] ?? JsUndefined::instance(), $request);
+                $this->maybeDrainQueue();
                 return JsUndefined::instance();
             }, 1),
             JsFunction::fromCallable('', function (JsValue $t, array $a) use ($request): JsValue {
                 $this->awaitingYieldPromise = false;
                 $this->stepFiber('throw', $a[0] ?? JsUndefined::instance(), $request);
+                $this->maybeDrainQueue();
                 return JsUndefined::instance();
             }, 1),
         ]);
+    }
+
+    private function maybeDrainQueue(): void
+    {
+        if ($this->queuePendingDrain && !$this->executing && !$this->awaitingYieldPromise) {
+            $this->queuePendingDrain = false;
+            $this->drainRequestQueue();
+        }
     }
 
     /** Chain $source into $target with the appropriate state transition. */
@@ -649,6 +666,14 @@ class JsAsyncGenerator extends JsObject
             } catch (GeneratorReturnSignal $e) {
                 $this->executing = false;
                 $this->done = true;
+                if ($e->awaited) {
+                    // yield* already performed the spec-required Awaits on
+                    // the value before propagating the return completion.
+                    // Skip the outer AsyncGeneratorAwaitReturn so we don't
+                    // observe a redundant `then` getter access.
+                    $queued->resolve($this->makeResult($e->value, true));
+                    continue;
+                }
                 $inner = $this->asyncGeneratorAwaitReturn($e->value);
                 if ($inner->getState() === JsPromise::STATE_FULFILLED) {
                     $queued->resolve($inner->getResolvedValue());

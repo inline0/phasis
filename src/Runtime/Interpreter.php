@@ -6201,17 +6201,30 @@ class Interpreter
                     throw new TypeError('Iterator result is not an object');
                 }
             } else {
-                // Step 5c: received is return.
+                // Step 5c: received is return. Per spec
+                // 14.4.14 / 27.6.3.7 (yield* with received.[[Type]]=return):
+                //   If generatorKind is async, await received.[[Value]] first
+                //   (reading the thenable's .then is observable).
+                //   Then look up iterator.return. If undefined, await again
+                //   and propagate the return completion.
+                if ($isAsyncGen) {
+                    $receivedValue = $this->awaitInGenerator($receivedValue);
+                }
                 $returnMethod = $iterator->get('return');
                 if ($returnMethod instanceof JsUndefined || $returnMethod instanceof JsNull) {
-                    // Per spec: if return is undefined, return Completion(received).
-                    throw new GeneratorReturnSignal($receivedValue);
+                    if ($isAsyncGen) {
+                        $receivedValue = $this->awaitInGenerator($receivedValue);
+                    }
+                    throw new GeneratorReturnSignal($receivedValue, $isAsyncGen);
                 }
                 if ($returnMethod instanceof \PhpJs\Value\JsHTMLDDA) {
                     // HTMLDDA's [[Call]] returns null; fails the object check below.
                     $innerResult = JsNull::instance();
                 } elseif (!$returnMethod instanceof JsFunction) {
-                    throw new GeneratorReturnSignal($receivedValue);
+                    if ($isAsyncGen) {
+                        $receivedValue = $this->awaitInGenerator($receivedValue);
+                    }
+                    throw new GeneratorReturnSignal($receivedValue, $isAsyncGen);
                 } else {
                     $innerResult = $this->callFunction($returnMethod, $iterator, [$receivedValue]);
                     if ($isAsyncGen) {
