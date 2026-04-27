@@ -12,10 +12,7 @@ Pure PHP JavaScript engine. Lexes, parses, and executes ECMAScript without shell
 ./bin/test-regression --jobs 4           # Parallel
 ./bin/test-regression --category expressions  # By category
 ./bin/test-regression --fast             # Pass/fail only, no reports
-./bin/support-report                     # Deprecated alias for compat-report
 ./bin/compat-report                      # Generate compat.json + COMPAT.md from full test262 coverage
-./bin/verify-compliance                  # Compatibility alias for compat-report
-./bin/compliance-report                  # Optional sampled test262-only compliance.json
 
 # test262 suite
 ./bin/test262                            # Run full test262 suite
@@ -231,10 +228,7 @@ php-js/
 │   ├── compare                          # Diff oracle vs actual
 │   ├── test-scenario                    # Full pipeline: oracle → actual → compare
 │   ├── test-regression                  # Run all scenarios
-│   ├── support-report                   # Deprecated alias for compat-report
 │   ├── compat-report                    # Generate compat.json + COMPAT.md from full test262 coverage
-│   ├── verify-compliance                # Compatibility alias for compat-report
-│   ├── compliance-report                # Generate sampled test262-only compliance.json
 │   ├── verify-all                       # analyse + cs + phpunit + oracle regression
 │   └── test262                          # Run official test262 suite
 │
@@ -512,7 +506,7 @@ Same oracle-driven verification model as pitmaster, greph, and php-browser (sibl
 | Pipeline | oracle → render → compare | oracle → actual → compare | oracle → actual → compare | oracle → actual → compare |
 | Combined | `./bin/test-fixture` | `./bin/test-scenario` | `./bin/test-scenario` | `./bin/test-scenario` |
 | Regression | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` | `./bin/test-regression` |
-| Compliance | CSS_COVERAGE.md | support-report | support-report | **COMPAT.md** |
+| Compliance | CSS_COVERAGE.md | compat-report | compat-report | **COMPAT.md** |
 
 Study `pitmaster/tests/Oracle/` and `greph/tests/Oracle/` for the reference implementation of the oracle pattern.
 
@@ -613,10 +607,6 @@ The runner:
 
 - `compat.json`: machine-readable full compatibility snapshot
 - `COMPAT.md`: human-readable full compatibility report
-
-`./bin/verify-compliance` is an alias for `./bin/compat-report`.
-
-For a quick sampled spot check, `./bin/compliance-report` still writes `compliance.json` from the tracked categories in `config/support.php`.
 
 `./bin/test262 --report` remains useful for ad hoc inspection of a single directory or category, but repo-level compatibility documentation should come from `./bin/compat-report`.
 
