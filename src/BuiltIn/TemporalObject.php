@@ -11170,8 +11170,23 @@ class TemporalObject
                 if (bccomp($dayLenNs, '0', 0) < 0) {
                     $dayLenNs = substr($dayLenNs, 1);
                 }
-                if (bccomp($dayLenNs, '0', 0) === 0 || bccomp($timeNsBc, $dayLenNs, 0) <= 0) {
+                // For largestUnit=day, time exactly equal to the day
+                // length still folds into a whole day (e.g. 25h on a 25h
+                // wall day = exactly 1 day). For larger units (year /
+                // month / week), keep "= dayLen" as time so a no-op
+                // round of e.g. 1Y 24h doesn't bubble into 1Y 1D.
+                if (bccomp($dayLenNs, '0', 0) === 0) {
                     break;
+                }
+                $cmp = bccomp($timeNsBc, $dayLenNs, 0);
+                if ($largestUnit === 'day') {
+                    if ($cmp < 0) {
+                        break;
+                    }
+                } else {
+                    if ($cmp <= 0) {
+                        break;
+                    }
                 }
                 $timeNsBc = bcsub($timeNsBc, $dayLenNs, 0);
                 $absDays++;
