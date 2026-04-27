@@ -499,6 +499,15 @@ class JsFunction extends JsObject
      */
     public ?bool $bodyNeedsHoistingCache = null;
 
+    /**
+     * Memoised: results of isNonSimpleParameterList and
+     * hasParameterExpressions analyses on this function's parameter
+     * list. Both are pure functions of $params, which never changes
+     * after construction.
+     */
+    public ?bool $nonSimpleParamsCache = null;
+    public ?bool $hasParamExpressionsCache = null;
+
     public function isArrow(): bool
     {
         return $this->isArrow;

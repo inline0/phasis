@@ -4473,12 +4473,20 @@ class Interpreter
             // Create arguments object before binding parameters, so default
             // parameter expressions can reference `arguments`.
             $params = $fn->getParams();
-            $hasDefaultParams = $this->hasParameterExpressions($params);
+            // Both analyses are pure functions of $params; cache once.
+            if ($fn->hasParamExpressionsCache === null) {
+                $fn->hasParamExpressionsCache = $this->hasParameterExpressions($params);
+            }
+            if ($fn->nonSimpleParamsCache === null) {
+                $fn->nonSimpleParamsCache = $this->isNonSimpleParameterList($params);
+            }
+            $hasDefaultParams = $fn->hasParamExpressionsCache;
+            $isNonSimpleParams = $fn->nonSimpleParamsCache;
 
             // Per EvalDeclarationInstantiation, eval("var arguments") inside
             // a function with non-simple parameters is a SyntaxError. Tag the
             // environment so the eval check can detect this.
-            if ($this->isNonSimpleParameterList($params)) {
+            if ($isNonSimpleParams) {
                 $fnEnv->setHasNonSimpleParams(true);
             }
 
@@ -4487,7 +4495,7 @@ class Interpreter
             if (!$fn->isArrow()) {
                 // Per spec 10.2.11: non-simple parameter lists produce unmapped
                 // arguments objects (poison-pill callee), same as strict mode.
-                $unmapped = $this->strictMode || $this->isNonSimpleParameterList($params);
+                $unmapped = $this->strictMode || $isNonSimpleParams;
                 // Fast path: if the body never references `arguments`,
                 // doesn't `eval`, and isn't expected to be patched, skip
                 // the full arguments-object construction. The hot path on
