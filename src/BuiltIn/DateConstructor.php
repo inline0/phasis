@@ -368,6 +368,51 @@ class DateConstructor
             return self::timeClip($result);
         }
 
+        // Lenient extended-year non-ISO form: [+-]YYYYYY-M-D[ HH:MM[:SS]]
+        // matches SpiderMonkey's date heuristic where the space separator
+        // and single-digit month/day are accepted alongside the extended
+        // year prefix. Used when callers write "+001997-3-8 11:19:20" and
+        // expect the same epoch as "1997-03-08T11:19:20".
+        $extLenient = '/^([+-]\d{6})-(\d{1,2})-(\d{1,2})'
+            . '(?:[ ](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:\.(\d{1,3}))?)?)?'
+            . '([Z]|[+-]\d{2}:?\d{2})?$/i';
+        if (preg_match($extLenient, $str, $m)) {
+            $year = (int) $m[1];
+            $month = (int) $m[2];
+            $day = (int) $m[3];
+            $hour = isset($m[4]) && $m[4] !== '' ? (int) $m[4] : 0;
+            $min = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
+            $sec = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+            $millis = 0.0;
+            if (isset($m[7]) && $m[7] !== '') {
+                $millis = (float) str_pad($m[7], 3, '0');
+            }
+            $hasTime = isset($m[4]) && $m[4] !== '';
+            $tz = ($m[8] ?? '') !== '' ? $m[8] : null;
+            if (!$hasTime && $tz === null) {
+                $tz = 'Z';
+            }
+            $ts = gmmktime($hour, $min, $sec, $month, $day, $year);
+            if ($ts === false) {
+                return NAN;
+            }
+            $offsetSec = 0;
+            if ($tz !== null && strtoupper($tz) !== 'Z') {
+                if (preg_match('/^([+-])(\d{2}):?(\d{2})$/', $tz, $tzm)) {
+                    $offsetSec = ((int) $tzm[2] * 3600 + (int) $tzm[3] * 60);
+                    if ($tzm[1] === '+') {
+                        $offsetSec = -$offsetSec;
+                    }
+                }
+            } elseif ($tz === null) {
+                $dt = new \DateTimeImmutable('@' . $ts);
+                $local = $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+                $offsetSec = -(int) $local->format('Z');
+            }
+            $result = (float) $ts * 1000.0 + $millis + (float) $offsetSec * 1000.0;
+            return self::timeClip($result);
+        }
+
         // Try ISO 8601 first: YYYY-MM-DDTHH:MM:SS.sssZ or with offset.
         $isoPattern = '/^\d{4}(-\d{2}(-\d{2}(T\d{2}:\d{2}'
             . '(:\d{2}(\.\d{1,3})?)?)?)?)?([Z]|[+-]\d{2}:\d{2})?$/i';
