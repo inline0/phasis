@@ -2410,6 +2410,13 @@ class TypedArrayConstructor
 
                 // Per spec step 9: check detached AFTER offset coercion.
                 $this_->validateNotDetached();
+                // Capture the target length before any user-supplied coercion
+                // can detach the buffer. Per current spec
+                // (SetTypedArrayFromArrayLike step 3), size checks use this
+                // captured value; once the source's length getter detaches the
+                // buffer, the inner copy loop silently no-ops via
+                // TypedArraySetElement.
+                $capturedTargetLen = $this_->getLength();
 
                 $isBigTarget = $this_->isBigIntArray();
 
@@ -2474,11 +2481,11 @@ class TypedArrayConstructor
                         $srcLen = 0;
                     }
 
-                    // Per spec, after the length getter ran, the underlying
-                    // buffer may have been detached. Re-validate before the
-                    // size check; a detached target throws TypeError.
-                    $this_->validateNotDetached();
-                    if ($srcLen + $offset > $this_->getLength()) {
+                    // Per current spec, the size check uses the target length
+                    // captured before the source-length getter ran. If that
+                    // getter detached the buffer, the loop's
+                    // TypedArraySetElement silently no-ops; we don't throw.
+                    if ($srcLen + $offset > $capturedTargetLen) {
                         throw new RangeError('Source is too large');
                     }
 
