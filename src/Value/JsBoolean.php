@@ -7,6 +7,8 @@ namespace PhpJs\Value;
 class JsBoolean implements JsValue
 {
     private static ?JsObject $booleanPrototype = null;
+    private static ?self $trueInstance = null;
+    private static ?self $falseInstance = null;
 
     public static function setBooleanPrototype(JsObject $proto): void
     {
@@ -21,6 +23,20 @@ class JsBoolean implements JsValue
     public static function getBooleanPrototype(): ?JsObject
     {
         return self::$booleanPrototype;
+    }
+
+    /**
+     * Get the singleton JsBoolean for a given native bool. JsBoolean is
+     * fully readonly, so reusing one instance across all true (or false)
+     * results is safe and saves an allocation per comparison or
+     * truthiness coercion.
+     */
+    public static function of(bool $value): self
+    {
+        if ($value) {
+            return self::$trueInstance ??= new self(true);
+        }
+        return self::$falseInstance ??= new self(false);
     }
 
     public function __construct(
