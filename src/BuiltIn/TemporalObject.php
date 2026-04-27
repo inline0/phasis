@@ -1616,7 +1616,17 @@ class TemporalObject
                 $ns = self::startOfDayInTimeZone($y, $m, $dd, $timeZone);
             } else {
                 $ns = self::isoDateTimeToEpochNsDisambiguated(
-                    $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $timeZone, 'compatible',
+                    $y,
+                    $m,
+                    $dd,
+                    $h,
+                    $min,
+                    $s,
+                    $ms,
+                    $us,
+                    $nsPart,
+                    $timeZone,
+                    'compatible',
                 );
             }
             return self::createZonedDateTimeObject($ns, $timeZone, $cal);
@@ -2527,8 +2537,16 @@ class TemporalObject
                         self::validateISOTime($h, $min, $s, $ms, $us, $ns);
                     }
                     return self::createPlainDateTimeObject(
-                        $isoParts['year'], $isoParts['month'], $isoParts['day'],
-                        $h, $min, $s, $ms, $us, $ns, $cal,
+                        $isoParts['year'],
+                        $isoParts['month'],
+                        $isoParts['day'],
+                        $h,
+                        $min,
+                        $s,
+                        $ms,
+                        $us,
+                        $ns,
+                        $cal,
                     );
                 }
             }
@@ -2674,7 +2692,17 @@ class TemporalObject
             $ns = self::getSlotInt($this_, '[[ISONanosecond]]');
             $cal = self::getSlotString($this_, '[[Calendar]]');
             $epochNs = self::isoDateTimeToEpochNsDisambiguated(
-                $y, $m, $dd, $h, $min, $s, $ms, $us, $ns, $tzName, $disam,
+                $y,
+                $m,
+                $dd,
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $ns,
+                $tzName,
+                $disam,
             );
             return self::createZonedDateTimeObject($epochNs, $tzName, $cal);
         }, 1);
@@ -4459,7 +4487,17 @@ class TemporalObject
                 // prefer / reject: fall through to disambiguation.
             }
             $newNs = self::isoDateTimeToEpochNsDisambiguated(
-                $y, $m, $dd, $h, $min, $s, $ms, $us, $nsPart, $tz, $disam,
+                $y,
+                $m,
+                $dd,
+                $h,
+                $min,
+                $s,
+                $ms,
+                $us,
+                $nsPart,
+                $tz,
+                $disam,
             );
             return self::createZonedDateTimeObject($newNs, $tz, $cal);
         }, 1);
@@ -4514,11 +4552,17 @@ class TemporalObject
                 $parts = self::epochNsToISOParts($ns, $tz);
                 $startNs = self::startOfDayInTimeZone($parts['year'], $parts['month'], $parts['day'], $tz);
                 self::validateInstantRange($startNs);
-                $ny = $parts['year']; $nm = $parts['month']; $nd = $parts['day'] + 1;
+                $ny = $parts['year'];
+                $nm = $parts['month'];
+                $nd = $parts['day'] + 1;
                 $dim = self::isoDaysInMonth($ny, $nm);
                 if ($nd > $dim) {
-                    $nd = 1; $nm++;
-                    if ($nm > 12) { $nm = 1; $ny++; }
+                    $nd = 1;
+                    $nm++;
+                    if ($nm > 12) {
+                        $nm = 1;
+                        $ny++;
+                    }
                 }
                 $endNs = self::startOfDayInTimeZone($ny, $nm, $nd, $tz);
                 self::validateInstantRange($endNs);
@@ -5090,7 +5134,17 @@ class TemporalObject
             // prefer: fall through to disambiguation in the named zone.
         }
         $epochFromWall = self::isoDateTimeToEpochNsDisambiguated(
-            $y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone, $dis,
+            $y,
+            $mo,
+            $d,
+            $h,
+            $min,
+            $s,
+            $ms,
+            $us,
+            $ns,
+            $timeZone,
+            $dis,
         );
         return self::createZonedDateTimeObject($epochFromWall, $timeZone, $cal);
     }
@@ -5288,8 +5342,17 @@ class TemporalObject
                         // named time zone (rather than apply the bogus
                         // offset directly).
                         $epochNs = self::isoDateTimeToEpochNsDisambiguated(
-                            $year, $month, $day, $hour, $min, $sec, $ms, $us, $ns,
-                            $timeZone, $disambiguation,
+                            $year,
+                            $month,
+                            $day,
+                            $hour,
+                            $min,
+                            $sec,
+                            $ms,
+                            $us,
+                            $ns,
+                            $timeZone,
+                            $disambiguation,
                         );
                     }
                 }
@@ -5385,14 +5448,23 @@ class TemporalObject
             break;
         }
         $intermediateNs = self::isoDateTimeToEpochNs(
-            $y, $m, $dd,
-            $parts['hour'], $parts['minute'], $parts['second'],
-            $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+            $y,
+            $m,
+            $dd,
+            $parts['hour'],
+            $parts['minute'],
+            $parts['second'],
+            $parts['millisecond'],
+            $parts['microsecond'],
+            $parts['nanosecond'],
             $tz,
         );
         $subDayNs = self::durationToTotalNs(
             self::createDurationObject(
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 self::getDurationField($dur, 'hours'),
                 self::getDurationField($dur, 'minutes'),
                 self::getDurationField($dur, 'seconds'),
@@ -5462,14 +5534,23 @@ class TemporalObject
             $dd = $maxDay;
         }
         $intermediateNs = self::isoDateTimeToEpochNs(
-            $y, $m, $dd,
-            $parts['hour'], $parts['minute'], $parts['second'],
-            $parts['millisecond'], $parts['microsecond'], $parts['nanosecond'],
+            $y,
+            $m,
+            $dd,
+            $parts['hour'],
+            $parts['minute'],
+            $parts['second'],
+            $parts['millisecond'],
+            $parts['microsecond'],
+            $parts['nanosecond'],
             $tz,
         );
         $subDayNs = self::durationToTotalNs(
             self::createDurationObject(
-                0, 0, 0, 0,
+                0,
+                0,
+                0,
+                0,
                 self::getDurationField($dur, 'hours'),
                 self::getDurationField($dur, 'minutes'),
                 self::getDurationField($dur, 'seconds'),
@@ -5509,7 +5590,16 @@ class TemporalObject
         $days = 0;
         for ($i = 1; $i < $maxIter; $i++) {
             $stepDur = self::createDurationObject(
-                0, 0, 0, $signMul * $i, 0, 0, 0, 0, 0, 0,
+                0,
+                0,
+                0,
+                $signMul * $i,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
             );
             $stepNs = self::addDurationToZdt($zdt, $stepDur, 1, 'constrain');
             $cmp = bccomp($stepNs, $endNs, 0);
@@ -5524,11 +5614,29 @@ class TemporalObject
         }
         $signedDays = $signMul * $days;
         $startStepDur = self::createDurationObject(
-            0, 0, 0, $signedDays, 0, 0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            $signedDays,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         );
         $startStepNs = self::addDurationToZdt($zdt, $startStepDur, 1, 'constrain');
         $nextStepDur = self::createDurationObject(
-            0, 0, 0, $signedDays + $signMul, 0, 0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            $signedDays + $signMul,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         );
         $nextStepNs = self::addDurationToZdt($zdt, $nextStepDur, 1, 'constrain');
         $dayLenNs = bcsub($nextStepNs, $startStepNs, 0);
@@ -5558,7 +5666,9 @@ class TemporalObject
         $startSec = (int) bcdiv($startNs, '1000000000', 0);
         $endSec = (int) bcdiv($endNs, '1000000000', 0);
         if ($startSec > $endSec) {
-            $tmp = $startSec; $startSec = $endSec; $endSec = $tmp;
+            $tmp = $startSec;
+            $startSec = $endSec;
+            $endSec = $tmp;
         }
         $transitions = $tzObj->getTransitions($startSec, $endSec);
         if (!is_array($transitions) || count($transitions) < 2) {
@@ -6031,7 +6141,12 @@ class TemporalObject
                     self::getDurationField($dur, 'months'),
                     self::getDurationField($dur, 'weeks'),
                     self::getDurationField($dur, 'days'),
-                    0, 0, 0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 $startObj = self::createZonedDateTimeObject($ns1, $tz, 'iso8601');
                 $afterDates = self::addDurationToZdt($startObj, $dateOnly, 1, 'constrain');
@@ -7591,7 +7706,16 @@ class TemporalObject
                 $daysWalked = 0;
                 while (true) {
                     $stepDur = self::createDurationObject(
-                        0, 0, 0, $signZdt * ($daysWalked + 1), 0, 0, 0, 0, 0, 0,
+                        0,
+                        0,
+                        0,
+                        $signZdt * ($daysWalked + 1),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
                     );
                     $stepNs = self::addDurationToZdt($relativeTo, $stepDur, 1, 'constrain');
                     $cmp = bccomp($stepNs, $endNsZdt, 0);
@@ -7604,11 +7728,29 @@ class TemporalObject
                     }
                 }
                 $startStepDur = self::createDurationObject(
-                    0, 0, 0, $signZdt * $daysWalked, 0, 0, 0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    $signZdt * $daysWalked,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 $startStepNs = self::addDurationToZdt($relativeTo, $startStepDur, 1, 'constrain');
                 $nextStepDur = self::createDurationObject(
-                    0, 0, 0, $signZdt * ($daysWalked + 1), 0, 0, 0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    $signZdt * ($daysWalked + 1),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 $nextStepNs = self::addDurationToZdt($relativeTo, $nextStepDur, 1, 'constrain');
                 $dayLenNs = bcsub($nextStepNs, $startStepNs, 0);
@@ -7638,10 +7780,28 @@ class TemporalObject
                 while (true) {
                     $stepDur = $unit === 'year'
                         ? self::createDurationObject(
-                            $signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                            $signZdt * ($stepCount + 1),
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
                         )
                         : self::createDurationObject(
-                            0, $signZdt * ($stepCount + 1), 0, 0, 0, 0, 0, 0, 0, 0,
+                            0,
+                            $signZdt * ($stepCount + 1),
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
                         );
                     $stepNs = self::addDurationToZdt($relativeTo, $stepDur, 1, 'constrain');
                     $cmp = bccomp($stepNs, $endNsZdt, 0);
@@ -8072,7 +8232,10 @@ class TemporalObject
             if ($isZdtRelativeTo && $zdtTzIsDst) {
                 $extraDays = 0;
                 $remTime = self::createDurationObject(
-                    0, 0, 0, 0,
+                    0,
+                    0,
+                    0,
+                    0,
                     self::getDurationField($dur, 'hours'),
                     self::getDurationField($dur, 'minutes'),
                     self::getDurationField($dur, 'seconds'),
@@ -9267,7 +9430,18 @@ class TemporalObject
                     } else {
                         self::validateISOTime($h, $min, $s, $ms, $us, $ns);
                     }
-                    return self::createPlainDateTimeObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $h, $min, $s, $ms, $us, $ns, $cal);
+                    return self::createPlainDateTimeObject(
+                        $isoParts['year'],
+                        $isoParts['month'],
+                        $isoParts['day'],
+                        $h,
+                        $min,
+                        $s,
+                        $ms,
+                        $us,
+                        $ns,
+                        $cal,
+                    );
                 }
             }
             if (true) {
@@ -11166,10 +11340,28 @@ class TemporalObject
                 // DST transitions inside the span are accounted for.
                 $absTotalMonthCount = $absYears * 12 + $absMonths;
                 $midDur = self::createDurationObject(
-                    0, $sign * $absTotalMonthCount, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0,
+                    $sign * $absTotalMonthCount,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 $nextDur = self::createDurationObject(
-                    0, $sign * ($absTotalMonthCount + 1), 0, 0, 0, 0, 0, 0, 0, 0,
+                    0,
+                    $sign * ($absTotalMonthCount + 1),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
                 );
                 $midNsRef = self::addDurationToZdt($ref, $midDur, 1, 'constrain');
                 $nextNsRef = self::addDurationToZdt($ref, $nextDur, 1, 'constrain');
@@ -12519,11 +12711,13 @@ class TemporalObject
             }
             // Islamic variants: 354 vs 355 days (the "kabisat" extra day on
             // Dhu al-Hijjah). Treat any year exceeding 354 days as a leap.
-            if (in_array(
-                $calendar,
-                ['islamic', 'islamic-civil', 'islamic-tbla', 'islamic-rgsa', 'islamic-umalqura', 'islamicc'],
-                true,
-            )) {
+            if (
+                in_array(
+                    $calendar,
+                    ['islamic', 'islamic-civil', 'islamic-tbla', 'islamic-rgsa', 'islamic-umalqura', 'islamicc'],
+                    true,
+                )
+            ) {
                 return $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR) > 354;
             }
             return false;
@@ -12633,7 +12827,8 @@ class TemporalObject
                     continue;
                 }
                 if ($iso['year'] <= 1972) {
-                    if ($bestIso === null
+                    if (
+                        $bestIso === null
                         || $iso['year'] > $bestIso['year']
                         || ($iso['year'] === $bestIso['year'] && $iso['month'] > $bestIso['month'])
                     ) {
@@ -14926,7 +15121,8 @@ class TemporalObject
     {
         foreach (self::japaneseEras() as $era) {
             [, $sy, $sm, $sd] = $era;
-            if ($y > $sy
+            if (
+                $y > $sy
                 || ($y === $sy && $m > $sm)
                 || ($y === $sy && $m === $sm && $d >= $sd)
             ) {

@@ -8300,9 +8300,12 @@ class IntlObject
             $publicTag = $tag;
             $otherExtensions = [];
             $privateUse = null;
+            $structurePattern = '/^([a-zA-Z]{2,8}(?:-[a-zA-Z]{4})?(?:-[a-zA-Z]{2}|-\d{3})?'
+                . '(?:-[a-zA-Z0-9]{4,8})*(?:-[a-zA-Z0-9]{5,8})*)'
+                . '((?:-[a-zA-Z0-9]-[a-zA-Z0-9-]+)*)$/i';
             if (
                 preg_match(
-                    '/^([a-zA-Z]{2,8}(?:-[a-zA-Z]{4})?(?:-[a-zA-Z]{2}|-\d{3})?(?:-[a-zA-Z0-9]{4,8})*(?:-[a-zA-Z0-9]{5,8})*)((?:-[a-zA-Z0-9]-[a-zA-Z0-9-]+)*)$/i',
+                    $structurePattern,
                     $tag,
                     $structureMatch,
                 ) === 1
@@ -11099,7 +11102,10 @@ class IntlObject
             string $type,
             string $value,
             ?string $unit = null,
-        ) use (&$arr, &$idx): void {
+        ) use (
+            &$arr,
+            &$idx
+): void {
             if ($value === '') {
                 return;
             }

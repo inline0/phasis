@@ -950,17 +950,28 @@ class Interpreter
             $l = $left->value;
             $r = $right->value;
             switch ($node->operator) {
-                case '+': return new JsNumber($l + $r);
-                case '-': return new JsNumber($l - $r);
-                case '*': return new JsNumber($l * $r);
-                case '<': return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l < $r);
-                case '>': return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l > $r);
-                case '<=': return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l <= $r);
-                case '>=': return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l >= $r);
-                case '===': return JsBoolean::of($l === $r);
-                case '!==': return JsBoolean::of($l !== $r);
-                case '==': return JsBoolean::of($l == $r && !is_nan($l));
-                case '!=': return JsBoolean::of($l != $r || is_nan($l));
+                case '+':
+                    return new JsNumber($l + $r);
+                case '-':
+                    return new JsNumber($l - $r);
+                case '*':
+                    return new JsNumber($l * $r);
+                case '<':
+                    return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l < $r);
+                case '>':
+                    return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l > $r);
+                case '<=':
+                    return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l <= $r);
+                case '>=':
+                    return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l >= $r);
+                case '===':
+                    return JsBoolean::of($l === $r);
+                case '!==':
+                    return JsBoolean::of($l !== $r);
+                case '==':
+                    return JsBoolean::of($l == $r && !is_nan($l));
+                case '!=':
+                    return JsBoolean::of($l != $r || is_nan($l));
             }
             // Fall through for /, %, **, bitwise — those still need
             // the slower paths (NaN/Infinity handling, divisor-zero
