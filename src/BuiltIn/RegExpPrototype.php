@@ -53,6 +53,29 @@ class RegExpPrototype
     /**
      * @param list<string> $groups
      */
+    /**
+     * Return true when the receiver's `exec` slot resolves (via the property
+     * descriptor chain) to the intrinsic RegExp.prototype.exec, without
+     * triggering a [[Get]] that would be observable to user-installed traps
+     * or accessor side effects.
+     */
+    private static function isIntrinsicExec(JsObject $obj): bool
+    {
+        $current = $obj;
+        $guard = 0;
+        while ($current !== null && $guard++ < 32) {
+            $desc = $current->getOwnPropertyDescriptor('exec');
+            if ($desc !== null) {
+                if ($desc->isAccessorDescriptor()) {
+                    return false;
+                }
+                return $desc->value === self::$intrinsicExec;
+            }
+            $current = $current->getPrototype();
+        }
+        return false;
+    }
+
     public static function recordLegacyMatch(
         string $input,
         string $lastMatch,
@@ -1317,12 +1340,12 @@ class RegExpPrototype
 
             // If no compiled PCRE, OR the splitter's exec has been
             // overridden, fall back to the spec exec-based approach via
-            // the prototype lookup. The fast path bypasses exec entirely
-            // and would miss user-installed overrides on the receiver or
-            // RegExp.prototype.
-            $execLookup = $splitter->get('exec');
+            // the prototype lookup. Walk the property descriptor chain
+            // ourselves rather than calling ->get('exec'); the latter
+            // is observable as an extra get-trap in tests that monkeypatch
+            // RegExp.prototype.exec (sm/RegExp/split-trace, etc.).
             $execIsIntrinsic = self::$intrinsicExec !== null
-                && $execLookup === self::$intrinsicExec;
+                && self::isIntrinsicExec($splitter);
             if ($pcrePattern === null || !$execIsIntrinsic) {
                 return self::symbolSplitViaExec($splitter, $S, $lim);
             }
@@ -1432,7 +1455,9 @@ class RegExpPrototype
         $size = mb_strlen($S, 'UTF-8');
 
         if ($size === 0) {
-            $rx->set('lastIndex', new JsNumber(0.0));
+            // Per spec 22.2.5.13 step 24: empty target — call regExpExec
+            // once and return [] or [S]. Do NOT set lastIndex (the test
+            // sm/RegExp/split-trace observes this).
             $z = self::regExpExec($rx, $S);
             if (!$z instanceof JsNull) {
                 return JsArray::fromArray([]);
