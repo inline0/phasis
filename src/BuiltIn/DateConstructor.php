@@ -392,6 +392,17 @@ class DateConstructor
                 // Date-time without timezone: treat as local time per spec.
                 // strtotime handles this correctly by default.
             }
+        } elseif (
+            (str_contains($str, 'T') || str_contains($str, 't'))
+            && preg_match('/^[+-]?\d/', $str)
+        ) {
+            // Looks ISO-ish (starts with a digit / signed year) AND contains
+            // 'T' but didn't match the strict ISO pattern. Per spec, malformed
+            // ISO strings (trailing 'T', single-digit components after 'T',
+            // etc.) must return NaN — strtotime would otherwise lenient-parse
+            // them as valid. Space-separated non-ISO forms (e.g. SpiderMonkey
+            // 'YYYY-M-D HH:MM:SS') do not have a 'T' and continue to parse.
+            return NAN;
         }
 
         $ts = strtotime($str);
