@@ -351,6 +351,44 @@ class Environment
             return $this->bindings[$name];
         }
 
+        // Inlined parent walk for the common closure-read case: the
+        // binding is in an outer "simple" scope (no with, no import,
+        // no TDZ collision, no global linkedObject). Skips the
+        // recursive call frame plus the slow-path branch tower at
+        // each hop.
+        if (
+            $this->withObject === null
+            && $this->importBindings === []
+            && !array_key_exists($name, $this->bindings)
+            && $this->linkedObject === null
+        ) {
+            $cursor = $this->parent;
+            while ($cursor !== null) {
+                if (
+                    $cursor->withObject === null
+                    && isset($cursor->bindings[$name])
+                    && !isset($cursor->tdz[$name])
+                    && ($cursor->linkedObject === null || $cursor->parent !== null)
+                ) {
+                    return $cursor->bindings[$name];
+                }
+                if (
+                    $cursor->withObject !== null
+                    || $cursor->importBindings !== []
+                    || array_key_exists($name, $cursor->bindings)
+                    || $cursor->linkedObject !== null
+                ) {
+                    break;
+                }
+                $cursor = $cursor->parent;
+            }
+            // Fall through to the slow path on the env that broke the loop.
+            if ($cursor === null) {
+                throw new ReferenceError("{$name} is not defined");
+            }
+            return $cursor->get($name, $strict, $resolvedWithBase);
+        }
+
         // Slow path: with-environments, imports, TDZ, global linkedObject.
         if ($this->withObject !== null) {
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
