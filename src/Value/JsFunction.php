@@ -463,6 +463,15 @@ class JsFunction extends JsObject
         return $this->strict;
     }
 
+    /**
+     * Memoised: this function's effective strict mode at call time —
+     * true when the parser flagged it strict OR a body-level
+     * `"use strict"` directive promotes it. Hot enough on recursive
+     * calls (fib-style) that the body-prologue scan was showing up.
+     * Lazy-set by the interpreter and never invalidated.
+     */
+    public ?bool $effectiveStrictCache = null;
+
     public function isArrow(): bool
     {
         return $this->isArrow;

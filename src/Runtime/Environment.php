@@ -409,6 +409,19 @@ class Environment
      */
     public function set(string $name, JsValue $value, bool $strict = true): void
     {
+        // Hot path mirrors get(): own binding, no with/import/TDZ/const,
+        // no global linked object. Inline-update and return.
+        if (
+            $this->withObject === null
+            && isset($this->bindings[$name])
+            && !isset($this->tdz[$name])
+            && !isset($this->constants[$name])
+            && ($this->linkedObject === null || $this->parent !== null)
+        ) {
+            $this->bindings[$name] = $value;
+            return;
+        }
+
         // "with" object environment record: delegate to the binding object.
         if ($this->withObject !== null) {
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {

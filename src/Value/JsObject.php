@@ -170,6 +170,14 @@ class JsObject implements JsValue
 
     public function get(string $name): JsValue
     {
+        // Inlined hot path: own data property with no getter walks no
+        // prototypes. Saves the trampoline through getWithReceiver →
+        // getWithValueReceiver → PropertyMap::get for the common case
+        // (~80% of property reads in real workloads).
+        $desc = $this->properties->get($name);
+        if ($desc !== null && $desc->get === null) {
+            return $desc->value ?? JsUndefined::instance();
+        }
         return $this->getWithReceiver($name, $this);
     }
 
@@ -261,6 +269,24 @@ class JsObject implements JsValue
         // Module namespace exotic [[Set]] always returns false (per §10.4.6.6).
         if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
             return false;
+        }
+        // Fast path: receiver === this, the property exists as a writable
+        // data descriptor with no getter/setter. ~95% of property writes
+        // in real code update an existing field on the same object.
+        // Mutating the descriptor's value field avoids allocating a fresh
+        // PropertyDescriptor and skips the OrdinarySet trampoline.
+        if ($receiver === $this) {
+            $ownDesc = $this->properties->get($name);
+            if (
+                $ownDesc !== null
+                && $ownDesc->get === null
+                && $ownDesc->set === null
+                && $ownDesc->writable !== false
+            ) {
+                $ownDesc->value = $value;
+                return true;
+            }
+            return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
         }
         $ownDesc = $this->getOwnPropertyDescriptor($name);
         return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);

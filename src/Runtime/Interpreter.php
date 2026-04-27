@@ -760,20 +760,25 @@ class Interpreter
 
     private function executeStatement(Node $node, Environment $env): Completion
     {
+        // ExpressionStatement is the overwhelmingly common statement type
+        // in real code (every function body, every loop iteration body).
+        // Handle it via a typed pre-check before the match dispatch.
+        if ($node instanceof ExpressionStatement) {
+            return $this->execExpressionStatement($node, $env);
+        }
         return match (true) {
-            $node instanceof ExpressionStatement => $this->execExpressionStatement($node, $env),
-            $node instanceof VariableDeclaration => $this->execVariableDeclaration($node, $env),
-            $node instanceof FunctionDeclaration => $this->execFunctionDeclaration($node, $env),
-            $node instanceof ClassDeclaration => $this->execClassDeclaration($node, $env),
             $node instanceof BlockStatement => $this->execBlockStatement($node, $env),
             $node instanceof IfStatement => $this->execIfStatement($node, $env),
+            $node instanceof VariableDeclaration => $this->execVariableDeclaration($node, $env),
+            $node instanceof ReturnStatement => $this->execReturnStatement($node, $env),
             $node instanceof ForStatement => $this->execForStatement($node, $env),
+            $node instanceof FunctionDeclaration => $this->execFunctionDeclaration($node, $env),
+            $node instanceof ClassDeclaration => $this->execClassDeclaration($node, $env),
             $node instanceof ForInStatement => $this->execForInStatement($node, $env),
             $node instanceof ForOfStatement => $this->execForOfStatement($node, $env),
             $node instanceof WhileStatement => $this->execWhileStatement($node, $env),
             $node instanceof DoWhileStatement => $this->execDoWhileStatement($node, $env),
             $node instanceof SwitchStatement => $this->execSwitchStatement($node, $env),
-            $node instanceof ReturnStatement => $this->execReturnStatement($node, $env),
             $node instanceof ThrowStatement => $this->execThrowStatement($node, $env),
             $node instanceof TryStatement => $this->execTryStatement($node, $env),
             $node instanceof BreakStatement => Completion::break($node->label),
@@ -4392,8 +4397,14 @@ class Interpreter
             // [[Strict]] flag (set at definition time from the enclosing scope) OR by
             // a "use strict" directive in its body. The CALLER's strict mode is irrelevant.
             $body = $fn->getBody();
-            $fnStrict = $fn->isStrict()
-                || ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body));
+            // Cache the body-prologue scan result on the function: it never
+            // changes for a given JsFunction, but recursive callers can hit
+            // executeFunction millions of times.
+            if ($fn->effectiveStrictCache === null) {
+                $fn->effectiveStrictCache = $fn->isStrict()
+                    || ($body instanceof BlockStatement && $this->hasUseStrictDirective($body->body));
+            }
+            $fnStrict = $fn->effectiveStrictCache;
             $this->strictMode = $fnStrict;
 
             // Per spec 9.2.1.2 OrdinaryCallBindThis:
@@ -8360,8 +8371,17 @@ class Interpreter
             }
 
             // For non-let/const loops, create a child for the body so block
-            // scoped variables inside the body do not leak.
-            $bodyEnv = $perIterationBindings !== [] ? $iterEnv : $iterEnv->createChild();
+            // scoped variables inside the body do not leak. If the body is
+            // not a BlockStatement, no block-scoped declarations are
+            // possible and the child env is pure overhead — execute in
+            // the iteration env directly. Big win on tight loops like
+            // `for (let i = 0; i < N; i++) s += i;` where the body is a
+            // single ExpressionStatement.
+            if ($perIterationBindings !== [] || !($node->body instanceof BlockStatement)) {
+                $bodyEnv = $iterEnv;
+            } else {
+                $bodyEnv = $iterEnv->createChild();
+            }
             $completion = $this->executeStatement($node->body, $bodyEnv);
 
             if (!$completion->value instanceof JsUndefined || ($completion->isAbrupt() && !$completion->empty)) {
