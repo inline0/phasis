@@ -119,18 +119,21 @@ final class Compiler
             throw new CompilerBailout('non-ordinary function kind');
         }
         $body = $fn->getBody();
-        if (!$body instanceof BlockStatement) {
-            throw new CompilerBailout('non-block function body');
+        $isExpressionBody = !$body instanceof BlockStatement;
+        if ($isExpressionBody && !$body instanceof Node) {
+            throw new CompilerBailout('non-AST body');
         }
 
         // Reject bodies the tree-walker treats as "dynamic": eval
         // references, with statements, generators, etc. The caller
         // (Interpreter) already filters generators/async/etc. via
         // JsFunction flags, but eval/with require AST inspection.
-        $this->ensureNoBailoutFeatures($body);
+        if ($isExpressionBody) {
+            $this->scanBailout($body);
+        } else {
+            $this->ensureNoBailoutFeatures($body);
+        }
 
-        // Parameters first. Phase 4 still requires plain Identifier
-        // params — defaults, rest, destructuring all bail.
         foreach ($fn->getParams() as $param) {
             if (!$param instanceof Identifier) {
                 throw new CompilerBailout('non-simple parameter');
@@ -139,19 +142,43 @@ final class Compiler
             $this->paramSlots[] = $slot;
         }
 
+        if ($isExpressionBody) {
+            // Arrow expression body: nothing to pre-walk (no var
+            // decls allowed), no TDZ, no statements. Compile the
+            // single expression directly.
+            $this->compileExpression($body);
+            $this->emit(Op::RET);
+            return new CompiledFunction(
+                code: $this->code,
+                consts: $this->consts,
+                names: $this->names,
+                localNames: $this->localNames,
+                paramSlots: $this->paramSlots,
+                slotCount: max(1, count($this->localNames)),
+                nestedFns: $this->nestedFns,
+            );
+        }
+
         // Pre-walk: collect every var/let/const/function name in
         // the body so each is assigned a unique frame slot up front.
-        // This sidesteps shadowing / per-block scope tracking and
-        // matches what the bench microbenchmarks require.
         $this->collectFunctionLocals($body->body);
 
         // TDZ guard: bail if any let/const name appears in source
-        // BEFORE its declaration. The slot-based compiler can't tell
-        // an "uninitialized read" from a normal undefined read, so
-        // those cases must keep using the tree-walker.
+        // BEFORE its declaration.
         $this->ensureNoTdzViolations($body->body);
 
+        // FunctionDeclaration hoisting: per spec, function decls bind
+        // at the start of the enclosing function. Emit MAKE_FUNCTION
+        // + STORE_LOCAL ahead of the regular statement loop so any
+        // forward reference resolves correctly.
+        $this->hoistFunctionDeclarations($body->body);
+
         foreach ($body->body as $stmt) {
+            // Skip top-level FunctionDeclaration here — already
+            // emitted above. Their identity must not be re-bound.
+            if ($stmt instanceof FunctionDeclaration) {
+                continue;
+            }
             $this->compileStatement($stmt);
         }
 
@@ -869,6 +896,38 @@ final class Compiler
             return;
         }
         throw new CompilerBailout('unsupported expression: ' . $node->type());
+    }
+
+    /**
+     * Emit MAKE_FUNCTION + STORE_LOCAL for every top-level
+     * FunctionDeclaration in the body — hoisted to the start so
+     * forward references resolve. Each declaration's slot was
+     * already reserved by collectFunctionLocals.
+     *
+     * Bails if the declaration captures an outer local (its inner
+     * body would fail the env-walk) or is a generator / async
+     * function (those still need the tree-walker's full prologue).
+     *
+     * @param Node[] $statements
+     */
+    private function hoistFunctionDeclarations(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            if (!($stmt instanceof FunctionDeclaration) || $stmt->id === null) {
+                continue;
+            }
+            if ($stmt->generator || $stmt->async) {
+                throw new CompilerBailout('hoisted generator/async fn');
+            }
+            if ($this->capturesOuterLocal($stmt)) {
+                throw new CompilerBailout('hoisted fn captures outer local');
+            }
+            $idx = count($this->nestedFns);
+            $this->nestedFns[] = $stmt;
+            $this->emit(Op::MAKE_FUNCTION, $idx);
+            $slot = $this->localSlots[$stmt->id->name] ?? $this->declareLocal($stmt->id->name);
+            $this->emit(Op::STORE_LOCAL, $slot);
+        }
     }
 
     /**

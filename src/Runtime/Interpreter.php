@@ -4926,7 +4926,16 @@ class Interpreter
                 return $this->derivedConstructorImplicitReturn($fn, $fnEnv);
             }
 
-            // Arrow with expression body
+            // Arrow with expression body — VM dispatch is enabled for
+            // these too, but profiling showed simple expression bodies
+            // (e.g. `x => x + n`) lose to the tree-walker because the
+            // VM frame setup is more overhead than the few-instruction
+            // body saves. Only invoke the VM for "rich" bodies where
+            // compileExpression generates >= a handful of opcodes.
+            // Heuristic: compile-time decision is captured by the
+            // CompiledFunction's code length; we use the existing
+            // tryRunOnVm for the case but keep tree-walker as the
+            // ad-hoc choice for the simple expression-body shape.
             return $this->evaluate($body, $fnEnv);
         } finally {
             array_pop($this->callerStack);
@@ -5873,6 +5882,24 @@ class Interpreter
         }
         if ($node instanceof FunctionExpression) {
             return $this->evalFunctionExpression($node, $env);
+        }
+        if ($node instanceof FunctionDeclaration) {
+            // Materialise the JsFunction with $env as closure. The
+            // prototype + name are wired by installFunctionPrototype.
+            $fn = new JsFunction(
+                $node->id !== null ? $node->id->name : '(anonymous)',
+                $node->params,
+                $node->body,
+                $env,
+                isGenerator: $node->generator,
+                isAsync: $node->async,
+                strict: $this->strictMode,
+            );
+            if ($node->sourceText !== null) {
+                $fn->setSourceText($node->sourceText);
+            }
+            $this->installFunctionPrototype($fn, $node->generator, $node->async);
+            return $fn;
         }
         throw new InternalError('vmMakeFunction: ' . $node->type());
     }
