@@ -373,29 +373,35 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec OrdinaryCreateFromConstructor: query
-                // newTarget.prototype BEFORE the body runs. The lookup
-                // is observable via Proxy `get` traps and revocable
-                // proxies (test262/staging/sm/Proxy/revoked-get-*).
-                $ntProto = $newTarget->get('prototype');
-                // Per spec GetPrototypeFromConstructor: if proto is not
-                // an Object, call GetFunctionRealm on newTarget. For a
-                // revoked Proxy (handler=null) that throws TypeError —
-                // observable when a get-prototype trap revokes itself.
-                if (
-                    !$ntProto instanceof JsObject
-                    && $newTarget instanceof JsProxy
-                    && $newTarget->isRevoked()
-                ) {
-                    throw new TypeError(
-                        'Cannot perform construct on a proxy that has been revoked'
-                    );
-                }
-                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                // Per spec [[Construct]]: ECMAScript function targets
+                // call OrdinaryCreateFromConstructor BEFORE the body so
+                // `this` inside the body has newTarget's prototype.
+                // Built-in targets vary: most call OrdinaryCreateFromConstructor
+                // early, but Function defers it past parse, so we let the
+                // built-in body decide via [[NewTarget]] lookup. For
+                // ECMAScript functions we still query newTarget.prototype
+                // eagerly and detect revocable-proxy revocation per
+                // GetPrototypeFromConstructor → GetFunctionRealm.
                 $isNativeTarget = $target instanceof JsFunction && $target->isNative();
-                if ($useProto === null) {
+                if ($isNativeTarget) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                } else {
+                    $ntProto = $newTarget->get('prototype');
+                    if (
+                        !$ntProto instanceof JsObject
+                        && $newTarget instanceof JsProxy
+                        && $newTarget->isRevoked()
+                    ) {
+                        throw new TypeError(
+                            'Cannot perform construct on a proxy that has been revoked'
+                        );
+                    }
+                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
+                    if ($useProto === null) {
+                        $targetProto = $target->get('prototype');
+                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    }
                 }
                 $newObj = new JsObject($useProto);
                 $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
@@ -406,10 +412,29 @@ class ReflectObject
                     PropertyDescriptor::data($ntValue, false, false, false),
                 );
                 $result = $target->call($newObj, $callArgs);
-                if ($result instanceof JsObject && $result !== $newObj) {
-                    return $result;
+                $finalObj = ($result instanceof JsObject && $result !== $newObj) ? $result : $newObj;
+                // For native targets where newTarget !== target, apply
+                // newTarget.prototype after the body. Native [[Construct]]
+                // implementations rely on [[NewTarget]] for this lookup;
+                // this catches cases (Object, Array, Function, etc.) and
+                // detects revoked proxies per GetPrototypeFromConstructor →
+                // GetFunctionRealm.
+                if ($isNativeTarget && $newTarget !== $target) {
+                    $ntProto = $newTarget->get('prototype');
+                    if (
+                        !$ntProto instanceof JsObject
+                        && $newTarget instanceof JsProxy
+                        && $newTarget->isRevoked()
+                    ) {
+                        throw new TypeError(
+                            'Cannot perform construct on a proxy that has been revoked'
+                        );
+                    }
+                    if ($ntProto instanceof JsObject) {
+                        $finalObj->setPrototype($ntProto);
+                    }
                 }
-                return $result instanceof JsObject ? $result : $newObj;
+                return $result instanceof JsObject ? $finalObj : $newObj;
             }, 2),
             true,
             false,
