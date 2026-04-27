@@ -156,6 +156,8 @@ final class Compiler
                 paramSlots: $this->paramSlots,
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
+                needsThis: in_array(Op::LOAD_THIS, $this->code, true),
+                needsArgsBinding: false,
             );
         }
 
@@ -193,6 +195,8 @@ final class Compiler
             paramSlots: $this->paramSlots,
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
+            needsThis: in_array(Op::LOAD_THIS, $this->code, true),
+            needsArgsBinding: false,
         );
     }
 

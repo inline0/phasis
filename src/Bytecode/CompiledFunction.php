@@ -26,10 +26,16 @@ final class CompiledFunction
      * @param list<string>  $names       Identifier name table.
      * @param list<string>  $localNames  Slot index → name (diagnostics).
      * @param list<int>     $paramSlots  Parameter index → local slot.
-     * @param list<\PhpJs\Ast\Node> $nestedFns AST templates for nested
-     *        FunctionExpressions / ArrowFunctions. MAKE_FUNCTION
-     *        opcodes index into this list to materialise a JsFunction
-     *        on the fly with the current env as closure.
+     * @param list<\PhpJs\Ast\Node> $nestedFns Templates for nested fns.
+     * @param bool $needsThis       True when LOAD_THIS appears anywhere
+     *        in the bytecode. Lets executeFunction skip the
+     *        defineVar('this', ...) that the tree-walker performs.
+     * @param bool $needsArgsBinding True when LOAD_NAME / STORE_NAME
+     *        targets a parameter name (the body referenced the param
+     *        via its identifier in a way the slot-based path doesn't
+     *        cover). When false, executeFunction can skip
+     *        bindParameters because LOAD_LOCAL / paramSlot handles
+     *        every reference.
      */
     public function __construct(
         public readonly array $code,
@@ -39,6 +45,8 @@ final class CompiledFunction
         public readonly array $paramSlots,
         public readonly int $slotCount,
         public readonly array $nestedFns = [],
+        public readonly bool $needsThis = true,
+        public readonly bool $needsArgsBinding = true,
     ) {
     }
 }
