@@ -460,6 +460,13 @@ class DateConstructor
             return NAN;
         }
 
+        // Mozilla / V8 share a non-spec heuristic for two-digit years that
+        // PHP's strtotime gets wrong: years 0-49 expand to 2000-2049 and
+        // 50-99 expand to 1950-1999. PHP treats 50-69 as 2050-2069 instead.
+        // Pre-process common date forms so the heuristic matches the
+        // SpiderMonkey/V8 behavior tested by sm/Date/two-digit-years.
+        $str = self::expandTwoDigitYear($str);
+
         $ts = strtotime($str);
         if ($ts === false) {
             return NAN;
@@ -473,6 +480,120 @@ class DateConstructor
         }
 
         return self::timeClip((float) $ts * 1000.0 + $ms);
+    }
+
+    /**
+     * Apply the SpiderMonkey/V8 two-digit-year heuristic to common date
+     * forms before strtotime sees them. Years 0-49 expand to 2000-2049,
+     * 50-99 expand to 1950-1999. Patterns we touch:
+     *
+     *   mm/dd/yy   — US-style numeric (year is the trailing component).
+     *   yy/mm/dd   — leading 2-digit year, only when year > 31. For
+     *                12 < year <= 31, the form is ambiguous between
+     *                month/day/year and year/month/day, so we let
+     *                strtotime fail and the result becomes NaN per spec.
+     *   <month> day yy / day <month> yy / day yy <month> — written months.
+     *
+     * Anything else (4-digit years, ISO forms) is returned untouched.
+     */
+    private static function expandTwoDigitYear(string $str): string
+    {
+        $expand = static function (int $y): int {
+            return $y >= 50 ? 1900 + $y : 2000 + $y;
+        };
+
+        // 1-2 digit components separated by '/'. Disambiguate which field
+        // is the year by Mozilla/V8's heuristic:
+        //   - first > 31  → yy/mm/dd  (unambiguously a year)
+        //   - first <= 12 → mm/dd/yy  (US-style; first is month)
+        //   - 12 < first <= 31 → ambiguous — leave for strtotime, which
+        //     produces NaN (matching the test's expectation).
+        if (preg_match('@^(\d{1,2})/(\d{1,2})/(\d{1,2})$@', $str, $m)) {
+            $first = (int) $m[1];
+            $second = (int) $m[2];
+            $third = (int) $m[3];
+            if ($first > 31) {
+                // yy/mm/dd. Reject obviously-invalid month/day.
+                if ($second < 1 || $second > 12 || $third < 1 || $third > 31) {
+                    return 'invalid-date-form';
+                }
+                return $expand($first) . '/' . $m[2] . '/' . $m[3];
+            }
+            if ($first <= 12) {
+                // mm/dd/yy. Reject obviously-invalid month/day.
+                if ($first < 1 || $second < 1 || $second > 31) {
+                    return 'invalid-date-form';
+                }
+                return $m[1] . '/' . $m[2] . '/' . $expand($third);
+            }
+            // 12 < first <= 31 → ambiguous; force NaN regardless of what
+            // strtotime might do with PHP's d/m/y locale heuristic.
+            return 'invalid-date-form';
+        }
+        // Written month forms: `may 1 99`, `1 may 99`, `1 99 may`.
+        $monthAlt = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may'
+            . '|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?'
+            . '|nov(?:ember)?|dec(?:ember)?)';
+        // SpiderMonkey accepts many `<month-name> <num> <num>` permutations.
+        // strtotime can read `<month> <day> <year>` and `<day> <month> <year>`,
+        // but balks on permutations where the year sits between the month
+        // name and the day. Normalise everything into `<month> <day> <year>`
+        // with a 4-digit year so the underlying parse succeeds.
+        //
+        // For the year, year > 31 is unambiguously a year. year <= 31 is a
+        // day (or could be a year if it happens to look like one — but we
+        // pick the unambiguous answer first). When both numbers fit in [1,31]
+        // we treat the trailing one (closest to the month name's far side)
+        // as the year, matching SpiderMonkey's tests.
+        // Returns [day, year], or null when both values are obvious years
+        // (i.e. neither could be a day-of-month). The latter case maps to
+        // a SyntaxError in V8/SpiderMonkey, so callers force NaN.
+        $disambiguate = static function (int $a, int $b): ?array {
+            $aIsDay = $a >= 1 && $a <= 31;
+            $bIsDay = $b >= 1 && $b <= 31;
+            if (!$aIsDay && !$bIsDay) {
+                return null;
+            }
+            if ($a > 31 && $bIsDay) {
+                return [$b, $a];
+            }
+            if ($b > 31 && $aIsDay) {
+                return [$a, $b];
+            }
+            return [$a, $b];
+        };
+
+        // <month> <num> <num>
+        if (preg_match("@^{$monthAlt}\\s+(\\d{1,4})\\s+(\\d{1,4})$@i", $str, $m)) {
+            $pair = $disambiguate((int) $m[2], (int) $m[3]);
+            if ($pair === null) {
+                return 'invalid-date-form';
+            }
+            [$day, $year] = $pair;
+            $year = $year < 100 ? $expand($year) : $year;
+            return $m[1] . ' ' . $day . ' ' . $year;
+        }
+        // <num> <month> <num>
+        if (preg_match("@^(\\d{1,4})\\s+{$monthAlt}\\s+(\\d{1,4})$@i", $str, $m)) {
+            $pair = $disambiguate((int) $m[1], (int) $m[3]);
+            if ($pair === null) {
+                return 'invalid-date-form';
+            }
+            [$day, $year] = $pair;
+            $year = $year < 100 ? $expand($year) : $year;
+            return $m[2] . ' ' . $day . ' ' . $year;
+        }
+        // <num> <num> <month>
+        if (preg_match("@^(\\d{1,4})\\s+(\\d{1,4})\\s+{$monthAlt}$@i", $str, $m)) {
+            $pair = $disambiguate((int) $m[1], (int) $m[2]);
+            if ($pair === null) {
+                return 'invalid-date-form';
+            }
+            [$day, $year] = $pair;
+            $year = $year < 100 ? $expand($year) : $year;
+            return $m[3] . ' ' . $day . ' ' . $year;
+        }
+        return $str;
     }
 
     /**
