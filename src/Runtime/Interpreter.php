@@ -8562,11 +8562,12 @@ class Interpreter
                     break;
                 }
 
+                // For for-await-of, the spec only awaits the next() result,
+                // not the value. AsyncFromSyncIterator already awaits the
+                // value inside its own next() implementation, so a second
+                // await here added an extra microtask per iteration that
+                // broke the spec's tick budget (sm/for-await-of/ticks-with-*).
                 $value = $result->get('value');
-                // For for-await-of, await the value too.
-                if ($node->await) {
-                    $value = $this->forAwaitUnwrap($value, $env);
-                }
                 $iterEnv = $env->createChild();
                 // Pre-declare let/const bindings in the iteration env so that
                 // destructured names inherit the lexical kind (especially const,
