@@ -159,6 +159,18 @@ class ShadowRealmConstructor
                     );
                 }
 
+                // Per spec: coerce specifier and exportName via ToString
+                // before attempting the import. Tests rely on this so they
+                // can observe the .valueOf/.toString hooks running in the
+                // expected order — we have to fire those side effects even
+                // when we can't resolve the module.
+                \PhpJs\Spec\TypeConversion::toString(
+                    $args[0] ?? \PhpJs\Value\JsUndefined::instance(),
+                );
+                \PhpJs\Spec\TypeConversion::toString(
+                    $args[1] ?? \PhpJs\Value\JsUndefined::instance(),
+                );
+
                 // importValue requires ES modules which we don't support.
                 // Throw TypeError per spec behavior when import fails.
                 throw new TypeError('ShadowRealm importValue is not supported (ES modules required)');
