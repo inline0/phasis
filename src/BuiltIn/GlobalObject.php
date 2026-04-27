@@ -696,7 +696,9 @@ class GlobalObject
         $hasInstanceFn = JsFunction::fromCallable(
             '[Symbol.hasInstance]',
             function (JsValue $this_, array $args): JsValue {
-                if (!$this_ instanceof JsFunction) {
+                $isCallable = $this_ instanceof JsFunction
+                    || ($this_ instanceof \PhpJs\Value\JsProxy && $this_->isCallable());
+                if (!$isCallable) {
                     return new JsBoolean(false);
                 }
                 $value = $args[0] ?? JsUndefined::instance();
@@ -705,10 +707,15 @@ class GlobalObject
                 }
                 // Per spec 7.3.22 OrdinaryHasInstance step 2: if F has a
                 // [[BoundTargetFunction]], resolve through to the original target.
+                // Proxies don't have a bound-target slot.
                 $target = $this_;
-                while ($target->getBoundTarget() !== null) {
-                    $target = $target->getBoundTarget();
+                if ($target instanceof JsFunction) {
+                    while ($target->getBoundTarget() !== null) {
+                        $target = $target->getBoundTarget();
+                    }
                 }
+                // Get target.prototype. For a Proxy this fires the `get` trap
+                // with key="prototype", as required by the spec test fixture.
                 $proto = $target->get('prototype');
                 if (!$proto instanceof \PhpJs\Value\JsObject) {
                     throw new \PhpJs\Exceptions\TypeError(

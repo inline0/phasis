@@ -373,26 +373,29 @@ class ReflectObject
                     return $target->construct($callArgs, $newTarget);
                 }
 
-                // Per spec [[Construct]]: ECMAScript function targets
-                // call OrdinaryCreateFromConstructor BEFORE the body
-                // runs (so `this` inside the body has newTarget's
-                // prototype). Built-in targets defer the creation
-                // until after argument validation, so a poisoned
-                // newTarget.prototype getter shouldn't fire on a
-                // RangeError-bound path. We detect built-ins via
-                // isNative() and fall back to lazy proto-lookup
-                // after the body completes.
+                // Per spec OrdinaryCreateFromConstructor: query
+                // newTarget.prototype BEFORE the body runs. The lookup
+                // is observable via Proxy `get` traps and revocable
+                // proxies (test262/staging/sm/Proxy/revoked-get-*).
+                $ntProto = $newTarget->get('prototype');
+                // Per spec GetPrototypeFromConstructor: if proto is not
+                // an Object, call GetFunctionRealm on newTarget. For a
+                // revoked Proxy (handler=null) that throws TypeError —
+                // observable when a get-prototype trap revokes itself.
+                if (
+                    !$ntProto instanceof JsObject
+                    && $newTarget instanceof JsProxy
+                    && $newTarget->isRevoked()
+                ) {
+                    throw new TypeError(
+                        'Cannot perform construct on a proxy that has been revoked'
+                    );
+                }
+                $useProto = $ntProto instanceof JsObject ? $ntProto : null;
                 $isNativeTarget = $target instanceof JsFunction && $target->isNative();
-                if ($isNativeTarget) {
+                if ($useProto === null) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
-                } else {
-                    $ntProto = $newTarget->get('prototype');
-                    $useProto = $ntProto instanceof JsObject ? $ntProto : null;
-                    if ($useProto === null) {
-                        $targetProto = $target->get('prototype');
-                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
-                    }
                 }
                 $newObj = new JsObject($useProto);
                 $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
@@ -405,15 +408,6 @@ class ReflectObject
                 $result = $target->call($newObj, $callArgs);
                 if ($result instanceof JsObject && $result !== $newObj) {
                     return $result;
-                }
-                // Built-in target with deferred prototype lookup:
-                // apply newTarget.prototype now that the body has
-                // succeeded.
-                if ($isNativeTarget && $newTarget !== $target) {
-                    $ntProto = $newTarget->get('prototype');
-                    if ($ntProto instanceof JsObject) {
-                        $newObj->setPrototype($ntProto);
-                    }
                 }
                 return $result instanceof JsObject ? $result : $newObj;
             }, 2),

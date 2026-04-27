@@ -404,15 +404,23 @@ final class AbstractOperations
             return TypeConversion::toBoolean($result);
         }
 
-        // OrdinaryHasInstance: right must be callable.
-        if (!$right instanceof JsFunction) {
+        // OrdinaryHasInstance: C must be callable. Proxies that wrap a
+        // callable target are themselves callable; bail only when neither
+        // path applies.
+        $isCallable = $right instanceof JsFunction
+            || ($right instanceof \PhpJs\Value\JsProxy && $right->isCallable());
+        if (!$isCallable) {
             throw new TypeError('Right-hand side of instanceof is not callable');
         }
 
-        // Per spec 7.3.22 step 2: resolve [[BoundTargetFunction]] recursively.
+        // Per spec 7.3.22 step 2: if C has [[BoundTargetFunction]], recurse
+        // through it. Proxies do not have a bound-target slot, so this only
+        // applies when $right is a JsFunction.
         $target = $right;
-        while ($target->getBoundTarget() !== null) {
-            $target = $target->getBoundTarget();
+        if ($target instanceof JsFunction) {
+            while ($target->getBoundTarget() !== null) {
+                $target = $target->getBoundTarget();
+            }
         }
 
         // Left must be an object for prototype chain walking.
@@ -420,7 +428,8 @@ final class AbstractOperations
             return false;
         }
 
-        // Get the prototype property of the resolved target.
+        // Get the prototype property of the resolved target. For Proxies
+        // this triggers the `get` trap with key="prototype" per spec.
         $proto = $target->get('prototype');
         if (!$proto instanceof JsObject) {
             throw new TypeError('Function has non-object prototype in instanceof check');
