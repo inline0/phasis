@@ -7936,7 +7936,7 @@ class Interpreter
         }
         // Per spec 15.7.5: ClassDeclaration evaluates to empty so preceding
         // statement-list values are not clobbered.
-        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+        return Completion::normalEmpty();
     }
 
     /**
@@ -8615,7 +8615,7 @@ class Interpreter
     {
         // Anonymous function declarations (from export default function() {}) do nothing at execution.
         if ($node->id === null) {
-            return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+            return Completion::normalEmpty();
         }
 
         if (!$this->strictMode) {
@@ -8647,7 +8647,7 @@ class Interpreter
             }
         }
 
-        return new Completion(CompletionType::Normal, JsUndefined::instance(), empty: true);
+        return Completion::normalEmpty();
     }
 
     private function execBlockStatement(BlockStatement $node, Environment $env): Completion
