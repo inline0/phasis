@@ -28,7 +28,7 @@ class JsSymbol implements JsValue
         $interp = \PhpJs\Engine::getCurrentInterpreter();
         if ($interp !== null) {
             $env = $interp->getGlobalEnv();
-            $symVal = $env?->get('Symbol', false);
+            $symVal = $env->get('Symbol', false);
             if ($symVal instanceof JsObject) {
                 $protoVal = $symVal->get('prototype');
                 if ($protoVal instanceof JsObject) {
