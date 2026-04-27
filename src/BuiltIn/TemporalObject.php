@@ -9725,6 +9725,33 @@ class TemporalObject
                     throw new RangeError('year must be finite');
                 }
                 $refYear = (int) $yValRaw;
+                // When era+eraYear is also provided, validate consistency.
+                if ($eraYearNum !== null) {
+                    static $pmdEraDerivCals2 = ['gregory', 'japanese', 'roc'];
+                    if (in_array($cal, $pmdEraDerivCals2, true)) {
+                        $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                        $derivedYear = null;
+                        if ($cal === 'gregory') {
+                            $derivedYear = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                                ? (1 - (int) $eraYearNum)
+                                : (int) $eraYearNum;
+                        } elseif ($cal === 'roc') {
+                            $derivedYear = ($eraLower === 'roc-inverse' || $eraLower === 'before-roc')
+                                ? (int) (1912 - $eraYearNum)
+                                : (int) (1911 + $eraYearNum);
+                        } elseif ($cal === 'japanese') {
+                            $isoY = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                            if ($isoY !== null) {
+                                $derivedYear = $isoY;
+                            }
+                        }
+                        if ($derivedYear !== null && $derivedYear !== $refYear) {
+                            throw new RangeError(
+                                "era/eraYear and year disagree: derived {$derivedYear} vs explicit {$refYear}",
+                            );
+                        }
+                    }
+                }
             } else {
                 static $pmdEraDerivCals = ['gregory', 'japanese', 'roc'];
                 if (
@@ -9909,6 +9936,32 @@ class TemporalObject
                     throw new RangeError('year must be finite');
                 }
                 $refYear = (int) $yVal;
+                if ($eraYearNum !== null) {
+                    static $pmdEraDerivCals3 = ['gregory', 'japanese', 'roc'];
+                    if (in_array($cal, $pmdEraDerivCals3, true)) {
+                        $eraLower = $eraStr === null ? '' : strtolower($eraStr);
+                        $derivedYear = null;
+                        if ($cal === 'gregory') {
+                            $derivedYear = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
+                                ? (1 - (int) $eraYearNum)
+                                : (int) $eraYearNum;
+                        } elseif ($cal === 'roc') {
+                            $derivedYear = ($eraLower === 'roc-inverse' || $eraLower === 'before-roc')
+                                ? (int) (1912 - $eraYearNum)
+                                : (int) (1911 + $eraYearNum);
+                        } elseif ($cal === 'japanese') {
+                            $isoY = self::japaneseEraToIsoYear($eraLower, (int) $eraYearNum);
+                            if ($isoY !== null) {
+                                $derivedYear = $isoY;
+                            }
+                        }
+                        if ($derivedYear !== null && $derivedYear !== $refYear) {
+                            throw new RangeError(
+                                "era/eraYear and year disagree: derived {$derivedYear} vs explicit {$refYear}",
+                            );
+                        }
+                    }
+                }
             } else {
                 static $pmdEraDerivCals2 = ['gregory', 'japanese', 'roc'];
                 if (
