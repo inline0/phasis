@@ -4235,9 +4235,13 @@ class Interpreter
             $fnEnv = $fn->getClosure()->createChild();
 
             // Tag the environment with the function kind so
-            // EvalDeclarationInstantiation can enforce restrictions.
+            // EvalDeclarationInstantiation can enforce restrictions
+            // and so evalAwaitExpression knows whether the current
+            // call frame is suspendable async.
             if ($fn->isArrow()) {
                 $fnEnv->setFunctionKind('arrow');
+            } elseif ($fn->isAsync()) {
+                $fnEnv->setFunctionKind('async');
             } else {
                 $fnEnv->setFunctionKind('function');
             }
@@ -4551,10 +4555,12 @@ class Interpreter
     /**
      * Execute an async function and wrap the result in a Promise.
      *
-     * In our synchronous model, the async function body runs to completion
-     * immediately. If it returns normally, we create a fulfilled promise.
-     * If it throws, we create a rejected promise. Await expressions inside
-     * the body extract values from promises synchronously.
+     * The body runs inside a PHP Fiber so each `await` can suspend
+     * execution at the spec-correct point. The async function returns
+     * a Promise immediately; the body's continuation runs after the
+     * awaited promise settles, scheduled through the microtask queue
+     * so that synchronous code in the caller observes the await as
+     * a real suspension (matching V8's tick ordering).
      *
      * @param list<JsValue> $args
      */
@@ -4563,18 +4569,128 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): \PhpJs\Value\JsPromise {
-        try {
-            $result = $this->executeFunction($fn, $thisValue, $args);
-            // If the result is already a promise, return it directly.
-            if ($result instanceof \PhpJs\Value\JsPromise) {
-                return $result;
+        $promise = new \PhpJs\Value\JsPromise();
+        $interpreter = $this;
+        $fiber = new \Fiber(function () use ($interpreter, $fn, $thisValue, $args): JsValue {
+            try {
+                return $interpreter->executeFunction($fn, $thisValue, $args);
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                throw $e;
             }
-            return \PhpJs\Value\JsPromise::resolved($result);
+        });
+        $this->driveAsyncFiber($fiber, $promise, true, JsUndefined::instance());
+        return $promise;
+    }
+
+    /**
+     * Drive a Fiber that's running an async function body. Resumes the
+     * fiber, follows AwaitSuspension markers through PromiseResolve,
+     * and either schedules a microtask to continue or settles the outer
+     * Promise when the fiber finishes.
+     */
+    private function driveAsyncFiber(
+        \Fiber $fiber,
+        \PhpJs\Value\JsPromise $promise,
+        bool $start,
+        JsValue $resumeValue,
+        bool $resumeAsThrow = false,
+        ?JsValue $throwValue = null,
+    ): void {
+        try {
+            if ($start) {
+                $suspended = $fiber->start();
+            } elseif ($resumeAsThrow) {
+                $suspended = $fiber->throw(
+                    new \PhpJs\Exceptions\JsThrowable($throwValue ?? JsUndefined::instance()),
+                );
+            } else {
+                $suspended = $fiber->resume($resumeValue);
+            }
         } catch (\PhpJs\Exceptions\JsThrowable $e) {
-            return \PhpJs\Value\JsPromise::rejected($e->jsValue);
+            $promise->reject($e->jsValue);
+            return;
         } catch (\PhpJs\Exceptions\RuntimeError $e) {
-            return \PhpJs\Value\JsPromise::rejected($this->phpExceptionToJsValue($e));
+            $promise->reject($this->phpExceptionToJsValue($e));
+            return;
+        } catch (\Throwable $e) {
+            $promise->reject($this->phpExceptionToJsValue($e));
+            return;
         }
+
+        if ($fiber->isTerminated()) {
+            $returnValue = $fiber->getReturn();
+            if (!$returnValue instanceof JsValue) {
+                $returnValue = JsUndefined::instance();
+            }
+            $promise->resolve($returnValue);
+            return;
+        }
+
+        if ($suspended instanceof \PhpJs\Value\AwaitSuspension) {
+            $awaited = $suspended->value;
+            $self = $this;
+            // Schedule the resumption through the microtask queue so
+            // synchronous code that ran before the await observes the
+            // suspension. PromiseResolve folds promises and thenables
+            // into a single Promise we can subscribe to.
+            \PhpJs\Value\JsPromise::scheduleCallback(static function () use ($self, $fiber, $promise, $awaited): void {
+                $self->settleAwaitedAndResume($fiber, $promise, $awaited);
+            });
+            return;
+        }
+
+        // Unknown suspension shape: treat as resolved with undefined.
+        $promise->resolve(JsUndefined::instance());
+    }
+
+    /**
+     * Resolve the awaited value (folding promise/thenable chains via
+     * PromiseResolve) and resume the fiber once it settles.
+     */
+    public function settleAwaitedAndResume(
+        \Fiber $fiber,
+        \PhpJs\Value\JsPromise $promise,
+        JsValue $awaited,
+    ): void {
+        // Fold into a Promise. Already-resolved Promises and plain
+        // values are resumed synchronously; thenables and pending
+        // promises subscribe via .then.
+        $resolverPromise = $this->promiseResolve($awaited);
+        if ($resolverPromise->getState() === \PhpJs\Value\JsPromise::STATE_FULFILLED) {
+            $this->driveAsyncFiber($fiber, $promise, false, $resolverPromise->getResolvedValue());
+            return;
+        }
+        if ($resolverPromise->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+            $this->driveAsyncFiber($fiber, $promise, false, JsUndefined::instance(), true, $resolverPromise->getResolvedValue());
+            return;
+        }
+        $self = $this;
+        $resolverPromise->then([
+            JsFunction::fromCallable('', static function (JsValue $this_, array $a) use ($self, $fiber, $promise): JsValue {
+                $self->driveAsyncFiber($fiber, $promise, false, $a[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+            JsFunction::fromCallable('', static function (JsValue $this_, array $a) use ($self, $fiber, $promise): JsValue {
+                $self->driveAsyncFiber($fiber, $promise, false, JsUndefined::instance(), true, $a[0] ?? JsUndefined::instance());
+                return JsUndefined::instance();
+            }, 1),
+        ]);
+    }
+
+    /**
+     * Spec PromiseResolve: wrap a value in a Promise. JsPromise::resolve
+     * already enqueues PromiseResolveThenableJob for thenables, so we
+     * just delegate; the resulting promise stays PENDING until the
+     * thenable's then() is called from the microtask queue.
+     */
+    private function promiseResolve(JsValue $value): \PhpJs\Value\JsPromise
+    {
+        if ($value instanceof \PhpJs\Value\JsPromise) {
+            return $value;
+        }
+        $p = new \PhpJs\Value\JsPromise();
+        $p->resolve($value);
+        return $p;
     }
 
     /**
@@ -6065,6 +6181,26 @@ class Interpreter
     private function evalAwaitExpression(AwaitExpression $node, Environment $env): JsValue
     {
         $value = $this->evaluate($node->argument, $env);
+        // If we're running inside an async function Fiber that was
+        // created by executeAsyncFunction, suspend the Fiber with the
+        // awaited value so the controller can drive Promise resolution
+        // and schedule a microtask before resuming. The driver returns
+        // the resolved value via Fiber::resume; rejection is delivered
+        // by Fiber::throw with a JsThrowable.
+        $fiber = \Fiber::getCurrent();
+        if ($fiber !== null && $env->getFunctionKind() === 'async') {
+            try {
+                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $this->throwJsValue($e->jsValue);
+            }
+            if ($resumed instanceof JsValue) {
+                return $resumed;
+            }
+            return JsUndefined::instance();
+        }
+        // Top-level await and awaits in our synchronous (non-fiber)
+        // contexts fall back to the inline drain-and-unwrap strategy.
         return $this->resolveAwaitedValue($value);
     }
 
