@@ -8247,6 +8247,32 @@ class TemporalObject
             // For non-ISO calendars, convert calendar-native (year, month, day)
             // to ISO via ICU before storing.
             if ($cal !== 'iso8601' && !in_array($cal, ['gregory', 'roc', 'japanese'], true)) {
+                // Constrain day to the calendar month's max so ICU doesn't
+                // silently roll over (e.g. hebrew Cheshvan 30 in a 29-day
+                // year would otherwise become Kislev 1).
+                if ($overflow === 'constrain') {
+                    $maxD = self::calendarDaysInMonth(
+                        $cal,
+                        $y,
+                        $hasMonthCode ? $mcStr : null,
+                        $hasMonthCode ? null : $m,
+                    );
+                    if ($maxD !== null && $d > $maxD) {
+                        $d = $maxD;
+                    }
+                } else {
+                    $maxD = self::calendarDaysInMonth(
+                        $cal,
+                        $y,
+                        $hasMonthCode ? $mcStr : null,
+                        $hasMonthCode ? null : $m,
+                    );
+                    if ($maxD !== null && $d > $maxD) {
+                        throw new RangeError(
+                            "Invalid day {$d} for calendar '{$cal}' month",
+                        );
+                    }
+                }
                 $isoParts = self::calendarPartsToIso($cal, $y, $hasMonthCode ? $mcStr : null, $hasMonthCode ? null : $m, $d);
                 if ($isoParts !== null) {
                     return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
