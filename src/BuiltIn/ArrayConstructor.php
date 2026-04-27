@@ -2228,6 +2228,7 @@ class ArrayConstructor
                         }
                     } else {
                         $iteratorMethod = $usingAsyncIterator ?? $usingSyncIterator;
+                        $isAsyncIter = $usingAsyncIterator !== null;
                         /** @var JsFunction $iteratorMethod */
                         $iterator = $iteratorMethod->call($asyncItems, []);
                         if (!$iterator instanceof JsObject) {
@@ -2248,7 +2249,14 @@ class ArrayConstructor
                                 break;
                             }
                             $val = $result->get('value');
-                            $val = self::awaitValue($val);
+                            // Per spec: for sync iterables (or after a sync
+                            // iterator path), await each value as a thenable.
+                            // For native async iterables, the value is left
+                            // as-is (the iterator already awaited the next()
+                            // promise).
+                            if (!$isAsyncIter) {
+                                $val = self::awaitValue($val);
+                            }
                             if ($mapFn !== null) {
                                 try {
                                     $val = $mapFn->call(
