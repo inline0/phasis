@@ -310,11 +310,14 @@ class JsObject implements JsValue
                 ));
             }
             // Receiver does not have property P. Create it if extensible.
+            // Per spec OrdinarySetWithOwnDescriptor step 4.d: return the
+            // result of CreateDataProperty(Receiver, P, V) — propagate the
+            // [[DefineOwnProperty]] success/failure (e.g. for TypedArray
+            // receivers an out-of-bounds index returns false).
             if (!$receiver->isExtensible()) {
                 return false;
             }
-            $receiver->defineOwnProperty($name, PropertyDescriptor::data($value));
-            return true;
+            return $receiver->defineOwnProperty($name, PropertyDescriptor::data($value));
         }
 
         // Accessor descriptor.

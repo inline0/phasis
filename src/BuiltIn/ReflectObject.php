@@ -78,10 +78,10 @@ class ReflectObject
                     );
                 }
                 // Typed-array exotic [[Set]]: for a CanonicalNumericIndexString
-                // the spec short-circuits for invalid indices with return true
-                // and without calling valueOf on the value. Delegate to the
-                // typed array's [[Set]] when the receiver is the typed array
-                // itself; otherwise, if the index is invalid, return true.
+                // we delegate to the typed array's [[Set]] when the receiver is
+                // the typed array itself. Per spec TypedArraySetElement,
+                // ToNumber/ToBigInt is called BEFORE the valid-index check, so
+                // a throwing valueOf surfaces even on out-of-bounds writes.
                 if ($target instanceof \PhpJs\Value\JsTypedArray) {
                     $indexStr = $propKey->toJsString();
                     $isCanonical = $indexStr === '-0'
@@ -93,14 +93,22 @@ class ReflectObject
                             && (new \PhpJs\Value\JsNumber((float) $indexStr))->toJsString() === $indexStr
                         );
                     if ($isCanonical) {
+                        if ($receiver === $target) {
+                            // Always route through the typed array's [[Set]],
+                            // which performs the spec-mandated coercion before
+                            // the valid-index check and returns true for any
+                            // canonical numeric index (including invalid).
+                            $target->set($indexStr, $value);
+                            return new JsBoolean(true);
+                        }
+                        // Receiver is not the typed array. Per
+                        // IntegerIndexedElementSet with a different receiver,
+                        // invalid indices short-circuit to true without
+                        // performing coercion or write.
                         $isValidIntegerIndex = ctype_digit($indexStr)
                             && (int) $indexStr < $target->getLength()
                             && !$target->getBuffer()->isDetached();
                         if (!$isValidIntegerIndex) {
-                            return new JsBoolean(true);
-                        }
-                        if ($receiver === $target) {
-                            $target->set($indexStr, $value);
                             return new JsBoolean(true);
                         }
                         // Valid index + different receiver: fall through.
