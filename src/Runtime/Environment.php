@@ -125,6 +125,14 @@ class Environment
     }
 
     /**
+     * Pre-computed at construction: whether this env or any ancestor has
+     * a `with`-object attached. Each child inherits the parent's flag;
+     * createWithEnvironment flips it true. Lets the assignment fast
+     * paths avoid walking the chain on every write.
+     */
+    private bool $chainHasWithObject = false;
+
+    /**
      * Whether this env or any ancestor has a `with`-object attached to
      * it. Used by the assignment fast path to bail out: with-bindings
      * dynamically intercept name lookups via the binding object's
@@ -133,14 +141,7 @@ class Environment
      */
     public function hasAnyWithObjectInChain(): bool
     {
-        $cur = $this;
-        while ($cur !== null) {
-            if ($cur->withObject !== null) {
-                return true;
-            }
-            $cur = $cur->parent;
-        }
-        return false;
+        return $this->chainHasWithObject;
     }
 
     /**
@@ -964,7 +965,9 @@ class Environment
     /** Create a child environment with this environment as its parent. */
     public function createChild(): self
     {
-        return new self($this);
+        $child = new self($this);
+        $child->chainHasWithObject = $this->chainHasWithObject;
+        return $child;
     }
 
     /**
@@ -978,6 +981,7 @@ class Environment
     {
         $child = new self($this);
         $child->withObject = $obj;
+        $child->chainHasWithObject = true;
         return $child;
     }
 
