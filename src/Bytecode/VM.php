@@ -460,6 +460,20 @@ final class VM
                         $pc += 2;
                     }
                     break;
+                case Op::JUMP_IF_NULLISH:
+                    // If nullish: pop and jump (so the right-side
+                    // path can evaluate its replacement onto a clean
+                    // stack). If not nullish: keep on stack, fall
+                    // through (the parent JUMP @end then skips the
+                    // right side, leaving left as the `??` result).
+                    $v = $stack[$sp - 1];
+                    if ($v instanceof JsNull || $v instanceof JsUndefined) {
+                        $sp--;
+                        $pc += $code[$pc + 1];
+                    } else {
+                        $pc += 2;
+                    }
+                    break;
 
                 // ---- Calls / return -------------------------------------
                 case Op::CALL: {
