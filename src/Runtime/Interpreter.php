@@ -1712,6 +1712,55 @@ class Interpreter
             return $value;
         }
 
+        // Fast path: compound assignment (`x += y`) where LHS is a plain
+        // Identifier and no with-environments are active. We capture the
+        // binding environment up front, so even if the RHS injects a
+        // shadowing binding via eval (`x *= (eval("var x = 2"), 4)`)
+        // the PutValue still targets the originally-resolved environment
+        // — matching the spec's "Reference frozen before initializer"
+        // requirement. Skips Reference allocation, the deferred-key
+        // dance, and the with-trap dispatch entirely.
+        if (
+            $node->operator !== '='
+            && $node->operator !== '&&='
+            && $node->operator !== '||='
+            && $node->operator !== '??='
+            && $node->left instanceof Identifier
+            && $this->withEnvObjects === []
+            && $node->left->name !== 'eval'
+            && $node->left->name !== 'arguments'
+        ) {
+            $name = $node->left->name;
+            $bindingEnv = $this->resolveBindingEnvironment($env, $name);
+            if ($bindingEnv !== null) {
+                $leftVal = $bindingEnv->get($name, $this->strictMode);
+                $right = $this->evaluate($node->right, $env);
+                $result = match ($node->operator) {
+                    '+=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
+                        ? new JsNumber($leftVal->value + $right->value)
+                        : $this->addOperator($leftVal, $right),
+                    '-=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
+                        ? new JsNumber($leftVal->value - $right->value)
+                        : $this->numericBinaryOp($leftVal, $right, '-'),
+                    '*=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
+                        ? new JsNumber($leftVal->value * $right->value)
+                        : $this->numericBinaryOp($leftVal, $right, '*'),
+                    '/=' => $this->numericBinaryOp($leftVal, $right, '/'),
+                    '%=' => $this->numericBinaryOp($leftVal, $right, '%'),
+                    '**=' => $this->exponentiate($leftVal, $right),
+                    '<<=' => $this->bitwiseShift($leftVal, $right, '<<'),
+                    '>>=' => $this->bitwiseShift($leftVal, $right, '>>'),
+                    '>>>=' => $this->bitwiseShift($leftVal, $right, '>>>'),
+                    '&=' => $this->bitwiseBinaryOp($leftVal, $right, '&'),
+                    '|=' => $this->bitwiseBinaryOp($leftVal, $right, '|'),
+                    '^=' => $this->bitwiseBinaryOp($leftVal, $right, '^'),
+                    default => throw new InternalError("Unknown assignment operator: {$node->operator}"),
+                };
+                $bindingEnv->set($name, $result, $this->strictMode);
+                return $result;
+            }
+        }
+
         $ref = $this->resolveReference($node->left, $env);
 
         // Per spec 13.15.2 step 1.c: if lref is a strict unresolvable reference,
@@ -12212,6 +12261,37 @@ class Interpreter
         }
 
         throw new ReferenceError('Invalid assignment target');
+    }
+
+    /**
+     * Find the environment that owns a binding for $name, or null if no
+     * declarative binding exists anywhere on the chain. Used by the
+     * compound-assignment fast path to capture the target env before
+     * RHS evaluation, so eval-injected shadowing bindings cannot
+     * redirect the write away from the spec-required target.
+     *
+     * Caller must ensure no with-environments are active (the fast
+     * path checks that). Stops at the first scope that owns the name
+     * or the root global env.
+     */
+    private function resolveBindingEnvironment(Environment $env, string $name): ?Environment
+    {
+        $cursor = $env;
+        while ($cursor !== null) {
+            if ($cursor->hasOwnBinding($name)) {
+                return $cursor;
+            }
+            $linked = $cursor->getLinkedObject();
+            if (
+                $linked !== null
+                && $cursor->getParent() === null
+                && $linked->hasOwnProperty($name)
+            ) {
+                return $cursor;
+            }
+            $cursor = $cursor->getParent();
+        }
+        return null;
     }
 
     /**
