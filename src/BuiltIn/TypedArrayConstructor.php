@@ -1657,7 +1657,6 @@ class TypedArrayConstructor
                         'Uint8Array.prototype.toBase64 called on incompatible receiver'
                     );
                 }
-                $this_->validateNotDetached();
 
                 $optVal = $args[0] ?? JsUndefined::instance();
                 $alphabet = 'base64';
@@ -1683,6 +1682,9 @@ class TypedArrayConstructor
                         $omitPadding = TypeConversion::toBoolean($omitPaddingVal);
                     }
                 }
+                // Per spec: detachedness check fires AFTER option reads so
+                // a getter that detaches the buffer still triggers TypeError.
+                $this_->validateNotDetached();
 
                 $len = $this_->getLength();
                 $bin = '';
