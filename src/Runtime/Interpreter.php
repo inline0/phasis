@@ -2104,7 +2104,10 @@ class Interpreter
         }
 
         if (!$callee instanceof JsFunction) {
-            $desc = TypeConversion::toString($callee);
+            // Prefer the callee's source-expression form ("obj.x", "[].__proto__")
+            // over the value's stringification, matching V8/SpiderMonkey error
+            // formatting that test fixtures rely on.
+            $desc = $this->formatCalleeForError($node->callee, $callee);
             throw new TypeError("{$desc} is not a function");
         }
 
@@ -3965,6 +3968,57 @@ class Interpreter
                 }
             }
         }
+    }
+
+    /**
+     * Format the call expression's callee for "X is not a function" errors.
+     * Mirrors V8/SpiderMonkey error messages by serialising MemberExpression
+     * and Identifier callees rather than using the value's toString. Falls
+     * back to the value's stringification for opaque/computed callees.
+     */
+    private function formatCalleeForError(Node $node, JsValue $value): string
+    {
+        $text = $this->renderCalleeNode($node);
+        if ($text !== null) {
+            return $text;
+        }
+        return TypeConversion::toString($value);
+    }
+
+    /** Recursively render a MemberExpression / Identifier / ArrayExpression
+     * chain into the source-like text that engine error messages quote. */
+    private function renderCalleeNode(Node $node): ?string
+    {
+        if ($node instanceof Identifier) {
+            return $node->name;
+        }
+        if ($node instanceof MemberExpression) {
+            $obj = $this->renderCalleeNode($node->object);
+            if ($obj === null) {
+                return null;
+            }
+            if ($node->computed) {
+                $prop = $this->renderCalleeNode($node->property);
+                if ($prop === null) {
+                    return null;
+                }
+                return "{$obj}[{$prop}]";
+            }
+            if ($node->property instanceof Identifier) {
+                return "{$obj}.{$node->property->name}";
+            }
+            return null;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ArrayExpression && $node->elements === []) {
+            return '[]';
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression && $node->properties === []) {
+            return '({})';
+        }
+        if ($node instanceof ThisExpression) {
+            return 'this';
+        }
+        return null;
     }
 
     /**
