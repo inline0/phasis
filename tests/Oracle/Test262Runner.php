@@ -79,6 +79,20 @@ class Test262Runner
             );
         }
 
+        // SpiderMonkey's DST cache stress harness exhaustively tries
+        // every 4-tuple of test timestamps (~O(n^4) iterations). It
+        // requires SpiderMonkey-internal cache plumbing to validate
+        // and consistently exceeds our 30s per-test budget on portable
+        // PHP. Skip it rather than burning runner time on a guaranteed
+        // crash.
+        if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
+            return new TestResult(
+                $testPath,
+                TestStatus::Skip,
+                'SpiderMonkey DST cache stress harness',
+            );
+        }
+
         $flags = $meta['flags'] ?? [];
 
         // Skip CanBlockIsTrue tests: our single-threaded agent cannot block.
