@@ -247,12 +247,26 @@ final class Compiler
     {
         if ($stmt instanceof VariableDeclaration) {
             foreach ($stmt->declarations as $decl) {
-                if (!($decl->id instanceof Identifier)) {
-                    throw new CompilerBailout('destructuring declaration');
+                if ($decl->id instanceof Identifier) {
+                    $this->declareLocal($decl->id->name);
+                    continue;
                 }
-                // Idempotent: declareLocal returns the existing slot
-                // if the name already has one (e.g. var x; var x;).
-                $this->declareLocal($decl->id->name);
+                if ($decl->id instanceof ObjectPattern) {
+                    foreach ($decl->id->properties as $prop) {
+                        if (
+                            $prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty
+                            && !$prop->computed
+                            && !($prop->value instanceof \PhpJs\Ast\Pattern\AssignmentPattern)
+                            && $prop->value instanceof Identifier
+                        ) {
+                            $this->declareLocal($prop->value->name);
+                            continue;
+                        }
+                        throw new CompilerBailout('complex object pattern');
+                    }
+                    continue;
+                }
+                throw new CompilerBailout('destructuring declaration');
             }
             return;
         }
@@ -715,6 +729,47 @@ final class Compiler
     private function compileVarDecl(VariableDeclaration $node): void
     {
         foreach ($node->declarations as $decl) {
+            if ($decl->id instanceof ObjectPattern) {
+                if ($decl->init === null) {
+                    throw new CompilerBailout('destructure without init');
+                }
+                $count = count($decl->id->properties);
+                if ($count === 0) {
+                    // Empty pattern still requires the spec ToObject
+                    // check on init (TypeError on null/undefined).
+                    // Tree-walker handles the edge case; bail.
+                    throw new CompilerBailout('empty object pattern');
+                }
+                $this->compileExpression($decl->init);
+                $i = 0;
+                foreach ($decl->id->properties as $prop) {
+                    $i++;
+                    if (!($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty)) {
+                        throw new CompilerBailout('rest in pattern');
+                    }
+                    if ($prop->computed) {
+                        throw new CompilerBailout('computed key in pattern');
+                    }
+                    if (!($prop->value instanceof Identifier)) {
+                        throw new CompilerBailout('non-identifier pattern target');
+                    }
+                    $keyName = $prop->key instanceof Identifier
+                        ? $prop->key->name
+                        : ($prop->key instanceof Literal && is_string($prop->key->value)
+                            ? $prop->key->value
+                            : throw new CompilerBailout('weird pattern key'));
+                    if ($i < $count) {
+                        $this->emit(Op::DUP);
+                    }
+                    $this->emit(Op::LOAD_MEMBER, $this->internName($keyName));
+                    $slot = $this->localSlots[$prop->value->name] ?? $this->declareLocal($prop->value->name);
+                    $this->emit(Op::STORE_LOCAL, $slot);
+                    if ($node->kind === 'const') {
+                        $this->constSlots[$slot] = true;
+                    }
+                }
+                continue;
+            }
             if (!($decl->id instanceof Identifier)) {
                 throw new CompilerBailout('destructuring var');
             }
@@ -729,9 +784,6 @@ final class Compiler
                 }
             }
             if ($node->kind === 'const') {
-                // Re-assignment after this point must throw TypeError;
-                // the compiler bails when subsequent stores hit the
-                // slot, deferring to the tree-walker.
                 $this->constSlots[$slot] = true;
             }
         }
