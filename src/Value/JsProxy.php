@@ -120,6 +120,20 @@ class JsProxy extends JsObject
         if ($trap instanceof JsFunction) {
             return $trap;
         }
+        // A callable Proxy (target is callable) is itself callable per spec
+        // IsCallable; GetMethod(handler, trapName) accepts it. Wrap the
+        // proxy in a JsFunction that delegates to its [[Call]] internal
+        // method via apply() so trap call sites can continue to use
+        // ->call(thisArg, args) uniformly.
+        if ($trap instanceof JsProxy && $trap->isCallable()) {
+            $proxyTrap = $trap;
+            return JsFunction::fromCallable(
+                $trapName,
+                static function (JsValue $thisArg, array $args) use ($proxyTrap): JsValue {
+                    return $proxyTrap->apply($thisArg, $args);
+                },
+            );
+        }
         if ($trap instanceof JsUndefined || $trap instanceof JsNull) {
             return null;
         }
