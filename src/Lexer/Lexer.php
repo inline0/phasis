@@ -916,7 +916,19 @@ class Lexer
             if ($this->pos >= $this->length) {
                 throw new SyntaxError('Unterminated Unicode escape sequence', $start);
             }
+            // Per spec, CodePoint :: HexDigits requires at least one digit;
+            // an empty `\u{}` is a SyntaxError.
+            if ($hex === '') {
+                throw new SyntaxError('Invalid Unicode escape sequence', $start);
+            }
             $this->advance(); // skip }
+            // Pre-range-check on the hex string itself: strip leading zeros and
+            // reject anything > 6 significant digits before hexdec converts it
+            // to a float and truncation hides the overflow.
+            $stripped = ltrim($hex, '0');
+            if (strlen($stripped) > 6) {
+                throw new SyntaxError('Unicode escape out of range', $start);
+            }
             $code = (int) hexdec($hex);
             if ($code > 0x10FFFF) {
                 throw new SyntaxError('Unicode escape out of range', $start);

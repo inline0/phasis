@@ -13,7 +13,8 @@ class EvalTest extends TestCase
     public function testEvalRejectsOversizedGeneratedSource(): void
     {
         $engine = new Engine();
-        $oversizedSource = str_repeat('{}', 600_000);
+        // Cap is 64 MB; produce 65 MB to trip it.
+        $oversizedSource = str_repeat('{}', 33 * 1024 * 1024);
 
         $this->expectException(SyntaxError::class);
         $this->expectExceptionMessage('Source too large for eval');
@@ -27,7 +28,7 @@ class EvalTest extends TestCase
 
         $result = $engine->eval(<<<'JS'
 var s = "{}";
-for (var i = 0; i < 20; i++) {
+for (var i = 0; i < 26; i++) {
     s += s;
 }
 var outcome = "pass";

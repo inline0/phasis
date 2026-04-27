@@ -2138,7 +2138,7 @@ class Interpreter
         // must be thrown as a JS SyntaxError catchable by JS try/catch.
         $evalStrict = $this->strictMode;
         try {
-            if (strlen($arg->value) > 1024 * 1024) {
+            if (strlen($arg->value) > 64 * 1024 * 1024) {
                 throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
             }
             $parser = new \PhpJs\Parser\Parser($arg->value);
