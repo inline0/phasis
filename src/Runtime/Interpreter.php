@@ -5369,6 +5369,47 @@ class Interpreter
     }
 
     /**
+     * Check whether a node tree contains any closure-creating expression
+     * (FunctionExpression, ArrowFunction, ClassExpression, or class/
+     * function declarations nested inside expressions). Used to decide
+     * whether a for-loop's per-iteration environment is observable. If
+     * no closure is created in the body, the spec's per-iteration
+     * binding semantics are not detectable and we can reuse the
+     * loop env across iterations.
+     */
+    private function nodeContainsClosure(?Node $node): bool
+    {
+        if ($node === null) {
+            return false;
+        }
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof FunctionDeclaration
+            || $node instanceof ClassExpression
+            || $node instanceof ClassDeclaration
+        ) {
+            return true;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeContainsClosure($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsClosure($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Check whether a function body or its parameter list references the
      * `arguments` object (directly, via `eval`, or through a `with` block
      * that could shadow lookups). Used by executeFunction to skip building
@@ -8458,8 +8499,22 @@ class Interpreter
         // Per spec 13.7.4.8 ForBodyEvaluation: CreatePerIterationEnvironment
         // is called before the first test evaluation. When there are let/const
         // bindings, test/body/update all run in the per-iteration env.
+        //
+        // Optimisation: per-iteration bindings exist so closures created
+        // inside the body capture the binding value at THAT iteration. If
+        // no closure exists in body/update/test, the per-iteration semantics
+        // are unobservable and we can reuse loopEnv for every iteration.
+        // V8 performs the same shortcut. Cached on the AST node since the
+        // result depends only on syntax. test() can also create closures,
+        // but it is rare; checked together with body+update for safety.
+        if ($node->bodyHasClosure === null) {
+            $node->bodyHasClosure = $this->nodeContainsClosure($node->body)
+                || $this->nodeContainsClosure($node->update)
+                || $this->nodeContainsClosure($node->test);
+        }
         $iterEnv = $loopEnv;
-        if ($perIterationBindings !== []) {
+        $perIterEnvNeeded = $perIterationBindings !== [] && $node->bodyHasClosure;
+        if ($perIterEnvNeeded) {
             $iterEnv = $env->createChild();
             foreach ($perIterationBindings as $name) {
                 if ($isConstDecl) {
@@ -8491,7 +8546,7 @@ class Interpreter
             // the iteration env directly. Big win on tight loops like
             // `for (let i = 0; i < N; i++) s += i;` where the body is a
             // single ExpressionStatement.
-            if ($perIterationBindings !== [] || !($node->body instanceof BlockStatement)) {
+            if ($perIterEnvNeeded || !($node->body instanceof BlockStatement)) {
                 $bodyEnv = $iterEnv;
             } else {
                 $bodyEnv = $iterEnv->createChild();
@@ -8523,7 +8578,8 @@ class Interpreter
             // Per spec 13.7.4.8 step e: CreatePerIterationEnvironment runs
             // BEFORE the increment (step f). This ensures the increment
             // modifies the next iteration's bindings, not the current one.
-            if ($perIterationBindings !== []) {
+            // Skip when no closure can observe the per-iteration identity.
+            if ($perIterEnvNeeded) {
                 $nextIterEnv = $env->createChild();
                 foreach ($perIterationBindings as $name) {
                     if ($isConstDecl) {
