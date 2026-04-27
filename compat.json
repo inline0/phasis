@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-27T01:55:52+00:00",
-    "updatedAt": "2026-04-27T01:55:52+00:00",
+    "generatedAt": "2026-04-27T02:25:27+00:00",
+    "updatedAt": "2026-04-27T02:25:27+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "ec1ba1a",
+        "commit": "efb101a",
         "isDirty": true
     },
     "environment": {
@@ -209,8 +209,8 @@
             "regexp-lookbehind"
         ],
         "totals": {
-            "pass": 47750,
-            "fail": 179,
+            "pass": 47753,
+            "fail": 176,
             "skip": 2075,
             "blocked": 32,
             "pending": 932,
@@ -294,8 +294,8 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1404,
-                "fail": 123,
+                "pass": 1407,
+                "fail": 120,
                 "skip": 85,
                 "blocked": 20,
                 "pending": 300,
@@ -303,7 +303,7 @@
                 "attempted": 1527,
                 "known": 1632,
                 "total": 1632,
-                "passRate": 91.9
+                "passRate": 92.1
             }
         ],
         "groups": [
@@ -2546,8 +2546,8 @@
                 "name": "staging/Intl402",
                 "area": "staging",
                 "status": "partial",
-                "pass": 12,
-                "fail": 37,
+                "pass": 13,
+                "fail": 36,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2555,7 +2555,7 @@
                 "attempted": 49,
                 "known": 49,
                 "total": 49,
-                "passRate": 24.5
+                "passRate": 26.5
             },
             {
                 "name": "staging/Temporal",
@@ -2651,8 +2651,8 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1247,
-                "fail": 84,
+                "pass": 1249,
+                "fail": 82,
                 "skip": 77,
                 "blocked": 20,
                 "pending": 300,
@@ -2660,7 +2660,7 @@
                 "attempted": 1331,
                 "known": 1428,
                 "total": 1428,
-                "passRate": 93.7
+                "passRate": 93.8
             },
             {
                 "name": "staging/source-phase-imports",
@@ -2697,7 +2697,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/TypeConversion.php on line 258",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 125",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
@@ -2707,12 +2707,22 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 14",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/BuiltIn/StringPrototype.php on line 2458",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
                 ],
                 "logFile": ".compat-state-builtins-RegExp-rest/logs/722abcc8bbca8f22a6f4e5029b251630a2d88ff7.log"
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/TypeConversion.php on line 124",
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
+                ],
+                "logFile": ".compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log"
             },
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
@@ -2727,22 +2737,12 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 1236",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 725",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
                 ],
                 "logFile": ".compat-state-builtins-RegExp-rest/logs/f0ebbf279665e1ee7193d8369fb48c919e0422c2.log"
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArray.php on line 220",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
-                ],
-                "logFile": ".compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log"
             },
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
@@ -2757,7 +2757,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 121",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
@@ -2767,7 +2767,7 @@
             {
                 "group": "built-ins/decodeURI",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 3640",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 535",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -2777,27 +2777,17 @@
             {
                 "group": "language/literals",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 477",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 428",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js"
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js"
                 ],
-                "logFile": ".compat-state-language-literals/logs/d9e1bf9de472dab2910e641eec8172033ad31a6c.log"
+                "logFile": ".compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log"
             },
             {
                 "group": "language/literals",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 48",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js"
-                ],
-                "logFile": ".compat-state-language-literals/logs/a53fea2e0fecfcecd6532ebd795cb1dae3744df8.log"
-            },
-            {
-                "group": "language/literals",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 698",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 4378",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js"
@@ -2807,12 +2797,22 @@
             {
                 "group": "language/literals",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 15018",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 2527",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js"
+                    "test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js"
                 ],
-                "logFile": ".compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log"
+                "logFile": ".compat-state-language-literals/logs/d9e1bf9de472dab2910e641eec8172033ad31a6c.log"
+            },
+            {
+                "group": "language/literals",
+                "kind": "crash",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1145",
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js"
+                ],
+                "logFile": ".compat-state-language-literals/logs/a53fea2e0fecfcecd6532ebd795cb1dae3744df8.log"
             },
             {
                 "group": "staging/sm",
@@ -2827,7 +2827,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 329",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1148",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -2837,7 +2837,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1087",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 721",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/expressions/nullish-coalescing.js"
@@ -2847,7 +2847,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 483",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 506",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
@@ -2857,7 +2857,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 2063",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsUndefined.php on line 17",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Array/toSpliced-dense.js"
@@ -2867,7 +2867,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 111",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 10359",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
@@ -2877,7 +2877,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 10400",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 161",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2887,7 +2887,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 11077",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyDescriptor.php on line 54",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
@@ -2897,7 +2897,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 93",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 3642",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
@@ -2907,7 +2907,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 835",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 379",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
@@ -2917,7 +2917,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 359",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 320",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -2937,7 +2937,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 4177",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 1887",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_modifications.js"
@@ -2957,7 +2957,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsBoolean.php on line 26",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 215",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2967,7 +2967,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsFunction.php on line 266",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 19",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2987,7 +2987,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyDescriptor.php on line 32",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 10294",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
@@ -2997,7 +2997,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArray.php on line 296",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 3939",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Proxy/ownkeys-linear.js"
@@ -3007,7 +3007,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 10321",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 747",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
@@ -3019,7 +3019,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "normal",
-                "durationSec": 81.035,
+                "durationSec": 81.249,
                 "filesCount": 12,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js",
@@ -3032,7 +3032,7 @@
             {
                 "group": "built-ins/decodeURI",
                 "kind": "normal",
-                "durationSec": 74.633,
+                "durationSec": 73.127,
                 "filesCount": 12,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js",
@@ -3045,7 +3045,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 67.062,
+                "durationSec": 68.428,
                 "filesCount": 12,
                 "sampleFiles": [
                     "test262/test/staging/sm/String/string-pad-start-end.js",
@@ -3056,9 +3056,22 @@
                 ]
             },
             {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 66.942,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Symbol/species.js",
+                    "test262/test/staging/sm/Symbol/surfaces.js",
+                    "...",
+                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js",
+                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js"
+                ]
+            },
+            {
                 "group": "intl402",
                 "kind": "normal",
-                "durationSec": 63.205,
+                "durationSec": 62.629,
                 "filesCount": 22,
                 "sampleFiles": [
                     "test262/test/intl402/constructors-string-and-single-element-array.js",
@@ -3069,9 +3082,27 @@
                 ]
             },
             {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 61.925,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/BigInt/large-bit-length.js"
+                ]
+            },
+            {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "durationSec": 62.32,
+                "durationSec": 61.885,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 61.621,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
@@ -3080,16 +3111,25 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 61.524,
+                "durationSec": 61.415,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 61.484,
+                "durationSec": 61.342,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 61.247,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/expressions/nullish-coalescing.js"
@@ -3098,43 +3138,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "durationSec": 61.462,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.446,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Array/toSpliced-dense.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.405,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.359,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Proxy/ownkeys-linear.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 61.291,
+                "durationSec": 61.239,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
@@ -3143,52 +3147,25 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 61.232,
+                "durationSec": 61.188,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 61.229,
+                "durationSec": 61.052,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_modifications.js"
-                ]
-            },
-            {
-                "group": "language/literals",
-                "kind": "crash",
-                "durationSec": 61.139,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js"
+                    "test262/test/staging/sm/Proxy/ownkeys-linear.js"
                 ]
             },
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 61.041,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
-                ]
-            },
-            {
-                "group": "language/literals",
-                "kind": "crash",
-                "durationSec": 60.955,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 60.819,
+                "durationSec": 60.782,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/String/fromCodePoint.js"
@@ -3197,19 +3174,46 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 60.787,
+                "durationSec": 60.665,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
+                    "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 60.647,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 60.63,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
                 ]
             },
             {
                 "group": "language/literals",
                 "kind": "crash",
-                "durationSec": 60.677,
+                "durationSec": 60.473,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js"
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 60.303,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
                 ]
             }
         ]

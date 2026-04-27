@@ -4,19 +4,19 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-27T01:55:52+00:00`
+- Snapshot time: `2026-04-27T02:25:27+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `ec1ba1a` (dirty)
+- Git: `main` @ `efb101a` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 47750 | 179 | 2075 | 32 | 932 | 0 | 47929 | 50036 | 50968 | 99.6% |
+| 47753 | 176 | 2075 | 32 | 932 | 0 | 47929 | 50036 | 50968 | 99.6% |
 
 ## Top-Level Areas
 
@@ -27,7 +27,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | harness | PASS | 114 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | intl402 | PARTIAL | 1554 | 2 | 10 | 0 | 0 | 0 | 99.9% |
 | language | INCOMPLETE | 22450 | 17 | 902 | 4 | 61 | 0 | 99.9% |
-| staging | INCOMPLETE | 1404 | 123 | 85 | 20 | 300 | 0 | 91.9% |
+| staging | INCOMPLETE | 1407 | 120 | 85 | 20 | 300 | 0 | 92.1% |
 
 ## Group Coverage
 
@@ -182,14 +182,14 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/types | PASS | 111 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | language/white-space | PASS | 67 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/Intl402 | PARTIAL | 12 | 37 | 0 | 0 | 0 | 0 | 24.5% |
+| staging/Intl402 | PARTIAL | 13 | 36 | 0 | 0 | 0 | 0 | 26.5% |
 | staging/Temporal | PASS | 12 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/Uint8Array | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/built-ins | PASS | 1 | 0 | 6 | 0 | 0 | 0 | 100.0% |
 | staging/decorators | PARTIAL | 2 | 1 | 0 | 0 | 0 | 0 | 66.7% |
 | staging/explicit-resource-management | PARTIAL | 52 | 1 | 1 | 0 | 0 | 0 | 98.1% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | INCOMPLETE | 1247 | 84 | 77 | 20 | 300 | 0 | 93.7% |
+| staging/sm | INCOMPLETE | 1249 | 82 | 77 | 20 | 300 | 0 | 93.8% |
 | staging/source-phase-imports | SKIPPED | 0 | 0 | 1 | 0 | 0 | 0 | n/a |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -199,16 +199,16 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 |---|---|---:|---|---|
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` | `.compat-state-builtins-RegExp-rest/logs/04ddd46937901b97333e1bad5a7183629e181178.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/722abcc8bbca8f22a6f4e5029b251630a2d88ff7.log` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/5af0de9dd6d6784c7156b505489408bfaf27e665.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` | `.compat-state-builtins-RegExp-rest/logs/f0ebbf279665e1ee7193d8369fb48c919e0422c2.log` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` | `.compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log` |
 | built-ins/RegExp/CharacterClassEscapes | CRASH | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js` | `.compat-state-builtins-RegExp-rest/logs/f81d5d8efb2c4dd1df1c2faa058ff85302c5855b.log` |
 | built-ins/decodeURIComponent | CRASH | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` | `.compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log` |
 | built-ins/decodeURI | CRASH | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` | `.compat-state-builtins-lower-de/logs/6687624bd5fb87a6a4ff167cd35af4b69d14f50d.log` |
+| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js` | `.compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log` |
+| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js` | `.compat-state-language-literals/logs/2d9ce6285a09a880c93e91b65081fd963e13707a.log` |
 | language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js` | `.compat-state-language-literals/logs/d9e1bf9de472dab2910e641eec8172033ad31a6c.log` |
 | language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js` | `.compat-state-language-literals/logs/a53fea2e0fecfcecd6532ebd795cb1dae3744df8.log` |
-| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js` | `.compat-state-language-literals/logs/2d9ce6285a09a880c93e91b65081fd963e13707a.log` |
-| language/literals | CRASH | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js` | `.compat-state-language-literals/logs/d05363a5be24ca4fcae715d01678920a9b9dd8f2.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/BigInt/large-bit-length.js` | `.compat-state-staging/logs/384b2e0bfc2b466c4c57a4a23d7c3f82c656ddac.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` | `.compat-state-staging/logs/f77d96875630465a6823161d465877fc4c60f9ae.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` | `.compat-state-staging/logs/fad83b5e2409a84effda05416199c0acf9fa5248.log` |
@@ -234,26 +234,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 81.035s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
-| built-ins/decodeURI | NORMAL | 74.633s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
-| staging/sm | NORMAL | 67.062s | 12 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/enumeration-order.js`<br>`test262/test/staging/sm/Symbol/enumeration.js` |
-| intl402 | NORMAL | 63.205s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 62.320s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` |
-| staging/sm | CRASH | 61.524s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
-| staging/sm | CRASH | 61.484s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.462s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js` |
-| staging/sm | CRASH | 61.446s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
-| staging/sm | CRASH | 61.405s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| staging/sm | CRASH | 61.359s | 1 | `test262/test/staging/sm/Proxy/ownkeys-linear.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.291s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` |
-| staging/sm | CRASH | 61.232s | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` |
-| staging/sm | CRASH | 61.229s | 1 | `test262/test/staging/sm/TypedArray/sort_modifications.js` |
-| language/literals | CRASH | 61.139s | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.4_T2.js` |
-| staging/sm | CRASH | 61.041s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| language/literals | CRASH | 60.955s | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.4_T2.js` |
-| staging/sm | CRASH | 60.819s | 1 | `test262/test/staging/sm/String/fromCodePoint.js` |
-| staging/sm | CRASH | 60.787s | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` |
-| language/literals | CRASH | 60.677s | 1 | `test262/test/language/literals/regexp/S7.8.5_A2.1_T2.js` |
+| built-ins/decodeURIComponent | NORMAL | 81.249s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
+| built-ins/decodeURI | NORMAL | 73.127s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
+| staging/sm | NORMAL | 68.428s | 12 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/enumeration-order.js`<br>`test262/test/staging/sm/Symbol/enumeration.js` |
+| staging/sm | NORMAL | 66.942s | 25 | `test262/test/staging/sm/Symbol/species.js`<br>`test262/test/staging/sm/Symbol/surfaces.js`<br>...<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js`<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js` |
+| intl402 | NORMAL | 62.629s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
+| staging/sm | CRASH | 61.925s | 1 | `test262/test/staging/sm/BigInt/large-bit-length.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.885s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.621s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` |
+| staging/sm | CRASH | 61.415s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| staging/sm | CRASH | 61.342s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
+| staging/sm | CRASH | 61.247s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 61.239s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js` |
+| staging/sm | CRASH | 61.188s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
+| staging/sm | CRASH | 61.052s | 1 | `test262/test/staging/sm/Proxy/ownkeys-linear.js` |
+| staging/sm | CRASH | 60.782s | 1 | `test262/test/staging/sm/String/fromCodePoint.js` |
+| staging/sm | CRASH | 60.665s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| staging/sm | CRASH | 60.647s | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 60.630s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js` |
+| language/literals | CRASH | 60.473s | 1 | `test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js` |
+| staging/sm | CRASH | 60.303s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
 
 ## Runner Caveats
 
