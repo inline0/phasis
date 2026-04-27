@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class TemplateLiteral extends Node
+class TemplateLiteral extends Node
 {
     /**
      * @param TemplateElement[] $quasis
@@ -15,8 +15,8 @@ readonly class TemplateLiteral extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public array $quasis,
-        public array $expressions,
+        public readonly array $quasis,
+        public readonly array $expressions,
     ) {
         parent::__construct($location);
     }

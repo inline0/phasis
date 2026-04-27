@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class TemplateElement extends Node
+class TemplateElement extends Node
 {
     /**
      * @param string $rawValue The raw template text (escape sequences preserved).
@@ -17,9 +17,9 @@ readonly class TemplateElement extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public string $rawValue,
-        public ?string $cookedValue,
-        public bool $tail,
+        public readonly string $rawValue,
+        public readonly ?string $cookedValue,
+        public readonly bool $tail,
     ) {
         parent::__construct($location);
     }

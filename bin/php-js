@@ -72,7 +72,7 @@ function astToArray(object $node): array
     foreach ($ref->getProperties(ReflectionProperty::IS_PUBLIC) as $prop) {
         $name = $prop->getName();
         // Skip internal implementation fields not present in standard AST output.
-        if ($name === 'location' || $name === 'verbatim') {
+        if ($name === 'location' || $name === 'verbatim' || $name === 'cached') {
             continue;
         }
         $value = $prop->getValue($node);

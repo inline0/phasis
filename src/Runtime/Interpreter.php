@@ -797,26 +797,41 @@ class Interpreter
 
     public function evaluate(Node $node, Environment $env): JsValue
     {
+        // Fast path for the two hottest node types — bypass match-true
+        // and the post-dispatch JsOptionalUndefined unwrap entirely.
+        // Neither identifier reads nor literals can return the
+        // optional-chain sentinel.
+        if ($node instanceof Identifier) {
+            if ($node->name === 'undefined') {
+                return JsUndefined::instance();
+            }
+            return $env->get($node->name, $this->strictMode);
+        }
+        if ($node instanceof Literal) {
+            return $node->cached ?? $this->evalLiteral($node);
+        }
+
+        // Match-true dispatch is ordered by hot-path frequency on real
+        // workloads. Binary ops dominate the remaining traffic in tight
+        // loops; member/call follow.
         $result = match (true) {
-            $node instanceof Literal => $this->evalLiteral($node),
-            $node instanceof Identifier => $this->evalIdentifier($node, $env),
             $node instanceof BinaryExpression => $this->evalBinaryExpression($node, $env),
-            $node instanceof LogicalExpression => $this->evalLogicalExpression($node, $env),
-            $node instanceof UnaryExpression => $this->evalUnaryExpression($node, $env),
-            $node instanceof UpdateExpression => $this->evalUpdateExpression($node, $env),
-            $node instanceof AssignmentExpression => $this->evalAssignment($node, $env),
-            $node instanceof ConditionalExpression => $this->evalConditional($node, $env),
-            $node instanceof CallExpression => $this->evalCallExpression($node, $env),
             $node instanceof MemberExpression => $this->evalMemberExpression($node, $env),
-            $node instanceof NewExpression => $this->evalNewExpression($node, $env),
-            $node instanceof ArrayExpression => $this->evalArrayExpression($node, $env),
+            $node instanceof CallExpression => $this->evalCallExpression($node, $env),
+            $node instanceof AssignmentExpression => $this->evalAssignment($node, $env),
+            $node instanceof UpdateExpression => $this->evalUpdateExpression($node, $env),
+            $node instanceof UnaryExpression => $this->evalUnaryExpression($node, $env),
+            $node instanceof LogicalExpression => $this->evalLogicalExpression($node, $env),
+            $node instanceof ConditionalExpression => $this->evalConditional($node, $env),
             $node instanceof ObjectExpression => $this->evalObjectExpression($node, $env),
+            $node instanceof ArrayExpression => $this->evalArrayExpression($node, $env),
+            $node instanceof TemplateLiteral => $this->evalTemplateLiteral($node, $env),
             $node instanceof ArrowFunction => $this->evalArrowFunction($node, $env),
             $node instanceof FunctionExpression => $this->evalFunctionExpression($node, $env),
-            $node instanceof ClassExpression => $this->evalClassExpression($node, $env),
+            $node instanceof NewExpression => $this->evalNewExpression($node, $env),
             $node instanceof ThisExpression => $this->evalThisExpression($env),
             $node instanceof SequenceExpression => $this->evalSequence($node, $env),
-            $node instanceof TemplateLiteral => $this->evalTemplateLiteral($node, $env),
+            $node instanceof ClassExpression => $this->evalClassExpression($node, $env),
             $node instanceof TaggedTemplate => $this->evalTaggedTemplate($node, $env),
             $node instanceof SpreadElement => $this->evaluate($node->argument, $env),
             $node instanceof YieldExpression => $this->evalYieldExpression($node, $env),
@@ -841,33 +856,38 @@ class Interpreter
 
     private function evalLiteral(Literal $node): JsValue
     {
+        // Per-node memoisation: a Literal in a hot loop is otherwise
+        // re-converted into a JsValue on every visit. RegExp literals are
+        // intentionally NOT cached — each evaluation must produce a fresh
+        // RegExp object with a reset lastIndex (per spec 22.2.4.1).
+        if ($node->cached !== null) {
+            return $node->cached;
+        }
         $value = $node->value;
         if ($value === null) {
-            return JsNull::instance();
+            return $node->cached = JsNull::instance();
         }
         if (is_bool($value)) {
-            return new JsBoolean($value);
+            return $node->cached = new JsBoolean($value);
         }
         if (is_int($value) || is_float($value)) {
-            return new JsNumber((float) $value);
+            return $node->cached = new JsNumber((float) $value);
         }
         if (is_string($value)) {
-            // BigInt literal: marked with __BIGINT__ prefix in raw by the parser.
-            // Normalize to canonical decimal so strict equality and bcmath work
-            // regardless of the source base (0x, 0b, 0o, decimal).
             if (str_starts_with($node->raw, '__BIGINT__')) {
-                return new JsBigInt(self::parseBigIntLiteral(rtrim($value, 'n')));
+                return $node->cached = new JsBigInt(self::parseBigIntLiteral(rtrim($value, 'n')));
             }
-            // RegExp literal: only from actual RegExp tokens (marked with __REGEXP__ prefix in raw)
+            // RegExp literal: bypass cache so each visit yields a fresh
+            // RegExp object with lastIndex == 0.
             if (
                 str_starts_with($node->raw, '__REGEXP__')
                 && preg_match('#^/(.+)/([dgimsuvy]*)$#s', $value, $m)
             ) {
                 return $this->createRegExpObject($m[1], $m[2]);
             }
-            return new JsString($value);
+            return $node->cached = new JsString($value);
         }
-        return JsUndefined::instance();
+        return $node->cached = JsUndefined::instance();
     }
 
     private function evalIdentifier(Identifier $node, Environment $env): JsValue
@@ -892,6 +912,31 @@ class Interpreter
 
         $left = $this->evaluate($node->left, $env);
         $right = $this->evaluate($node->right, $env);
+
+        // Fast path: both operands are already plain numbers and the
+        // operator is a simple arith / compare. Avoids the
+        // toNumeric/toPrimitive dance and the BigInt fork that dominates
+        // tight loops like `i * 2 - 1` or `i < n`.
+        if ($left instanceof JsNumber && $right instanceof JsNumber) {
+            $l = $left->value;
+            $r = $right->value;
+            switch ($node->operator) {
+                case '+': return new JsNumber($l + $r);
+                case '-': return new JsNumber($l - $r);
+                case '*': return new JsNumber($l * $r);
+                case '<': return new JsBoolean(!is_nan($l) && !is_nan($r) && $l < $r);
+                case '>': return new JsBoolean(!is_nan($l) && !is_nan($r) && $l > $r);
+                case '<=': return new JsBoolean(!is_nan($l) && !is_nan($r) && $l <= $r);
+                case '>=': return new JsBoolean(!is_nan($l) && !is_nan($r) && $l >= $r);
+                case '===': return new JsBoolean($l === $r);
+                case '!==': return new JsBoolean($l !== $r);
+                case '==': return new JsBoolean($l == $r && !is_nan($l));
+                case '!=': return new JsBoolean($l != $r || is_nan($l));
+            }
+            // Fall through for /, %, **, bitwise — those still need
+            // the slower paths (NaN/Infinity handling, divisor-zero
+            // semantics, integer truncation).
+        }
 
         return match ($node->operator) {
             '+' => $this->addOperator($left, $right),

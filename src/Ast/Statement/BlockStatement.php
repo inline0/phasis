@@ -7,14 +7,14 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class BlockStatement extends Node
+class BlockStatement extends Node
 {
     /**
      * @param Node[] $body
      */
     public function __construct(
         SourceLocation $location,
-        public array $body,
+        public readonly array $body,
     ) {
         parent::__construct($location);
     }

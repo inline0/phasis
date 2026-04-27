@@ -7,19 +7,19 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class FunctionExpression extends Node
+class FunctionExpression extends Node
 {
     /**
      * @param Node[] $params
      */
     public function __construct(
         SourceLocation $location,
-        public ?string $name,
-        public array $params,
-        public Node $body,
-        public bool $generator,
-        public bool $async,
-        public ?string $sourceText = null,
+        public readonly ?string $name,
+        public readonly array $params,
+        public readonly Node $body,
+        public readonly bool $generator,
+        public readonly bool $async,
+        public readonly ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

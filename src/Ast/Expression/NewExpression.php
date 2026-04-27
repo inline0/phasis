@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class NewExpression extends Node
+class NewExpression extends Node
 {
     /**
      * @param Node[] $arguments
@@ -18,9 +18,9 @@ readonly class NewExpression extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public Node $callee,
-        public array $arguments,
-        public bool $hasArguments = true,
+        public readonly Node $callee,
+        public readonly array $arguments,
+        public readonly bool $hasArguments = true,
     ) {
         parent::__construct($location);
     }

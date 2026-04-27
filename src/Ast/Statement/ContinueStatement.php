@@ -7,11 +7,11 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ContinueStatement extends Node
+class ContinueStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public ?string $label,
+        public readonly ?string $label,
     ) {
         parent::__construct($location);
     }

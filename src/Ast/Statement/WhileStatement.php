@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class WhileStatement extends Node
+class WhileStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $test,
-        public Node $body,
+        public readonly Node $test,
+        public readonly Node $body,
     ) {
         parent::__construct($location);
     }

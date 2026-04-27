@@ -7,14 +7,14 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class AssignmentExpression extends Node
+class AssignmentExpression extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $operator,
-        public Node $left,
-        public Node $right,
-        public bool $leftParenthesized = false,
+        public readonly string $operator,
+        public readonly Node $left,
+        public readonly Node $right,
+        public readonly bool $leftParenthesized = false,
     ) {
         parent::__construct($location);
     }

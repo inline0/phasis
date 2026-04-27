@@ -7,13 +7,13 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class LogicalExpression extends Node
+class LogicalExpression extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $operator,
-        public Node $left,
-        public Node $right,
+        public readonly string $operator,
+        public readonly Node $left,
+        public readonly Node $right,
     ) {
         parent::__construct($location);
     }

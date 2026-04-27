@@ -338,25 +338,32 @@ class Environment
         bool $strict = false,
         ?\PhpJs\Value\JsObject &$resolvedWithBase = null,
     ): JsValue {
-        // "with" object environment record: HasBinding + GetBindingValue.
+        // Hot path: own binding, no with/import/TDZ, not the global
+        // object env. ~95% of variable reads hit this. isset is faster
+        // than array_key_exists; bindings only ever hold JsValue
+        // instances, so a present-but-null collision is impossible.
+        if (
+            $this->withObject === null
+            && isset($this->bindings[$name])
+            && !isset($this->tdz[$name])
+            && ($this->linkedObject === null || $this->parent !== null)
+        ) {
+            return $this->bindings[$name];
+        }
+
+        // Slow path: with-environments, imports, TDZ, global linkedObject.
         if ($this->withObject !== null) {
-            // HasBinding: HasProperty then @@unscopables.
             if ($this->withObject->has($name) && !$this->isUnscopable($name)) {
-                // GetBindingValue (9.1.1.2.6): a separate HasProperty check
-                // is required per spec. The @@unscopables getter above can
-                // have side effects (e.g. deleting the property), and Proxy
-                // traps must fire independently for each spec step.
                 $resolvedWithBase = $this->withObject;
                 return $this->getBindingValueFromWith($name, $strict);
             }
-            // Not found or unscopable: fall through to parent.
             if ($this->parent !== null) {
                 return $this->parent->get($name, $strict, $resolvedWithBase);
             }
             throw new ReferenceError("{$name} is not defined");
         }
 
-        if (array_key_exists($name, $this->importBindings)) {
+        if ($this->importBindings !== [] && array_key_exists($name, $this->importBindings)) {
             return ($this->importBindings[$name])();
         }
 
@@ -365,12 +372,10 @@ class Environment
                 throw new ReferenceError("Cannot access '{$name}' before initialization");
             }
 
-            // Per ES spec, the global environment uses an Object Environment Record
-            // for var/function bindings. These are backed by the global object.
-            // When the global object property is updated directly (e.g. this.x = ...),
-            // the environment binding may be stale. Prefer the global object value
-            // for non-const non-TDZ non-lexical bindings that have a matching property.
-            // Lexical bindings (let/const) take precedence over the global object.
+            // Per ES spec, the global environment uses an Object Environment
+            // Record. Prefer the global object value for non-const non-lexical
+            // bindings whose linked property exists (e.g. mutated via
+            // `this.x = ...`).
             if (
                 $this->linkedObject !== null
                 && $this->parent === null
@@ -388,11 +393,6 @@ class Environment
             return $this->parent->get($name, $strict, $resolvedWithBase);
         }
 
-        // At the global (root) environment. If a linked global object exists,
-        // check it (and its prototype chain) for properties — both directly
-        // assigned globals (e.g. `this.color = "red"`) and inherited
-        // accessors / data properties on Object.prototype must resolve as
-        // global variables per spec.
         if ($this->linkedObject !== null && $this->linkedObject->has($name)) {
             return $this->linkedObject->get($name);
         }

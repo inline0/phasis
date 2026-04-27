@@ -7,11 +7,11 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ReturnStatement extends Node
+class ReturnStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public ?Node $argument,
+        public readonly ?Node $argument,
     ) {
         parent::__construct($location);
     }

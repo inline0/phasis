@@ -13,16 +13,16 @@ use PhpJs\Lexer\SourceLocation;
  * import * as name from 'source';
  * import 'source';
  */
-readonly class ImportDeclaration extends Node
+class ImportDeclaration extends Node
 {
     /**
      * @param ImportSpecifier[] $specifiers
      */
     public function __construct(
         SourceLocation $location,
-        public array $specifiers,
-        public string $source,
-        public ?Node $attributes = null,
+        public readonly array $specifiers,
+        public readonly string $source,
+        public readonly ?Node $attributes = null,
     ) {
         parent::__construct($location);
     }

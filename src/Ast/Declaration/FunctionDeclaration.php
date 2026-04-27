@@ -8,20 +8,20 @@ use PhpJs\Ast\Expression\Identifier;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class FunctionDeclaration extends Node
+class FunctionDeclaration extends Node
 {
     /**
      * @param Node[] $params
      */
     public function __construct(
         SourceLocation $location,
-        public ?Identifier $id,
-        public array $params,
-        public Node $body,
-        public bool $generator,
-        public bool $async,
-        public bool $expression = false,
-        public ?string $sourceText = null,
+        public readonly ?Identifier $id,
+        public readonly array $params,
+        public readonly Node $body,
+        public readonly bool $generator,
+        public readonly bool $async,
+        public readonly bool $expression = false,
+        public readonly ?string $sourceText = null,
     ) {
         parent::__construct($location);
     }

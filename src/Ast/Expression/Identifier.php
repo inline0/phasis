@@ -7,11 +7,11 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class Identifier extends Node
+class Identifier extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $name,
+        public readonly string $name,
     ) {
         parent::__construct($location);
     }

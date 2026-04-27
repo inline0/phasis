@@ -7,16 +7,16 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class CallExpression extends Node
+class CallExpression extends Node
 {
     /**
      * @param Node[] $arguments
      */
     public function __construct(
         SourceLocation $location,
-        public Node $callee,
-        public array $arguments,
-        public bool $optional = false,
+        public readonly Node $callee,
+        public readonly array $arguments,
+        public readonly bool $optional = false,
     ) {
         parent::__construct($location);
     }

@@ -6,14 +6,14 @@ namespace PhpJs\Ast;
 
 use PhpJs\Lexer\SourceLocation;
 
-readonly class Program extends Node
+class Program extends Node
 {
     /**
      * @param Node[] $body
      */
     public function __construct(
         SourceLocation $location,
-        public array $body,
+        public readonly array $body,
     ) {
         parent::__construct($location);
     }

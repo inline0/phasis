@@ -6,10 +6,10 @@ namespace PhpJs\Ast;
 
 use PhpJs\Lexer\SourceLocation;
 
-abstract readonly class Node
+abstract class Node
 {
     public function __construct(
-        public SourceLocation $location,
+        public readonly SourceLocation $location,
     ) {
     }
 

@@ -7,13 +7,13 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class IfStatement extends Node
+class IfStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $test,
-        public Node $consequent,
-        public ?Node $alternate,
+        public readonly Node $test,
+        public readonly Node $consequent,
+        public readonly ?Node $alternate,
     ) {
         parent::__construct($location);
     }

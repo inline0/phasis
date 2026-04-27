@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ThisExpression extends Node
+class ThisExpression extends Node
 {
     public function __construct(
         SourceLocation $location,

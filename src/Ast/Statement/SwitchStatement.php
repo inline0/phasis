@@ -7,15 +7,15 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class SwitchStatement extends Node
+class SwitchStatement extends Node
 {
     /**
      * @param SwitchCase[] $cases
      */
     public function __construct(
         SourceLocation $location,
-        public Node $discriminant,
-        public array $cases,
+        public readonly Node $discriminant,
+        public readonly array $cases,
     ) {
         parent::__construct($location);
     }

@@ -8,7 +8,7 @@ use PhpJs\Ast\Expression\Identifier;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ClassDeclaration extends Node
+class ClassDeclaration extends Node
 {
     /**
      * @param Node[] $body
@@ -16,11 +16,11 @@ readonly class ClassDeclaration extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public ?Identifier $id,
-        public ?Node $superClass,
-        public array $body,
-        public ?string $sourceText = null,
-        public array $decorators = [],
+        public readonly ?Identifier $id,
+        public readonly ?Node $superClass,
+        public readonly array $body,
+        public readonly ?string $sourceText = null,
+        public readonly array $decorators = [],
     ) {
         parent::__construct($location);
     }

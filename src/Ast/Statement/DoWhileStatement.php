@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class DoWhileStatement extends Node
+class DoWhileStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $body,
-        public Node $test,
+        public readonly Node $body,
+        public readonly Node $test,
     ) {
         parent::__construct($location);
     }

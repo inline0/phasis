@@ -8,11 +8,11 @@ use PhpJs\Ast\Node;
 use PhpJs\Ast\Statement\BlockStatement;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class StaticBlock extends Node
+class StaticBlock extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public BlockStatement $body,
+        public readonly BlockStatement $body,
     ) {
         parent::__construct($location);
     }

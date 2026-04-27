@@ -7,16 +7,16 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class Property extends Node
+class Property extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $key,
-        public Node $value,
-        public string $kind,
-        public bool $computed,
-        public bool $shorthand,
-        public bool $method,
+        public readonly Node $key,
+        public readonly Node $value,
+        public readonly string $kind,
+        public readonly bool $computed,
+        public readonly bool $shorthand,
+        public readonly bool $method,
     ) {
         parent::__construct($location);
     }

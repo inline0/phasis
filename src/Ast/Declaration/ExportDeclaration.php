@@ -17,19 +17,19 @@ use PhpJs\Lexer\SourceLocation;
  * export * from 'source';
  * export * as ns from 'source';
  */
-readonly class ExportDeclaration extends Node
+class ExportDeclaration extends Node
 {
     /**
      * @param ExportSpecifier[] $specifiers
      */
     public function __construct(
         SourceLocation $location,
-        public ?Node $declaration = null,
-        public array $specifiers = [],
-        public ?string $source = null,
-        public bool $isDefault = false,
-        public bool $isAll = false,
-        public ?string $allAs = null,
+        public readonly ?Node $declaration = null,
+        public readonly array $specifiers = [],
+        public readonly ?string $source = null,
+        public readonly bool $isDefault = false,
+        public readonly bool $isAll = false,
+        public readonly ?string $allAs = null,
     ) {
         parent::__construct($location);
     }

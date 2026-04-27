@@ -7,11 +7,11 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class SpreadElement extends Node
+class SpreadElement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $argument,
+        public readonly Node $argument,
     ) {
         parent::__construct($location);
     }

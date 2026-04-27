@@ -7,13 +7,13 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class TryStatement extends Node
+class TryStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public BlockStatement $block,
-        public ?CatchClause $handler,
-        public ?BlockStatement $finalizer,
+        public readonly BlockStatement $block,
+        public readonly ?CatchClause $handler,
+        public readonly ?BlockStatement $finalizer,
     ) {
         parent::__construct($location);
     }

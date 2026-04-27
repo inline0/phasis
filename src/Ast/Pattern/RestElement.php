@@ -7,11 +7,11 @@ namespace PhpJs\Ast\Pattern;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class RestElement extends Node
+class RestElement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $argument,
+        public readonly Node $argument,
     ) {
         parent::__construct($location);
     }

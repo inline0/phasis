@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Declaration;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class VariableDeclarator extends Node
+class VariableDeclarator extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $id,
-        public ?Node $init,
+        public readonly Node $id,
+        public readonly ?Node $init,
     ) {
         parent::__construct($location);
     }

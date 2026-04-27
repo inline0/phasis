@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class EmptyStatement extends Node
+class EmptyStatement extends Node
 {
     public function __construct(
         SourceLocation $location,

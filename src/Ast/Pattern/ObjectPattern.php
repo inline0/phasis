@@ -7,14 +7,14 @@ namespace PhpJs\Ast\Pattern;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ObjectPattern extends Node
+class ObjectPattern extends Node
 {
     /**
      * @param Node[] $properties
      */
     public function __construct(
         SourceLocation $location,
-        public array $properties,
+        public readonly array $properties,
     ) {
         parent::__construct($location);
     }

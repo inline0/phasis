@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class TaggedTemplate extends Node
+class TaggedTemplate extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $tag,
-        public TemplateLiteral $quasi,
+        public readonly Node $tag,
+        public readonly TemplateLiteral $quasi,
     ) {
         parent::__construct($location);
     }

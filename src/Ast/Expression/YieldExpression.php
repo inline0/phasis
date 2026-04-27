@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class YieldExpression extends Node
+class YieldExpression extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public ?Node $argument,
-        public bool $delegate,
+        public readonly ?Node $argument,
+        public readonly bool $delegate,
     ) {
         parent::__construct($location);
     }

@@ -7,7 +7,7 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ClassExpression extends Node
+class ClassExpression extends Node
 {
     /**
      * @param ClassMethod[] $body
@@ -15,11 +15,11 @@ readonly class ClassExpression extends Node
      */
     public function __construct(
         SourceLocation $location,
-        public ?Identifier $id,
-        public ?Node $superClass,
-        public array $body,
-        public ?string $sourceText = null,
-        public array $decorators = [],
+        public readonly ?Identifier $id,
+        public readonly ?Node $superClass,
+        public readonly array $body,
+        public readonly ?string $sourceText = null,
+        public readonly array $decorators = [],
     ) {
         parent::__construct($location);
     }

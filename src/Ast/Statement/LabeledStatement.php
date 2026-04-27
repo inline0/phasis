@@ -7,12 +7,12 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class LabeledStatement extends Node
+class LabeledStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $label,
-        public Node $body,
+        public readonly string $label,
+        public readonly Node $body,
     ) {
         parent::__construct($location);
     }

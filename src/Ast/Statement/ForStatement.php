@@ -7,14 +7,14 @@ namespace PhpJs\Ast\Statement;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class ForStatement extends Node
+class ForStatement extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public ?Node $init,
-        public ?Node $test,
-        public ?Node $update,
-        public Node $body,
+        public readonly ?Node $init,
+        public readonly ?Node $test,
+        public readonly ?Node $update,
+        public readonly Node $body,
     ) {
         parent::__construct($location);
     }

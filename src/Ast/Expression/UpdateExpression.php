@@ -7,13 +7,13 @@ namespace PhpJs\Ast\Expression;
 use PhpJs\Ast\Node;
 use PhpJs\Lexer\SourceLocation;
 
-readonly class UpdateExpression extends Node
+class UpdateExpression extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $operator,
-        public Node $argument,
-        public bool $prefix,
+        public readonly string $operator,
+        public readonly Node $argument,
+        public readonly bool $prefix,
     ) {
         parent::__construct($location);
     }

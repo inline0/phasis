@@ -14,13 +14,13 @@ use PhpJs\Lexer\SourceLocation;
  * type = 'namespace':  import * as foo from 'source'  (local = foo)
  * type = 'named':      import { a as b } from 'source' (imported = a, local = b)
  */
-readonly class ImportSpecifier extends Node
+class ImportSpecifier extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public string $specType,
-        public string $local,
-        public ?string $imported = null,
+        public readonly string $specType,
+        public readonly string $local,
+        public readonly ?string $imported = null,
     ) {
         parent::__construct($location);
     }

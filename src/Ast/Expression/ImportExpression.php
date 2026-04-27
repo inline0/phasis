@@ -14,12 +14,12 @@ use PhpJs\Lexer\SourceLocation;
  * form that takes one required AssignmentExpression and an optional second
  * AssignmentExpression (import attributes / options).
  */
-readonly class ImportExpression extends Node
+class ImportExpression extends Node
 {
     public function __construct(
         SourceLocation $location,
-        public Node $source,
-        public ?Node $options = null,
+        public readonly Node $source,
+        public readonly ?Node $options = null,
     ) {
         parent::__construct($location);
     }
