@@ -155,6 +155,11 @@ class DateConstructor
         ) {
             return NAN;
         }
+        // Per spec MakeDay: ym = year + floor(month/12). If ym overflows to
+        // ±Infinity (tc39/ecma262#1087), return NaN before any further math.
+        if (!is_finite($y + floor($m / 12.0))) {
+            return NAN;
+        }
 
         // ES spec: if 0 <= ToInteger(year) <= 99, yearValue = 1900 + ToInteger(year).
         $yi = (int) $y;
@@ -252,6 +257,11 @@ class DateConstructor
             return NAN;
         }
         $y = $year + floor($month / 12.0);
+        // Per spec, the intermediate sum may overflow to ±Infinity even when
+        // both operands are finite. tc39/ecma262#1087 makes this a NaN.
+        if (!is_finite($y)) {
+            return NAN;
+        }
         $m = fmod($month, 12.0);
         if ($m < 0) {
             $m += 12.0;
@@ -484,6 +494,14 @@ class DateConstructor
     public static function isDateObject(JsValue $value): bool
     {
         if (!$value instanceof JsObject) {
+            return false;
+        }
+        // Per spec, [[DateValue]] is an internal slot of the original Date
+        // object. A Proxy wrapping a Date does NOT have the slot itself, so
+        // thisTimeValue(proxy) must throw TypeError. Internal slots bypass
+        // Proxy traps via the target, but here we want to reject Proxy
+        // receivers explicitly.
+        if ($value instanceof \PhpJs\Value\JsProxy) {
             return false;
         }
         $marker = $value->get('[[IsDate]]');
@@ -1495,6 +1513,20 @@ class DateConstructor
                 break;
         }
 
+        // Per spec MakeDay: ym = year + floor(month/12). If the intermediate
+        // sum overflows to ±Infinity even when the inputs are finite (e.g.
+        // year and month both Number.MAX_VALUE), the result is NaN per
+        // tc39/ecma262#1087. Run the check on the original coerced float
+        // values, before they are truncated to PHP int.
+        if ($field === 'year' || $field === 'month') {
+            $rawYear = (float) ($field === 'year' ? ($coerced[0] ?? $y) : $y);
+            $monthIdx = $field === 'year' ? 1 : 0;
+            $rawMonth = (float) ($coerced[$monthIdx] ?? $m);
+            if (!is_finite($rawYear + floor($rawMonth / 12.0))) {
+                $this_->set('[[DateValue]]', new JsNumber(NAN));
+                return new JsNumber(NAN);
+            }
+        }
         // Reconstruct using DateTimeImmutable (UTC).
         // We avoid gmmktime because it misinterprets years 0-99 (adds 1900 or 2000).
         $ts = self::composeUtcTimestamp($y, $m, $dt, $h, $min, $sec);
