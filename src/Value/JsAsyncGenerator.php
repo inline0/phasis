@@ -754,12 +754,21 @@ class JsAsyncGenerator extends JsObject
         }
 
         if ($value->getState() === JsPromise::STATE_FULFILLED) {
-            $result = $this->makeResult($value->getResolvedValue(), false);
-            if ($target !== null) {
-                $target->resolve($result);
-                return $target;
-            }
-            return JsPromise::resolved($result);
+            // Per AsyncGeneratorYield step 5, Await(value) adds one microtask
+            // tick before resolving the request promise — even for fulfilled
+            // promises. Defer through scheduleCallback so consumers observing
+            // the request promise via .then see the spec-mandated tick.
+            $this->awaitingYieldPromise = true;
+            $outer = $target ?? new JsPromise();
+            $iterResult = $this->makeResult($value->getResolvedValue(), false);
+            JsPromise::scheduleCallback(function () use ($outer, $iterResult): void {
+                $this->awaitingYieldPromise = false;
+                $outer->resolve($iterResult);
+                if ($this->requestQueue !== [] && !$this->executing) {
+                    $this->drainRequestQueue();
+                }
+            });
+            return $outer;
         }
 
         if ($value->getState() === JsPromise::STATE_REJECTED) {
