@@ -5408,6 +5408,38 @@ class Interpreter
         return false;
     }
 
+    /**
+     * Whether top-level statements declare lexical bindings that
+     * hoistEvalLexicalDeclarations needs to TDZ-declare: `let`, `const`,
+     * `using`, `await using` VariableDeclarations, or top-level
+     * ClassDeclarations. Mirrors the body of hoistEvalLexicalDeclarations
+     * (which only walks the top level — no recursion into control flow).
+     *
+     * @param Node[] $statements
+     */
+    private function blockHoistsLexical(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($stmt instanceof ExportDeclaration && $stmt->declaration !== null) {
+                $stmt = $stmt->declaration;
+            }
+            if ($stmt instanceof ClassDeclaration && $stmt->id !== null) {
+                return true;
+            }
+            if (
+                $stmt instanceof VariableDeclaration && (
+                $stmt->kind === 'let'
+                || $stmt->kind === 'const'
+                || $stmt->kind === 'using'
+                || $stmt->kind === 'await using'
+                )
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private function statementHoists(Node $stmt): bool
     {
         if ($stmt instanceof ExportDeclaration && $stmt->declaration !== null) {
@@ -8580,11 +8612,22 @@ class Interpreter
     private function execBlockStatement(BlockStatement $node, Environment $env): Completion
     {
         $blockEnv = $env->createChild();
-        $savedSkip = $this->skipAnnexBHoisting;
-        $this->skipAnnexBHoisting = true;
-        $this->hoistDeclarations($node->body, $blockEnv);
-        $this->skipAnnexBHoisting = $savedSkip;
-        $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
+        // Cache once which hoist passes the block actually needs. Inner
+        // loop bodies like `{ const t = a + b; a = b; b = t; }` only
+        // need the lexical TDZ pass; pure-statement blocks need neither.
+        if ($node->hoistsLexicalCache === null) {
+            $node->hoistsLexicalCache = $this->blockHoistsLexical($node->body);
+            $node->hoistsVarOrFuncCache = $this->bodyNeedsHoisting($node->body);
+        }
+        if ($node->hoistsVarOrFuncCache) {
+            $savedSkip = $this->skipAnnexBHoisting;
+            $this->skipAnnexBHoisting = true;
+            $this->hoistDeclarations($node->body, $blockEnv);
+            $this->skipAnnexBHoisting = $savedSkip;
+        }
+        if ($node->hoistsLexicalCache) {
+            $this->hoistEvalLexicalDeclarations($node->body, $blockEnv);
+        }
         $completion = $this->executeBody($node->body, $blockEnv);
         return $this->applyDisposals($blockEnv, $completion);
     }

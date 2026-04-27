@@ -77,6 +77,8 @@ function astToArray(object $node): array
             || $name === 'verbatim'
             || $name === 'cached'
             || $name === 'bodyHasClosure'
+            || $name === 'hoistsLexicalCache'
+            || $name === 'hoistsVarOrFuncCache'
         ) {
             continue;
         }
