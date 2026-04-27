@@ -6190,7 +6190,8 @@ class Interpreter
         // the resolved value via Fiber::resume; rejection is delivered
         // by Fiber::throw with a JsThrowable.
         $fiber = \Fiber::getCurrent();
-        if ($fiber !== null && $env->getFunctionKind() === 'async') {
+        $kind = $env->getEnclosingFunctionKind();
+        if ($fiber !== null && ($kind === 'async' || $kind === 'async-generator')) {
             try {
                 $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
             } catch (\PhpJs\Exceptions\JsThrowable $e) {
@@ -8453,7 +8454,7 @@ class Interpreter
                 $result = $this->callFunction($nextMethod, $iterator, []);
                 // For for-await-of, unwrap the promise returned by the async iterator.
                 if ($node->await) {
-                    $result = $this->awaitValue($result);
+                    $result = $this->forAwaitUnwrap($result, $env);
                 }
                 if (!$result instanceof JsObject) {
                     throw new TypeError('Iterator result is not an object');
@@ -8467,7 +8468,7 @@ class Interpreter
                 $value = $result->get('value');
                 // For for-await-of, await the value too.
                 if ($node->await) {
-                    $value = $this->awaitValue($value);
+                    $value = $this->forAwaitUnwrap($value, $env);
                 }
                 $iterEnv = $env->createChild();
                 // Pre-declare let/const bindings in the iteration env so that
@@ -8791,6 +8792,29 @@ class Interpreter
     }
 
     // iteratorClose is defined below at line ~9621.
+
+    /**
+     * Await a value during for-await-of iteration. When called inside an
+     * async function fiber, suspends the fiber via AwaitSuspension so the
+     * for-await loop yields to microtasks per spec; otherwise falls back
+     * to the synchronous drain.
+     */
+    private function forAwaitUnwrap(JsValue $value, Environment $env): JsValue
+    {
+        $fiber = \Fiber::getCurrent();
+        if ($fiber !== null && $env->getEnclosingFunctionKind() === 'async') {
+            try {
+                $resumed = \Fiber::suspend(new \PhpJs\Value\AwaitSuspension($value));
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $this->throwJsValue($e->jsValue);
+            }
+            if ($resumed instanceof JsValue) {
+                return $resumed;
+            }
+            return JsUndefined::instance();
+        }
+        return $this->awaitValue($value);
+    }
 
     /**
      * Await a JS value: if it is a Promise, extract the resolved value.
