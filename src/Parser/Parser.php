@@ -4428,6 +4428,11 @@ class Parser
 
             // Member access, call, optional chaining handled separately
             if ($token->type === TokenType::Dot) {
+                // Property access forces the object operand to be evaluated
+                // as an expression — a CoverInitializedName like `{ a = 0 }`
+                // can no longer be salvaged into an AssignmentPattern, so it
+                // must surface as a SyntaxError per spec 13.2.5.1 / 13.15.1.
+                self::rejectCoverInitializedName($left);
                 $property = $this->parseIdentifierOrKeyword();
                 $left = new MemberExpression($left->location, $left, $property, false, false);
                 continue;
@@ -4478,6 +4483,7 @@ class Parser
                     $this->pos--;
                     return $left;
                 }
+                self::rejectCoverInitializedName($left);
                 $property = $this->parseExpression();
                 $this->expect(TokenType::RightBracket);
                 $left = new MemberExpression($left->location, $left, $property, true, false);
@@ -4489,6 +4495,7 @@ class Parser
                     $this->pos--;
                     return $left;
                 }
+                self::rejectCoverInitializedName($left);
                 $args = $this->parseArguments();
                 $left = new CallExpression($left->location, $left, $args, false);
                 continue;
@@ -4704,12 +4711,19 @@ class Parser
                 break;
             }
             if ($this->check(TokenType::Dot) && !$this->current()->lineTerminatorBefore) {
+                // Property access forces the receiver to be a normal
+                // expression — a CoverInitializedName like `{ a = 0 }` can
+                // no longer be salvaged into an AssignmentPattern, so any
+                // such inner cover-init is a SyntaxError per spec
+                // 13.2.5.1 / 13.15.1.
+                self::rejectCoverInitializedName($expr);
                 $this->advance();
                 $property = $this->parseIdentifierOrKeyword();
                 $expr = new MemberExpression($expr->location, $expr, $property, false, false);
                 continue;
             }
             if ($this->check(TokenType::LeftBracket)) {
+                self::rejectCoverInitializedName($expr);
                 $this->advance();
                 $property = $this->parseExpression();
                 $this->expect(TokenType::RightBracket);
@@ -4717,6 +4731,7 @@ class Parser
                 continue;
             }
             if ($this->check(TokenType::LeftParen)) {
+                self::rejectCoverInitializedName($expr);
                 $this->advance();
                 $args = $this->parseArguments();
                 $expr = new CallExpression($expr->location, $expr, $args, false);
