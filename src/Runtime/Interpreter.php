@@ -1633,13 +1633,16 @@ class Interpreter
         }
 
         // Fast path: `i++` / `++i` / `i--` / `--i` on a plain Identifier
-        // when there is no with-environment in scope. Skips the Reference
-        // allocation, the deferred-key path, and the with-trap dance for
-        // the case that dominates loop counters.
+        // when there is no with-environment reachable from the current
+        // chain (covers both currently-active with statements and
+        // with-envs captured by an enclosing closure). Skips the
+        // Reference allocation, the deferred-key path, and the with-
+        // trap dance for the case that dominates loop counters.
         if (
             $node->argument instanceof Identifier
             && $this->withEnvObjects === []
             && $node->argument->name !== 'undefined'
+            && !$env->hasAnyWithObjectInChain()
         ) {
             $name = $node->argument->name;
             $current = $env->get($name, $this->strictMode);
