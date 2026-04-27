@@ -5154,30 +5154,51 @@ class IntlObject
     }
 
     /**
-     * Detect a "D.M.Y" or "DD.MM.YYYY" range where one side has 1-digit
-     * month and the other 2-digit; return both sides with consistent
-     * 2-digit months. Returns null when the heuristic doesn't apply.
+     * Detect a "D.M.Y" / "DD.MM.YYYY" or "DD.M" / "DD.MM" PMD-style
+     * range where one side has 1-digit month and the other 2-digit;
+     * return both sides with consistent 2-digit months. Returns null
+     * when the heuristic doesn't apply.
      *
      * @return array{0:string,1:string}|null
      */
     private static function padDateRangeMonth(string $a, string $b): ?array
     {
-        $pattern = '/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/';
+        // Full date pattern: D.M.Y
+        $full = '/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/';
         if (
-            preg_match($pattern, $a, $am) !== 1
-            || preg_match($pattern, $b, $bm) !== 1
+            preg_match($full, $a, $am) === 1
+            && preg_match($full, $b, $bm) === 1
         ) {
-            return null;
+            if (strlen($am[2]) === strlen($bm[2])) {
+                return null;
+            }
+            $aMonth = str_pad($am[2], 2, '0', STR_PAD_LEFT);
+            $bMonth = str_pad($bm[2], 2, '0', STR_PAD_LEFT);
+            return [
+                $am[1] . '.' . $aMonth . '.' . $am[3],
+                $bm[1] . '.' . $bMonth . '.' . $bm[3],
+            ];
         }
-        if (strlen($am[2]) === strlen($bm[2])) {
-            return null;
+        // PlainMonthDay-style range: DD.M / DD.MM with an optional
+        // trailing dot. The DD field's dot is the field separator;
+        // the optional trailing one is the locale's "after-month"
+        // marker (de-AT renders MonthDay as "20.02." for example).
+        $md = '/^(\d{1,2})\.(\d{1,2})(\.?)$/';
+        if (
+            preg_match($md, $a, $am) === 1
+            && preg_match($md, $b, $bm) === 1
+        ) {
+            if (strlen($am[2]) === strlen($bm[2])) {
+                return null;
+            }
+            $aMonth = str_pad($am[2], 2, '0', STR_PAD_LEFT);
+            $bMonth = str_pad($bm[2], 2, '0', STR_PAD_LEFT);
+            return [
+                $am[1] . '.' . $aMonth . $am[3],
+                $bm[1] . '.' . $bMonth . $bm[3],
+            ];
         }
-        $aMonth = str_pad($am[2], 2, '0', STR_PAD_LEFT);
-        $bMonth = str_pad($bm[2], 2, '0', STR_PAD_LEFT);
-        return [
-            $am[1] . '.' . $aMonth . '.' . $am[3],
-            $bm[1] . '.' . $bMonth . '.' . $bm[3],
-        ];
+        return null;
     }
 
     private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
