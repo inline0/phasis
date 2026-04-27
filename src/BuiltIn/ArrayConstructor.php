@@ -2409,38 +2409,61 @@ class ArrayConstructor
      */
     private static function awaitValue(JsValue $value): JsValue
     {
-        if ($value instanceof \PhpJs\Value\JsPromise) {
-            if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                $reason = $value->getResolvedValue();
-                throw new \PhpJs\Exceptions\JsThrowable($reason);
-            }
-            return $value->getResolvedValue();
-        }
-        if ($value instanceof JsObject) {
-            $thenMethod = $value->get('then');
-            if ($thenMethod instanceof JsFunction) {
-                $resolved = JsUndefined::instance();
-                $rejected = null;
-                $resolveHandler = JsFunction::fromCallable(
-                    '',
-                    function (JsValue $this_, array $args) use (&$resolved): JsValue {
-                        $resolved = $args[0] ?? JsUndefined::instance();
-                        return JsUndefined::instance();
-                    },
-                );
-                $rejectHandler = JsFunction::fromCallable(
-                    '',
-                    function (JsValue $this_, array $args) use (&$rejected): JsValue {
-                        $rejected = $args[0] ?? JsUndefined::instance();
-                        return JsUndefined::instance();
-                    },
-                );
-                $thenMethod->call($value, [$resolveHandler, $rejectHandler]);
-                if ($rejected !== null) {
-                    throw new \PhpJs\Exceptions\JsThrowable($rejected);
+        // Per spec Await: PromiseResolve(value) follows promise/thenable
+        // chains until a non-thenable resolution. Iterate so a promise
+        // that resolves to a thenable runs the thenable's then() too.
+        $iterations = 0;
+        while ($iterations++ < 32) {
+            if ($value instanceof \PhpJs\Value\JsPromise) {
+                // A promise that's still pending may have a thenable
+                // resolution scheduled as a microtask (per spec
+                // PromiseResolveThenableJob). Drain microtasks so the
+                // thenable's then() runs before we read the value.
+                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    \PhpJs\Value\JsPromise::drainMicrotasks();
                 }
-                return $resolved;
+                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                    $reason = $value->getResolvedValue();
+                    throw new \PhpJs\Exceptions\JsThrowable($reason);
+                }
+                $next = $value->getResolvedValue();
+                if ($next === $value) {
+                    return $next;
+                }
+                $value = $next;
+                continue;
             }
+            if ($value instanceof JsObject) {
+                $thenMethod = $value->get('then');
+                if ($thenMethod instanceof JsFunction) {
+                    $resolved = JsUndefined::instance();
+                    $rejected = null;
+                    $resolveHandler = JsFunction::fromCallable(
+                        '',
+                        function (JsValue $this_, array $args) use (&$resolved): JsValue {
+                            $resolved = $args[0] ?? JsUndefined::instance();
+                            return JsUndefined::instance();
+                        },
+                    );
+                    $rejectHandler = JsFunction::fromCallable(
+                        '',
+                        function (JsValue $this_, array $args) use (&$rejected): JsValue {
+                            $rejected = $args[0] ?? JsUndefined::instance();
+                            return JsUndefined::instance();
+                        },
+                    );
+                    $thenMethod->call($value, [$resolveHandler, $rejectHandler]);
+                    if ($rejected !== null) {
+                        throw new \PhpJs\Exceptions\JsThrowable($rejected);
+                    }
+                    if ($resolved === $value) {
+                        return $resolved;
+                    }
+                    $value = $resolved;
+                    continue;
+                }
+            }
+            return $value;
         }
         return $value;
     }
