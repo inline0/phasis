@@ -3118,21 +3118,30 @@ class Parser
             // now we see it's a field, the key we parsed IS the field key.
             $value = null;
             if ($this->eat(TokenType::Equal)) {
-                // Per spec: a class FieldDefinition initializer is parsed in a
-                // function-like context that does NOT inherit the surrounding
-                // [Yield] / [Await] grammar parameters, even when the
-                // enclosing context is a generator or async function. So
-                // `class { x = await }` inside an async function reads
-                // `await` as an Identifier reference, not as AwaitExpression.
-                $prevYield = $this->inGenerator;
-                $prevAsync = $this->inAsync;
-                $this->inGenerator = false;
-                $this->inAsync = false;
+                // A class FieldDefinition initializer is parsed in a synthetic
+                // non-async, non-generator function. Inside an async function
+                // or generator, that synthetic function shadows [Await]/[Yield],
+                // so `await` and `yield` revert to IdentifierReferences.
+                //
+                // The synthetic function created for a field initializer is
+                // non-async and non-generator, so [Yield]/[Await] reset to
+                // false. Module top-level still reserves `await` as a
+                // module-level identifier, but that is enforced separately
+                // by parseAwaitAsIdentifier.
+                $shouldReset = true;
+                if ($shouldReset) {
+                    $prevYield = $this->inGenerator;
+                    $prevAsync = $this->inAsync;
+                    $this->inGenerator = false;
+                    $this->inAsync = false;
+                }
                 try {
                     $value = $this->parseAssignmentExpression();
                 } finally {
-                    $this->inGenerator = $prevYield;
-                    $this->inAsync = $prevAsync;
+                    if ($shouldReset) {
+                        $this->inGenerator = $prevYield;
+                        $this->inAsync = $prevAsync;
+                    }
                 }
                 // Per §15.7.1 early errors: a class field initializer
                 // cannot contain `SuperCall` or reference `arguments`
@@ -6332,7 +6341,7 @@ class Parser
     {
         if (
             $this->inAsync
-            || ($this->topLevel && $this->moduleMode)
+            || $this->moduleMode
             || $this->inStaticBlock
         ) {
             throw new ParseError(
