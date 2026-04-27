@@ -3912,12 +3912,14 @@ class TemporalObject
             }
             // Apply rounding: get wall-clock parts, then round ISO date-time.
             $parts = self::epochNsToISOParts($ns, $tz);
+            $rounded = false;
             if ($smallestUnit !== null && $smallestUnit !== 'nanosecond') {
                 $unitNsMap = [
                     'minute' => '60000000000', 'second' => '1000000000',
                     'millisecond' => '1000000', 'microsecond' => '1000',
                 ];
                 $parts = self::roundISODateTime($parts, $unitNsMap[$smallestUnit], $roundingMode, $tz);
+                $rounded = true;
             } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
                 $digitsToNs = [
                     0 => '1000000000', 1 => '100000000', 2 => '10000000',
@@ -3926,14 +3928,34 @@ class TemporalObject
                 ];
                 if (isset($digitsToNs[$fractionalSecondDigits])) {
                     $parts = self::roundISODateTime($parts, $digitsToNs[$fractionalSecondDigits], $roundingMode, $tz);
+                    $rounded = true;
                 }
             }
-            // Use the ORIGINAL ns to compute the offset so that the
-            // disambiguation choice (e.g. fall-back DST where the
-            // wall-clock time exists twice) matches the stored
-            // instant. Re-deriving from local components via
-            // isoDateTimeToEpochNs would always pick the earlier
-            // occurrence and emit the wrong offset.
+            // After rounding, re-resolve the rounded wall-clock to an
+            // instant in the zone. This matters for DST-forward gaps:
+            // rounding 01:59:59.999...9 up by a nanosecond produces a
+            // wall time of 02:00:00 that doesn't exist in the zone, so
+            // we need to push it forward to 03:00 PDT and update the
+            // offset to match.
+            if ($rounded) {
+                $newNs = self::isoDateTimeToEpochNs(
+                    $parts['year'],
+                    $parts['month'],
+                    $parts['day'],
+                    $parts['hour'],
+                    $parts['minute'],
+                    $parts['second'],
+                    $parts['millisecond'],
+                    $parts['microsecond'],
+                    $parts['nanosecond'],
+                    $tz,
+                );
+                $parts = self::epochNsToISOParts($newNs, $tz);
+                $ns = $newNs;
+            }
+            // Use the (possibly post-round) ns to compute the offset so
+            // the disambiguation choice (e.g. fall-back DST where the
+            // wall-clock time exists twice) matches the stored instant.
             $timeStr = self::formatISOTime(
                 $parts['hour'],
                 $parts['minute'],
