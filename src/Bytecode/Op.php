@@ -86,7 +86,11 @@ final class Op
 
     // ---- Calls & returns -----------------------------------------------
     public const CALL = 80;          // I — argc; callee at stack[-argc-1]
-    public const CALL_METHOD = 81;   // I,N — argc, name index; receiver at stack[-argc-1]
+    public const CALL_METHOD = 81;   // I — argc; stack: [obj, method, args...]
+                                       // Pops method + args, peeks obj as receiver,
+                                       // result replaces obj. Spec evaluation order
+                                       // (lookup before arg eval) is preserved by
+                                       // compiling LOAD_MEMBER ahead of the args.
     public const NEW_CALL = 82;      // I — argc; constructor at stack[-argc-1]
     public const RET = 83;           // pop value, return from VM
 
@@ -99,6 +103,14 @@ final class Op
     public const LOAD_COMPUTED = 95; // pop key, pop obj; push obj[key]
     public const STORE_MEMBER = 96;  // N — pop val, pop obj; obj.name = val (writes, no push)
     public const STORE_COMPUTED = 97;// pop val, key, obj; obj[key] = val
+
+    // ---- Function expressions & arrows ---------------------------------
+    public const MAKE_FUNCTION = 100; // I — index into CompiledFunction::$nestedFns;
+                                       //     pushes a JsFunction whose closure is
+                                       //     the current env.
+
+    // ---- Throw -----------------------------------------------------------
+    public const THROW = 110;          // pop value, raise as JsThrowable.
 
     // ---- Sentinel / bailout placeholder -------------------------------
     public const NOP = 0;
@@ -145,6 +157,7 @@ final class Op
             case self::SET_COMPUTED:
             case self::LOAD_COMPUTED:
             case self::STORE_COMPUTED:
+            case self::THROW:
             case self::NOP:
                 return 0;
             // 1-operand opcodes
@@ -165,10 +178,9 @@ final class Op
             case self::SET_PROP:
             case self::LOAD_MEMBER:
             case self::STORE_MEMBER:
-                return 1;
-            // 2-operand opcodes
             case self::CALL_METHOD:
-                return 2;
+            case self::MAKE_FUNCTION:
+                return 1;
             default:
                 throw new \LogicException('Unknown opcode: ' . $op);
         }

@@ -141,6 +141,7 @@ final class VM
         $code = $cf->code;
         $consts = $cf->consts;
         $names = $cf->names;
+        $nestedFns = $cf->nestedFns;
         $stack = $frame->stack;
         $sp = $frame->sp;
         $locals = $frame->locals;
@@ -560,31 +561,30 @@ final class VM
                 }
 
                 case Op::CALL_METHOD: {
+                    // Stack: [..., obj, method, arg0, ..., argN-1]
+                    // The method was already loaded (LOAD_MEMBER) so
+                    // any TypeError for a null/undefined receiver
+                    // already surfaced before any argument was eval'd.
                     $argc = $code[$pc + 1];
-                    $nameIdx = $code[$pc + 2];
                     $base = $sp - $argc;
                     $args = [];
                     for ($i = 0; $i < $argc; $i++) {
                         $args[] = $stack[$base + $i];
                     }
-                    $receiver = $stack[$base - 1];
-                    $sp = $base - 1;
-                    $method = $this->lookupMember($receiver, $names[$nameIdx]);
+                    $method = $stack[$base - 1];
+                    $receiver = $stack[$base - 2];
+                    $sp = $base - 2;
+                    if (
+                        $method instanceof \PhpJs\Value\JsProxy
+                        && $method->isCallable()
+                    ) {
+                        $stack[$sp++] = $method->apply($receiver, $args);
+                        $pc += 2;
+                        break;
+                    }
                     if (!$method instanceof JsFunction) {
-                        // Defer to the spec-correct error path with
-                        // the receiver as `this`. JsObject::get path
-                        // will surface the descriptive type-error
-                        // message for non-function callees.
-                        if (
-                            $method instanceof \PhpJs\Value\JsProxy
-                            && $method->isCallable()
-                        ) {
-                            $stack[$sp++] = $method->apply($receiver, $args);
-                            $pc += 3;
-                            break;
-                        }
                         throw new TypeError(
-                            $names[$nameIdx] . ' is not a function'
+                            (TypeConversion::toString($method) ?: 'value') . ' is not a function'
                         );
                     }
                     $stack[$sp++] = $this->interp->callFunction(
@@ -592,7 +592,7 @@ final class VM
                         $receiver,
                         $args,
                     );
-                    $pc += 3;
+                    $pc += 2;
                     break;
                 }
 
@@ -628,6 +628,20 @@ final class VM
                     $pc++;
                     break;
                 }
+
+                case Op::MAKE_FUNCTION: {
+                    $stack[$sp++] = $this->interp->vmMakeFunction(
+                        $nestedFns[$code[$pc + 1]],
+                        $env,
+                    );
+                    $pc += 2;
+                    break;
+                }
+
+                case Op::THROW:
+                    $val = $stack[--$sp];
+                    $this->interp->throwJsValue($val);
+                    break;
 
                 case Op::RET:
                     return $stack[--$sp];

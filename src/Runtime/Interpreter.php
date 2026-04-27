@@ -5860,6 +5860,24 @@ class Interpreter
     }
 
     /**
+     * VM helper: lower a nested ArrowFunction or FunctionExpression
+     * AST node into a runtime JsFunction whose closure is the
+     * caller's current env. Reuses the existing tree-walker
+     * evaluators so spec-name-inference / strict-flag-propagation
+     * stays correct.
+     */
+    public function vmMakeFunction(Node $node, Environment $env): JsValue
+    {
+        if ($node instanceof ArrowFunction) {
+            return $this->evalArrowFunction($node, $env);
+        }
+        if ($node instanceof FunctionExpression) {
+            return $this->evalFunctionExpression($node, $env);
+        }
+        throw new InternalError('vmMakeFunction: ' . $node->type());
+    }
+
+    /**
      * Helpers the bytecode VM uses to delegate spec-correct branches
      * back into the tree-walker. Same-instance reuse keeps allocation
      * cost identical to the AST path.
@@ -13276,7 +13294,7 @@ class Interpreter
     // phpExceptionToJsValue is defined earlier in this file.
 
     /** @return never */
-    private function throwJsValue(JsValue $value): void
+    public function throwJsValue(JsValue $value): void
     {
         // Always use JsThrowable to preserve the original JS value.
         // execTryStatement catches JsThrowable and extracts jsValue for the catch block.

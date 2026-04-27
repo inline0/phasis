@@ -21,11 +21,15 @@ use PhpJs\Value\JsValue;
 final class CompiledFunction
 {
     /**
-     * @param list<int>     $code   Flat instruction stream (opcodes interleaved with operands).
-     * @param list<JsValue> $consts Constants pool — Literal values pre-converted to JsValue.
-     * @param list<string>  $names  Identifier names referenced by LOAD_NAME / STORE_NAME / LOAD_MEMBER.
-     * @param list<string>  $localNames   Slot-index → identifier name (for diagnostics + arguments-object aliasing).
-     * @param list<int>     $paramSlots   For each parameter, the local slot it is bound into.
+     * @param list<int>     $code        Flat instruction stream.
+     * @param list<JsValue> $consts      Pre-converted JsValue constants.
+     * @param list<string>  $names       Identifier name table.
+     * @param list<string>  $localNames  Slot index → name (diagnostics).
+     * @param list<int>     $paramSlots  Parameter index → local slot.
+     * @param list<\PhpJs\Ast\Node> $nestedFns AST templates for nested
+     *        FunctionExpressions / ArrowFunctions. MAKE_FUNCTION
+     *        opcodes index into this list to materialise a JsFunction
+     *        on the fly with the current env as closure.
      */
     public function __construct(
         public readonly array $code,
@@ -34,6 +38,7 @@ final class CompiledFunction
         public readonly array $localNames,
         public readonly array $paramSlots,
         public readonly int $slotCount,
+        public readonly array $nestedFns = [],
     ) {
     }
 }

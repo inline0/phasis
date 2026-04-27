@@ -84,6 +84,9 @@ final class Compiler
     /** @var list<int> */
     private array $paramSlots = [];
 
+    /** @var list<\PhpJs\Ast\Node> */
+    private array $nestedFns = [];
+
     /**
      * Slot indices that were declared `const`. Re-assignment to any
      * of these (by ordinary `=`, compound `+=`, or `++`/`--`) is a
@@ -162,6 +165,7 @@ final class Compiler
             localNames: $this->localNames,
             paramSlots: $this->paramSlots,
             slotCount: max(1, count($this->localNames)),
+            nestedFns: $this->nestedFns,
         );
     }
 
@@ -584,13 +588,9 @@ final class Compiler
             return;
         }
         if ($node instanceof ThrowStatement) {
-            // No try/catch in this phase — but a top-level throw
-            // (caught by the outer tree-walker frame) still works
-            // because we just raise a PHP exception with the JsValue.
             $this->compileExpression($node->argument);
-            $this->emit(Op::POP); // consume — VM throws via the helper
-            // Actually: we need a THROW opcode. Add it.
-            throw new CompilerBailout('throw statement (no THROW op yet)');
+            $this->emit(Op::THROW);
+            return;
         }
         throw new CompilerBailout('unsupported statement: ' . $node->type());
     }
@@ -809,7 +809,224 @@ final class Compiler
             $this->compileNew($node);
             return;
         }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+        ) {
+            $this->compileNestedFunction($node);
+            return;
+        }
         throw new CompilerBailout('unsupported expression: ' . $node->type());
+    }
+
+    /**
+     * Lower a nested function or arrow expression into a
+     * MAKE_FUNCTION opcode that the VM materialises into a
+     * JsFunction at runtime, capturing the current Frame's env as
+     * the closure.
+     *
+     * Capture safety: the outer function's locals live in frame
+     * slots, NOT in the env. A nested function that references any
+     * outer local would walk the env chain at call time and not
+     * find it. Bail when such a capture exists so the tree-walker
+     * keeps owning the outer function (which uses env-based
+     * bindings the inner closure can read).
+     */
+    private function compileNestedFunction(Node $node): void
+    {
+        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression) {
+            if ($node->generator || $node->async) {
+                throw new CompilerBailout('nested generator/async fn');
+            }
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+            if ($node->async) {
+                throw new CompilerBailout('nested async arrow');
+            }
+        }
+        if ($this->capturesOuterLocal($node)) {
+            throw new CompilerBailout('nested fn captures outer local');
+        }
+        $idx = count($this->nestedFns);
+        $this->nestedFns[] = $node;
+        $this->emit(Op::MAKE_FUNCTION, $idx);
+    }
+
+    /**
+     * Walk a nested function's params + body for any Identifier
+     * reference to a name in the OUTER function's local slots that
+     * the nested function does not itself shadow. Returns true if
+     * any such capture exists.
+     */
+    private function capturesOuterLocal(Node $node): bool
+    {
+        // Collect names declared INSIDE the nested fn — those shadow
+        // outer locals and don't constitute a capture.
+        $shadow = [];
+        if ($node instanceof \PhpJs\Ast\Expression\FunctionExpression) {
+            $params = $node->params;
+            $body = $node->body;
+            if ($node->name !== null) {
+                // Named function expression's own name shadows
+                // outer bindings inside the body.
+                $shadow[$node->name] = true;
+            }
+        } elseif ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+            $params = $node->params;
+            $body = $node->body;
+        } else {
+            return true; // unknown shape — bail conservatively
+        }
+        foreach ($params as $param) {
+            $this->collectPatternBoundNames($param, $shadow);
+        }
+        if ($body instanceof BlockStatement) {
+            $this->collectInnerDeclaredNames($body->body, $shadow);
+        }
+        return $this->scanForOuterCapture($body, $shadow);
+    }
+
+    /**
+     * @param array<string,bool> $out
+     */
+    private function collectPatternBoundNames(Node $pattern, array &$out): void
+    {
+        if ($pattern instanceof Identifier) {
+            $out[$pattern->name] = true;
+            return;
+        }
+        if ($pattern instanceof AssignmentPattern) {
+            $this->collectPatternBoundNames($pattern->left, $out);
+            return;
+        }
+        if ($pattern instanceof RestElement) {
+            $this->collectPatternBoundNames($pattern->argument, $out);
+            return;
+        }
+        if ($pattern instanceof ArrayPattern) {
+            foreach ($pattern->elements as $elem) {
+                if ($elem instanceof Node) {
+                    $this->collectPatternBoundNames($elem, $out);
+                }
+            }
+            return;
+        }
+        if ($pattern instanceof ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                    $this->collectPatternBoundNames($prop->value, $out);
+                } elseif ($prop instanceof RestElement) {
+                    $this->collectPatternBoundNames($prop->argument, $out);
+                }
+            }
+            return;
+        }
+    }
+
+    /**
+     * @param Node[] $statements
+     * @param array<string,bool> $out
+     */
+    private function collectInnerDeclaredNames(array $statements, array &$out): void
+    {
+        foreach ($statements as $stmt) {
+            $this->collectInnerDeclaredNamesNode($stmt, $out);
+        }
+    }
+
+    /**
+     * @param array<string,bool> $out
+     */
+    private function collectInnerDeclaredNamesNode(Node $node, array &$out): void
+    {
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                $this->collectPatternBoundNames($decl->id, $out);
+            }
+            return;
+        }
+        if ($node instanceof FunctionDeclaration && $node->id !== null) {
+            $out[$node->id->name] = true;
+            return;
+        }
+        if ($node instanceof BlockStatement) {
+            foreach ($node->body as $s) {
+                $this->collectInnerDeclaredNamesNode($s, $out);
+            }
+            return;
+        }
+        if ($node instanceof IfStatement) {
+            $this->collectInnerDeclaredNamesNode($node->consequent, $out);
+            if ($node->alternate !== null) {
+                $this->collectInnerDeclaredNamesNode($node->alternate, $out);
+            }
+            return;
+        }
+        if ($node instanceof ForStatement) {
+            if ($node->init instanceof VariableDeclaration) {
+                foreach ($node->init->declarations as $d) {
+                    $this->collectPatternBoundNames($d->id, $out);
+                }
+            }
+            $this->collectInnerDeclaredNamesNode($node->body, $out);
+            return;
+        }
+        if ($node instanceof WhileStatement || $node instanceof DoWhileStatement) {
+            $this->collectInnerDeclaredNamesNode($node->body, $out);
+            return;
+        }
+    }
+
+    /**
+     * @param array<string,bool> $shadow
+     */
+    private function scanForOuterCapture(?Node $node, array $shadow): bool
+    {
+        if ($node === null) {
+            return false;
+        }
+        if ($node instanceof Identifier) {
+            $name = $node->name;
+            if (
+                isset($this->localSlots[$name])
+                && !isset($shadow[$name])
+            ) {
+                return true;
+            }
+            return false;
+        }
+        // Don't recurse into deeper nested functions — they'll bail
+        // independently when their compile attempt happens.
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            // Even so, the inner-inner closure may reference names
+            // from THIS scope — its compile will catch it. But for
+            // the OUTER's safety, also check directly: if the
+            // inner-inner refs match this scope's locals, that's a
+            // capture too.
+            return $this->capturesOuterLocal($node);
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->scanForOuterCapture($value, $shadow)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->scanForOuterCapture($item, $shadow)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private function compileObjectLiteral(ObjectExpression $node): void
@@ -1150,23 +1367,27 @@ final class Compiler
             && !($node->callee->property instanceof PrivateIdentifier)
             && !($node->callee->object instanceof Identifier && $node->callee->object->name === 'super')
         ) {
-            // Only dot-style for Phase 3; computed method calls would
-            // need a CALL_COMPUTED_METHOD opcode and bail until then.
             if ($node->callee->computed) {
                 throw new CompilerBailout('computed method call');
             }
             if (!($node->callee->property instanceof Identifier)) {
                 throw new CompilerBailout('non-identifier method name');
             }
+            // Spec evaluation order: look up the method (and surface
+            // any TypeError on null/undefined receivers) BEFORE
+            // evaluating any arguments. Stack layout:
+            //   [..., obj, obj]                via DUP
+            //   [..., obj, method]             via LOAD_MEMBER
+            //   [..., obj, method, arg0..argN] after arg compile
+            // CALL_METHOD argc pops method + args, peeks obj as
+            // `this`, leaves result.
             $this->compileExpression($node->callee->object);
+            $this->emit(Op::DUP);
+            $this->emit(Op::LOAD_MEMBER, $this->internName($node->callee->property->name));
             foreach ($node->arguments as $arg) {
                 $this->compileExpression($arg);
             }
-            $this->emit(
-                Op::CALL_METHOD,
-                count($node->arguments),
-                $this->internName($node->callee->property->name),
-            );
+            $this->emit(Op::CALL_METHOD, count($node->arguments));
             return;
         }
 
