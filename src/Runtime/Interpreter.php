@@ -753,6 +753,15 @@ class Interpreter
         $result = JsUndefined::instance();
         $anyNonEmpty = false;
         foreach ($statements as $stmt) {
+            // Inline the ExpressionStatement path (the dominant statement
+            // type in real bodies). Skips the per-statement Completion
+            // allocation that execExpressionStatement otherwise emits and
+            // the executeStatement match-true dispatch.
+            if ($stmt instanceof ExpressionStatement) {
+                $result = $this->evaluate($stmt->expression, $env);
+                $anyNonEmpty = true;
+                continue;
+            }
             $completion = $this->executeStatement($stmt, $env);
             if ($completion->isAbrupt()) {
                 if ($completion->empty && !$result instanceof JsUndefined) {
