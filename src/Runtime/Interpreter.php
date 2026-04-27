@@ -9268,9 +9268,25 @@ class Interpreter
             }
         }
 
-        $value = $node->argument !== null
-            ? $this->evaluate($node->argument, $env)
-            : JsUndefined::instance();
+        if ($node->argument === null) {
+            // ReturnStatement : `return ;` — no expression, no Await even in
+            // async generators (spec 13.10.1 distinguishes the two forms).
+            return Completion::return(JsUndefined::instance());
+        }
+        $value = $this->evaluate($node->argument, $env);
+        // Per spec 13.10.1 step 3: in an async generator, `return Expression`
+        // sets exprValue to Await(exprValue). We mark the explicit-return
+        // value by wrapping it in a fulfilled JsPromise so JsAsyncGenerator's
+        // terminated-path routes through asyncGeneratorAwaitReturn, which
+        // adds the spec-mandated microtask tick.
+        if (
+            $env->getEnclosingFunctionKind() === 'async-generator'
+            && !($value instanceof \PhpJs\Value\JsPromise)
+        ) {
+            $wrap = new \PhpJs\Value\JsPromise();
+            $wrap->resolve($value);
+            $value = $wrap;
+        }
         return Completion::return($value);
     }
 

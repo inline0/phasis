@@ -156,7 +156,7 @@ class JsAsyncGenerator extends JsObject
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
             }
-            return JsPromise::resolved($this->makeResult($e->value, true));
+            return $this->asyncGeneratorAwaitReturn($e->value);
         } catch (GeneratorThrowSignal $e) {
             $this->executing = false;
             $this->done = true;
@@ -188,9 +188,8 @@ class JsAsyncGenerator extends JsObject
                 $this->queuePendingDrain = true;
             }
             $returnValue = $this->fiber->getReturn();
-            return $returnValue instanceof JsValue
-                ? JsPromise::resolved($this->makeResult($returnValue, true))
-                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $rv = $returnValue instanceof JsValue ? $returnValue : JsUndefined::instance();
+            return $this->asyncGeneratorAwaitReturn($rv);
         }
 
         // Fiber is suspended. $suspended is the value passed to Fiber::suspend().
@@ -299,9 +298,8 @@ class JsAsyncGenerator extends JsObject
                 $this->queuePendingDrain = true;
             }
             $returnValue = $this->fiber->getReturn();
-            return $returnValue instanceof JsValue
-                ? JsPromise::resolved($this->makeResult($returnValue, true))
-                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $rv = $returnValue instanceof JsValue ? $returnValue : JsUndefined::instance();
+            return $this->asyncGeneratorAwaitReturn($rv);
         }
 
         if ($this->requestQueue !== []) {
@@ -354,11 +352,45 @@ class JsAsyncGenerator extends JsObject
             if ($value->getState() === JsPromise::STATE_REJECTED) {
                 return JsPromise::rejected($value->getResolvedValue());
             }
-            // Fulfilled: use its inner value.
-            return JsPromise::resolved($this->makeResult($value->getResolvedValue(), true));
+            // Fulfilled: per spec AsyncGeneratorAwaitReturn, the resulting
+            // promise is settled via PromiseThen which adds one microtask
+            // tick before resolving to {value, done:true}. Defer through
+            // scheduleCallback to match observable tick counts.
+            $outer = new JsPromise();
+            $resolved = $value->getResolvedValue();
+            $iterResult = $this->makeResult($resolved, true);
+            JsPromise::scheduleCallback(static function () use ($outer, $iterResult): void {
+                $outer->resolve($iterResult);
+            });
+            return $outer;
         }
 
-        // Non-thenable or fulfilled thenable: resolve directly.
+        // Per spec AsyncGeneratorAwaitReturn step 6: PromiseResolve(%Promise%, value).
+        // For thenable objects this triggers the .then getter (observable side
+        // effect required by yield-return-then-getter-ticks tests). Subscribe
+        // to the resulting promise and wrap the inner value as {value, done:true}.
+        if ($value instanceof JsObject) {
+            $resolver = new JsPromise();
+            try {
+                $resolver->resolve($value);
+            } catch (\Throwable $e) {
+                if ($e instanceof JsThrowable) {
+                    return JsPromise::rejected($e->jsValue);
+                }
+                return JsPromise::rejected($this->convertError($e));
+            }
+            $outer = new JsPromise();
+            $makeResult = fn (JsValue $v) => $this->makeResult($v, true);
+            $resolver->addFulfillHandler(function (JsValue $resolved) use ($outer, $makeResult): void {
+                $outer->resolve($makeResult($resolved));
+            });
+            $resolver->addRejectHandler(function (JsValue $reason) use ($outer): void {
+                $outer->reject($reason);
+            });
+            return $outer;
+        }
+
+        // Non-object: resolve directly with {value, done:true}.
         return JsPromise::resolved($this->makeResult($value, true));
     }
 
@@ -433,9 +465,8 @@ class JsAsyncGenerator extends JsObject
                 $this->queuePendingDrain = true;
             }
             $returnValue = $this->fiber->getReturn();
-            return $returnValue instanceof JsValue
-                ? JsPromise::resolved($this->makeResult($returnValue, true))
-                : JsPromise::resolved($this->makeResult(JsUndefined::instance(), true));
+            $rv = $returnValue instanceof JsValue ? $returnValue : JsUndefined::instance();
+            return $this->asyncGeneratorAwaitReturn($rv);
         }
 
         if ($this->requestQueue !== []) {
@@ -556,10 +587,16 @@ class JsAsyncGenerator extends JsObject
             if ($this->fiber->isTerminated()) {
                 $this->done = true;
                 $returnValue = $this->fiber->getReturn();
-                $iterResult = $returnValue instanceof JsValue
-                    ? $this->makeResult($returnValue, true)
-                    : $this->makeResult(JsUndefined::instance(), true);
-                $queued->resolve($iterResult);
+                $rv = $returnValue instanceof JsValue ? $returnValue : JsUndefined::instance();
+                $awaitResult = $this->asyncGeneratorAwaitReturn($rv);
+                if ($awaitResult->getState() === JsPromise::STATE_FULFILLED) {
+                    $queued->resolve($awaitResult->getResolvedValue());
+                } elseif ($awaitResult->getState() === JsPromise::STATE_REJECTED) {
+                    $queued->reject($awaitResult->getResolvedValue());
+                } else {
+                    $awaitResult->addFulfillHandler(fn ($v) => $queued->resolve($v));
+                    $awaitResult->addRejectHandler(fn ($v) => $queued->reject($v));
+                }
                 continue;
             }
 
