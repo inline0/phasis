@@ -4774,6 +4774,16 @@ class Interpreter
     private function promiseResolve(JsValue $value): \PhpJs\Value\JsPromise
     {
         if ($value instanceof \PhpJs\Value\JsPromise) {
+            // Per spec PromiseResolve(C, x): if IsPromise(x), do
+            // xConstructor = ? Get(x, "constructor"); if same as C, return x.
+            // The .constructor getter is observable: tests intercept it via
+            // Object.defineProperty(Promise.prototype, 'constructor', ...).
+            try {
+                $value->get('constructor');
+            } catch (\Throwable) {
+                // Getter throws: fall through and return the promise. The
+                // observable side effect already fired.
+            }
             return $value;
         }
         $p = new \PhpJs\Value\JsPromise();
