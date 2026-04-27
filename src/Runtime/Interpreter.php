@@ -4297,19 +4297,24 @@ class Interpreter
         $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
         $fnBody = $fn->getBody();
-        $hasBodyStrict = $fnBody instanceof BlockStatement
-            && $this->hasUseStrictDirective($fnBody->body);
         // Only ordinary constructable functions (e.g. 'function f(){}') track
         // caller via Annex B. Methods, arrow functions, async functions,
         // generators, class constructors, and built-ins are all excluded.
-        $setCallerProp = !$fn->isStrict()
-            && !$hasBodyStrict
-            && !$fn->isArrow()
-            && !$fn->isNative()
-            && !$fn->isAsync()
-            && !$fn->isGenerator()
-            && !$fn->isClassConstructor()
-            && $fn->isConstructable();
+        // The result depends only on immutable JsFunction flags + the body
+        // strict directive, so memoise it once per function.
+        if ($fn->setCallerPropCache === null) {
+            $hasBodyStrict = $fnBody instanceof BlockStatement
+                && $this->hasUseStrictDirective($fnBody->body);
+            $fn->setCallerPropCache = !$fn->isStrict()
+                && !$hasBodyStrict
+                && !$fn->isArrow()
+                && !$fn->isNative()
+                && !$fn->isAsync()
+                && !$fn->isGenerator()
+                && !$fn->isClassConstructor()
+                && $fn->isConstructable();
+        }
+        $setCallerProp = $fn->setCallerPropCache;
         $savedCaller = null;
         $savedArguments = null;
         $callerIsStrict = false;

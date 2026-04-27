@@ -480,6 +480,15 @@ class JsFunction extends JsObject
      */
     public ?bool $bodyUsesArgumentsCache = null;
 
+    /**
+     * Memoised: whether this function tracks the Annex B legacy
+     * `caller`/`arguments` own slots during a call. Constant for the
+     * function (depends only on strict/arrow/native/async/generator/
+     * class-constructor/constructable flags, all immutable on a
+     * JsFunction). Lazy-set on first call.
+     */
+    public ?bool $setCallerPropCache = null;
+
     public function isArrow(): bool
     {
         return $this->isArrow;
