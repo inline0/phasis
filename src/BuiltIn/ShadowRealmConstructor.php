@@ -174,14 +174,51 @@ class ShadowRealmConstructor
                 // TypeError without invoking the toString hook.
                 $specifier = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
                 $exportName = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
-                \PhpJs\Spec\TypeConversion::toString($specifier);
+                $specifierStr = \PhpJs\Spec\TypeConversion::toString($specifier);
                 if (!$exportName instanceof JsString) {
                     throw new TypeError('ShadowRealm.prototype.importValue exportName must be a string');
                 }
+                $exportNameStr = $exportName->value;
 
-                // importValue requires ES modules which we don't support.
-                // Throw TypeError per spec behavior when import fails.
-                throw new TypeError('ShadowRealm importValue is not supported (ES modules required)');
+                // Resolve the specifier relative to the caller's current
+                // module path so `./fixture.js` works inside test262.
+                $callerInterpreter = Engine::getCurrentInterpreter();
+                $callerModulePath = $callerInterpreter !== null
+                    ? $callerInterpreter->getCurrentModulePath()
+                    : null;
+
+                $promise = new \PhpJs\Value\JsPromise();
+                try {
+                    $innerInterpreter = $engine->getInterpreter();
+                    Engine::setCurrentInterpreter($innerInterpreter);
+                    try {
+                        // Use the inner realm's ModuleLoader so the imported
+                        // module's bindings live in the ShadowRealm's globals.
+                        $loader = $innerInterpreter->getModuleLoader();
+                        $namespace = $loader->loadModule($specifierStr, $callerModulePath);
+                    } finally {
+                        Engine::setCurrentInterpreter($callerInterpreter);
+                    }
+                    $value = $namespace->get($exportNameStr);
+                    if ($value instanceof \PhpJs\Value\JsUndefined && !$namespace->has($exportNameStr)) {
+                        $promise->reject(self::buildTypeError(
+                            "Export '" . $exportNameStr . "' not found in module"
+                        ));
+                    } else {
+                        $promise->resolve(self::getWrappedValue($value));
+                    }
+                } catch (\Throwable $e) {
+                    // Per spec RealmImportValue, any module-load failure
+                    // (parse error, link error, runtime throw) rejects the
+                    // returned Promise with TypeError. Wrap the underlying
+                    // error so the caller realm sees a TypeError instance.
+                    $promise->reject(self::buildTypeError(
+                        $e instanceof \Throwable
+                            ? 'ShadowRealm importValue failed: ' . $e->getMessage()
+                            : 'ShadowRealm importValue failed'
+                    ));
+                }
+                return $promise;
             },
             2,
         );
@@ -319,6 +356,35 @@ class ShadowRealmConstructor
             || $value instanceof JsString
             || $value instanceof JsSymbol
             || $value instanceof \PhpJs\Value\JsBigInt;
+    }
+
+    /**
+     * Construct a TypeError JsObject in the caller's realm. Used by
+     * ShadowRealm.prototype.importValue to wrap any module-load failure
+     * (parse error, link error, runtime throw) as the caller-realm
+     * TypeError that the spec mandates for RealmImportValue.
+     */
+    private static function buildTypeError(string $message): JsObject
+    {
+        $err = new JsObject();
+        $err->set('message', new JsString($message));
+        $err->set('name', new JsString('TypeError'));
+        $err->set('stack', new JsString('TypeError: ' . $message));
+        // Try to set Object.getPrototypeOf(err) === TypeError.prototype.
+        $interp = Engine::getCurrentInterpreter();
+        if ($interp !== null) {
+            try {
+                $teCtor = $interp->getGlobalEnv()->get('TypeError');
+                if ($teCtor instanceof JsFunction) {
+                    $proto = $teCtor->get('prototype');
+                    if ($proto instanceof JsObject) {
+                        $err->setPrototype($proto);
+                    }
+                }
+            } catch (\Throwable) {
+            }
+        }
+        return $err;
     }
 
     /**
