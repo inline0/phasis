@@ -718,7 +718,17 @@ class TypedArrayConstructor
                 if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                     $newTarget = $this_->get('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
+                        // Per spec OrdinaryCreateFromConstructor, the
+                        // newTarget.prototype lookup is observable and may
+                        // detach the buffer through a getter. Re-validate
+                        // before creating the DataView (built-ins/DataView/
+                        // custom-proto-access-detaches-buffer.js).
                         $ntProto = $newTarget->get('prototype');
+                        if ($buffer->isDetached()) {
+                            throw new TypeError(
+                                'Cannot construct DataView on a detached ArrayBuffer'
+                            );
+                        }
                         if ($ntProto instanceof JsObject) {
                             $effectiveProto = $ntProto;
                         }
