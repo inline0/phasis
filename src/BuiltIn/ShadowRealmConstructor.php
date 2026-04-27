@@ -212,11 +212,33 @@ class ShadowRealmConstructor
         // (Symbol.prototype, error wrapping) resolve against SR's
         // globals, then capture SR's interpreter for the result wrap
         // BEFORE restoring the caller realm.
+        // Per spec PerformShadowRealmEval, each evaluate call gets a
+        // fresh DeclarativeEnvironment for its var/lex declarations
+        // (children of the realm's GlobalEnv). Top-level let/const in
+        // one evaluate must NOT collide with same-named declarations in
+        // a subsequent evaluate. Routing through the interpreter's
+        // strict-eval path satisfies that.
         $innerInterpreter = $engine->getInterpreter();
         Engine::setCurrentInterpreter($innerInterpreter);
+        $prevEvalContext = $innerInterpreter->isEvalContext();
+        $prevStrict = $innerInterpreter->isStrictMode();
+        // Per spec PerformShadowRealmEval, ShadowRealm.evaluate behaves
+        // like indirect eval at global scope: var/function declarations
+        // go to the realm's GlobalEnv (persisting across evaluate calls)
+        // while lexical declarations (let/const/class) go to a fresh
+        // DeclarativeEnvironment per call. Setting isEvalContext routes
+        // through the indirect-eval path; the source's own "use strict"
+        // directive still controls strictness.
+        $innerInterpreter->setEvalContext(true);
+        // Reset strictMode so a previous strict evaluate doesn't poison
+        // the current one. The directive prologue check at execute()
+        // entry will set strict if the new source asks for it.
+        $innerInterpreter->setStrictMode(false);
         try {
             $rawResult = $innerInterpreter->execute($program);
         } finally {
+            $innerInterpreter->setEvalContext($prevEvalContext);
+            $innerInterpreter->setStrictMode($prevStrict);
             Engine::setCurrentInterpreter($innerInterpreter);
         }
         try {

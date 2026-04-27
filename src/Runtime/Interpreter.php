@@ -133,6 +133,14 @@ class Interpreter
     /** Whether this interpreter is executing indirect eval code. */
     private bool $isEvalContext = false;
 
+    /**
+     * When true, indirect eval creates a fresh DeclarativeEnvironment for
+     * its var bindings even in non-strict mode. Used by ShadowRealm.evaluate
+     * which (per PerformShadowRealmEval) always isolates declarations,
+     * regardless of the source's directive prologue.
+     */
+    private bool $isolateEvalScope = false;
+
     /** @var list<\PhpJs\Value\JsFunction|null> Stack of currently executing functions for Annex B caller. */
     private array $callerStack = [];
 
@@ -206,9 +214,32 @@ class Interpreter
         $this->isEvalContext = $isEval;
     }
 
+    public function isEvalContext(): bool
+    {
+        return $this->isEvalContext;
+    }
+
     public function isStrictMode(): bool
     {
         return $this->strictMode;
+    }
+
+    public function setStrictMode(bool $strict): void
+    {
+        $this->strictMode = $strict;
+    }
+
+    /** Toggle ShadowRealm-style isolation: each indirect eval gets its
+     * own DeclarativeEnvironment for var bindings, regardless of strict.
+     */
+    public function setIsolateEvalScope(bool $value): void
+    {
+        $this->isolateEvalScope = $value;
+    }
+
+    public function isIsolateEvalScope(): bool
+    {
+        return $this->isolateEvalScope;
     }
 
     /** Check whether a list of statements begins with a "use strict" directive. */
@@ -259,11 +290,12 @@ class Interpreter
             // new declarative VariableEnvironment so var/function declarations
             // do not leak into the global scope. Otherwise var declarations
             // go into the caller's VariableEnvironment (globalEnv here).
-            if ($this->strictMode) {
+            // ShadowRealm.evaluate (isolateEvalScope) takes the strict path
+            // for env isolation regardless of strictness, since per
+            // PerformShadowRealmEval each evaluate gets a fresh varEnv/lexEnv.
+            if ($this->strictMode || $this->isolateEvalScope) {
                 $varEnv = $this->globalEnv->createChild();
                 $lexEnv = $varEnv->createChild();
-                // Per spec PerformEval step 10: strict indirect eval gets
-                // its own DeclarativeEnvironment for var/function declarations.
                 // Pre-declare all var names in varEnv as own bindings so
                 // hoistDeclarations does not skip them when an outer scope
                 // (e.g. global) already has a same-named binding.
