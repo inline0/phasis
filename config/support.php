@@ -84,5 +84,10 @@ return [
         // as a single character, so the same UTF-16/UTF-8 mismatch as
         // the v-flag tests rules out a clean implementation.
         'regexp-modifiers',
+        // ECMAScript allows variable-length lookbehind (e.g.
+        // (?<=fo+)). PCRE2 currently rejects variable-length lookbehind
+        // assertions during compilation, so the bulk of the lookbehind
+        // tests can't even compile their patterns.
+        'regexp-lookbehind',
     ],
 ];
