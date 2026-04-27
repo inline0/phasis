@@ -5858,6 +5858,19 @@ class Interpreter
             return JsOptionalUndefined::instance();
         }
 
+        // Fast path: `obj.ident` on a plain object (not a primitive
+        // wrapper, not a Function/Proxy needing special dispatch).
+        // Skips the JsString/JsSymbol/JsBigInt/auto-box ladder and
+        // the toPropertyKey conversion. Hot obj-prop case lives here.
+        if (
+            !$node->computed
+            && $node->property instanceof Identifier
+            && $obj instanceof JsObject
+            && $obj->getOwnPropertyDescriptor('[[PrimitiveValue]]') === null
+        ) {
+            return $obj->get($node->property->name);
+        }
+
         // Private identifier access: obj.#name
         if ($node->property instanceof PrivateIdentifier) {
             if (!($obj instanceof JsObject)) {
