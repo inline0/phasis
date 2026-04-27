@@ -289,29 +289,33 @@ class JsArray extends JsObject
             // Determine deferred writable change per spec step 14.
             $newWritable = $desc->writable !== false;
             $newLen = $uint32;
-            // Delete elements above new length in descending order (step 15).
-            // Collect only actually-existing array-index properties >= newLen
-            // to avoid iterating billions of empty slots on sparse arrays.
-            $indicesToDelete = [];
-            foreach ($this->properties->keys() as $key) {
-                if (self::isArrayIndex($key)) {
-                    $idx = (int) $key;
-                    if ($idx >= $newLen) {
-                        $indicesToDelete[] = $idx;
+            // Only walk own array-index properties when the new length shrinks
+            // the array. Growing or no-op length writes (the common case for
+            // push/Array.from/etc.) skip the O(n) properties scan.
+            $deleteSucceeded = true;
+            if ($newLen < $this->length) {
+                // Collect only actually-existing array-index properties >= newLen
+                // to avoid iterating billions of empty slots on sparse arrays.
+                $indicesToDelete = [];
+                foreach ($this->properties->keys() as $key) {
+                    if (self::isArrayIndex($key)) {
+                        $idx = (int) $key;
+                        if ($idx >= $newLen) {
+                            $indicesToDelete[] = $idx;
+                        }
                     }
                 }
-            }
-            rsort($indicesToDelete, SORT_NUMERIC);
-            $deleteSucceeded = true;
-            foreach ($indicesToDelete as $i) {
-                $key = (string) $i;
-                $elemDesc = parent::getOwnPropertyDescriptor($key);
-                if ($elemDesc !== null && $elemDesc->configurable === false) {
-                    $newLen = $i + 1;
-                    $deleteSucceeded = false;
-                    break;
+                rsort($indicesToDelete, SORT_NUMERIC);
+                foreach ($indicesToDelete as $i) {
+                    $key = (string) $i;
+                    $elemDesc = parent::getOwnPropertyDescriptor($key);
+                    if ($elemDesc !== null && $elemDesc->configurable === false) {
+                        $newLen = $i + 1;
+                        $deleteSucceeded = false;
+                        break;
+                    }
+                    $this->delete($key);
                 }
-                $this->delete($key);
             }
             $this->length = $newLen;
             if (!$deleteSucceeded) {
