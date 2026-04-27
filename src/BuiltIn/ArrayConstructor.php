@@ -2234,79 +2234,150 @@ class ArrayConstructor
                         if (!$iterator instanceof JsObject) {
                             throw new TypeError('Result of the Symbol.iterator method is not an object');
                         }
-                        while (true) {
-                            $nextMethod = $iterator->get('next');
-                            if (!$nextMethod instanceof JsFunction) {
-                                break;
+                        // Iteration runs as a microtask-driven loop so external
+                        // code (e.g., items.push) between the synchronous call
+                        // to fromAsync and Await is observed by subsequent reads
+                        // of the iterator. The first IteratorStep IS synchronous
+                        // (per spec the Await happens AFTER calling next), but
+                        // each subsequent step is scheduled via the microtask
+                        // queue to give the spec-mandated tick gap.
+                        $idxRef = $index;
+                        $step = null;
+                        $finish = function () use ($promise, $a, &$idxRef): void {
+                            $a->set('length', new JsNumber((float) $idxRef), true);
+                            if ($a instanceof JsArray) {
+                                $a->setLength($idxRef);
                             }
-                            $result = $nextMethod->call($iterator, []);
-                            $result = self::awaitValue($result);
-                            if (!$result instanceof JsObject) {
-                                throw new TypeError('Iterator result is not an object');
-                            }
-                            $done = TypeConversion::toBoolean($result->get('done'));
-                            if ($done) {
-                                break;
-                            }
-                            $val = $result->get('value');
-                            // Per spec: for sync iterables (or after a sync
-                            // iterator path), await each value as a thenable.
-                            // For native async iterables, the value is left
-                            // as-is (the iterator already awaited the next()
-                            // promise). If the await rejects, close the
-                            // iterator (run its finally / return method)
-                            // before re-throwing so generators get a chance
-                            // to clean up.
-                            if (!$isAsyncIter) {
+                            $promise->resolve($a);
+                        };
+                        $closeIterator = function () use ($iterator): void {
+                            $returnMethod = $iterator->get('return');
+                            if ($returnMethod instanceof JsFunction) {
                                 try {
-                                    $val = self::awaitValue($val);
-                                } catch (\Throwable $awaitErr) {
-                                    $returnMethod = $iterator->get('return');
-                                    if ($returnMethod instanceof JsFunction) {
-                                        try {
-                                            $returnMethod->call($iterator, []);
-                                        } catch (\Throwable) {
-                                        }
-                                    }
-                                    throw $awaitErr;
+                                    $returnMethod->call($iterator, []);
+                                } catch (\Throwable) {
                                 }
                             }
-                            if ($mapFn !== null) {
-                                try {
-                                    $val = $mapFn->call(
-                                        $thisArg,
-                                        [$val, new JsNumber((float) $index)],
-                                    );
-                                    $val = self::awaitValue($val);
-                                } catch (\Throwable $mapErr) {
-                                    $returnMethod = $iterator->get('return');
-                                    if ($returnMethod instanceof JsFunction) {
-                                        try {
-                                            $returnMethod->call($iterator, []);
-                                        } catch (\Throwable) {
-                                        }
-                                    }
-                                    throw $mapErr;
-                                }
+                        };
+                        $rejectErr = function (\Throwable $e) use ($promise, $env): void {
+                            if ($e instanceof \PhpJs\Exceptions\JsThrowable) {
+                                $promise->reject($e->jsValue);
+                            } else {
+                                $promise->reject(self::buildErrorObject($env, $e));
                             }
-                            $success = $a->defineOwnProperty(
-                                (string) $index,
-                                PropertyDescriptor::data($val, true, true, true),
-                            );
-                            if (!$success) {
-                                $returnMethod = $iterator->get('return');
-                                if ($returnMethod instanceof JsFunction) {
+                        };
+                        // After-the-result body: process value, define array
+                        // entry, schedule next step.
+                        $afterResult = null;
+                        $step = null;
+                        $afterResult = function (JsValue $resultVal) use (
+                            &$step,
+                            $iterator,
+                            $a,
+                            $mapFn,
+                            $thisArg,
+                            $isAsyncIter,
+                            &$idxRef,
+                            $finish,
+                            $closeIterator,
+                            $rejectErr
+                        ): void {
+                            try {
+                                if (!$resultVal instanceof JsObject) {
+                                    throw new TypeError('Iterator result is not an object');
+                                }
+                                $done = TypeConversion::toBoolean($resultVal->get('done'));
+                                if ($done) {
+                                    $finish();
+                                    return;
+                                }
+                                $val = $resultVal->get('value');
+                                if (!$isAsyncIter) {
                                     try {
-                                        $returnMethod->call($iterator, []);
-                                    } catch (\Throwable) {
+                                        $val = self::awaitValue($val);
+                                    } catch (\Throwable $awaitErr) {
+                                        $closeIterator();
+                                        throw $awaitErr;
                                     }
                                 }
-                                throw new TypeError(
-                                    'Cannot define property ' . $index . ' on result object'
+                                if ($mapFn !== null) {
+                                    try {
+                                        $val = $mapFn->call(
+                                            $thisArg,
+                                            [$val, new JsNumber((float) $idxRef)],
+                                        );
+                                        $val = self::awaitValue($val);
+                                    } catch (\Throwable $mapErr) {
+                                        $closeIterator();
+                                        throw $mapErr;
+                                    }
+                                }
+                                $success = $a->defineOwnProperty(
+                                    (string) $idxRef,
+                                    PropertyDescriptor::data($val, true, true, true),
                                 );
+                                if (!$success) {
+                                    $closeIterator();
+                                    throw new TypeError(
+                                        'Cannot define property ' . $idxRef . ' on result object'
+                                    );
+                                }
+                                $idxRef++;
+                                // Schedule next iteration as a microtask so
+                                // synchronous code after fromAsync's return
+                                // can mutate the source between iterations.
+                                \PhpJs\Value\JsPromise::scheduleCallback($step);
+                            } catch (\Throwable $e) {
+                                $rejectErr($e);
                             }
-                            $index++;
-                        }
+                        };
+                        $step = function () use (
+                            &$step,
+                            $iterator,
+                            $afterResult,
+                            $rejectErr
+                        ): void {
+                            try {
+                                $nextMethod = $iterator->get('next');
+                                if (!$nextMethod instanceof JsFunction) {
+                                    throw new TypeError('Iterator next is not a function');
+                                }
+                                $stepResult = $nextMethod->call($iterator, []);
+                                // If the iterator returned a Promise, subscribe
+                                // via .then so we don't synchronously block on
+                                // awaitValue (which would no-op when already
+                                // inside drainMicrotasks). For non-promise
+                                // results, deliver directly.
+                                if ($stepResult instanceof \PhpJs\Value\JsPromise) {
+                                    $resolverFn = JsFunction::fromCallable(
+                                        '',
+                                        function (JsValue $t, array $args) use ($afterResult): JsValue {
+                                            $afterResult($args[0] ?? JsUndefined::instance());
+                                            return JsUndefined::instance();
+                                        },
+                                        1,
+                                    );
+                                    $rejectFn = JsFunction::fromCallable(
+                                        '',
+                                        function (JsValue $t, array $args) use ($rejectErr): JsValue {
+                                            $reason = $args[0] ?? JsUndefined::instance();
+                                            $rejectErr(new \PhpJs\Exceptions\JsThrowable($reason));
+                                            return JsUndefined::instance();
+                                        },
+                                        1,
+                                    );
+                                    $stepResult->then([$resolverFn, $rejectFn]);
+                                } else {
+                                    $afterResult($stepResult);
+                                }
+                            } catch (\Throwable $e) {
+                                $rejectErr($e);
+                            }
+                        };
+                        // Run the first iteration synchronously so the first
+                        // element is observably read before fromAsync returns.
+                        $step();
+                        return $promise;
                     }
                     // Per spec the final length set is `Set(A, "length", k, true)`
                     // (throw on failure), so use the strict-mode variant.
