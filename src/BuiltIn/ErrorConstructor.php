@@ -181,6 +181,31 @@ class ErrorConstructor
      * 2. Iterate errors (IterableToList).
      * 3. Install cause from options.
      */
+    /**
+     * Build a stack-trace string by walking the current call frames.
+     * Each frame gets a `\n    at <name>` line in V8 / Chrome style so
+     * existing tests that grep the stack for a function name work.
+     * Native (anonymous) frames render as `<anonymous>`.
+     */
+    private static function buildStackString(string $name, ?string $message): string
+    {
+        $header = "{$name}: " . ($message ?? '');
+        $interp = \PhpJs\Engine::getCurrentInterpreter();
+        if ($interp === null) {
+            return $header;
+        }
+        $frames = $interp->getCallStack()->getFrames();
+        if ($frames === []) {
+            return $header;
+        }
+        $lines = [$header];
+        foreach (array_reverse($frames) as $frame) {
+            $frameName = $frame->name !== '' ? $frame->name : '<anonymous>';
+            $lines[] = "    at {$frameName}";
+        }
+        return implode("\n", $lines);
+    }
+
     private static function makeAggregateErrorConstructor(string $name, JsObject $proto): \Closure
     {
         return function (JsValue $this_, array $args) use ($name, $proto): JsValue {
@@ -238,7 +263,7 @@ class ErrorConstructor
             // Stack trace.
             $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
             $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString("{$name}: {$message}"),
+                new JsString(self::buildStackString($name, $message)),
                 true,
                 false,
                 true,
@@ -359,7 +384,7 @@ class ErrorConstructor
                     ));
                 }
                 $this_->defineOwnProperty('stack', PropertyDescriptor::data(
-                    new JsString("{$name}: " . ($message ?? '')),
+                    new JsString(self::buildStackString($name, $message)),
                     true,
                     false,
                     true,
@@ -396,7 +421,7 @@ class ErrorConstructor
                 ));
             }
             $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString("{$name}: " . ($message ?? '')),
+                new JsString(self::buildStackString($name, $message)),
                 true,
                 false,
                 true,
@@ -470,7 +495,7 @@ class ErrorConstructor
 
             $message = $obj->has('message') ? TypeConversion::toString($obj->get('message')) : '';
             $obj->defineOwnProperty('stack', PropertyDescriptor::data(
-                new JsString("SuppressedError: {$message}"),
+                new JsString(self::buildStackString('SuppressedError', $message)),
                 true,
                 false,
                 true,
