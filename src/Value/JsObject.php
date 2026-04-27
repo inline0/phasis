@@ -1107,6 +1107,34 @@ class JsObject implements JsValue
     }
 
     /**
+     * Update an existing writable data property's value in-place,
+     * mutating the stored PropertyDescriptor directly. Returns true
+     * on success, false when the property doesn't exist or isn't a
+     * plain writable data descriptor (caller should fall back to
+     * defineOwnProperty / set as appropriate).
+     *
+     * Used by the hot Annex B `caller`/`arguments` slot updates on
+     * JsFunction: the descriptor is installed once at function
+     * creation and only its value flips per call. Skipping the
+     * defineOwnProperty merge avoids two PropertyDescriptor
+     * allocations (input wrapper + merged result) per write.
+     */
+    public function tryUpdateDataValue(string $name, JsValue $value): bool
+    {
+        $desc = $this->properties->get($name);
+        if (
+            $desc !== null
+            && $desc->get === null
+            && $desc->set === null
+            && $desc->writable !== false
+        ) {
+            $desc->value = $value;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Fast path for defining a brand-new enumerable, writable, configurable
      * data property. Used by object literal evaluation where the spec
      * (CreateDataPropertyOrThrow) always produces this exact shape and the

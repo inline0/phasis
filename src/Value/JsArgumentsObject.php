@@ -75,6 +75,19 @@ class JsArgumentsObject extends JsObject
     }
 
     /**
+     * Override JsObject::get to ALWAYS go through getWithReceiver — the
+     * parent's hot path returns the stored descriptor value directly,
+     * bypassing the parameter-map alias logic. Mapped arguments must
+     * read through the env binding (which may have been updated by a
+     * parameter assignment after the args object was created), so the
+     * fast path is unsafe for this exotic.
+     */
+    public function get(string $name): JsValue
+    {
+        return $this->getWithReceiver($name, $this);
+    }
+
+    /**
      * ES spec 10.4.4.5: [[Set]](P, V, Receiver).
      *
      * If P is a mapped index and this is the receiver, update the

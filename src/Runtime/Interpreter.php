@@ -854,10 +854,13 @@ class Interpreter
 
     public function evaluate(Node $node, Environment $env): JsValue
     {
-        // Fast path for the two hottest node types — bypass match-true
-        // and the post-dispatch JsOptionalUndefined unwrap entirely.
-        // Neither identifier reads nor literals can return the
-        // optional-chain sentinel.
+        // Fast path for the two hottest node types. Identifier reads
+        // can legitimately surface a JsOptionalUndefined that an
+        // earlier nested optional chain stored into the binding
+        // (`const r = a?.b?.c`); unwrap it on the way out so non-
+        // chain consumers see plain JsUndefined, matching the post-
+        // dispatch unwrap that the slow path applies for non-chain
+        // node types. Literals never produce the sentinel.
         if ($node instanceof Identifier) {
             $name = $node->name;
             if ($name === 'undefined') {
@@ -876,7 +879,9 @@ class Interpreter
             ) {
                 $cached = $env->getAtDepth($name, $node->resolvedDepth);
                 if ($cached !== null) {
-                    return $cached;
+                    return $cached instanceof JsOptionalUndefined
+                        ? JsUndefined::instance()
+                        : $cached;
                 }
                 // Fall through: the cached depth no longer points to
                 // this binding (e.g. a let-shadowed inner block).
@@ -890,10 +895,15 @@ class Interpreter
                 $found = $env->findBindingDepth($name);
                 if ($found !== null) {
                     $node->resolvedDepth = $found[1];
-                    return $found[0];
+                    return $found[0] instanceof JsOptionalUndefined
+                        ? JsUndefined::instance()
+                        : $found[0];
                 }
             }
-            return $env->get($name, $this->strictMode);
+            $value = $env->get($name, $this->strictMode);
+            return $value instanceof JsOptionalUndefined
+                ? JsUndefined::instance()
+                : $value;
         }
         if ($node instanceof Literal) {
             return $node->cached ?? $this->evalLiteral($node);
@@ -4550,6 +4560,8 @@ class Interpreter
         $setCallerProp = $fn->setCallerPropCache;
         $savedCaller = null;
         $savedArguments = null;
+        $savedCallerValue = null;
+        $savedArgumentsValue = null;
         $callerIsStrict = false;
         // Track whether the engine should auto-update the slot during the
         // call. If the user redefined caller/arguments to an accessor or a
@@ -4568,6 +4580,18 @@ class Interpreter
             // user-assigned values survive across a call.
             $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
             $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
+            // Snapshot the values before the entry mutation: tryUpdateDataValue
+            // mutates the live descriptor in place, so $savedCaller->value
+            // would otherwise reflect the new (active-call) value by the time
+            // we restore. We only consult these JsValues on exit, not the
+            // descriptor shape, since autoUpdate already guaranteed the
+            // shape was engine-default both at entry and across the call.
+            if ($autoUpdateCaller) {
+                $savedCallerValue = $savedCaller?->value ?? JsNull::instance();
+            }
+            if ($autoUpdateArguments) {
+                $savedArgumentsValue = $savedArguments?->value ?? JsNull::instance();
+            }
 
             $callerIsStrictMode = $this->strictMode
                 || ($callerFn instanceof JsFunction && $callerFn->isStrict());
@@ -4581,7 +4605,12 @@ class Interpreter
             // auto-updates the caller / arguments slots ONLY if they
             // currently hold the default engine shape; user-defined
             // accessors or replaced descriptors are left alone.
-            if ($autoUpdateCaller) {
+            // tryUpdateDataValue mutates the existing PropertyDescriptor's
+            // value field in place, skipping the two-allocation merge
+            // path inside defineOwnProperty. autoUpdate already verified
+            // the existing slot has the engine-default shape (writable,
+            // configurable data descriptor).
+            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
                 $fn->defineOwnProperty("caller", PropertyDescriptor::data(
                     $callerVal,
                     true,
@@ -4589,7 +4618,10 @@ class Interpreter
                     true,
                 ));
             }
-            if ($autoUpdateArguments) {
+            if (
+                $autoUpdateArguments
+                && !$fn->tryUpdateDataValue("arguments", JsNull::instance())
+            ) {
                 $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
                     JsNull::instance(),
                     true,
@@ -4879,21 +4911,27 @@ class Interpreter
             if ($setCallerProp) {
                 // Only restore engine-managed slots; user-defined accessors
                 // or replaced descriptors were never touched on entry.
+                // Restore via in-place value mutation when possible to
+                // skip the merge-and-allocate path inside defineOwnProperty.
                 if ($autoUpdateCaller) {
-                    $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
-                        JsNull::instance(),
-                        true,
-                        false,
-                        true,
-                    ));
+                    if (!$fn->tryUpdateDataValue("caller", $savedCallerValue)) {
+                        $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
+                            JsNull::instance(),
+                            true,
+                            false,
+                            true,
+                        ));
+                    }
                 }
                 if ($autoUpdateArguments) {
-                    $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
-                        JsNull::instance(),
-                        true,
-                        false,
-                        true,
-                    ));
+                    if (!$fn->tryUpdateDataValue("arguments", $savedArgumentsValue)) {
+                        $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
+                            JsNull::instance(),
+                            true,
+                            false,
+                            true,
+                        ));
+                    }
                 }
             }
             $this->strictMode = $previousStrictMode;
