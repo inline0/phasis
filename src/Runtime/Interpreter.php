@@ -9110,11 +9110,15 @@ class Interpreter
         $iterSym = \PhpJs\BuiltIn\SymbolConstructor::iterator();
         $iteratorMethod = $iterable->getBySymbol($iterSym);
 
-        if (!$iteratorMethod instanceof JsFunction) {
+        $isCallable = $iteratorMethod instanceof JsFunction
+            || ($iteratorMethod instanceof \PhpJs\Value\JsProxy && $iteratorMethod->isCallable());
+        if (!$isCallable) {
             return null;
         }
 
-        $iterator = $this->callFunction($iteratorMethod, $iterable, []);
+        $iterator = $iteratorMethod instanceof \PhpJs\Value\JsProxy
+            ? $iteratorMethod->apply($iterable, [])
+            : $this->callFunction($iteratorMethod, $iterable, []);
         if (!$iterator instanceof JsObject) {
             throw new TypeError('Result of the Symbol.iterator method is not an object');
         }
@@ -12073,12 +12077,15 @@ class Interpreter
         if ($done) {
             return JsUndefined::instance();
         }
-        if (!$nextMethod instanceof JsFunction) {
+        $proxyCallable = $nextMethod instanceof \PhpJs\Value\JsProxy && $nextMethod->isCallable();
+        if (!$nextMethod instanceof JsFunction && !$proxyCallable) {
             $done = true;
             throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
         }
         try {
-            $result = $this->callFunction($nextMethod, $iterator, []);
+            $result = $proxyCallable
+                ? $nextMethod->apply($iterator, [])
+                : $this->callFunction($nextMethod, $iterator, []);
         } catch (\Throwable $e) {
             // Per spec 7.4.2 IteratorStep: if next() throws, iteratorRecord.[[done]] = true.
             $done = true;

@@ -54,11 +54,16 @@ final class TypeConversion
             $toPrimSym = \PhpJs\BuiltIn\SymbolConstructor::toPrimitive();
             $exoticToPrim = $value->getBySymbol($toPrimSym);
             if (!$exoticToPrim instanceof JsUndefined && !$exoticToPrim instanceof JsNull) {
-                if (!$exoticToPrim instanceof JsFunction) {
+                if (
+                    !$exoticToPrim instanceof JsFunction
+                    && !($exoticToPrim instanceof \PhpJs\Value\JsProxy && $exoticToPrim->isCallable())
+                ) {
                     throw new TypeError('Symbol.toPrimitive is not a function');
                 }
                 $hintStr = new \PhpJs\Value\JsString($hint);
-                $result = $exoticToPrim->call($value, [$hintStr]);
+                $result = $exoticToPrim instanceof \PhpJs\Value\JsProxy
+                    ? $exoticToPrim->apply($value, [$hintStr])
+                    : $exoticToPrim->call($value, [$hintStr]);
                 if ($result instanceof JsObject) {
                     throw new TypeError('Cannot convert object to primitive value');
                 }
@@ -83,6 +88,14 @@ final class TypeConversion
                 $method = $value->get($methodName);
                 if ($method instanceof JsFunction) {
                     $result = $method->call($value, []);
+                    if (!$result instanceof JsObject) {
+                        return $result;
+                    }
+                } elseif ($method instanceof \PhpJs\Value\JsProxy && $method->isCallable()) {
+                    // Per spec, IsCallable accepts callable Proxy. The proxy
+                    // routes the invocation through its apply trap so toString
+                    // / valueOf overrides remain observable.
+                    $result = $method->apply($value, []);
                     if (!$result instanceof JsObject) {
                         return $result;
                     }
