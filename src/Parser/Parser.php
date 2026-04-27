@@ -6307,8 +6307,15 @@ class Parser
         $token = $this->current();
         $this->advance();
 
-        // async arrow: async (params) => body or async ident => body
-        if ($token->value === 'async' && !$this->current()->lineTerminatorBefore) {
+        // async arrow: async (params) => body or async ident => body.
+        // Per spec, contextual keyword `async` cannot be lexed via escapes:
+        // async is just an Identifier and must not start an
+        // AsyncFunction/AsyncArrowFunction production.
+        if (
+            $token->value === 'async'
+            && $token->rawValue !== 'escaped'
+            && !$this->current()->lineTerminatorBefore
+        ) {
             if ($this->check(TokenType::Function_)) {
                 return $this->parseAsyncFunctionExpression($token->location);
             }
@@ -7276,45 +7283,73 @@ class Parser
         $token = $this->current();
         $next = $this->peek();
 
+        // Per spec, contextual keyword `async` cannot be lexed via Unicode
+        // escapes. When the token is escaped (`async`), it is just
+        // the IdentifierReference `async` — never the AsyncFunction or
+        // AsyncArrowFunction head. Skip all keyword-context branches and
+        // fall through to the identifier path.
+        if ($token->rawValue === 'escaped') {
+            $this->advance(); // consume the Async token as identifier
+            return new Identifier($token->location, 'async');
+        }
+
         // async function
         if ($next->type === TokenType::Function_ && !$next->lineTerminatorBefore) {
-            // `async` here introduces an AsyncFunctionExpression keyword.
-            if ($token->rawValue === 'escaped') {
-                throw new ParseError(
-                    "Keyword 'async' must not contain escaped characters",
-                    $token,
-                );
-            }
             $location = $this->advance()->location;
             return $this->parseAsyncFunctionExpression($location);
         }
 
         // async (params) => body
+        // Disambiguate: `async(args)` followed by `=>` is an arrow function,
+        // otherwise it's a call to the variable `async`. Look ahead for the
+        // matching `)` and check whether `=>` follows; if not, fall through
+        // to identifier handling so the standard call-expression machinery
+        // runs (sm/async-functions/async-contains-unicode-escape.js with
+        // `var async = 0; async(obj);`).
         if ($next->type === TokenType::LeftParen && !$next->lineTerminatorBefore) {
-            // `async` here introduces an AsyncArrowFunction.
-            if ($token->rawValue === 'escaped') {
-                throw new ParseError(
-                    "Keyword 'async' must not contain escaped characters",
-                    $token,
-                );
+            $matchPos = $this->pos + 1; // index of LeftParen
+            $depth = 0;
+            $end = null;
+            for ($i = $matchPos; $i < count($this->tokens); $i++) {
+                $tType = $this->tokens[$i]->type;
+                if ($tType === TokenType::LeftParen) {
+                    $depth++;
+                } elseif ($tType === TokenType::RightParen) {
+                    $depth--;
+                    if ($depth === 0) {
+                        $end = $i;
+                        break;
+                    }
+                } elseif ($tType === TokenType::EOF) {
+                    break;
+                }
             }
-            $this->advance(); // consume 'async'
-            $location = $token->location;
-            $this->advance(); // consume (
-            // Async arrow parameters are parsed with [+Await] so that
-            // `await` is reserved in parameter expressions per spec.
-            $prevAsync = $this->inAsync;
-            $this->inAsync = true;
-            try {
-                $params = $this->parseArrowParams();
-            } finally {
-                $this->inAsync = $prevAsync;
+            $followedByArrow = $end !== null
+                && isset($this->tokens[$end + 1])
+                && $this->tokens[$end + 1]->type === TokenType::Arrow
+                && !$this->tokens[$end + 1]->lineTerminatorBefore;
+            if ($followedByArrow) {
+                $this->advance(); // consume 'async'
+                $location = $token->location;
+                $this->advance(); // consume (
+                // Async arrow parameters are parsed with [+Await] so that
+                // `await` is reserved in parameter expressions per spec.
+                $prevAsync = $this->inAsync;
+                $this->inAsync = true;
+                try {
+                    $params = $this->parseArrowParams();
+                } finally {
+                    $this->inAsync = $prevAsync;
+                }
+                if ($this->check(TokenType::Arrow)) {
+                    return $this->parseArrowFunctionFromParams($location, $params, true);
+                }
+                throw new ParseError('Expected =>', $this->current());
             }
-            if ($this->check(TokenType::Arrow)) {
-                return $this->parseArrowFunctionFromParams($location, $params, true);
-            }
-            // Not an arrow function; restore is impractical so throw
-            throw new ParseError('Expected =>', $this->current());
+            // No arrow follows: treat `async` as the IdentifierReference and
+            // let the call-expression path handle `(args)` as arguments.
+            $this->advance();
+            return new Identifier($token->location, 'async');
         }
 
         // async ident => body: source starts at 'async', pass async location.
