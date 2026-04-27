@@ -6088,7 +6088,14 @@ class IntlObject
             && $calendar !== 'iso8601';
         if ($needsTraditional) {
             if (!str_contains($locale, '@')) {
-                $locale .= '@calendar=' . $calendar;
+                // ICU recognizes "ethiopic-amete-alem" not "ethioaa"
+                // for the @calendar= suffix; everything else passes
+                // through verbatim.
+                static $icuCalendarMap = [
+                    'ethioaa' => 'ethiopic-amete-alem',
+                ];
+                $icuCalName = $icuCalendarMap[$calendar] ?? $calendar;
+                $locale .= '@calendar=' . $icuCalName;
             }
         }
         $calendarKind = $needsTraditional

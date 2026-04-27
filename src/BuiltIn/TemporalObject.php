@@ -3855,7 +3855,10 @@ class TemporalObject
             $nextDate = self::startOfDayInTimeZone($ny, $nm, $nd, $tz);
             self::validateInstantRange($nextDate);
             $dayNs = bcsub($nextDate, $startNs, 0);
-            return new JsNumber((float) bcdiv($dayNs, '3600000000000', 10));
+            // 20 decimal places gives enough precision for float
+            // round-trip: 23.6666666666... lands on the closest float
+            // (23.666666666666668) instead of being truncated.
+            return new JsNumber((float) bcdiv($dayNs, '3600000000000', 20));
         });
         self::defineGetter($proto, 'offsetNanoseconds', function (JsValue $this_): JsValue {
             self::requireBrand($this_, '[[IsZonedDateTime]]', 'Temporal.ZonedDateTime');
@@ -5103,6 +5106,7 @@ class TemporalObject
         $overflow = 'constrain';
         $options = null;
         $offsetOpt = 'reject';
+        $dis = 'compatible';
         if ($rawOptions !== null) {
             $options = self::getOptionsObject($rawOptions);
             if ($options instanceof JsObject) {
@@ -5147,12 +5151,26 @@ class TemporalObject
             }
             self::rejectISOTime($h, $min, $s, $ms, $us, $ns);
         }
-        $epochFromWall = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
         if ($offsetStr !== null && $offsetOpt !== 'ignore') {
             $givenOffsetNs = self::parseOffsetToNs($offsetStr);
-            $actualOffsetNs = self::getUtcOffsetNsForTimestamp($timeZone, $epochFromWall);
-            $exactMatch = $givenOffsetNs === $actualOffsetNs;
-            if (!$exactMatch && $offsetOpt === 'reject') {
+            // Find ANY candidate epoch ns where wall time + given offset
+            // yields a valid time zone occurrence; this lets DST-fallback
+            // pick the second occurrence when the user supplied its
+            // offset.
+            $candidates = self::getPossibleEpochNanoseconds($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone);
+            $wallUtcNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, 'UTC');
+            $exactCandidate = null;
+            foreach ($candidates as $candNs) {
+                $candOffsetNs = (int) bcsub($wallUtcNs, $candNs, 0);
+                if ($givenOffsetNs === $candOffsetNs) {
+                    $exactCandidate = $candNs;
+                    break;
+                }
+            }
+            if ($exactCandidate !== null) {
+                return self::createZonedDateTimeObject($exactCandidate, $timeZone, $cal);
+            }
+            if ($offsetOpt === 'reject') {
                 throw new RangeError("offset property \"{$offsetStr}\" does not match time zone \"{$timeZone}\"");
             }
             if ($offsetOpt === 'use') {
@@ -5160,8 +5178,11 @@ class TemporalObject
                 $epochNs = self::isoDateTimeToEpochNs($y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $normalizedOffset);
                 return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
             }
-            // prefer or reject: use the timezone's wall-time interpretation.
+            // prefer: fall through to disambiguation in the named zone.
         }
+        $epochFromWall = self::isoDateTimeToEpochNsDisambiguated(
+            $y, $mo, $d, $h, $min, $s, $ms, $us, $ns, $timeZone, $dis,
+        );
         return self::createZonedDateTimeObject($epochFromWall, $timeZone, $cal);
     }
 
@@ -5183,12 +5204,13 @@ class TemporalObject
         // Phase 2: now read and validate options.
         $options = self::getOptionsObject($rawOptions);
         $offOptStr = 'reject';
+        $disStr = 'compatible';
         if ($options instanceof JsObject) {
             $dv = $options->get('disambiguation');
             if (!($dv instanceof JsUndefined)) {
-                $dis = TypeConversion::toString($dv);
-                if (!in_array($dis, ['compatible', 'earlier', 'later', 'reject'], true)) {
-                    throw new RangeError("Invalid disambiguation: {$dis}");
+                $disStr = TypeConversion::toString($dv);
+                if (!in_array($disStr, ['compatible', 'earlier', 'later', 'reject'], true)) {
+                    throw new RangeError("Invalid disambiguation: {$disStr}");
                 }
             }
             $offOpt = $options->get('offset');
@@ -5201,15 +5223,15 @@ class TemporalObject
             self::getOverflow($options);
         }
         // Phase 3: re-parse with the actual offset option (handles reject/ignore/use/prefer).
-        if ($offOptStr !== 'ignore') {
-            $result = self::parseZonedDateTimeString($str, $offOptStr);
+        if ($offOptStr !== 'ignore' || $disStr !== 'compatible') {
+            $result = self::parseZonedDateTimeString($str, $offOptStr, $disStr);
         }
         // Wall-clock range validation for prefer/reject is handled by the
         // parseZonedDateTimeString + validateInstantRange chain.
         return $result;
     }
 
-    private static function parseZonedDateTimeString(string $str, string $offsetOption = 'reject'): JsObject
+    private static function parseZonedDateTimeString(string $str, string $offsetOption = 'reject', string $disambiguation = 'compatible'): JsObject
     {
         [$str, $cal] = self::normalizeTemporalString($str);
         // Parse the datetime part, optional offset, and timezone annotation.
@@ -5352,8 +5374,14 @@ class TemporalObject
                     } elseif ($matchCandidate !== null) {
                         $epochNs = $matchCandidate;
                     } else {
-                        $normalizedOffset = self::normalizeOffset($givenOffsetNs);
-                        $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $normalizedOffset);
+                        // No matching offset under prefer: spec says
+                        // fall back to wall-time disambiguation in the
+                        // named time zone (rather than apply the bogus
+                        // offset directly).
+                        $epochNs = self::isoDateTimeToEpochNsDisambiguated(
+                            $year, $month, $day, $hour, $min, $sec, $ms, $us, $ns,
+                            $timeZone, $disambiguation,
+                        );
                     }
                 }
             }
@@ -5365,7 +5393,19 @@ class TemporalObject
             if (!$hasTimePart) {
                 $epochNs = self::startOfDayInTimeZone($year, $month, $day, $timeZone);
             } else {
-                $epochNs = self::isoDateTimeToEpochNs($year, $month, $day, $hour, $min, $sec, $ms, $us, $ns, $timeZone);
+                $epochNs = self::isoDateTimeToEpochNsDisambiguated(
+                    $year,
+                    $month,
+                    $day,
+                    $hour,
+                    $min,
+                    $sec,
+                    $ms,
+                    $us,
+                    $ns,
+                    $timeZone,
+                    $disambiguation,
+                );
             }
         }
         return self::createZonedDateTimeObject($epochNs, $timeZone, $cal);
@@ -14939,7 +14979,10 @@ class TemporalObject
                 return null;
             case 'ethioaa':
             case 'ethiopic-amete-alem':
-                return 'ethioaa';
+                // Ethiopic Amete Alem has only one era (always positive
+                // counting from BC 5500); Temporal exposes era /
+                // eraYear as undefined for these single-era calendars.
+                return null;
         }
         return null;
     }
@@ -15004,10 +15047,12 @@ class TemporalObject
                 return $isoYear >= 1 ? $isoYear : (1 - $isoYear);
             case 'coptic':
             case 'ethiopic':
-            case 'ethioaa':
-            case 'ethiopic-amete-alem':
                 $year = self::icuYearForIso($cal, $isoYear, $isoMonth, $isoDay);
                 return $year;
+            case 'ethioaa':
+            case 'ethiopic-amete-alem':
+                // Ethiopic Amete Alem: era / eraYear are undefined.
+                return null;
         }
         return null;
     }
