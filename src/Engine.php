@@ -503,6 +503,44 @@ class Engine
             if ($abs === '0') {
                 return '0';
             }
+            // Fast path: when |val|'s bit length is provably less than $width,
+            // the modulo operation is a no-op for non-negative values and a
+            // single subtraction (2^width - |val|) for negatives. Skip the
+            // O(width²) pow2str computation that would otherwise be triggered
+            // for huge widths like 2^32 (sm/BigInt/large-bit-length.js).
+            // log2(10) ≈ 3.322; ceil(digits * 3.322) is an upper bound on the
+            // number of bits required to represent |val|.
+            $maxBits = (int) ceil(strlen($abs) * 3.3219281);
+            if ($maxBits < $width) {
+                if (!$neg) {
+                    return $abs;
+                }
+                // pow2 = 2^width; result = pow2 - |val|. We only need this
+                // when width is small enough that pow2str is tractable; for
+                // huge widths we fall through to the slow path which has its
+                // own large-width handling. In practice, when $maxBits is a
+                // few dozen and $width is in the millions/billions, the
+                // negative case is also short-circuited in the caller (e.g.
+                // asIntN of -1n with huge bits returns -1n, never going
+                // through the >= half check that needs pow2str).
+                if ($width <= 4096) {
+                    $pow2Big = $pow2str($width);
+                    return $bigSubUns($pow2Big, $abs);
+                }
+                // For huge widths we cannot represent pow2 - |val| as a
+                // finite-length decimal cheaply. Mark the value's negation
+                // by computing pow2 - |val| symbolically: pow2 - 1 is 2^width-1
+                // which is a width-bit string of all 1s (in binary) → 2^width - n
+                // expressed in decimal would still be huge. The asIntN caller
+                // will compare this against half (2^(width-1)) and subtract
+                // pow2; the intermediate large strings make asIntN intractable.
+                // To keep that asIntN call tractable we produce a marker the
+                // asIntN path detects via $bigCmpUns (>= half) and instead
+                // returns the original signed value directly. Here we just
+                // recognise the impossibility and let the caller's wider
+                // logic (or fallthrough) handle it.
+                // Fall through to slow path:
+            }
             // pow2 = 2^width
             $pow2 = $pow2str($width);
             // Compute abs mod pow2 using repeated division by 2 (get binary bits), then reconstruct.
@@ -620,6 +658,16 @@ class Engine
             );
             if ($width === 0) {
                 return new \PhpJs\Value\JsBigInt('0');
+            }
+            // Fast path: when |bigint|'s bit length is provably less than
+            // (width - 1), the value fits unchanged into the signed range
+            // [-2^(width-1), 2^(width-1)) and the result is just the input.
+            // Skips the O(width²) pow2str pow2 computation for huge widths
+            // (sm/BigInt/large-bit-length.js with bits up to MAX_SAFE_INT).
+            $abs = ltrim($bigint->value, '-');
+            $maxBits = (int) ceil(strlen($abs) * 3.3219281);
+            if ($maxBits < $width - 1) {
+                return $bigint;
             }
             $mod = $bigUintN($bigint->value, $width);
             // If mod >= 2^(width-1), result = mod - 2^width (i.e. negative).
