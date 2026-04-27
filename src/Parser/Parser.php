@@ -4673,6 +4673,16 @@ class Parser
         // and `await` is a valid bare identifier-statement).
         if ($token->type === TokenType::Await) {
             $next = $this->peek();
+            // The lexer may have eagerly tokenized `await /…/` as
+            // RegExp because Yield/Await aren't in its value-producing
+            // list. In non-async context `await` is an identifier, so
+            // `/` is division — re-lex the regex token before deciding
+            // whether the rest of the expression is even ill-formed.
+            if ($next->type === TokenType::RegExp) {
+                if ($this->reinterpretRegExpAsDivision($this->pos + 1)) {
+                    $next = $this->peek();
+                }
+            }
             // Only fire when the following token unambiguously starts an
             // operand for the await operator. `await(...)` and `await[...]`
             // are valid CallExpression / MemberExpression continuations on
@@ -6329,6 +6339,14 @@ class Parser
                 $token,
             );
         }
+        // The lexer pessimistically tokenized `/` after `yield` as the
+        // start of a RegExp literal because Yield is not in its
+        // value-producing list. Outside generator scope `yield` is an
+        // identifier, so `/` is division — re-lex the RegExp token in
+        // place before it confuses the postfix/operator parser.
+        if (($this->tokens[$this->pos + 1] ?? null)?->type === TokenType::RegExp) {
+            $this->reinterpretRegExpAsDivision($this->pos + 1);
+        }
         return $this->parseIdentifierExpression();
     }
 
@@ -7957,6 +7975,61 @@ class Parser
     private function peekIs(TokenType $type): bool
     {
         return $this->peek()->type === $type;
+    }
+
+    /**
+     * Re-tokenize a RegExp token at $index as a sequence of expression
+     * tokens beginning with a Slash. Used when the surrounding context
+     * (e.g. `await` or `yield` as identifier in non-async/non-generator
+     * code) means the lexer's eager regex classification is wrong.
+     *
+     * The original Token is consumed; the splice of replacement tokens
+     * preserves the rest of the stream.
+     */
+    private function reinterpretRegExpAsDivision(int $index): bool
+    {
+        if (!isset($this->tokens[$index]) || $this->tokens[$index]->type !== TokenType::RegExp) {
+            return false;
+        }
+        $token = $this->tokens[$index];
+        // Prepend `0` to make the first `/` lex as division. Then drop
+        // the synthetic Number token; everything after is the real
+        // expression-tokenization of the regex source.
+        $sub = new Lexer('0' . $token->value);
+        try {
+            $subTokens = $sub->tokenize();
+        } catch (\Throwable) {
+            return false;
+        }
+        // Strip the synthetic Number(0) and the trailing EOF.
+        if (
+            ($subTokens[0]->type ?? null) !== TokenType::Number
+            || $subTokens[0]->value !== '0'
+        ) {
+            return false;
+        }
+        array_shift($subTokens);
+        $eof = end($subTokens);
+        if ($eof !== false && $eof->type === TokenType::EOF) {
+            array_pop($subTokens);
+        }
+        if ($subTokens === []) {
+            return false;
+        }
+        $loc = $token->location;
+        $relocated = [];
+        foreach ($subTokens as $st) {
+            $relocated[] = new Token(
+                $st->type,
+                $st->value,
+                $loc,
+                $st === $subTokens[0] ? $token->lineTerminatorBefore : false,
+                $st->rawValue,
+                $st->cookedInvalid,
+            );
+        }
+        array_splice($this->tokens, $index, 1, $relocated);
+        return true;
     }
 
     /** @phpstan-impure */
