@@ -1444,7 +1444,17 @@ class TemporalObject
                 if ($isoParts !== null) {
                     return self::createPlainDateObject($isoParts['year'], $isoParts['month'], $isoParts['day'], $cal);
                 }
-                // Fall through if conversion failed.
+                // calendarPartsToIso returned null: the requested
+                // year + monthCode combination doesn't exist in this
+                // calendar (e.g. M07L in a chinese year whose leap is
+                // M03). The spec rejects this even under default
+                // "constrain" because there's no clear non-leap fallback.
+                if ($mcForIso !== null && str_ends_with($mcForIso, 'L')) {
+                    throw new RangeError(
+                        "monthCode {$mcForIso} is not valid for {$cal} year {$y}",
+                    );
+                }
+                // Fall through if conversion failed for non-leap codes.
             }
             if ($overflow === 'constrain') {
                 [$y, $m, $dd] = self::constrainISODate($y, $m, $dd);
@@ -8351,7 +8361,29 @@ class TemporalObject
                     if (!is_finite($mNum)) {
                         throw new RangeError('month must be finite');
                     }
-                    if ((int) $mNum !== $mcMonth) {
+                    // For lunisolar calendars, the digit in the monthCode
+                    // and the chronological month diverge once a leap
+                    // month sits earlier in the year. Resolve the
+                    // monthCode against the year and compare against the
+                    // user's chronological month.
+                    if (in_array($cal, ['hebrew', 'chinese', 'dangi'], true)) {
+                        $resolved = self::calendarPartsToIso($cal, $y, $mcStr, null, 1);
+                        if ($resolved !== null) {
+                            $back = self::isoToCalendarParts(
+                                $cal,
+                                $resolved['year'],
+                                $resolved['month'],
+                                $resolved['day'],
+                            );
+                            if (
+                                $back !== null
+                                && $back['monthCode'] === $mcStr
+                                && (int) $mNum !== $back['month']
+                            ) {
+                                throw new RangeError('month and monthCode must agree');
+                            }
+                        }
+                    } elseif ((int) $mNum !== $mcMonth) {
                         throw new RangeError('month and monthCode must agree');
                     }
                 }
@@ -12479,47 +12511,19 @@ class TemporalObject
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
-        // Resolve ICU 0-indexed month from monthCode/monthNum (mirrors
-        // calendarPartsToIso, simplified).
-        $icuMonth = null;
-        if ($monthCode !== null && preg_match('/^M(\d{2})(L?)$/', $monthCode, $mm)) {
-            $codeNum = (int) $mm[1];
-            $isLeap = $mm[2] === 'L';
-            if ($calendar === 'hebrew') {
-                if ($codeNum >= 1 && $codeNum <= 5 && !$isLeap) {
-                    $icuMonth = $codeNum - 1;
-                } elseif ($codeNum === 5 && $isLeap) {
-                    $icuMonth = 5;
-                } elseif ($codeNum >= 6 && $codeNum <= 12 && !$isLeap) {
-                    $icuMonth = $codeNum;
-                }
-            } else {
-                $icuMonth = $codeNum - 1;
-            }
-        } elseif ($monthNum !== null) {
-            $icuMonth = $monthNum - 1;
+        // Route through calendarPartsToIso so chinese/dangi extended_year +
+        // leap_month resolution is applied (setDate alone uses FIELD_YEAR
+        // which is the 60-cycle position, not the actual year).
+        $iso = self::calendarPartsToIso($calendar, $year, $monthCode, $monthNum, 1);
+        if ($iso !== null) {
+            return self::calendarDaysInMonthForIso(
+                $calendar,
+                $iso['year'],
+                $iso['month'],
+                $iso['day'],
+            );
         }
-        if ($icuMonth === null) {
-            return null;
-        }
-        try {
-            $icuCal = $calendar;
-            static $aliasMapDim = [
-                'islamicc' => 'islamic-civil',
-                'ethioaa' => 'ethiopic-amete-alem',
-            ];
-            if (isset($aliasMapDim[$calendar])) {
-                $icuCal = $aliasMapDim[$calendar];
-            }
-            $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
-            $cal->setDate($year, $icuMonth, 1);
-            return (int) $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_MONTH);
-        } catch (\Throwable) {
-            return null;
-        }
+        return null;
     }
 
     /**
