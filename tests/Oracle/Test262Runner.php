@@ -61,12 +61,17 @@ class Test262Runner
             );
         }
 
-        // Tests using $262.createRealm need a separate ECMAScript realm,
-        // which the engine doesn't model: there's a single shared global
-        // and Reflect.construct uses the host constructor, so error
-        // identity across realms can't be distinguished. Mark them as
-        // skipped instead of failing for the same reason every time.
-        if (strpos($source, '$262.createRealm') !== false) {
+        // Tests using $262.createRealm or SpiderMonkey's createNewGlobal
+        // need a separate ECMAScript realm, which the engine doesn't
+        // model: there's a single shared global and Reflect.construct
+        // uses the host constructor, so error identity across realms
+        // can't be distinguished. Mark them as skipped instead of
+        // failing for the same reason every time.
+        if (
+            strpos($source, '$262.createRealm') !== false
+            || strpos($source, 'createNewGlobal') !== false
+            || strpos($source, 'newGlobal(') !== false
+        ) {
             return new TestResult(
                 $testPath,
                 TestStatus::Skip,
