@@ -273,8 +273,16 @@ final class Compiler
     private function collectStatementLocals(Node $stmt): void
     {
         if ($stmt instanceof VariableDeclaration) {
+            $isLexical = $stmt->kind === 'let' || $stmt->kind === 'const';
             foreach ($stmt->declarations as $decl) {
                 if ($decl->id instanceof Identifier) {
+                    // let/const shadowing an existing slot (param or
+                    // earlier var) would need separate slot allocation
+                    // per scope, which the flat-slot compiler doesn't
+                    // model. Bail.
+                    if ($isLexical && isset($this->localSlots[$decl->id->name])) {
+                        throw new CompilerBailout('let/const shadowing existing local');
+                    }
                     $this->declareLocal($decl->id->name);
                     continue;
                 }
@@ -286,6 +294,9 @@ final class Compiler
                             && !($prop->value instanceof \PhpJs\Ast\Pattern\AssignmentPattern)
                             && $prop->value instanceof Identifier
                         ) {
+                            if ($isLexical && isset($this->localSlots[$prop->value->name])) {
+                                throw new CompilerBailout('let/const pattern shadowing');
+                            }
                             $this->declareLocal($prop->value->name);
                             continue;
                         }
