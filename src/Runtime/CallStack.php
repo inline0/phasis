@@ -6,10 +6,22 @@ namespace PhpJs\Runtime;
 
 use PhpJs\Exceptions\InternalError;
 
+/**
+ * Call-stack bookkeeping for stack-overflow detection and Error.stack
+ * trace materialisation.
+ *
+ * Stores frame metadata in parallel int / string arrays rather than as
+ * CallFrame objects. The hot push/pop paths (one each per JS call) skip
+ * the CallFrame allocation entirely; getFrames() materialises objects
+ * on demand, which only matters when an Error is actually constructed.
+ */
 class CallStack
 {
-    /** @var list<CallFrame> */
-    private array $frames = [];
+    /** @var list<string> Frame names parallel to $lines and $depth. */
+    private array $names = [];
+    /** @var list<int> */
+    private array $lines = [];
+    private int $depth = 0;
 
     public function __construct(
         // 1024 matches what Node.js exposes via stack-overflow tests well
@@ -25,26 +37,31 @@ class CallStack
     /** Push a new frame onto the call stack. Throws if the stack depth limit is exceeded. */
     public function push(string $name, int $line): void
     {
-        if (count($this->frames) >= $this->maxDepth) {
+        if ($this->depth >= $this->maxDepth) {
             throw new InternalError('Maximum call stack size exceeded');
         }
-
-        $this->frames[] = new CallFrame($name, $line);
+        $this->names[$this->depth] = $name;
+        $this->lines[$this->depth] = $line;
+        $this->depth++;
     }
 
     public function pop(): void
     {
-        array_pop($this->frames);
+        $this->depth--;
     }
 
     public function depth(): int
     {
-        return count($this->frames);
+        return $this->depth;
     }
 
     /** @return list<CallFrame> */
     public function getFrames(): array
     {
-        return $this->frames;
+        $result = [];
+        for ($i = 0; $i < $this->depth; $i++) {
+            $result[] = new CallFrame($this->names[$i], $this->lines[$i]);
+        }
+        return $result;
     }
 }
