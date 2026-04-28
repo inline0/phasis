@@ -1381,6 +1381,43 @@ final class JsToPhp
                 // return the boxed JsValue so chained assignment works.
                 return $temp;
             }
+            // Computed bracket-write: arr[i] = numericExpr on an array-
+            // typed local. Lowers to a denseElements write via
+            // setDenseElement. Bounds-checks at runtime via the dense
+            // mode guard so a sparse-mutation pattern bails to spec.
+            if (
+                $node->left instanceof \PhpJs\Ast\Expression\MemberExpression
+                && $node->left->computed
+                && $node->left->object instanceof Identifier
+                && $node->operator === '='
+            ) {
+                $recvName = $node->left->object->name;
+                if (
+                    !isset($this->declaredLocals[$recvName])
+                    || ($this->localTypes[$recvName] ?? 'numeric') !== 'array'
+                ) {
+                    throw new Bailout('computed write on non-array local');
+                }
+                $recv = $this->slotVar($recvName);
+                $idxExpr = $this->emitExpression($node->left->property);
+                $val = $this->emitExpression($node->right);
+                $idxLocal = $this->newTemp('ai');
+                $valTemp = $this->newTemp('av');
+                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
+                $this->pendingStatements[] = $valTemp
+                    . ' = \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));';
+                $this->pendingStatements[] = 'if (!' . $recv
+                    . '->isDenseMode()) { throw new \\PhpJs\\Bytecode\\Bailout("array write on non-dense receiver"); }';
+                $this->pendingStatements[] = $recv . '->setDenseElement('
+                    . $idxLocal . ', ' . $valTemp . ');';
+                // Maintain length invariant: extending past current
+                // length needs setLength to keep getLength() correct
+                // for downstream reads (e.g. .length / dense iter).
+                $this->pendingStatements[] = 'if (' . $idxLocal . ' >= ' . $recv
+                    . '->getLength()) { ' . $recv . '->setLength('
+                    . $idxLocal . ' + 1); }';
+                return $valTemp;
+            }
             if (!$node->left instanceof Identifier) {
                 throw new Bailout('assign to non-identifier');
             }
@@ -1443,6 +1480,13 @@ final class JsToPhp
             $test = $this->emitExpression($node->test);
             $consBranch = $this->captureBranch($node->consequent);
             $altBranch = $this->captureBranch($node->alternate);
+            // Fast path: when neither branch lifted any statements
+            // (no calls / no member reads / no free-var resolution),
+            // emit a plain PHP ternary directly. Fewer lines, no temp,
+            // and PHP can fold it into the surrounding expression.
+            if ($consBranch[0] === [] && $altBranch[0] === []) {
+                return '(' . $test . ' ? ' . $consBranch[1] . ' : ' . $altBranch[1] . ')';
+            }
             $temp = $this->newTemp('cv');
             $this->pendingStatements[] = $temp . ' = null;';
             $this->pendingStatements[] = 'if (' . $test . ') {';
@@ -1473,25 +1517,45 @@ final class JsToPhp
             throw new Bailout('object literal in numeric context');
         }
         if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
-            // Read of obj.prop. Receiver must be a known object-typed
-            // local (dataSlots dereferenced, unbox to numeric) or an
-            // array-typed local with key 'length' (returns the live
-            // length count as a numeric).
-            if ($node->computed) {
-                throw new Bailout('member read computed key');
-            }
+            // Read of obj.prop or arr[i]. Receiver must be a known
+            // object-typed local (dataSlots dereferenced, unbox to
+            // numeric), an array-typed local with key 'length'
+            // (returns the live length count as a numeric), an
+            // array-typed local with a numeric computed key (dense
+            // indexed read), or a string-typed local with .length.
             if (!$node->object instanceof Identifier) {
                 throw new Bailout('member read non-identifier receiver');
+            }
+            $recvName = $node->object->name;
+            if (!isset($this->declaredLocals[$recvName])) {
+                throw new Bailout('member read on non-local');
+            }
+            $recvKind = $this->localTypes[$recvName] ?? 'numeric';
+            // Computed bracket-access on an array-typed local: index
+            // is a numeric expression, lowers to a denseElements lookup
+            // with bounds + JsNumber unbox. Bails to spec path if the
+            // receiver isn't dense at run time.
+            if ($node->computed && $recvKind === 'array') {
+                $idxExpr = $this->emitExpression($node->property);
+                $recv = $this->slotVar($recvName);
+                $idxLocal = $this->newTemp('ai');
+                $valLocal = $this->newTemp('av');
+                $this->pendingStatements[] = $idxLocal . ' = (int) ' . $idxExpr . ';';
+                $this->pendingStatements[] = 'if (!' . $recv
+                    . '->isDenseMode()) { throw new \\PhpJs\\Bytecode\\Bailout("array read on non-dense receiver"); }';
+                $this->pendingStatements[] = $valLocal . ' = ' . $recv
+                    . '->getDenseElements()[' . $idxLocal . '] ?? null;';
+                $this->pendingStatements[] = 'if (!(' . $valLocal
+                    . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric array element"); }';
+                return $valLocal . '->value';
+            }
+            if ($node->computed) {
+                throw new Bailout('computed member read on non-array local');
             }
             if (!$node->property instanceof Identifier) {
                 throw new Bailout('member read non-identifier property');
             }
-            $recvName = $node->object->name;
             $key = $node->property->name;
-            $recvKind = $this->localTypes[$recvName] ?? 'numeric';
-            if (!isset($this->declaredLocals[$recvName])) {
-                throw new Bailout('member read on non-local');
-            }
             if ($recvKind === 'array' && $key === 'length') {
                 $recv = $this->slotVar($recvName);
                 return '((float) ' . $recv . '->getLength())';
