@@ -75,6 +75,18 @@ final class JsToPhp
     private array $unassignedDeclares = [];
 
     /**
+     * Locals declared with `const`. Any AssignmentExpression /
+     * UpdateExpression target on these names should throw TypeError
+     * per spec, but JsToPhp treats them as plain mutable PHP
+     * variables. Tracking const names lets the collect pass detect
+     * mutation attempts and bail compile, so the tree-walker
+     * (which honours const-ness) raises the spec-correct error.
+     *
+     * @var array<string, true>
+     */
+    private array $constLocals = [];
+
+    /**
      * Locals seen as the LHS of an AssignmentExpression at any point
      * in the body. Combined with $unassignedDeclares to detect the
      * "var x; ...; return x" shape that JsToPhp would otherwise
@@ -275,6 +287,16 @@ final class JsToPhp
                 // spec-mandated undefined.
                 foreach ($compiler->unassignedDeclares as $name => $_) {
                     if (!isset($compiler->assignedNames[$name])) {
+                        return null;
+                    }
+                }
+                // Bail if any const-declared local is mutated.
+                // JsToPhp emits all locals as plain mutable PHP
+                // variables; a `for (const i = 0; ...; i++) {}`
+                // would silently mutate i instead of throwing the
+                // spec-required TypeError.
+                foreach ($compiler->constLocals as $name => $_) {
+                    if (isset($compiler->assignedNames[$name])) {
                         return null;
                     }
                 }
@@ -711,6 +733,9 @@ final class JsToPhp
                 }
                 $name = $decl->id->name;
                 $this->declaredLocals[$name] = true;
+                if ($node->kind === 'const') {
+                    $this->constLocals[$name] = true;
+                }
                 if ($decl->init === null) {
                     // Track no-init declarations so the post-collect
                     // pass can detect the read-as-undefined pattern.
@@ -1021,11 +1046,33 @@ final class JsToPhp
             $this->collectCalleeUsage($node->right);
             return;
         }
-        if ($node instanceof UnaryExpression || $node instanceof UpdateExpression) {
+        if ($node instanceof UpdateExpression) {
+            // ++ / -- counts as an assignment to the target. Track
+            // for the unassigned-declare bail and the const-mutation
+            // bail.
+            if ($node->argument instanceof Identifier) {
+                $this->assignedNames[$node->argument->name] = true;
+            }
+            $this->collectCalleeUsage($node->argument);
+            return;
+        }
+        if ($node instanceof UnaryExpression) {
             $this->collectCalleeUsage($node->argument);
             return;
         }
         if ($node instanceof AssignmentExpression) {
+            // Track assignment targets for the unassigned-declare /
+            // const-mutation bails. AssignmentExpression also fires
+            // through collectAssignmentTypes for Identifier targets
+            // already, but that path only sets assignedNames when the
+            // local is in declaredLocals at that moment — top-level
+            // walk-order means a `for (const i = 0; ...; i++)` update
+            // wouldn't be caught there because i isn't yet declared
+            // by the time the parent ForStatement walks the update.
+            // Catch it here.
+            if ($node->left instanceof Identifier) {
+                $this->assignedNames[$node->left->name] = true;
+            }
             $this->collectCalleeUsage($node->right);
             return;
         }
