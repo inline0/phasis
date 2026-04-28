@@ -54,13 +54,25 @@ After every meaningful work pass, run the full matrix from the repo root before 
 **It is NOT enough on its own.** test262 compliance must never regress. After every change, also run a representative test262 sweep:
 
 ```bash
-# Local: spot-check categories your change might touch.
-./bin/test262 --category built-ins --jobs 1 --limit 200
-./bin/test262 --category language --jobs 1 --limit 200
+# Local: spot-check categories your change actually touched (narrow, --jobs 1).
+./bin/test262 --category built-ins/<thing-you-changed> --jobs 1 --limit 200
 
 # CI: trigger the matrix workflow for the canonical snapshot.
 gh workflow run compat-matrix.yml
 ```
+
+## Sourcing the Failure List
+
+**Hard rule: source failing-test paths from `compat.json` / `COMPAT.md`. Never grind through `./bin/test262 --category X --failures` across categories locally to discover what's broken.** The matrix CI run already enumerates every failure across the full ~50k suite; rediscovering them locally is slow, eats CPU, and gives a less complete picture (timeouts, sharding, --limit truncation skew the answer).
+
+When you need the freshest snapshot, trigger the compat matrix in CI:
+
+```bash
+gh workflow run compat-matrix.yml
+gh run list --workflow=compat-matrix.yml --limit 1
+```
+
+The workflow auto-commits the regenerated `compat.json` + `COMPAT.md`. Pull, read the files, then act. Local `./bin/test262 --category` runs are reserved for verifying a specific fix on a known path, not for discovery.
 
 The matrix run is the only canonical compliance number; commit the regenerated `compat.json` + `COMPAT.md` (auto-pushed by the workflow). Performance changes regress test262 just as easily as feature changes — the JsToPhp emitter and VM inline paths cut spec corners that surface in surprising places.
 
