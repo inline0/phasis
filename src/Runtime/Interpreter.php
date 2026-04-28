@@ -4975,16 +4975,20 @@ class Interpreter
                 return $this->derivedConstructorImplicitReturn($fn, $fnEnv);
             }
 
-            // Arrow with expression body — VM dispatch is enabled for
-            // these too, but profiling showed simple expression bodies
-            // (e.g. `x => x + n`) lose to the tree-walker because the
-            // VM frame setup is more overhead than the few-instruction
-            // body saves. Only invoke the VM for "rich" bodies where
-            // compileExpression generates >= a handful of opcodes.
-            // Heuristic: compile-time decision is captured by the
-            // CompiledFunction's code length; we use the existing
-            // tryRunOnVm for the case but keep tree-walker as the
-            // ad-hoc choice for the simple expression-body shape.
+            // Arrow with expression body — try the JsToPhp / VM path
+            // first. JsToPhp can lower numeric arrow expressions like
+            // `x => x + n` to native PHP closures that PHP's JIT then
+            // compiles to machine code; that handily beats the
+            // tree-walker even on these short bodies. If both
+            // JsToPhp and bytecode compile bail, tryRunOnVm returns
+            // null and we fall back to the tree-walker.
+            $vmReturn = $this->tryRunOnVm($fn, $fnEnv, $thisValue, $args);
+            if ($vmReturn !== null) {
+                if ($vmReturn instanceof TailCallThunk) {
+                    return $vmReturn;
+                }
+                return $vmReturn;
+            }
             return $this->evaluate($body, $fnEnv);
         } finally {
             array_pop($this->callerStack);

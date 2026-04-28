@@ -84,7 +84,11 @@ final class JsToPhp
     public static function compile(JsFunction $fn): ?\Closure
     {
         $body = $fn->getBody();
-        if (!$body instanceof BlockStatement) {
+        $isExpressionBody = !$body instanceof BlockStatement;
+        if ($isExpressionBody && !$body instanceof Node) {
+            if (getenv('JSTOPHP_DEBUG') !== false) {
+                fwrite(STDERR, "JsToPhp BAIL non-node body for {$fn->getName()}\n");
+            }
             return null;
         }
         $compiler = new self();
@@ -96,20 +100,35 @@ final class JsToPhp
                 }
                 $compiler->declaredLocals[$p->name] = true;
             }
-            $compiler->collectLocals($body->body);
-            $compiler->emitPrologue($params);
-            foreach ($body->body as $stmt) {
-                $compiler->emitStatement($stmt);
+            if ($isExpressionBody) {
+                // Arrow expression body: `x => expr`. The whole body
+                // is an expression to return. Emit prologue + a single
+                // synthetic ReturnStatement.
+                $compiler->emitPrologue($params);
+                $value = $compiler->emitExpression($body);
+                $compiler->flushPending();
+                $compiler->emitLine(
+                    'return \\PhpJs\\Value\\JsNumber::of((float)(' . $value . '));'
+                );
+            } else {
+                $compiler->collectLocals($body->body);
+                $compiler->emitPrologue($params);
+                foreach ($body->body as $stmt) {
+                    $compiler->emitStatement($stmt);
+                }
+                $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
             }
-            $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
-        } catch (Bailout) {
+        } catch (Bailout $e) {
+            if (getenv('JSTOPHP_DEBUG') !== false) {
+                fwrite(STDERR, "JsToPhp BAIL for {$fn->getName()}: {$e->getMessage()}\n");
+            }
             return null;
         }
         $php = "return function (\$args, \$env, \$interp) {\n"
             . $compiler->out
             . "};";
         if (getenv('JSTOPHP_DEBUG') !== false) {
-            fwrite(STDERR, "=== JsToPhp for {$fn->getName()} ===\n{$php}\n=== end ===\n");
+            fwrite(STDERR, "=== JsToPhp OK for {$fn->getName()} ===\n{$php}\n=== end ===\n");
         }
         try {
             /** @var \Closure $closure */
