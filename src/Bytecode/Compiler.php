@@ -772,6 +772,12 @@ final class Compiler
 
     private function compileVarDecl(VariableDeclaration $node): void
     {
+        if ($node->kind === 'using' || $node->kind === 'await using') {
+            // `using` declarations require resource-tracking on the
+            // current env's disposal stack; the slot-based compiler
+            // doesn't model that yet.
+            throw new CompilerBailout('using declaration');
+        }
         foreach ($node->declarations as $decl) {
             if ($decl->id instanceof ObjectPattern) {
                 if ($decl->init === null) {
@@ -1245,7 +1251,10 @@ final class Compiler
             if (!$part instanceof TemplateElement) {
                 throw new CompilerBailout('template element shape');
             }
-            $cookedRaw = $part->cooked;
+            $cookedRaw = $part->cookedValue;
+            if ($cookedRaw === null) {
+                throw new CompilerBailout('template element with invalid escape');
+            }
             $idx = $this->internConst(new JsString($cookedRaw), 's:' . $cookedRaw);
             $this->emit(Op::LOAD_CONST, $idx);
             if ($i > 0) {

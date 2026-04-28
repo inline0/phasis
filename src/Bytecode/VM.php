@@ -548,7 +548,7 @@ final class VM
                     }
                     $callee = $stack[$base - 1];
                     $sp = $base - 1;
-                    $stack[$sp++] = $this->interp->vmNewExpression($callee, $args);
+                    $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
                     $pc += 2;
                     break;
 

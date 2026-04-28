@@ -6025,7 +6025,7 @@ class Interpreter
     /**
      * @param list<JsValue> $args
      */
-    public function vmNewExpression(JsValue $callee, array $args): JsValue
+    public function vmNewExpression(JsValue $callee, array $args, Environment $env): JsValue
     {
         if ($callee instanceof \PhpJs\Value\JsProxy) {
             return $callee->construct($args, $callee);
@@ -6033,18 +6033,45 @@ class Interpreter
         if (!$callee instanceof JsFunction || !$callee->isConstructable()) {
             throw new TypeError(TypeConversion::toString($callee) . ' is not a constructor');
         }
-        // Mirror evalNewExpression's setup: build the new object,
-        // pass it as `this`, post-process the return per spec.
+        // Mirror evalNewExpression's full setup so class field
+        // initializers, derived-constructor checks, and the
+        // [[NewTarget]] cleanup all match the tree-walker exactly.
         $proto = $callee->get('prototype');
         $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
             \PhpJs\Object\PropertyDescriptor::data($callee, false, false, false),
         );
+        // Base class constructor: initialize fields BEFORE the body
+        // runs (derived constructors do this at their AST super() site).
+        if ($callee->isClassConstructor() && !$callee->isDerivedConstructor()) {
+            $this->initializeInstanceFields($callee, $newObj, $env);
+        }
         $result = $this->callFunction($callee, $newObj, $args);
         if ($result instanceof JsObject) {
+            // Native default-derived constructors don't run the AST
+            // super() path so init their fields here post-call.
+            if (
+                $callee->isDerivedConstructor()
+                && $callee->isNative()
+                && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+            ) {
+                $this->initializeInstanceFields($callee, $result, $env);
+            }
+            $result->forceDelete('[[NewTarget]]');
             return $result;
         }
+        if ($callee->isDerivedConstructor() && !$result instanceof JsUndefined) {
+            throw new TypeError('Derived constructors may only return object or undefined');
+        }
+        if (
+            $callee->isDerivedConstructor()
+            && $callee->isNative()
+            && ($callee->getPrivateMethodEntries() || $callee->getInstanceFieldInitializers())
+        ) {
+            $this->initializeInstanceFields($callee, $newObj, $env);
+        }
+        $newObj->forceDelete('[[NewTarget]]');
         return $newObj;
     }
 
