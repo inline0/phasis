@@ -4299,9 +4299,23 @@ class Interpreter
         foreach ($argNodes as $argNode) {
             if ($argNode instanceof SpreadElement) {
                 $iterable = $this->evaluate($argNode->argument, $env);
+                if ($iterable instanceof \PhpJs\Value\JsOptionalUndefined) {
+                    $iterable = JsUndefined::instance();
+                }
                 $this->spreadInto($iterable, $args);
             } else {
-                $args[] = $this->evaluate($argNode, $env);
+                $val = $this->evaluate($argNode, $env);
+                // Optional-chain sentinel: when an argument is a
+                // MemberExpression / CallExpression that ends a chain
+                // (e.g. `fn(undefined, foo()?.a?.b)`), evaluate keeps
+                // the chain-internal sentinel so further `?.x` access
+                // can short-circuit. Once the chain ends (handed to a
+                // function as an argument), unwrap to JsUndefined so
+                // the callee sees the spec value, not the sentinel.
+                if ($val instanceof \PhpJs\Value\JsOptionalUndefined) {
+                    $val = JsUndefined::instance();
+                }
+                $args[] = $val;
             }
         }
         return $args;

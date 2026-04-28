@@ -202,15 +202,25 @@ final class JsToPhp
                 $compiler->declaredLocals[$p->name] = true;
             }
             if ($isExpressionBody) {
+                $type = $compiler->inferExpressionType($body);
+                if ($numeric && $type !== 'numeric') {
+                    return null;
+                }
                 $compiler->emitPrologue($params);
                 $value = $compiler->emitExpression($body);
                 $compiler->flushPending();
                 if ($numeric) {
                     $compiler->emitLine('return (float)(' . $value . ');');
-                } else {
+                } elseif ($type === 'boolean') {
+                    $compiler->emitLine(
+                        'return \\PhpJs\\Value\\JsBoolean::of((bool)(' . $value . '));'
+                    );
+                } elseif ($type === 'numeric') {
                     $compiler->emitLine(
                         'return \\PhpJs\\Value\\JsNumber::of((float)(' . $value . '));'
                     );
+                } else {
+                    return null;
                 }
             } else {
                 $compiler->collectLocals($body->body);
@@ -251,6 +261,106 @@ final class JsToPhp
             $fn->phpCompiledNodes = $compiler->nestedFnNodes;
         }
         return $closure;
+    }
+
+    /**
+     * Infer the static "type kind" of an expression's value:
+     *   - 'numeric'  : produces a PHP raw double (or int that PHP
+     *                  silently widens to float).
+     *   - 'boolean'  : produces a PHP bool.
+     *   - 'unknown'  : can't classify statically; caller should bail
+     *                  rather than pick the wrong wrap.
+     *
+     * Used by ReturnStatement / arrow-expression-body emit to decide
+     * whether to wrap the raw PHP value in JsNumber, JsBoolean, or
+     * refuse to compile the function at all. Without this,
+     * a function like `function f() { return a === b; }` would emit
+     * `return JsNumber::of((float)(true))` which collapses true to
+     * JsNumber(1) — silently breaking a huge swath of test262 helper
+     * code that returns booleans.
+     */
+    private function inferExpressionType(Node $node): string
+    {
+        if ($node instanceof Literal) {
+            if (is_int($node->value) || is_float($node->value)) {
+                return 'numeric';
+            }
+            if (is_bool($node->value)) {
+                return 'boolean';
+            }
+            return 'unknown';
+        }
+        if ($node instanceof BinaryExpression) {
+            switch ($node->operator) {
+                case '+': case '-': case '*': case '/': case '%':
+                case '**': case '&': case '|': case '^':
+                case '<<': case '>>': case '>>>':
+                    return 'numeric';
+                case '<': case '>': case '<=': case '>=':
+                case '==': case '!=': case '===': case '!==':
+                    return 'boolean';
+                default:
+                    return 'unknown';
+            }
+        }
+        if ($node instanceof UnaryExpression) {
+            switch ($node->operator) {
+                case '-': case '+': case '~':
+                    return 'numeric';
+                case '!':
+                    return 'boolean';
+                default:
+                    return 'unknown';
+            }
+        }
+        if ($node instanceof UpdateExpression) {
+            // ++/-- on a numeric local: result is the raw double
+            // (assignment result of slot += 1).
+            return 'numeric';
+        }
+        if ($node instanceof LogicalExpression) {
+            $l = $this->inferExpressionType($node->left);
+            $r = $this->inferExpressionType($node->right);
+            if ($l === $r && $l !== 'unknown') {
+                return $l;
+            }
+            return 'unknown';
+        }
+        if ($node instanceof ConditionalExpression) {
+            $c = $this->inferExpressionType($node->consequent);
+            $a = $this->inferExpressionType($node->alternate);
+            if ($c === $a && $c !== 'unknown') {
+                return $c;
+            }
+            return 'unknown';
+        }
+        if ($node instanceof Identifier) {
+            if (isset($this->declaredLocals[$node->name])) {
+                $kind = $this->localTypes[$node->name] ?? 'numeric';
+                return $kind === 'numeric' ? 'numeric' : 'unknown';
+            }
+            // Free var: emitExpression unboxes to numeric (with a
+            // runtime JsNumber assertion).
+            return 'numeric';
+        }
+        if ($node instanceof CallExpression) {
+            // emitCallExpression returns the call result already
+            // unboxed as a raw double (with runtime JsNumber check).
+            // We only reach this when the call is in numeric pipeline,
+            // so the result type is numeric by contract.
+            return 'numeric';
+        }
+        if ($node instanceof AssignmentExpression) {
+            // Result of an assignment is the assigned value; most
+            // assignments in our profile deal with numeric slots.
+            return 'numeric';
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+            // Member reads are unboxed numeric via the dataSlots path
+            // (with runtime JsNumber assertion).
+            return 'numeric';
+        }
+        return 'unknown';
     }
 
     /**
@@ -1061,11 +1171,28 @@ final class JsToPhp
                 }
                 $this->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
             } else {
+                $type = $this->inferExpressionType($node->argument);
+                if ($this->numericMode && $type !== 'numeric') {
+                    // Numeric-mode contract is a raw float return.
+                    // Boolean / unknown returns can't satisfy it; bail
+                    // so the standard entry handles this call.
+                    throw new Bailout('numeric mode: non-numeric return');
+                }
                 $val = $this->emitExpression($node->argument);
                 $this->flushPending();
                 if ($this->numericMode) {
                     $this->emitLine('return (float)(' . $val . ');');
+                } elseif ($type === 'boolean') {
+                    $this->emitLine('return \\PhpJs\\Value\\JsBoolean::of((bool)(' . $val . '));');
                 } else {
+                    // Default to numeric wrap. inferExpressionType
+                    // returns 'unknown' for shapes we can't classify
+                    // statically; the JsNumber wrap is wrong for
+                    // string / object / etc., so bail those before
+                    // they reach this branch.
+                    if ($type !== 'numeric') {
+                        throw new Bailout('return type ' . $type . ' not yet wrappable');
+                    }
                     $this->emitLine('return \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));');
                 }
             }
