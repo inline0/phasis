@@ -188,22 +188,43 @@ final class VM
                     return null;
                 }
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
-                    ? $args[1] : $undef = JsUndefined::instance();
+                    ? $args[1] : JsUndefined::instance();
                 $len = $receiver->getLength();
                 $elements = $receiver->getDenseElements();
                 $result = new \PhpJs\Value\JsArray();
-                $compiled = $callback->phpCompiled;
+                // The callback's phpCompiled / phpCompiledNumeric may
+                // be null on first iter and populate on the first call
+                // (lazy compile inside callFunction). Read live each
+                // iter so subsequent iters pick up the cached entries.
+                $maxParams = count($callback->getParams());
+                $numericFits = $maxParams <= 2;
                 for ($i = 0; $i < $len; $i++) {
                     $val = $elements[$i] ?? null;
                     if ($val === null) {
                         return null;
                     }
+                    $numeric = $callback->phpCompiledNumeric;
+                    if ($numeric !== null && $numericFits && $val instanceof JsNumber) {
+                        try {
+                            $rawResult = $numeric(
+                                [$val->value, (float) $i],
+                                $callback->closure,
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                            $result->push(JsNumber::of($rawResult));
+                            continue;
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                            // Fall through to the standard / spec path.
+                        }
+                    }
+                    $compiled = $callback->phpCompiled;
                     $idx = JsNumber::of((float) $i);
                     if ($compiled !== null) {
                         try {
                             $mapped = $compiled(
                                 [$val, $idx, $receiver],
-                                $callback->getClosure(),
+                                $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
                             );
@@ -246,21 +267,40 @@ final class VM
                     $start = 1;
                 }
                 $undef = JsUndefined::instance();
-                $compiled = $callback->phpCompiled;
+                $numericFits = count($callback->getParams()) <= 2;
+                $accIsNumber = $acc instanceof JsNumber;
                 for ($i = $start; $i < $len; $i++) {
                     $val = $elements[$i] ?? null;
                     if ($val === null) {
                         return null;
                     }
+                    $numeric = $callback->phpCompiledNumeric;
+                    if ($numeric !== null && $numericFits && $accIsNumber && $val instanceof JsNumber) {
+                        try {
+                            $rawAcc = $numeric(
+                                [$acc->value, $val->value],
+                                $callback->closure,
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                            $acc = JsNumber::of($rawAcc);
+                            continue;
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                            // Fall through to the standard / spec path
+                            // for this iteration.
+                        }
+                    }
+                    $compiled = $callback->phpCompiled;
                     $idx = JsNumber::of((float) $i);
                     if ($compiled !== null) {
                         try {
                             $acc = $compiled(
                                 [$acc, $val, $idx, $receiver],
-                                $callback->getClosure(),
+                                $callback->closure,
                                 $this->interp,
                                 $callback->phpCompiledNodes,
                             );
+                            $accIsNumber = $acc instanceof JsNumber;
                             continue;
                         } catch (\PhpJs\Bytecode\Bailout) {}
                     }
@@ -269,6 +309,7 @@ final class VM
                         $undef,
                         [$acc, $val, $idx, $receiver],
                     );
+                    $accIsNumber = $acc instanceof JsNumber;
                 }
                 return $acc;
 
