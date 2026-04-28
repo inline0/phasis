@@ -535,6 +535,18 @@ class JsFunction extends JsObject
     public bool $phpCompileFailed = false;
 
     /**
+     * AST nodes referenced by phpCompiled — currently only nested
+     * FunctionDeclaration / FunctionExpression nodes that the closure
+     * materialises into JsFunctions at run time via vmMakeFunction.
+     * The closure receives this array as its 4th argument and looks
+     * up nodes by integer index. Empty for closures without nested
+     * function constructions.
+     *
+     * @var list<\PhpJs\Ast\Node>
+     */
+    public array $phpCompiledNodes = [];
+
+    /**
      * Tag identifying a hot built-in function whose VM call site can
      * inline the host operation directly instead of going through the
      * spec-faithful native callable. Set when constructing the

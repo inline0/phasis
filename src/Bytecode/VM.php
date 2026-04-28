@@ -162,674 +162,675 @@ final class VM
                 while (true) {
                     $op = $code[$pc];
                     switch ($op) {
-                case Op::POP:
-                    $sp--;
-                    $pc++;
-                    break;
-                case Op::DUP:
-                    $stack[$sp] = $stack[$sp - 1];
-                    $sp++;
-                    $pc++;
-                    break;
+                        case Op::POP:
+                            $sp--;
+                            $pc++;
+                            break;
+                        case Op::DUP:
+                            $stack[$sp] = $stack[$sp - 1];
+                            $sp++;
+                            $pc++;
+                            break;
 
-                case Op::LOAD_CONST:
-                    $stack[$sp++] = $consts[$code[$pc + 1]];
-                    $pc += 2;
-                    break;
-                case Op::LOAD_UNDEF:
-                    $stack[$sp++] = $undef;
-                    $pc++;
-                    break;
-                case Op::LOAD_NULL:
-                    $stack[$sp++] = $null;
-                    $pc++;
-                    break;
-                case Op::LOAD_TRUE:
-                    $stack[$sp++] = $true;
-                    $pc++;
-                    break;
-                case Op::LOAD_FALSE:
-                    $stack[$sp++] = $false;
-                    $pc++;
-                    break;
-                case Op::LOAD_THIS:
-                    // Resolve this via the env chain so derived-
-                    // constructor TDZ throws (and arrow lexical-this
-                    // walks) fire at the right point — matching the
-                    // tree-walker's evalThisExpression.
-                    $stack[$sp++] = $env->get('this');
-                    $pc++;
-                    break;
+                        case Op::LOAD_CONST:
+                            $stack[$sp++] = $consts[$code[$pc + 1]];
+                            $pc += 2;
+                            break;
+                        case Op::LOAD_UNDEF:
+                            $stack[$sp++] = $undef;
+                            $pc++;
+                            break;
+                        case Op::LOAD_NULL:
+                            $stack[$sp++] = $null;
+                            $pc++;
+                            break;
+                        case Op::LOAD_TRUE:
+                            $stack[$sp++] = $true;
+                            $pc++;
+                            break;
+                        case Op::LOAD_FALSE:
+                            $stack[$sp++] = $false;
+                            $pc++;
+                            break;
+                        case Op::LOAD_THIS:
+                            // Resolve this via the env chain so derived-
+                            // constructor TDZ throws (and arrow lexical-this
+                            // walks) fire at the right point — matching the
+                            // tree-walker's evalThisExpression.
+                            $stack[$sp++] = $env->get('this');
+                            $pc++;
+                            break;
 
-                case Op::LOAD_LOCAL:
-                    $stack[$sp++] = $locals[$code[$pc + 1]];
-                    $pc += 2;
-                    break;
-                case Op::STORE_LOCAL:
-                    $locals[$code[$pc + 1]] = $stack[--$sp];
-                    $pc += 2;
-                    break;
-                case Op::INC_LOCAL:
-                    $slotIdx = $code[$pc + 1];
-                    $cur = $locals[$slotIdx];
-                    $locals[$slotIdx] = ($cur instanceof JsNumber)
-                        ? JsNumber::of($cur->value + 1.0)
-                        : JsNumber::of(TypeConversion::toNumber($cur) + 1.0);
-                    $pc += 2;
-                    break;
-                case Op::DEC_LOCAL:
-                    $slotIdx = $code[$pc + 1];
-                    $cur = $locals[$slotIdx];
-                    $locals[$slotIdx] = ($cur instanceof JsNumber)
-                        ? JsNumber::of($cur->value - 1.0)
-                        : JsNumber::of(TypeConversion::toNumber($cur) - 1.0);
-                    $pc += 2;
-                    break;
+                        case Op::LOAD_LOCAL:
+                            $stack[$sp++] = $locals[$code[$pc + 1]];
+                            $pc += 2;
+                            break;
+                        case Op::STORE_LOCAL:
+                            $locals[$code[$pc + 1]] = $stack[--$sp];
+                            $pc += 2;
+                            break;
+                        case Op::INC_LOCAL:
+                            $slotIdx = $code[$pc + 1];
+                            $cur = $locals[$slotIdx];
+                            $locals[$slotIdx] = ($cur instanceof JsNumber)
+                                ? JsNumber::of($cur->value + 1.0)
+                                : JsNumber::of(TypeConversion::toNumber($cur) + 1.0);
+                            $pc += 2;
+                            break;
+                        case Op::DEC_LOCAL:
+                            $slotIdx = $code[$pc + 1];
+                            $cur = $locals[$slotIdx];
+                            $locals[$slotIdx] = ($cur instanceof JsNumber)
+                                ? JsNumber::of($cur->value - 1.0)
+                                : JsNumber::of(TypeConversion::toNumber($cur) - 1.0);
+                            $pc += 2;
+                            break;
 
-                case Op::LOAD_NAME:
-                    // Inline cache: if we resolved this PC before AND
-                    // no env binding has mutated since (global version
-                    // counter unchanged), reuse the captured value.
-                    // The env walk for global function references like
-                    // `fib` inside fib's body otherwise burns ~10 hash
-                    // ops per call, repeated on every recursive entry.
-                    $ic = $cf->loadNameIc[$pc] ?? null;
-                    if ($ic !== null && $ic[1] === \PhpJs\Runtime\Environment::$globalBindingsVersion) {
-                        $stack[$sp++] = $ic[0];
-                    } else {
-                        $resolved = $env->get($names[$code[$pc + 1]], $strict);
-                        $cf->loadNameIc[$pc] = [$resolved, \PhpJs\Runtime\Environment::$globalBindingsVersion];
-                        $stack[$sp++] = $resolved;
-                    }
-                    $pc += 2;
-                    break;
-                case Op::STORE_NAME:
-                    $env->set($names[$code[$pc + 1]], $stack[--$sp], $strict);
-                    $pc += 2;
-                    break;
+                        case Op::LOAD_NAME:
+                            // Inline cache: if we resolved this PC before AND
+                            // no env binding has mutated since (global version
+                            // counter unchanged), reuse the captured value.
+                            // The env walk for global function references like
+                            // `fib` inside fib's body otherwise burns ~10 hash
+                            // ops per call, repeated on every recursive entry.
+                            $ic = $cf->loadNameIc[$pc] ?? null;
+                            if ($ic !== null && $ic[1] === \PhpJs\Runtime\Environment::$globalBindingsVersion) {
+                                $stack[$sp++] = $ic[0];
+                            } else {
+                                $resolved = $env->get($names[$code[$pc + 1]], $strict);
+                                $cf->loadNameIc[$pc] = [$resolved, \PhpJs\Runtime\Environment::$globalBindingsVersion];
+                                $stack[$sp++] = $resolved;
+                            }
+                            $pc += 2;
+                            break;
+                        case Op::STORE_NAME:
+                            $env->set($names[$code[$pc + 1]], $stack[--$sp], $strict);
+                            $pc += 2;
+                            break;
 
                 // ---- Arithmetic ------------------------------------------
-                case Op::ADD:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $stack[$sp++] = JsNumber::of($l->value + $r->value);
-                    } elseif ($l instanceof JsString && $r instanceof JsString) {
-                        // Both strings: spec ApplyStringOrNumericBinaryOperator
-                        // calls ToPrimitive on both (no-op for strings) then,
-                        // since at least one primitive is string, returns a
-                        // string concatenation. Skip the addOperator dispatch
-                        // but route through concatNormalize so a trailing
-                        // CESU-8 high surrogate in $l merges with a leading
-                        // low surrogate in $r into a proper supplementary
-                        // codepoint.
-                        $stack[$sp++] = new JsString(JsString::concatNormalize($l->value, $r->value));
-                    } else {
-                        $stack[$sp++] = $this->interp->addOperator($l, $r);
-                    }
-                    $pc++;
-                    break;
-                case Op::SUB:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                        ? JsNumber::of($l->value - $r->value)
-                        : $this->interp->numericBinaryOp($l, $r, '-');
-                    $pc++;
-                    break;
-                case Op::MUL:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                        ? JsNumber::of($l->value * $r->value)
-                        : $this->interp->numericBinaryOp($l, $r, '*');
-                    $pc++;
-                    break;
-                case Op::DIV:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '/');
-                    $pc++;
-                    break;
-                case Op::MOD:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '%');
-                    $pc++;
-                    break;
-                case Op::POW:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->exponentiate($l, $r);
-                    $pc++;
-                    break;
+                        case Op::ADD:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $stack[$sp++] = JsNumber::of($l->value + $r->value);
+                            } elseif ($l instanceof JsString && $r instanceof JsString) {
+                                // Both strings: spec ApplyStringOrNumericBinaryOperator
+                                // calls ToPrimitive on both (no-op for strings) then,
+                                // since at least one primitive is string, returns a
+                                // string concatenation. Skip the addOperator dispatch
+                                // but route through concatNormalize so a trailing
+                                // CESU-8 high surrogate in $l merges with a leading
+                                // low surrogate in $r into a proper supplementary
+                                // codepoint.
+                                $stack[$sp++] = new JsString(JsString::concatNormalize($l->value, $r->value));
+                            } else {
+                                $stack[$sp++] = $this->interp->addOperator($l, $r);
+                            }
+                            $pc++;
+                            break;
+                        case Op::SUB:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of($l->value - $r->value)
+                                : $this->interp->numericBinaryOp($l, $r, '-');
+                            $pc++;
+                            break;
+                        case Op::MUL:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
+                                ? JsNumber::of($l->value * $r->value)
+                                : $this->interp->numericBinaryOp($l, $r, '*');
+                            $pc++;
+                            break;
+                        case Op::DIV:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '/');
+                            $pc++;
+                            break;
+                        case Op::MOD:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->numericBinaryOp($l, $r, '%');
+                            $pc++;
+                            break;
+                        case Op::POW:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->exponentiate($l, $r);
+                            $pc++;
+                            break;
 
                 // ---- Comparison ------------------------------------------
-                case Op::LT:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv < $rv) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = $this->interp->relational($l, $r, '<');
-                    }
-                    $pc++;
-                    break;
-                case Op::GT:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv > $rv) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = $this->interp->relational($r, $l, '>');
-                    }
-                    $pc++;
-                    break;
-                case Op::LE:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv <= $rv) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = $this->interp->relational($r, $l, '<=');
-                    }
-                    $pc++;
-                    break;
-                case Op::GE:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv >= $rv) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = $this->interp->relational($l, $r, '>=');
-                    }
-                    $pc++;
-                    break;
-                case Op::EQ:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
-                    $pc++;
-                    break;
-                case Op::NEQ:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
-                    $pc++;
-                    break;
-                case Op::SEQ:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = ($lv === $rv && !is_nan($lv)) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $true : $false;
-                    }
-                    $pc++;
-                    break;
-                case Op::SNEQ:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $lv = $l->value;
-                        $rv = $r->value;
-                        $stack[$sp++] = ($lv !== $rv || is_nan($lv)) ? $true : $false;
-                    } else {
-                        $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $false : $true;
-                    }
-                    $pc++;
-                    break;
+                        case Op::LT:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv < $rv) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = $this->interp->relational($l, $r, '<');
+                            }
+                            $pc++;
+                            break;
+                        case Op::GT:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv > $rv) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = $this->interp->relational($r, $l, '>');
+                            }
+                            $pc++;
+                            break;
+                        case Op::LE:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv <= $rv) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = $this->interp->relational($r, $l, '<=');
+                            }
+                            $pc++;
+                            break;
+                        case Op::GE:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv >= $rv) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = $this->interp->relational($l, $r, '>=');
+                            }
+                            $pc++;
+                            break;
+                        case Op::EQ:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
+                            $pc++;
+                            break;
+                        case Op::NEQ:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
+                            $pc++;
+                            break;
+                        case Op::SEQ:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = ($lv === $rv && !is_nan($lv)) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $true : $false;
+                            }
+                            $pc++;
+                            break;
+                        case Op::SNEQ:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                                $lv = $l->value;
+                                $rv = $r->value;
+                                $stack[$sp++] = ($lv !== $rv || is_nan($lv)) ? $true : $false;
+                            } else {
+                                $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $false : $true;
+                            }
+                            $pc++;
+                            break;
 
                 // ---- Bitwise --------------------------------------------
-                case Op::BAND:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '&');
-                    $pc++;
-                    break;
-                case Op::BOR:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '|');
-                    $pc++;
-                    break;
-                case Op::BXOR:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '^');
-                    $pc++;
-                    break;
-                case Op::SHL:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '<<');
-                    $pc++;
-                    break;
-                case Op::SHR:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>');
-                    $pc++;
-                    break;
-                case Op::USHR:
-                    $r = $stack[--$sp];
-                    $l = $stack[--$sp];
-                    $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>>');
-                    $pc++;
-                    break;
+                        case Op::BAND:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '&');
+                            $pc++;
+                            break;
+                        case Op::BOR:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '|');
+                            $pc++;
+                            break;
+                        case Op::BXOR:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseBinaryOp($l, $r, '^');
+                            $pc++;
+                            break;
+                        case Op::SHL:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '<<');
+                            $pc++;
+                            break;
+                        case Op::SHR:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>');
+                            $pc++;
+                            break;
+                        case Op::USHR:
+                            $r = $stack[--$sp];
+                            $l = $stack[--$sp];
+                            $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>>');
+                            $pc++;
+                            break;
 
                 // ---- Unary ----------------------------------------------
-                case Op::NOT:
-                    $v = $stack[--$sp];
-                    $stack[$sp++] = TypeConversion::toBoolean($v) ? $false : $true;
-                    $pc++;
-                    break;
-                case Op::NEG:
-                    $v = $stack[--$sp];
-                    if ($v instanceof JsNumber) {
-                        $stack[$sp++] = JsNumber::of(-$v->value);
-                    } else {
-                        $n = TypeConversion::toNumeric($v);
-                        if ($n instanceof JsNumber) {
-                            $stack[$sp++] = JsNumber::of(-$n->value);
-                        } else {
-                            // BigInt or other: defer to the spec helper
-                            // for full correctness.
-                            $stack[$sp++] = $this->interp->numericBinaryOp(
-                                JsNumber::of(0.0),
-                                $v,
-                                '-',
-                            );
-                        }
-                    }
-                    $pc++;
-                    break;
-                case Op::POS:
-                    $v = $stack[--$sp];
-                    if ($v instanceof JsNumber) {
-                        $stack[$sp++] = $v;
-                    } else {
-                        $stack[$sp++] = JsNumber::of(TypeConversion::toNumber($v));
-                    }
-                    $pc++;
-                    break;
+                        case Op::NOT:
+                            $v = $stack[--$sp];
+                            $stack[$sp++] = TypeConversion::toBoolean($v) ? $false : $true;
+                            $pc++;
+                            break;
+                        case Op::NEG:
+                            $v = $stack[--$sp];
+                            if ($v instanceof JsNumber) {
+                                $stack[$sp++] = JsNumber::of(-$v->value);
+                            } else {
+                                $n = TypeConversion::toNumeric($v);
+                                if ($n instanceof JsNumber) {
+                                    $stack[$sp++] = JsNumber::of(-$n->value);
+                                } else {
+                                    // BigInt or other: defer to the spec helper
+                                    // for full correctness.
+                                    $stack[$sp++] = $this->interp->numericBinaryOp(
+                                        JsNumber::of(0.0),
+                                        $v,
+                                        '-',
+                                    );
+                                }
+                            }
+                            $pc++;
+                            break;
+                        case Op::POS:
+                            $v = $stack[--$sp];
+                            if ($v instanceof JsNumber) {
+                                $stack[$sp++] = $v;
+                            } else {
+                                $stack[$sp++] = JsNumber::of(TypeConversion::toNumber($v));
+                            }
+                            $pc++;
+                            break;
 
                 // ---- Control flow ---------------------------------------
-                case Op::JUMP:
-                    $pc += $code[$pc + 1];
-                    break;
-                case Op::JUMP_IF_TRUE:
-                    $v = $stack[--$sp];
-                    // Hot path: comparison ops produce JsBoolean
-                    // results, which feed straight into conditional
-                    // jumps. Read the value field directly to skip
-                    // toBoolean's dispatch chain.
-                    $truthy = $v instanceof JsBoolean
-                        ? $v->value
-                        : TypeConversion::toBoolean($v);
-                    if ($truthy) {
-                        $pc += $code[$pc + 1];
-                    } else {
-                        $pc += 2;
-                    }
-                    break;
-                case Op::JUMP_IF_FALSE:
-                    $v = $stack[--$sp];
-                    $truthy = $v instanceof JsBoolean
-                        ? $v->value
-                        : TypeConversion::toBoolean($v);
-                    if (!$truthy) {
-                        $pc += $code[$pc + 1];
-                    } else {
-                        $pc += 2;
-                    }
-                    break;
-                case Op::JUMP_IF_LOCAL_GE_CONST:
-                    // Fused for-loop test: pc += offset (jump to loop
-                    // exit) when locals[L] >= consts[K], else fall
-                    // through to body. Hot path is JsNumber/JsNumber;
-                    // any other operand type runs the spec-correct
-                    // AbstractRelational comparison.
-                    $localVal = $locals[$code[$pc + 1]];
-                    $constVal = $consts[$code[$pc + 2]];
-                    if ($localVal instanceof JsNumber && $constVal instanceof JsNumber) {
-                        if (!($localVal->value < $constVal->value)) {
-                            $pc += $code[$pc + 3];
-                        } else {
-                            $pc += 4;
-                        }
-                    } else {
-                        // Spec-correct fallback: local < const via the
-                        // shared abstractRelational helper. NaN (null
-                        // result) or false collapses to "exit loop";
-                        // true means continue.
-                        $rel = AbstractOperations::abstractRelational($localVal, $constVal, true);
-                        if ($rel !== true) {
-                            $pc += $code[$pc + 3];
-                        } else {
-                            $pc += 4;
-                        }
-                    }
-                    break;
-                case Op::JUMP_IF_TRUTHY_KEEP:
-                    $v = $stack[$sp - 1];
-                    if (TypeConversion::toBoolean($v)) {
-                        $pc += $code[$pc + 1];
-                    } else {
-                        $sp--;
-                        $pc += 2;
-                    }
-                    break;
-                case Op::JUMP_IF_FALSY_KEEP:
-                    $v = $stack[$sp - 1];
-                    if (!TypeConversion::toBoolean($v)) {
-                        $pc += $code[$pc + 1];
-                    } else {
-                        $sp--;
-                        $pc += 2;
-                    }
-                    break;
-                case Op::JUMP_IF_NULLISH:
-                    // If nullish: pop and jump (so the right-side
-                    // path can evaluate its replacement onto a clean
-                    // stack). If not nullish: keep on stack, fall
-                    // through (the parent JUMP @end then skips the
-                    // right side, leaving left as the `??` result).
-                    $v = $stack[$sp - 1];
-                    if ($v instanceof JsNull || $v instanceof JsUndefined) {
-                        $sp--;
-                        $pc += $code[$pc + 1];
-                    } else {
-                        $pc += 2;
-                    }
-                    break;
+                        case Op::JUMP:
+                            $pc += $code[$pc + 1];
+                            break;
+                        case Op::JUMP_IF_TRUE:
+                            $v = $stack[--$sp];
+                            // Hot path: comparison ops produce JsBoolean
+                            // results, which feed straight into conditional
+                            // jumps. Read the value field directly to skip
+                            // toBoolean's dispatch chain.
+                            $truthy = $v instanceof JsBoolean
+                                ? $v->value
+                                : TypeConversion::toBoolean($v);
+                            if ($truthy) {
+                                $pc += $code[$pc + 1];
+                            } else {
+                                $pc += 2;
+                            }
+                            break;
+                        case Op::JUMP_IF_FALSE:
+                            $v = $stack[--$sp];
+                            $truthy = $v instanceof JsBoolean
+                                ? $v->value
+                                : TypeConversion::toBoolean($v);
+                            if (!$truthy) {
+                                $pc += $code[$pc + 1];
+                            } else {
+                                $pc += 2;
+                            }
+                            break;
+                        case Op::JUMP_IF_LOCAL_GE_CONST:
+                            // Fused for-loop test: pc += offset (jump to loop
+                            // exit) when locals[L] >= consts[K], else fall
+                            // through to body. Hot path is JsNumber/JsNumber;
+                            // any other operand type runs the spec-correct
+                            // AbstractRelational comparison.
+                            $localVal = $locals[$code[$pc + 1]];
+                            $constVal = $consts[$code[$pc + 2]];
+                            if ($localVal instanceof JsNumber && $constVal instanceof JsNumber) {
+                                if (!($localVal->value < $constVal->value)) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            } else {
+                                // Spec-correct fallback: local < const via the
+                                // shared abstractRelational helper. NaN (null
+                                // result) or false collapses to "exit loop";
+                                // true means continue.
+                                $rel = AbstractOperations::abstractRelational($localVal, $constVal, true);
+                                if ($rel !== true) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            }
+                            break;
+                        case Op::JUMP_IF_TRUTHY_KEEP:
+                            $v = $stack[$sp - 1];
+                            if (TypeConversion::toBoolean($v)) {
+                                $pc += $code[$pc + 1];
+                            } else {
+                                $sp--;
+                                $pc += 2;
+                            }
+                            break;
+                        case Op::JUMP_IF_FALSY_KEEP:
+                            $v = $stack[$sp - 1];
+                            if (!TypeConversion::toBoolean($v)) {
+                                $pc += $code[$pc + 1];
+                            } else {
+                                $sp--;
+                                $pc += 2;
+                            }
+                            break;
+                        case Op::JUMP_IF_NULLISH:
+                            // If nullish: pop and jump (so the right-side
+                            // path can evaluate its replacement onto a clean
+                            // stack). If not nullish: keep on stack, fall
+                            // through (the parent JUMP @end then skips the
+                            // right side, leaving left as the `??` result).
+                            $v = $stack[$sp - 1];
+                            if ($v instanceof JsNull || $v instanceof JsUndefined) {
+                                $sp--;
+                                $pc += $code[$pc + 1];
+                            } else {
+                                $pc += 2;
+                            }
+                            break;
 
                 // ---- Calls / return -------------------------------------
-                case Op::CALL:
-                    $argc = $code[$pc + 1];
-                    $base = $sp - $argc;
-                    // Inline small-argc arg packing — array_slice
-                    // allocates a new array even for argc=1 (the most
-                    // common case for closures). Manual packing for
-                    // argc <= 2 saves an allocation per call site.
-                    if ($argc === 0) {
-                        $args = [];
-                    } elseif ($argc === 1) {
-                        $args = [$stack[$base]];
-                    } elseif ($argc === 2) {
-                        $args = [$stack[$base], $stack[$base + 1]];
-                    } else {
-                        $args = array_slice($stack, $base, $argc);
-                    }
-                    $callee = $stack[$base - 1];
-                    $sp = $base - 1;
-                    if (!$callee instanceof JsFunction) {
-                        throw new TypeError(
-                            (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
-                        );
-                    }
-                    // Fast path: VM-compiled callee with the canSkipEnvAlloc
-                    // shape. Skip callFunction's tail-call trampoline and
-                    // callFunctionInner's kind dispatcher — both of which
-                    // are pure overhead for the case we hit ~99% of the
-                    // time. Eligibility is memoised on JsFunction so the
-                    // hot CALL path collapses to a single field fetch.
-                    $eligible = $callee->vmDirectDispatchCache;
-                    if ($eligible === null) {
-                        $eligible = $callee->compiled !== null
-                            && $callee->compiled->canSkipEnvAlloc
-                            && !$callee->isClassConstructor()
-                            && !$callee->isDerivedConstructor()
-                            && $callee->getHomeObject() === null
-                            && $callee->getNativeCallable() === null
-                            && !$callee->isAsync()
-                            && !$callee->isGenerator();
-                        // Only memoise positive results; a negative on
-                        // first call could later become positive once
-                        // the lazy compiler populates $compiled.
-                        if ($eligible) {
-                            $callee->vmDirectDispatchCache = true;
-                        }
-                    }
-                    // Top-tier fast path: callee has a JsToPhp-compiled
-                    // PHP closure. Invoke it directly, skipping
-                    // executeVmFunctionDirect's prologue (callStack /
-                    // callerStack push, frame setup, teardown). The
-                    // closure body's compile-time numeric proof made
-                    // all that bookkeeping unnecessary; runtime
-                    // bailouts (non-numeric arg) throw a Bailout that
-                    // we catch and retry through the normal direct /
-                    // slow path.
-                    if (
-                        $callee->phpCompiled !== null
-                        && !$callee->isClassConstructor()
-                        && !$callee->isDerivedConstructor()
-                        && $callee->getHomeObject() === null
-                    ) {
-                        try {
-                            $stack[$sp++] = ($callee->phpCompiled)(
+                        case Op::CALL:
+                            $argc = $code[$pc + 1];
+                            $base = $sp - $argc;
+                            // Inline small-argc arg packing — array_slice
+                            // allocates a new array even for argc=1 (the most
+                            // common case for closures). Manual packing for
+                            // argc <= 2 saves an allocation per call site.
+                            if ($argc === 0) {
+                                $args = [];
+                            } elseif ($argc === 1) {
+                                $args = [$stack[$base]];
+                            } elseif ($argc === 2) {
+                                $args = [$stack[$base], $stack[$base + 1]];
+                            } else {
+                                $args = array_slice($stack, $base, $argc);
+                            }
+                            $callee = $stack[$base - 1];
+                            $sp = $base - 1;
+                            if (!$callee instanceof JsFunction) {
+                                throw new TypeError(
+                                    (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
+                                );
+                            }
+                            // Fast path: VM-compiled callee with the canSkipEnvAlloc
+                            // shape. Skip callFunction's tail-call trampoline and
+                            // callFunctionInner's kind dispatcher — both of which
+                            // are pure overhead for the case we hit ~99% of the
+                            // time. Eligibility is memoised on JsFunction so the
+                            // hot CALL path collapses to a single field fetch.
+                            $eligible = $callee->vmDirectDispatchCache;
+                            if ($eligible === null) {
+                                $eligible = $callee->compiled !== null
+                                    && $callee->compiled->canSkipEnvAlloc
+                                    && !$callee->isClassConstructor()
+                                    && !$callee->isDerivedConstructor()
+                                    && $callee->getHomeObject() === null
+                                    && $callee->getNativeCallable() === null
+                                    && !$callee->isAsync()
+                                    && !$callee->isGenerator();
+                                // Only memoise positive results; a negative on
+                                // first call could later become positive once
+                                // the lazy compiler populates $compiled.
+                                if ($eligible) {
+                                    $callee->vmDirectDispatchCache = true;
+                                }
+                            }
+                            // Top-tier fast path: callee has a JsToPhp-compiled
+                            // PHP closure. Invoke it directly, skipping
+                            // executeVmFunctionDirect's prologue (callStack /
+                            // callerStack push, frame setup, teardown). The
+                            // closure body's compile-time numeric proof made
+                            // all that bookkeeping unnecessary; runtime
+                            // bailouts (non-numeric arg) throw a Bailout that
+                            // we catch and retry through the normal direct /
+                            // slow path.
+                            if (
+                                $callee->phpCompiled !== null
+                                && !$callee->isClassConstructor()
+                                && !$callee->isDerivedConstructor()
+                                && $callee->getHomeObject() === null
+                            ) {
+                                try {
+                                    $stack[$sp++] = ($callee->phpCompiled)(
+                                        $args,
+                                        $callee->getClosure(),
+                                        $this->interp,
+                                        $callee->phpCompiledNodes,
+                                    );
+                                    $pc += 2;
+                                    break;
+                                } catch (\PhpJs\Bytecode\Bailout) {
+                                    // Fall through to executeVmFunctionDirect /
+                                    // callFunction so the call still completes.
+                                }
+                            }
+                            if ($eligible) {
+                                $stack[$sp++] = $this->interp->executeVmFunctionDirect(
+                                    $callee,
+                                    $undef,
+                                    $args,
+                                );
+                            } else {
+                                $stack[$sp++] = $this->interp->callFunction(
+                                    $callee,
+                                    $undef,
+                                    $args,
+                                );
+                            }
+                            $pc += 2;
+                            break;
+
+                        case Op::NEW_OBJECT:
+                            $stack[$sp++] = $this->interp->vmNewObject();
+                            $pc++;
+                            break;
+                        case Op::NEW_ARRAY:
+                            $count = $code[$pc + 1];
+                            $base = $sp - $count;
+                            $items = $count === 0 ? [] : array_slice($stack, $base, $count);
+                            $sp = $base;
+                            $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
+                            $pc += 2;
+                            break;
+                        case Op::SET_PROP:
+                            // Stack: [obj, val] -> [obj]; effect: obj.name = val.
+                            $val = $stack[--$sp];
+                            $obj = $stack[$sp - 1]; // peek
+                            $name = $names[$code[$pc + 1]];
+                            if ($obj instanceof JsObject) {
+                                $obj->defineOwnDataPropertyFast($name, $val);
+                            }
+                            $pc += 2;
+                            break;
+                        case Op::SET_COMPUTED:
+                            // Stack: [obj, key, val] -> [obj].
+                            $val = $stack[--$sp];
+                            $key = $stack[--$sp];
+                            $obj = $stack[$sp - 1];
+                            if ($obj instanceof JsObject) {
+                                $resolved = TypeConversion::toPropertyKey($key);
+                                if ($resolved instanceof \PhpJs\Value\JsSymbol) {
+                                    $obj->setBySymbol($resolved, $val);
+                                } else {
+                                    $name = $resolved instanceof JsString
+                                        ? $resolved->value
+                                        : TypeConversion::toString($resolved);
+                                    $obj->defineOwnDataPropertyFast($name, $val);
+                                }
+                            }
+                            $pc++;
+                            break;
+                        case Op::NEW_CALL:
+                            $argc = $code[$pc + 1];
+                            $base = $sp - $argc;
+                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            $callee = $stack[$base - 1];
+                            $sp = $base - 1;
+                            $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
+                            $pc += 2;
+                            break;
+
+                        case Op::CALL_METHOD:
+                            // Stack: [..., obj, method, arg0, ..., argN-1]
+                            // The method was already loaded (LOAD_MEMBER) so
+                            // any TypeError for a null/undefined receiver
+                            // already surfaced before any argument was eval'd.
+                            $argc = $code[$pc + 1];
+                            $base = $sp - $argc;
+                            $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                            $method = $stack[$base - 1];
+                            $receiver = $stack[$base - 2];
+                            $sp = $base - 2;
+                            if (
+                                $method instanceof \PhpJs\Value\JsProxy
+                                && $method->isCallable()
+                            ) {
+                                $stack[$sp++] = $method->apply($receiver, $args);
+                                $pc += 2;
+                                break;
+                            }
+                            if (!$method instanceof JsFunction) {
+                                throw new TypeError(
+                                    (TypeConversion::toString($method) ?: 'value') . ' is not a function'
+                                );
+                            }
+                            // Inline path for tagged hot built-ins: when the
+                            // receiver shape matches what the built-in's spec
+                            // path simplifies to (plain JsArray for array
+                            // methods), do the operation directly and skip the
+                            // entire callFunction → native dispatch chain. The
+                            // marker is set at engine init when the built-in
+                            // is installed; absence falls through to the spec
+                            // path so semantics never diverge.
+                            if (
+                                $method->builtinKind === 'array.push'
+                                && $receiver instanceof \PhpJs\Value\JsArray
+                                && $argc === 1
+                            ) {
+                                $receiver->push($args[0]);
+                                $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
+                                $pc += 2;
+                                break;
+                            }
+                            $stack[$sp++] = $this->interp->callFunction(
+                                $method,
+                                $receiver,
                                 $args,
-                                $callee->getClosure(),
-                                $this->interp,
                             );
                             $pc += 2;
                             break;
-                        } catch (\PhpJs\Bytecode\Bailout) {
-                            // Fall through to executeVmFunctionDirect /
-                            // callFunction so the call still completes.
-                        }
-                    }
-                    if ($eligible) {
-                        $stack[$sp++] = $this->interp->executeVmFunctionDirect(
-                            $callee,
-                            $undef,
-                            $args,
-                        );
-                    } else {
-                        $stack[$sp++] = $this->interp->callFunction(
-                            $callee,
-                            $undef,
-                            $args,
-                        );
-                    }
-                    $pc += 2;
-                    break;
 
-                case Op::NEW_OBJECT:
-                    $stack[$sp++] = $this->interp->vmNewObject();
-                    $pc++;
-                    break;
-                case Op::NEW_ARRAY:
-                    $count = $code[$pc + 1];
-                    $base = $sp - $count;
-                    $items = $count === 0 ? [] : array_slice($stack, $base, $count);
-                    $sp = $base;
-                    $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
-                    $pc += 2;
-                    break;
-                case Op::SET_PROP:
-                    // Stack: [obj, val] -> [obj]; effect: obj.name = val.
-                    $val = $stack[--$sp];
-                    $obj = $stack[$sp - 1]; // peek
-                    $name = $names[$code[$pc + 1]];
-                    if ($obj instanceof JsObject) {
-                        $obj->defineOwnDataPropertyFast($name, $val);
-                    }
-                    $pc += 2;
-                    break;
-                case Op::SET_COMPUTED:
-                    // Stack: [obj, key, val] -> [obj].
-                    $val = $stack[--$sp];
-                    $key = $stack[--$sp];
-                    $obj = $stack[$sp - 1];
-                    if ($obj instanceof JsObject) {
-                        $resolved = TypeConversion::toPropertyKey($key);
-                        if ($resolved instanceof \PhpJs\Value\JsSymbol) {
-                            $obj->setBySymbol($resolved, $val);
-                        } else {
-                            $name = $resolved instanceof JsString
-                                ? $resolved->value
-                                : TypeConversion::toString($resolved);
-                            $obj->defineOwnDataPropertyFast($name, $val);
-                        }
-                    }
-                    $pc++;
-                    break;
-                case Op::NEW_CALL:
-                    $argc = $code[$pc + 1];
-                    $base = $sp - $argc;
-                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
-                    $callee = $stack[$base - 1];
-                    $sp = $base - 1;
-                    $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
-                    $pc += 2;
-                    break;
+                        case Op::LOAD_MEMBER:
+                            $obj = $stack[--$sp];
+                            $name = $names[$code[$pc + 1]];
+                            // Fast path: own default-attr data slot on a plain
+                            // JsObject. Direct array hit on the receiver's
+                            // dataSlots skips lookupMember -> JsObject::get ->
+                            // dataSlots, three layers of method dispatch.
+                            if (
+                                $obj instanceof JsObject
+                                && isset($obj->properties->dataSlots[$name])
+                            ) {
+                                $stack[$sp++] = $obj->properties->dataSlots[$name];
+                            } else {
+                                $stack[$sp++] = $this->lookupMember($obj, $name);
+                            }
+                            $pc += 2;
+                            break;
+                        case Op::LOAD_COMPUTED:
+                            $key = $stack[--$sp];
+                            $obj = $stack[--$sp];
+                            $stack[$sp++] = $this->lookupComputed($obj, $key);
+                            $pc++;
+                            break;
+                        case Op::STORE_MEMBER:
+                            $val = $stack[--$sp];
+                            $obj = $stack[--$sp];
+                            $name = $names[$code[$pc + 1]];
+                            // Fast path: assigning to an existing own default-
+                            // attr data slot. Per OrdinarySetWithOwnDescriptor
+                            // an own writable data property wins over any
+                            // prototype-chain accessor or readonly slot, so a
+                            // direct in-place write is spec-correct here. The
+                            // slow path handles non-extensible / accessor
+                            // setter / readonly proto / strict-mode error cases.
+                            if (
+                                $obj instanceof JsObject
+                                && isset($obj->properties->dataSlots[$name])
+                            ) {
+                                $obj->properties->dataSlots[$name] = $val;
+                            } else {
+                                $this->writeMember($obj, $name, $val);
+                            }
+                            $stack[$sp++] = $val;
+                            $pc += 2;
+                            break;
+                        case Op::STORE_COMPUTED:
+                            $val = $stack[--$sp];
+                            $key = $stack[--$sp];
+                            $obj = $stack[--$sp];
+                            $this->writeComputed($obj, $key, $val);
+                            $stack[$sp++] = $val;
+                            $pc++;
+                            break;
 
-                case Op::CALL_METHOD:
-                    // Stack: [..., obj, method, arg0, ..., argN-1]
-                    // The method was already loaded (LOAD_MEMBER) so
-                    // any TypeError for a null/undefined receiver
-                    // already surfaced before any argument was eval'd.
-                    $argc = $code[$pc + 1];
-                    $base = $sp - $argc;
-                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
-                    $method = $stack[$base - 1];
-                    $receiver = $stack[$base - 2];
-                    $sp = $base - 2;
-                    if (
-                        $method instanceof \PhpJs\Value\JsProxy
-                        && $method->isCallable()
-                    ) {
-                        $stack[$sp++] = $method->apply($receiver, $args);
-                        $pc += 2;
-                        break;
+                        case Op::MAKE_FUNCTION:
+                            $stack[$sp++] = $this->interp->vmMakeFunction(
+                                $nestedFns[$code[$pc + 1]],
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
+
+                        case Op::MAKE_CLASS:
+                            $stack[$sp++] = $this->interp->vmMakeClass(
+                                $cf->classNodes[$code[$pc + 1]],
+                                $env,
+                            );
+                            $pc += 2;
+                            break;
+
+                        case Op::THROW:
+                            $val = $stack[--$sp];
+                            $this->interp->throwJsValue($val);
+                            // throwJsValue always throws; the no-fallthrough is
+                            // intentional and PSR-2 wants this comment to make
+                            // the missing break explicit.
+                            // no break
+
+                        case Op::RET:
+                            return $stack[--$sp];
+
+                        default:
+                            throw new InternalError('VM: unknown opcode ' . $op);
                     }
-                    if (!$method instanceof JsFunction) {
-                        throw new TypeError(
-                            (TypeConversion::toString($method) ?: 'value') . ' is not a function'
-                        );
-                    }
-                    // Inline path for tagged hot built-ins: when the
-                    // receiver shape matches what the built-in's spec
-                    // path simplifies to (plain JsArray for array
-                    // methods), do the operation directly and skip the
-                    // entire callFunction → native dispatch chain. The
-                    // marker is set at engine init when the built-in
-                    // is installed; absence falls through to the spec
-                    // path so semantics never diverge.
-                    if (
-                        $method->builtinKind === 'array.push'
-                        && $receiver instanceof \PhpJs\Value\JsArray
-                        && $argc === 1
-                    ) {
-                        $receiver->push($args[0]);
-                        $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
-                        $pc += 2;
-                        break;
-                    }
-                    $stack[$sp++] = $this->interp->callFunction(
-                        $method,
-                        $receiver,
-                        $args,
-                    );
-                    $pc += 2;
-                    break;
-
-                case Op::LOAD_MEMBER:
-                    $obj = $stack[--$sp];
-                    $name = $names[$code[$pc + 1]];
-                    // Fast path: own default-attr data slot on a plain
-                    // JsObject. Direct array hit on the receiver's
-                    // dataSlots skips lookupMember -> JsObject::get ->
-                    // dataSlots, three layers of method dispatch.
-                    if (
-                        $obj instanceof JsObject
-                        && isset($obj->properties->dataSlots[$name])
-                    ) {
-                        $stack[$sp++] = $obj->properties->dataSlots[$name];
-                    } else {
-                        $stack[$sp++] = $this->lookupMember($obj, $name);
-                    }
-                    $pc += 2;
-                    break;
-                case Op::LOAD_COMPUTED:
-                    $key = $stack[--$sp];
-                    $obj = $stack[--$sp];
-                    $stack[$sp++] = $this->lookupComputed($obj, $key);
-                    $pc++;
-                    break;
-                case Op::STORE_MEMBER:
-                    $val = $stack[--$sp];
-                    $obj = $stack[--$sp];
-                    $name = $names[$code[$pc + 1]];
-                    // Fast path: assigning to an existing own default-
-                    // attr data slot. Per OrdinarySetWithOwnDescriptor
-                    // an own writable data property wins over any
-                    // prototype-chain accessor or readonly slot, so a
-                    // direct in-place write is spec-correct here. The
-                    // slow path handles non-extensible / accessor
-                    // setter / readonly proto / strict-mode error cases.
-                    if (
-                        $obj instanceof JsObject
-                        && isset($obj->properties->dataSlots[$name])
-                    ) {
-                        $obj->properties->dataSlots[$name] = $val;
-                    } else {
-                        $this->writeMember($obj, $name, $val);
-                    }
-                    $stack[$sp++] = $val;
-                    $pc += 2;
-                    break;
-                case Op::STORE_COMPUTED:
-                    $val = $stack[--$sp];
-                    $key = $stack[--$sp];
-                    $obj = $stack[--$sp];
-                    $this->writeComputed($obj, $key, $val);
-                    $stack[$sp++] = $val;
-                    $pc++;
-                    break;
-
-                case Op::MAKE_FUNCTION:
-                    $stack[$sp++] = $this->interp->vmMakeFunction(
-                        $nestedFns[$code[$pc + 1]],
-                        $env,
-                    );
-                    $pc += 2;
-                    break;
-
-                case Op::MAKE_CLASS:
-                    $stack[$sp++] = $this->interp->vmMakeClass(
-                        $cf->classNodes[$code[$pc + 1]],
-                        $env,
-                    );
-                    $pc += 2;
-                    break;
-
-                case Op::THROW:
-                    $val = $stack[--$sp];
-                    $this->interp->throwJsValue($val);
-                    // throwJsValue always throws; the no-fallthrough is
-                    // intentional and PSR-2 wants this comment to make
-                    // the missing break explicit.
-                    // no break
-
-                case Op::RET:
-                    return $stack[--$sp];
-
-                default:
-                    throw new InternalError('VM: unknown opcode ' . $op);
-                }
-            } // end inner while (dispatch loop)
+                } // end inner while (dispatch loop)
             } catch (\PhpJs\Exceptions\RuntimeError $e) {
                 // Look for a handler whose protected range covers the
                 // current PC (the PC of the instruction that threw or

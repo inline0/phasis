@@ -4420,7 +4420,7 @@ class Interpreter
             && $fn->getHomeObject() === null
         ) {
             try {
-                return ($fn->phpCompiled)($args, $fn->getClosure(), $this);
+                return ($fn->phpCompiled)($args, $fn->getClosure(), $this, $fn->phpCompiledNodes);
             } catch (\PhpJs\Bytecode\Bailout) {
                 // Fall through to the slow path below.
             }
@@ -6419,7 +6419,7 @@ class Interpreter
             }
             if ($fn->phpCompiled !== null) {
                 try {
-                    return ($fn->phpCompiled)($args, $fnEnv, $this);
+                    return ($fn->phpCompiled)($args, $fnEnv, $this, $fn->phpCompiledNodes);
                 } catch (\PhpJs\Bytecode\Bailout) {
                     // Numeric assumption broken at run time (e.g. a
                     // non-JsNumber arg). Fall through to the VM /

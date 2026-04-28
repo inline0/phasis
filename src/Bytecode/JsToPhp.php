@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace PhpJs\Bytecode;
 
+use PhpJs\Ast\Declaration\FunctionDeclaration;
 use PhpJs\Ast\Declaration\VariableDeclaration;
 use PhpJs\Ast\Expression\AssignmentExpression;
 use PhpJs\Ast\Expression\BinaryExpression;
@@ -62,16 +63,18 @@ final class JsToPhp
 
     /**
      * Per-local type kind. Values:
-     *   - 'numeric' (default): PHP raw double, stored in $_l_NAME.
+     *   - 'numeric'  (default): PHP raw double, stored in $_l_NAME.
      *   - 'object'           : JsObject reference, stored in $_lo_NAME.
+     *   - 'function'         : JsFunction reference, stored in $_lf_NAME.
      *
      * Determined by a pre-walk that looks at every declarator init and
      * assignment. A local that is ever assigned an ObjectExpression
      * (and never assigned a numeric expression) becomes 'object';
-     * everything else stays 'numeric'. Mixed (numeric + object on
-     * different paths) is a compile-time bailout — the slot type
-     * choice has to be unambiguous so the emitted PHP can pick the
-     * right variable name.
+     * a local declared as a FunctionDeclaration or used as a callee
+     * becomes 'function'; everything else stays 'numeric'. Mixed
+     * (numeric + object on different paths) is a compile-time bailout
+     * — the slot type choice has to be unambiguous so the emitted PHP
+     * can pick the right variable name.
      *
      * @var array<string, string>
      */
@@ -79,6 +82,27 @@ final class JsToPhp
 
     /** @var array<string, true> Free variables referenced by the body. */
     private array $freeVars = [];
+
+    /**
+     * AST nodes the eval'd closure references at run time, indexed
+     * positionally. Currently only nested FunctionDeclaration nodes
+     * that the closure materialises into JsFunctions via vmMakeFunction.
+     * This list ends up on JsFunction::phpCompiledNodes so each call
+     * to the closure receives the same node references.
+     *
+     * @var list<Node>
+     */
+    private array $nestedFnNodes = [];
+
+    /**
+     * Map from FunctionDeclaration name to its index into
+     * $nestedFnNodes. Used in emitStatement when we re-encounter a
+     * FunctionDeclaration during the second walk so we don't register
+     * the node twice.
+     *
+     * @var array<string, int>
+     */
+    private array $nestedFnIndex = [];
 
     /** Buffer accumulating emitted PHP source. */
     private string $out = '';
@@ -126,6 +150,14 @@ final class JsToPhp
                 );
             } else {
                 $compiler->collectLocals($body->body);
+                // Safety check: nested FunctionDeclaration / Function /
+                // ArrowFunction bodies might read outer locals via the
+                // JS environment chain, but our compiled closure stores
+                // outer locals in PHP variables that $env never sees.
+                // If any nested fn references an outer-local name as a
+                // free variable, bail so the spec-correct env-chain
+                // semantics still hold.
+                $compiler->checkNestedCaptures($body->body);
                 $compiler->emitPrologue($params);
                 foreach ($body->body as $stmt) {
                     $compiler->emitStatement($stmt);
@@ -135,7 +167,7 @@ final class JsToPhp
         } catch (Bailout) {
             return null;
         }
-        $php = "return function (\$args, \$env, \$interp) {\n"
+        $php = "return function (\$args, \$env, \$interp, \$nestedFns) {\n"
             . $compiler->out
             . "};";
         try {
@@ -144,6 +176,7 @@ final class JsToPhp
         } catch (\Throwable) {
             return null;
         }
+        $fn->phpCompiledNodes = $compiler->nestedFnNodes;
         return $closure;
     }
 
@@ -159,6 +192,17 @@ final class JsToPhp
 
     private function collectLocalsIn(Node $node): void
     {
+        if ($node instanceof FunctionDeclaration) {
+            // Hoisted: name binds in enclosing scope, holds a fresh
+            // JsFunction created at runtime via vmMakeFunction.
+            if ($node->id === null) {
+                throw new Bailout('anonymous function declaration');
+            }
+            $name = $node->id->name;
+            $this->declaredLocals[$name] = true;
+            $this->markLocalAsFunction($name);
+            return;
+        }
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
                 if ($decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
@@ -187,10 +231,19 @@ final class JsToPhp
                     $this->markLocalAsObject($name);
                 }
             }
+            // Recurse into initializers so callee-usage inside an init
+            // can flag the LHS as function-typed (e.g. `const add5 =
+            // adder(5); add5(s)` — `add5` later appears as callee).
+            foreach ($node->declarations as $decl) {
+                if ($decl->init !== null) {
+                    $this->collectCalleeUsage($decl->init);
+                }
+            }
             return;
         }
         if ($node instanceof ExpressionStatement) {
             $this->collectAssignmentTypes($node->expression);
+            $this->collectCalleeUsage($node->expression);
             return;
         }
         if ($node instanceof BlockStatement) {
@@ -198,6 +251,7 @@ final class JsToPhp
             return;
         }
         if ($node instanceof IfStatement) {
+            $this->collectCalleeUsage($node->test);
             $this->collectLocalsIn($node->consequent);
             if ($node->alternate !== null) {
                 $this->collectLocalsIn($node->alternate);
@@ -207,12 +261,281 @@ final class JsToPhp
         if ($node instanceof ForStatement) {
             if ($node->init instanceof VariableDeclaration) {
                 $this->collectLocalsIn($node->init);
+            } elseif ($node->init !== null) {
+                $this->collectCalleeUsage($node->init);
+            }
+            if ($node->test !== null) {
+                $this->collectCalleeUsage($node->test);
+            }
+            if ($node->update !== null) {
+                $this->collectCalleeUsage($node->update);
             }
             $this->collectLocalsIn($node->body);
             return;
         }
         if ($node instanceof WhileStatement || $node instanceof DoWhileStatement) {
+            $this->collectCalleeUsage($node->test);
             $this->collectLocalsIn($node->body);
+            return;
+        }
+        if ($node instanceof ReturnStatement && $node->argument !== null) {
+            $this->collectCalleeUsage($node->argument);
+            return;
+        }
+    }
+
+    /**
+     * Walk every nested function body in the source and bail if any
+     * of them reference an outer local by name. The compiled closure
+     * stores outer locals in PHP variables (not $env), so a nested
+     * function reading e.g. `x` would resolve to a stale TDZ binding
+     * in $env instead of the PHP-local value. This check catches
+     * shapes like:
+     *
+     *     let x = 10;
+     *     function inner() { return x; }   // reads outer's x → bail
+     *
+     * but allows shapes like the closure benchmark where the nested
+     * fn captures only its own params:
+     *
+     *     function adder(n) { return x => x + n; }   // captures n only
+     *
+     * @param Node[] $statements
+     */
+    private function checkNestedCaptures(array $statements): void
+    {
+        foreach ($statements as $stmt) {
+            $this->checkNestedCapturesIn($stmt);
+        }
+    }
+
+    private function checkNestedCapturesIn(Node $node): void
+    {
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            $blocked = $this->initialNestedScope($node);
+            $this->scanNestedBody($node->body, $blocked);
+            return;
+        }
+        $this->visitChildren($node, function (Node $child): void {
+            $this->checkNestedCapturesIn($child);
+        });
+    }
+
+    /**
+     * Build the initial set of names defined in a nested function's
+     * own scope: its parameters, plus its own name (FunctionExpression
+     * / FunctionDeclaration). Names in this set shadow outer locals
+     * and are NOT considered captures.
+     *
+     * @return array<string, true>
+     */
+    private function initialNestedScope(Node $fnNode): array
+    {
+        $blocked = [];
+        if ($fnNode instanceof FunctionDeclaration && $fnNode->id !== null) {
+            $blocked[$fnNode->id->name] = true;
+        }
+        if (
+            $fnNode instanceof \PhpJs\Ast\Expression\FunctionExpression
+            && $fnNode->name !== null
+        ) {
+            $blocked[$fnNode->name] = true;
+        }
+        $params = match (true) {
+            $fnNode instanceof FunctionDeclaration => $fnNode->params,
+            $fnNode instanceof \PhpJs\Ast\Expression\FunctionExpression => $fnNode->params,
+            $fnNode instanceof \PhpJs\Ast\Expression\ArrowFunction => $fnNode->params,
+            default => [],
+        };
+        foreach ($params as $p) {
+            if ($p instanceof Identifier) {
+                $blocked[$p->name] = true;
+            }
+            if (
+                $p instanceof \PhpJs\Ast\Pattern\AssignmentPattern
+                && $p->left instanceof Identifier
+            ) {
+                $blocked[$p->left->name] = true;
+            }
+            if ($p instanceof \PhpJs\Ast\Pattern\RestElement && $p->argument instanceof Identifier) {
+                $blocked[$p->argument->name] = true;
+            }
+        }
+        return $blocked;
+    }
+
+    /**
+     * Walk a nested function body recursively. For each Identifier
+     * read, if its name matches an outer local AND isn't shadowed by
+     * a binding in this nested scope (or any deeper one), throw
+     * Bailout.
+     *
+     * @param array<string, true> $blocked
+     */
+    private function scanNestedBody(Node $node, array $blocked): void
+    {
+        if ($node instanceof Identifier) {
+            if (isset($this->declaredLocals[$node->name]) && !isset($blocked[$node->name])) {
+                throw new Bailout('nested fn captures outer local: ' . $node->name);
+            }
+            return;
+        }
+        if ($node instanceof VariableDeclaration) {
+            foreach ($node->declarations as $decl) {
+                $this->collectPatternNames($decl->id, $blocked);
+                if ($decl->init !== null) {
+                    $this->scanNestedBody($decl->init, $blocked);
+                }
+            }
+            return;
+        }
+        if ($node instanceof FunctionDeclaration) {
+            if ($node->id !== null) {
+                $blocked[$node->id->name] = true;
+            }
+            $deeper = $this->initialNestedScope($node);
+            $this->scanNestedBody($node->body, $deeper);
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            $deeper = $this->initialNestedScope($node);
+            $this->scanNestedBody($node->body, $deeper);
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\MemberExpression
+            && !$node->computed
+        ) {
+            // For `obj.prop`, only `obj` is a name read; `prop` is a
+            // property name, not an identifier reference. Walk only
+            // the object side.
+            $this->scanNestedBody($node->object, $blocked);
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\Property && !$node->computed) {
+            // Same reasoning for object-literal `{ key: value }`:
+            // `key` is a property name, not a binding read. Only walk
+            // value.
+            $this->scanNestedBody($node->value, $blocked);
+            return;
+        }
+        $this->visitChildren($node, function (Node $child) use ($blocked): void {
+            $this->scanNestedBody($child, $blocked);
+        });
+    }
+
+    /**
+     * Walk a destructuring / param pattern collecting bound names
+     * into $blocked.
+     *
+     * @param array<string, true> $blocked
+     */
+    private function collectPatternNames(Node $pattern, array &$blocked): void
+    {
+        if ($pattern instanceof Identifier) {
+            $blocked[$pattern->name] = true;
+            return;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\ArrayPattern) {
+            foreach ($pattern->elements as $el) {
+                if ($el !== null) {
+                    $this->collectPatternNames($el, $blocked);
+                }
+            }
+            return;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+            foreach ($pattern->properties as $prop) {
+                if ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                    $this->collectPatternNames($prop->value, $blocked);
+                }
+                if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
+                    $this->collectPatternNames($prop->argument, $blocked);
+                }
+            }
+            return;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\AssignmentPattern) {
+            $this->collectPatternNames($pattern->left, $blocked);
+            return;
+        }
+        if ($pattern instanceof \PhpJs\Ast\Pattern\RestElement) {
+            $this->collectPatternNames($pattern->argument, $blocked);
+            return;
+        }
+    }
+
+    /**
+     * Generic AST child-walker used by checkNestedCapturesIn /
+     * scanNestedBody. Iterates every Node-typed property of $node
+     * (including nodes inside arrays) and calls $visit on each.
+     */
+    private function visitChildren(Node $node, callable $visit): void
+    {
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                $visit($value);
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node) {
+                        $visit($item);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Pre-walk pass to flag declared locals used as a CallExpression
+     * callee. `add5(s)` inside the loop tells us `add5` must hold a
+     * JsFunction, so we mark the slot as 'function' — the prologue
+     * defaults it to null and the call site dispatches the slot var
+     * directly without an env lookup.
+     */
+    private function collectCalleeUsage(Node $node): void
+    {
+        if ($node instanceof CallExpression) {
+            if (
+                $node->callee instanceof Identifier
+                && isset($this->declaredLocals[$node->callee->name])
+            ) {
+                $this->markLocalAsFunction($node->callee->name);
+            }
+            $this->collectCalleeUsage($node->callee);
+            foreach ($node->arguments as $arg) {
+                if ($arg instanceof \PhpJs\Ast\Expression\SpreadElement) {
+                    continue;
+                }
+                $this->collectCalleeUsage($arg);
+            }
+            return;
+        }
+        if ($node instanceof BinaryExpression || $node instanceof LogicalExpression) {
+            $this->collectCalleeUsage($node->left);
+            $this->collectCalleeUsage($node->right);
+            return;
+        }
+        if ($node instanceof UnaryExpression || $node instanceof UpdateExpression) {
+            $this->collectCalleeUsage($node->argument);
+            return;
+        }
+        if ($node instanceof AssignmentExpression) {
+            $this->collectCalleeUsage($node->right);
+            return;
+        }
+        if ($node instanceof ConditionalExpression) {
+            $this->collectCalleeUsage($node->test);
+            $this->collectCalleeUsage($node->consequent);
+            $this->collectCalleeUsage($node->alternate);
             return;
         }
     }
@@ -252,10 +575,12 @@ final class JsToPhp
                 }
             }
             if (!$isParam) {
-                if (($this->localTypes[$name] ?? 'numeric') === 'object') {
-                    // Initialised by an ObjectExpression assignment
-                    // later. Pre-declare to silence "undefined" reads
-                    // on a control-flow path that never assigns.
+                $kind = $this->localTypes[$name] ?? 'numeric';
+                if ($kind === 'object' || $kind === 'function') {
+                    // Initialised later (ObjectExpression assignment
+                    // or FunctionDeclaration / call result). Predeclare
+                    // to null to silence "undefined" reads on a
+                    // control-flow path that never assigns.
                     $this->emitLine($this->slotVar($name) . ' = null;');
                 } else {
                     $this->emitLine($this->slotVar($name) . ' = 0.0;');
@@ -266,12 +591,14 @@ final class JsToPhp
 
     private function slotVar(string $name): string
     {
-        // Object-typed locals get a distinct prefix so the emitted
-        // code doesn't accidentally treat them as raw doubles
-        // anywhere a name->variable lookup happens.
-        $prefix = ($this->localTypes[$name] ?? 'numeric') === 'object'
-            ? '$_lo_'
-            : '$_l_';
+        // Distinct prefix per type so the emitted code never mixes
+        // raw doubles with JsValue references at a name->variable
+        // lookup. 'function' uses $_lf_ for JsFunction references.
+        $prefix = match ($this->localTypes[$name] ?? 'numeric') {
+            'object' => '$_lo_',
+            'function' => '$_lf_',
+            default => '$_l_',
+        };
         return $prefix . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
     }
 
@@ -283,10 +610,26 @@ final class JsToPhp
      */
     private function markLocalAsObject(string $name): void
     {
-        if (($this->localTypes[$name] ?? null) === 'numeric') {
-            throw new Bailout('local ' . $name . ' is mixed numeric/object');
+        $existing = $this->localTypes[$name] ?? null;
+        if ($existing !== null && $existing !== 'object') {
+            throw new Bailout('local ' . $name . ' is mixed type');
         }
         $this->localTypes[$name] = 'object';
+    }
+
+    /**
+     * Mark a local as function-typed (slot holds a JsFunction).
+     * Triggered by either a FunctionDeclaration with this name or
+     * any CallExpression whose callee is an Identifier matching
+     * this local. Mixed (numeric / object) types bail.
+     */
+    private function markLocalAsFunction(string $name): void
+    {
+        $existing = $this->localTypes[$name] ?? null;
+        if ($existing !== null && $existing !== 'function') {
+            throw new Bailout('local ' . $name . ' is mixed type');
+        }
+        $this->localTypes[$name] = 'function';
     }
 
     /**
@@ -325,6 +668,27 @@ final class JsToPhp
         if ($node instanceof EmptyStatement) {
             return;
         }
+        if ($node instanceof FunctionDeclaration) {
+            // Hoisted at scope entry via vmMakeFunction. Index the AST
+            // node into nestedFnNodes so the closure can look it up
+            // by integer at runtime; the runtime call materialises a
+            // fresh JsFunction whose closure environment is $env. The
+            // local slot was pre-declared as 'function' by collectLocals.
+            if ($node->id === null) {
+                throw new Bailout('anonymous function declaration');
+            }
+            $name = $node->id->name;
+            if (!isset($this->nestedFnIndex[$name])) {
+                $this->nestedFnIndex[$name] = count($this->nestedFnNodes);
+                $this->nestedFnNodes[] = $node;
+            }
+            $idx = $this->nestedFnIndex[$name];
+            $this->emitLine(
+                $this->slotVar($name) . ' = $interp->vmMakeFunction($nestedFns['
+                . $idx . '], $env);'
+            );
+            return;
+        }
         if ($node instanceof BlockStatement) {
             foreach ($node->body as $inner) {
                 $this->emitStatement($inner);
@@ -355,21 +719,30 @@ final class JsToPhp
                     throw new Bailout('var decl pattern');
                 }
                 $name = $decl->id->name;
+                $kind = $this->localTypes[$name] ?? 'numeric';
                 if ($decl->init === null) {
-                    if (($this->localTypes[$name] ?? 'numeric') === 'object') {
+                    if ($kind === 'object' || $kind === 'function') {
                         $this->emitLine($this->slotVar($name) . ' = null;');
                     } else {
                         $this->emitLine($this->slotVar($name) . ' = 0.0;');
                     }
                 } elseif (
                     $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
-                    && ($this->localTypes[$name] ?? null) === 'object'
+                    && $kind === 'object'
                 ) {
                     // Object literal init: emit JsObject construction
                     // and assign the temp to the object-typed slot.
                     $temp = $this->emitObjectLiteral($decl->init);
                     $this->flushPending();
                     $this->emitLine($this->slotVar($name) . ' = ' . $temp . ';');
+                } elseif ($kind === 'function' && $decl->init instanceof CallExpression) {
+                    // Call returning a JsFunction (e.g. `const add5 =
+                    // adder(5)`). Emit the call but skip the numeric
+                    // unbox; a runtime check enforces the type so a
+                    // wrong-type result throws Bailout cleanly.
+                    $callRaw = $this->emitFunctionValuedCall($decl->init);
+                    $this->flushPending();
+                    $this->emitLine($this->slotVar($name) . ' = ' . $callRaw . ';');
                 } else {
                     $val = $this->emitExpression($decl->init);
                     $this->flushPending();
@@ -871,6 +1244,38 @@ final class JsToPhp
      */
     private function emitCallExpression(CallExpression $node): string
     {
+        $resultTemp = $this->emitCallCore($node);
+        // The numeric pipeline expects a raw double. The callee's
+        // contract is `JsNumber` — anything else triggers a Bailout
+        // so the VM / tree-walker fallback handles non-numeric cases.
+        $this->pendingStatements[] = 'if (!(' . $resultTemp
+            . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
+        return $resultTemp . '->value';
+    }
+
+    /**
+     * Lower a CallExpression but return the boxed JsValue (no unbox).
+     * Used by VariableDeclaration init when the LHS is function-typed
+     * — the call result must land in the slot as a JsFunction, not
+     * an unboxed numeric.
+     */
+    private function emitFunctionValuedCall(CallExpression $node): string
+    {
+        $resultTemp = $this->emitCallCore($node);
+        $this->pendingStatements[] = 'if (!(' . $resultTemp
+            . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function call result"); }';
+        return $resultTemp;
+    }
+
+    /**
+     * Shared core for CallExpression lowering. Emits args, resolves
+     * the callee (free var lookup or function-typed local slot),
+     * dispatches via phpCompiled or Interpreter::callFunction, and
+     * returns the name of the temp PHP variable holding the boxed
+     * call result. Caller decides whether to unbox or assert type.
+     */
+    private function emitCallCore(CallExpression $node): string
+    {
         if (!$node->callee instanceof Identifier) {
             throw new Bailout('non-identifier callee');
         }
@@ -885,22 +1290,23 @@ final class JsToPhp
             }
             $argRawExprs[] = $this->emitExpression($arg);
         }
-        // Resolve the callee once. Most call sites (recursion, top-level
-        // helper) point to the same JsFunction every time; cache the
-        // lookup in a $_fc_ temp local once per unique callee name.
         $calleeName = $node->callee->name;
+        // Resolve the callee. Function-typed local? Use the slot var
+        // directly (FunctionDeclaration-bound or assigned earlier from
+        // a function-valued call). Otherwise free-variable lookup
+        // cached in a $_fnc_ local on first reference.
         if (isset($this->declaredLocals[$calleeName])) {
-            // Local variable holds the callee value (rare for our
-            // numeric profile but legal). Bail since we need a
-            // JsFunction at runtime and the local would be a raw
-            // double in our representation.
-            throw new Bailout('callee is local');
-        }
-        $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
-        if (!isset($this->freeVars['__fnc_' . $calleeName])) {
-            $this->freeVars['__fnc_' . $calleeName] = true;
-            $this->pendingStatements[] = $calleeRef
-                . ' = $env->get(' . var_export($calleeName, true) . ');';
+            if (($this->localTypes[$calleeName] ?? null) !== 'function') {
+                throw new Bailout('non-function-typed local callee');
+            }
+            $calleeRef = $this->slotVar($calleeName);
+        } else {
+            $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
+            if (!isset($this->freeVars['__fnc_' . $calleeName])) {
+                $this->freeVars['__fnc_' . $calleeName] = true;
+                $this->pendingStatements[] = $calleeRef
+                    . ' = $env->get(' . var_export($calleeName, true) . ');';
+            }
         }
         // Box args, build the args array, dispatch.
         $boxedArgs = [];
@@ -925,12 +1331,11 @@ final class JsToPhp
             . ' && ' . $calleeRef . '->getNativeCallable() === null'
             . ')'
             . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $argsArr . ', ' . $calleeRef . '->getClosure(), $interp)'
+            . $argsArr . ', ' . $calleeRef . '->getClosure(), $interp, '
+            . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
             . '\\PhpJs\\Value\\JsUndefined::instance(), ' . $argsArr . ');';
-        $this->pendingStatements[] = 'if (!(' . $resultTemp
-            . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
-        return $resultTemp . '->value';
+        return $resultTemp;
     }
 
     private function emitLine(string $line): void
