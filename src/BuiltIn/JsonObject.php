@@ -273,33 +273,37 @@ class JsonObject
                 }
                 return $out;
             }
-            // Plain JsObject: ordinaryOwnPropertyKeys preserves insertion
-            // order which is what JS JSON.stringify produces.
-            $keys = $value->ordinaryOwnPropertyKeys();
+            // Fast path: when the object has no slow-store entries
+            // (no accessors / non-default descriptors / symbols), all
+            // own properties are default-attr data slots in insertion
+            // order. Iterating dataSlots directly skips
+            // ordinaryOwnPropertyKeys (sort + JsString wrap) plus the
+            // per-key getOwnPropertyDescriptor lookup.
+            if ($value->properties->descriptors !== []) {
+                // Descriptor store has entries — could be accessor,
+                // non-enumerable, etc. Bail to spec path.
+                return self::trivialBailout();
+            }
+            // Symbol-keyed properties live in a separate store on
+            // JsObject; reaching here means the dataSlots iteration
+            // covers all keys we care about (spec skips symbols).
             $out = [];
-            foreach ($keys as $key) {
-                if (!$key instanceof JsString) {
-                    // Symbol key — spec skips these.
+            foreach ($value->properties->dataSlots as $name => $slotVal) {
+                // Internal slot keys (e.g. [[PrimitiveValue]]) are
+                // checked above and would have triggered earlier
+                // bailouts; skip any that slipped through, e.g.
+                // engine-internal '__' keys.
+                if (
+                    isset($name[0])
+                    && ($name[0] === '[' || ($name[0] === '_' && isset($name[1]) && $name[1] === '_'))
+                ) {
                     continue;
                 }
-                $name = $key->value;
-                $desc = $value->getOwnPropertyDescriptor($name);
-                if ($desc === null) {
-                    continue;
-                }
-                if ($desc->get !== null || $desc->set !== null) {
-                    // Accessor — bail; would need to invoke getter.
-                    return self::trivialBailout();
-                }
-                if (!$desc->enumerable) {
-                    continue;
-                }
-                $resolved = self::trivialJsonValue($desc->value, $stack);
+                $resolved = self::trivialJsonValue($slotVal, $stack);
                 if ($resolved === self::trivialBailout()) {
                     return self::trivialBailout();
                 }
                 if ($resolved === self::trivialUndefined()) {
-                    // Skip property whose value is undefined.
                     continue;
                 }
                 $out[$name] = $resolved;
