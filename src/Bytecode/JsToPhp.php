@@ -393,25 +393,99 @@ final class JsToPhp
      * silently read an outer-scope binding with the same name.
      */
     /**
-     * True when $body (a function body) contains a nested
-     * BlockStatement / IfStatement consequent / ForStatement body
-     * with a let / const VariableDeclaration. JsToPhp can't enforce
-     * the per-block TDZ; falling back to the tree-walker (which can)
-     * keeps `{ x; const x = 1; }` correctly throwing ReferenceError.
+     * True when $body (a function body) contains a let / const
+     * declaration that's preceded by a non-declaration statement
+     * either at the function body's top level OR in any nested
+     * block. JsToPhp models all locals as function-scoped PHP
+     * variables predeclared with default values in the prologue;
+     * that breaks the spec Temporal Dead Zone, where reading the
+     * binding before its let/const init must throw ReferenceError.
+     * Bailing compile keeps the tree-walker (which honours TDZ)
+     * authoritative for these patterns.
      *
-     * The function body itself (top-level block) doesn't count —
-     * those let/const are function-scoped from JsToPhp's
-     * perspective, with the prologue safely defaulting them to a
-     * pre-init value before any reference can fire.
+     * Hot patterns like `for (...) { const {a,b} = ...; ... }` keep
+     * the const as the first statement inside the block and don't
+     * trip the check, so JsToPhp stays on the fast path.
      */
     private static function bodyHasNestedLexical(Node $body): bool
     {
         if (!$body instanceof BlockStatement) {
             return false;
         }
+        // Top-level let/const after a non-decl statement is also a
+        // TDZ shape; treat the function body as if it were a nested
+        // block (innerDepth = 1). A let/const followed by reads is
+        // safe — only a non-decl PRECEDING the let/const matters.
+        // Also bail if any let/const declarator's init expression
+        // reads the binding it's about to declare (`const x = x + 1`),
+        // which is a TDZ violation per spec.
+        $sawNonDecl = false;
         foreach ($body->body as $stmt) {
-            if (self::stmtHasNestedLexical($stmt, 0)) {
+            if (
+                $stmt instanceof VariableDeclaration
+                && ($stmt->kind === 'let' || $stmt->kind === 'const')
+            ) {
+                if ($sawNonDecl) {
+                    return true;
+                }
+                foreach ($stmt->declarations as $decl) {
+                    if (
+                        $decl->id instanceof Identifier
+                        && $decl->init !== null
+                        && self::initReadsName($decl->init, $decl->id->name)
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            if (
+                !($stmt instanceof VariableDeclaration)
+                && !($stmt instanceof FunctionDeclaration)
+            ) {
+                $sawNonDecl = true;
+            }
+            if (self::stmtHasNestedLexical($stmt, 1)) {
                 return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Walk an init expression looking for an Identifier reference
+     * to the name being declared. Used to flag self-referential
+     * let / const inits (`const x = x + 1`) which are TDZ violations
+     * the JsToPhp emit can't model — function-local x is already
+     * declared as a PHP local with a default value before the init
+     * expression evaluates, so the read silently succeeds.
+     */
+    private static function initReadsName(Node $node, string $name): bool
+    {
+        if ($node instanceof Identifier) {
+            return $node->name === $name;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            // Nested function: shadows the binding only if it has a
+            // param of the same name; conservatively bail.
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if (self::initReadsName($value, $name)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::initReadsName($item, $name)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
