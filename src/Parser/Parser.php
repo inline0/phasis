@@ -961,17 +961,37 @@ class Parser
         $location = $this->expect(TokenType::Import)->location;
         $specifiers = [];
 
-        // Stage-3 proposals: `import defer * as ns from ...` and
-        // `import source * as ns from ...`. Treat the phase modifier as a
-        // no-op (we do not distinguish evaluation phases). Only consume the
-        // modifier when a `*` unambiguously follows — `import defer from ...`
-        // treats `defer` as an ordinary default-binding identifier.
+        // Stage-3 proposals:
+        //   `import defer * as ns from ...`   (defer + namespace)
+        //   `import source * as ns from ...`  (source + namespace)
+        //   `import source ImportedBinding from ...` (source + default)
+        // The phase modifier is treated as a no-op (we do not distinguish
+        // evaluation phases at runtime — source-phase ImportCall already
+        // rejects via SyntaxError; the static form just allows the parse).
+        // We must not consume `source` / `defer` when it is itself the
+        // default binding name (`import source from "x"`,
+        // `import defer from "x"`).
         if (
             $this->check(TokenType::Identifier)
             && ($this->current()->value === 'defer' || $this->current()->value === 'source')
-            && $this->peek()->type === TokenType::Star
         ) {
-            $this->advance();
+            $next = $this->peek();
+            $consumeModifier = false;
+            if ($next->type === TokenType::Star) {
+                $consumeModifier = true;
+            } elseif (
+                $next->type === TokenType::Identifier
+                && !($next->value === 'from' && $this->peekAt(2)->type === TokenType::String)
+            ) {
+                // `import source ImportedBinding from ...` — second token is
+                // an identifier that is NOT followed by a string literal
+                // (which would make the whole thing `import source from "x";`,
+                // i.e. `source` as the binding name).
+                $consumeModifier = true;
+            }
+            if ($consumeModifier) {
+                $this->advance();
+            }
         }
 
         // import 'source' (bare import, no specifiers).
@@ -7958,6 +7978,12 @@ class Parser
     private function peek(): Token
     {
         return $this->tokens[$this->pos + 1] ?? $this->tokens[$this->pos];
+    }
+
+    /** Look ahead $n tokens past the current position. */
+    private function peekAt(int $n): Token
+    {
+        return $this->tokens[$this->pos + $n] ?? $this->tokens[$this->pos];
     }
 
     /** @phpstan-impure */
