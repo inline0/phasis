@@ -5039,11 +5039,7 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): JsValue {
-        // Direct field access: getName()/getClosure()/isArrow() were
-        // each one method dispatch per call. The hot-path field reads
-        // collapse to plain property fetches now that JsFunction
-        // exposes these as public.
-        $this->callStack->push($fn->name, 0);
+        $this->callStack->push($fn->getName(), 0);
 
         $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
         $this->callerStack[] = $fn;
@@ -5113,7 +5109,7 @@ class Interpreter
                     && $this->hasUseStrictDirective($body->body));
         }
         $this->strictMode = $fn->effectiveStrictCache;
-        if (!$this->strictMode && !$fn->isArrow) {
+        if (!$this->strictMode && !$fn->isArrow()) {
             if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
                 $thisValue = $this->getGlobalObject();
             } elseif (
@@ -5130,7 +5126,7 @@ class Interpreter
         $savedTailPos = $this->inTailPosition;
         $this->inTailPosition = $this->strictMode;
         try {
-            $vmReturn = $this->tryRunOnVm($fn, $fn->closure, $thisValue, $args);
+            $vmReturn = $this->tryRunOnVm($fn, $fn->getClosure(), $thisValue, $args);
         } catch (\Throwable $e) {
             $this->inTailPosition = $savedTailPos;
             $this->teardownExecuteFunction(

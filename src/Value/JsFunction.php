@@ -98,27 +98,9 @@ class JsFunction extends JsObject
     /** @var list<mixed> AST param nodes or empty for native. */
     private array $params;
     private mixed $body;
-    /**
-     * Closure environment captured at function-creation time. Public
-     * so hot VM paths (executeVmFunctionDirect, MAKE_FUNCTION's
-     * follow-up reads) can access the field directly without paying
-     * for the getClosure() method dispatch each call. setClosure()
-     * is the only writer; external code must not mutate this field.
-     */
-    public Environment $closure;
-    /**
-     * Function name. Public so executeVmFunctionDirect can pass it
-     * to callStack->push without the getName() dispatch. Use
-     * setName() to update — it also keeps the spec-mandated `name`
-     * property descriptor in sync with this field.
-     */
-    public string $name;
-    /**
-     * isArrow flag. Public so the VM's call fast-path can skip the
-     * sloppy-this coercion for arrow callees with one direct field
-     * read instead of a getter dispatch.
-     */
-    public bool $isArrow;
+    private Environment $closure;
+    private string $name;
+    private bool $isArrow;
     private bool $isGenerator;
     private bool $isAsync;
     private ?JsValue $boundThis;
