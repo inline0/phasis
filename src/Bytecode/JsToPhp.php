@@ -67,15 +67,21 @@ final class JsToPhp
      *   - 'object'           : JsObject reference, stored in $_lo_NAME.
      *   - 'function'         : JsFunction reference, stored in $_lf_NAME.
      *   - 'array'            : JsArray reference, stored in $_la_NAME.
+     *   - 'string'           : raw PHP string (ASCII-only profile),
+     *                          stored in $_ls_NAME. UTF-16 length
+     *                          equals byte length so `.length` lowers
+     *                          to strlen() without conversion.
      *
      * Determined by a pre-walk that looks at every declarator init and
      * assignment. A local that is ever assigned an ObjectExpression
      * (and never assigned a numeric expression) becomes 'object';
      * a local declared as a FunctionDeclaration or used as a callee
      * becomes 'function'; a local initialised with an ArrayExpression
-     * (or assigned one) becomes 'array'; everything else stays
-     * 'numeric'. Mixed types on different paths is a compile-time
-     * bailout so the emitted PHP slot variable is unambiguous.
+     * (or assigned one) becomes 'array'; a local initialised with an
+     * ASCII string literal (or +="ascii" in any branch) becomes
+     * 'string'; everything else stays 'numeric'. Mixed types on
+     * different paths is a compile-time bailout so the emitted PHP
+     * slot variable is unambiguous.
      *
      * @var array<string, string>
      */
@@ -314,6 +320,9 @@ final class JsToPhp
                 }
                 if ($decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression) {
                     $this->markLocalAsArray($name);
+                }
+                if ($decl->init !== null && self::isAsciiStringLiteral($decl->init)) {
+                    $this->markLocalAsString($name);
                 }
             }
             // Recurse into initializers so callee-usage inside an init
@@ -674,6 +683,8 @@ final class JsToPhp
                     // Predeclare to null so reads on a control-flow path
                     // that never assigns are well-defined.
                     $this->emitLine($this->slotVar($name) . ' = null;');
+                } elseif ($kind === 'string') {
+                    $this->emitLine($this->slotVar($name) . ' = "";');
                 } else {
                     $this->emitLine($this->slotVar($name) . ' = 0.0;');
                 }
@@ -685,12 +696,13 @@ final class JsToPhp
     {
         // Distinct prefix per type so the emitted code never mixes
         // raw doubles with JsValue references at a name->variable
-        // lookup. 'function' uses $_lf_, 'array' uses $_la_ for the
-        // boxed JsValue references.
+        // lookup. 'function' uses $_lf_, 'array' uses $_la_, 'string'
+        // uses $_ls_ for raw PHP strings.
         $prefix = match ($this->localTypes[$name] ?? 'numeric') {
             'object' => '$_lo_',
             'function' => '$_lf_',
             'array' => '$_la_',
+            'string' => '$_ls_',
             default => '$_l_',
         };
         return $prefix . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
@@ -741,6 +753,38 @@ final class JsToPhp
     }
 
     /**
+     * Mark a local as string-typed (slot holds a raw PHP string).
+     * Triggered by an ASCII string literal initializer or assignment.
+     * Mixed types bail.
+     */
+    private function markLocalAsString(string $name): void
+    {
+        $existing = $this->localTypes[$name] ?? null;
+        if ($existing !== null && $existing !== 'string') {
+            throw new Bailout('local ' . $name . ' is mixed type');
+        }
+        $this->localTypes[$name] = 'string';
+    }
+
+    /**
+     * ASCII-only string literal check. JS String.length counts UTF-16
+     * code units; for ASCII-only strings, PHP's strlen returns the
+     * same count, so we can stay raw. Any non-ASCII character forces
+     * a bailout to the spec path.
+     */
+    private static function isAsciiStringLiteral(Node $node): bool
+    {
+        if (!$node instanceof Literal) {
+            return false;
+        }
+        if (!is_string($node->value)) {
+            return false;
+        }
+        // Check every byte is < 0x80.
+        return preg_match('/[\\x80-\\xFF]/', $node->value) !== 1;
+    }
+
+    /**
      * Walk expressions for `local = ObjectExpression` patterns to
      * mark the local as object-typed during the pre-walk. Without
      * this, the obj-create benchmark's `last = {...}` loop would
@@ -751,20 +795,26 @@ final class JsToPhp
     {
         if (
             $node instanceof AssignmentExpression
-            && $node->operator === '='
             && $node->left instanceof Identifier
+            && isset($this->declaredLocals[$node->left->name])
         ) {
             if (
-                $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
-                && isset($this->declaredLocals[$node->left->name])
+                $node->operator === '='
+                && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
             ) {
                 $this->markLocalAsObject($node->left->name);
             }
             if (
-                $node->right instanceof \PhpJs\Ast\Expression\ArrayExpression
-                && isset($this->declaredLocals[$node->left->name])
+                $node->operator === '='
+                && $node->right instanceof \PhpJs\Ast\Expression\ArrayExpression
             ) {
                 $this->markLocalAsArray($node->left->name);
+            }
+            if (
+                ($node->operator === '=' || $node->operator === '+=')
+                && self::isAsciiStringLiteral($node->right)
+            ) {
+                $this->markLocalAsString($node->left->name);
             }
         }
     }
@@ -839,9 +889,17 @@ final class JsToPhp
                 if ($decl->init === null) {
                     if ($kind === 'object' || $kind === 'function' || $kind === 'array') {
                         $this->emitLine($this->slotVar($name) . ' = null;');
+                    } elseif ($kind === 'string') {
+                        $this->emitLine($this->slotVar($name) . ' = "";');
                     } else {
                         $this->emitLine($this->slotVar($name) . ' = 0.0;');
                     }
+                } elseif ($kind === 'string' && self::isAsciiStringLiteral($decl->init)) {
+                    /** @var Literal $lit */
+                    $lit = $decl->init;
+                    $this->emitLine(
+                        $this->slotVar($name) . ' = ' . var_export($lit->value, true) . ';'
+                    );
                 } elseif (
                     $decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression
                     && $kind === 'array'
@@ -1342,6 +1400,28 @@ final class JsToPhp
                 $this->pendingStatements[] = $this->slotVar($name) . ' = ' . $temp . ';';
                 return $temp;
             }
+            // String-typed local: only accept ASCII string literal
+            // RHS for assignment / concat. The result expression is
+            // the slot's PHP string, which is non-numeric — only
+            // legal as a discarded ExpressionStatement value (which
+            // the PHP eval'd code happily ignores).
+            $kind = $this->localTypes[$name] ?? null;
+            if ($kind === 'string') {
+                if (!self::isAsciiStringLiteral($node->right)) {
+                    throw new Bailout('non-ascii literal RHS for string local');
+                }
+                /** @var Literal $lit */
+                $lit = $node->right;
+                $rhs = var_export($lit->value, true);
+                $slot = $this->slotVar($name);
+                if ($node->operator === '=') {
+                    return '(' . $slot . ' = ' . $rhs . ')';
+                }
+                if ($node->operator === '+=') {
+                    return '(' . $slot . ' .= ' . $rhs . ')';
+                }
+                throw new Bailout('string assignment ' . $node->operator);
+            }
             $slot = $this->slotVar($name);
             $val = $this->emitExpression($node->right);
             $op = $node->operator;
@@ -1415,6 +1495,12 @@ final class JsToPhp
             if ($recvKind === 'array' && $key === 'length') {
                 $recv = $this->slotVar($recvName);
                 return '((float) ' . $recv . '->getLength())';
+            }
+            if ($recvKind === 'string' && $key === 'length') {
+                // ASCII-only profile: byte length equals UTF-16 code
+                // unit count, so strlen is correct without conversion.
+                $recv = $this->slotVar($recvName);
+                return '((float) strlen(' . $recv . '))';
             }
             if ($recvKind !== 'object') {
                 throw new Bailout('member read on non-object local');
