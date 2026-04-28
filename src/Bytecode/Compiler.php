@@ -167,6 +167,16 @@ final class Compiler
         if ($fn->isGenerator() || $fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
             throw new CompilerBailout('non-ordinary function kind');
         }
+        // Strict-mode bodies that have a return-with-call shape need
+        // tail-call optimisation per spec. The bytecode VM emits
+        // CALL+RET which recurses normally and grows the PHP stack
+        // (test262 tco-* tests at $MAX_ITERATIONS=100000 hit
+        // maxCallDepth). Bail compile so the tree-walker (which
+        // returns TailCallThunk + callFunction trampolines) handles
+        // these. Mirrors the same bail in JsToPhp::compile.
+        if ($fn->isStrict() && self::bytecodeBailsForTailCall($fn->getBody())) {
+            throw new CompilerBailout('strict-mode tail-call body');
+        }
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
@@ -2130,5 +2140,60 @@ final class Compiler
         $this->names[] = $name;
         $this->nameIndex[$name] = $idx;
         return $idx;
+    }
+
+    /**
+     * Walk a function body looking for a ReturnStatement whose
+     * argument is (or wraps) a CallExpression — the tail-call shape
+     * spec requires to TCO. The bytecode VM doesn't trampoline,
+     * so strict-mode functions matching this shape have to fall
+     * through to the tree-walker. Doesn't descend into nested
+     * functions (those have their own tail-position scope).
+     */
+    private static function bytecodeBailsForTailCall(\PhpJs\Ast\Node $body): bool
+    {
+        if ($body instanceof ReturnStatement) {
+            return $body->argument !== null
+                && self::tailCallExpr($body->argument);
+        }
+        if (
+            $body instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            || $body instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $body instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        foreach ((array) $body as $value) {
+            if ($value instanceof \PhpJs\Ast\Node) {
+                if (self::bytecodeBailsForTailCall($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof \PhpJs\Ast\Node && self::bytecodeBailsForTailCall($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static function tailCallExpr(\PhpJs\Ast\Node $node): bool
+    {
+        if ($node instanceof CallExpression) {
+            return true;
+        }
+        if ($node instanceof ConditionalExpression) {
+            return self::tailCallExpr($node->consequent)
+                || self::tailCallExpr($node->alternate);
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\LogicalExpression) {
+            return self::tailCallExpr($node->left)
+                || self::tailCallExpr($node->right);
+        }
+        return false;
     }
 }
