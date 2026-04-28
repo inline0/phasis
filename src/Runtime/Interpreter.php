@@ -117,6 +117,18 @@ class Interpreter
     private ?\PhpJs\Bytecode\VM $vm = null;
 
     /**
+     * Stack of pooled Frame instances reused across VM dispatches.
+     * Recursion-heavy workloads (fib, deep call chains) used to allocate
+     * a fresh Frame on every call; the pool grows once per max depth,
+     * then reuses the same instances for subsequent calls. Index =
+     * current depth; entries above $framePoolDepth are quiescent.
+     *
+     * @var list<\PhpJs\Bytecode\Frame>
+     */
+    private array $framePool = [];
+    private int $framePoolDepth = 0;
+
+    /**
      * Whether the program currently being executed is provably free
      * of direct `eval` calls. When true (the common case), the
      * Identifier resolution cache `Identifier::$resolvedDepth` can be
@@ -6344,18 +6356,24 @@ class Interpreter
         }
         $cf = $fn->compiled;
         $undef = JsUndefined::instance();
-        // The VM resolves `this` lazily via env->get('this') inside
-        // LOAD_THIS, matching the tree-walker's evalThisExpression
-        // (which surfaces TDZ throws at the right point and walks
-        // the closure for arrow lexical-this). Frame->thisValue is
-        // unused by the dispatcher today; left in for future opcodes
-        // (e.g. SUPER_CALL) that need the receiver directly.
-        $frame = new \PhpJs\Bytecode\Frame(
-            env: $fnEnv,
-            thisValue: $thisValue,
-            slotCount: $cf->slotCount,
-            undefined: $undef,
-        );
+        // Pool a Frame per active call depth: at depth N, reuse
+        // framePool[N] if it exists, else allocate one and stash it.
+        // Reset clears slot state; stack array is left in place since
+        // sp = 0 makes prior entries unreachable.
+        $depth = $this->framePoolDepth;
+        if ($depth < count($this->framePool)) {
+            $frame = $this->framePool[$depth];
+            $frame->reset($fnEnv, $thisValue, $cf->slotCount, $undef);
+        } else {
+            $frame = new \PhpJs\Bytecode\Frame(
+                env: $fnEnv,
+                thisValue: $thisValue,
+                slotCount: $cf->slotCount,
+                undefined: $undef,
+            );
+            $this->framePool[] = $frame;
+        }
+        $this->framePoolDepth = $depth + 1;
         // Wire parameter slots: the compiler assigned each parameter
         // a numbered slot in $paramSlots; the runtime args go straight
         // into those slots without going through env->defineVar.
@@ -6368,7 +6386,11 @@ class Interpreter
         if ($this->vm === null) {
             $this->vm = new \PhpJs\Bytecode\VM($this);
         }
-        return $this->vm->execute($cf, $frame);
+        try {
+            return $this->vm->execute($cf, $frame);
+        } finally {
+            $this->framePoolDepth = $depth;
+        }
     }
 
     /**
