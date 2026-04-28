@@ -1021,15 +1021,26 @@ final class JsToPhp
      * isolation. Returns [pendingStatementLines, finalExpression] so
      * the caller can wrap the lines inside a guarded if-block.
      *
+     * Important: we snapshot $this->freeVars too. Without that, a free
+     * variable referenced only in branch A would mark the freeVars
+     * entry as "already emitted" and branch B's emit would skip its
+     * env->get even though the resulting PHP variable was scoped to
+     * branch A's pending block. Restoring on exit makes the per-branch
+     * emit independent — at the cost of duplicating env lookups when
+     * BOTH branches reference the same free var, but that's still
+     * correct and only wastes one env->get on the rare case.
+     *
      * @return array{0: list<string>, 1: string}
      */
     private function captureBranch(Node $node): array
     {
         $savedPending = $this->pendingStatements;
+        $savedFreeVars = $this->freeVars;
         $this->pendingStatements = [];
         $expr = $this->emitExpression($node);
         $branchPending = $this->pendingStatements;
         $this->pendingStatements = $savedPending;
+        $this->freeVars = $savedFreeVars;
         return [$branchPending, $expr];
     }
 
