@@ -234,6 +234,12 @@ final class Compiler
             // the tree-walker keep that path. `eval` is dynamic.
             throw new CompilerBailout('uses ' . $node->name);
         }
+        if ($node instanceof Identifier && $node->name === '[[NewTarget]]') {
+            // `new.target` reads need an env binding the VM-compiled
+            // prologue skips. Bail to keep the prologue-skip optimization
+            // safe for the common case.
+            throw new CompilerBailout('uses new.target');
+        }
         if ($node instanceof \PhpJs\Ast\Statement\WithStatement) {
             throw new CompilerBailout('with statement');
         }
