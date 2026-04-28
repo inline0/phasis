@@ -220,7 +220,20 @@ final class VM
                     break;
 
                 case Op::LOAD_NAME:
-                    $stack[$sp++] = $env->get($names[$code[$pc + 1]], $strict);
+                    // Inline cache: if we resolved this PC before AND
+                    // no env binding has mutated since (global version
+                    // counter unchanged), reuse the captured value.
+                    // The env walk for global function references like
+                    // `fib` inside fib's body otherwise burns ~10 hash
+                    // ops per call, repeated on every recursive entry.
+                    $ic = $cf->loadNameIc[$pc] ?? null;
+                    if ($ic !== null && $ic[1] === \PhpJs\Runtime\Environment::$globalBindingsVersion) {
+                        $stack[$sp++] = $ic[0];
+                    } else {
+                        $resolved = $env->get($names[$code[$pc + 1]], $strict);
+                        $cf->loadNameIc[$pc] = [$resolved, \PhpJs\Runtime\Environment::$globalBindingsVersion];
+                        $stack[$sp++] = $resolved;
+                    }
                     $pc += 2;
                     break;
                 case Op::STORE_NAME:

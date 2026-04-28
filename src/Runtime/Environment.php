@@ -11,6 +11,19 @@ use PhpJs\Value\JsValue;
 
 class Environment
 {
+    /**
+     * Monotonic version counter bumped on any binding mutation across
+     * all environments. Used by the VM's LOAD_NAME inline cache: each
+     * cache entry stores the version at capture time, and a mismatch
+     * on read forces a re-resolve so reassignments are observed.
+     *
+     * Single global counter (vs per-env) keeps the bump path one
+     * write per mutation. The cost of a "false invalidation" (one
+     * env's mutation invalidates ICs that target a different env) is
+     * a re-resolve, not a correctness bug.
+     */
+    public static int $globalBindingsVersion = 0;
+
     /** @var array<string, JsValue> */
     private array $bindings = [];
 
@@ -174,6 +187,7 @@ class Environment
     /** Define a var-declared variable in the current environment. */
     public function defineVar(string $name, JsValue $value): void
     {
+        self::$globalBindingsVersion++;
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         // Sync to the linked global object if present.
@@ -278,6 +292,7 @@ class Environment
     /** Define a let-declared variable (block-scoped, initialized). */
     public function defineLet(string $name, JsValue $value): void
     {
+        self::$globalBindingsVersion++;
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         $this->lexical[$name] = true;
@@ -286,6 +301,7 @@ class Environment
     /** Define a const-declared variable (block-scoped, initialized, immutable). */
     public function defineConst(string $name, JsValue $value): void
     {
+        self::$globalBindingsVersion++;
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
         $this->constants[$name] = true;
@@ -295,6 +311,7 @@ class Environment
     /** Declare a let binding without initializing it (enters TDZ). */
     public function declareLet(string $name): void
     {
+        self::$globalBindingsVersion++;
         $this->tdz[$name] = true;
         $this->lexical[$name] = true;
         $this->bindings[$name] = JsUndefined::instance();
@@ -303,6 +320,7 @@ class Environment
     /** Declare a const binding without initializing it (enters TDZ). */
     public function declareConst(string $name): void
     {
+        self::$globalBindingsVersion++;
         $this->tdz[$name] = true;
         $this->constants[$name] = true;
         $this->lexical[$name] = true;
@@ -316,6 +334,7 @@ class Environment
             throw new ReferenceError("Binding '{$name}' is not in the temporal dead zone");
         }
 
+        self::$globalBindingsVersion++;
         unset($this->tdz[$name]);
         $this->bindings[$name] = $value;
     }
@@ -570,6 +589,11 @@ class Environment
      */
     public function set(string $name, JsValue $value, bool $strict = true): void
     {
+        // Bump the global IC version on any binding write. The hot
+        // path below still updates the binding directly — the version
+        // bump is what tells the VM's LOAD_NAME inline cache that
+        // previously-resolved values may now be stale.
+        self::$globalBindingsVersion++;
         // Hot path mirrors get(): own binding, no with/import/TDZ/const,
         // no global linked object. Inline-update and return.
         if (

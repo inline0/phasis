@@ -21,6 +21,20 @@ use PhpJs\Value\JsValue;
 final class CompiledFunction
 {
     /**
+     * Inline cache for LOAD_NAME, indexed by PC. Stores the resolved
+     * JsValue at first dispatch; subsequent LOAD_NAMEs at the same PC
+     * skip the Environment walk entirely.
+     *
+     * Soundness: invalidated by Environment::set, which bumps a global
+     * counter. Each cache entry carries the counter value at capture
+     * time; on read, mismatch forces a re-resolve.
+     *
+     * @var array<int, array{0: JsValue, 1: int}>
+     */
+    public array $loadNameIc = [];
+
+
+    /**
      * @param list<int>     $code        Flat instruction stream.
      * @param list<JsValue> $consts      Pre-converted JsValue constants.
      * @param list<string>  $names       Identifier name table.
