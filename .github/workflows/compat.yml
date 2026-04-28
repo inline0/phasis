@@ -7,13 +7,24 @@ concurrency:
   group: compat
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
+# Opt into Node.js 24 for first-party JavaScript actions (checkout,
+# upload-artifact, etc.) so the runner stops emitting the Node 20
+# deprecation warning ahead of the June 2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   compat:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -21,7 +32,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           extensions: mbstring, bcmath, intl
           coverage: none
           ini-values: memory_limit=2G
@@ -47,7 +58,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: compat-report
           path: |

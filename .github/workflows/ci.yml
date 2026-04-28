@@ -7,6 +7,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Opt into Node.js 24 for first-party JavaScript actions (checkout,
+# upload-artifact, etc.) so the runner stops emitting the Node 20
+# deprecation warning ahead of the June 2026 default flip.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   test:
     if: >-
@@ -16,10 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        php: ['8.2', '8.3', '8.4']
+        # Test the full supported range. composer.json declares ^8.2 so
+        # we cover every minor that the package contract promises plus
+        # the latest 8.5 we run compat / bench on.
+        php: ['8.2', '8.3', '8.4', '8.5']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
