@@ -19,10 +19,6 @@ use PhpJs\Object\PropertyDescriptor;
 
 class StringPrototype
 {
-    private const FALLBACK_MAX_STRING_LENGTH = 268435456;
-    private const MIN_SAFE_STRING_LENGTH = 16777216;
-    private static ?int $maxStringLength = null;
-
     /** %StringIteratorPrototype%: shared prototype for all string iterators. */
     private static ?JsObject $stringIteratorPrototype = null;
 
@@ -121,8 +117,7 @@ class StringPrototype
                 if ($next >= 0xDC00 && $next <= 0xDFFF) {
                     // Valid surrogate pair: combine into a single code point.
                     $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
-                    $ch = mb_chr($cp, 'UTF-8');
-                    $chars[] = new JsString($ch !== false ? $ch : '?');
+                    $chars[] = new JsString(mb_chr($cp, 'UTF-8'));
                     $i += 2;
                     continue;
                 }
@@ -378,6 +373,66 @@ class StringPrototype
     }
 
     /**
+     * Build a JS match-result array from a PHP preg_match $matches with
+     * PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL flags.
+     *
+     * @param array<int|string, mixed> $matches
+     */
+    private static function buildMatchResult(array $matches, string $str, bool $includeGroups): JsArray
+    {
+        $elements = [];
+        foreach ($matches as $key => $match) {
+            if (is_int($key)) {
+                $elements[] = self::matchCaptureToJs($match);
+            }
+        }
+        $result = JsArray::fromArray($elements);
+
+        $firstMatch = $matches[0];
+        $byteOffset = is_array($firstMatch) ? (is_int($firstMatch[1] ?? null) ? $firstMatch[1] : 0) : 0;
+        $charPos = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
+        $result->set('index', new JsNumber((float) $charPos));
+        $result->set('input', new JsString($str));
+
+        if ($includeGroups) {
+            $groups = JsObject::createNullPrototype();
+            $hasGroups = false;
+            foreach ($matches as $key => $match) {
+                if (is_string($key)) {
+                    $hasGroups = true;
+                    $groups->defineOwnProperty($key, PropertyDescriptor::data(
+                        self::matchCaptureToJs($match),
+                    ));
+                }
+            }
+            $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
+        } else {
+            $result->set('groups', JsUndefined::instance());
+        }
+
+        return $result;
+    }
+
+    /**
+     * Convert a single capture entry from preg_match (PREG_OFFSET_CAPTURE |
+     * PREG_UNMATCHED_AS_NULL) into a JsValue. Unmatched groups are [null,-1].
+     *
+     * @param mixed $match
+     */
+    private static function matchCaptureToJs($match): JsValue
+    {
+        if (!is_array($match)) {
+            return JsUndefined::instance();
+        }
+        $value = $match[0] ?? null;
+        $offset = $match[1] ?? -1;
+        if ($value === null || $offset === -1) {
+            return JsUndefined::instance();
+        }
+        return new JsString((string) $value);
+    }
+
+    /**
      * RequireObjectCoercible(this) then coerce to string.
      *
      * Per spec, all String.prototype methods must reject null and undefined
@@ -403,8 +458,7 @@ class StringPrototype
             // that String.prototype methods called on the wrapper produce
             // the same result as in V8.
             if (
-                $prim instanceof JsValue
-                && !($prim instanceof JsUndefined)
+                !($prim instanceof JsUndefined)
                 && !($prim instanceof JsObject)
             ) {
                 return TypeConversion::toString($prim);
@@ -990,17 +1044,15 @@ class StringPrototype
             $limitArg = $args[1] ?? JsUndefined::instance();
 
             // Per spec §21.1.3.20 step 2-3: check Symbol.split on separator
-            if ($separator instanceof JsObject && !$separator instanceof JsNull) {
+            if ($separator instanceof JsObject) {
                 $splitSym = SymbolConstructor::split();
-                if ($splitSym !== null) {
-                    $splitter = $separator->getBySymbol($splitSym);
-                    if ($splitter instanceof JsFunction) {
-                        return $splitter->call($separator, [$this_, $limitArg]);
-                    }
-                    if ($splitter instanceof \PhpJs\Value\JsHTMLDDA) {
-                        // HTMLDDA's [[Call]] returns null.
-                        return JsNull::instance();
-                    }
+                $splitter = $separator->getBySymbol($splitSym);
+                if ($splitter instanceof JsFunction) {
+                    return $splitter->call($separator, [$this_, $limitArg]);
+                }
+                if ($splitter instanceof \PhpJs\Value\JsHTMLDDA) {
+                    // HTMLDDA's [[Call]] returns null.
+                    return JsNull::instance();
                 }
             }
 
@@ -1099,7 +1151,7 @@ class StringPrototype
 
                     // Push capture groups (indices 1..n).
                     for ($i = 1, $cnt = count($m); $i < $cnt; $i++) {
-                        if (!is_array($m[$i]) || $m[$i][0] === null || $m[$i][1] === -1) {
+                        if ($m[$i][0] === null) {
                             $result[] = JsUndefined::instance();
                         } else {
                             $result[] = new JsString($m[$i][0]);
@@ -1209,34 +1261,8 @@ class StringPrototype
                 if ($functionalReplace) {
                     $result = @preg_replace_callback(
                         $pcre,
-                        function ($matches) use ($replArg, $str, $nExpectedCaptures): string {
-                            $byteOffset = is_array($matches[0]) ? $matches[0][1] : 0;
-                            $matched = is_array($matches[0]) ? $matches[0][0] : $matches[0];
-                            $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
-                            $jsArgs = [new JsString($matched)];
-                            // Add capture groups (pad with undefined for unmatched optional groups)
-                            $captures = [];
-                            for ($ci = 1; $ci < count($matches); $ci++) {
-                                if (is_string($ci)) {
-                                    continue; // skip named keys
-                                }
-                                $cap = $matches[$ci];
-                                $captures[] = is_array($cap)
-                                    ? ($cap[1] === -1 ? null : $cap[0])
-                                    : ($cap === '' ? null : $cap);
-                            }
-                            // Pad to expected capture count
-                            while (count($captures) < $nExpectedCaptures) {
-                                $captures[] = null;
-                            }
-                            foreach ($captures as $cap) {
-                                $jsArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
-                            }
-                            $jsArgs[] = new JsNumber((float) $charOffset);
-                            $jsArgs[] = new JsString($str);
-                            $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
-                            return TypeConversion::toString($ret);
-                        },
+                        static fn (array $matches): string
+                            => self::functionalReplaceCallback($matches, $replArg, $str, $nExpectedCaptures),
                         $str,
                         $limit,
                         $count,
@@ -1246,42 +1272,8 @@ class StringPrototype
                     // String replacement: apply GetSubstitution for $-patterns
                     $result = @preg_replace_callback(
                         $pcre,
-                        function ($matches) use ($replStr, $str, $nExpectedCaptures): string {
-                            $byteOffset = is_array($matches[0]) ? $matches[0][1] : 0;
-                            $matched = is_array($matches[0]) ? $matches[0][0] : $matches[0];
-                            $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
-                            $captures = [];
-                            $namedCaptures = null;
-                            foreach ($matches as $key => $cap) {
-                                if (is_string($key)) {
-                                    if ($namedCaptures === null) {
-                                        $namedCaptures = [];
-                                    }
-                                    $namedCaptures[$key] = is_array($cap)
-                                        ? ($cap[1] === -1 ? null : $cap[0])
-                                        : ($cap === '' ? null : $cap);
-                                    continue;
-                                }
-                                if ($key === 0) {
-                                    continue;
-                                }
-                                $captures[] = is_array($cap)
-                                    ? ($cap[1] === -1 ? null : $cap[0])
-                                    : ($cap === '' ? null : $cap);
-                            }
-                            // Pad to expected capture count
-                            while (count($captures) < $nExpectedCaptures) {
-                                $captures[] = null;
-                            }
-                            return self::getSubstitution(
-                                $matched,
-                                $str,
-                                $charOffset,
-                                $captures,
-                                $replStr,
-                                $namedCaptures,
-                            );
-                        },
+                        static fn (array $matches): string
+                            => self::stringReplaceCallback($matches, $replStr, $str, $nExpectedCaptures),
                         $str,
                         $limit,
                         $count,
@@ -1481,6 +1473,106 @@ class StringPrototype
      * @param list<string|null> $captures indexed captures (0-indexed internally, $n is 1-indexed)
      * @param array<string,string|null>|null $namedCaptures named capture groups or null
      */
+    /**
+     * preg_replace_callback callback for functional replacement on a regex match.
+     *
+     * @param array<int|string, mixed> $matches
+     */
+    private static function functionalReplaceCallback(
+        array $matches,
+        JsFunction $replArg,
+        string $str,
+        int $nExpectedCaptures,
+    ): string {
+        $first = $matches[0];
+        $byteOffset = is_array($first) && isset($first[1]) && is_int($first[1]) ? $first[1] : 0;
+        $matched = is_array($first) ? (string) ($first[0] ?? '') : (string) $first;
+        $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
+        $jsArgs = [new JsString($matched)];
+
+        $captures = [];
+        for ($ci = 1; $ci < count($matches); $ci++) {
+            $captures[] = self::captureValue($matches[$ci]);
+        }
+        while (count($captures) < $nExpectedCaptures) {
+            $captures[] = null;
+        }
+        foreach ($captures as $cap) {
+            $jsArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
+        }
+        $jsArgs[] = new JsNumber((float) $charOffset);
+        $jsArgs[] = new JsString($str);
+
+        $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
+        return TypeConversion::toString($ret);
+    }
+
+    /**
+     * preg_replace_callback callback for string replacement (with $-pattern substitution).
+     *
+     * @param array<int|string, mixed> $matches
+     */
+    private static function stringReplaceCallback(
+        array $matches,
+        string $replStr,
+        string $str,
+        int $nExpectedCaptures,
+    ): string {
+        $first = $matches[0];
+        $byteOffset = is_array($first) && isset($first[1]) && is_int($first[1]) ? $first[1] : 0;
+        $matched = is_array($first) ? (string) ($first[0] ?? '') : (string) $first;
+        $charOffset = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
+
+        $captures = [];
+        $namedCaptures = null;
+        foreach ($matches as $key => $cap) {
+            if (is_string($key)) {
+                if ($namedCaptures === null) {
+                    $namedCaptures = [];
+                }
+                $namedCaptures[$key] = self::captureValue($cap);
+                continue;
+            }
+            if ($key === 0) {
+                continue;
+            }
+            $captures[] = self::captureValue($cap);
+        }
+        while (count($captures) < $nExpectedCaptures) {
+            $captures[] = null;
+        }
+
+        return self::getSubstitution(
+            $matched,
+            $str,
+            $charOffset,
+            $captures,
+            $replStr,
+            $namedCaptures,
+        );
+    }
+
+    /**
+     * Extract a capture string from a preg_match entry, returning null for unmatched.
+     *
+     * @param mixed $cap
+     */
+    private static function captureValue($cap): ?string
+    {
+        if (is_array($cap)) {
+            $offset = $cap[1] ?? -1;
+            if ($offset === -1) {
+                return null;
+            }
+            $value = $cap[0] ?? null;
+            return $value === null ? null : (string) $value;
+        }
+        if ($cap === '' || $cap === null) {
+            return null;
+        }
+        return (string) $cap;
+    }
+
     /**
      * Count capturing groups in a regex pattern (not counting non-capturing groups like (?:...)).
      */
@@ -1748,206 +1840,6 @@ class StringPrototype
         };
     }
 
-    private static function replaceRegexpWithString(
-        string $pcre,
-        string $subject,
-        string $replacement,
-        bool $isGlobal,
-    ): string {
-        $flags = PREG_SET_ORDER | PREG_OFFSET_CAPTURE;
-        if (defined('PREG_UNMATCHED_AS_NULL')) {
-            $flags |= PREG_UNMATCHED_AS_NULL;
-        }
-
-        $matched = @preg_match_all($pcre, $subject, $matches, $flags);
-        if ($matched !== null && $matched !== false && $matched > 0) {
-            $result = '';
-            $cursor = 0;
-            $matchLimit = $isGlobal ? $matched : 1;
-
-            for ($i = 0; $i < $matchLimit; $i++) {
-                $match = $matches[$i];
-                $fullMatch = (string) ($match[0][0] ?? '');
-                $offset = (int) ($match[0][1] ?? 0);
-
-                if ($offset < $cursor) {
-                    continue;
-                }
-
-                self::appendWithLimit($result, substr($subject, $cursor, $offset - $cursor));
-                self::appendWithLimit(
-                    $result,
-                    self::applyStringReplacement($replacement, $match, $subject, $offset, $fullMatch),
-                );
-                $cursor = $offset + strlen($fullMatch);
-            }
-
-            self::appendWithLimit($result, substr($subject, $cursor));
-            return $result;
-        }
-
-        return $subject;
-    }
-
-    /**
-     * @param array<int, array{0: ?string, 1: int}> $match
-     */
-    private static function applyStringReplacement(
-        string $replacement,
-        array $match,
-        string $subject,
-        int $offset,
-        string $fullMatch,
-    ): string {
-        $result = '';
-        $length = strlen($replacement);
-        $captureCount = count($match) - 1;
-
-        for ($i = 0; $i < $length; $i++) {
-            $ch = $replacement[$i];
-            if ($ch !== '$' || $i + 1 >= $length) {
-                self::appendWithLimit($result, $ch);
-                continue;
-            }
-
-            $next = $replacement[$i + 1];
-            switch ($next) {
-                case '$':
-                    self::appendWithLimit($result, '$');
-                    $i++;
-                    continue 2;
-                case '&':
-                    self::appendWithLimit($result, $fullMatch);
-                    $i++;
-                    continue 2;
-                case '`':
-                    self::appendWithLimit($result, substr($subject, 0, $offset));
-                    $i++;
-                    continue 2;
-                case "'":
-                    self::appendWithLimit($result, substr($subject, $offset + strlen($fullMatch)));
-                    $i++;
-                    continue 2;
-            }
-
-            if ($next >= '0' && $next <= '9') {
-                $captureIndex = null;
-                $consume = 0;
-
-                if ($i + 2 < $length) {
-                    $nextDigit = $replacement[$i + 2];
-                    if ($nextDigit >= '0' && $nextDigit <= '9') {
-                        $candidate = (int) ($next . $nextDigit);
-                        if ($candidate >= 1 && $candidate <= $captureCount) {
-                            $captureIndex = $candidate;
-                            $consume = 2;
-                        }
-                    }
-                }
-
-                if ($captureIndex === null && $next !== '0') {
-                    $singleDigitCapture = (int) $next;
-                    if ($singleDigitCapture <= $captureCount) {
-                        $captureIndex = $singleDigitCapture;
-                        $consume = 1;
-                    }
-                }
-
-                if ($captureIndex !== null) {
-                    $capture = $match[$captureIndex][0] ?? null;
-                    if ($capture !== null) {
-                        self::appendWithLimit($result, $capture);
-                    }
-                    $i += $consume;
-                    continue;
-                }
-
-                if ($next === '0') {
-                    self::appendWithLimit($result, '$0');
-                    $i++;
-                    continue;
-                }
-            }
-
-            self::appendWithLimit($result, '$');
-        }
-
-        return $result;
-    }
-
-    private static function appendWithLimit(string &$buffer, string $fragment): void
-    {
-        if ($fragment === '') {
-            return;
-        }
-
-        $newLength = strlen($buffer) + strlen($fragment);
-        if ($newLength > self::maxStringLength()) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid string length');
-        }
-
-        $buffer .= $fragment;
-    }
-
-    private static function maxStringLength(): int
-    {
-        if (self::$maxStringLength !== null) {
-            return self::$maxStringLength;
-        }
-
-        $memoryLimit = ini_get('memory_limit');
-        if (!is_string($memoryLimit) || $memoryLimit === '' || $memoryLimit === '-1') {
-            return self::$maxStringLength = self::FALLBACK_MAX_STRING_LENGTH;
-        }
-
-        $bytes = self::parseMemoryLimitToBytes($memoryLimit);
-        if ($bytes === null) {
-            return self::$maxStringLength = self::FALLBACK_MAX_STRING_LENGTH;
-        }
-
-        $safeLimit = max(
-            self::MIN_SAFE_STRING_LENGTH,
-            min(self::FALLBACK_MAX_STRING_LENGTH, intdiv($bytes, 4)),
-        );
-
-        return self::$maxStringLength = $safeLimit;
-    }
-
-    private static function parseMemoryLimitToBytes(string $value): ?int
-    {
-        $value = trim($value);
-        if ($value === '') {
-            return null;
-        }
-
-        $unit = strtolower(substr($value, -1));
-        if (ctype_alpha($unit)) {
-            $number = substr($value, 0, -1);
-        } else {
-            $unit = '';
-            $number = $value;
-        }
-
-        if (!is_numeric($number)) {
-            return null;
-        }
-
-        $bytes = (float) $number;
-        switch ($unit) {
-            case 'g':
-                $bytes *= 1024;
-                // fall through
-            case 'm':
-                $bytes *= 1024;
-                // fall through
-            case 'k':
-                $bytes *= 1024;
-                break;
-        }
-
-        return $bytes > 0 ? (int) $bytes : null;
-    }
-
     private static function search(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
@@ -2074,38 +1966,7 @@ class StringPrototype
                 // appear in $matches (as null) so the result array has the
                 // correct length matching JS behavior.
                 if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL)) {
-                    $numericCount = 0;
-                    $elements = [];
-                    foreach ($matches as $key => $match) {
-                        if (is_int($key)) {
-                            $elements[] = ($match[1] === -1 || $match[0] === null)
-                                ? JsUndefined::instance()
-                                : new JsString($match[0]);
-                            $numericCount++;
-                        }
-                    }
-                    $result = JsArray::fromArray($elements);
-                    $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
-                    $result->set('index', new JsNumber((float) $charPos));
-                    $result->set('input', new JsString($str));
-
-                    // Named capture groups with null prototype per spec.
-                    $groups = JsObject::createNullPrototype();
-                    $hasGroups = false;
-                    foreach ($matches as $key => $match) {
-                        if (is_string($key)) {
-                            $hasGroups = true;
-                            // Per spec: CreateDataProperty(groups, s, capturedValue).
-                            $groups->defineOwnProperty($key, PropertyDescriptor::data(
-                                ($match[1] === -1 || $match[0] === null)
-                                    ? JsUndefined::instance()
-                                    : new JsString($match[0]),
-                            ));
-                        }
-                    }
-                    $result->set('groups', $hasGroups ? $groups : JsUndefined::instance());
-
-                    return $result;
+                    return self::buildMatchResult($matches, $str, true);
                 }
                 return JsNull::instance();
             }
@@ -2151,20 +2012,7 @@ class StringPrototype
             $escaped = str_replace('/', '\\/', $patternStr);
             $pcre = '/' . $escaped . '/u';
             if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL)) {
-                $elements = [];
-                foreach ($matches as $key => $match) {
-                    if (is_int($key)) {
-                        $elements[] = ($match[1] === -1 || $match[0] === null)
-                            ? JsUndefined::instance()
-                            : new JsString($match[0]);
-                    }
-                }
-                $result = JsArray::fromArray($elements);
-                $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
-                $result->set('index', new JsNumber((float) $charPos));
-                $result->set('input', new JsString($str));
-                $result->set('groups', JsUndefined::instance());
-                return $result;
+                return self::buildMatchResult($matches, $str, false);
             }
             return JsNull::instance();
         };
@@ -2476,8 +2324,7 @@ class StringPrototype
                     $str .= "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
                     continue;
                 }
-                $ch = mb_chr($code, 'UTF-8');
-                $str .= $ch !== false ? $ch : '';
+                $str .= mb_chr($code, 'UTF-8');
             }
             return new JsString($str);
         };

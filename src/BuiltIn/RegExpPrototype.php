@@ -134,6 +134,9 @@ class RegExpPrototype
                     return self::iterResult(JsUndefined::instance(), true);
                 }
                 $R = $this_->get('[[IteratingRegExp]]');
+                if (!$R instanceof JsObject) {
+                    return self::iterResult(JsUndefined::instance(), true);
+                }
                 $S = TypeConversion::toString($this_->get('[[IteratedString]]'));
                 $global = $this_->get('[[Global]]');
                 $isGlobal = $global instanceof JsBoolean && $global->value;
@@ -609,12 +612,17 @@ class RegExpPrototype
 
             // Read the (potentially recompiled) pattern after lastIndex
             // coercion. compile() inside the ToLength call would have
-            // overwritten [[PCREPattern]] by this point.
+            // overwritten [[PCREPattern]] by this point. The slot is
+            // guaranteed present by the early check above; only its
+            // (possibly mutated) value type still needs validation.
             $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
-            if ($pcrePatternDesc === null || !$pcrePatternDesc->value instanceof JsString) {
+            $pcrePatternVal = $pcrePatternDesc instanceof PropertyDescriptor
+                ? $pcrePatternDesc->value
+                : null;
+            if (!$pcrePatternVal instanceof JsString) {
                 throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }
-            $pcrePattern = $pcrePatternDesc->value->value;
+            $pcrePattern = $pcrePatternVal->value;
 
             if (!$isGlobal && !$isSticky) {
                 $lastIndex = 0;
@@ -1615,32 +1623,5 @@ class RegExpPrototype
             return $index + 1;
         }
         return $index + 2;
-    }
-
-    /**
-     * SameValue comparison for lastIndex tracking.
-     * For numbers, distinguishes +0 and -0 (unlike ===).
-     */
-    private static function sameValueZero(JsValue $x, JsValue $y): bool
-    {
-        if ($x instanceof JsNumber && $y instanceof JsNumber) {
-            if (is_nan($x->value) && is_nan($y->value)) {
-                return true;
-            }
-            return $x->value === $y->value;
-        }
-        if ($x instanceof JsString && $y instanceof JsString) {
-            return $x->value === $y->value;
-        }
-        if ($x instanceof JsBoolean && $y instanceof JsBoolean) {
-            return $x->value === $y->value;
-        }
-        if ($x instanceof JsNull && $y instanceof JsNull) {
-            return true;
-        }
-        if ($x instanceof JsUndefined && $y instanceof JsUndefined) {
-            return true;
-        }
-        return $x === $y;
     }
 }

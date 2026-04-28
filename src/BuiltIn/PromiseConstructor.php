@@ -72,8 +72,9 @@ class PromiseConstructor
                 // call wins; subsequent calls (including the reject path
                 // taken when the executor throws AFTER calling resolve)
                 // must be no-ops.
-                $alreadyResolved = new \stdClass();
-                $alreadyResolved->v = false;
+                $alreadyResolved = new class () {
+                    public bool $v = false;
+                };
                 $resolveHandler = function (JsValue $this_, array $args) use ($promise, $alreadyResolved): JsValue {
                     if ($alreadyResolved->v) {
                         return JsUndefined::instance();
@@ -243,8 +244,9 @@ class PromiseConstructor
                         // independent slot — a reused `$alreadyCalled`
                         // variable in the outer scope would be shared
                         // across every element's closure by reference.
-                        $alreadyCalled = new \stdClass();
-                        $alreadyCalled->v = false;
+                        $alreadyCalled = new class () {
+                            public bool $v = false;
+                        };
                         $resolveElement = JsFunction::fromCallable(
                             '',
                             function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, $alreadyCalled): JsValue {
@@ -359,8 +361,9 @@ class PromiseConstructor
                         // Use stdClass so each pair gets its own slot
                         // (a reused local variable would be shared by
                         // reference across all closures in the loop).
-                        $alreadyCalled = new \stdClass();
-                        $alreadyCalled->v = false;
+                        $alreadyCalled = new class () {
+                            public bool $v = false;
+                        };
                         $onFulfilled = JsFunction::fromCallable(
                             '',
                             function (JsValue $this_, array $args) use ($i, &$results, &$remaining, $resolve, $alreadyCalled): JsValue {
@@ -613,8 +616,9 @@ class PromiseConstructor
                         // [[AlreadyCalled]] separately per element. Use
                         // stdClass so each closure holds an independent
                         // slot.
-                        $alreadyCalled = new \stdClass();
-                        $alreadyCalled->v = false;
+                        $alreadyCalled = new class () {
+                            public bool $v = false;
+                        };
                         $onRejected = JsFunction::fromCallable(
                             '',
                             function (JsValue $this_, array $args) use ($i, &$errors, &$remaining, $reject, $alreadyCalled): JsValue {
@@ -948,10 +952,7 @@ class PromiseConstructor
     {
         $interp = JsFunction::getInterpreterInstance();
         if ($interp !== null) {
-            $jv = $interp->phpExceptionToJsValue($e);
-            if ($jv instanceof JsValue) {
-                return $jv;
-            }
+            return $interp->phpExceptionToJsValue($e);
         }
         $name = $e instanceof \PhpJs\Exceptions\TypeError ? 'TypeError'
             : ($e instanceof \PhpJs\Exceptions\RangeError ? 'RangeError'
@@ -1071,65 +1072,6 @@ class PromiseConstructor
         }
     }
 
-    private static function iterableToArray(JsValue $iterable): array
-    {
-        if ($iterable instanceof JsArray) {
-            $result = [];
-            $len = $iterable->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $result[] = $iterable->get((string) $i);
-            }
-            return $result;
-        }
-
-        if ($iterable instanceof JsObject) {
-            $iterSym = SymbolConstructor::iterator();
-            $iteratorMethod = $iterable->getBySymbol($iterSym);
-            if ($iteratorMethod instanceof JsFunction) {
-                $iterator = $iteratorMethod->call($iterable, []);
-                if ($iterator instanceof JsObject) {
-                    $nextMethod = $iterator->get('next');
-                    if ($nextMethod instanceof JsFunction) {
-                        $result = [];
-                        while (true) {
-                            $ir = $nextMethod->call($iterator, []);
-                            if (!$ir instanceof JsObject) {
-                                break;
-                            }
-                            if (TypeConversion::toBoolean($ir->get('done'))) {
-                                break;
-                            }
-                            $result[] = $ir->get('value');
-                        }
-                        return $result;
-                    }
-                }
-            }
-            // No Symbol.iterator method on this object — not iterable.
-            throw new TypeError('object is not iterable');
-        }
-
-        if ($iterable instanceof JsUndefined || $iterable instanceof JsNull) {
-            $str = TypeConversion::toString($iterable);
-            throw new TypeError(
-                "Cannot read properties of {$str} (reading 'Symbol(Symbol.iterator)')",
-            );
-        }
-
-        if ($iterable instanceof JsString) {
-            $result = [];
-            $value = $iterable->value;
-            $len = mb_strlen($value, 'UTF-8');
-            for ($i = 0; $i < $len; $i++) {
-                $result[] = new JsString(mb_substr($value, $i, 1, 'UTF-8'));
-            }
-            return $result;
-        }
-
-        // Numbers, booleans, symbols, bigints — none of these are iterable.
-        throw new TypeError(TypeConversion::toString($iterable) . ' is not iterable');
-    }
-
     /**
      * Coerce a value to a JsPromise. If already a promise, return it.
      * Otherwise, wrap in a resolved promise (Promise.resolve behavior).
@@ -1140,14 +1082,6 @@ class PromiseConstructor
             return $value;
         }
         return JsPromise::resolved($value);
-    }
-
-    private static function closeIterator(JsObject $iterator): void
-    {
-        $returnMethod = $iterator->get('return');
-        if ($returnMethod instanceof JsFunction) {
-            $returnMethod->call($iterator, []);
-        }
     }
 
     /**

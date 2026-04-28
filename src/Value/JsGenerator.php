@@ -215,7 +215,12 @@ class JsGenerator extends JsObject
             throw $e;
         }
 
-        if ($this->fiber->isTerminated()) {
+        // After throw, the fiber is either terminated (body returned via
+        // finally) or suspended again (body yielded inside finally / yield*).
+        // Read the post-throw state through a helper that PHPStan does not
+        // narrow across, since the impure stub on Fiber::throw alone is not
+        // sufficient to clear the state established by the entry guard above.
+        if ($this->isFiberDone()) {
             $this->done = true;
             $returnValue = $this->fiber->getReturn();
             if ($returnValue instanceof JsValue) {
@@ -305,6 +310,18 @@ class JsGenerator extends JsObject
     private function toRuntimeError(JsValue $value): RuntimeError
     {
         return new JsThrowable($value);
+    }
+
+    /**
+     * Read the fiber's post-throw termination state through a helper so
+     * static analysis sees a fresh check, not the entry-guard narrowing.
+     * Fiber::throw can transition the fiber from suspended to terminated
+     * (when the body returns inside a finally) and that transition has to
+     * be observable to the caller.
+     */
+    private function isFiberDone(): bool
+    {
+        return $this->fiber->isTerminated();
     }
 
     /**

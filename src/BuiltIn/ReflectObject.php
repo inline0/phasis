@@ -390,7 +390,7 @@ class ReflectObject
                 // ECMAScript functions we still query newTarget.prototype
                 // eagerly and detect revocable-proxy revocation per
                 // GetPrototypeFromConstructor → GetFunctionRealm.
-                $isNativeTarget = $target instanceof JsFunction && $target->isNative();
+                $isNativeTarget = $target->isNative();
                 if ($isNativeTarget) {
                     $targetProto = $target->get('prototype');
                     $useProto = $targetProto instanceof JsObject ? $targetProto : null;
@@ -412,9 +412,7 @@ class ReflectObject
                     }
                 }
                 $newObj = new JsObject($useProto);
-                $ntValue = ($newTarget instanceof JsFunction || $newTarget instanceof JsProxy)
-                    ? $newTarget
-                    : $target;
+                $ntValue = $newTarget;
                 $newObj->defineOwnProperty(
                     '[[NewTarget]]',
                     PropertyDescriptor::data($ntValue, false, false, false),
@@ -457,38 +455,6 @@ class ReflectObject
         );
 
         $env->defineVar('Reflect', $reflect);
-    }
-
-    /**
-     * OrdinaryDefineOwnProperty per spec 9.1.6.1, returning bool.
-     *
-     * Returns true if the property was successfully defined, false if rejected
-     * by validation (non-extensible, non-configurable conflicts, etc.).
-     */
-    private static function ordinaryDefineOwnProperty(
-        JsObject $target,
-        string $name,
-        PropertyDescriptor $desc,
-    ): bool {
-        $current = $target->getOwnPropertyDescriptor($name);
-
-        if ($current === null) {
-            // Property does not exist. Only create if extensible.
-            if (!$target->isExtensible()) {
-                return false;
-            }
-            // Per spec, unspecified attributes default to false/undefined for new properties.
-            $target->defineOwnProperty($name, self::completeDescriptor($desc));
-            return true;
-        }
-
-        // Validate changes against current descriptor.
-        if (!self::isCompatiblePropertyDescriptor($target->isExtensible(), $desc, $current)) {
-            return false;
-        }
-
-        $target->defineOwnProperty($name, self::mergeDescriptor($current, $desc));
-        return true;
     }
 
     /**

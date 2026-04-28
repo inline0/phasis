@@ -104,9 +104,9 @@ class JsObject implements JsValue
      * Needed because the constructor's `null ?? $globalPrototype` falls back to
      * the global prototype when null is passed.
      */
-    public static function createNullPrototype(): static
+    public static function createNullPrototype(): self
     {
-        $obj = new static();
+        $obj = new self();
         $obj->prototype = null;
         return $obj;
     }
@@ -372,8 +372,7 @@ class JsObject implements JsValue
             if ($desc->get !== null) {
                 // Per spec OrdinaryGet, the getter is called with the original
                 // receiver (may be a primitive for primitive-base refs).
-                $recv = $receiver instanceof JsValue ? $receiver : $this;
-                return $desc->get->call($recv, []);
+                return $desc->get->call($receiver, []);
             }
             return $desc->value ?? JsUndefined::instance();
         }
@@ -775,6 +774,14 @@ class JsObject implements JsValue
         $this->privateMethods[$name] = true;
     }
 
+    /**
+     * Treat ::has() as impure: subclasses (JsProxy with the `has` trap,
+     * JsArguments parameter map, etc.) can produce different results across
+     * calls, and even on plain objects the @@unscopables getter mutating
+     * the chain between two calls is observable.
+     *
+     * @phpstan-impure
+     */
     public function has(string $name): bool
     {
         if ($this->properties->has($name)) {
@@ -822,6 +829,17 @@ class JsObject implements JsValue
         $this->properties->set($name, $desc);
     }
 
+    /**
+     * Treat ::getOwnPropertyDescriptor as impure: subclasses (JsProxy
+     * with the `getOwnPropertyDescriptor` trap, JsArguments parameter
+     * map, JsTypedArray) and the module-namespace exotic path can
+     * return different values across calls. Marking impure keeps
+     * static analysis from preserving narrowing across spec-mandated
+     * intermediate operations (`compile()` inside ToLength can blank
+     * out `[[PCREPattern]]`, etc.).
+     *
+     * @phpstan-impure
+     */
     public function getOwnPropertyDescriptor(string $name): ?PropertyDescriptor
     {
         $desc = $this->properties->get($name);

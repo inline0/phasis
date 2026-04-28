@@ -222,9 +222,7 @@ final class Compiler
         }
         if (is_array($statements)) {
             foreach ($statements as $s) {
-                if ($s instanceof Node) {
-                    $this->scanBailout($s);
-                }
+                $this->scanBailout($s);
             }
             return;
         }
@@ -1210,10 +1208,10 @@ final class Compiler
                 throw new CompilerBailout('non-identifier non-literal key');
             }
             // `__proto__: value` is the special prototype-set sugar
-            // when shorthand=false and method=false; the tree-walker
-            // handles it via setPrototype rather than defining a
-            // property. Bail to keep the spec semantics correct.
-            if ($name === '__proto__' && !$prop->shorthand && !$prop->method) {
+            // when shorthand=false (method=false has already bailed
+            // above); the tree-walker handles it via setPrototype rather
+            // than defining a property. Bail to keep spec semantics.
+            if ($name === '__proto__' && !$prop->shorthand) {
                 throw new CompilerBailout('__proto__ literal');
             }
             $this->compileExpression($prop->value);
@@ -1259,9 +1257,6 @@ final class Compiler
         }
         for ($i = 0; $i < $count; $i++) {
             $part = $quasis[$i];
-            if (!$part instanceof TemplateElement) {
-                throw new CompilerBailout('template element shape');
-            }
             $cookedRaw = $part->cookedValue;
             if ($cookedRaw === null) {
                 throw new CompilerBailout('template element with invalid escape');

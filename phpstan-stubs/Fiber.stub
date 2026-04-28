@@ -1,0 +1,43 @@
+<?php
+
+/**
+ * Mark Fiber state-checking methods as impure so PHPStan does not
+ * carry forward stale narrowing across calls that mutate fiber state
+ * (e.g. start, resume, throw).
+ *
+ * Without this, PHPStan treats two `isTerminated()` calls as returning
+ * the same value even when a `throw()` between them can transition the
+ * fiber from suspended to terminated, which produces false-positive
+ * "always false" warnings on the post-call termination check.
+ *
+ * @template TStart
+ * @template TResume
+ * @template TReturn
+ * @template TSuspend
+ */
+final class Fiber
+{
+    /** @phpstan-impure */
+    public function isStarted(): bool {}
+
+    /** @phpstan-impure */
+    public function isSuspended(): bool {}
+
+    /** @phpstan-impure */
+    public function isRunning(): bool {}
+
+    /** @phpstan-impure */
+    public function isTerminated(): bool {}
+
+    /** @phpstan-impure */
+    public function getReturn(): mixed {}
+
+    /** @phpstan-impure */
+    public function start(mixed ...$args): mixed {}
+
+    /** @phpstan-impure */
+    public function resume(mixed $value = null): mixed {}
+
+    /** @phpstan-impure */
+    public function throw(\Throwable $exception): mixed {}
+}

@@ -1008,7 +1008,7 @@ class JsTypedArray extends JsObject
 
         // Compute value mod 2^64, normalized to [0, 2^64).
         $result = bcmod($strVal, $mod);
-        if ($result !== '' && $result[0] === '-') {
+        if ($result[0] === '-') {
             $result = bcadd($result, $mod);
         }
 
@@ -1115,11 +1115,12 @@ class JsTypedArray extends JsObject
             if ($remainder > $halfway || ($remainder === $halfway && ($halfFrac & 1) !== 0)) {
                 $halfFrac++;
                 if ($halfFrac > 0x3FF) {
+                    // halfFrac overflow rolls into halfExp. Upstream the
+                    // unbiasedExp > 15 branch already returned ±Inf, so
+                    // halfExp at most reaches 31 here, never the 0x1F+1
+                    // overflow that would round up to ±Inf again.
                     $halfFrac = 0;
                     $halfExp++;
-                    if ($halfExp > 0x1F) {
-                        return ($sign << 15) | 0x7C00;
-                    }
                 }
             }
             return ($sign << 15) | ($halfExp << 10) | $halfFrac;

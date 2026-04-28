@@ -219,12 +219,9 @@ class GlobalObject
                             && ctype_xdigit($str[$k + 5])
                         ) {
                             $code = (int) hexdec(substr($str, $k + 2, 4));
-                            $chr = mb_chr($code, 'UTF-8');
-                            $result .= $chr !== false ? $chr : $c;
-                            if ($chr !== false) {
-                                $k += 6;
-                                continue;
-                            }
+                            $result .= mb_chr($code, 'UTF-8');
+                            $k += 6;
+                            continue;
                         }
                         // Check for %XX (3 chars total)
                         if (
@@ -233,12 +230,9 @@ class GlobalObject
                             && ctype_xdigit($str[$k + 2])
                         ) {
                             $code = (int) hexdec(substr($str, $k + 1, 2));
-                            $chr = mb_chr($code, 'UTF-8');
-                            $result .= $chr !== false ? $chr : $c;
-                            if ($chr !== false) {
-                                $k += 3;
-                                continue;
-                            }
+                            $result .= mb_chr($code, 'UTF-8');
+                            $k += 3;
+                            continue;
                         }
                     }
                     $result .= $c;
@@ -529,8 +523,9 @@ class GlobalObject
             // Use a box to hold a self-reference so the closure can compare
             // its own JsFunction identity against the active newTarget per
             // §10.4.1.2 step 4 (SameValue(F, newTarget) → use bound target).
-            $selfRef = new \stdClass();
-            $selfRef->fn = null;
+            $selfRef = new class () {
+                public ?JsFunction $fn = null;
+            };
             $boundFn = JsFunction::fromCallable(
                 $boundName,
                 function (
@@ -1784,46 +1779,6 @@ class GlobalObject
         return $names;
     }
 
-    private static function nodeContainsPrivateIdentifier(?\PhpJs\Ast\Node $node): bool
-    {
-        if ($node === null) {
-            return false;
-        }
-        if ($node instanceof \PhpJs\Ast\Expression\PrivateIdentifier) {
-            return true;
-        }
-        // Descend into class bodies too — a dynamic-function body may contain
-        // an inner class, and private identifiers inside that class's own
-        // scope are valid. We only reject unresolved references, so rely on
-        // the existing validateEvalPrivateNames-style logic by stopping at
-        // class boundaries where private name scope is introduced.
-        if (
-            $node instanceof \PhpJs\Ast\Expression\ClassExpression
-            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-        ) {
-            return false;
-        }
-        $reflection = new \ReflectionObject($node);
-        foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            $value = $prop->getValue($node);
-            if ($value instanceof \PhpJs\Ast\Node) {
-                if (self::nodeContainsPrivateIdentifier($value)) {
-                    return true;
-                }
-            } elseif (is_array($value)) {
-                foreach ($value as $item) {
-                    if (
-                        $item instanceof \PhpJs\Ast\Node
-                        && self::nodeContainsPrivateIdentifier($item)
-                    ) {
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
     /**
      * Walk the formal parameters of a parsed dynamic-function Program looking
      * for YieldExpression or AwaitExpression nodes. The dynamic
@@ -1841,9 +1796,6 @@ class GlobalObject
                 continue;
             }
             foreach ($stmt->expression->params as $param) {
-                if ($param === null) {
-                    continue;
-                }
                 if (self::nodeContainsYieldOrAwait($param)) {
                     throw new \PhpJs\Exceptions\SyntaxError(
                         'YieldExpression or AwaitExpression not permitted in parameters'

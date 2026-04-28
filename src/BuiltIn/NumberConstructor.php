@@ -644,7 +644,7 @@ class NumberConstructor
         }
 
         // Strip a leading sign (defensive — value is positive here).
-        if ($exact !== '' && $exact[0] === '-') {
+        if ($exact[0] === '-') {
             $exact = substr($exact, 1);
         }
 

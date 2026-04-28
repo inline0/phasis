@@ -48,8 +48,7 @@ class Lexer
 
         // Skip hashbang (#!) at the very start of the source per spec.
         if (
-            $this->pos === 0
-            && $this->length >= 2
+            $this->length >= 2
             && $this->source[0] === '#'
             && $this->source[1] === '!'
         ) {
@@ -838,9 +837,7 @@ class Lexer
             }
         }
 
-        $chr = mb_chr($value, 'UTF-8');
-
-        return $chr !== false ? $chr : chr($value);
+        return mb_chr($value, 'UTF-8');
     }
 
     private function readHexEscape(int $count): string
@@ -880,8 +877,7 @@ class Lexer
                         // Valid surrogate pair: advance past \uXXXX
                         $this->pos += 6;
                         $codePoint = 0x10000 + ($code - 0xD800) * 0x400 + ($loCode - 0xDC00);
-                        $chr = mb_chr($codePoint, 'UTF-8');
-                        return $chr !== false ? $chr : '?';
+                        return mb_chr($codePoint, 'UTF-8');
                     }
                 }
             }
@@ -895,8 +891,7 @@ class Lexer
             return "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
         }
 
-        $chr = mb_chr($code, 'UTF-8');
-        return $chr !== false ? $chr : chr($code & 0xFF);
+        return mb_chr($code, 'UTF-8');
     }
 
     private function readUnicodeEscape(): string
@@ -944,8 +939,7 @@ class Lexer
             if ($code >= 0xDC00 && $code <= 0xDFFF) {
                 return "\xED" . chr(0xB0 | (($code >> 6) & 0x0F)) . chr(0x80 | ($code & 0x3F));
             }
-            $chr = mb_chr($code, 'UTF-8');
-            return $chr !== false ? $chr : '?';
+            return mb_chr($code, 'UTF-8');
         }
 
         return $this->readHexEscape(4);

@@ -757,20 +757,17 @@ final class AbstractOperations
 
         // Hex: 0x or 0X prefix.
         if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $trimmed, $matches) === 1) {
-            $dec = self::hexToBigIntString($matches[1]);
-            return $dec !== null ? new JsBigInt($dec) : null;
+            return new JsBigInt(self::hexToBigIntString($matches[1]));
         }
 
         // Octal: 0o or 0O prefix.
         if (preg_match('/^0[oO]([0-7]+)$/', $trimmed, $matches) === 1) {
-            $dec = self::baseToBigIntString($matches[1], 8);
-            return $dec !== null ? new JsBigInt($dec) : null;
+            return new JsBigInt(self::baseToBigIntString($matches[1], 8));
         }
 
         // Binary: 0b or 0B prefix.
         if (preg_match('/^0[bB]([01]+)$/', $trimmed, $matches) === 1) {
-            $dec = self::baseToBigIntString($matches[1], 2);
-            return $dec !== null ? new JsBigInt($dec) : null;
+            return new JsBigInt(self::baseToBigIntString($matches[1], 2));
         }
 
         // Decimal integer: optional sign, digits only. No decimal points, no exponents.
@@ -816,19 +813,19 @@ final class AbstractOperations
         // Hex: 0x or 0X.
         if (preg_match('/^0[xX]([0-9a-fA-F]+)$/', $v, $matches) === 1) {
             $dec = self::hexToBigIntString($matches[1]);
-            return $negative ? '-' . $dec : ($dec ?? '0');
+            return $negative ? '-' . $dec : $dec;
         }
 
         // Octal: 0o or 0O.
         if (preg_match('/^0[oO]([0-7]+)$/', $v, $matches) === 1) {
             $dec = self::baseToBigIntString($matches[1], 8);
-            return $negative ? '-' . $dec : ($dec ?? '0');
+            return $negative ? '-' . $dec : $dec;
         }
 
         // Binary: 0b or 0B.
         if (preg_match('/^0[bB]([01]+)$/', $v, $matches) === 1) {
             $dec = self::baseToBigIntString($matches[1], 2);
-            return $negative ? '-' . $dec : ($dec ?? '0');
+            return $negative ? '-' . $dec : $dec;
         }
 
         // Already decimal (or zero). Return as is.
@@ -838,7 +835,7 @@ final class AbstractOperations
     /**
      * Convert a hex digit string to a decimal string (pure PHP).
      */
-    private static function hexToBigIntString(string $hex): ?string
+    private static function hexToBigIntString(string $hex): string
     {
         $result = '0';
         $len = strlen($hex);
@@ -851,7 +848,7 @@ final class AbstractOperations
     /**
      * Convert a digit string in a given base (2 or 8) to a decimal string (pure PHP).
      */
-    private static function baseToBigIntString(string $digits, int $base): ?string
+    private static function baseToBigIntString(string $digits, int $base): string
     {
         $result = '0';
         $len = strlen($digits);

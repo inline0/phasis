@@ -197,48 +197,6 @@ class IntlObject
     }
 
     /**
-     * Apply BCP 47 casing rules:
-     * - Language subtag: lowercase
-     * - Script subtag: titlecase
-     * - Region subtag: uppercase
-     * - Everything else: lowercase
-     */
-    private static function formatBcp47Casing(string $tag): string
-    {
-        $parts = explode('-', $tag);
-        $result = [];
-        $i = 0;
-
-        // Language subtag (always lowercase).
-        $result[] = strtolower($parts[$i]);
-        $i++;
-
-        // Script subtag: 4 letters, titlecase.
-        if (isset($parts[$i]) && strlen($parts[$i]) === 4 && ctype_alpha($parts[$i])) {
-            $result[] = ucfirst(strtolower($parts[$i]));
-            $i++;
-        }
-
-        // Region subtag: 2 letters uppercase, or 3 digits.
-        if (
-            isset($parts[$i]) && (
-            (strlen($parts[$i]) === 2 && ctype_alpha($parts[$i])) ||
-            (strlen($parts[$i]) === 3 && ctype_digit($parts[$i]))
-            )
-        ) {
-            $result[] = strtoupper($parts[$i]);
-            $i++;
-        }
-
-        // Remaining subtags: lowercase (variants, extensions, private use).
-        for (; $i < count($parts); $i++) {
-            $result[] = strtolower($parts[$i]);
-        }
-
-        return implode('-', $result);
-    }
-
-    /**
      * Resolve locale: pick best available from the requested list.
      * Returns the resolved locale string.
      */
@@ -2456,13 +2414,13 @@ class IntlObject
             // '.' for en-US, etc.). The match uses the locale's
             // resolved decimal symbol so we don't misclassify
             // de-DE "987,00" as a group separator.
-            if (substr($body, $i, strlen($decimalSym)) === $decimalSym && $decimalSym !== '') {
+            if (substr($body, $i, strlen($decimalSym)) === $decimalSym) {
                 $sawDecimal = true;
                 $emit('decimal', $decimalSym);
                 $i += strlen($decimalSym);
                 continue;
             }
-            if (substr($body, $i, strlen($groupSym)) === $groupSym && $groupSym !== '') {
+            if (substr($body, $i, strlen($groupSym)) === $groupSym) {
                 $emit('group', $groupSym);
                 $i += strlen($groupSym);
                 continue;
@@ -2823,7 +2781,7 @@ class IntlObject
      * style). For locales we don't have CLDR data for, falls back
      * to the en-US labels.
      */
-    private static function formatCompactNumber(JsObject $nf, float $number): ?string
+    private static function formatCompactNumber(JsObject $nf, float $number): string
     {
         $compactDisplay = self::extractInternalString($nf, '[[CompactDisplay]]', 'short');
         $locale = self::extractInternalString($nf, '[[Locale]]', 'en');
@@ -3005,7 +2963,7 @@ class IntlObject
         try {
             $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             $sym = $sf->getSymbol(\NumberFormatter::NAN_SYMBOL);
-            return is_string($sym) && $sym !== '' ? $sym : 'NaN';
+            return $sym !== '' ? $sym : 'NaN';
         } catch (\Throwable) {
             return 'NaN';
         }
@@ -3019,7 +2977,7 @@ class IntlObject
         try {
             $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
             $sym = $sf->getSymbol(\NumberFormatter::INFINITY_SYMBOL);
-            return is_string($sym) && $sym !== '' ? $sym : '∞';
+            return $sym !== '' ? $sym : '∞';
         } catch (\Throwable) {
             return '∞';
         }
@@ -3500,7 +3458,7 @@ class IntlObject
             default => strlen($intPart) > 3,
         };
         $intRendered = $intPart;
-        if ($shouldGroup && $groupSym !== false && $groupSym !== '') {
+        if ($shouldGroup && $groupSym !== '') {
             // Split from the right into 3-digit groups.
             $intRendered = '';
             $len = strlen($intPart);
@@ -3532,7 +3490,7 @@ class IntlObject
             return $sign . $intRendered;
         }
         $decimalSym = $formatter->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
-        if ($decimalSym === false || $decimalSym === '') {
+        if ($decimalSym === '') {
             $decimalSym = '.';
         }
         return $sign . $intRendered . $decimalSym . $fracPart;
@@ -3647,31 +3605,6 @@ class IntlObject
         return $clone;
     }
 
-    /**
-     * Count digits to the right of the (locale) decimal separator
-     * in a formatted output. Walks the trailing digit run and
-     * checks the preceding character for a decimal separator.
-     */
-    private static function countFractionDigits(string $formatted): int
-    {
-        $len = strlen($formatted);
-        // Walk leftward over the trailing run of ASCII digits.
-        $i = $len;
-        while ($i > 0 && ctype_digit($formatted[$i - 1])) {
-            $i--;
-        }
-        $count = $len - $i;
-        if ($count === 0 || $i === 0) {
-            return 0;
-        }
-        // The character immediately preceding the digit run must be
-        // a decimal separator for those digits to be the fraction.
-        $prev = $formatted[$i - 1];
-        if ($prev === '.' || $prev === ',') {
-            return $count;
-        }
-        return 0;
-    }
 
     private static function formatNumber(JsObject $nf, float $number, ?string $bigIntStr = null): string
     {
@@ -3695,9 +3628,7 @@ class IntlObject
         // share the same structure with localised suffix labels.
         if ($notation === 'compact') {
             $compact = self::formatCompactNumber($nf, $number);
-            if ($compact !== null) {
-                return self::applySignDisplay($nf, $compact, $number);
-            }
+            return self::applySignDisplay($nf, $compact, $number);
         }
 
         $fmtStyle = match ($style) {
@@ -4152,9 +4083,7 @@ class IntlObject
                     $isOffset = false;
                     if (preg_match('/^([+-])(\d{2})(?::?(\d{2}))?$/', $tz, $offMatch) === 1) {
                         $hh = (int) $offMatch[2];
-                        $mm = isset($offMatch[3]) && $offMatch[3] !== ''
-                            ? (int) $offMatch[3]
-                            : 0;
+                        $mm = isset($offMatch[3]) ? (int) $offMatch[3] : 0;
                         if ($hh <= 23 && $mm <= 59) {
                             $isOffset = true;
                         }
@@ -4583,12 +4512,9 @@ class IntlObject
             $endStr = '';
             if ($startTemp !== null && $endTemp !== null) {
                 self::checkSameTemporalType($startTemp, $endTemp);
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('Intl.DateTimeFormat receiver required');
-                }
                 $startStr = self::formatTemporal($this_, $startTemp);
                 $endStr = self::formatTemporal($this_, $endTemp);
-            } elseif (extension_loaded('intl') && $this_ instanceof JsObject) {
+            } elseif (extension_loaded('intl')) {
                 $startStr = self::formatDateTimeMs($this_, (float) $startMs);
                 $endStr = self::formatDateTimeMs($this_, (float) $endMs);
             } else {
@@ -4649,13 +4575,10 @@ class IntlObject
             $temporalArg = null;
             if ($startTemp !== null && $endTemp !== null) {
                 self::checkSameTemporalType($startTemp, $endTemp);
-                if (!$this_ instanceof JsObject) {
-                    throw new TypeError('Intl.DateTimeFormat receiver required');
-                }
                 $startStr = self::formatTemporal($this_, $startTemp);
                 $endStr = self::formatTemporal($this_, $endTemp);
                 $temporalArg = $startTemp;
-            } elseif (extension_loaded('intl') && $this_ instanceof JsObject) {
+            } elseif (extension_loaded('intl')) {
                 $startStr = self::formatDateTimeMs($this_, (float) $startMs);
                 $endStr = self::formatDateTimeMs($this_, (float) $endMs);
             }
@@ -4889,6 +4812,9 @@ class IntlObject
      * Brand-check the receiver of DateTimeFormat range methods. Spec:
      * if `this` doesn't have [[InitializedDateTimeFormat]], throw
      * TypeError.
+     */
+    /**
+     * @phpstan-assert JsObject $this_
      */
     private static function dateTimeFormatRangeReceiverCheck(JsValue $this_, string $name): void
     {
@@ -5201,19 +5127,6 @@ class IntlObject
         return null;
     }
 
-    private static function dateTimeFormatRangeArgToMs(JsValue $val, string $argName): float
-    {
-        $n = TypeConversion::toNumber($val);
-        if (is_nan($n) || !is_finite($n)) {
-            throw new RangeError("Invalid {$argName}: not a finite number");
-        }
-        // TimeClip: NaN if outside ECMAScript's ±8.64e15 ms range.
-        if (abs($n) > 8.64e15) {
-            throw new RangeError("Invalid {$argName}: time value out of range");
-        }
-        return $n;
-    }
-
     /**
      * Decompose a formatted date-time output into spec-shaped parts
      * by walking ICU's underlying pattern in lockstep with the
@@ -5480,14 +5393,6 @@ class IntlObject
             'w', 'W' => 'weekOfYear',
             default => 'literal',
         };
-    }
-
-    /**
-     * Format a date/time using PHP's IntlDateFormatter.
-     */
-    private static function formatDateTime(JsObject $dtf, int $timestamp): string
-    {
-        return self::formatDateTimeMs($dtf, $timestamp * 1000.0);
     }
 
     /**
@@ -6107,7 +6012,7 @@ class IntlObject
             $ms = bcdiv($ns, '1000000', 0);
             return (float) $ms;
         }
-        return (float) ($ns / 1000000);
+        return (float) $ns / 1000000;
     }
 
     /**
@@ -6264,11 +6169,7 @@ class IntlObject
                     'UTC',
                     $localeForCal,
                 );
-                if ($prolepticCalendar instanceof \IntlGregorianCalendar) {
-                    $prolepticCalendar->setGregorianChange(PHP_INT_MIN);
-                } else {
-                    $prolepticCalendar = null;
-                }
+                $prolepticCalendar->setGregorianChange(PHP_INT_MIN);
             } catch (\Throwable) {
                 $prolepticCalendar = null;
             }
@@ -7830,7 +7731,7 @@ class IntlObject
                                 || !(
                                     $subLen === 2
                                     || $subLen === 3
-                                    || ($subLen >= 5 && $subLen <= 8)
+                                    || $subLen >= 5
                                 )
                             ) {
                                 return true;
@@ -7866,7 +7767,7 @@ class IntlObject
                                 $i++;
                                 continue;
                             }
-                            $isLongVar = $subLen >= 5 && $subLen <= 8 && ctype_alnum($sub);
+                            $isLongVar = $subLen >= 5 && ctype_alnum($sub);
                             $isShortNumVar = $subLen === 4
                                 && ctype_digit($sub[0])
                                 && ctype_alnum($sub);
@@ -7900,7 +7801,7 @@ class IntlObject
                         // Inside tfields, a non-tkey subtag is a
                         // tvalue. tvalue = alphanum{3,8}.
                         if ($awaitingTvalue) {
-                            if ($subLen < 3 || $subLen > 8 || !ctype_alnum($sub)) {
+                            if ($subLen < 3 || !ctype_alnum($sub)) {
                                 return true;
                             }
                             $sawTvalueForCurrentTkey = true;
@@ -8664,9 +8565,6 @@ class IntlObject
         $payload = strtolower($payload);
         $tokens = explode('-', $payload);
         $count = count($tokens);
-        if ($count === 0) {
-            return $payload;
-        }
         $i = 0;
         $tlang = null;
         // Detect tlang prefix: starts with a non-tkey alphabetic
@@ -8676,7 +8574,7 @@ class IntlObject
                 && ctype_alpha($sub[0])
                 && ctype_digit($sub[1]);
         };
-        if ($i < $count && !$isTkey($tokens[$i])) {
+        if (!$isTkey($tokens[$i])) {
             $first = $tokens[$i];
             $firstLen = strlen($first);
             if (
@@ -8968,7 +8866,6 @@ class IntlObject
             'cjy' => 'cjy-Hans-CN', 'cmn' => 'cmn-Hans-CN',
             'czh' => 'czh-Hans-CN', 'czo' => 'czo-Hans-CN',
             'mnp' => 'mnp-Hans-CN', 'lzh' => 'lzh-Hans-CN',
-            'jbo' => 'jbo-Latn-001',
             // Language + script that doesn't follow language alone:
             // CLDR defaults each pair to a specific region.
             'en-shaw' => 'en-Shaw-GB',
@@ -9044,7 +8941,7 @@ class IntlObject
             'und-PY' => 'gn-Latn-PY', 'und-RO' => 'ro-Latn-RO',
             'und-RU' => 'ru-Cyrl-RU', 'und-SE' => 'sv-Latn-SE',
             'und-SG' => 'en-Latn-SG', 'und-TH' => 'th-Thai-TH',
-            'und-TR' => 'tr-Latn-TR', 'und-TW' => 'zh-Hant-TW',
+            'und-TR' => 'tr-Latn-TR',
             'und-UA' => 'uk-Cyrl-UA', 'und-US' => 'en-Latn-US',
             'und-UY' => 'es-Latn-UY', 'und-VE' => 'es-Latn-VE',
             'und-VN' => 'vi-Latn-VN',
@@ -9110,7 +9007,7 @@ class IntlObject
         // Only fall through to the 'und' bare key when the input
         // language is itself unknown; otherwise unrecognised
         // identifiers (like "posix") are returned unchanged.
-        if ($lang === 'und' || $lang === '') {
+        if ($lang === 'und') {
             $candidates[] = 'und';
         }
         foreach ($candidates as $candidate) {
@@ -9118,7 +9015,7 @@ class IntlObject
                 continue;
             }
             $entry = $table[$candidate];
-            if ($lang === 'und' || $lang === '') {
+            if ($lang === 'und') {
                 $parsed['language'] = $entry['language'];
             }
             if ($script === '') {
@@ -9671,7 +9568,7 @@ class IntlObject
         }
         $fmt = new \NumberFormatter($icuLocale . '@currency=' . $upper, \NumberFormatter::CURRENCY);
         $sym = $fmt->getSymbol(\NumberFormatter::CURRENCY_SYMBOL);
-        if ($sym === false || $sym === '') {
+        if ($sym === '') {
             return $upper;
         }
         return $sym;
@@ -10283,10 +10180,10 @@ class IntlObject
                     $sf = new \NumberFormatter(str_replace('-', '_', $locale), \NumberFormatter::DECIMAL);
                     $d = $sf->getSymbol(\NumberFormatter::DECIMAL_SEPARATOR_SYMBOL);
                     $g = $sf->getSymbol(\NumberFormatter::GROUPING_SEPARATOR_SYMBOL);
-                    if (is_string($d) && $d !== '') {
+                    if ($d !== '') {
                         $decimalSep = $d;
                     }
-                    if (is_string($g) && $g !== '') {
+                    if ($g !== '') {
                         $groupSep = $g;
                     }
                 }
@@ -10308,7 +10205,7 @@ class IntlObject
                     }
                     // Match locale separator symbols (which may be
                     // multi-byte) before falling back to ASCII heuristics.
-                    if ($groupSep !== '' && substr($absStr, $i, strlen($groupSep)) === $groupSep) {
+                    if (substr($absStr, $i, strlen($groupSep)) === $groupSep) {
                         $part = new JsObject();
                         self::defineDataProp($part, 'type', new JsString('group'));
                         self::defineDataProp($part, 'value', new JsString($groupSep));
@@ -10317,7 +10214,7 @@ class IntlObject
                         $i += strlen($groupSep);
                         continue;
                     }
-                    if ($decimalSep !== '' && substr($absStr, $i, strlen($decimalSep)) === $decimalSep) {
+                    if (substr($absStr, $i, strlen($decimalSep)) === $decimalSep) {
                         $sawDecimal = true;
                         $part = new JsObject();
                         self::defineDataProp($part, 'type', new JsString('decimal'));
@@ -12056,7 +11953,7 @@ class IntlObject
         } elseif ($fdLimit > 0) {
             $fracStr = '.' . substr($padded, 0, $fdLimit);
         }
-        $hasSubSecondNonZero = ($fracTotalNsStr !== '0' && $fracTotalNsStr !== '');
+        $hasSubSecondNonZero = $fracTotalNsStr !== '0';
         // Decide whether each clock unit shows up. Each unit's
         // display flag is independent; we then bridge gaps so
         // colon-joined runs render contiguously. A non-zero

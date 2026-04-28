@@ -281,24 +281,6 @@ class JsAsyncGenerator extends JsObject
         }
     }
 
-    /** Chain $source into $target with the appropriate state transition. */
-    private function settleFromPromise(JsPromise $target, JsPromise $source): void
-    {
-        if ($source === $target) {
-            return;
-        }
-        if ($source->getState() === JsPromise::STATE_FULFILLED) {
-            $target->resolve($source->getResolvedValue());
-            return;
-        }
-        if ($source->getState() === JsPromise::STATE_REJECTED) {
-            $target->reject($source->getResolvedValue());
-            return;
-        }
-        $source->addFulfillHandler(fn ($v) => $target->resolve($v));
-        $source->addRejectHandler(fn ($v) => $target->reject($v));
-    }
-
     /**
      * Force the async generator to return a specific value and mark it as done.
      *
@@ -388,7 +370,7 @@ class JsAsyncGenerator extends JsObject
             return JsPromise::rejected($this->convertError($e));
         }
 
-        if ($this->fiber->isTerminated()) {
+        if ($this->isFiberDone()) {
             $this->done = true;
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
@@ -564,7 +546,7 @@ class JsAsyncGenerator extends JsObject
             return JsPromise::rejected($this->convertError($e));
         }
 
-        if ($this->fiber->isTerminated()) {
+        if ($this->isFiberDone()) {
             $this->done = true;
             if ($this->requestQueue !== []) {
                 $this->queuePendingDrain = true;
@@ -880,6 +862,18 @@ class JsAsyncGenerator extends JsObject
         $error->set('message', new JsString($message));
         $error->set('name', new JsString('TypeError'));
         return $error;
+    }
+
+    /**
+     * Read the fiber's post-throw termination state through a helper so
+     * static analysis sees a fresh check, not the entry-guard narrowing.
+     * Fiber::throw can transition the fiber from suspended to terminated
+     * (when the body returns inside a finally) and that transition has to
+     * be observable to the caller.
+     */
+    private function isFiberDone(): bool
+    {
+        return $this->fiber->isTerminated();
     }
 
     private function convertError(\Throwable $e): JsValue

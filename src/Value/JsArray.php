@@ -77,29 +77,6 @@ class JsArray extends JsObject
         $this->length = $length;
     }
 
-    /**
-     * Validate and set length from a JS value per ES spec 10.4.2.4.
-     *
-     * Throws RangeError if the value is not a valid array length
-     * (negative, > 2^32-1, or non-integer).
-     */
-    private function setLengthFromValue(JsValue $value): void
-    {
-        $num = \PhpJs\Spec\TypeConversion::toNumber($value);
-        $uint32 = (int) ($num >= 0 ? fmod($num, 4294967296) : fmod($num, 4294967296) + 4294967296);
-        if ((float) $uint32 !== $num) {
-            throw new \PhpJs\Exceptions\RangeError('Invalid array length');
-        }
-        $oldLength = $this->length;
-        $this->length = $uint32;
-        // Delete elements above new length (per ArraySetLength).
-        if ($uint32 < $oldLength) {
-            for ($i = $uint32; $i < $oldLength; $i++) {
-                $this->delete((string) $i);
-            }
-        }
-    }
-
     public function push(JsValue $value): void
     {
         $index = $this->length;

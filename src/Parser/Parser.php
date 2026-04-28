@@ -237,7 +237,7 @@ class Parser
             if ($stmt->isDefault) {
                 $addExport('default');
             }
-            foreach ($stmt->specifiers ?? [] as $spec) {
+            foreach ($stmt->specifiers as $spec) {
                 $addExport($spec->exported ?? $spec->local);
             }
             if ($stmt->isAll && $stmt->allAs !== null) {
@@ -1593,7 +1593,8 @@ class Parser
                 );
             }
             if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
-                $last = end($node->expressions);
+                $exprs = $node->expressions;
+                $last = $exprs === [] ? null : $exprs[array_key_last($exprs)];
                 if ($last instanceof Node) {
                     $node = $last;
                     continue;
@@ -1931,7 +1932,7 @@ class Parser
         // Generator function params cannot contain YieldExpression.
         if ($generator) {
             foreach ($params as $p) {
-                if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+                if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression not permitted in generator parameters',
                         new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
@@ -1979,9 +1980,7 @@ class Parser
     private static function validateNoSuperCallInMethod(array $params, Node $body): void
     {
         foreach ($params as $p) {
-            if ($p !== null) {
-                self::walkForSuperCallOnly($p);
-            }
+            self::walkForSuperCallOnly($p);
         }
         self::walkForSuperCallOnly($body);
     }
@@ -2104,9 +2103,7 @@ class Parser
                             'Invalid destructuring pattern: method definition not allowed',
                         );
                     }
-                    if ($prop->value !== null) {
-                        $this->validateAsAssignmentPattern($prop->value);
-                    }
+                    $this->validateAsAssignmentPattern($prop->value);
                 } elseif ($prop instanceof SpreadElement) {
                     if ($i !== $count - 1) {
                         throw new \PhpJs\Exceptions\SyntaxError(
@@ -2300,10 +2297,6 @@ class Parser
      * continue needs an enclosing loop. Labeled break/continue requires
      * the label to be declared on an enclosing labeled statement, all
      * within the same function/static-block scope.
-     *
-     * @param array<string,bool> $labels Labels declared by enclosing
-     *        LabeledStatements (only used at recursive entry; the walker
-     *        builds its own table)
      */
     private static function validateBreakContinue(Node $body): void
     {
@@ -2415,9 +2408,6 @@ class Parser
         }
         $paramNames = [];
         foreach ($params as $p) {
-            if ($p === null) {
-                continue;
-            }
             foreach (self::collectPatternNames($p) as $n) {
                 $paramNames[$n] = true;
             }
@@ -2674,7 +2664,6 @@ class Parser
             if (
                 $element instanceof ClassMethod
                 && $element->kind === 'constructor'
-                && $element->value instanceof \PhpJs\Ast\Expression\FunctionExpression
             ) {
                 self::walkForSuperCallOnly($element->value->body);
             }
@@ -2885,7 +2874,6 @@ class Parser
                 }
                 if (
                     $name === 'constructor'
-                    && $el->value instanceof \PhpJs\Ast\Expression\FunctionExpression
                     && ($el->value->generator || $el->value->async)
                 ) {
                     throw new \PhpJs\Exceptions\SyntaxError(
@@ -3128,20 +3116,15 @@ class Parser
                 // false. Module top-level still reserves `await` as a
                 // module-level identifier, but that is enforced separately
                 // by parseAwaitAsIdentifier.
-                $shouldReset = true;
-                if ($shouldReset) {
-                    $prevYield = $this->inGenerator;
-                    $prevAsync = $this->inAsync;
-                    $this->inGenerator = false;
-                    $this->inAsync = false;
-                }
+                $prevYield = $this->inGenerator;
+                $prevAsync = $this->inAsync;
+                $this->inGenerator = false;
+                $this->inAsync = false;
                 try {
                     $value = $this->parseAssignmentExpression();
                 } finally {
-                    if ($shouldReset) {
-                        $this->inGenerator = $prevYield;
-                        $this->inAsync = $prevAsync;
-                    }
+                    $this->inGenerator = $prevYield;
+                    $this->inAsync = $prevAsync;
                 }
                 // Per §15.7.1 early errors: a class field initializer
                 // cannot contain `SuperCall` or reference `arguments`
@@ -3217,20 +3200,29 @@ class Parser
         $params = $this->parseFormalParameters();
         // Per §15.5.1 / §15.6.1: getters take 0 params, setters take 1.
         if ($kind === 'get' && count($params) !== 0) {
-            throw new ParseError('Getter must not have any formal parameters', $location);
+            throw new ParseError(
+                'Getter must not have any formal parameters',
+                new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+            );
         }
         if ($kind === 'set') {
             if (count($params) !== 1) {
-                throw new ParseError('Setter must have exactly one formal parameter', $location);
+                throw new ParseError(
+                    'Setter must have exactly one formal parameter',
+                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                );
             }
             if ($params[0] instanceof \PhpJs\Ast\Pattern\RestElement) {
-                throw new ParseError('Setter parameter must not be a rest element', $location);
+                throw new ParseError(
+                    'Setter parameter must not be a rest element',
+                    new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                );
             }
         }
         // Async/generator method params cannot contain Yield/Await expressions.
         if ($isAsync || $isGenerator) {
             foreach ($params as $p) {
-                if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+                if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression or AwaitExpression not permitted in async/generator method parameters',
                         new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
@@ -3255,9 +3247,7 @@ class Parser
         // Per §15.7.1: parameter expressions cannot contain SuperCall in
         // any class method (only the derived constructor body can).
         foreach ($params as $p) {
-            if ($p !== null) {
-                self::walkForSuperCallOnly($p);
-            }
+            self::walkForSuperCallOnly($p);
         }
 
         $value = new FunctionExpression(
@@ -3351,7 +3341,7 @@ class Parser
             // Async/generator function params cannot contain Yield/Await
             // expressions per §15.7/§15.8 early errors.
             foreach ($params as $p) {
-                if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+                if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression or AwaitExpression not permitted in async/generator parameters',
                         new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
@@ -4720,7 +4710,7 @@ class Parser
                 TokenType::True, TokenType::False, TokenType::Null,
                 TokenType::This, TokenType::Function_, TokenType::New,
                 TokenType::LeftBrace,
-                TokenType::RegExp, TokenType::Class, TokenType::Async => true,
+                TokenType::RegExp, TokenType::Class_, TokenType::Async => true,
                 default => false,
             };
             if ($nextStartsExpr && !$next->lineTerminatorBefore) {
@@ -5183,7 +5173,7 @@ class Parser
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
-                        if ($unicode && $hex !== '' && hexdec($hex) > 0x10FFFF) {
+                        if ($unicode && hexdec($hex) > 0x10FFFF) {
                             throw new \PhpJs\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Code point out of range",
                             );
@@ -5220,7 +5210,7 @@ class Parser
                     }
                     $num = (int) $digits;
                     if ($unicode) {
-                        if ($digits === '0' && strlen($digits) === 1) {
+                        if ($digits === '0') {
                             // \0 is the NUL character (allowed).
                         } elseif ($digits[0] === '0') {
                             // Leading-zero octals are forbidden in u-mode.
@@ -6039,7 +6029,7 @@ class Parser
                 // doesn't recurse, so just consume balanced brackets.
                 $depth = 1;
                 $i++;
-                while ($i < $len && $depth > 0) {
+                while ($i < $len) {
                     $cc = $pattern[$i];
                     if ($cc === '\\') {
                         $i += 2;
@@ -6134,11 +6124,7 @@ class Parser
                     if ($cp > 0x10FFFF) {
                         return null;
                     }
-                    $ch = mb_chr($cp, 'UTF-8');
-                    if ($ch === false) {
-                        return null;
-                    }
-                    $result .= $ch;
+                    $result .= mb_chr($cp, 'UTF-8');
                     $i = $end + 1;
                     continue;
                 }
@@ -6159,21 +6145,13 @@ class Parser
                                 $lo = (int) hexdec($loHex);
                                 if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
                                     $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
-                                    $ch = mb_chr($cp, 'UTF-8');
-                                    if ($ch === false) {
-                                        return null;
-                                    }
-                                    $result .= $ch;
+                                    $result .= mb_chr($cp, 'UTF-8');
                                     $i += 12;
                                     continue;
                                 }
                             }
                         }
-                        $ch = mb_chr($cp, 'UTF-8');
-                        if ($ch === false) {
-                            return null;
-                        }
-                        $result .= $ch;
+                        $result .= mb_chr($cp, 'UTF-8');
                         $i += 6;
                         continue;
                     }
@@ -6582,7 +6560,7 @@ class Parser
         // unique and must not contain YieldExpression or AwaitExpression.
         self::validateUniqueParameterNames($params, $location);
         foreach ($params as $p) {
-            if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+            if (self::containsYieldOrAwaitExpression($p)) {
                 throw new ParseError(
                     'YieldExpression or AwaitExpression not permitted in arrow function parameters',
                     new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
@@ -6613,9 +6591,7 @@ class Parser
                 // Even inside methods, a SuperCall is invalid in arrow params
                 // (would run before super binding is usable per §8.2.3).
                 foreach ($params as $p) {
-                    if ($p !== null) {
-                        self::walkForSuperCallOnly($p);
-                    }
+                    self::walkForSuperCallOnly($p);
                 }
             }
             return new ArrowFunction($location, $params, $body, false, $async, $this->extractSource($startOffset));
@@ -6629,9 +6605,7 @@ class Parser
             self::validateNoSuperInPlainFunctionBody($params, $body);
         } else {
             foreach ($params as $p) {
-                if ($p !== null) {
-                    self::walkForSuperCallOnly($p);
-                }
+                self::walkForSuperCallOnly($p);
             }
         }
         return new ArrowFunction($location, $params, $body, true, $async, $this->extractSource($startOffset));
@@ -6961,7 +6935,7 @@ class Parser
             // contain AwaitExpression.
             if ($isGenerator || $isAsync) {
                 foreach ($params as $p) {
-                    if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+                    if (self::containsYieldOrAwaitExpression($p)) {
                         throw new ParseError(
                             $isGenerator
                                 ? 'YieldExpression not permitted in generator parameters'
@@ -7013,16 +6987,14 @@ class Parser
             // contain AwaitExpression. containsYieldOrAwaitExpression
             // covers both; the expression form is only introduced in the
             // corresponding method kind, so the combined check is safe.
-            if ($isGenerator || $isAsync) {
-                foreach ($params as $p) {
-                    if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
-                        throw new ParseError(
-                            $isGenerator
-                                ? 'YieldExpression not permitted in generator parameters'
-                                : 'AwaitExpression not permitted in async method parameters',
-                            new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
-                        );
-                    }
+            foreach ($params as $p) {
+                if (self::containsYieldOrAwaitExpression($p)) {
+                    throw new ParseError(
+                        $isGenerator
+                            ? 'YieldExpression not permitted in generator parameters'
+                            : 'AwaitExpression not permitted in async method parameters',
+                        new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
+                    );
                 }
             }
             $value = new FunctionExpression(
@@ -7326,7 +7298,7 @@ class Parser
         // Generator function params cannot contain YieldExpression.
         if ($generator) {
             foreach ($params as $p) {
-                if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+                if (self::containsYieldOrAwaitExpression($p)) {
                     throw new ParseError(
                         'YieldExpression not permitted in generator parameters',
                         new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),
@@ -7486,7 +7458,7 @@ class Parser
         // Async/generator function params cannot contain Yield/Await
         // expressions. (For async, [+Await]; for generator, [+Yield].)
         foreach ($params as $p) {
-            if ($p !== null && self::containsYieldOrAwaitExpression($p)) {
+            if (self::containsYieldOrAwaitExpression($p)) {
                 throw new ParseError(
                     'YieldExpression or AwaitExpression not permitted in async/generator parameters',
                     new \PhpJs\Lexer\Token(TokenType::Identifier, '', $location),

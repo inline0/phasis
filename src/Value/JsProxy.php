@@ -415,9 +415,11 @@ class JsProxy extends JsObject
             if (is_nan($x) && is_nan($y)) {
                 return true;
             }
-            // Distinguish +0 and -0.
+            // Distinguish +0 and -0 via the IEEE 754 sign bit.
             if ($x === 0.0 && $y === 0.0) {
-                return (1 / $x > 0) === (1 / $y > 0); // @phpstan-ignore binaryOp.invalid
+                $signX = (unpack('J', pack('E', $x))[1] ?? 0) >> 63;
+                $signY = (unpack('J', pack('E', $y))[1] ?? 0) >> 63;
+                return $signX === $signY;
             }
             return $x === $y;
         }
@@ -558,7 +560,7 @@ class JsProxy extends JsObject
             foreach ($trapResult as $k) {
                 $stringified[] = ($k instanceof JsSymbol)
                     ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
-                    : ($k instanceof JsString ? $k->value : (string) $k);
+                    : ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
             }
             $this->validateOwnKeysInvariants($stringified, $target);
             // Return string keys only (symbols handled via ordinaryOwnPropertyKeys).
@@ -689,7 +691,7 @@ class JsProxy extends JsObject
             foreach ($trapResult as $k) {
                 $stringified[] = ($k instanceof JsSymbol)
                     ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
-                    : ($k instanceof JsString ? $k->value : (string) $k);
+                    : ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
             }
             $this->validateOwnKeysInvariants($stringified);
             return $trapResult;
@@ -1329,46 +1331,6 @@ class JsProxy extends JsObject
     }
 
     // -- Helpers --
-
-    /**
-     * Convert a trap result (JsArray or JsObject with numeric keys) to a string array.
-     *
-     * @return list<string>
-     */
-    private function trapResultToStringArray(JsValue $result): array
-    {
-        if (!$result instanceof JsObject) {
-            throw new TypeError('\'ownKeys\' on proxy: trap returned non-object');
-        }
-        $keys = [];
-        if ($result instanceof JsArray) {
-            $len = $result->getLength();
-            for ($i = 0; $i < $len; $i++) {
-                $elem = $result->get((string) $i);
-                // Per spec CreateListFromArrayLike with elementTypes String,Symbol:
-                // each element must be a String or Symbol, otherwise throw TypeError.
-                if (!$elem instanceof JsString && !$elem instanceof JsSymbol) {
-                    throw new TypeError(
-                        \PhpJs\Spec\TypeConversion::toString($elem)
-                        . ' is not a valid property name'
-                    );
-                }
-                $keys[] = \PhpJs\Spec\TypeConversion::toString($elem);
-            }
-        } else {
-            foreach ($result->getOwnPropertyNames() as $k) {
-                $elem = $result->get($k);
-                if (!$elem instanceof JsString && !$elem instanceof JsSymbol) {
-                    throw new TypeError(
-                        \PhpJs\Spec\TypeConversion::toString($elem)
-                        . ' is not a valid property name'
-                    );
-                }
-                $keys[] = \PhpJs\Spec\TypeConversion::toString($elem);
-            }
-        }
-        return $keys;
-    }
 
     /**
      * Convert a trap result to an array of JsValue property keys (strings and symbols).

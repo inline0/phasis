@@ -226,39 +226,46 @@ class IteratorConstructor
         ?\Closure $onReturn = null,
     ): JsObject {
         $helper = new JsObject(self::$iteratorHelperPrototype);
-        $done = false;
-        $alive = true;
-        $running = false;
+        // Anonymous class holder so static analysis tracks the
+        // bool fields each closure mutates by reference; PHPStan
+        // can not infer that a captured `$running = false` becomes
+        // true between calls, but typed properties on a holder it
+        // can.
+        $state = new class {
+            public bool $done = false;
+            public bool $alive = true;
+            public bool $running = false;
+        };
 
-        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use (&$done, &$alive, &$running, $step): JsValue {
-            if ($running) {
+        $nextFn = JsFunction::fromCallable('next', function (JsValue $this_, array $args) use ($state, $step): JsValue {
+            if ($state->running) {
                 throw new TypeError('Cannot call next on a running iterator helper');
             }
-            if (!$alive || $done) {
+            if (!$state->alive || $state->done) {
                 return self::iterResult(JsUndefined::instance(), true);
             }
-            $running = true;
+            $state->running = true;
             try {
-                $result = $step($done, $alive);
+                $result = $step($state->done, $state->alive);
             } catch (\Throwable $e) {
-                $done = true;
-                $alive = false;
-                $running = false;
+                $state->done = true;
+                $state->alive = false;
+                $state->running = false;
                 throw $e;
             }
-            $running = false;
+            $state->running = false;
             return $result;
         }, 0);
 
         $returnFn = JsFunction::fromCallable(
             'return',
-            function (JsValue $this_, array $args) use ($ui, &$done, &$alive, &$running, $onReturn): JsValue {
-                if ($running) {
+            function (JsValue $this_, array $args) use ($ui, $state, $onReturn): JsValue {
+                if ($state->running) {
                     throw new TypeError('Cannot call return on a running iterator helper');
                 }
-                $alive = false;
-                if (!$done) {
-                    $done = true;
+                $state->alive = false;
+                if (!$state->done) {
+                    $state->done = true;
                     // Forward return() to any active inner iterator (e.g. flatMap).
                     if ($onReturn !== null) {
                         $onReturn();
@@ -521,24 +528,28 @@ class IteratorConstructor
             [$itObj, $nextMethod] = self::getIteratorDirect($this_);
             $counter = 0;
             $done = false;
-            $innerIt = null;
-            $innerNx = null;
-            $innerDone = true;
+            // Anonymous class holder so PHPStan tracks innerIt/innerNx/innerDone
+            // mutations across the step / onReturn closures.
+            $inner = new class {
+                public ?JsObject $iter = null;
+                public ?JsFunction $nx = null;
+                public bool $done = true;
+            };
 
             return self::createIteratorHelper(
                 $itObj,
                 $nextMethod,
-                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter, &$innerIt, &$innerNx, &$innerDone): JsObject {
+                function (bool &$done, bool &$alive) use ($itObj, &$nextMethod, $mapper, &$counter, $inner): JsObject {
                     while (true) {
-                        if ($innerIt !== null && !$innerDone) {
+                        if ($inner->iter !== null && !$inner->done) {
                             // Per spec Iterator Helpers 2.1.5.7 step 1.i: if
                             // any inner step (innerNext, innerComplete = .done
                             // getter, or .value getter) throws, the outer
                             // iterator must be closed before propagating.
                             try {
-                                $innerResult = $innerNx->call($innerIt, []);
+                                $innerResult = $inner->nx->call($inner->iter, []);
                                 if (!$innerResult instanceof JsObject) {
-                                    $innerDone = true;
+                                    $inner->done = true;
                                     throw new TypeError('Iterator result is not an object');
                                 }
                                 $innerIsDone = TypeConversion::toBoolean($innerResult->get('done'));
@@ -552,9 +563,9 @@ class IteratorConstructor
                             if (!$innerIsDone) {
                                 return self::iterResult($innerValue, false);
                             }
-                            $innerIt = null;
-                            $innerNx = null;
-                            $innerDone = true;
+                            $inner->iter = null;
+                            $inner->nx = null;
+                            $inner->done = true;
                         }
 
                         [$value, $isDone] = self::iteratorStep($itObj, $nextMethod, $done);
@@ -593,26 +604,26 @@ class IteratorConstructor
                                 self::closeIterator($itObj, true);
                                 throw new TypeError('Symbol.iterator result is not an object');
                             }
-                            $innerIt = $innerObj;
+                            $inner->iter = $innerObj;
                         } else {
-                            $innerIt = $mapped;
+                            $inner->iter = $mapped;
                         }
 
-                        $nxMethod = $innerIt->get('next');
+                        $nxMethod = $inner->iter->get('next');
                         if (!$nxMethod instanceof JsFunction) {
                             self::closeIterator($itObj, true);
                             throw new TypeError('flatMap inner has no next method');
                         }
-                        $innerNx = $nxMethod;
-                        $innerDone = false;
+                        $inner->nx = $nxMethod;
+                        $inner->done = false;
                     }
                 },
                 // onReturn: close the currently-active inner iterator first.
-                function () use (&$innerIt, &$innerDone): void {
-                    if ($innerIt !== null && !$innerDone) {
-                        $ii = $innerIt;
-                        $innerIt = null;
-                        $innerDone = true;
+                function () use ($inner): void {
+                    if ($inner->iter !== null && !$inner->done) {
+                        $ii = $inner->iter;
+                        $inner->iter = null;
+                        $inner->done = true;
                         self::closeIterator($ii, true);
                     }
                 },

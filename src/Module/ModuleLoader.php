@@ -199,12 +199,10 @@ class ModuleLoader
             // not be set while we are still building the namespace.
             $namespace->setPrototype(null);
             $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
-            if ($toStringTagSym !== null) {
-                $namespace->definePropertyBySymbol(
-                    $toStringTagSym,
-                    PropertyDescriptor::data(new JsString('Module'), false, false, false),
-                );
-            }
+            $namespace->definePropertyBySymbol(
+                $toStringTagSym,
+                PropertyDescriptor::data(new JsString('Module'), false, false, false),
+            );
 
             // Resolve imports against now-populated namespace accessors.
             $this->processDeclarations($program->body, $moduleEnv, $absolutePath, $namespace);
@@ -524,7 +522,7 @@ class ModuleLoader
     private function preloadRequestedModules(array $body, string $modulePath): void
     {
         foreach ($body as $node) {
-            if ($node instanceof ImportDeclaration && $node->source !== null) {
+            if ($node instanceof ImportDeclaration) {
                 $this->loadModule($node->source, $modulePath);
                 continue;
             }
@@ -766,60 +764,6 @@ class ModuleLoader
                 configurable: false,
             ),
         );
-    }
-
-    /**
-     * Get the value of a declaration node from the environment.
-     */
-    private function getDeclarationValue(Node $node, Environment $env): JsValue
-    {
-        if ($node instanceof FunctionDeclaration) {
-            $name = $node->id?->name;
-            if ($name !== null && $env->has($name)) {
-                return $env->get($name);
-            }
-            // Anonymous `export default function() {}` — treat as a function
-            // expression so it evaluates to the function value.
-            $fnExpr = new \PhpJs\Ast\Expression\FunctionExpression(
-                $node->location,
-                null,
-                $node->params,
-                $node->body,
-                $node->generator,
-                $node->async,
-                $node->sourceText,
-            );
-            return $this->interpreter->evaluate($fnExpr, $env);
-        }
-        if ($node instanceof ClassDeclaration) {
-            $name = $node->id?->name;
-            if ($name !== null && $env->has($name)) {
-                return $env->get($name);
-            }
-            // Anonymous `export default class ...` — treat as a class expression
-            // so the superclass (which may contain await/fn calls) is evaluated.
-            $classExpr = new \PhpJs\Ast\Expression\ClassExpression(
-                $node->location,
-                $node->id,
-                $node->superClass,
-                $node->body,
-                $node->sourceText,
-                $node->decorators,
-            );
-            return $this->interpreter->evaluate($classExpr, $env);
-        }
-        if ($node instanceof VariableDeclaration) {
-            $last = end($node->declarations);
-            if ($last !== null && $last->id instanceof \PhpJs\Ast\Expression\Identifier) {
-                $name = $last->id->name;
-                if ($env->has($name)) {
-                    return $env->get($name);
-                }
-            }
-        }
-        // For expressions (export default <expr>), the interpreter already evaluated it.
-        // We need to evaluate it here.
-        return $this->interpreter->evaluate($node, $env);
     }
 
     /**

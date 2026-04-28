@@ -187,46 +187,39 @@ class Reference
         // fail; accessors (including proxy set traps) still run, observing
         // the primitive as the receiver.
         $wrapper = \PhpJs\Spec\TypeConversion::toObject($this->base);
-        if ($wrapper instanceof JsObject) {
-            $name = $this->resolvedName();
-            $cursor = $wrapper;
-            $handled = false;
-            while ($cursor !== null) {
-                // Proxies intercept [[Set]] directly rather than exposing
-                // own property descriptors, so give them a turn at the chain.
-                if ($cursor instanceof \PhpJs\Value\JsProxy) {
-                    $handled = $cursor->internalSet($name, $value, $wrapper);
-                    break;
-                }
-                $desc = $cursor->getOwnPropertyDescriptor($name);
-                if ($desc === null) {
-                    $cursor = $cursor->getPrototype();
-                    continue;
-                }
-                if ($desc->isAccessorDescriptor()) {
-                    if ($desc->set instanceof \PhpJs\Value\JsFunction) {
-                        $desc->set->call($this->base, [$value]);
-                        $handled = true;
-                    }
-                    break;
-                }
-                // Data descriptor found in chain; the write would create a
-                // new own property on the primitive receiver, which fails.
+        $name = $this->resolvedName();
+        $cursor = $wrapper;
+        $handled = false;
+        while ($cursor !== null) {
+            // Proxies intercept [[Set]] directly rather than exposing
+            // own property descriptors, so give them a turn at the chain.
+            if ($cursor instanceof \PhpJs\Value\JsProxy) {
+                $handled = $cursor->internalSet($name, $value, $wrapper);
                 break;
             }
-            if ($handled) {
-                return;
+            $desc = $cursor->getOwnPropertyDescriptor($name);
+            if ($desc === null) {
+                $cursor = $cursor->getPrototype();
+                continue;
             }
-            if ($this->strict) {
-                throw new TypeError(
-                    "Cannot assign to read only property '{$name}' of a primitive"
-                );
+            if ($desc->isAccessorDescriptor()) {
+                if ($desc->set instanceof \PhpJs\Value\JsFunction) {
+                    $desc->set->call($this->base, [$value]);
+                    $handled = true;
+                }
+                break;
             }
+            // Data descriptor found in chain; the write would create a
+            // new own property on the primitive receiver, which fails.
+            break;
+        }
+        if ($handled) {
             return;
         }
-
         if ($this->strict) {
-            throw new TypeError("Cannot assign to read only property '{$this->resolvedName()}' of a primitive");
+            throw new TypeError(
+                "Cannot assign to read only property '{$name}' of a primitive"
+            );
         }
     }
 }

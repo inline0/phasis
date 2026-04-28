@@ -25,9 +25,11 @@ class JsPromise extends JsObject
 
     /**
      * Pending handlers queued while this promise is unresolved.
-     * Each entry is [onFulfilled|null, onRejected|null, childPromise].
+     * Each entry is [onFulfilled|null, onRejected|null, childPromise|null].
+     * The child promise is null for subscription-only handlers attached
+     * via Promise resolution (see resolveValue's thenable adoption path).
      *
-     * @var list<array{0: JsFunction|null, 1: JsFunction|null, 2: self}>
+     * @var list<array{0: JsFunction|null, 1: JsFunction|null, 2: self|null}>
      */
     private array $pendingHandlers = [];
 

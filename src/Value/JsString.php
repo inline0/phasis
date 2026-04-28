@@ -83,8 +83,7 @@ class JsString implements JsValue
                  . chr(0x80 | ($codeUnit & 0x3F));
         }
         // Normal BMP or ASCII: use mb_chr.
-        $ch = mb_chr($codeUnit, 'UTF-8');
-        return $ch !== false ? $ch : '?';
+        return mb_chr($codeUnit, 'UTF-8');
     }
 
     /**

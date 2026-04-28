@@ -10,7 +10,7 @@ use PhpJs\Lexer\SourceLocation;
 class ClassExpression extends Node
 {
     /**
-     * @param ClassMethod[] $body
+     * @param Node[] $body Class body elements (ClassMethod, ClassProperty, StaticBlock).
      * @param Node[] $decorators
      */
     public function __construct(

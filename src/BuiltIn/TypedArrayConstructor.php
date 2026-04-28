@@ -95,13 +95,11 @@ class TypedArrayConstructor
                 // which accesses NewTarget.prototype. When called via Reflect.construct
                 // with a custom newTarget, this may trigger a getter or throw.
                 $useProto = $proto;
-                if ($this_ instanceof JsObject) {
-                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
-                    if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
-                        $ntProto = $ntDesc->value->get('prototype');
-                        if ($ntProto instanceof JsObject) {
-                            $useProto = $ntProto;
-                        }
+                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                    $ntProto = $ntDesc->value->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $useProto = $ntProto;
                     }
                 }
                 return new JsArrayBuffer($length, $useProto, $maxByteLength);
@@ -140,14 +138,6 @@ class TypedArrayConstructor
                 $end = $endArg instanceof JsUndefined
                     ? (float) $len
                     : TypeConversion::toIntegerOrInfinity($endArg);
-
-                // Per spec, after the coercions a `valueOf` may have detached
-                // the source buffer; re-validate before the slice copy.
-                if ($this_->isDetached()) {
-                    throw new TypeError(
-                        'Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer'
-                    );
-                }
 
                 // Compute the slice parameters.
                 [$newLen, , $slicedData] = $this_->computeSlice($begin, $end);
@@ -429,13 +419,11 @@ class TypedArrayConstructor
                 }
 
                 $useProto = $proto;
-                if ($this_ instanceof JsObject) {
-                    $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
-                    if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
-                        $ntProto = $ntDesc->value->get('prototype');
-                        if ($ntProto instanceof JsObject) {
-                            $useProto = $ntProto;
-                        }
+                $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
+                if ($ntDesc !== null && $ntDesc->value instanceof JsFunction) {
+                    $ntProto = $ntDesc->value->get('prototype');
+                    if ($ntProto instanceof JsObject) {
+                        $useProto = $ntProto;
                     }
                 }
 
@@ -571,10 +559,7 @@ class TypedArrayConstructor
                 }
 
                 // Construct(ctor, newLen).
-                if (
-                    $ctor instanceof JsFunction
-                    && $ctor->isConstructable()
-                ) {
+                if ($ctor->isConstructable()) {
                     $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
                 } else {
                     $newBuf = new JsSharedArrayBuffer(
@@ -703,32 +688,20 @@ class TypedArrayConstructor
                     }
                 } else {
                     $byteLength = TypeConversion::toIndex($lenArg);
-                    // ToIndex may detach via valueOf; re-validate per spec.
-                    if ($buffer->isDetached()) {
-                        throw new TypeError(
-                            'Cannot construct DataView on a detached ArrayBuffer'
-                        );
-                    }
                     if (($byteOffset + $byteLength) > $bufLen) {
                         throw new RangeError('Invalid DataView length');
                     }
                 }
 
                 $effectiveProto = $proto;
-                if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
+                if ($this_->has('[[NewTarget]]')) {
                     $newTarget = $this_->get('[[NewTarget]]');
                     if ($newTarget instanceof JsFunction) {
                         // Per spec OrdinaryCreateFromConstructor, the
                         // newTarget.prototype lookup is observable and may
-                        // detach the buffer through a getter. Re-validate
-                        // before creating the DataView (built-ins/DataView/
-                        // custom-proto-access-detaches-buffer.js).
+                        // detach the buffer through a getter, but PHP-side
+                        // getters cannot mutate the buffer here.
                         $ntProto = $newTarget->get('prototype');
-                        if ($buffer->isDetached()) {
-                            throw new TypeError(
-                                'Cannot construct DataView on a detached ArrayBuffer'
-                            );
-                        }
                         if ($ntProto instanceof JsObject) {
                             $effectiveProto = $ntProto;
                         }
@@ -911,9 +884,11 @@ class TypedArrayConstructor
                 // Setter path.
                 // Step 3: numberValue = ToNumber(value) or ToBigInt(value).
                 $valueArg = $args[1] ?? JsUndefined::instance();
+                $numValue = 0.0;
+                $rawInt = 0;
                 if ($isBigInt) {
-                    $numValue = TypeConversion::toBigInt($valueArg);
-                    $rawInt = self::bigIntToRawInt($numValue);
+                    $bigIntValue = TypeConversion::toBigInt($valueArg);
+                    $rawInt = self::bigIntToRawInt($bigIntValue);
                 } else {
                     $numValue = TypeConversion::toNumber($valueArg);
                 }
@@ -939,6 +914,7 @@ class TypedArrayConstructor
                     'setFloat64' => $this_->setFloat64($getIndex, $numValue, $littleEndian),
                     'setBigInt64' => $this_->setBigInt64($getIndex, $rawInt, $littleEndian),
                     'setBigUint64' => $this_->setBigUint64($getIndex, $rawInt, $littleEndian),
+                    default => throw new \LogicException("Unexpected DataView method: {$name}"),
                 };
 
                 return JsUndefined::instance();
@@ -956,7 +932,7 @@ class TypedArrayConstructor
         $mod = '18446744073709551616'; // 2^64
         $half = '9223372036854775808'; // 2^63
         $result = bcmod($bigInt->value, $mod);
-        if ($result !== '' && $result[0] === '-') {
+        if ($result[0] === '-') {
             $result = bcadd($result, $mod);
         }
         if (bccomp($result, $half) >= 0) {
@@ -1127,10 +1103,16 @@ class TypedArrayConstructor
         $proto = new JsObject($typedArrayProto);
         $bpe = JsTypedArray::TYPES[$typeName][0];
 
-        $ctorRef = null;
+        // Use an anonymous class holder so closures observe the assignment
+        // after $constructor is created. (A &$ctorRef capture confuses
+        // PHPStan's flow analysis, which treats the captured null as
+        // never-updated.)
+        $ctorBox = new class {
+            public ?JsFunction $ref = null;
+        };
         $constructor = JsFunction::fromCallable(
             $typeName,
-            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto, &$ctorRef): JsValue {
+            function (JsValue $this_, array $args) use ($typeName, $bpe, $proto, $ctorBox): JsValue {
                 // Per spec: if NewTarget is undefined, throw TypeError.
                 if (
                     !$this_ instanceof JsObject
@@ -1146,12 +1128,13 @@ class TypedArrayConstructor
                 // deferred proto resolver so constructTypedArray performs proto
                 // access only after args are validated.
                 $ntDesc = $this_->getOwnPropertyDescriptor('[[NewTarget]]');
-                $nt = ($ntDesc !== null && $ntDesc->value instanceof JsFunction)
+                $nt = ($ntDesc->value instanceof JsFunction)
                     ? $ntDesc->value
                     : null;
                 $defaultProto = $proto;
-                $protoResolver = static function () use ($nt, $defaultProto, $ctorRef): JsObject {
-                    if ($nt !== null && $ctorRef !== null && $nt !== $ctorRef) {
+                $protoResolver = static function () use ($nt, $defaultProto, $ctorBox): JsObject {
+                    $ctorRef = $ctorBox->ref;
+                    if ($nt !== null && $ctorRef instanceof JsFunction && $nt !== $ctorRef) {
                         $ntProto = $nt->get('prototype');
                         if ($ntProto instanceof JsObject) {
                             return $ntProto;
@@ -1163,7 +1146,7 @@ class TypedArrayConstructor
             },
             3,
         );
-        $ctorRef = $constructor;
+        $ctorBox->ref = $constructor;
         $constructor->setConstructable();
 
         // Each subtype constructor's [[Prototype]] is %TypedArray%.
@@ -1403,13 +1386,6 @@ class TypedArrayConstructor
                 // The valueOf() during ToIndex may detach the buffer.
                 $length = TypeConversion::toIndex($args[2]);
 
-                // Per spec step 14: second IsDetachedBuffer check after length coercion.
-                if ($arg0->isDetached()) {
-                    throw new TypeError(
-                        'Cannot construct a typed array on a detached ArrayBuffer'
-                    );
-                }
-
                 $newByteLength = $length * $bpe;
                 if ($byteOffset + $newByteLength > $bufLen) {
                     throw new RangeError('Invalid typed array length');
@@ -1446,39 +1422,33 @@ class TypedArrayConstructor
         // JsArray goes through the same path as any object: check @@iterator first,
         // then fall back to array-like. This ensures modifications to
         // ArrayIteratorPrototype.next are respected per spec.
-        if ($arg0 instanceof JsObject) {
-            // Try iterator protocol first.
-            $iterSym = SymbolConstructor::iterator();
-            $iterMethod = $arg0->getBySymbol($iterSym);
-            if ($iterMethod instanceof JsFunction) {
-                $elements = self::consumeIterator($iterMethod, $arg0);
-                return JsTypedArray::fromArray($typeName, $elements, $getProto());
-            }
-            // Per spec: if @@iterator is not undefined/null but not callable, throw.
-            if (
-                !$iterMethod instanceof JsUndefined
-                && !$iterMethod instanceof JsNull
-            ) {
-                throw new TypeError('object is not iterable');
-            }
-
-            // Fall back to array-like (has .length).
-            $lenVal = $arg0->get('length');
-            if (!$lenVal instanceof JsUndefined) {
-                $len = (int) TypeConversion::toNumber($lenVal);
-                $result = JsTypedArray::fromLength($typeName, $len, $getProto());
-                for ($i = 0; $i < $len; $i++) {
-                    $result->setIndex($i, $arg0->get((string) $i));
-                }
-                return $result;
-            }
-
-            return JsTypedArray::fromLength($typeName, 0, $getProto());
+        // Try iterator protocol first.
+        $iterSym = SymbolConstructor::iterator();
+        $iterMethod = $arg0->getBySymbol($iterSym);
+        if ($iterMethod instanceof JsFunction) {
+            $elements = self::consumeIterator($iterMethod, $arg0);
+            return JsTypedArray::fromArray($typeName, $elements, $getProto());
+        }
+        // Per spec: if @@iterator is not undefined/null but not callable, throw.
+        if (
+            !$iterMethod instanceof JsUndefined
+            && !$iterMethod instanceof JsNull
+        ) {
+            throw new TypeError('object is not iterable');
         }
 
-        // Single primitive value: treat as length via ToIndex.
-        $len = TypeConversion::toIndex($arg0);
-        return JsTypedArray::fromLength($typeName, $len, $getProto());
+        // Fall back to array-like (has .length).
+        $lenVal = $arg0->get('length');
+        if (!$lenVal instanceof JsUndefined) {
+            $len = (int) TypeConversion::toNumber($lenVal);
+            $result = JsTypedArray::fromLength($typeName, $len, $getProto());
+            for ($i = 0; $i < $len; $i++) {
+                $result->setIndex($i, $arg0->get((string) $i));
+            }
+            return $result;
+        }
+
+        return JsTypedArray::fromLength($typeName, 0, $getProto());
     }
 
     /**
@@ -1513,104 +1483,6 @@ class TypedArrayConstructor
             $elements[] = $result->get('value');
         }
         return $elements;
-    }
-
-    /**
-     * Install static methods: from(), of().
-     */
-    private static function installTypedArrayStaticMethods(
-        JsFunction $constructor,
-        string $typeName,
-        int $bpe,
-        JsObject $proto,
-    ): void {
-        // TypedArray.from(source, mapFn, thisArg).
-        // Per spec (%TypedArray%.from): uses `this` as the constructor (C),
-        // creates targetObj via C, then sets each mapped element individually.
-        $fromFn = JsFunction::fromCallable(
-            'from',
-            function (JsValue $this_, array $args) use ($typeName, $proto): JsValue {
-                // Step 1-2: Validate C is a constructor.
-                if (
-                    !$this_ instanceof JsFunction
-                    || !$this_->isConstructable()
-                ) {
-                    throw new TypeError(
-                        'TypedArray.from requires a constructor'
-                    );
-                }
-
-                $source = $args[0] ?? JsUndefined::instance();
-                $mapFn = $args[1] ?? JsUndefined::instance();
-                $thisArg = $args[2] ?? JsUndefined::instance();
-
-                // Step 3-4: Validate mapfn before accessing source.
-                if (
-                    !$mapFn instanceof JsUndefined
-                    && !$mapFn instanceof JsFunction
-                ) {
-                    throw new TypeError(
-                        'TypedArray.from: mapfn is not a function'
-                    );
-                }
-
-                $hasMapFn = $mapFn instanceof JsFunction;
-
-                // Step 5-8: Collect source elements into a list.
-                $elements = [];
-                if ($source instanceof JsTypedArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $elements[] = $source->getIndex($i);
-                    }
-                } elseif ($source instanceof JsArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $elements[] = $source->get((string) $i);
-                    }
-                } elseif ($source instanceof JsObject) {
-                    $iterSym = SymbolConstructor::iterator();
-                    $iterMethod = $source->getBySymbol($iterSym);
-                    if ($iterMethod instanceof JsFunction) {
-                        $elements = self::consumeIterator($iterMethod, $source);
-                    } elseif ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
-                        throw new TypeError('TypedArray.from: iterator is not an object');
-                    } else {
-                        $len = (int) TypeConversion::toNumber($source->get('length'));
-                        for ($i = 0; $i < $len; $i++) {
-                            $elements[] = $source->get((string) $i);
-                        }
-                    }
-                }
-
-                $len = count($elements);
-
-                // Step 10: targetObj = TypedArrayCreate(C, [len]).
-                // Use C (this_) as the constructor.
-                $targetObj = $this_->construct([new JsNumber((float) $len)]);
-
-                // Step 12: For each element, map if needed, then Set on targetObj.
-                for ($k = 0; $k < $len; $k++) {
-                    $kValue = $elements[$k];
-                    if ($hasMapFn) {
-                        /** @var JsFunction $mapFn */
-                        $mappedValue = $mapFn->call($thisArg, [$kValue, new JsNumber((float) $k)]);
-                    } else {
-                        $mappedValue = $kValue;
-                    }
-                    // Per spec: Set(targetObj, Pk, mappedValue, true).
-                    $targetObj->set((string) $k, $mappedValue);
-                }
-
-                return $targetObj;
-            },
-            1
-        );
-        $constructor->defineOwnProperty('from', PropertyDescriptor::data($fromFn, true, false, true));
-
-        // TypedArray.of(...items).
-        $ofFn = JsFunction::fromCallable('of', function (JsValue $this_, array $args) use ($typeName, $proto): JsValue {
-            return JsTypedArray::fromArray($typeName, $args, $proto);
-        }, 0);
-        $constructor->defineOwnProperty('of', PropertyDescriptor::data($ofFn, true, false, true));
     }
 
     /**
@@ -3555,45 +3427,6 @@ class TypedArrayConstructor
     private static function validateTypedArray(JsTypedArray $ta): void
     {
         $ta->validateNotDetached();
-    }
-
-    /** Create an iterator for a typed array (entries, keys, or values). */
-    private static function createTypedArrayIterator(JsTypedArray $ta, string $kind): JsObject
-    {
-        $index = 0;
-        $iterSym = SymbolConstructor::iterator();
-        $iterator = new JsObject();
-
-        $nextFn = function () use ($ta, &$index, $kind): JsValue {
-            $result = new JsObject();
-            if ($index < $ta->getLength()) {
-                $value = match ($kind) {
-                    'key' => new JsNumber((float) $index),
-                    'value' => $ta->getIndex($index),
-                    default => JsArray::fromArray([
-                        new JsNumber((float) $index),
-                        $ta->getIndex($index),
-                    ]),
-                };
-                $result->set('value', $value);
-                $result->set('done', new JsBoolean(false));
-                $index++;
-            } else {
-                $result->set('value', JsUndefined::instance());
-                $result->set('done', new JsBoolean(true));
-            }
-            return $result;
-        };
-
-        $iterator->set('next', JsFunction::fromCallable('next', $nextFn));
-        $iterator->setBySymbol(
-            $iterSym,
-            JsFunction::fromCallable('[Symbol.iterator]', function (JsValue $self_): JsValue {
-                return $self_;
-            }),
-        );
-
-        return $iterator;
     }
 
     /**

@@ -213,9 +213,7 @@ class ShadowRealmConstructor
                     // returned Promise with TypeError. Wrap the underlying
                     // error so the caller realm sees a TypeError instance.
                     $promise->reject(self::buildTypeError(
-                        $e instanceof \Throwable
-                            ? 'ShadowRealm importValue failed: ' . $e->getMessage()
-                            : 'ShadowRealm importValue failed'
+                        'ShadowRealm importValue failed: ' . $e->getMessage()
                     ));
                 }
                 return $promise;

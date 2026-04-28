@@ -207,7 +207,7 @@ final class VM
                     $cur = $locals[$slotIdx];
                     $locals[$slotIdx] = ($cur instanceof JsNumber)
                         ? new JsNumber($cur->value + 1.0)
-                        : new JsNumber(TypeConversion::toNumber($cur)->value + 1.0);
+                        : new JsNumber(TypeConversion::toNumber($cur) + 1.0);
                     $pc += 2;
                     break;
                 case Op::DEC_LOCAL:
@@ -215,7 +215,7 @@ final class VM
                     $cur = $locals[$slotIdx];
                     $locals[$slotIdx] = ($cur instanceof JsNumber)
                         ? new JsNumber($cur->value - 1.0)
-                        : new JsNumber(TypeConversion::toNumber($cur)->value - 1.0);
+                        : new JsNumber(TypeConversion::toNumber($cur) - 1.0);
                     $pc += 2;
                     break;
 
@@ -631,7 +631,10 @@ final class VM
                 case Op::THROW:
                     $val = $stack[--$sp];
                     $this->interp->throwJsValue($val);
-                    break;
+                    // throwJsValue always throws; the no-fallthrough is
+                    // intentional and PSR-2 wants this comment to make
+                    // the missing break explicit.
+                    // no break
 
                 case Op::RET:
                     return $stack[--$sp];

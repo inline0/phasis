@@ -253,20 +253,6 @@ class ArrayConstructor
         return 0.0;
     }
 
-    /**
-
-
-    /** @return list<JsValue> */
-    private static function objToList(JsObject $obj): array
-    {
-        $result = [];
-        $len = self::getLen($obj);
-        for ($i = 0; $i < $len; $i++) {
-            $result[] = $obj->get((string) $i);
-        }
-        return $result;
-    }
-
     private static function installPrototypeMethods(JsArray $proto): void
     {
         $proto->defineOwnProperty('push', PropertyDescriptor::data(JsFunction::fromCallable(
@@ -693,7 +679,7 @@ class ArrayConstructor
                                 "Cannot delete property '{$upperKey}'",
                             );
                         }
-                    } elseif ($lowerExists && !$upperExists) {
+                    } elseif ($lowerExists) {
                         if (!$o->delete($lowerKey)) {
                             throw new TypeError(
                                 "Cannot delete property '{$lowerKey}'",
@@ -1680,35 +1666,6 @@ class ArrayConstructor
     }
 
     /**
-     * Recursively flatten an array to the given depth.
-     *
-     * @return list<JsValue>
-     */
-    private static function flattenArray(JsObject $array, int $depth): array
-    {
-        $len = $array instanceof JsArray
-            ? $array->getLength()
-            : (int) TypeConversion::toNumber($array->get('length'));
-        $result = [];
-        for ($i = 0; $i < $len; $i++) {
-            $key = (string) $i;
-            if (!$array->hasOwnProperty($key) && !$array->has($key)) {
-                continue;
-            }
-            $element = $array->get($key);
-            if ($element instanceof JsArray && $depth > 0) {
-                $flattened = self::flattenArray($element, $depth - 1);
-                foreach ($flattened as $item) {
-                    $result[] = $item;
-                }
-            } else {
-                $result[] = $element;
-            }
-        }
-        return $result;
-    }
-
-    /**
      * FlattenIntoArray per spec 23.1.3.11.1.
      *
      * Writes directly to the target using CreateDataPropertyOrThrow,
@@ -2275,7 +2232,13 @@ class ArrayConstructor
                         // each subsequent step is scheduled via the microtask
                         // queue to give the spec-mandated tick gap.
                         $idxRef = $index;
-                        $step = null;
+                        // Anonymous class holder for the recursive $step
+                        // closure: PHPStan can track ?\Closure as a typed
+                        // property where it cannot infer that a by-reference
+                        // local is reassigned before the closure runs.
+                        $stepHolder = new class {
+                            public ?\Closure $step = null;
+                        };
                         $finish = function () use ($promise, $a, &$idxRef): void {
                             $a->set('length', new JsNumber((float) $idxRef), true);
                             if ($a instanceof JsArray) {
@@ -2301,11 +2264,8 @@ class ArrayConstructor
                         };
                         // After-the-result body: process value, define array
                         // entry, schedule next step.
-                        $afterResult = null;
-                        $step = null;
                         $afterResult = function (JsValue $resultVal) use (
-                            &$step,
-                            $iterator,
+                            $stepHolder,
                             $a,
                             $mapFn,
                             $thisArg,
@@ -2359,13 +2319,14 @@ class ArrayConstructor
                                 // Schedule next iteration as a microtask so
                                 // synchronous code after fromAsync's return
                                 // can mutate the source between iterations.
-                                \PhpJs\Value\JsPromise::scheduleCallback($step);
+                                if ($stepHolder->step !== null) {
+                                    \PhpJs\Value\JsPromise::scheduleCallback($stepHolder->step);
+                                }
                             } catch (\Throwable $e) {
                                 $rejectErr($e);
                             }
                         };
-                        $step = function () use (
-                            &$step,
+                        $stepHolder->step = function () use (
                             $iterator,
                             $afterResult,
                             $rejectErr
@@ -2409,7 +2370,7 @@ class ArrayConstructor
                         };
                         // Run the first iteration synchronously so the first
                         // element is observably read before fromAsync returns.
-                        $step();
+                        ($stepHolder->step)();
                         return $promise;
                     }
                     // Per spec the final length set is `Set(A, "length", k, true)`
@@ -2496,10 +2457,7 @@ class ArrayConstructor
         }
         if ($ctor instanceof JsFunction && $ctor->isConstructable()) {
             try {
-                $built = $ctor->construct([new JsString($e->getMessage())]);
-                if ($built instanceof JsValue) {
-                    return $built;
-                }
+                return $ctor->construct([new JsString($e->getMessage())]);
             } catch (\Throwable) {
                 // fall through to plain object
             }
@@ -2692,14 +2650,6 @@ class ArrayConstructor
     {
         $err = new JsObject();
         $err->set('name', new JsString('TypeError'));
-        $err->set('message', new JsString($message));
-        return $err;
-    }
-
-    private static function createRangeErrorObject(string $message): JsObject
-    {
-        $err = new JsObject();
-        $err->set('name', new JsString('RangeError'));
         $err->set('message', new JsString($message));
         return $err;
     }

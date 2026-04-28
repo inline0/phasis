@@ -3,3 +3,5 @@ parameters:
     paths:
         - src
     tmpDir: .phpstan.cache
+    stubFiles:
+        - phpstan-stubs/Fiber.stub

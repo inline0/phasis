@@ -665,9 +665,9 @@ class JsonObject
         }
         if ($value instanceof \stdClass) {
             $obj = new JsObject();
-            foreach ($value as $key => $val) {
+            foreach (get_object_vars($value) as $key => $val) {
                 $obj->defineOwnProperty(
-                    (string) $key,
+                    $key,
                     PropertyDescriptor::data(self::phpToJsValue($val), true, true, true),
                 );
             }
@@ -890,8 +890,7 @@ class JsonObject
                     if ($next >= 0xDC00 && $next <= 0xDFFF) {
                         $cp = ($cu - 0xD800) * 0x400
                             + ($next - 0xDC00) + 0x10000;
-                        $ch = mb_chr($cp, 'UTF-8');
-                        $result .= $ch !== false ? $ch : '?';
+                        $result .= mb_chr($cp, 'UTF-8');
                         $i += 2;
                         continue;
                     }

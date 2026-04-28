@@ -27,9 +27,6 @@ class JsFunction extends JsObject
     /** Function.prototype: the [[Prototype]] for all function instances. */
     private static ?JsObject $functionPrototype = null;
 
-    /** Lazily resolved: true once fnProto's [[Prototype]] has been wired to Object.prototype. */
-    private static bool $functionPrototypeChainWired = false;
-
     /**
      * %GeneratorFunction.prototype% intrinsic: [[Prototype]] for all generator function instances.
      * Its own [[Prototype]] is Function.prototype.
@@ -48,7 +45,6 @@ class JsFunction extends JsObject
     public static function setFunctionPrototype(JsObject $proto): void
     {
         self::$functionPrototype = $proto;
-        self::$functionPrototypeChainWired = false;
         // Clear the parent prototype so the lazy wiring in getPrototype()
         // always re-probes for the current Engine's Object.prototype.
         // Without this, the prototype inherited from JsObject's constructor
@@ -132,9 +128,11 @@ class JsFunction extends JsObject
 
     /**
      * Instance field initializers for class constructors.
-     * Each entry is [key (string|JsSymbol), initNode (Node|null), computed (bool), isPrivate (bool)].
+     * Each entry is [key (string|JsSymbol|Node), initNode (Node|null), computed (bool), isPrivate (bool)].
+     * The key can be a string (literal/identifier name), a JsSymbol (well-known
+     * symbol literal), or a Node (computed expression that evaluates per-instance).
      *
-     * @var list<array{0: string|\PhpJs\Ast\Node, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}>
+     * @var list<array{0: string|\PhpJs\Ast\Node|JsSymbol, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}>
      */
     private array $instanceFieldInitializers = [];
 
@@ -286,14 +284,14 @@ class JsFunction extends JsObject
     /**
      * Add an instance field initializer for this class constructor.
      *
-     * @param string|\PhpJs\Ast\Node $key
+     * @param string|\PhpJs\Ast\Node|JsSymbol $key
      */
     public function addInstanceFieldInitializer(mixed $key, ?\PhpJs\Ast\Node $initNode, bool $computed, bool $isPrivate): void
     {
         $this->instanceFieldInitializers[] = [$key, $initNode, $computed, $isPrivate];
     }
 
-    /** @return list<array{0: string|\PhpJs\Ast\Node, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}> */
+    /** @return list<array{0: string|\PhpJs\Ast\Node|JsSymbol, 1: ?\PhpJs\Ast\Node, 2: bool, 3: bool}> */
     public function getInstanceFieldInitializers(): array
     {
         return $this->instanceFieldInitializers;
@@ -620,54 +618,6 @@ class JsFunction extends JsObject
     // The getPrototype() override ensures Function.prototype is in the chain,
     // so parent::get()/set()/has() handle call/apply/bind/caller/arguments
     // automatically. No custom overrides needed.
-
-    private static function getCallMethod(): self
-    {
-        return self::fromCallable('call', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                return JsUndefined::instance();
-            }
-            $thisArg = $args[0] ?? JsUndefined::instance();
-            $callArgs = array_slice($args, 1);
-            return $this_->call($thisArg, $callArgs);
-        });
-    }
-
-    private static function getApplyMethod(): self
-    {
-        return self::fromCallable('apply', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                return JsUndefined::instance();
-            }
-            $thisArg = $args[0] ?? JsUndefined::instance();
-            $argsArray = $args[1] ?? JsUndefined::instance();
-            $callArgs = [];
-            if ($argsArray instanceof JsArray) {
-                for ($i = 0; $i < $argsArray->getLength(); $i++) {
-                    $callArgs[] = $argsArray->get((string) $i);
-                }
-            }
-            return $this_->call($thisArg, $callArgs);
-        });
-    }
-
-    private static function getBindMethod(): self
-    {
-        return self::fromCallable('bind', function (JsValue $this_, array $args): JsValue {
-            if (!$this_ instanceof JsFunction) {
-                return JsUndefined::instance();
-            }
-            $boundThis = $args[0] ?? JsUndefined::instance();
-            $boundArgs = array_slice($args, 1);
-            $target = $this_;
-            return self::fromCallable(
-                'bound ' . $target->getName(),
-                function (JsValue $this2_, array $callArgs) use ($target, $boundThis, $boundArgs): JsValue {
-                    return $target->call($boundThis, array_merge($boundArgs, $callArgs));
-                },
-            );
-        });
-    }
 
     /** Set the [[BoundTargetFunction]] for bound functions. */
     public function setBoundTarget(JsFunction $target): void

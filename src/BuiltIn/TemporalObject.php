@@ -73,12 +73,10 @@ class TemporalObject
 
         // Symbol.toStringTag = "Temporal"
         $toStringTagSym = SymbolConstructor::toStringTag();
-        if ($toStringTagSym !== null) {
-            $temporal->definePropertyBySymbol(
-                $toStringTagSym,
-                PropertyDescriptor::data(new JsString('Temporal'), false, false, true),
-            );
-        }
+        $temporal->definePropertyBySymbol(
+            $toStringTagSym,
+            PropertyDescriptor::data(new JsString('Temporal'), false, false, true),
+        );
 
         $env->defineVar('Temporal', $temporal);
     }
@@ -135,7 +133,7 @@ class TemporalObject
                     'millisecond' => '1000000',
                     'microsecond' => '1000',
                 ];
-                $incrementNs = $unitNsMap[$smallestUnit] ?? '1';
+                $incrementNs = $unitNsMap[$smallestUnit];
                 $ns = self::roundInstantNs($ns, $incrementNs, $roundingMode);
             } elseif ($smallestUnit === null && is_int($fractionalSecondDigits) && $fractionalSecondDigits < 9) {
                 // Round to the specified number of fractional digits.
@@ -4043,10 +4041,8 @@ class TemporalObject
                     3 => '1000000', 4 => '100000', 5 => '10000',
                     6 => '1000', 7 => '100', 8 => '10',
                 ];
-                if (isset($digitsToNs[$fractionalSecondDigits])) {
-                    $parts = self::roundISODateTime($parts, $digitsToNs[$fractionalSecondDigits], $roundingMode, $tz);
-                    $rounded = true;
-                }
+                $parts = self::roundISODateTime($parts, $digitsToNs[$fractionalSecondDigits], $roundingMode, $tz);
+                $rounded = true;
             }
             // After rounding, re-resolve the rounded wall-clock to an
             // instant in the zone. This matters for DST-forward gaps:
@@ -4746,19 +4742,16 @@ class TemporalObject
                 while ($cur < $bound) {
                     $end = min($cur + $chunk, $bound);
                     $transitions = $tzObj->getTransitions($cur, $end);
-                    if (is_array($transitions) && count($transitions) > 1) {
+                    if (count($transitions) > 1) {
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            if (!isset($t['ts'])) {
-                                continue;
-                            }
                             $tsNs = bcmul((string) $t['ts'], '1000000000', 0);
                             if (bccomp($tsNs, $ns, 0) <= 0) {
                                 continue;
                             }
                             // Skip pseudo-transitions where the offset doesn't actually change.
                             $prev = $transitions[$j - 1];
-                            if (isset($prev['offset']) && $prev['offset'] === $t['offset']) {
+                            if ($prev['offset'] === $t['offset']) {
                                 continue;
                             }
                             $found = $t['ts'];
@@ -4778,13 +4771,10 @@ class TemporalObject
                 while ($cur > $bound) {
                     $start = max($cur - $chunk, $bound);
                     $transitions = $tzObj->getTransitions($start, $cur);
-                    if (is_array($transitions) && count($transitions) > 1) {
+                    if (count($transitions) > 1) {
                         $candidate = null;
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            if (!isset($t['ts'])) {
-                                continue;
-                            }
                             $ts = $t['ts'];
                             $isStrictlyEarlier = $hasNonZeroSubSec
                                 ? $ts <= $epochSec
@@ -4793,7 +4783,7 @@ class TemporalObject
                                 continue;
                             }
                             $prev = $transitions[$j - 1];
-                            if (isset($prev['offset']) && $prev['offset'] === $t['offset']) {
+                            if ($prev['offset'] === $t['offset']) {
                                 continue;
                             }
                             $candidate = $ts;
@@ -4861,7 +4851,7 @@ class TemporalObject
 
         // ZonedDateTime.from(item [, options])
         $ctor->defineOwnProperty('from', PropertyDescriptor::data(
-            JsFunction::fromCallable('from', function (JsValue $this_, array $args) use ($proto): JsValue {
+            JsFunction::fromCallable('from', function (JsValue $this_, array $args): JsValue {
                 $item = $args[0] ?? JsUndefined::instance();
                 $rawOptions = $args[1] ?? JsUndefined::instance();
                 // For ZDT or string: parse first, then validate options.
@@ -5241,7 +5231,7 @@ class TemporalObject
         if ($offset !== null && !$hasTimePart) {
             throw new RangeError("UTC offset without time is not valid for ZonedDateTime: {$str}");
         }
-        $annotation = isset($m[11]) && $m[11] !== '' ? $m[11] : null;
+        $annotation = $m[11] ?? null;
         // ZonedDateTime strings require a bracketed timezone annotation.
         if ($annotation === null || str_contains($annotation, '=')) {
             throw new RangeError("Invalid ZonedDateTime string (no bracketed timezone annotation): {$str}");
@@ -5660,9 +5650,6 @@ class TemporalObject
         } catch (\Throwable) {
             return false;
         }
-        if (!$tzObj instanceof \DateTimeZone) {
-            return false;
-        }
         $startSec = (int) bcdiv($startNs, '1000000000', 0);
         $endSec = (int) bcdiv($endNs, '1000000000', 0);
         if ($startSec > $endSec) {
@@ -5671,13 +5658,13 @@ class TemporalObject
             $endSec = $tmp;
         }
         $transitions = $tzObj->getTransitions($startSec, $endSec);
-        if (!is_array($transitions) || count($transitions) < 2) {
+        if (count($transitions) < 2) {
             return false;
         }
         for ($j = 1; $j < count($transitions); $j++) {
             $prev = $transitions[$j - 1];
             $cur = $transitions[$j];
-            if (isset($cur['offset'], $prev['offset']) && $cur['offset'] !== $prev['offset']) {
+            if ($cur['offset'] !== $prev['offset']) {
                 return true;
             }
         }
@@ -5707,17 +5694,11 @@ class TemporalObject
         } catch (\Throwable) {
             return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
         }
-        if (!$tz instanceof \DateTimeZone) {
-            return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
-        }
         // Search for transitions in (-12h, +12h) window around midnight.
         $dayUtcSec = bcadd(bcmul((string) self::isoDateToDays($year, $month, $day), '86400', 0), '0', 0);
         $startSec = (int) bcsub($dayUtcSec, '43200', 0);
         $endSec = (int) bcadd($dayUtcSec, '43200', 0);
         $transitions = $tz->getTransitions($startSec, $endSec);
-        if ($transitions === false) {
-            return self::isoDateTimeToEpochNsDisambiguated($year, $month, $day, 0, 0, 0, 0, 0, 0, $timeZone, 'compatible');
-        }
         // Find a transition whose post-transition wall time falls within this calendar day.
         foreach ($transitions as $t) {
             if ($t['ts'] >= $startSec && $t['ts'] <= $endSec) {
@@ -5870,7 +5851,7 @@ class TemporalObject
         // UTC offset: +HH, +HH:MM or -HH:MM (no seconds).
         if (preg_match('/^[+-](\d{2})(?::?(\d{2}))?$/', $str, $m)) {
             $h = (int) $m[1];
-            $min = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+            $min = isset($m[2]) ? (int) $m[2] : 0;
             if ($h > 23 || $min > 59) {
                 throw new RangeError("Invalid UTC offset: {$str}");
             }
@@ -5964,7 +5945,7 @@ class TemporalObject
         // UTC offset: +HH, +HH:MM or -HH:MM (no seconds).
         if (preg_match('/^[+-](\d{2})(?::?(\d{2}))?$/', $str, $m)) {
             $h = (int) $m[1];
-            $min = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+            $min = isset($m[2]) ? (int) $m[2] : 0;
             if ($h > 23 || $min > 59) {
                 throw new RangeError("Invalid UTC offset: {$str}");
             }
@@ -6028,6 +6009,7 @@ class TemporalObject
     ): JsObject {
         $largestUnit = 'hour';
         $largestUnitExplicit = false;
+        $smallestUnit = null;
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
@@ -6261,7 +6243,7 @@ class TemporalObject
         if (class_exists('IntlTimeZone', false)) {
             try {
                 $icuCanonical = \IntlTimeZone::getCanonicalID($tz);
-                if (is_string($icuCanonical) && $icuCanonical !== '') {
+                if ($icuCanonical !== '') {
                     $canonical = $icuCanonical;
                 }
             } catch (\Throwable) {
@@ -6446,6 +6428,9 @@ class TemporalObject
         return $v instanceof JsString ? $v->value : '0';
     }
 
+    /**
+     * @phpstan-assert JsObject $this_
+     */
     private static function requireDuration(JsValue $this_): void
     {
         if (!$this_ instanceof JsObject || !$this_->has('[[IsDuration]]')) {
@@ -6867,7 +6852,7 @@ class TemporalObject
 
         $year = (int) $m[1];
         // Hyphenated date or compact date.
-        if (isset($m[2]) && $m[2] !== '') {
+        if ($m[2] !== '') {
             $month = (int) $m[2];
             $day = (int) $m[3];
         } else {
@@ -6879,8 +6864,8 @@ class TemporalObject
             throw new RangeError("Invalid Instant date: {$str}");
         }
         $hour = (int) $m[6];
-        $min = isset($m[7]) && $m[7] !== '' ? (int) $m[7] : 0;
-        $sec = isset($m[8]) && $m[8] !== '' ? (int) $m[8] : 0;
+        $min = $m[7] !== '' ? (int) $m[7] : 0;
+        $sec = $m[8] !== '' ? (int) $m[8] : 0;
         // Validate time.
         if ($hour > 23 || $min > 59 || $sec > 60) {
             throw new RangeError("Invalid Instant time: {$str}");
@@ -6889,7 +6874,7 @@ class TemporalObject
         if ($sec === 60) {
             $sec = 59;
         }
-        $frac = isset($m[9]) && $m[9] !== '' ? str_pad($m[9], 9, '0') : '000000000';
+        $frac = $m[9] !== '' ? str_pad($m[9], 9, '0') : '000000000';
         $tz = $m[10];
 
         // Offset nanoseconds (supports sub-minute offsets).
@@ -7437,7 +7422,7 @@ class TemporalObject
             $microseconds += intdiv($fracSubNs2 % 1000000, 1000);
             $nanoseconds += $fracSubNs2 % 1000;
         }
-        if (isset($m[8]) && $m[8] !== '') {
+        if (isset($m[8])) {
             if ($hourHasFrac || $minHasFrac) {
                 throw new RangeError(
                     "fractional hours/minutes with seconds: {$str}"
@@ -8544,7 +8529,7 @@ class TemporalObject
             if (!is_finite($yNum)) {
                 throw new RangeError('year must be finite');
             }
-            if (is_float($yNum) && $yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
+            if ($yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
                 throw new RangeError('reject minus zero as extended year');
             }
             $y = (int) $yNum;
@@ -8703,8 +8688,8 @@ class TemporalObject
         // Validate time part if captured.
         if (isset($m[4]) && $m[4] !== '') {
             $th = (int) $m[4];
-            $tmin = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
-            $ts = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+            $tmin = isset($m[5]) ? (int) $m[5] : 0;
+            $ts = isset($m[6]) ? (int) $m[6] : 0;
             if ($ts === 60) {
                 $ts = 59;
             } // leap second
@@ -8924,12 +8909,8 @@ class TemporalObject
             $y = (int) $yNum;
             $m = (int) $mNum;
             $d = (int) $dNum;
-            if (!is_finite($dNum)) {
-                throw new RangeError("day must be finite");
-            }
-            $d = (int) $dNum;
             // Check for -0 year.
-            if (is_float($yNum) && $yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
+            if ($yNum === 0.0 && (unpack("H*", pack("d", $yNum))[1] ?? "") === "0000000000000080") {
                 throw new RangeError('reject minus zero as extended year');
             }
             [$y, $m, $d] = self::constrainISODate($y, $m, $d);
@@ -9174,7 +9155,7 @@ class TemporalObject
                 $maxDays = [0, 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
                 if (
                     $mmCandidate >= 1 && $mmCandidate <= 12
-                    && $ddCandidate >= 1 && $ddCandidate <= ($maxDays[$mmCandidate] ?? 31)
+                    && $ddCandidate >= 1 && $ddCandidate <= $maxDays[$mmCandidate]
                 ) {
                     throw new RangeError("'{$str}' is ambiguous and requires T prefix");
                 }
@@ -9213,7 +9194,7 @@ class TemporalObject
         if ($s === 60) {
             $s = 59;
         }
-        $frac = isset($m[4]) && $m[4] !== '' ? str_pad(substr($m[4], 0, 9), 9, '0') : '000000000';
+        $frac = isset($m[4]) ? str_pad(substr($m[4], 0, 9), 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
         $ns = (int) substr($frac, 6, 3);
@@ -9444,21 +9425,19 @@ class TemporalObject
                     );
                 }
             }
-            if (true) {
-                if ($overflow === 'constrain') {
-                    [$y, $m, $d] = self::constrainISODate($y, $m, $d);
-                    $h = max(0, min(23, $h));
-                    $min = max(0, min(59, $min));
-                    $s = max(0, min(59, $s));
-                    $ms = max(0, min(999, $ms));
-                    $us = max(0, min(999, $us));
-                    $ns = max(0, min(999, $ns));
-                } else {
-                    self::validateISODate($y, $m, $d);
-                    self::validateISOTime($h, $min, $s, $ms, $us, $ns);
-                }
-                return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
+            if ($overflow === 'constrain') {
+                [$y, $m, $d] = self::constrainISODate($y, $m, $d);
+                $h = max(0, min(23, $h));
+                $min = max(0, min(59, $min));
+                $s = max(0, min(59, $s));
+                $ms = max(0, min(999, $ms));
+                $us = max(0, min(999, $us));
+                $ns = max(0, min(999, $ns));
+            } else {
+                self::validateISODate($y, $m, $d);
+                self::validateISOTime($h, $min, $s, $ms, $us, $ns);
             }
+            return self::createPlainDateTimeObject($y, $m, $d, $h, $min, $s, $ms, $us, $ns, $cal);
         }
         if ($item instanceof JsUndefined || $item instanceof JsNull) {
             throw new TypeError('Cannot convert undefined/null to PlainDateTime');
@@ -9535,7 +9514,7 @@ class TemporalObject
         if ($s === 60) {
             $s = 59;
         }
-        $frac = isset($m[7]) && $m[7] !== '' ? str_pad(substr($m[7], 0, 9), 9, '0') : '000000000';
+        $frac = isset($m[7]) ? str_pad(substr($m[7], 0, 9), 9, '0') : '000000000';
         $ms = (int) substr($frac, 0, 3);
         $us = (int) substr($frac, 3, 3);
         $ns = (int) substr($frac, 6, 3);
@@ -9918,26 +9897,22 @@ class TemporalObject
         // Time part with optional UTC offset in extended form (hh[:mm[:ss[.fff]]]).
         $offsetOpt = '(?:[+-]\\d{2}(?::?\\d{2}(?::?\\d{2}(?:[.,]\\d{1,9})?)?)?)?';
         $tp = "(?:[Tt ](\\d{2})(?::?(\\d{2})(?::?(\\d{2})(?:[.,]\\d{1,9})?)?)?{$offsetOpt})?";
-        $matched = false;
-        if (!$matched && preg_match("/^([+-]\\d{6})-(\\d{2})(?:-(\\d{2}))?{$tp}(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
+        $patterns = [
+            "/^([+-]\\d{6})-(\\d{2})(?:-(\\d{2}))?{$tp}(?:\\[.*?\\])*\$/",
+            "/^([+-]\\d{6})(\\d{2})(\\d{2}){$tp}(?:\\[.*?\\])*\$/",
+            "/^([+-]\\d{6})(\\d{2})(?:\\[.*?\\])*\$/",
+            "/^(\\d{4})-(\\d{2})(?:-(\\d{2}))?{$tp}(?:\\[.*?\\])*\$/",
+            "/^(\\d{4})(\\d{2})(\\d{2}){$tp}(?:\\[.*?\\])*\$/",
+            "/^(\\d{4})(\\d{2})(?:\\[.*?\\])*\$/",
+        ];
+        $m = null;
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $str, $candidate)) {
+                $m = $candidate;
+                break;
+            }
         }
-        if (!$matched && preg_match("/^([+-]\\d{6})(\\d{2})(\\d{2}){$tp}(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
-        }
-        if (!$matched && preg_match("/^([+-]\\d{6})(\\d{2})(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
-        }
-        if (!$matched && preg_match("/^(\\d{4})-(\\d{2})(?:-(\\d{2}))?{$tp}(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
-        }
-        if (!$matched && preg_match("/^(\\d{4})(\\d{2})(\\d{2}){$tp}(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
-        }
-        if (!$matched && preg_match("/^(\\d{4})(\\d{2})(?:\\[.*?\\])*\$/", $str, $m)) {
-            $matched = true;
-        }
-        if (!$matched) {
+        if ($m === null) {
             throw new RangeError("Invalid PlainYearMonth string: {$str}");
         }
         $timeIdx = (isset($m[3]) && $m[3] !== '') ? 4 : 3;
@@ -10584,7 +10559,7 @@ class TemporalObject
             if (isset($m[4]) && $m[4] !== '') {
                 $th = (int) $m[4];
                 $tmin = isset($m[5]) && $m[5] !== '' ? (int) $m[5] : 0;
-                $ts = isset($m[6]) && $m[6] !== '' ? (int) $m[6] : 0;
+                $ts = isset($m[6]) ? (int) $m[6] : 0;
                 if ($ts === 60) {
                     $ts = 59;
                 }
@@ -10927,37 +10902,6 @@ class TemporalObject
     // -----------------------------------------------------------------------
 
     /**
-     * Validate and convert a JsValue to a timezone identifier string.
-     * Per spec, null/boolean/number/bigint/symbol/object/Duration throw TypeError.
-     */
-    private static function toTemporalTimeZoneString(JsValue $item): string
-    {
-        if ($item instanceof JsNull || $item instanceof JsBoolean || $item instanceof JsNumber || $item instanceof JsBigInt) {
-            throw new TypeError('Cannot convert value to a valid time zone string');
-        }
-        if ($item instanceof JsObject) {
-            // Temporal objects like Duration are not valid timezone identifiers.
-            if (
-                $item->has('[[IsDuration]]') || $item->has('[[IsPlainTime]]') || $item->has('[[IsPlainDate]]')
-                || $item->has('[[IsPlainDateTime]]') || $item->has('[[IsPlainMonthDay]]')
-                || $item->has('[[IsPlainYearMonth]]')
-            ) {
-                throw new TypeError('Cannot convert Temporal object to a valid time zone string');
-            }
-            // Generic objects: throw TypeError.
-            throw new TypeError('Cannot convert object to a valid time zone string');
-        }
-        if (!$item instanceof JsString) {
-            throw new TypeError('Cannot convert value to a valid time zone string');
-        }
-        $str = $item->value;
-        if ($str === '') {
-            throw new RangeError('empty string is not a valid time zone');
-        }
-        return $str;
-    }
-
-    /**
      * Resolve a timezone string to a PHP DateTimeZone.
      * Supports IANA names, UTC offsets, and ISO datetime strings with timezone annotations.
      */
@@ -11136,6 +11080,7 @@ class TemporalObject
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'day';
         $largestUnitExplicit = false;
+        $smallestUnit = 'nanosecond';
         if ($options instanceof JsObject) {
             $lu = $options->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
@@ -11168,7 +11113,6 @@ class TemporalObject
                     throw new RangeError("Invalid roundingMode: {$rmStr}");
                 }
             }
-            $smallestUnit = 'nanosecond';
             $su = $options->get('smallestUnit');
             if (!($su instanceof JsUndefined)) {
                 $smallestUnit = TypeConversion::toString($su);
@@ -11195,7 +11139,7 @@ class TemporalObject
         if (in_array($largestUnit, $calendarUnits, true)) {
             $dur = self::calendarDateTimeDifference($dt1, $dt2, $largestUnit, 1, $anchor);
             // Apply rounding if smallestUnit is a calendar unit.
-            $suFinal = $smallestUnit ?? 'nanosecond';
+            $suFinal = $smallestUnit;
             $rmFinal = $rmStr ?? 'trunc';
             $riFinal = isset($riNum) ? (int) $riNum : 1;
             if (in_array($suFinal, ['year', 'month', 'week', 'day'], true)) {
@@ -11267,16 +11211,18 @@ class TemporalObject
         }
         // Resolve year/month/day for the ref calendar context. For a ZDT, use
         // its wall-time components.
-        $refIsZdt = $ref instanceof JsObject && $ref->has('[[IsZonedDateTime]]');
+        $refZdt = ($ref instanceof JsObject && $ref->has('[[IsZonedDateTime]]')) ? $ref : null;
         // DST-aware path is only needed when the ZDT's time zone can actually
         // produce non-24h days. UTC and fixed offset zones are always 24h.
-        $refIsDstZdt = false;
-        if ($refIsZdt) {
-            $refTz = self::getSlotString($ref, '[[TimeZone]]');
-            $refIsDstZdt = !self::isFixedOffset($refTz);
+        $refDstZdt = null;
+        if ($refZdt !== null) {
+            $refTz = self::getSlotString($refZdt, '[[TimeZone]]');
+            if (!self::isFixedOffset($refTz)) {
+                $refDstZdt = $refZdt;
+            }
         }
-        if ($refIsZdt) {
-            $refParts = self::zonedDateTimeParts($ref);
+        if ($refZdt !== null) {
+            $refParts = self::zonedDateTimeParts($refZdt);
             $refY = $refParts['year'];
             $refM = $refParts['month'];
             $refD = $refParts['day'];
@@ -11335,7 +11281,7 @@ class TemporalObject
                 $midY2 = intdiv($midTotalM, 12);
                 $midM2 = ($midTotalM % 12) + 1;
             }
-            if ($refIsZdt) {
+            if ($refZdt !== null) {
                 // ZDT-aware: month length and progress in epoch ns so that
                 // DST transitions inside the span are accounted for.
                 $absTotalMonthCount = $absYears * 12 + $absMonths;
@@ -11363,8 +11309,8 @@ class TemporalObject
                     0,
                     0,
                 );
-                $midNsRef = self::addDurationToZdt($ref, $midDur, 1, 'constrain');
-                $nextNsRef = self::addDurationToZdt($ref, $nextDur, 1, 'constrain');
+                $midNsRef = self::addDurationToZdt($refZdt, $midDur, 1, 'constrain');
+                $nextNsRef = self::addDurationToZdt($refZdt, $nextDur, 1, 'constrain');
                 $monthLenNs = bcsub($nextNsRef, $midNsRef, 0);
                 $absMonthLen = bccomp($monthLenNs, '0', 0) < 0 ? substr($monthLenNs, 1) : $monthLenNs;
                 $fullDur = self::createDurationObject(
@@ -11379,7 +11325,7 @@ class TemporalObject
                     (float) $us,
                     (float) $ns,
                 );
-                $endNsRef = self::addDurationToZdt($ref, $fullDur, 1, 'constrain');
+                $endNsRef = self::addDurationToZdt($refZdt, $fullDur, 1, 'constrain');
                 $progressNs = bcsub($endNsRef, $midNsRef, 0);
                 $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
                 if (bccomp($absMonthLen, '0', 0) === 0) {
@@ -11437,14 +11383,13 @@ class TemporalObject
             // For ZDT relativeTo, the actual day length on the relevant date
             // may not be 24h (DST transitions); use the ZDT-aware length so
             // that 11.5h on a 23h day correctly equals exactly 0.5 day.
-            $useZdtDay = $refIsZdt;
-            if ($useZdtDay) {
+            if ($refZdt !== null) {
                 $absTotalDays = $absDays + $absWeeks * 7;
                 $baseDur = self::createDurationObject(0, 0, 0, $sign * $absTotalDays, 0, 0, 0, 0, 0, 0);
                 $nextDur = self::createDurationObject(0, 0, 0, $sign * ($absTotalDays + 1), 0, 0, 0, 0, 0, 0);
-                $startNsRef = self::getSlotString($ref, '[[EpochNanoseconds]]');
-                $baseNsRef = self::addDurationToZdt($ref, $baseDur, 1, 'constrain');
-                $nextNsRef = self::addDurationToZdt($ref, $nextDur, 1, 'constrain');
+                $startNsRef = self::getSlotString($refZdt, '[[EpochNanoseconds]]');
+                $baseNsRef = self::addDurationToZdt($refZdt, $baseDur, 1, 'constrain');
+                $nextNsRef = self::addDurationToZdt($refZdt, $nextDur, 1, 'constrain');
                 $dayLenNs = bcsub($nextNsRef, $baseNsRef, 0);
                 $absDayLen = bccomp($dayLenNs, '0', 0) < 0 ? substr($dayLenNs, 1) : $dayLenNs;
                 $fullDur = self::createDurationObject(
@@ -11459,7 +11404,7 @@ class TemporalObject
                     (float) $us,
                     (float) $ns,
                 );
-                $endNsRef = self::addDurationToZdt($ref, $fullDur, 1, 'constrain');
+                $endNsRef = self::addDurationToZdt($refZdt, $fullDur, 1, 'constrain');
                 $progressNs = bcsub($endNsRef, $baseNsRef, 0);
                 $absProgress = bccomp($progressNs, '0', 0) < 0 ? substr($progressNs, 1) : $progressNs;
                 if (bccomp($absDayLen, '0', 0) === 0) {
@@ -11537,10 +11482,10 @@ class TemporalObject
         $timeUnits = ['hour', 'minute', 'second', 'millisecond', 'microsecond', 'nanosecond'];
         if (in_array($largestUnit, $timeUnits, true)) {
             if (
-                $refIsDstZdt
+                $refDstZdt !== null
                 && ($absDays !== 0 || $absWeeks !== 0 || $absMonths !== 0 || $absYears !== 0)
             ) {
-                $startNsRef = self::getSlotString($ref, '[[EpochNanoseconds]]');
+                $startNsRef = self::getSlotString($refDstZdt, '[[EpochNanoseconds]]');
                 $dateOnlyDur = self::createDurationObject(
                     $sign * $absYears,
                     $sign * $absMonths,
@@ -11553,7 +11498,7 @@ class TemporalObject
                     0,
                     0,
                 );
-                $endDateNsRef = self::addDurationToZdt($ref, $dateOnlyDur, 1, 'constrain');
+                $endDateNsRef = self::addDurationToZdt($refDstZdt, $dateOnlyDur, 1, 'constrain');
                 $deltaNsRef = bcsub($endDateNsRef, $startNsRef, 0);
                 if (bccomp($deltaNsRef, '0', 0) < 0) {
                     $deltaNsRef = substr($deltaNsRef, 1);
@@ -11580,15 +11525,15 @@ class TemporalObject
         // time portion exceeds the actual wall day length, increment days
         // and subtract the day length (then re-round the remainder).
         if (
-            $refIsDstZdt
+            $refDstZdt !== null
             && in_array($largestUnit, ['year', 'month', 'week', 'day'], true)
             && bccomp($timeNsBc, '0', 0) > 0
         ) {
             while (true) {
                 $iterStartDur = self::createDurationObject(0, 0, 0, $sign * $absDays, 0, 0, 0, 0, 0, 0);
                 $iterEndDur = self::createDurationObject(0, 0, 0, $sign * ($absDays + 1), 0, 0, 0, 0, 0, 0);
-                $iterStartNs = self::addDurationToZdt($ref, $iterStartDur, 1, 'constrain');
-                $iterEndNs = self::addDurationToZdt($ref, $iterEndDur, 1, 'constrain');
+                $iterStartNs = self::addDurationToZdt($refDstZdt, $iterStartDur, 1, 'constrain');
+                $iterEndNs = self::addDurationToZdt($refDstZdt, $iterEndDur, 1, 'constrain');
                 $dayLenNs = bcsub($iterEndNs, $iterStartNs, 0);
                 if (bccomp($dayLenNs, '0', 0) < 0) {
                     $dayLenNs = substr($dayLenNs, 1);
@@ -11627,14 +11572,14 @@ class TemporalObject
         // wall-clock day can be 23/24/25 hours, and the spec preserves whole
         // days in calendar arithmetic only.
         $extraDays = 0;
-        if (in_array($largestUnit, ['year', 'month', 'week', 'day'], true) && !$refIsDstZdt) {
+        if (in_array($largestUnit, ['year', 'month', 'week', 'day'], true) && $refDstZdt === null) {
             $extraDays = (int) bcdiv($timeNsBc, $dayNs, 0);
             $timeNsBc = bcsub($timeNsBc, bcmul((string) $extraDays, $dayNs, 0), 0);
         }
         // For ZDT context, treat the time portion at hour granularity so that
         // 24h doesn't silently turn into 1 day under DST when the wall day is
         // 23 or 25 hours.
-        $timePartLU = $refIsDstZdt && in_array($largestUnit, ['year', 'month', 'week', 'day'], true)
+        $timePartLU = $refDstZdt !== null && in_array($largestUnit, ['year', 'month', 'week', 'day'], true)
             ? 'hour'
             : $largestUnit;
         $timePart = self::nsToTimeDuration($timeNsBc, $timePartLU);
@@ -12317,9 +12262,6 @@ class TemporalObject
                 $icuCal = $aliasMap[$calendar];
             }
             $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             // Set the ICU calendar to the ISO date by epoch ms.
             $epochMs = self::isoDateToEpochMs($y, $m, $d);
             $cal->setTime($epochMs);
@@ -12394,14 +12336,8 @@ class TemporalObject
             $startMs = self::isoDateToEpochMs($smlY, $smlM, $smlD);
             $endMs = self::isoDateToEpochMs($lrgY, $lrgM, $lrgD);
             $startCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$startCal instanceof \IntlCalendar) {
-                return null;
-            }
             $startCal->setTime($startMs);
             $endCal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$endCal instanceof \IntlCalendar) {
-                return null;
-            }
             $endCal->setTime($endMs);
             $yearField = in_array($calendar, ['chinese', 'dangi'], true)
                 ? \IntlCalendar::FIELD_EXTENDED_YEAR
@@ -12479,18 +12415,12 @@ class TemporalObject
         try {
             for ($m = 0; $m < 12; $m++) {
                 $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
-                if (!$probe instanceof \IntlCalendar) {
-                    return null;
-                }
                 $probe->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $extendedYear);
                 $probe->set(\IntlCalendar::FIELD_MONTH, $m);
                 $probe->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
                 $probe->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
                 $ms = $probe->getTime();
                 $verify = \IntlCalendar::createInstance('UTC', "en@calendar={$calendar}");
-                if (!$verify instanceof \IntlCalendar) {
-                    return null;
-                }
                 $verify->setTime($ms);
                 if (
                     $verify->get(\IntlCalendar::FIELD_EXTENDED_YEAR) === $extendedYear
@@ -12533,9 +12463,6 @@ class TemporalObject
                 'UTC',
                 "en@calendar={$icuName}",
             );
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
             $cal->setTime($epochMs);
             return (int) $cal->get(\IntlCalendar::FIELD_DAY_OF_YEAR);
@@ -12567,9 +12494,6 @@ class TemporalObject
                 'UTC',
                 "en@calendar={$icuName}",
             );
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
             $cal->setTime($epochMs);
             return (int) $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_MONTH);
@@ -12600,9 +12524,6 @@ class TemporalObject
                 'UTC',
                 "en@calendar={$icuName}",
             );
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
             $cal->setTime($epochMs);
             return (int) $cal->getActualMaximum(\IntlCalendar::FIELD_DAY_OF_YEAR);
@@ -12666,9 +12587,6 @@ class TemporalObject
                 $icuCalName = $aliasMapInLY[$calendar];
             }
             $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             $cal->setTime(self::isoDateToEpochMs($isoY, $isoM, $isoD));
             // Chinese / Dangi leap years insert one leap month flagged via
             // IS_LEAP_MONTH (the MONTH field still ranges 0-11). Probe each
@@ -12678,18 +12596,12 @@ class TemporalObject
                 $extYear = $cal->get(\IntlCalendar::FIELD_EXTENDED_YEAR);
                 for ($m = 0; $m < 12; $m++) {
                     $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
-                    if (!$probe instanceof \IntlCalendar) {
-                        return null;
-                    }
                     $probe->set(\IntlCalendar::FIELD_EXTENDED_YEAR, $extYear);
                     $probe->set(\IntlCalendar::FIELD_MONTH, $m);
                     $probe->set(\IntlCalendar::FIELD_IS_LEAP_MONTH, 1);
                     $probe->set(\IntlCalendar::FIELD_DAY_OF_MONTH, 1);
                     $ms = $probe->getTime();
                     $verify = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCalName}");
-                    if (!$verify instanceof \IntlCalendar) {
-                        return null;
-                    }
                     $verify->setTime($ms);
                     if (
                         $verify->get(\IntlCalendar::FIELD_EXTENDED_YEAR) === $extYear
@@ -12776,9 +12688,6 @@ class TemporalObject
                 $icuCal = $aliasMapPmd[$cal];
             }
             $probe = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$probe instanceof \IntlCalendar) {
-                return null;
-            }
             $probe->setTime(strtotime('1972-12-31 UTC') * 1000);
             // Chinese / Dangi expose the actual year in EXTENDED_YEAR; FIELD_YEAR
             // is the 1-60 cycle position.
@@ -12941,9 +12850,6 @@ class TemporalObject
                 $icuCal = $aliasMap[$calendar];
             }
             $cal = \IntlCalendar::createInstance('UTC', "en@calendar={$icuCal}");
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             // Chinese / Dangi use a 60-year sexagenary YEAR with a separate
             // EXTENDED_YEAR that holds the actual year. setDate sets YEAR; we
             // need to pre-set EXTENDED_YEAR to the spec year.
@@ -13091,6 +12997,7 @@ class TemporalObject
         $diffNs = bcsub($ns2, $ns1, 0);
         $largestUnit = 'second';
         $largestUnitExplicit = false;
+        $smallestUnit = 'nanosecond';
         if ($opts instanceof JsObject) {
             $lu = $opts->get('largestUnit');
             if (!($lu instanceof JsUndefined)) {
@@ -13164,7 +13071,7 @@ class TemporalObject
                 'microsecond' => '1000',
                 'nanosecond' => '1',
             ];
-            $unitNs = $unitNsMap[$smallestUnit] ?? '1';
+            $unitNs = $unitNsMap[$smallestUnit];
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
@@ -13562,9 +13469,6 @@ class TemporalObject
                 'UTC',
                 "en@calendar={$icuName}",
             );
-            if (!$cal instanceof \IntlCalendar) {
-                return null;
-            }
             $epochMs = self::isoDateToEpochMs($isoY, $isoM, $isoD);
             $cal->setTime($epochMs);
             $startDay = $cal->get(\IntlCalendar::FIELD_DAY_OF_MONTH);
@@ -14230,7 +14134,7 @@ class TemporalObject
                 'microsecond' => '1000',
                 'nanosecond' => '1',
             ];
-            $unitNs = $unitNsMap[$suFinal] ?? '1';
+            $unitNs = $unitNsMap[$suFinal];
             $incrementNs = bcmul((string) $roundIncrement, $unitNs, 0);
             $diffNs = self::roundNs($diffNs, $incrementNs, $roundMode);
         }
@@ -14836,10 +14740,10 @@ class TemporalObject
         ));
     }
 
-    /** @return \Closure(string, \Closure, int): void */
+    /** @return \Closure(string, \Closure, int=): bool */
     private static function protoHelper(JsObject $proto): \Closure
     {
-        return static fn (string $n, \Closure $fn, int $len = 0) => $proto->defineOwnProperty(
+        return static fn (string $n, \Closure $fn, int $len = 0): bool => $proto->defineOwnProperty(
             $n,
             PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
         );
@@ -15189,9 +15093,6 @@ class TemporalObject
                 'UTC',
                 "@calendar={$icuName}",
             );
-            if (!$icuCal instanceof \IntlCalendar) {
-                return null;
-            }
             $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
             $icuCal->setTime($sec * 1000.0);
             return (int) $icuCal->get(\IntlCalendar::FIELD_ERA);
@@ -15260,9 +15161,6 @@ class TemporalObject
                 'UTC',
                 "@calendar={$icuName}",
             );
-            if (!$icuCal instanceof \IntlCalendar) {
-                return null;
-            }
             $sec = self::isoToUnixSeconds($isoYear, $isoMonth, $isoDay);
             $icuCal->setTime($sec * 1000.0);
             return (int) $icuCal->get(\IntlCalendar::FIELD_YEAR);
@@ -15326,12 +15224,10 @@ class TemporalObject
     private static function setToStringTag(JsObject $obj, string $tag): void
     {
         $sym = SymbolConstructor::toStringTag();
-        if ($sym !== null) {
-            $obj->definePropertyBySymbol(
-                $sym,
-                PropertyDescriptor::data(new JsString($tag), false, false, true),
-            );
-        }
+        $obj->definePropertyBySymbol(
+            $sym,
+            PropertyDescriptor::data(new JsString($tag), false, false, true),
+        );
     }
 
     /**
@@ -15400,9 +15296,8 @@ class TemporalObject
                 // override; without it, fall back to the locale's
                 // default.
                 $effectiveCal = null;
-                $optsArgVal = $optionsArg ?? JsUndefined::instance();
-                if ($optsArgVal instanceof JsObject) {
-                    $calOpt = $optsArgVal->get('calendar');
+                if ($optionsArg instanceof JsObject) {
+                    $calOpt = $optionsArg->get('calendar');
                     if ($calOpt instanceof JsString) {
                         $effectiveCal = strtolower($calOpt->value);
                         // Apply CLDR aliases.

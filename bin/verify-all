@@ -18,7 +18,7 @@ fi
 
 echo ""
 echo "=== Code Standards ==="
-if vendor/bin/phpcs --warning-severity=0; then
+if php -d memory_limit=512M vendor/bin/phpcs --warning-severity=0; then
     echo "PHPCS: PASS"
 else
     echo "PHPCS: FAIL"
@@ -27,7 +27,7 @@ fi
 
 echo ""
 echo "=== PHPUnit ==="
-if vendor/bin/phpunit; then
+if php -d memory_limit=512M vendor/bin/phpunit; then
     echo "PHPUnit: PASS"
 else
     echo "PHPUnit: FAIL"

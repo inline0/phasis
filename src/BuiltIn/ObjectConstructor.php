@@ -102,7 +102,7 @@ class ObjectConstructor
         $constructor->defineOwnProperty('values', $builtinMethod('values', self::values(), 1));
         $constructor->defineOwnProperty('entries', $builtinMethod('entries', self::entries(), 1));
         $constructor->defineOwnProperty('assign', $builtinMethod('assign', self::assign(), 2));
-        $constructor->defineOwnProperty('create', $builtinMethod('create', self::create($proto), 2));
+        $constructor->defineOwnProperty('create', $builtinMethod('create', self::create(), 2));
         $constructor->defineOwnProperty(
             'defineProperty',
             $builtinMethod('defineProperty', self::definePropertyFn(), 3),
@@ -174,7 +174,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($keyVal);
                 } else {
-                    $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $keyStr = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($keyStr);
                 }
                 if ($desc === null) {
@@ -184,7 +184,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $result->defineOwnSymbolProperty($keyVal, PropertyDescriptor::data($descObj));
                 } else {
-                    $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $keyStr = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $result->set($keyStr, $descObj);
                 }
             }
@@ -701,7 +701,7 @@ class ObjectConstructor
                         $propValue = $from->getBySymbol($keyVal);
                         $target->setBySymbol($keyVal, $propValue, true);
                     } else {
-                        $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                        $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                         $desc = $from->getOwnPropertyDescriptor($key);
                         if ($desc === null || $desc->enumerable !== true) {
                             continue;
@@ -716,9 +716,9 @@ class ObjectConstructor
         };
     }
 
-    private static function create(JsObject $defaultProto): \Closure
+    private static function create(): \Closure
     {
-        return function (JsValue $this_, array $args) use ($defaultProto): JsValue {
+        return function (JsValue $this_, array $args): JsValue {
             $proto = $args[0] ?? JsUndefined::instance();
             $obj = null;
             if ($proto instanceof JsNull) {
@@ -825,7 +825,7 @@ class ObjectConstructor
                         ));
                     }
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                     if ($desc === null) {
                         continue;
@@ -911,7 +911,7 @@ class ObjectConstructor
             if ($keyVal instanceof JsSymbol) {
                 $propDesc = $props->getSymbolPropertyDescriptor($keyVal);
             } else {
-                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                 $propDesc = $props->getOwnPropertyDescriptor($keyStr);
             }
             if ($propDesc === null || $propDesc->enumerable !== true) {
@@ -921,7 +921,7 @@ class ObjectConstructor
             if ($keyVal instanceof JsSymbol) {
                 $descObj = $props->getBySymbol($keyVal);
             } else {
-                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                 $descObj = $props->get($keyStr);
             }
             if (!$descObj instanceof JsObject) {
@@ -940,7 +940,7 @@ class ObjectConstructor
                     throw new TypeError("Cannot redefine property: {$keyName}");
                 }
             } else {
-                $keyStr = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                $keyStr = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                 $success = $obj->defineOwnProperty($keyStr, $descriptor);
                 if (!$success) {
                     throw new TypeError("Cannot redefine property: {$keyStr}");
@@ -961,8 +961,7 @@ class ObjectConstructor
             if ($o->isRevoked()) {
                 return false;
             }
-            $target = $o->getTarget();
-            return $target !== null && self::isArrayForToString($target);
+            return self::isArrayForToString($o->getTarget());
         }
         return false;
     }
@@ -1129,7 +1128,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($keyVal);
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                 }
                 if ($desc === null) {
@@ -1166,7 +1165,7 @@ class ObjectConstructor
                 if ($keyVal instanceof JsSymbol) {
                     $desc = $obj->getSymbolPropertyDescriptor($keyVal);
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $desc = $obj->getOwnPropertyDescriptor($key);
                 }
                 if ($desc === null) {
@@ -1214,7 +1213,7 @@ class ObjectConstructor
                         configurable: false,
                     ));
                 } else {
-                    $key = $keyVal instanceof JsString ? $keyVal->value : (string) $keyVal;
+                    $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
                     $obj->defineOwnProperty($key, new PropertyDescriptor(
                         configurable: false,
                     ));

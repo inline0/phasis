@@ -417,7 +417,7 @@ class Interpreter
                 if ($stmt->isDefault) {
                     $addExport('default');
                 }
-                foreach ($stmt->specifiers ?? [] as $spec) {
+                foreach ($stmt->specifiers as $spec) {
                     $addExport($spec->exported ?? $spec->local);
                 }
                 if ($stmt->isAll && $stmt->allAs !== null) {
@@ -488,12 +488,12 @@ class Interpreter
         $importBindings = [];
         foreach ($body as $stmt) {
             if ($stmt instanceof ExportDeclaration && $stmt->source === null) {
-                foreach ($stmt->specifiers ?? [] as $spec) {
+                foreach ($stmt->specifiers as $spec) {
                     $exportedBindings[$spec->local] = true;
                 }
             }
             if ($stmt instanceof ImportDeclaration) {
-                foreach ($stmt->specifiers ?? [] as $spec) {
+                foreach ($stmt->specifiers as $spec) {
                     $importBindings[$spec->local] = true;
                 }
             }
@@ -994,14 +994,6 @@ class Interpreter
         return $node->cached = JsUndefined::instance();
     }
 
-    private function evalIdentifier(Identifier $node, Environment $env): JsValue
-    {
-        if ($node->name === 'undefined') {
-            return JsUndefined::instance();
-        }
-        return $env->get($node->name, $this->strictMode);
-    }
-
     private function evalBinaryExpression(BinaryExpression $node, Environment $env): JsValue
     {
         // Private field brand check: #name in obj
@@ -1111,8 +1103,8 @@ class Interpreter
             throw new TypeError('Cannot mix BigInt and other types, use explicit conversions');
         }
 
-        // Both are JsNumber.
-        return new JsNumber($lnum->value + $rnum->value);
+        // Both are JsNumber after the BigInt rejection above.
+        return new JsNumber(TypeConversion::toNumber($lnum) + TypeConversion::toNumber($rnum));
     }
 
     /**
@@ -1121,6 +1113,8 @@ class Interpreter
      * Calls ToNumeric on both operands. If both are BigInt, performs the
      * corresponding arbitrary-precision operation. If both are Number,
      * delegates to the existing float-based helpers. Mixed types throw TypeError.
+     *
+     * @param '-'|'*'|'/'|'%'|'**' $op
      */
     public function numericBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
     {
@@ -1136,8 +1130,8 @@ class Interpreter
         }
 
         // Both JsNumber: delegate to existing helpers.
-        $l = $lnum->value;
-        $r = $rnum->value;
+        $l = TypeConversion::toNumber($lnum);
+        $r = TypeConversion::toNumber($rnum);
 
         return match ($op) {
             '-' => new JsNumber($l - $r),
@@ -1153,6 +1147,8 @@ class Interpreter
      *
      * Division truncates toward zero (not floor). Division and remainder
      * by zero throw RangeError per the spec.
+     *
+     * @param '-'|'*'|'/'|'%'|'**' $op
      */
     private function bigintArithmetic(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
     {
@@ -1204,6 +1200,8 @@ class Interpreter
      *
      * Per spec: ToNumeric both sides. If both BigInt, perform BigInt bitwise op.
      * If types differ, throw TypeError.
+     *
+     * @param '&'|'|'|'^' $op
      */
     public function bitwiseBinaryOp(JsValue $left, JsValue $right, string $op): JsValue
     {
@@ -1233,6 +1231,8 @@ class Interpreter
      *
      * Per spec: ToNumeric both sides. If both BigInt, perform BigInt shift.
      * BigInt >>> is always a TypeError. If types differ, throw TypeError.
+     *
+     * @param '<<'|'>>'|'>>>' $op
      */
     public function bitwiseShift(JsValue $left, JsValue $right, string $op): JsValue
     {
@@ -1414,8 +1414,8 @@ class Interpreter
         }
 
         // Both Number: float exponentiation with ES spec special cases.
-        $base = $lnum->value;
-        $exp = $rnum->value;
+        $base = TypeConversion::toNumber($lnum);
+        $exp = TypeConversion::toNumber($rnum);
 
         if (abs($base) === 1.0 && is_infinite($exp)) {
             return new JsNumber(NAN);
@@ -1442,14 +1442,6 @@ class Interpreter
             return new JsBoolean(!$result);
         }
         return new JsBoolean($result);
-    }
-
-    private function unsignedRightShift(int $left, int $shift): int
-    {
-        if ($shift === 0) {
-            return $left < 0 ? $left + 4294967296 : $left;
-        }
-        return ($left >> $shift) & (PHP_INT_MAX >> ($shift - 1));
     }
 
     /**
@@ -2188,7 +2180,7 @@ class Interpreter
                 $this->initializeThisBinding($env, $thisVal);
 
                 // Per spec, instance field initializers run right after super() in derived classes.
-                if ($activeFunc instanceof JsFunction && $thisVal instanceof JsObject) {
+                if ($thisVal instanceof JsObject) {
                     $this->initializeInstanceFields($activeFunc, $thisVal, $env);
                 }
 
@@ -2225,16 +2217,14 @@ class Interpreter
             // so a Symbol returned by a custom toString stays a Symbol key.
             if ($node->callee->computed) {
                 $rawKey = TypeConversion::toPropertyKey($this->evaluate($node->callee->property, $env));
-                $isSymKey = $rawKey instanceof JsSymbol;
-                $key = $isSymKey ? '' : ($rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey));
+                $key = $rawKey instanceof JsSymbol ? '' : ($rawKey instanceof JsString ? $rawKey->value : TypeConversion::toString($rawKey));
             } else {
                 $rawKey = null;
-                $isSymKey = false;
                 $key = $node->callee->property instanceof Identifier
                     ? $node->callee->property->name
                     : TypeConversion::toString($this->evaluate($node->callee->property, $env));
             }
-            $callee = $isSymKey ? $superBase->getBySymbol($rawKey) : $superBase->get($key);
+            $callee = $rawKey instanceof JsSymbol ? $superBase->getBySymbol($rawKey) : $superBase->get($key);
             if (!$callee instanceof JsFunction) {
                 throw new TypeError("{$key} is not a function");
             }
@@ -2801,7 +2791,7 @@ class Interpreter
             if ($node->computed && $this->nodeContainsSuperTransparent($node->key)) {
                 return true;
             }
-            if ($node->value !== null && $this->nodeContainsSuperTransparent($node->value)) {
+            if ($this->nodeContainsSuperTransparent($node->value)) {
                 return true;
             }
             return false;
@@ -3112,57 +3102,6 @@ class Interpreter
                 foreach ($value as $item) {
                     if ($item instanceof Node) {
                         $this->validatePrivateNamesIn($item, $declaredStack, $env);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Collect all PrivateIdentifier name references from AST nodes.
-     * Does not recurse into class bodies (they have their own scope).
-     *
-     * @param Node[] $nodes
-     * @return string[]
-     */
-    private function collectPrivateNameReferences(array $nodes): array
-    {
-        $names = [];
-        foreach ($nodes as $node) {
-            $this->walkForPrivateNames($node, $names);
-        }
-        return array_unique($names);
-    }
-
-    /**
-     * Walk an AST node tree collecting PrivateIdentifier references.
-     * Stops at class boundaries (class bodies declare their own private scope).
-     *
-     * @param string[] &$names
-     */
-    private function walkForPrivateNames(Node $node, array &$names): void
-    {
-        if ($node instanceof PrivateIdentifier) {
-            $names[] = $node->name;
-            return;
-        }
-        // Do not recurse into class bodies: they create their own private scope.
-        if (
-            $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
-        ) {
-            return;
-        }
-        // Walk children generically by inspecting public properties.
-        $ref = new \ReflectionObject($node);
-        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-            $value = $prop->getValue($node);
-            if ($value instanceof Node) {
-                $this->walkForPrivateNames($value, $names);
-            } elseif (is_array($value)) {
-                foreach ($value as $item) {
-                    if ($item instanceof Node) {
-                        $this->walkForPrivateNames($item, $names);
                     }
                 }
             }
@@ -3535,10 +3474,8 @@ class Interpreter
             $this->validateStrictModeNode($node->body);
         } elseif ($node instanceof SwitchStatement) {
             foreach ($node->cases as $case) {
-                if ($case instanceof SwitchCase) {
-                    foreach ($case->consequent as $child) {
-                        $this->validateStrictModeNode($child);
-                    }
+                foreach ($case->consequent as $child) {
+                    $this->validateStrictModeNode($child);
                 }
             }
         }
@@ -3874,10 +3811,8 @@ class Interpreter
             $this->collectVarNamesFromNode($node->body, $names);
         } elseif ($node instanceof SwitchStatement) {
             foreach ($node->cases as $case) {
-                if ($case instanceof SwitchCase) {
-                    foreach ($case->consequent as $child) {
-                        $this->collectVarNamesFromNode($child, $names);
-                    }
+                foreach ($case->consequent as $child) {
+                    $this->collectVarNamesFromNode($child, $names);
                 }
             }
         } elseif ($node instanceof TryStatement) {
@@ -3926,7 +3861,7 @@ class Interpreter
             if ($body instanceof BlockStatement) {
                 return $this->astContainsNewTarget($body->body);
             }
-            return $body instanceof Node && $this->nodeContainsNewTarget($body);
+            return $this->nodeContainsNewTarget($body);
         }
 
         // Stop at non-arrow function/class boundaries.
@@ -4168,9 +4103,10 @@ class Interpreter
                 $target->setBySymbol($propKey, $source->getBySymbol($propKey));
                 continue;
             }
-            $strKey = $propKey instanceof JsString
-                ? $propKey->value
-                : (string) $propKey;
+            if (!$propKey instanceof JsString) {
+                continue;
+            }
+            $strKey = $propKey->value;
             if (in_array($strKey, $usedStringKeys, true)) {
                 continue;
             }
@@ -4593,10 +4529,10 @@ class Interpreter
             // descriptor shape, since autoUpdate already guaranteed the
             // shape was engine-default both at entry and across the call.
             if ($autoUpdateCaller) {
-                $savedCallerValue = $savedCaller?->value ?? JsNull::instance();
+                $savedCallerValue = $savedCaller->value ?? JsNull::instance();
             }
             if ($autoUpdateArguments) {
-                $savedArgumentsValue = $savedArguments?->value ?? JsNull::instance();
+                $savedArgumentsValue = $savedArguments->value ?? JsNull::instance();
             }
 
             $callerIsStrictMode = $this->strictMode
@@ -5812,7 +5748,7 @@ class Interpreter
             if ($this->bodyNeedsHoisting($stmt->block->body)) {
                 return true;
             }
-            if ($stmt->handler !== null && $stmt->handler->body instanceof BlockStatement) {
+            if ($stmt->handler !== null) {
                 if ($this->bodyNeedsHoisting($stmt->handler->body->body)) {
                     return true;
                 }
@@ -5932,9 +5868,6 @@ class Interpreter
     {
         $strict = $this->strictMode;
         $wrapper = TypeConversion::toObject($obj);
-        if (!$wrapper instanceof JsObject) {
-            return;
-        }
         $cursor = $wrapper;
         $handled = false;
         while ($cursor !== null) {
@@ -5975,9 +5908,6 @@ class Interpreter
     {
         $strict = $this->strictMode;
         $wrapper = TypeConversion::toObject($obj);
-        if (!$wrapper instanceof JsObject) {
-            return;
-        }
         $cursor = $wrapper;
         $handled = false;
         while ($cursor !== null) {
@@ -6221,7 +6151,7 @@ class Interpreter
     private function programReferencesEval(array $statements): bool
     {
         foreach ($statements as $stmt) {
-            if ($stmt instanceof Node && $this->subtreeReferencesEval($stmt)) {
+            if ($this->subtreeReferencesEval($stmt)) {
                 return true;
             }
         }
@@ -6295,7 +6225,7 @@ class Interpreter
     private function bodyUsesArguments(mixed $body, array $params = []): bool
     {
         foreach ($params as $param) {
-            if ($param instanceof Node && $this->nodeReferencesArguments($param)) {
+            if ($this->nodeReferencesArguments($param)) {
                 return true;
             }
         }
@@ -6648,9 +6578,11 @@ class Interpreter
         if ($obj instanceof JsNull || $obj instanceof JsUndefined) {
             $baseDesc = $obj instanceof JsNull ? 'null' : 'undefined';
             // Use display() for the error message to avoid triggering toString on the key.
-            $keyDesc = $node->computed
-                ? ($rawKey !== null ? $rawKey->display() : '')
-                : ($node->property instanceof Identifier ? $node->property->name : '');
+            if ($node->computed) {
+                $keyDesc = $rawKey->display();
+            } else {
+                $keyDesc = $node->property instanceof Identifier ? $node->property->name : '';
+            }
             throw new TypeError("Cannot read properties of {$baseDesc} (reading '{$keyDesc}')");
         }
 
@@ -6698,9 +6630,7 @@ class Interpreter
             // the CallExpression evaluator, not here.
             $proto = $this->cachedStringPrototype ??= $this->resolveCachedPrototype('__StringPrototype__');
             if ($proto instanceof JsObject) {
-                $val = $isSymbolKey && $rawKey instanceof JsSymbol
-                    ? $proto->getBySymbolWithReceiver($rawKey, $obj)
-                    : $proto->getWithValueReceiver($key, $obj);
+                $val = $proto->getWithValueReceiver($key, $obj);
                 if (!$val instanceof JsUndefined) {
                     return $val;
                 }
@@ -6774,13 +6704,6 @@ class Interpreter
                 return $obj->getBySymbol($rawKey);
             }
             return $obj->get($key);
-        }
-
-        // Symbol primitive property access: look up on Symbol.prototype directly,
-        // correctly calling accessor getters with the primitive as this.
-        if ($obj instanceof JsSymbol) {
-            $val = $this->lookupSymbolPrototypeProperty($obj, $key, $isSymbolKey, $rawKey);
-            return $val ?? JsUndefined::instance();
         }
 
         // Auto-boxing for primitives (number, boolean). Per spec GetV(V, P)
@@ -7905,7 +7828,7 @@ class Interpreter
         // For anonymous class expressions, NamedEvaluation passes the binding
         // name down so static fields observe it. The explicit class name (if
         // present) always wins.
-        $effectiveName = $node->id?->name ?? $nameHint;
+        $effectiveName = $node->id !== null ? $node->id->name : $nameHint;
         // Only named class expressions get an inner class-name binding; an
         // anonymous class with a NamedEvaluation hint still has no inner
         // binding (the outer let must remain TDZ during static field eval).
@@ -8159,8 +8082,7 @@ class Interpreter
             return $e->jsValue;
         }
         $ctorName = match (true) {
-            $e instanceof TypeError,
-            $e instanceof \PhpJs\Exceptions\TypeError => 'TypeError',
+            $e instanceof TypeError => 'TypeError',
             $e instanceof \PhpJs\Exceptions\RangeError => 'RangeError',
             $e instanceof \PhpJs\Exceptions\ReferenceError => 'ReferenceError',
             $e instanceof \PhpJs\Exceptions\SyntaxError => 'SyntaxError',
@@ -8410,6 +8332,7 @@ class Interpreter
                     // a Symbol, in which case we track it under the symbol
                     // exclusion set and skip the string-key conversion.
                     $symKey = null;
+                    $key = '';
                     if ($prop->computed) {
                         $rawKey = $this->evaluate($prop->key, $env);
                         if ($rawKey instanceof JsSymbol) {
@@ -8823,16 +8746,22 @@ class Interpreter
             $self = $this;
             $needsFieldInit = true;
             if ($isDerived && $superClass instanceof JsFunction) {
-                $constructorRef = null;
+                // Anonymous-class holder so PHPStan can track the
+                // constructor self-reference assigned after the closure
+                // is created (a by-ref local would still be inferred as
+                // null at closure-capture time).
+                $ref = new class {
+                    public ?JsFunction $fn = null;
+                };
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args) use (&$constructorRef, $self) {
+                    function (JsValue $thisVal, array $args) use ($ref, $self) {
                         // Spec default derived constructor: GetSuperConstructor
                         // looks up via [[GetPrototypeOf]](activeFunction) so a
                         // runtime Object.setPrototypeOf on the class redirects
                         // super(...args) to the new parent.
-                        $activeSuper = $constructorRef instanceof JsFunction
-                            ? $constructorRef->getPrototype()
+                        $activeSuper = $ref->fn instanceof JsFunction
+                            ? $ref->fn->getPrototype()
                             : null;
                         if (!$activeSuper instanceof JsFunction || !$activeSuper->isConstructable()) {
                             throw new TypeError('Super constructor must be a constructor');
@@ -8851,23 +8780,28 @@ class Interpreter
                         return $self->callFunction($activeSuper, $thisVal, $args);
                     },
                 )->setConstructable();
-                $constructorRef = $constructor;
-            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable()) {
-                $constructorRef = null;
+                $ref->fn = $constructor;
+            } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsProxy) {
+                // Reaching here, superClass already passed the constructor
+                // validation above (8593-8605); JsProxy targets in the
+                // derived path are guaranteed constructable.
+                $ref = new class {
+                    public ?JsFunction $fn = null;
+                };
                 $constructor = JsFunction::fromCallable(
                     $name ?? '(anonymous)',
-                    function (JsValue $thisVal, array $args) use (&$constructorRef) {
+                    function (JsValue $thisVal, array $args) use ($ref) {
                         // Per spec, the default constructor's super() uses the
                         // active function's new.target, not the super itself.
-                        $newTarget = $constructorRef;
+                        $newTarget = $ref->fn;
                         if ($thisVal instanceof JsObject) {
                             $nt = $thisVal->get('[[NewTarget]]');
                             if ($nt instanceof JsFunction || $nt instanceof \PhpJs\Value\JsProxy) {
                                 $newTarget = $nt;
                             }
                         }
-                        $activeSuper = $constructorRef instanceof JsFunction
-                            ? $constructorRef->getPrototype()
+                        $activeSuper = $ref->fn instanceof JsFunction
+                            ? $ref->fn->getPrototype()
                             : null;
                         if ($activeSuper instanceof \PhpJs\Value\JsProxy && $activeSuper->isConstructable()) {
                             return $activeSuper->construct($args, $newTarget ?? $activeSuper);
@@ -8878,7 +8812,7 @@ class Interpreter
                         throw new TypeError('Super constructor must be a constructor');
                     },
                 )->setConstructable();
-                $constructorRef = $constructor;
+                $ref->fn = $constructor;
             } elseif ($isDerived && $superClass instanceof \PhpJs\Value\JsNull) {
                 // class C extends null { }: default constructor is
                 // `constructor(...args) { super(...args); }` per spec, which
@@ -8914,7 +8848,12 @@ class Interpreter
         // `class C extends null` must produce C.prototype with null [[Prototype]].
         // `new JsObject(null)` would fall back to globalPrototype due to `??`, so we
         // use setPrototype() explicitly for the null-heritage case.
-        if ($superClass instanceof JsFunction || ($superClass instanceof \PhpJs\Value\JsProxy && $superClass->isConstructable())) {
+        // The constructor validation above (8593-8605) guarantees that any
+        // JsProxy in the derived path is constructable, so the check here
+        // collapses to a plain instanceof.
+        $superIsConstructor = $superClass instanceof JsFunction
+            || $superClass instanceof \PhpJs\Value\JsProxy;
+        if ($superIsConstructor) {
             $superProto = $superClass->get('prototype');
             // Per spec 15.7.14 step 6.g.iv: if protoParent is neither Object nor Null, throw TypeError.
             if (!($superProto instanceof JsObject) && !($superProto instanceof \PhpJs\Value\JsNull)) {
@@ -8965,7 +8904,7 @@ class Interpreter
             } elseif ($symbolKey !== null) {
                 // Symbol-keyed method (e.g. [Symbol.replace], [Symbol.iterator])
                 $proto->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
-                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    $fn,
                     true,
                     false,
                     true,
@@ -8997,7 +8936,7 @@ class Interpreter
                 }
             } else {
                 $proto->defineOwnProperty($key, PropertyDescriptor::data(
-                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    $fn,
                     true,
                     false,
                     true,
@@ -9032,7 +8971,7 @@ class Interpreter
                 continue;
             } elseif ($symbolKey !== null) {
                 $constructor->definePropertyBySymbol($symbolKey, PropertyDescriptor::data(
-                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    $fn,
                     true,
                     false,
                     true,
@@ -9066,7 +9005,7 @@ class Interpreter
                 }
             } else {
                 $constructor->defineOwnProperty($key, PropertyDescriptor::data(
-                    $fn instanceof JsValue ? $fn : JsUndefined::instance(),
+                    $fn,
                     true,
                     false,
                     true,
@@ -9106,9 +9045,10 @@ class Interpreter
 
         // Register private instance methods on the constructor.
         foreach ($privateInstanceMethods as [$key, $fn, $kind]) {
-            if ($fn instanceof JsFunction) {
-                $fn->setHomeObject($proto);
+            if (!$fn instanceof JsFunction) {
+                continue;
             }
+            $fn->setHomeObject($proto);
             $constructor->addPrivateMethodEntry($key, $fn, $kind);
         }
 
@@ -9151,9 +9091,10 @@ class Interpreter
         // fields and static blocks run, so static initializers can resolve
         // private static methods/getters/setters via C.#name.
         foreach ($privateStaticMethods as [$key, $fn, $kind]) {
-            if ($fn instanceof JsFunction) {
-                $fn->setHomeObject($constructor);
+            if (!$fn instanceof JsFunction) {
+                continue;
             }
+            $fn->setHomeObject($constructor);
             if ($kind === 'get' || $kind === 'set') {
                 if ($kind === 'get') {
                     $existingAccessor = $constructor->hasPrivateField($key)
@@ -9217,18 +9158,13 @@ class Interpreter
                 // NamedEvaluation for static fields: assign the field's name to
                 // anonymous function-valued initializers.
                 if ($fieldValue instanceof JsFunction && !$this->hasExplicitNameProperty($fieldValue)) {
-                    $nameToUse = null;
                     if ($isPrivate) {
                         // Source-level private name, e.g. "#field".
-                        $nameToUse = $element->key instanceof PrivateIdentifier
-                            ? $element->key->name
-                            : $fieldKey;
-                    } elseif (is_string($fieldKey)) {
+                        $nameToUse = $element->key->name;
+                    } else {
                         $nameToUse = $fieldKey;
                     }
-                    if ($nameToUse !== null) {
-                        $fieldValue->setName($nameToUse);
-                    }
+                    $fieldValue->setName($nameToUse);
                 }
 
                 if ($isPrivate) {
@@ -10073,7 +10009,7 @@ class Interpreter
             '',
             function (JsValue $this_, array $args) use ($outer, $iteratorRef, $closeOnReject): JsValue {
                 $reason = $args[0] ?? JsUndefined::instance();
-                if ($closeOnReject && $iteratorRef !== null) {
+                if ($closeOnReject) {
                     try {
                         $this->iteratorClose($iteratorRef);
                     } catch (\Throwable) {
@@ -10154,14 +10090,10 @@ class Interpreter
                 && $guard++ < 100000
             ) {
                 \PhpJs\Value\JsPromise::drainMicrotasks();
-                if ($value->getState() !== \PhpJs\Value\JsPromise::STATE_PENDING) {
-                    break;
-                }
-                // Give up if no microtask drain changed state — no further
-                // progress is possible in our single-tick interpreter.
-                if ($value->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
-                    break;
-                }
+                // Drain ran once. If still pending, no further microtask
+                // progress is possible in our single-tick interpreter, so
+                // break out instead of spinning.
+                break;
             }
             if ($value->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
                 $this->throwJsValue($value->getResolvedValue());
@@ -10217,8 +10149,7 @@ class Interpreter
                     if ($next >= 0xDC00 && $next <= 0xDFFF) {
                         // Valid surrogate pair: combine into a single code point.
                         $cp = ($cu - 0xD800) * 0x400 + ($next - 0xDC00) + 0x10000;
-                        $ch = mb_chr($cp, 'UTF-8');
-                        $chars[] = $ch !== false ? $ch : '?';
+                        $chars[] = mb_chr($cp, 'UTF-8');
                         $si += 2;
                         continue;
                     }
@@ -10695,7 +10626,6 @@ class Interpreter
                 '&&' => TypeConversion::toBoolean($left),
                 '||' => !TypeConversion::toBoolean($left),
                 '??' => $left instanceof JsNull || $left instanceof JsUndefined,
-                default => false,
             };
             if (!$takesRight) {
                 return $left;
@@ -12563,7 +12493,7 @@ class Interpreter
                 }
                 $checkEnv = $checkEnv->getParent();
             }
-            if ($insideWith && $checkEnv !== null && $checkEnv->getParent() !== null) {
+            if ($insideWith && $checkEnv->getParent() !== null) {
                 // Skip past the with-environment to its parent (the outer scope).
                 $hoistEnv = $checkEnv->getParent();
             }
@@ -12732,13 +12662,6 @@ class Interpreter
         }
     }
 
-    private function copyBindingToChild(Node $pattern, Environment $source, Environment $target): void
-    {
-        if ($pattern instanceof Identifier) {
-            $target->defineVar($pattern->name, $source->get($pattern->name));
-        }
-    }
-
     /**
      * Collect all binding names from a pattern (Identifier or destructuring).
      *
@@ -12764,7 +12687,7 @@ class Interpreter
             foreach ($pattern->properties as $prop) {
                 if ($prop instanceof \PhpJs\Ast\Pattern\RestElement) {
                     $this->collectBindingNames($prop->argument, $names);
-                } else {
+                } elseif ($prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
                     $this->collectBindingNames($prop->value, $names);
                 }
             }
@@ -13244,9 +13167,11 @@ class Interpreter
 
     /**
      * Get the iterator for a value; throw TypeError if not iterable.
-     * Returns [iterator, nextMethod].
+     * Returns [iterator, nextMethod]. The next-method may be any JsValue;
+     * the "next is not a function" TypeError surfaces later when iteration
+     * actually invokes it.
      *
-     * @return array{JsObject, JsFunction}
+     * @return array{JsObject, JsValue}
      */
     private function getIteratorOrThrow(JsValue $value): array
     {
@@ -13274,19 +13199,25 @@ class Interpreter
         if ($done) {
             return JsUndefined::instance();
         }
-        $proxyCallable = $nextMethod instanceof \PhpJs\Value\JsProxy && $nextMethod->isCallable();
-        if (!$nextMethod instanceof JsFunction && !$proxyCallable) {
+        if ($nextMethod instanceof \PhpJs\Value\JsProxy && $nextMethod->isCallable()) {
+            try {
+                $result = $nextMethod->apply($iterator, []);
+            } catch (\Throwable $e) {
+                // Per spec 7.4.2 IteratorStep: if next() throws, iteratorRecord.[[done]] = true.
+                $done = true;
+                throw $e;
+            }
+        } elseif ($nextMethod instanceof JsFunction) {
+            try {
+                $result = $this->callFunction($nextMethod, $iterator, []);
+            } catch (\Throwable $e) {
+                // Per spec 7.4.2 IteratorStep: if next() throws, iteratorRecord.[[done]] = true.
+                $done = true;
+                throw $e;
+            }
+        } else {
             $done = true;
             throw new \PhpJs\Exceptions\TypeError('Iterator result next is not a function');
-        }
-        try {
-            $result = $proxyCallable
-                ? $nextMethod->apply($iterator, [])
-                : $this->callFunction($nextMethod, $iterator, []);
-        } catch (\Throwable $e) {
-            // Per spec 7.4.2 IteratorStep: if next() throws, iteratorRecord.[[done]] = true.
-            $done = true;
-            throw $e;
         }
         if (!$result instanceof JsObject) {
             $done = true;
@@ -14426,31 +14357,35 @@ class Interpreter
                             $mbChar .= $pattern[$j];
                             $j++;
                         }
-                        $cp = mb_ord($mbChar, 'UTF-8');
-                        if ($cp !== false) {
-                            $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
-                        } else {
-                            // Invalid UTF-8 (likely a CESU-8 encoded surrogate D800-DFFF).
-                            // Decode manually and replace with U+FFFE to avoid PCRE error.
-                            $bytes = array_map('ord', str_split($mbChar));
-                            if (
-                                count($bytes) === 3
-                                && ($bytes[0] & 0xF0) === 0xE0
-                                && ($bytes[1] & 0xC0) === 0x80
-                                && ($bytes[2] & 0xC0) === 0x80
-                            ) {
-                                $decoded = (($bytes[0] & 0x0F) << 12)
+                        // Detect CESU-8-encoded lone surrogates (U+D800..
+                        // U+DFFF) before calling mb_ord: the surrogate
+                        // range is invalid UTF-8 and mb_ord rejects it.
+                        // Decoding the bytes directly lets us emit a
+                        // safe PCRE substitute instead of relying on a
+                        // mb_ord failure path PHPStan stubs do not
+                        // advertise as reachable.
+                        $bytes = array_map('ord', str_split($mbChar));
+                        $decodedSurrogate = (count($bytes) === 3
+                            && ($bytes[0] & 0xF0) === 0xE0
+                            && ($bytes[1] & 0xC0) === 0x80
+                            && ($bytes[2] & 0xC0) === 0x80)
+                                ? (
+                                    (($bytes[0] & 0x0F) << 12)
                                     | (($bytes[1] & 0x3F) << 6)
-                                    | ($bytes[2] & 0x3F);
-                                if ($decoded >= 0xD800 && $decoded <= 0xDFFF) {
-                                    $result .= '\\x{FFFE}';
-                                } else {
-                                    $result .= '\\x{' . strtoupper(dechex($decoded)) . '}';
-                                }
-                            } else {
-                                // Truly invalid: use replacement char.
-                                $result .= '\\x{FFFE}';
-                            }
+                                    | ($bytes[2] & 0x3F)
+                                )
+                                : null;
+                        if (
+                            $decodedSurrogate !== null
+                            && $decodedSurrogate >= 0xD800
+                            && $decodedSurrogate <= 0xDFFF
+                        ) {
+                            // Lone surrogate: replace with U+FFFE to
+                            // avoid PCRE error.
+                            $result .= '\\x{FFFE}';
+                        } else {
+                            $cp = mb_ord($mbChar, 'UTF-8');
+                            $result .= '\\x{' . strtoupper(dechex($cp)) . '}';
                         }
                         $i = $j;
                         continue;
@@ -14531,7 +14466,7 @@ class Interpreter
             // collating element / equivalence class / named class openers.
             // ECMAScript does not have POSIX bracket expressions; [ inside a
             // character class is just a literal. Escape it to prevent PCRE errors.
-            if ($ch === '[' && $inCharClass) {
+            if ($ch === '[') {
                 $result .= '\\[';
                 $i++;
                 continue;
@@ -14628,11 +14563,7 @@ class Interpreter
                     if ($cp > 0x10FFFF) {
                         return null;
                     }
-                    $ch = mb_chr($cp, 'UTF-8');
-                    if ($ch === false) {
-                        return null;
-                    }
-                    $result .= $ch;
+                    $result .= mb_chr($cp, 'UTF-8');
                     $i = $end + 1;
                     continue;
                 }
@@ -14650,21 +14581,13 @@ class Interpreter
                                 $lo = (int) hexdec($loHex);
                                 if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
                                     $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
-                                    $ch = mb_chr($cp, 'UTF-8');
-                                    if ($ch === false) {
-                                        return null;
-                                    }
-                                    $result .= $ch;
+                                    $result .= mb_chr($cp, 'UTF-8');
                                     $i += 12;
                                     continue;
                                 }
                             }
                         }
-                        $ch = mb_chr($cp, 'UTF-8');
-                        if ($ch === false) {
-                            return null;
-                        }
-                        $result .= $ch;
+                        $result .= mb_chr($cp, 'UTF-8');
                         $i += 6;
                         continue;
                     }
@@ -14763,7 +14686,7 @@ class Interpreter
                         // Forward reference: emit a placeholder keyed by the
                         // decoded name so the second pass can resolve it.
                         $out .= '\\k<__esfwd_' . count($orderToOriginal) . '_' . md5($refDecoded) . '_>';
-                        $orderToOriginal[count($orderToOriginal)] = $refDecoded;
+                        $orderToOriginal[] = $refDecoded;
                         $i = $closeAngle + 1;
                         continue;
                     }
@@ -15051,10 +14974,13 @@ class Interpreter
 
     private static function normalizeScriptName(string $name): ?string
     {
-        if (@preg_match('/\\p{Script=' . preg_quote($name, '/') . '}/u', '') !== false) {
+        $quoted = preg_quote($name, '/');
+        $scriptPattern = sprintf('/\\p{Script=%s}/u', $quoted);
+        if (@preg_match($scriptPattern, '') !== false) {
             return $name;
         }
-        if (@preg_match('/\\p{Script_Extensions=' . preg_quote($name, '/') . '}/u', '') !== false) {
+        $scriptExtPattern = sprintf('/\\p{Script_Extensions=%s}/u', $quoted);
+        if (@preg_match($scriptExtPattern, '') !== false) {
             return $name;
         }
         return null;
@@ -15510,7 +15436,7 @@ class Interpreter
                 }
 
                 // {N,} where N > 65535: cap min at 65535.
-                if ($hasComma && ($maxVal === null || $m[2] === '')) {
+                if ($maxVal === null || $m[2] === '') {
                     $cappedMin = min($minVal, $maxQ);
                     return '{' . $cappedMin . ',}' . $lazy;
                 }
@@ -15566,13 +15492,10 @@ class Interpreter
         $len = strlen($pattern);
         // Count capturing groups to know which \N are valid backreferences.
         $groupCount = $this->countCapturingGroups($pattern);
-        $inCharClass = false;
-
         for ($i = 0; $i < $len; $i++) {
             if ($pattern[$i] !== '\\') {
                 // Skip character class contents for bracket tracking.
-                if ($pattern[$i] === '[' && !$inCharClass) {
-                    $inCharClass = true;
+                if ($pattern[$i] === '[') {
                     $i++;
                     while ($i < $len && $pattern[$i] !== ']') {
                         if ($pattern[$i] === '\\' && $i + 1 < $len) {
@@ -15603,19 +15526,18 @@ class Interpreter
                         }
                         $i++;
                     }
-                    $inCharClass = false;
                     continue;
                 }
                 // In unicode mode, bare { and } are syntax errors unless part of a
                 // quantifier. A valid quantifier starts with { and contains digits.
-                if (!$inCharClass && $pattern[$i] === '{') {
+                if ($pattern[$i] === '{') {
                     if (!$this->isValidQuantifierAt($pattern, $i, $len)) {
                         throw new \PhpJs\Exceptions\SyntaxError(
                             'Invalid regular expression: lone { is not allowed in unicode mode',
                         );
                     }
                 }
-                if (!$inCharClass && $pattern[$i] === '}') {
+                if ($pattern[$i] === '}') {
                     // A } that is not closing a valid quantifier is an error.
                     // We check by looking backward for a matching valid quantifier.
                     // Simple approach: if we reach a bare }, it was not consumed as
@@ -16428,6 +16350,7 @@ class Interpreter
      * BigInt bitwise AND/OR/XOR without GMP or bcmath.
      * Uses native PHP int for values that fit, binary-string two's-complement for large values.
      */
+    /** @param '&'|'|'|'^' $op */
     private function bigintBitwiseOp(JsBigInt $left, JsBigInt $right, string $op): JsBigInt
     {
         // Fast path: both values fit in a native PHP int.
@@ -16585,7 +16508,15 @@ class Interpreter
      *       'nullable' => whether the body can match empty,
      *   ]
      *
-     * @return array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>}
+     * @return array{
+     *     repeatedGroups: array<int, array{
+     *         innerCaptures: list<int>,
+     *         bodyPattern: string,
+     *         nullable: bool,
+     *         quantifier: ?string,
+     *     }>,
+     *     nullableNonCapturingGroups: list<array{innerCaptures: list<int>}>,
+     * }
      */
     public static function analyzeRepeatedGroups(string $pattern): array
     {
@@ -17158,7 +17089,15 @@ class Interpreter
      * LAST iteration should have values.
      *
      * @param array<int|string, array{0: ?string, 1: int}> $matches PCRE match result
-     * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>} $analysis
+     * @param array{
+     *     repeatedGroups: array<int, array{
+     *         innerCaptures: list<int>,
+     *         bodyPattern: string,
+     *         nullable: bool,
+     *         quantifier: ?string,
+     *     }>,
+     *     nullableNonCapturingGroups?: list<array{innerCaptures: list<int>}>,
+     * } $analysis
      * @param string $pcreFlags The PCRE flags string (e.g., 'iu')
      * @param callable $transformFn Transforms ES pattern to PCRE pattern
      * @return array<int|string, array{0: ?string, 1: int}>
@@ -17176,8 +17115,8 @@ class Interpreter
             if (
                 isset($matches[$groupIdx])
                 && $matches[$groupIdx][0] === ''
-                && ($info['quantifier'] ?? null) === '?'
-                && ($info['nullable'] ?? false)
+                && $info['quantifier'] === '?'
+                && $info['nullable']
             ) {
                 $matches[$groupIdx] = [null, -1];
                 foreach ($info['innerCaptures'] as $innerIdx) {
@@ -17227,7 +17166,6 @@ class Interpreter
                     if (
                         isset($innerMatches[$innerIdx])
                         && $innerMatches[$innerIdx][0] !== null
-                        && $innerMatches[$innerIdx][1] !== -1
                     ) {
                         // Calculate the byte offset relative to the outer group match position.
                         $outerByteOffset = $matches[$groupIdx][1];

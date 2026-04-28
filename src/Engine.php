@@ -458,7 +458,7 @@ class Engine
             return strcmp($a, $b) <=> 0;
         };
         // Unsigned subtract: a >= b assumed.
-        $bigSubUns = static function (string $a, string $b) use (&$bigSubUns): string {
+        $bigSubUns = static function (string $a, string $b): string {
             $result = '';
             $borrow = 0;
             $i = strlen($a) - 1;
@@ -491,9 +491,7 @@ class Engine
             int $width,
         ) use (
             $pow2str,
-            $bigCmpUns,
             $bigSubUns,
-            $bigModSmall,
         ): string {
             if ($width === 0) {
                 return '0';
@@ -547,10 +545,7 @@ class Engine
             // Actually easier: compute $abs % $pow2 using digit-by-digit mod.
             // Use fast path if pow2 fits in PHP int.
             if ($width <= 62) {
-                $mask = PHP_INT_MAX;
-                if ($width < 63) {
-                    $mask = (1 << $width) - 1;
-                }
+                $mask = (1 << $width) - 1;
                 // Compute abs mod 2^width.
                 $rem = 0;
                 for ($i = 0; $i < strlen($abs); $i++) {
@@ -619,7 +614,7 @@ class Engine
                     $out2 = ($carry2 % 10) . $out2;
                     $carry2 = intdiv($carry2, 10);
                 }
-                $dec = $out2 !== '' ? $out2 : '0';
+                $dec = $out2;
             }
             return $dec;
         };
@@ -733,9 +728,10 @@ class Engine
             }
 
             // Detect subclass: if [[NewTarget]] is not the base RegExp constructor.
+            // $calledAsNew already narrows $this_ to JsObject.
             $isSubclass = false;
             $newTarget = null;
-            if ($calledAsNew && $this_ instanceof \PhpJs\Value\JsObject) {
+            if ($calledAsNew) {
                 $ntd = $this_->getOwnPropertyDescriptor("[[NewTarget]]");
                 $baseRegExp = $globalEnv->has("RegExp") ? $globalEnv->get("RegExp") : null;
                 if ($ntd !== null && $ntd->value !== null && $ntd->value !== $baseRegExp) {
@@ -875,12 +871,10 @@ class Engine
 
         // Symbol.toStringTag = "AsyncFunction", non-writable, non-enumerable, configurable.
         $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
-        if ($toStringTagSym !== null) {
-            $asyncFuncProto->definePropertyBySymbol(
-                $toStringTagSym,
-                \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncFunction'), false, false, true),
-            );
-        }
+        $asyncFuncProto->definePropertyBySymbol(
+            $toStringTagSym,
+            \PhpJs\Object\PropertyDescriptor::data(new JsString('AsyncFunction'), false, false, true),
+        );
 
         // Create the %AsyncFunction% constructor itself.
         // Per spec 25.7.1, AsyncFunction can be called with or without new.

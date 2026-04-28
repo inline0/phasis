@@ -92,9 +92,12 @@ class Environment
 
     /**
      * Disposal stack for `using` and `await using` declarations.
-     * Entries are [JsValue resource, bool isAsync]. Disposed in reverse order at block exit.
+     * Entries are [JsObject resource, bool isAsync]. Disposed in reverse
+     * order at block exit. Resources are validated as JsObject by the
+     * `using` statement evaluator before being added; null/undefined are
+     * silently skipped per spec sec-disposeresources.
      *
-     * @var list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     * @var list<array{0: \PhpJs\Value\JsObject, 1: bool}>
      */
     private array $disposables = [];
 
@@ -1102,9 +1105,10 @@ class Environment
 
     /**
      * Register a disposable resource for this environment.
-     * Called when processing `using` or `await using` declarations.
+     * Called when processing `using` or `await using` declarations
+     * after the resource has been validated as a non-null object.
      */
-    public function addDisposable(\PhpJs\Value\JsValue $resource, bool $isAsync): void
+    public function addDisposable(\PhpJs\Value\JsObject $resource, bool $isAsync): void
     {
         $this->disposables[] = [$resource, $isAsync];
     }
@@ -1113,7 +1117,7 @@ class Environment
      * Get the disposal stack for this environment (in registration order).
      * Caller should iterate in reverse for disposal.
      *
-     * @return list<array{0: \PhpJs\Value\JsValue, 1: bool}>
+     * @return list<array{0: \PhpJs\Value\JsObject, 1: bool}>
      */
     public function getDisposables(): array
     {
