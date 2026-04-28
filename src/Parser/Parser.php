@@ -6124,6 +6124,17 @@ class Parser
                     if ($cp > 0x10FFFF) {
                         return null;
                     }
+                    // Per spec, lone surrogates (U+D800..U+DFFF) are not
+                    // valid GroupName code points; refuse the whole name
+                    // here so a SyntaxError surfaces at parse time
+                    // (test262 language/literals/regexp/named-groups/
+                    // invalid-non-id-start-groupspecifier-*). Doing the
+                    // range check upfront also avoids depending on
+                    // mb_chr's documented `string|false` return when the
+                    // PHPStan stub narrows it to plain `string`.
+                    if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                        return null;
+                    }
                     $result .= mb_chr($cp, 'UTF-8');
                     $i = $end + 1;
                     continue;
@@ -6145,11 +6156,20 @@ class Parser
                                 $lo = (int) hexdec($loHex);
                                 if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
                                     $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
+                                    // Combined codepoint is in the
+                                    // supplementary plane and round-trips
+                                    // through UTF-8 cleanly.
                                     $result .= mb_chr($cp, 'UTF-8');
                                     $i += 12;
                                     continue;
                                 }
                             }
+                        }
+                        // Same surrogate-rejection rule as the \u{...} arm:
+                        // lone surrogates are not valid GroupName code
+                        // points; refusing here surfaces a SyntaxError.
+                        if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                            return null;
                         }
                         $result .= mb_chr($cp, 'UTF-8');
                         $i += 6;

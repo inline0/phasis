@@ -79,6 +79,16 @@ class JsArrayBuffer extends JsObject
         $this->data = $data;
     }
 
+    /**
+     * Treat ::isDetached as impure: between two reads, intervening user
+     * code (a `valueOf` during ToIndex, a getter during
+     * OrdinaryCreateFromConstructor, a species-constructor body) can
+     * detach the buffer. Marking impure prevents PHPStan from carrying
+     * the `false` narrowing across those calls and flagging the spec-
+     * mandated re-check as dead.
+     *
+     * @phpstan-impure
+     */
     public function isDetached(): bool
     {
         return $this->detached;

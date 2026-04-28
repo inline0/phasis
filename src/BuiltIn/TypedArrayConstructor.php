@@ -194,6 +194,15 @@ class TypedArrayConstructor
                     );
                 }
 
+                // Per spec, Construct above runs the species constructor's
+                // body, which can detach the source through user code.
+                // Re-validate before the slice copy.
+                if ($this_->isDetached()) {
+                    throw new TypeError(
+                        'Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer'
+                    );
+                }
+
                 // Step 20: If new.byteLength < newLen, throw TypeError.
                 if ($newBuf->getByteLength() < $newLen) {
                     throw new TypeError(
@@ -688,6 +697,13 @@ class TypedArrayConstructor
                     }
                 } else {
                     $byteLength = TypeConversion::toIndex($lenArg);
+                    // ToIndex on byteLength may detach via valueOf;
+                    // re-validate per spec before computing the view.
+                    if ($buffer->isDetached()) {
+                        throw new TypeError(
+                            'Cannot construct DataView on a detached ArrayBuffer'
+                        );
+                    }
                     if (($byteOffset + $byteLength) > $bufLen) {
                         throw new RangeError('Invalid DataView length');
                     }
@@ -699,11 +715,16 @@ class TypedArrayConstructor
                     if ($newTarget instanceof JsFunction) {
                         // Per spec OrdinaryCreateFromConstructor, the
                         // newTarget.prototype lookup is observable and may
-                        // detach the buffer through a getter, but PHP-side
-                        // getters cannot mutate the buffer here.
+                        // detach the buffer through a getter; re-validate
+                        // before instantiation.
                         $ntProto = $newTarget->get('prototype');
                         if ($ntProto instanceof JsObject) {
                             $effectiveProto = $ntProto;
+                        }
+                        if ($buffer->isDetached()) {
+                            throw new TypeError(
+                                'Cannot construct DataView on a detached ArrayBuffer'
+                            );
                         }
                     }
                 }
@@ -1383,8 +1404,15 @@ class TypedArrayConstructor
 
             if ($lengthExplicit) {
                 // Per spec step 13a: newLength = ToIndex(length).
-                // The valueOf() during ToIndex may detach the buffer.
+                // The valueOf() during ToIndex may detach the buffer, so
+                // re-check IsDetachedBuffer immediately after the coercion
+                // (test262 ctors-bigint/buffer-arg/length-to-number-detachbuffer).
                 $length = TypeConversion::toIndex($args[2]);
+                if ($arg0->isDetached()) {
+                    throw new TypeError(
+                        'Cannot construct a typed array on a detached ArrayBuffer'
+                    );
+                }
 
                 $newByteLength = $length * $bpe;
                 if ($byteOffset + $newByteLength > $bufLen) {
