@@ -878,6 +878,9 @@ class JsonObject
 
     private static function phpToJsValue(mixed $value): JsValue
     {
+        // Primitive fast paths first — JSON-parsed trees are
+        // dominated by these, so peeling them ahead of the
+        // is_object check shortens the per-leaf branch ladder.
         if ($value === null) {
             return JsNull::instance();
         }
@@ -898,10 +901,21 @@ class JsonObject
             // a PropertyDescriptor allocation per property. JsObject's
             // default per-key descriptor is {writable, enumerable,
             // configurable}, matching PropertyDescriptor::data(..., t,
-            // t, t).
+            // t, t). Inlining primitive conversions per property saves
+            // a static-method dispatch on every leaf field.
             $obj = new JsObject();
             foreach (get_object_vars($value) as $key => $val) {
-                $obj->properties->dataSlots[$key] = self::phpToJsValue($val);
+                if ($val === null) {
+                    $obj->properties->dataSlots[$key] = JsNull::instance();
+                } elseif (is_bool($val)) {
+                    $obj->properties->dataSlots[$key] = new JsBoolean($val);
+                } elseif (is_int($val) || is_float($val)) {
+                    $obj->properties->dataSlots[$key] = JsNumber::of((float) $val);
+                } elseif (is_string($val)) {
+                    $obj->properties->dataSlots[$key] = new JsString($val);
+                } else {
+                    $obj->properties->dataSlots[$key] = self::phpToJsValue($val);
+                }
             }
             return $obj;
         }
@@ -909,8 +923,22 @@ class JsonObject
             // Note: PHP's json_decode($text, true) collapses both [] and {}
             // to []; we rely on json_decode($text) (no assoc flag) so empty
             // JSON objects come back as stdClass instances above. Any plain
-            // PHP array reaching this branch comes from JSON arrays.
-            $items = array_map(fn(mixed $v) => self::phpToJsValue($v), $value);
+            // PHP array reaching this branch comes from JSON arrays. Same
+            // primitive-inlining as above for per-element conversion.
+            $items = [];
+            foreach ($value as $val) {
+                if ($val === null) {
+                    $items[] = JsNull::instance();
+                } elseif (is_bool($val)) {
+                    $items[] = new JsBoolean($val);
+                } elseif (is_int($val) || is_float($val)) {
+                    $items[] = JsNumber::of((float) $val);
+                } elseif (is_string($val)) {
+                    $items[] = new JsString($val);
+                } else {
+                    $items[] = self::phpToJsValue($val);
+                }
+            }
             return JsArray::fromArray($items);
         }
         return JsNull::instance();
