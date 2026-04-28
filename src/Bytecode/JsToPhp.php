@@ -1158,18 +1158,64 @@ final class JsToPhp
             } else {
                 throw new Bailout('object literal weird key');
             }
-            // Property values are emitted via the numeric pipeline.
-            // Function-expression / nested-object property values bail
-            // (the inner emitExpression encounters them in the numeric
-            // context and refuses), which is exactly what we want for
-            // safety against shape-mismatched literals like
-            // `{valueOf: function() {...}}` that test262 uses.
-            $valueExpr = $this->emitExpression($prop->value);
+            $valueRef = $this->emitJsValueExpression($prop->value);
             $this->pendingStatements[] = $temp . '->properties->dataSlots['
-                . var_export($key, true) . '] = \\PhpJs\\Value\\JsNumber::of((float)('
-                . $valueExpr . '));';
+                . var_export($key, true) . '] = ' . $valueRef . ';';
         }
         return $temp;
+    }
+
+    /**
+     * Emit a property value expression that produces a JsValue PHP
+     * reference (for use inside dataSlots writes / array element
+     * pushes). Recurses into nested object / array literals; primitive
+     * literals lower to direct JsNumber / JsString / JsBoolean / JsNull
+     * constructors. Anything not literal-shaped falls back to the
+     * numeric pipeline + JsNumber wrap (legacy behavior).
+     */
+    private function emitJsValueExpression(Node $node): string
+    {
+        if ($node instanceof Literal) {
+            if ($node->value === null) {
+                return '\\PhpJs\\Value\\JsNull::instance()';
+            }
+            if (is_bool($node->value)) {
+                return '\\PhpJs\\Value\\JsBoolean::of(' . ($node->value ? 'true' : 'false') . ')';
+            }
+            if (is_int($node->value) || is_float($node->value)) {
+                return '\\PhpJs\\Value\\JsNumber::of((float) ' . (string) (float) $node->value . ')';
+            }
+            if (is_string($node->value)) {
+                return 'new \\PhpJs\\Value\\JsString(' . var_export($node->value, true) . ')';
+            }
+            throw new Bailout('unknown literal type in object literal');
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+            return $this->emitObjectLiteral($node);
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ArrayExpression) {
+            $arrTemp = $this->newTemp('arr');
+            $this->pendingStatements[] = $arrTemp . ' = new \\PhpJs\\Value\\JsArray();';
+            foreach ($node->elements as $el) {
+                if ($el === null) {
+                    // Hole: bail; spec hole semantics need a sparse
+                    // JsArray, but our tracked locals stay dense.
+                    throw new Bailout('array literal hole in object literal');
+                }
+                if ($el instanceof \PhpJs\Ast\Expression\SpreadElement) {
+                    throw new Bailout('spread in array literal');
+                }
+                $elRef = $this->emitJsValueExpression($el);
+                $this->pendingStatements[] = $arrTemp . '->push(' . $elRef . ');';
+            }
+            return $arrTemp;
+        }
+        // Fallback: emit as numeric and wrap in JsNumber. This is the
+        // legacy path for `{key: someNumericExpr}` where the value is
+        // not a literal but resolves to a numeric raw double. The
+        // numeric emitExpression bails for non-numeric subtrees.
+        $valueExpr = $this->emitExpression($node);
+        return '\\PhpJs\\Value\\JsNumber::of((float)(' . $valueExpr . '))';
     }
 
     /**
