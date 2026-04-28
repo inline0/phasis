@@ -131,6 +131,20 @@ final class Compiler
     private int $tryEntryStackDepth = 0;
 
     /**
+     * Phase 2 finally guard: stack of loopStack sizes captured at
+     * each try-with-finally entry. Used to detect whether a
+     * break / continue inside the protected block targets a loop
+     * outside the try (bail) versus a nested loop entirely within
+     * the try (fine — finally still runs because the inner break
+     * doesn't escape the try). A non-empty stack also forces return
+     * inside the protected block to bail, since we'd have to inline
+     * the finally body before RET to preserve spec semantics.
+     *
+     * @var list<int>
+     */
+    private array $finallyLoopBoundaries = [];
+
+    /**
      * THROW opcode operand: a single int that the VM uses to look
      * up the right exception via thrown JsValue. Throw lowering
      * leaves the value on stack and emits THROW; the VM raises a
@@ -272,16 +286,15 @@ final class Compiler
             throw new CompilerBailout('with statement');
         }
         if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
-            // Phase 1: support `try { ... } catch (e) { ... }` only.
-            // The completion-record dance for finally (re-triggering
-            // pending return / break / continue across the finalizer)
-            // still needs design; for now bail when a finalizer is
-            // present so the tree-walker handles it.
-            if ($node->finalizer !== null) {
-                throw new CompilerBailout('try/finally');
-            }
-            if ($node->handler === null) {
-                throw new CompilerBailout('try without catch');
+            // try / catch (Phase 1) or try / finally / try-catch-finally
+            // (Phase 2). Phase 2's finally support requires that no
+            // abrupt completion (return / break / continue) escapes the
+            // protected blocks; that's enforced lazily inside
+            // compileStatement via finallyLoopBoundaries, so here we
+            // only require the structure to be one of the supported
+            // shapes.
+            if ($node->handler === null && $node->finalizer === null) {
+                throw new CompilerBailout('try without catch or finally');
             }
             // Optional catch binding (`catch { ... }`) is fine; a
             // pattern-bound catch parameter (`catch ({a, b}) { ... }`)
@@ -289,7 +302,8 @@ final class Compiler
             // before the body runs. Phase 1 only covers identifier
             // params.
             if (
-                $node->handler->param !== null
+                $node->handler !== null
+                && $node->handler->param !== null
                 && !($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier)
             ) {
                 throw new CompilerBailout('destructuring catch param');
@@ -297,7 +311,12 @@ final class Compiler
             // Recurse into the protected blocks so any inner bailout
             // feature still aborts compilation up front.
             $this->scanBailout($node->block->body);
-            $this->scanBailout($node->handler->body->body);
+            if ($node->handler !== null) {
+                $this->scanBailout($node->handler->body->body);
+            }
+            if ($node->finalizer !== null) {
+                $this->scanBailout($node->finalizer->body);
+            }
             return;
         }
         if (
@@ -431,6 +450,9 @@ final class Compiler
                     $this->declareLocal($stmt->handler->param->name);
                 }
                 $this->collectFunctionLocals($stmt->handler->body->body);
+            }
+            if ($stmt->finalizer !== null) {
+                $this->collectFunctionLocals($stmt->finalizer->body);
             }
             return;
         }
@@ -661,6 +683,9 @@ final class Compiler
     private function compileStatement(Node $node): void
     {
         if ($node instanceof ReturnStatement) {
+            if ($this->finallyLoopBoundaries !== []) {
+                throw new CompilerBailout('return inside try-with-finally');
+            }
             if ($node->argument === null) {
                 $this->emit(Op::LOAD_UNDEF);
             } else {
@@ -709,8 +734,14 @@ final class Compiler
             if ($this->loopStack === []) {
                 throw new CompilerBailout('break outside loop');
             }
+            $loopDepth = count($this->loopStack);
+            foreach ($this->finallyLoopBoundaries as $boundary) {
+                if ($boundary >= $loopDepth) {
+                    throw new CompilerBailout('break escaping try-with-finally');
+                }
+            }
             $idx = $this->emitJump(Op::JUMP);
-            $this->loopStack[count($this->loopStack) - 1]['breaks'][] = $idx;
+            $this->loopStack[$loopDepth - 1]['breaks'][] = $idx;
             return;
         }
         if ($node instanceof ContinueStatement) {
@@ -720,8 +751,14 @@ final class Compiler
             if ($this->loopStack === []) {
                 throw new CompilerBailout('continue outside loop');
             }
+            $loopDepth = count($this->loopStack);
+            foreach ($this->finallyLoopBoundaries as $boundary) {
+                if ($boundary >= $loopDepth) {
+                    throw new CompilerBailout('continue escaping try-with-finally');
+                }
+            }
             $idx = $this->emitJump(Op::JUMP);
-            $this->loopStack[count($this->loopStack) - 1]['continues'][] = $idx;
+            $this->loopStack[$loopDepth - 1]['continues'][] = $idx;
             return;
         }
         if ($node instanceof VariableDeclaration) {
@@ -741,29 +778,48 @@ final class Compiler
     }
 
     /**
-     * Lower `try { ... } catch (e) { ... }` to a bytecode block plus
-     * a handler-table entry. The try body runs in-line; on normal
-     * completion an unconditional JUMP skips past the catch. On a
-     * thrown JsValue, the VM consults the handler table, finds this
-     * entry's [tryStart, tryEnd) window, stores the thrown value into
-     * the catch parameter's slot, and jumps to catchPc.
+     * Lower a TryStatement to a bytecode block plus handler-table
+     * entries. Three shapes are supported:
      *
-     * Phase 1 limitations enforced by scanBailout: no finalizer, no
-     * destructuring catch param, only Identifier or absent param.
+     *  - try / catch (Phase 1): one handler protecting the try body;
+     *    on throw, the VM stores the value in the catch param slot
+     *    and jumps to the catch body. Normal exit JUMPs past catch.
+     *
+     *  - try / finally (Phase 2): the finally body is inlined twice —
+     *    once on the normal exit path, once on the exception-rethrow
+     *    path that runs after the handler captures the thrown value.
+     *
+     *  - try / catch / finally (Phase 2): both handlers are emitted.
+     *    Handler1 covers the try body and routes the exception
+     *    through the catch body, then to the normal-finally inline
+     *    (the catch already swallowed the original exception).
+     *    Handler2 covers the catch body and routes any catch-body
+     *    exception to the rethrow-finally inline so the catch's
+     *    exception still surfaces after finally runs.
+     *
+     * Phase 2 enforces (via finallyLoopBoundaries / finallyDepth) that
+     * no return / break / continue escapes the protected blocks; those
+     * cases bail to the tree-walker because the inlined-finally
+     * approach would otherwise need to inline at every exit point.
      */
     private function compileTryCatch(\PhpJs\Ast\Statement\TryStatement $node): void
     {
-        $tryStart = count($this->code);
+        $hasFinally = $node->finalizer !== null;
+        $hasCatch = $node->handler !== null;
         $stackBase = $this->tryEntryStackDepth;
-        foreach ($node->block->body as $stmt) {
-            $this->compileStatement($stmt);
-        }
-        $tryEnd = count($this->code);
-        // Skip the catch on normal completion of the try block.
-        $jmpPastCatch = $this->emitJump(Op::JUMP);
-        $catchPc = count($this->code);
-        $exceptionSlot = -1;
-        if ($node->handler !== null) {
+        $finallyBoundary = count($this->loopStack);
+
+        // Phase 1 fast path: try / catch with no finalizer. The
+        // implementation is the original Phase 1 layout.
+        if (!$hasFinally) {
+            $tryStart = count($this->code);
+            foreach ($node->block->body as $stmt) {
+                $this->compileStatement($stmt);
+            }
+            $tryEnd = count($this->code);
+            $jmpPastCatch = $this->emitJump(Op::JUMP);
+            $catchPc = count($this->code);
+            $exceptionSlot = -1;
             if ($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
                 $name = $node->handler->param->name;
                 $exceptionSlot = $this->localSlots[$name]
@@ -772,15 +828,142 @@ final class Compiler
             foreach ($node->handler->body->body as $stmt) {
                 $this->compileStatement($stmt);
             }
+            $this->patchJumpToHere($jmpPastCatch);
+            $this->handlers[] = new HandlerEntry(
+                tryStart: $tryStart,
+                tryEnd: $tryEnd,
+                catchPc: $catchPc,
+                exceptionSlot: $exceptionSlot,
+                stackBase: $stackBase,
+            );
+            return;
         }
-        $this->patchJumpToHere($jmpPastCatch);
+
+        // Phase 2: finalizer present (with or without catch).
+        // Layout (annotated PCs):
+        //   [tryStart..tryEnd)          : try body
+        //   tryEnd                      : JUMP -> finallyNormalPc
+        //   tryHandlerCatchPc           : (catch present) catch param
+        //                                 mirror + catch body, then
+        //                                 JUMP -> finallyNormalPc
+        //                                 (no catch) JUMP -> finallyRethrowPc
+        //   catchHandlerCatchPc         : JUMP -> finallyRethrowPc
+        //   finallyNormalPc             : finally body, JUMP -> afterTryPc
+        //   finallyRethrowPc            : finally body, LOAD rethrowSlot, THROW
+        //   afterTryPc                  : continuation
+        $rethrowSlot = count($this->localNames);
+        $this->localNames[] = '[[finallyRethrow]]';
+
+        $tryStart = count($this->code);
+        $this->finallyLoopBoundaries[] = $finallyBoundary;
+        foreach ($node->block->body as $stmt) {
+            $this->compileStatement($stmt);
+        }
+        array_pop($this->finallyLoopBoundaries);
+        $tryEnd = count($this->code);
+        $jmpFromTry = $this->emitJump(Op::JUMP);
+
+        $tryHandlerCatchPc = count($this->code);
+        $tryHandlerExceptionSlot = -1;
+        $catchStart = -1;
+        $catchEnd = -1;
+        $jmpFromCatch = -1;
+        $jmpFromTryHandlerNoCatch = -1;
+
+        if ($hasCatch) {
+            // Handler1 stores the thrown value in the catch param
+            // slot. Mirror it into rethrowSlot so a catch-body throw
+            // can later observe its OWN exception, not the original.
+            if ($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+                $name = $node->handler->param->name;
+                $tryHandlerExceptionSlot = $this->localSlots[$name]
+                    ?? $this->declareLocal($name);
+                $this->emit(Op::LOAD_LOCAL, $tryHandlerExceptionSlot);
+                $this->emit(Op::STORE_LOCAL, $rethrowSlot);
+            } else {
+                // No catch param: still need to seed rethrowSlot from
+                // the param slot so handler2 can re-throw on
+                // catch-body exceptions. Allocate a temp.
+                $tryHandlerExceptionSlot = count($this->localNames);
+                $this->localNames[] = '[[catchTmp]]';
+                $this->emit(Op::LOAD_LOCAL, $tryHandlerExceptionSlot);
+                $this->emit(Op::STORE_LOCAL, $rethrowSlot);
+            }
+            $catchStart = count($this->code);
+            $this->finallyLoopBoundaries[] = $finallyBoundary;
+            foreach ($node->handler->body->body as $stmt) {
+                $this->compileStatement($stmt);
+            }
+            array_pop($this->finallyLoopBoundaries);
+            $catchEnd = count($this->code);
+            $jmpFromCatch = $this->emitJump(Op::JUMP);
+        } else {
+            // No catch: handler1 stores the thrown value directly in
+            // rethrowSlot, then jumps to the rethrow-finally inline.
+            $tryHandlerExceptionSlot = $rethrowSlot;
+            $jmpFromTryHandlerNoCatch = $this->emitJump(Op::JUMP);
+        }
+
+        // Handler2 (only meaningful if there's a catch): catches
+        // exceptions thrown inside the catch body and routes them
+        // through finally before re-raising.
+        $catchHandlerCatchPc = $hasCatch ? count($this->code) : -1;
+        $jmpFromHandler2 = -1;
+        if ($hasCatch) {
+            $jmpFromHandler2 = $this->emitJump(Op::JUMP);
+        }
+
+        // Finally inlines.
+        $finallyNormalPc = count($this->code);
+        $this->finallyLoopBoundaries[] = $finallyBoundary;
+        foreach ($node->finalizer->body as $stmt) {
+            $this->compileStatement($stmt);
+        }
+        array_pop($this->finallyLoopBoundaries);
+        $jmpAfterTry = $this->emitJump(Op::JUMP);
+
+        $finallyRethrowPc = count($this->code);
+        $this->finallyLoopBoundaries[] = $finallyBoundary;
+        foreach ($node->finalizer->body as $stmt) {
+            $this->compileStatement($stmt);
+        }
+        array_pop($this->finallyLoopBoundaries);
+        $this->emit(Op::LOAD_LOCAL, $rethrowSlot);
+        $this->emit(Op::THROW);
+
+        // afterTry. patchJumpToHere targets the current PC; the
+        // jmpAfterTry was emitted right before this comment so it
+        // already lines up.
+        $this->patchJumpToHere($jmpAfterTry);
+        $this->code[$jmpFromTry] = $finallyNormalPc - ($jmpFromTry - 1);
+        if ($jmpFromCatch !== -1) {
+            $this->code[$jmpFromCatch] = $finallyNormalPc - ($jmpFromCatch - 1);
+        }
+        if ($jmpFromTryHandlerNoCatch !== -1) {
+            $this->code[$jmpFromTryHandlerNoCatch] =
+                $finallyRethrowPc - ($jmpFromTryHandlerNoCatch - 1);
+        }
+        if ($jmpFromHandler2 !== -1) {
+            $this->code[$jmpFromHandler2] =
+                $finallyRethrowPc - ($jmpFromHandler2 - 1);
+        }
+
         $this->handlers[] = new HandlerEntry(
             tryStart: $tryStart,
             tryEnd: $tryEnd,
-            catchPc: $catchPc,
-            exceptionSlot: $exceptionSlot,
+            catchPc: $tryHandlerCatchPc,
+            exceptionSlot: $tryHandlerExceptionSlot,
             stackBase: $stackBase,
         );
+        if ($hasCatch) {
+            $this->handlers[] = new HandlerEntry(
+                tryStart: $catchStart,
+                tryEnd: $catchEnd,
+                catchPc: $catchHandlerCatchPc,
+                exceptionSlot: $rethrowSlot,
+                stackBase: $stackBase,
+            );
+        }
     }
 
     private function compileIf(IfStatement $node): void
