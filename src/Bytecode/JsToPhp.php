@@ -170,6 +170,17 @@ final class JsToPhp
         if (self::bodyReferencesPerCallBindings($body)) {
             return null;
         }
+        // Refuse to compile bodies that contain nested block-scoped
+        // let / const declarations. JsToPhp models locals as
+        // function-scoped PHP variables; it has no per-block
+        // lexical scope and therefore can't enforce the spec
+        // Temporal Dead Zone (`{ x; const x = 1; }` should throw
+        // ReferenceError when reading x before its declaration).
+        // The tree-walker / bytecode VM both honour TDZ, so falling
+        // back to those paths fixes the test262 const-/let-tdz tests.
+        if (self::bodyHasNestedLexical($body)) {
+            return null;
+        }
         $standard = self::compileWith($fn, false);
         if ($standard === null) {
             return null;
@@ -381,6 +392,91 @@ final class JsToPhp
      * ReferenceError ("arguments is not defined") or — worse —
      * silently read an outer-scope binding with the same name.
      */
+    /**
+     * True when $body (a function body) contains a nested
+     * BlockStatement / IfStatement consequent / ForStatement body
+     * with a let / const VariableDeclaration. JsToPhp can't enforce
+     * the per-block TDZ; falling back to the tree-walker (which can)
+     * keeps `{ x; const x = 1; }` correctly throwing ReferenceError.
+     *
+     * The function body itself (top-level block) doesn't count —
+     * those let/const are function-scoped from JsToPhp's
+     * perspective, with the prologue safely defaulting them to a
+     * pre-init value before any reference can fire.
+     */
+    private static function bodyHasNestedLexical(Node $body): bool
+    {
+        if (!$body instanceof BlockStatement) {
+            return false;
+        }
+        foreach ($body->body as $stmt) {
+            if (self::stmtHasNestedLexical($stmt, 0)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function stmtHasNestedLexical(Node $node, int $blockDepth): bool
+    {
+        if ($node instanceof BlockStatement) {
+            // Entering this block bumps blockDepth for its inner
+            // statements. Flag only when blockDepth > 0 (we're in a
+            // NESTED block, not the function body itself) AND a
+            // let / const is preceded by a non-declaration statement
+            // in the same block — the "use before initialization"
+            // shape. Patterns like `for (...) { const {a,b} = ...;
+            // s += a+b; }` keep the const as the first statement,
+            // so JsToPhp stays on the fast path.
+            $innerDepth = $blockDepth + 1;
+            $sawNonDecl = false;
+            foreach ($node->body as $inner) {
+                if (
+                    $innerDepth > 0
+                    && $sawNonDecl
+                    && $inner instanceof VariableDeclaration
+                    && ($inner->kind === 'let' || $inner->kind === 'const')
+                ) {
+                    return true;
+                }
+                if (
+                    !($inner instanceof VariableDeclaration)
+                    && !($inner instanceof FunctionDeclaration)
+                ) {
+                    $sawNonDecl = true;
+                }
+                if (self::stmtHasNestedLexical($inner, $innerDepth)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            // Nested function: its body has its own scope.
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if (self::stmtHasNestedLexical($value, $blockDepth)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::stmtHasNestedLexical($item, $blockDepth)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static function bodyReferencesPerCallBindings(Node $node): bool
     {
         if ($node instanceof Identifier) {
