@@ -737,6 +737,10 @@ final class JsToPhp
             return self::exprHasTailCall($node->left)
                 || self::exprHasTailCall($node->right);
         }
+        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+            $exprs = $node->expressions;
+            return $exprs !== [] && self::exprHasTailCall($exprs[count($exprs) - 1]);
+        }
         return false;
     }
 

@@ -2194,6 +2194,10 @@ final class Compiler
             return self::tailCallExpr($node->left)
                 || self::tailCallExpr($node->right);
         }
+        if ($node instanceof \PhpJs\Ast\Expression\SequenceExpression) {
+            $exprs = $node->expressions;
+            return $exprs !== [] && self::tailCallExpr($exprs[count($exprs) - 1]);
+        }
         return false;
     }
 }
