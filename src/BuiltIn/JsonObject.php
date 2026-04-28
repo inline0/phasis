@@ -887,12 +887,17 @@ class JsonObject
             return new JsString($value);
         }
         if ($value instanceof \stdClass) {
+            // Fast path: bypass defineOwnProperty's existing-descriptor
+            // / configurable / writable checks. The object is freshly
+            // constructed, so a direct dataSlots assignment with the
+            // attribute defaults applied later is correct and avoids
+            // a PropertyDescriptor allocation per property. JsObject's
+            // default per-key descriptor is {writable, enumerable,
+            // configurable}, matching PropertyDescriptor::data(..., t,
+            // t, t).
             $obj = new JsObject();
             foreach (get_object_vars($value) as $key => $val) {
-                $obj->defineOwnProperty(
-                    $key,
-                    PropertyDescriptor::data(self::phpToJsValue($val), true, true, true),
-                );
+                $obj->properties->dataSlots[$key] = self::phpToJsValue($val);
             }
             return $obj;
         }
