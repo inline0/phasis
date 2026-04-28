@@ -596,6 +596,9 @@ final class Compiler
             return;
         }
         if ($node instanceof ExpressionStatement) {
+            if ($this->tryEmitDiscardedUpdate($node->expression)) {
+                return;
+            }
             $this->compileExpression($node->expression);
             $this->emit(Op::POP);
             return;
@@ -702,8 +705,10 @@ final class Compiler
         $continueTarget = count($this->code);
         // Update.
         if ($node->update !== null) {
-            $this->compileExpression($node->update);
-            $this->emit(Op::POP);
+            if (!$this->tryEmitDiscardedUpdate($node->update)) {
+                $this->compileExpression($node->update);
+                $this->emit(Op::POP);
+            }
         }
         $this->emit(Op::JUMP, $loopStart - count($this->code) + 1);
         // Patch the JUMP we just emitted: operand is the second int
@@ -1287,6 +1292,36 @@ final class Compiler
             $this->compileExpression($arg);
         }
         $this->emit(Op::NEW_CALL, count($node->arguments));
+    }
+
+    /**
+     * Compile `i++` / `i--` / `++i` / `--i` when the result is unused
+     * (ExpressionStatement at top level, ForStatement::update slot) into
+     * a single INC_LOCAL / DEC_LOCAL op. Returns true on success so the
+     * caller can skip the standard compile-then-pop path.
+     */
+    private function tryEmitDiscardedUpdate(\PhpJs\Ast\Node $expr): bool
+    {
+        if (!$expr instanceof UpdateExpression) {
+            return false;
+        }
+        $arg = $expr->argument;
+        if (!$arg instanceof Identifier) {
+            return false;
+        }
+        $name = $arg->name;
+        if ($name === 'eval' || $name === 'arguments' || $name === '[[NewTarget]]') {
+            return false;
+        }
+        if (!isset($this->localSlots[$name])) {
+            return false;
+        }
+        $slot = $this->localSlots[$name];
+        if (isset($this->constSlots[$slot])) {
+            return false;
+        }
+        $this->emit($expr->operator === '++' ? Op::INC_LOCAL : Op::DEC_LOCAL, $slot);
+        return true;
     }
 
     private function compileUpdate(UpdateExpression $node): void

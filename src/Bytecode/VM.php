@@ -202,6 +202,22 @@ final class VM
                     $locals[$code[$pc + 1]] = $stack[--$sp];
                     $pc += 2;
                     break;
+                case Op::INC_LOCAL:
+                    $slotIdx = $code[$pc + 1];
+                    $cur = $locals[$slotIdx];
+                    $locals[$slotIdx] = ($cur instanceof JsNumber)
+                        ? new JsNumber($cur->value + 1.0)
+                        : new JsNumber(TypeConversion::toNumber($cur)->value + 1.0);
+                    $pc += 2;
+                    break;
+                case Op::DEC_LOCAL:
+                    $slotIdx = $code[$pc + 1];
+                    $cur = $locals[$slotIdx];
+                    $locals[$slotIdx] = ($cur instanceof JsNumber)
+                        ? new JsNumber($cur->value - 1.0)
+                        : new JsNumber(TypeConversion::toNumber($cur)->value - 1.0);
+                    $pc += 2;
+                    break;
 
                 case Op::LOAD_NAME:
                     $stack[$sp++] = $env->get($names[$code[$pc + 1]], $strict);

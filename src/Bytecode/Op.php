@@ -38,6 +38,11 @@ final class Op
     // ---- Locals ---------------------------------------------------------
     public const LOAD_LOCAL = 20;  // L  — push frame->locals[L]
     public const STORE_LOCAL = 21; // L  — frame->locals[L] = pop()
+    // INC/DEC discard-result variants. Update a numeric local in place
+    // without stack traffic; used by for-loop updates and bare i++/i--
+    // expression statements where the result is unused.
+    public const INC_LOCAL = 22;   // L  — locals[L] = ToNumber(locals[L]) + 1
+    public const DEC_LOCAL = 23;   // L  — locals[L] = ToNumber(locals[L]) - 1
 
     // ---- Free variables (parent scope binding by name) ------------------
     // The compiler emits LOAD_NAME when it cannot prove the binding is
@@ -164,6 +169,8 @@ final class Op
             case self::LOAD_CONST:
             case self::LOAD_LOCAL:
             case self::STORE_LOCAL:
+            case self::INC_LOCAL:
+            case self::DEC_LOCAL:
             case self::LOAD_NAME:
             case self::STORE_NAME:
             case self::JUMP:
