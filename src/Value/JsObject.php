@@ -9,7 +9,15 @@ use PhpJs\Object\PropertyMap;
 
 class JsObject implements JsValue
 {
-    protected PropertyMap $properties;
+    /**
+     * Public so the VM dispatch loop can read/write the dataSlots
+     * fast-path inline (Op::LOAD_MEMBER, Op::STORE_MEMBER) without
+     * paying the method-dispatch tax. Subclasses (JsArray, JsProxy,
+     * JsTypedArray) still own their exotic semantics — the inline
+     * path only fires when the slot already exists in dataSlots,
+     * which subclasses' overrides honour the same way as JsObject.
+     */
+    public PropertyMap $properties;
     private ?JsObject $prototype;
     private static ?JsObject $globalPrototype = null;
     private bool $extensible = true;

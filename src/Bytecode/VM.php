@@ -685,7 +685,18 @@ final class VM
                 case Op::LOAD_MEMBER:
                     $obj = $stack[--$sp];
                     $name = $names[$code[$pc + 1]];
-                    $stack[$sp++] = $this->lookupMember($obj, $name);
+                    // Fast path: own default-attr data slot on a plain
+                    // JsObject. Direct array hit on the receiver's
+                    // dataSlots skips lookupMember -> JsObject::get ->
+                    // dataSlots, three layers of method dispatch.
+                    if (
+                        $obj instanceof JsObject
+                        && isset($obj->properties->dataSlots[$name])
+                    ) {
+                        $stack[$sp++] = $obj->properties->dataSlots[$name];
+                    } else {
+                        $stack[$sp++] = $this->lookupMember($obj, $name);
+                    }
                     $pc += 2;
                     break;
                 case Op::LOAD_COMPUTED:
@@ -698,7 +709,21 @@ final class VM
                     $val = $stack[--$sp];
                     $obj = $stack[--$sp];
                     $name = $names[$code[$pc + 1]];
-                    $this->writeMember($obj, $name, $val);
+                    // Fast path: assigning to an existing own default-
+                    // attr data slot. Per OrdinarySetWithOwnDescriptor
+                    // an own writable data property wins over any
+                    // prototype-chain accessor or readonly slot, so a
+                    // direct in-place write is spec-correct here. The
+                    // slow path handles non-extensible / accessor
+                    // setter / readonly proto / strict-mode error cases.
+                    if (
+                        $obj instanceof JsObject
+                        && isset($obj->properties->dataSlots[$name])
+                    ) {
+                        $obj->properties->dataSlots[$name] = $val;
+                    } else {
+                        $this->writeMember($obj, $name, $val);
+                    }
                     $stack[$sp++] = $val;
                     $pc += 2;
                     break;
