@@ -709,16 +709,22 @@ class JsArray extends JsObject
         if ($desc->value === null) {
             return false;
         }
-        // Treat null attribute fields as "missing → completed to true"
-        // (the spec ValidateAndApplyPropertyDescriptor path), not as
-        // explicit false.
-        if ($desc->writable === false) {
+        // Require all three attribute flags to be explicitly true. A
+        // null field means "not specified" — per spec
+        // ValidateAndApplyPropertyDescriptor, when there's no existing
+        // own property the missing attribute defaults to FALSE, not
+        // true. Treating null as default-true here would silently
+        // store an Object.defineProperty(arr, "0", {value: x}) (which
+        // should produce a non-writable / non-enum / non-configurable
+        // index) as a default-attr dense slot, breaking ~50 test262
+        // Object/defineProperty array-index tests.
+        if ($desc->writable !== true) {
             return false;
         }
-        if ($desc->enumerable === false) {
+        if ($desc->enumerable !== true) {
             return false;
         }
-        if ($desc->configurable === false) {
+        if ($desc->configurable !== true) {
             return false;
         }
         return true;
