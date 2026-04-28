@@ -149,6 +149,25 @@ class ModuleLoader
         $record = new ModuleRecord($absolutePath, $namespace);
         $this->modules[$absolutePath] = $record;
 
+        // JSON modules: per the import attributes / json-modules proposal,
+        // a .json source becomes a synthetic module whose only export is
+        // `default`, holding the parsed JSON value.
+        if (str_ends_with(strtolower($absolutePath), '.json')) {
+            $parsed = \PhpJs\BuiltIn\JsonObject::parseSource($source);
+            $namespace->defineOwnProperty(
+                'default',
+                PropertyDescriptor::data($parsed, false, true, false),
+            );
+            $namespace->setPrototype(null);
+            $toStringTagSym = \PhpJs\BuiltIn\SymbolConstructor::toStringTag();
+            $namespace->definePropertyBySymbol(
+                $toStringTagSym,
+                PropertyDescriptor::data(new JsString('Module'), false, false, false),
+            );
+            $record->exportsFinalized = true;
+            return $namespace;
+        }
+
         // Detect circular dependency.
         if (isset($this->evaluating[$absolutePath])) {
             return $namespace;

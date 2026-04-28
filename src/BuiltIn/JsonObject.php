@@ -414,6 +414,27 @@ class JsonObject
         return $result;
     }
 
+    /**
+     * Public JSON parse helper used by the module loader for JSON modules.
+     *
+     * Mirrors the JSON.parse fast path (no reviver). Throws SyntaxError on
+     * malformed input.
+     */
+    public static function parseSource(string $text): JsValue
+    {
+        $trimmed = trim($text);
+        if ($trimmed === '-0') {
+            return JsNumber::of(-0.0);
+        }
+        $decoded = json_decode($text);
+        if ($decoded === null && $trimmed !== 'null') {
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \PhpJs\Exceptions\SyntaxError('Unexpected token in JSON');
+            }
+        }
+        return self::phpToJsValue($decoded);
+    }
+
     private static function parse(): \Closure
     {
         return function (JsValue $this_, array $args): JsValue {
@@ -916,6 +937,9 @@ class JsonObject
                 } else {
                     $obj->properties->dataSlots[$key] = self::phpToJsValue($val);
                 }
+                // Insertion order must be tracked so Object.keys /
+                // ownPropertyNames / for-in see the JSON-decoded keys.
+                $obj->properties->order[$key] = true;
             }
             return $obj;
         }

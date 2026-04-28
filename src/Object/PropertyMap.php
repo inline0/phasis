@@ -42,7 +42,7 @@ class PropertyMap
      *
      * @var array<string, bool>
      */
-    private array $order = [];
+    public array $order = [];
 
     public function get(string $key): ?PropertyDescriptor
     {
