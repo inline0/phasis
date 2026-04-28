@@ -512,7 +512,7 @@ class ArrayConstructor
             1
         ), true, false, true));
 
-        $proto->defineOwnProperty('join', PropertyDescriptor::data(JsFunction::fromCallable(
+        $joinFn = JsFunction::fromCallable(
             'join',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
@@ -530,7 +530,9 @@ class ArrayConstructor
                 return new JsString(implode($sep, $parts));
             },
             1
-        ), true, false, true));
+        );
+        $joinFn->builtinKind = 'array.join';
+        $proto->defineOwnProperty('join', PropertyDescriptor::data($joinFn, true, false, true));
 
         $proto->defineOwnProperty('slice', PropertyDescriptor::data(JsFunction::fromCallable(
             'slice',

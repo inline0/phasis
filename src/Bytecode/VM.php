@@ -167,6 +167,43 @@ final class VM
                 }
                 return $receiver;
 
+            case 'array.join':
+                // Single-arg ASCII string join over a dense JsArray
+                // whose elements are all JsStrings. PHP's implode
+                // produces the spec result without per-element
+                // ToString invocations.
+                if ($argc > 1) {
+                    return null;
+                }
+                if ($argc === 1) {
+                    $sepArg = $args[0];
+                    if (!$sepArg instanceof JsString) {
+                        return null;
+                    }
+                    $sep = $sepArg->value;
+                } else {
+                    $sep = ',';
+                }
+                $len = $receiver->getLength();
+                $elements = $receiver->getDenseElements();
+                $parts = [];
+                for ($i = 0; $i < $len; $i++) {
+                    $el = $elements[$i] ?? null;
+                    if ($el instanceof JsString) {
+                        $parts[] = $el->value;
+                        continue;
+                    }
+                    if ($el === null || $el instanceof JsUndefined || $el instanceof JsNull) {
+                        $parts[] = '';
+                        continue;
+                    }
+                    // Non-string element would need spec ToString
+                    // (which can have side effects). Bail to spec
+                    // path so toString / valueOf hooks fire.
+                    return null;
+                }
+                return new JsString(implode($sep, $parts));
+
             case 'array.map':
                 if ($argc < 1 || !($args[0] instanceof JsFunction)) {
                     return null;
@@ -1010,6 +1047,27 @@ final class VM
                                 break;
                             }
                             $kind = $method->builtinKind;
+                            // String.prototype.split with a single
+                            // ASCII string separator → PHP explode.
+                            // Receiver must be a JsString (no auto-box
+                            // here; the inline path handles the bench
+                            // shape exactly). Arg must be a JsString.
+                            if (
+                                $kind === 'string.split'
+                                && $receiver instanceof JsString
+                                && $argc === 1
+                                && $args[0] instanceof JsString
+                                && $args[0]->value !== ''
+                            ) {
+                                $parts = explode($args[0]->value, $receiver->value);
+                                $arr = new \PhpJs\Value\JsArray();
+                                foreach ($parts as $p) {
+                                    $arr->push(new JsString($p));
+                                }
+                                $stack[$sp++] = $arr;
+                                $pc += 2;
+                                break;
+                            }
                             // JSON.parse / JSON.stringify dispatch goes
                             // straight to the native callable, skipping
                             // callFunction's tail-call trampoline +

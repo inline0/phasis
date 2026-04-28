@@ -163,6 +163,18 @@ class StringPrototype
             PropertyDescriptor::data(JsFunction::fromCallable($n, $fn, $len), true, false, true),
         );
 
+        // Tagged install for hot prototype methods that have a VM
+        // CALL_METHOD inline path. The fn object is reused (same
+        // descriptor), the only difference is the builtinKind marker.
+        $tagged = static function (string $n, \Closure $fn, int $len, string $kind) use ($proto): void {
+            $jf = JsFunction::fromCallable($n, $fn, $len);
+            $jf->builtinKind = $kind;
+            $proto->defineOwnProperty(
+                $n,
+                PropertyDescriptor::data($jf, true, false, true),
+            );
+        };
+
         $d('charAt', self::charAt(), 1);
         $d('charCodeAt', self::charCodeAt(), 1);
         $d('indexOf', self::indexOf(), 1);
@@ -179,7 +191,7 @@ class StringPrototype
         $d('trim', self::trim(), 0);
         $d('trimStart', self::trimStart(), 0);
         $d('trimEnd', self::trimEnd(), 0);
-        $d('split', self::split(), 2);
+        $tagged('split', self::split(), 2, 'string.split');
         $d('replace', self::replace(), 2);
         $d('repeat', self::repeat(), 1);
         $d('padStart', self::padStart(), 1);
