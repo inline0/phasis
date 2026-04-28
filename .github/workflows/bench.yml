@@ -43,9 +43,12 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: mbstring, bcmath, intl
+          extensions: mbstring, bcmath, intl, opcache
           coverage: none
-          ini-values: memory_limit=2G
+          # Tracing JIT with a generous code-cache buffer. Our hot dispatch
+          # loop is exactly the shape OPcache JIT specialises well: tight
+          # `switch` over int opcodes, frequent same-shape array indexing.
+          ini-values: memory_limit=2G, opcache.enable=1, opcache.enable_cli=1, opcache.jit=tracing, opcache.jit_buffer_size=128M
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
