@@ -326,6 +326,19 @@ class JsArray extends JsObject
                     }
                     return;
                 }
+                // Adding a NEW dense slot (no existing own slot,
+                // index extends the array) requires the array to be
+                // extensible. Object.preventExtensions / freeze /
+                // seal flips this — silently dropping the write in
+                // sloppy mode and throwing in strict mode.
+                if (!$hasOwnDense && !$this->isExtensible()) {
+                    if ($strict) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot add property {$name}, object is not extensible"
+                        );
+                    }
+                    return;
+                }
                 $this->denseElements[$idx] = $value;
                 if ($idx >= $this->length) {
                     $this->length = $idx + 1;
