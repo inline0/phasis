@@ -6375,6 +6375,36 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): ?JsValue {
+        // JS-to-PHP fast path: when the body is a tight numeric subset
+        // (arithmetic + locals + simple control flow, no calls / no
+        // member access), JsToPhp lowers it to a PHP closure that
+        // runs natively under PHP's tracing JIT. Bypasses the VM
+        // dispatch loop entirely. First call attempts the lowering;
+        // subsequent calls reuse the cached closure or skip the
+        // attempt entirely on prior bailout.
+        if (!$fn->phpCompileFailed) {
+            if ($fn->phpCompiled === null) {
+                try {
+                    $fn->phpCompiled = \PhpJs\Bytecode\JsToPhp::compile($fn);
+                } catch (\Throwable) {
+                    $fn->phpCompiled = null;
+                }
+                if ($fn->phpCompiled === null) {
+                    $fn->phpCompileFailed = true;
+                }
+            }
+            if ($fn->phpCompiled !== null) {
+                try {
+                    return ($fn->phpCompiled)($args, $fnEnv, $this);
+                } catch (\PhpJs\Bytecode\Bailout) {
+                    // Numeric assumption broken at run time (e.g. a
+                    // non-JsNumber arg). Fall through to the VM /
+                    // tree-walker path so this call still completes
+                    // correctly. The closure stays cached for future
+                    // calls that satisfy the numeric invariant.
+                }
+            }
+        }
         if ($fn->compileFailed) {
             return null;
         }

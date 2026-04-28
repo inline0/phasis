@@ -41,8 +41,6 @@ final class Frame
     ) {
         $this->env = $env;
         $this->thisValue = $thisValue;
-        // Pre-fill locals with undefined so unassigned slots don't trip
-        // PHP's undefined-index notice on first read.
         $this->locals = array_fill(0, max(1, $slotCount), $undefined);
     }
 

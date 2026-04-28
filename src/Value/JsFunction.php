@@ -525,6 +525,16 @@ class JsFunction extends JsObject
     public bool $compileFailed = false;
 
     /**
+     * JS-to-PHP source compilation cache. When the body is a tight
+     * numeric subset that JsToPhp can lower, this stores the eval'd
+     * PHP closure that runs the body natively (raw doubles, no VM
+     * dispatch). Cleared / never set on bailouts; phpCompileFailed
+     * prevents pointless recompile attempts on subsequent calls.
+     */
+    public ?\Closure $phpCompiled = null;
+    public bool $phpCompileFailed = false;
+
+    /**
      * Memoised: whether VM Op::CALL can dispatch this function via
      * Interpreter::executeVmFunctionDirect (the inlined fast path) or
      * must fall back to callFunction. Computed lazily after the
