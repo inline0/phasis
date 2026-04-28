@@ -859,6 +859,15 @@ final class JsToPhp
             return;
         }
         if ($node instanceof VariableDeclaration) {
+            if ($node->kind === 'using' || $node->kind === 'await using') {
+                // `using` declarations register a disposable on the
+                // current env, perform the spec's "must be Object" check,
+                // and run Symbol.dispose on scope exit. JsToPhp models
+                // locals as plain PHP variables and has no disposal hook;
+                // bail to the tree walker (or bytecode VM, which also
+                // bails).
+                throw new Bailout('using declaration');
+            }
             foreach ($node->declarations as $decl) {
                 if ($decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
                     // Object destructuring: collect each shorthand /

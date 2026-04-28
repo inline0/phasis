@@ -8402,11 +8402,18 @@ class Interpreter
     /** Register a disposable resource on the given environment. */
     private function registerDisposable(JsValue $value, bool $isAsync, Environment $env): void
     {
+        // Per spec AddDisposableResource: when sync-dispose, null/undefined
+        // are accepted and the binding is non-disposable. When async-dispose,
+        // null/undefined are also accepted (covered below).
         if ($value instanceof JsNull || $value instanceof JsUndefined) {
+            if ($isAsync) {
+                // For async-dispose with null/undefined, also accept and skip.
+                return;
+            }
             return;
         }
         if (!$value instanceof JsObject) {
-            throw new TypeError('The value is not an object or null/undefined.');
+            throw new TypeError('Using declaration initializer is not an Object');
         }
         if ($isAsync) {
             $asyncMethod = $value->getBySymbol(\PhpJs\BuiltIn\SymbolConstructor::asyncDispose());
