@@ -60,6 +60,23 @@ final class JsToPhp
     /** @var array<string, true> */
     private array $declaredLocals = [];
 
+    /**
+     * Per-local type kind. Values:
+     *   - 'numeric' (default): PHP raw double, stored in $_l_NAME.
+     *   - 'object'           : JsObject reference, stored in $_lo_NAME.
+     *
+     * Determined by a pre-walk that looks at every declarator init and
+     * assignment. A local that is ever assigned an ObjectExpression
+     * (and never assigned a numeric expression) becomes 'object';
+     * everything else stays 'numeric'. Mixed (numeric + object on
+     * different paths) is a compile-time bailout — the slot type
+     * choice has to be unambiguous so the emitted PHP can pick the
+     * right variable name.
+     *
+     * @var array<string, string>
+     */
+    private array $localTypes = [];
+
     /** @var array<string, true> Free variables referenced by the body. */
     private array $freeVars = [];
 
@@ -86,9 +103,6 @@ final class JsToPhp
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
-            if (getenv('JSTOPHP_DEBUG') !== false) {
-                fwrite(STDERR, "JsToPhp BAIL non-node body for {$fn->getName()}\n");
-            }
             return null;
         }
         $compiler = new self();
@@ -118,18 +132,12 @@ final class JsToPhp
                 }
                 $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
             }
-        } catch (Bailout $e) {
-            if (getenv('JSTOPHP_DEBUG') !== false) {
-                fwrite(STDERR, "JsToPhp BAIL for {$fn->getName()}: {$e->getMessage()}\n");
-            }
+        } catch (Bailout) {
             return null;
         }
         $php = "return function (\$args, \$env, \$interp) {\n"
             . $compiler->out
             . "};";
-        if (getenv('JSTOPHP_DEBUG') !== false) {
-            fwrite(STDERR, "=== JsToPhp OK for {$fn->getName()} ===\n{$php}\n=== end ===\n");
-        }
         try {
             /** @var \Closure $closure */
             $closure = eval($php);
@@ -156,7 +164,13 @@ final class JsToPhp
                 if (!$decl->id instanceof Identifier) {
                     throw new Bailout('non-identifier var');
                 }
-                $this->declaredLocals[$decl->id->name] = true;
+                $name = $decl->id->name;
+                $this->declaredLocals[$name] = true;
+                // Type inference: ObjectExpression init → object slot.
+                // Anything else stays in the default numeric pool.
+                if ($decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+                    $this->markLocalAsObject($name);
+                }
             }
             return;
         }
@@ -194,6 +208,13 @@ final class JsToPhp
                 throw new Bailout('non-identifier param');
             }
             $name = $param->name;
+            // Params are always numeric in our profile — inferring
+            // object-typed parameters would require call-site type
+            // info we don't have. Object-typed locals can only come
+            // from ObjectExpression initializers in the body.
+            if (($this->localTypes[$name] ?? 'numeric') !== 'numeric') {
+                throw new Bailout('object-typed param');
+            }
             $php = $this->slotVar($name);
             $this->emitLine(
                 $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
@@ -212,14 +233,41 @@ final class JsToPhp
                 }
             }
             if (!$isParam) {
-                $this->emitLine($this->slotVar($name) . ' = 0.0;');
+                if (($this->localTypes[$name] ?? 'numeric') === 'object') {
+                    // Initialised by an ObjectExpression assignment
+                    // later. Pre-declare to silence "undefined" reads
+                    // on a control-flow path that never assigns.
+                    $this->emitLine($this->slotVar($name) . ' = null;');
+                } else {
+                    $this->emitLine($this->slotVar($name) . ' = 0.0;');
+                }
             }
         }
     }
 
     private function slotVar(string $name): string
     {
-        return '$_l_' . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
+        // Object-typed locals get a distinct prefix so the emitted
+        // code doesn't accidentally treat them as raw doubles
+        // anywhere a name->variable lookup happens.
+        $prefix = ($this->localTypes[$name] ?? 'numeric') === 'object'
+            ? '$_lo_'
+            : '$_l_';
+        return $prefix . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
+    }
+
+    /**
+     * Mark a local as object-typed, ensuring no conflicting prior
+     * marker exists. The same local being seen as both numeric and
+     * object on different code paths would force per-path type
+     * unification we don't model — bail in that case.
+     */
+    private function markLocalAsObject(string $name): void
+    {
+        if (($this->localTypes[$name] ?? null) === 'numeric') {
+            throw new Bailout('local ' . $name . ' is mixed numeric/object');
+        }
+        $this->localTypes[$name] = 'object';
     }
 
     private function freeVar(string $name): string
@@ -254,12 +302,26 @@ final class JsToPhp
                 if (!$decl->id instanceof Identifier) {
                     throw new Bailout('var decl pattern');
                 }
+                $name = $decl->id->name;
                 if ($decl->init === null) {
-                    $this->emitLine($this->slotVar($decl->id->name) . ' = 0.0;');
+                    if (($this->localTypes[$name] ?? 'numeric') === 'object') {
+                        $this->emitLine($this->slotVar($name) . ' = null;');
+                    } else {
+                        $this->emitLine($this->slotVar($name) . ' = 0.0;');
+                    }
+                } elseif (
+                    $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
+                    && ($this->localTypes[$name] ?? null) === 'object'
+                ) {
+                    // Object literal init: emit JsObject construction
+                    // and assign the temp to the object-typed slot.
+                    $temp = $this->emitObjectLiteral($decl->init);
+                    $this->flushPending();
+                    $this->emitLine($this->slotVar($name) . ' = ' . $temp . ';');
                 } else {
                     $val = $this->emitExpression($decl->init);
                     $this->flushPending();
-                    $this->emitLine($this->slotVar($decl->id->name) . ' = ' . $val . ';');
+                    $this->emitLine($this->slotVar($name) . ' = ' . $val . ';');
                 }
             }
             return;
@@ -381,6 +443,50 @@ final class JsToPhp
             $this->emitLine($line);
         }
         $this->pendingStatements = [];
+    }
+
+    /**
+     * Lower an ObjectExpression to a $_obj_N PHP local holding a
+     * fresh JsObject with the literal's properties pre-populated as
+     * dataSlots. Returns the temp name. Only callable from contexts
+     * where a JsValue (not raw double) is the expected slot type:
+     * VariableDeclaration init for an object-typed local, or
+     * AssignmentExpression `=` with an object-typed local LHS.
+     */
+    private function emitObjectLiteral(\PhpJs\Ast\Expression\ObjectExpression $node): string
+    {
+        $temp = $this->newTemp('obj');
+        $this->pendingStatements[] = $temp . ' = new \\PhpJs\\Value\\JsObject();';
+        foreach ($node->properties as $prop) {
+            if (!$prop instanceof \PhpJs\Ast\Expression\Property) {
+                throw new Bailout('non-Property in object literal');
+            }
+            if ($prop->kind !== 'init') {
+                throw new Bailout('object literal getter/setter');
+            }
+            if ($prop->computed) {
+                throw new Bailout('object literal computed key');
+            }
+            $key = null;
+            if ($prop->key instanceof Identifier) {
+                $key = $prop->key->name;
+            } elseif ($prop->key instanceof Literal && is_string($prop->key->value)) {
+                $key = $prop->key->value;
+            } else {
+                throw new Bailout('object literal weird key');
+            }
+            // Property values are emitted via the numeric pipeline.
+            // Function-expression / nested-object property values bail
+            // (the inner emitExpression encounters them in the numeric
+            // context and refuses), which is exactly what we want for
+            // safety against shape-mismatched literals like
+            // `{valueOf: function() {...}}` that test262 uses.
+            $valueExpr = $this->emitExpression($prop->value);
+            $this->pendingStatements[] = $temp . '->properties->dataSlots['
+                . var_export($key, true) . '] = \\PhpJs\\Value\\JsNumber::of((float)('
+                . $valueExpr . '));';
+        }
+        return $temp;
     }
 
     /**
@@ -510,6 +616,36 @@ final class JsToPhp
             return '(' . $slot . ' ' . $op . ')';
         }
         if ($node instanceof AssignmentExpression) {
+            // obj.prop = value: lower to a direct dataSlots write on
+            // the receiver's PHP local. Only supports identifier
+            // receiver + identifier key (the obj-prop bench shape).
+            if (
+                $node->left instanceof \PhpJs\Ast\Expression\MemberExpression
+                && !$node->left->computed
+                && $node->left->object instanceof Identifier
+                && $node->left->property instanceof Identifier
+                && $node->operator === '='
+            ) {
+                $recvName = $node->left->object->name;
+                if (
+                    !isset($this->declaredLocals[$recvName])
+                    || ($this->localTypes[$recvName] ?? 'numeric') !== 'object'
+                ) {
+                    throw new Bailout('member write on non-object local');
+                }
+                $recv = $this->slotVar($recvName);
+                $key = $node->left->property->name;
+                $val = $this->emitExpression($node->right);
+                $temp = $this->newTemp('mw');
+                $this->pendingStatements[] = $temp
+                    . ' = \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));';
+                $this->pendingStatements[] = $recv . '->properties->dataSlots['
+                    . var_export($key, true) . '] = ' . $temp . ';';
+                // Expression value of assignment is the assigned RHS;
+                // most callers (ExpressionStatement) discard it, but
+                // return the boxed JsValue so chained assignment works.
+                return $temp;
+            }
             if (!$node->left instanceof Identifier) {
                 throw new Bailout('assign to non-identifier');
             }
@@ -554,6 +690,46 @@ final class JsToPhp
         }
         if ($node instanceof CallExpression) {
             return $this->emitCallExpression($node);
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ObjectExpression) {
+            // Object literals are only allowed as the RHS of a
+            // VariableDeclaration or assignment to an object-typed
+            // local. emitObjectLiteral handles both contexts; reaching
+            // emitExpression with one means it appeared in an
+            // arithmetic / member-of expression where the numeric
+            // pipeline can't cope with a JsObject value. Bail so the
+            // tree-walker handles it correctly (e.g. ToPrimitive
+            // coercion via valueOf).
+            throw new Bailout('object literal in numeric context');
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+            // Read of obj.prop. Receiver must be a known object-typed
+            // local; the dataSlots access yields a JsValue that we
+            // unbox to a numeric raw double for downstream arithmetic.
+            if ($node->computed) {
+                throw new Bailout('member read computed key');
+            }
+            if (!$node->object instanceof Identifier) {
+                throw new Bailout('member read non-identifier receiver');
+            }
+            $recvName = $node->object->name;
+            if (
+                !isset($this->declaredLocals[$recvName])
+                || ($this->localTypes[$recvName] ?? 'numeric') !== 'object'
+            ) {
+                throw new Bailout('member read on non-object local');
+            }
+            if (!$node->property instanceof Identifier) {
+                throw new Bailout('member read non-identifier property');
+            }
+            $key = $node->property->name;
+            $recv = $this->slotVar($recvName);
+            $temp = $this->newTemp('mr');
+            $this->pendingStatements[] = $temp . ' = ' . $recv
+                . '->properties->dataSlots[' . var_export($key, true) . '] ?? null;';
+            $this->pendingStatements[] = 'if (!(' . $temp
+                . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric member read"); }';
+            return $temp . '->value';
         }
         throw new Bailout('unsupported expr: ' . $node->type());
     }
