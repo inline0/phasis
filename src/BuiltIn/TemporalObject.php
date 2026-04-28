@@ -5645,6 +5645,12 @@ class TemporalObject
      * is needed; unchanged offsets bypass the slow path. */
     private static function tzHasTransitionBetween(string $tz, string $startNs, string $endNs): bool
     {
+        // Fixed-offset zones (e.g. "-0700", "+05:30") have no DST, so no
+        // transitions can occur. Skip the lookup — DateTimeZone::getTransitions
+        // returns false for these and would crash count().
+        if (self::isFixedOffset($tz)) {
+            return false;
+        }
         try {
             $tzObj = self::resolveTimeZone($tz);
         } catch (\Throwable) {
