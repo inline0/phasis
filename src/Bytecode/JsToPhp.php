@@ -66,15 +66,16 @@ final class JsToPhp
      *   - 'numeric'  (default): PHP raw double, stored in $_l_NAME.
      *   - 'object'           : JsObject reference, stored in $_lo_NAME.
      *   - 'function'         : JsFunction reference, stored in $_lf_NAME.
+     *   - 'array'            : JsArray reference, stored in $_la_NAME.
      *
      * Determined by a pre-walk that looks at every declarator init and
      * assignment. A local that is ever assigned an ObjectExpression
      * (and never assigned a numeric expression) becomes 'object';
      * a local declared as a FunctionDeclaration or used as a callee
-     * becomes 'function'; everything else stays 'numeric'. Mixed
-     * (numeric + object on different paths) is a compile-time bailout
-     * — the slot type choice has to be unambiguous so the emitted PHP
-     * can pick the right variable name.
+     * becomes 'function'; a local initialised with an ArrayExpression
+     * (or assigned one) becomes 'array'; everything else stays
+     * 'numeric'. Mixed types on different paths is a compile-time
+     * bailout so the emitted PHP slot variable is unambiguous.
      *
      * @var array<string, string>
      */
@@ -229,6 +230,9 @@ final class JsToPhp
                 $this->declaredLocals[$name] = true;
                 if ($decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression) {
                     $this->markLocalAsObject($name);
+                }
+                if ($decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression) {
+                    $this->markLocalAsArray($name);
                 }
             }
             // Recurse into initializers so callee-usage inside an init
@@ -576,11 +580,11 @@ final class JsToPhp
             }
             if (!$isParam) {
                 $kind = $this->localTypes[$name] ?? 'numeric';
-                if ($kind === 'object' || $kind === 'function') {
-                    // Initialised later (ObjectExpression assignment
-                    // or FunctionDeclaration / call result). Predeclare
-                    // to null to silence "undefined" reads on a
-                    // control-flow path that never assigns.
+                if ($kind === 'object' || $kind === 'function' || $kind === 'array') {
+                    // Initialised later (ObjectExpression / ArrayExpression
+                    // assignment, FunctionDeclaration, or call result).
+                    // Predeclare to null so reads on a control-flow path
+                    // that never assigns are well-defined.
                     $this->emitLine($this->slotVar($name) . ' = null;');
                 } else {
                     $this->emitLine($this->slotVar($name) . ' = 0.0;');
@@ -593,10 +597,12 @@ final class JsToPhp
     {
         // Distinct prefix per type so the emitted code never mixes
         // raw doubles with JsValue references at a name->variable
-        // lookup. 'function' uses $_lf_ for JsFunction references.
+        // lookup. 'function' uses $_lf_, 'array' uses $_la_ for the
+        // boxed JsValue references.
         $prefix = match ($this->localTypes[$name] ?? 'numeric') {
             'object' => '$_lo_',
             'function' => '$_lf_',
+            'array' => '$_la_',
             default => '$_l_',
         };
         return $prefix . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
@@ -633,6 +639,20 @@ final class JsToPhp
     }
 
     /**
+     * Mark a local as array-typed (slot holds a JsArray reference).
+     * Triggered by an ArrayExpression initializer or assignment.
+     * Mixed types bail.
+     */
+    private function markLocalAsArray(string $name): void
+    {
+        $existing = $this->localTypes[$name] ?? null;
+        if ($existing !== null && $existing !== 'array') {
+            throw new Bailout('local ' . $name . ' is mixed type');
+        }
+        $this->localTypes[$name] = 'array';
+    }
+
+    /**
      * Walk expressions for `local = ObjectExpression` patterns to
      * mark the local as object-typed during the pre-walk. Without
      * this, the obj-create benchmark's `last = {...}` loop would
@@ -645,10 +665,18 @@ final class JsToPhp
             $node instanceof AssignmentExpression
             && $node->operator === '='
             && $node->left instanceof Identifier
-            && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
         ) {
-            if (isset($this->declaredLocals[$node->left->name])) {
+            if (
+                $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
+                && isset($this->declaredLocals[$node->left->name])
+            ) {
                 $this->markLocalAsObject($node->left->name);
+            }
+            if (
+                $node->right instanceof \PhpJs\Ast\Expression\ArrayExpression
+                && isset($this->declaredLocals[$node->left->name])
+            ) {
+                $this->markLocalAsArray($node->left->name);
             }
         }
     }
@@ -721,11 +749,24 @@ final class JsToPhp
                 $name = $decl->id->name;
                 $kind = $this->localTypes[$name] ?? 'numeric';
                 if ($decl->init === null) {
-                    if ($kind === 'object' || $kind === 'function') {
+                    if ($kind === 'object' || $kind === 'function' || $kind === 'array') {
                         $this->emitLine($this->slotVar($name) . ' = null;');
                     } else {
                         $this->emitLine($this->slotVar($name) . ' = 0.0;');
                     }
+                } elseif (
+                    $decl->init instanceof \PhpJs\Ast\Expression\ArrayExpression
+                    && $kind === 'array'
+                ) {
+                    // Array literal init: empty `[]` → fresh JsArray.
+                    // Non-empty literals would need element evaluation;
+                    // bail until we extend support.
+                    if ($decl->init->elements !== []) {
+                        throw new Bailout('non-empty array literal');
+                    }
+                    $this->emitLine(
+                        $this->slotVar($name) . ' = new \\PhpJs\\Value\\JsArray();'
+                    );
                 } elseif (
                     $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
                     && $kind === 'object'
@@ -1006,6 +1047,18 @@ final class JsToPhp
         }
         if ($node instanceof Identifier) {
             if (isset($this->declaredLocals[$node->name])) {
+                // Non-numeric locals can't be used in the numeric
+                // expression pipeline (the caller would feed a JsValue
+                // ref into JsNumber::of() / arithmetic). The dedicated
+                // member-read / member-call / call-as-callee handlers
+                // bypass emitExpression entirely, so reaching this
+                // branch with an object/function/array-typed local
+                // means the local is being read in a context our
+                // numeric pipeline can't lower. Bail.
+                $kind = $this->localTypes[$node->name] ?? 'numeric';
+                if ($kind !== 'numeric') {
+                    throw new Bailout('non-numeric local in expression: ' . $node->name);
+                }
                 return $this->slotVar($node->name);
             }
             // Free variable: read from env, unbox to raw double on
@@ -1203,25 +1256,31 @@ final class JsToPhp
         }
         if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
             // Read of obj.prop. Receiver must be a known object-typed
-            // local; the dataSlots access yields a JsValue that we
-            // unbox to a numeric raw double for downstream arithmetic.
+            // local (dataSlots dereferenced, unbox to numeric) or an
+            // array-typed local with key 'length' (returns the live
+            // length count as a numeric).
             if ($node->computed) {
                 throw new Bailout('member read computed key');
             }
             if (!$node->object instanceof Identifier) {
                 throw new Bailout('member read non-identifier receiver');
             }
-            $recvName = $node->object->name;
-            if (
-                !isset($this->declaredLocals[$recvName])
-                || ($this->localTypes[$recvName] ?? 'numeric') !== 'object'
-            ) {
-                throw new Bailout('member read on non-object local');
-            }
             if (!$node->property instanceof Identifier) {
                 throw new Bailout('member read non-identifier property');
             }
+            $recvName = $node->object->name;
             $key = $node->property->name;
+            $recvKind = $this->localTypes[$recvName] ?? 'numeric';
+            if (!isset($this->declaredLocals[$recvName])) {
+                throw new Bailout('member read on non-local');
+            }
+            if ($recvKind === 'array' && $key === 'length') {
+                $recv = $this->slotVar($recvName);
+                return '((float) ' . $recv . '->getLength())';
+            }
+            if ($recvKind !== 'object') {
+                throw new Bailout('member read on non-object local');
+            }
             $recv = $this->slotVar($recvName);
             $temp = $this->newTemp('mr');
             $this->pendingStatements[] = $temp . ' = ' . $recv
@@ -1244,6 +1303,33 @@ final class JsToPhp
      */
     private function emitCallExpression(CallExpression $node): string
     {
+        // Method call shortcut: `arr.push(val)` on an array-typed
+        // local goes straight to JsArray::push without resolving the
+        // method through the prototype chain. Returns the new length
+        // as a numeric raw double, matching the VM inline path.
+        if (
+            $node->callee instanceof \PhpJs\Ast\Expression\MemberExpression
+            && !$node->callee->computed
+            && $node->callee->object instanceof Identifier
+            && $node->callee->property instanceof Identifier
+        ) {
+            $recvName = $node->callee->object->name;
+            if (
+                isset($this->declaredLocals[$recvName])
+                && ($this->localTypes[$recvName] ?? 'numeric') === 'array'
+                && $node->callee->property->name === 'push'
+                && count($node->arguments) === 1
+                && !($node->arguments[0] instanceof \PhpJs\Ast\Expression\SpreadElement)
+            ) {
+                $argExpr = $this->emitExpression($node->arguments[0]);
+                $recv = $this->slotVar($recvName);
+                $valTemp = $this->newTemp('av');
+                $this->pendingStatements[] = $valTemp
+                    . ' = \\PhpJs\\Value\\JsNumber::of(' . $argExpr . ');';
+                $this->pendingStatements[] = $recv . '->push(' . $valTemp . ');';
+                return '((float) ' . $recv . '->getLength())';
+            }
+        }
         $resultTemp = $this->emitCallCore($node);
         // The numeric pipeline expects a raw double. The callee's
         // contract is `JsNumber` — anything else triggers a Bailout
