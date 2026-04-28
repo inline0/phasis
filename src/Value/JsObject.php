@@ -10,6 +10,21 @@ use PhpJs\Object\PropertyMap;
 class JsObject implements JsValue
 {
     /**
+     * Monotonic counter bumped on any object-shape mutation across all
+     * JsObject instances: defineOwnProperty (add or descriptor-shape
+     * change), set on a slow descriptor (value mutation visible to
+     * LOAD_MEMBER cache), delete, setPrototype, preventExtensions.
+     *
+     * The VM's Op::LOAD_MEMBER inline cache stamps each entry with the
+     * version observed at capture time and skips re-resolving on
+     * matched receiver-class hits when the version still agrees. Plain
+     * dataSlot writes via the VM's STORE_MEMBER fast path don't bump
+     * (the value lives in the receiver's own dataSlots, which the
+     * LOAD_MEMBER fast path reads inline without consulting the cache).
+     */
+    public static int $shapeVersion = 0;
+
+    /**
      * Public so the VM dispatch loop can read/write the dataSlots
      * fast-path inline (Op::LOAD_MEMBER, Op::STORE_MEMBER) without
      * paying the method-dispatch tax. Subclasses (JsArray, JsProxy,
@@ -133,6 +148,7 @@ class JsObject implements JsValue
     public function preventExtensions(): bool
     {
         $this->extensible = false;
+        self::$shapeVersion++;
         return true;
     }
 
@@ -302,6 +318,13 @@ class JsObject implements JsValue
                 && $ownDesc->isDataDescriptor()
             ) {
                 $ownDesc->value = $value;
+                // Slow-descriptor value mutations are observable to the
+                // LOAD_MEMBER inline cache (e.g. someone reassigning
+                // Array.prototype.push). The dataSlot fast path above
+                // doesn't need this bump because LOAD_MEMBER's inline
+                // path reads dataSlots directly without consulting the
+                // cache.
+                self::$shapeVersion++;
                 return true;
             }
             return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
@@ -830,6 +853,7 @@ class JsObject implements JsValue
             return false;
         }
 
+        self::$shapeVersion++;
         return $this->properties->delete($name);
     }
 
@@ -1169,6 +1193,9 @@ class JsObject implements JsValue
             && $desc->writable !== false
         ) {
             $desc->value = $value;
+            // Mirror the slow-descriptor mutation bump in internalSet:
+            // the LOAD_MEMBER cache must see this update.
+            self::$shapeVersion++;
             return true;
         }
         return false;
@@ -1218,6 +1245,12 @@ class JsObject implements JsValue
      */
     public function defineOwnProperty(string $name, PropertyDescriptor $desc): bool
     {
+        // Bump shape version on every define: even if the property
+        // already exists, the descriptor's shape (writable, enumerable,
+        // configurable, accessor↔data) may change in ways the LOAD_MEMBER
+        // IC must observe. Doing it at the entry rather than on
+        // success keeps the bump cheap and the IC conservative.
+        self::$shapeVersion++;
         // Module namespace exotic [[DefineOwnProperty]] (§10.4.6.5): once the
         // namespace is fully assembled, string-keyed exports can be only
         // trivially re-defined with matching descriptors and never mutated.
@@ -1397,6 +1430,7 @@ class JsObject implements JsValue
     public function setPrototype(?JsObject $prototype): void
     {
         $this->prototype = $prototype;
+        self::$shapeVersion++;
     }
 
     public function getProperties(): PropertyMap

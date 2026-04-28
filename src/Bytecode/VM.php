@@ -712,7 +712,30 @@ final class VM
                     ) {
                         $stack[$sp++] = $obj->properties->dataSlots[$name];
                     } else {
-                        $stack[$sp++] = $this->lookupMember($obj, $name);
+                        // Inline cache for prototype / non-default
+                        // resolutions. Hit on monomorphic call sites
+                        // when neither the receiver class nor the
+                        // global shape version has changed since the
+                        // last miss.
+                        $ic = $cf->loadMemberIc[$pc] ?? null;
+                        if (
+                            $ic !== null
+                            && $obj instanceof JsObject
+                            && $ic[2] === \PhpJs\Value\JsObject::$shapeVersion
+                            && $ic[0] === $obj::class
+                        ) {
+                            $stack[$sp++] = $ic[1];
+                        } else {
+                            $resolved = $this->lookupMember($obj, $name);
+                            if ($obj instanceof JsObject) {
+                                $cf->loadMemberIc[$pc] = [
+                                    $obj::class,
+                                    $resolved,
+                                    \PhpJs\Value\JsObject::$shapeVersion,
+                                ];
+                            }
+                            $stack[$sp++] = $resolved;
+                        }
                     }
                     $pc += 2;
                     break;

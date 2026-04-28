@@ -34,6 +34,23 @@ final class CompiledFunction
     public array $loadNameIc = [];
 
     /**
+     * Inline cache for LOAD_MEMBER, indexed by PC. Each entry is a
+     * tuple [receiverClass, value, shapeVersion] captured at first
+     * miss. The cache hits when the next access at the same PC sees
+     * the same receiver class AND the global JsObject::$shapeVersion
+     * still matches. Designed to skip the prototype-chain walk for
+     * stable property lookups like `arr.push` where the resolution
+     * never changes between calls.
+     *
+     * The dataSlot inline fast path in Op::LOAD_MEMBER short-circuits
+     * before this cache fires, so own default-attr properties don't
+     * pollute it.
+     *
+     * @var array<int, array{0: string, 1: JsValue, 2: int}>
+     */
+    public array $loadMemberIc = [];
+
+    /**
      * Exception-handler table for this function's bytecode. Each entry
      * defines a [tryStart, tryEnd) PC range, a catchPc to jump to on
      * throw, an exception slot for the catch parameter, and the
