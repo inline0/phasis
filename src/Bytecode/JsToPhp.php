@@ -141,6 +141,21 @@ final class JsToPhp
 
     public static function compile(JsFunction $fn): ?\Closure
     {
+        // Class / derived constructors and method-bound functions
+        // (homeObject != null) carry spec semantics — `this`, `super`,
+        // [[NewTarget]], MakeSuperPropertyKey — that the JsToPhp emit
+        // can't model. The execution-side dispatch already gates on
+        // these flags, but tryRunOnVm invokes phpCompiled BEFORE that
+        // gate, so we have to refuse to compile here. `super()` in a
+        // derived ctor was leaking through as `$env->get("super")`
+        // which then ReferenceError-ed at runtime.
+        if (
+            $fn->isClassConstructor()
+            || $fn->isDerivedConstructor()
+            || $fn->getHomeObject() !== null
+        ) {
+            return null;
+        }
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
