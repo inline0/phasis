@@ -170,13 +170,13 @@ class JsObject implements JsValue
 
     public function get(string $name): JsValue
     {
-        // Inlined hot path: own data property with no getter walks no
-        // prototypes. Saves the trampoline through getWithReceiver →
-        // getWithValueReceiver → PropertyMap::get for the common case
-        // (~80% of property reads in real workloads).
-        $desc = $this->properties->get($name);
-        if ($desc !== null && $desc->get === null) {
-            return $desc->value ?? JsUndefined::instance();
+        // Inlined hot path: own default-attr data slot. The slot stores
+        // the raw JsValue directly (no PropertyDescriptor wrapper), so
+        // a single hash hit and one instanceof check produce the value.
+        // ~80% of property reads in real workloads land here.
+        $val = $this->properties->slots[$name] ?? null;
+        if ($val instanceof JsValue) {
+            return $val;
         }
         return $this->getWithReceiver($name, $this);
     }
@@ -211,13 +211,17 @@ class JsObject implements JsValue
      */
     public function getWithValueReceiver(string $name, JsValue $receiver): JsValue
     {
-        $desc = $this->properties->get($name);
-        if ($desc !== null) {
-            if ($desc->get !== null) {
-                return $desc->get->call($receiver, []);
+        $val = $this->properties->slots[$name] ?? null;
+        if ($val instanceof JsValue) {
+            // Fast slot: default-attr data slot, no descriptor wrapper.
+            return $val;
+        }
+        if ($val !== null) {
+            // Slow descriptor (accessor or non-default attrs).
+            if ($val->get !== null) {
+                return $val->get->call($receiver, []);
             }
-
-            return $desc->value ?? JsUndefined::instance();
+            return $val->value ?? JsUndefined::instance();
         }
 
         $proto = $this->getPrototype();
@@ -270,29 +274,32 @@ class JsObject implements JsValue
         if ($this->isModuleNamespace && !self::isInternalSlot($name)) {
             return false;
         }
-        // Fast path: receiver === this, the property exists as a writable
-        // data descriptor with no getter/setter. ~95% of property writes
-        // in real code update an existing field on the same object.
-        // Mutating the descriptor's value field avoids allocating a fresh
-        // PropertyDescriptor and skips the OrdinarySet trampoline.
-        // The isDataDescriptor() check guards against an accessor whose
-        // get/set were both explicitly set to undefined (defineProperty
-        // with `{set: undefined}`): such a descriptor has get===null and
-        // set===null but is still an accessor, and assignments to it
-        // must fail per OrdinarySetWithOwnDescriptor.
+        // Fast path: receiver === this with an own default-attr data
+        // slot. Direct array set, no method dispatch, no descriptor
+        // allocation. Covers ~95% of property writes — repeated
+        // updates to existing fields on the same object.
         if ($receiver === $this) {
-            $ownDesc = $this->properties->get($name);
-            if (
-                $ownDesc !== null
-                && $ownDesc->get === null
-                && $ownDesc->set === null
-                && $ownDesc->writable !== false
-                && $ownDesc->isDataDescriptor()
-            ) {
-                $ownDesc->value = $value;
+            $existing = $this->properties->slots[$name] ?? null;
+            if ($existing instanceof JsValue) {
+                $this->properties->slots[$name] = $value;
                 return true;
             }
-            return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
+            if ($existing === null) {
+                return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, null);
+            }
+            // Slow descriptor: writable data property → in-place update.
+            // Reject explicit {get: undefined, set: undefined} accessor
+            // descriptors via isDataDescriptor().
+            if (
+                $existing->get === null
+                && $existing->set === null
+                && $existing->writable !== false
+                && $existing->isDataDescriptor()
+            ) {
+                $existing->value = $value;
+                return true;
+            }
+            return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $existing);
         }
         $ownDesc = $this->getOwnPropertyDescriptor($name);
         return $this->ordinarySetWithOwnDescriptor($name, $value, $receiver, $ownDesc);
@@ -1145,14 +1152,18 @@ class JsObject implements JsValue
      */
     public function tryUpdateDataValue(string $name, JsValue $value): bool
     {
-        $desc = $this->properties->get($name);
+        $existing = $this->properties->slots[$name] ?? null;
+        if ($existing instanceof JsValue) {
+            $this->properties->slots[$name] = $value;
+            return true;
+        }
         if (
-            $desc !== null
-            && $desc->get === null
-            && $desc->set === null
-            && $desc->writable !== false
+            $existing !== null
+            && $existing->get === null
+            && $existing->set === null
+            && $existing->writable !== false
         ) {
-            $desc->value = $value;
+            $existing->value = $value;
             return true;
         }
         return false;
@@ -1174,22 +1185,24 @@ class JsObject implements JsValue
             // Module namespaces have specialised semantics; fall back.
             return $this->defineOwnProperty($name, PropertyDescriptor::data($value));
         }
-        if (!$this->extensible && $this->properties->get($name) === null) {
-            return false;
+        $existing = $this->properties->slots[$name] ?? null;
+        if ($existing === null) {
+            if (!$this->extensible) {
+                return false;
+            }
+            // Brand-new fast slot, no descriptor allocation.
+            $this->properties->slots[$name] = $value;
+            return true;
         }
-        // If a descriptor already exists, fall back to the merge path so
-        // configurability / writability / accessor↔data conversion semantics
-        // stay correct.
-        if ($this->properties->get($name) !== null) {
-            return $this->defineOwnProperty($name, PropertyDescriptor::data($value));
+        if ($existing instanceof JsValue) {
+            // Existing fast slot: in-place value swap.
+            $this->properties->slots[$name] = $value;
+            return true;
         }
-        $this->properties->set($name, new PropertyDescriptor(
-            value: $value,
-            writable: true,
-            enumerable: true,
-            configurable: true,
-        ));
-        return true;
+        // Existing slow descriptor: take the merge path so
+        // configurability / writability / accessor↔data conversion
+        // semantics stay correct.
+        return $this->defineOwnProperty($name, PropertyDescriptor::data($value));
     }
 
     /**
