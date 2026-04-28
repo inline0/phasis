@@ -255,6 +255,7 @@ class TemporalObject
 
         // Symbol.toStringTag = "Temporal.Instant"
         self::setToStringTag($proto, 'Temporal.Instant');
+        self::installTemporalToPrimitive($proto, 'Instant');
 
         $proto->defineOwnProperty('constructor', PropertyDescriptor::data(JsUndefined::instance(), true, false, true));
 
@@ -772,6 +773,7 @@ class TemporalObject
         }, 0);
 
         self::setToStringTag($proto, 'Temporal.Duration');
+        self::installTemporalToPrimitive($proto, 'Duration');
 
         // Constructor
         $ctor = JsFunction::fromCallable('Duration', function (JsValue $this_, array $args) use ($proto): JsValue {
@@ -1631,6 +1633,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainDate');
+        self::installTemporalToPrimitive($proto, 'PlainDate');
 
         // Constructor
         $ctor = JsFunction::fromCallable('PlainDate', function (JsValue $this_, array $args) use ($proto): JsValue {
@@ -1964,6 +1967,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainTime');
+        self::installTemporalToPrimitive($proto, 'PlainTime');
 
         $ctor = JsFunction::fromCallable('PlainTime', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -2724,6 +2728,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainDateTime');
+        self::installTemporalToPrimitive($proto, 'PlainDateTime');
 
         $ctor = JsFunction::fromCallable('PlainDateTime', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -3207,6 +3212,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainYearMonth');
+        self::installTemporalToPrimitive($proto, 'PlainYearMonth');
 
         $ctor = JsFunction::fromCallable('PlainYearMonth', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -3639,6 +3645,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.PlainMonthDay');
+        self::installTemporalToPrimitive($proto, 'PlainMonthDay');
 
         $ctor = JsFunction::fromCallable('PlainMonthDay', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -4814,6 +4821,7 @@ class TemporalObject
         }, 1);
 
         self::setToStringTag($proto, 'Temporal.ZonedDateTime');
+        self::installTemporalToPrimitive($proto, 'ZonedDateTime');
 
         $ctor = JsFunction::fromCallable('ZonedDateTime', function (JsValue $this_, array $args) use ($proto): JsValue {
             if (!$this_ instanceof JsObject || !$this_->has('[[NewTarget]]')) {
@@ -15233,6 +15241,50 @@ class TemporalObject
         $obj->definePropertyBySymbol(
             $sym,
             PropertyDescriptor::data(new JsString($tag), false, false, true),
+        );
+    }
+
+    /**
+     * Install Temporal.<Type>.prototype[@@toPrimitive] on the given
+     * prototype. Per spec, every Temporal type's @@toPrimitive returns
+     * the result of toString() for the "string" and "default" hints and
+     * throws TypeError for "number". Without this hook, default
+     * ToPrimitive walks ["valueOf", "toString"] and invokes valueOf,
+     * which every Temporal type's spec-mandated stub explicitly throws
+     * — breaking template-literal interpolation `${plainDateTime}` etc.
+     *
+     * The conversion delegates to the prototype's own `toString`
+     * descriptor so each type's specific zero-argument toString form
+     * (with calendar suffix etc.) is reused verbatim.
+     */
+    private static function installTemporalToPrimitive(
+        JsObject $proto,
+        string $typeName,
+    ): void {
+        $sym = SymbolConstructor::toPrimitive();
+        $fn = JsFunction::fromCallable(
+            '[Symbol.toPrimitive]',
+            function (JsValue $this_, array $args) use ($proto, $typeName): JsValue {
+                $hint = $args[0] ?? JsUndefined::instance();
+                $hintStr = $hint instanceof JsString ? $hint->value : '';
+                if ($hintStr !== 'string' && $hintStr !== 'default') {
+                    throw new TypeError(
+                        "Temporal.{$typeName}.prototype[Symbol.toPrimitive]: hint must be 'string' or 'default'"
+                    );
+                }
+                $toStr = $proto->get('toString');
+                if (!$toStr instanceof JsFunction) {
+                    throw new TypeError(
+                        "Temporal.{$typeName}.prototype.toString is not callable"
+                    );
+                }
+                return $toStr->call($this_, []);
+            },
+            1,
+        );
+        $proto->definePropertyBySymbol(
+            $sym,
+            PropertyDescriptor::data($fn, false, false, true),
         );
     }
 
