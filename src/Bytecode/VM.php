@@ -493,10 +493,7 @@ final class VM
                 case Op::CALL:
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
-                    $args = [];
-                    for ($i = 0; $i < $argc; $i++) {
-                        $args[] = $stack[$base + $i];
-                    }
+                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
                     $callee = $stack[$base - 1];
                     $sp = $base - 1;
                     if (!$callee instanceof JsFunction) {
@@ -519,10 +516,7 @@ final class VM
                 case Op::NEW_ARRAY:
                     $count = $code[$pc + 1];
                     $base = $sp - $count;
-                    $items = [];
-                    for ($i = 0; $i < $count; $i++) {
-                        $items[] = $stack[$base + $i];
-                    }
+                    $items = $count === 0 ? [] : array_slice($stack, $base, $count);
                     $sp = $base;
                     $stack[$sp++] = \PhpJs\Value\JsArray::fromArray($items);
                     $pc += 2;
@@ -558,10 +552,7 @@ final class VM
                 case Op::NEW_CALL:
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
-                    $args = [];
-                    for ($i = 0; $i < $argc; $i++) {
-                        $args[] = $stack[$base + $i];
-                    }
+                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
                     $callee = $stack[$base - 1];
                     $sp = $base - 1;
                     $stack[$sp++] = $this->interp->vmNewExpression($callee, $args, $env);
@@ -575,10 +566,7 @@ final class VM
                     // already surfaced before any argument was eval'd.
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
-                    $args = [];
-                    for ($i = 0; $i < $argc; $i++) {
-                        $args[] = $stack[$base + $i];
-                    }
+                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
                     $method = $stack[$base - 1];
                     $receiver = $stack[$base - 2];
                     $sp = $base - 2;
