@@ -1458,7 +1458,17 @@ final class JsToPhp
     {
         if ($node instanceof Literal) {
             if (is_int($node->value) || is_float($node->value)) {
-                return (string) (float) $node->value;
+                // Emit numerical literals with a .0 suffix when they
+                // would otherwise look like ints to PHP. JS's `===`
+                // compares by value-only; PHP's `===` is type+value,
+                // so `(float)0 !== (int)0` in PHP. Forcing the literal
+                // through `(float)` keeps both sides float-typed and
+                // matches JS Number semantics exactly.
+                $f = (float) $node->value;
+                if (is_finite($f) && $f === (float) (int) $f) {
+                    return $f >= 0 ? sprintf('%d.0', (int) $f) : sprintf('-%d.0', -(int) $f);
+                }
+                return (string) $f;
             }
             if (is_bool($node->value)) {
                 return $node->value ? 'true' : 'false';
@@ -1533,13 +1543,23 @@ final class JsToPhp
                 case '+':
                 case '-':
                 case '*':
-                case '/':
-                case '%':
                 case '<':
                 case '>':
                 case '<=':
                 case '>=':
                     return '(' . $l . ' ' . $node->operator . ' ' . $r . ')';
+                case '/':
+                    // JS division-by-zero returns Infinity / -Infinity
+                    // / NaN per IEEE-754. PHP's `/` operator throws
+                    // DivisionByZeroError instead. fdiv() preserves the
+                    // IEEE semantics that JS expects.
+                    return 'fdiv((float)(' . $l . '), (float)(' . $r . '))';
+                case '%':
+                    // JS `%` is IEEE remainder (sign follows dividend,
+                    // floats kept as floats). PHP `%` truncates to int
+                    // and only works on ints. fmod gives the float
+                    // semantics; fmod(x, 0) returns NaN matching JS.
+                    return 'fmod((float)(' . $l . '), (float)(' . $r . '))';
                 case '==':
                 case '!=':
                     return '(' . $l . ' '
