@@ -535,6 +535,25 @@ class JsFunction extends JsObject
     public bool $phpCompileFailed = false;
 
     /**
+     * Numeric-mode entry point: a parallel compiled body that takes
+     * raw PHP float args (in $rawArgs) and returns a raw PHP float.
+     * Skips JsNumber allocation on both ends of the call boundary
+     * for hot JsToPhp-to-JsToPhp dispatch (fib recursion, closure
+     * benchmark's add5 loop). Only emitted when the body's profile
+     * is statically all-numeric: every param is numeric, the return
+     * site produces a numeric expression, no nested non-numeric ops.
+     *
+     * Caller pattern (also emitted by JsToPhp):
+     *   $result = $fn->phpCompiledNumeric !== null
+     *       ? ($fn->phpCompiledNumeric)([$rawArg0, ...], $fn->closure, $interp, $fn->phpCompiledNodes)
+     *       : ... fallback through phpCompiled ...;
+     *
+     * Bailout still works: numeric body throws Bailout for any
+     * runtime mismatch, caught upstream and routed to the spec path.
+     */
+    public ?\Closure $phpCompiledNumeric = null;
+
+    /**
      * AST nodes referenced by phpCompiled — currently only nested
      * FunctionDeclaration / FunctionExpression nodes that the closure
      * materialises into JsFunctions at run time via vmMakeFunction.

@@ -123,6 +123,16 @@ final class JsToPhp
 
     private int $indentLevel = 1;
 
+    /**
+     * Numeric calling convention flag. When true, the emitted body
+     * accepts raw PHP float args via $rawArgs[i] (skipping the
+     * JsNumber unbox + instanceof check) and returns a raw PHP float
+     * (skipping the JsNumber::of wrap). Used to compile a parallel
+     * "numeric entry" that another JsToPhp closure can invoke without
+     * boxing its raw doubles into JsNumber for the call boundary.
+     */
+    private bool $numericMode = false;
+
     public static function compile(JsFunction $fn): ?\Closure
     {
         $body = $fn->getBody();
@@ -130,7 +140,38 @@ final class JsToPhp
         if ($isExpressionBody && !$body instanceof Node) {
             return null;
         }
+        $standard = self::compileWith($fn, false);
+        if ($standard === null) {
+            return null;
+        }
+        // Try to also compile a numeric-mode variant for the hot
+        // JsToPhp-to-JsToPhp dispatch path. Eligibility is the same
+        // body shape that produces a numeric-only return; failures
+        // here just leave phpCompiledNumeric null and the caller
+        // falls back to the standard entry.
+        if (self::numericModeEligible($fn)) {
+            $numeric = self::compileWith($fn, true);
+            if ($numeric !== null) {
+                $fn->phpCompiledNumeric = $numeric;
+            }
+        }
+        return $standard;
+    }
+
+    /**
+     * Compile pass with the given mode. Returns the eval'd closure
+     * or null on bailout. Sets $fn->phpCompiledNodes when the
+     * standard pass succeeds.
+     */
+    private static function compileWith(JsFunction $fn, bool $numeric): ?\Closure
+    {
+        $body = $fn->getBody();
+        $isExpressionBody = !$body instanceof BlockStatement;
+        if ($isExpressionBody && !$body instanceof Node) {
+            return null;
+        }
         $compiler = new self();
+        $compiler->numericMode = $numeric;
         try {
             $params = $fn->getParams();
             foreach ($params as $p) {
@@ -140,45 +181,85 @@ final class JsToPhp
                 $compiler->declaredLocals[$p->name] = true;
             }
             if ($isExpressionBody) {
-                // Arrow expression body: `x => expr`. The whole body
-                // is an expression to return. Emit prologue + a single
-                // synthetic ReturnStatement.
                 $compiler->emitPrologue($params);
                 $value = $compiler->emitExpression($body);
                 $compiler->flushPending();
-                $compiler->emitLine(
-                    'return \\PhpJs\\Value\\JsNumber::of((float)(' . $value . '));'
-                );
+                if ($numeric) {
+                    $compiler->emitLine('return (float)(' . $value . ');');
+                } else {
+                    $compiler->emitLine(
+                        'return \\PhpJs\\Value\\JsNumber::of((float)(' . $value . '));'
+                    );
+                }
             } else {
                 $compiler->collectLocals($body->body);
-                // Safety check: nested FunctionDeclaration / Function /
-                // ArrowFunction bodies might read outer locals via the
-                // JS environment chain, but our compiled closure stores
-                // outer locals in PHP variables that $env never sees.
-                // If any nested fn references an outer-local name as a
-                // free variable, bail so the spec-correct env-chain
-                // semantics still hold.
                 $compiler->checkNestedCaptures($body->body);
                 $compiler->emitPrologue($params);
                 foreach ($body->body as $stmt) {
                     $compiler->emitStatement($stmt);
                 }
-                $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
+                if ($numeric) {
+                    // Numeric-mode bodies must end with an explicit
+                    // ReturnStatement (handled by emitStatement). A
+                    // function that falls through has no numeric value
+                    // to surface — bail at runtime so the standard
+                    // entry's undefined return takes over. NAN serves
+                    // as a "fell off body" sentinel here, but better
+                    // is to emit a Bailout so the caller falls back.
+                    $compiler->emitLine(
+                        'throw new \\PhpJs\\Bytecode\\Bailout("numeric body fall-off");'
+                    );
+                } else {
+                    $compiler->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
+                }
             }
         } catch (Bailout) {
             return null;
         }
-        $php = "return function (\$args, \$env, \$interp, \$nestedFns) {\n"
-            . $compiler->out
-            . "};";
+        $signature = $numeric
+            ? 'function (array $rawArgs, $env, $interp, $nestedFns)'
+            : 'function ($args, $env, $interp, $nestedFns)';
+        $php = "return " . $signature . " {\n" . $compiler->out . "};";
         try {
             /** @var \Closure $closure */
             $closure = eval($php);
         } catch (\Throwable) {
             return null;
         }
-        $fn->phpCompiledNodes = $compiler->nestedFnNodes;
+        if (!$numeric) {
+            $fn->phpCompiledNodes = $compiler->nestedFnNodes;
+        }
         return $closure;
+    }
+
+    /**
+     * Conservative check that the body's top-level shape is one
+     * where every reachable return path produces a numeric value.
+     * A fall-through return path would surface as JsUndefined in
+     * the standard entry, but our numeric entry's contract is
+     * "always return float" — so we bail compilation if the body
+     * could fall through.
+     *
+     * Eligible:
+     *   - Arrow expression body (whole body is one expression).
+     *   - Block body whose last statement is a ReturnStatement with
+     *     a non-null argument, AND no statements before it could
+     *     fall through to the implicit undefined exit (we accept
+     *     control-flow that's all-numeric, which the per-statement
+     *     emit already enforces).
+     */
+    private static function numericModeEligible(JsFunction $fn): bool
+    {
+        $body = $fn->getBody();
+        if (!$body instanceof BlockStatement) {
+            // Arrow expression body: always returns one value.
+            return true;
+        }
+        if ($body->body === []) {
+            return false;
+        }
+        $last = $body->body[count($body->body) - 1];
+        return $last instanceof ReturnStatement && $last->argument !== null;
     }
 
     /**
@@ -562,13 +643,20 @@ final class JsToPhp
                 throw new Bailout('object-typed param');
             }
             $php = $this->slotVar($name);
-            $this->emitLine(
-                $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
-                . 'instanceof \\PhpJs\\Value\\JsNumber ? $args[' . $idx . ']->value : null;'
-            );
-            $this->emitLine(
-                'if (' . $php . ' === null) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric arg"); }'
-            );
+            if ($this->numericMode) {
+                // Numeric entry: caller (another JsToPhp closure) has
+                // already validated the arg shape and passes raw
+                // float values via $rawArgs. Nothing to unbox.
+                $this->emitLine($php . ' = $rawArgs[' . $idx . '];');
+            } else {
+                $this->emitLine(
+                    $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
+                    . 'instanceof \\PhpJs\\Value\\JsNumber ? $args[' . $idx . ']->value : null;'
+                );
+                $this->emitLine(
+                    'if (' . $php . ' === null) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric arg"); }'
+                );
+            }
         }
         foreach ($this->declaredLocals as $name => $_) {
             $isParam = false;
@@ -892,11 +980,21 @@ final class JsToPhp
         }
         if ($node instanceof ReturnStatement) {
             if ($node->argument === null) {
+                if ($this->numericMode) {
+                    // No numeric value to surface; bail so the caller
+                    // falls back to the standard entry which will
+                    // produce JsUndefined per spec.
+                    throw new Bailout('numeric mode: bare return');
+                }
                 $this->emitLine('return \\PhpJs\\Value\\JsUndefined::instance();');
             } else {
                 $val = $this->emitExpression($node->argument);
                 $this->flushPending();
-                $this->emitLine('return \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));');
+                if ($this->numericMode) {
+                    $this->emitLine('return (float)(' . $val . ');');
+                } else {
+                    $this->emitLine('return \\PhpJs\\Value\\JsNumber::of((float)(' . $val . '));');
+                }
             }
             return;
         }
@@ -1370,6 +1468,15 @@ final class JsToPhp
                 return '((float) ' . $recv . '->getLength())';
             }
         }
+        // Always prefer the callee's numeric entry when it exists,
+        // regardless of caller mode. The result is a raw float that
+        // can be plugged into either pipeline directly: numeric mode
+        // uses it as-is, standard mode would otherwise have unboxed
+        // a JsNumber to get the same value.
+        $rawTemp = $this->emitNumericCallCore($node);
+        if ($rawTemp !== null) {
+            return $rawTemp;
+        }
         $resultTemp = $this->emitCallCore($node);
         // The numeric pipeline expects a raw double. The callee's
         // contract is `JsNumber` — anything else triggers a Bailout
@@ -1377,6 +1484,87 @@ final class JsToPhp
         $this->pendingStatements[] = 'if (!(' . $resultTemp
             . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
         return $resultTemp . '->value';
+    }
+
+    /**
+     * Lower a CallExpression to a numeric-entry dispatch. Returns
+     * the raw-double temp PHP variable name (with ->something appended),
+     * or null when the call cannot use the numeric path.
+     *
+     * The numeric entry signature is
+     *   function(array $rawArgs, $env, $interp, $nestedFns): float
+     * so args are passed as raw doubles and the return is a raw float.
+     * If the callee doesn't have phpCompiledNumeric set, we fall back
+     * to the standard call core (with full boxing).
+     */
+    private function emitNumericCallCore(CallExpression $node): ?string
+    {
+        if (!$node->callee instanceof Identifier) {
+            return null;
+        }
+        // Same arg / callee resolution as emitCallCore but emitting
+        // directly to numeric entry. Bail back (return null) if the
+        // shape doesn't fit so the caller falls back to spec dispatch.
+        $argRawExprs = [];
+        foreach ($node->arguments as $arg) {
+            if ($arg instanceof \PhpJs\Ast\Expression\SpreadElement) {
+                return null;
+            }
+            $argRawExprs[] = $this->emitExpression($arg);
+        }
+        $calleeName = $node->callee->name;
+        $isLocalFnCallee = false;
+        if (isset($this->declaredLocals[$calleeName])) {
+            if (($this->localTypes[$calleeName] ?? null) !== 'function') {
+                return null;
+            }
+            $calleeRef = $this->slotVar($calleeName);
+            $isLocalFnCallee = true;
+        } else {
+            $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
+            if (!isset($this->freeVars['__fnc_' . $calleeName])) {
+                $this->freeVars['__fnc_' . $calleeName] = true;
+                $this->pendingStatements[] = $calleeRef
+                    . ' = $env->get(' . var_export($calleeName, true) . ');';
+            }
+        }
+        $argsArr = '[' . implode(', ', $argRawExprs) . ']';
+        $resultTemp = $this->newTemp('cn');
+        if (!$isLocalFnCallee) {
+            $this->pendingStatements[] = 'if (!(' . $calleeRef
+                . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
+        }
+        // Prefer phpCompiledNumeric. Fall back to phpCompiled with
+        // JsNumber boxing of args + unboxing of result. If neither
+        // exists, fall back to callFunction (and unbox).
+        $boxedArgs = [];
+        foreach ($argRawExprs as $expr) {
+            $boxedArgs[] = '\\PhpJs\\Value\\JsNumber::of(' . $expr . ')';
+        }
+        $boxedArgsArr = '[' . implode(', ', $boxedArgs) . ']';
+        $this->pendingStatements[] = $resultTemp . ' = '
+            . $calleeRef . '->phpCompiledNumeric !== null'
+            . ' ? (' . $calleeRef . '->phpCompiledNumeric)('
+            . $argsArr . ', ' . $calleeRef . '->closure, $interp, '
+            . $calleeRef . '->phpCompiledNodes)'
+            . ' : null;';
+        // null sentinel triggers spec-entry fallback. Use the same
+        // pattern as the standard call core: phpCompiled or callFunction,
+        // then unbox.
+        $boxedResult = $this->newTemp('cnb');
+        $this->pendingStatements[] = 'if (' . $resultTemp . ' === null) {';
+        $this->pendingStatements[] = '    ' . $boxedResult . ' = '
+            . $calleeRef . '->phpCompiled !== null'
+            . ' ? (' . $calleeRef . '->phpCompiled)('
+            . $boxedArgsArr . ', ' . $calleeRef . '->closure, $interp, '
+            . $calleeRef . '->phpCompiledNodes)'
+            . ' : $interp->callFunction(' . $calleeRef . ', '
+            . '\\PhpJs\\Value\\JsUndefined::instance(), ' . $boxedArgsArr . ');';
+        $this->pendingStatements[] = '    if (!(' . $boxedResult
+            . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric call result"); }';
+        $this->pendingStatements[] = '    ' . $resultTemp . ' = ' . $boxedResult . '->value;';
+        $this->pendingStatements[] = '}';
+        return $resultTemp;
     }
 
     /**
