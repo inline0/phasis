@@ -314,6 +314,11 @@ class JsArray extends JsObject
             $name !== 'length'
             && $this->denseMode
             && self::isArrayIndex($name)
+            // Bail when the prototype is (or contains) a JsProxy:
+            // proxy set traps need to fire even when the trap target
+            // doesn't own the property. The dense fast path's
+            // prototypeChainHasOwnProperty check would miss the trap.
+            && !$this->prototypeChainHasProxy()
         ) {
             $idx = (int) $name;
             $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
@@ -401,11 +406,13 @@ class JsArray extends JsObject
         // is writable. Mirrors set()'s shortcut: write inline whenever
         // OrdinarySet would observably do the same thing — either the
         // own dense element exists (own writable data desc wins over
-        // proto) or the proto chain is clean.
+        // proto) or the proto chain is clean. Also bails when the
+        // chain has a JsProxy whose set trap has to fire.
         if (
             $receiver === $this
             && $this->denseMode
             && self::isArrayIndex($name)
+            && !$this->prototypeChainHasProxy()
         ) {
             $idx = (int) $name;
             $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
@@ -702,6 +709,24 @@ class JsArray extends JsObject
     {
         for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
             if ($cur->hasOwnProperty($name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether any object on the prototype chain is a JsProxy. Proxy
+     * set / has / get traps need to fire even when the trap target
+     * doesn't own the property — the dense fast path's
+     * prototypeChainHasOwnProperty check misses that, so we bail
+     * on any prototype proxy and route through internalSet which
+     * walks the chain via OrdinarySetWithOwnDescriptor.
+     */
+    private function prototypeChainHasProxy(): bool
+    {
+        for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
+            if ($cur instanceof \PhpJs\Value\JsProxy) {
                 return true;
             }
         }
