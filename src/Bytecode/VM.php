@@ -540,11 +540,34 @@ final class VM
                             (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
                         );
                     }
-                    $stack[$sp++] = $this->interp->callFunction(
-                        $callee,
-                        $undef,
-                        $args,
-                    );
+                    // Fast path: VM-compiled callee with the canSkipEnvAlloc
+                    // shape. Skip callFunction's tail-call trampoline and
+                    // callFunctionInner's kind dispatcher — both of which
+                    // are pure overhead for the case we hit ~99% of the
+                    // time (regular non-async, non-generator, non-class
+                    // ctor JS functions calling each other).
+                    if (
+                        $callee->compiled !== null
+                        && $callee->compiled->canSkipEnvAlloc
+                        && !$callee->isClassConstructor()
+                        && !$callee->isDerivedConstructor()
+                        && $callee->getHomeObject() === null
+                        && $callee->getNativeCallable() === null
+                        && !$callee->isAsync()
+                        && !$callee->isGenerator()
+                    ) {
+                        $stack[$sp++] = $this->interp->executeVmFunctionDirect(
+                            $callee,
+                            $undef,
+                            $args,
+                        );
+                    } else {
+                        $stack[$sp++] = $this->interp->callFunction(
+                            $callee,
+                            $undef,
+                            $args,
+                        );
+                    }
                     $pc += 2;
                     break;
 

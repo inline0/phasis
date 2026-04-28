@@ -5008,6 +5008,160 @@ class Interpreter
     }
 
     /**
+     * Direct VM dispatch for canSkipEnvAlloc callees, called by the
+     * bytecode Op::CALL when it can prove the callee fits the well-
+     * trodden shape (VM-compiled, no class ctor, no homeObject, no
+     * native callable, not async / generator). Bypasses callFunction's
+     * tail-call trampoline + callFunctionInner's kind dispatcher and
+     * instead inlines the executeFunction fast path, saving ~3-4
+     * method calls per call site.
+     *
+     * If the body returns a TailCallThunk (proper tail call in strict
+     * mode), this method resolves it in-line before returning a plain
+     * JsValue, so callers (the VM) can treat the return as a value.
+     *
+     * @param list<JsValue> $args
+     */
+    public function executeVmFunctionDirect(
+        JsFunction $fn,
+        JsValue $thisValue,
+        array $args,
+    ): JsValue {
+        $this->callStack->push($fn->getName(), 0);
+
+        $callerFn = !empty($this->callerStack) ? $this->callerStack[count($this->callerStack) - 1] : null;
+        $this->callerStack[] = $fn;
+
+        if ($fn->setCallerPropCache === null) {
+            $body = $fn->getBody();
+            $hasBodyStrict = $body instanceof BlockStatement
+                && $this->hasUseStrictDirective($body->body);
+            $fn->setCallerPropCache = !$fn->isStrict()
+                && !$hasBodyStrict
+                && !$fn->isArrow()
+                && !$fn->isNative()
+                && !$fn->isAsync()
+                && !$fn->isGenerator()
+                && !$fn->isClassConstructor()
+                && $fn->isConstructable();
+        }
+        $setCallerProp = $fn->setCallerPropCache;
+        $savedCaller = null;
+        $savedArguments = null;
+        $savedCallerValue = null;
+        $savedArgumentsValue = null;
+        $autoUpdateCaller = false;
+        $autoUpdateArguments = false;
+        if ($setCallerProp) {
+            $savedCaller = $fn->getOwnPropertyDescriptor("caller");
+            $savedArguments = $fn->getOwnPropertyDescriptor("arguments");
+            $autoUpdateCaller = self::isEngineDefaultCaller($savedCaller, $callerFn);
+            $autoUpdateArguments = self::isEngineDefaultArguments($savedArguments);
+            if ($autoUpdateCaller) {
+                $savedCallerValue = $savedCaller->value ?? JsNull::instance();
+            }
+            if ($autoUpdateArguments) {
+                $savedArgumentsValue = $savedArguments->value ?? JsNull::instance();
+            }
+            $callerIsStrictMode = $this->strictMode
+                || ($callerFn instanceof JsFunction && $callerFn->isStrict());
+            $callerVal = ($callerIsStrictMode || !$callerFn instanceof JsFunction)
+                ? JsNull::instance()
+                : $callerFn;
+            if ($autoUpdateCaller && !$fn->tryUpdateDataValue("caller", $callerVal)) {
+                $fn->defineOwnProperty("caller", PropertyDescriptor::data(
+                    $callerVal,
+                    true,
+                    false,
+                    true,
+                ));
+            }
+            if (
+                $autoUpdateArguments
+                && !$fn->tryUpdateDataValue("arguments", JsNull::instance())
+            ) {
+                $fn->defineOwnProperty("arguments", PropertyDescriptor::data(
+                    JsNull::instance(),
+                    true,
+                    false,
+                    true,
+                ));
+            }
+        }
+
+        $previousStrictMode = $this->strictMode;
+        if ($fn->effectiveStrictCache === null) {
+            $body = $fn->getBody();
+            $fn->effectiveStrictCache = $fn->isStrict()
+                || ($body instanceof BlockStatement
+                    && $this->hasUseStrictDirective($body->body));
+        }
+        $this->strictMode = $fn->effectiveStrictCache;
+        if (!$this->strictMode && !$fn->isArrow()) {
+            if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
+                $thisValue = $this->getGlobalObject();
+            } elseif (
+                !$thisValue instanceof JsObject
+                && ($thisValue instanceof JsNumber
+                    || $thisValue instanceof JsString
+                    || $thisValue instanceof JsBoolean
+                    || $thisValue instanceof JsSymbol
+                    || $thisValue instanceof JsBigInt)
+            ) {
+                $thisValue = TypeConversion::toObject($thisValue);
+            }
+        }
+        $savedTailPos = $this->inTailPosition;
+        $this->inTailPosition = $this->strictMode;
+        try {
+            $vmReturn = $this->tryRunOnVm($fn, $fn->getClosure(), $thisValue, $args);
+        } catch (\Throwable $e) {
+            $this->inTailPosition = $savedTailPos;
+            $this->teardownExecuteFunction(
+                $fn,
+                $setCallerProp,
+                $autoUpdateCaller,
+                $autoUpdateArguments,
+                $savedCaller,
+                $savedArguments,
+                $savedCallerValue,
+                $savedArgumentsValue,
+                $previousStrictMode,
+            );
+            throw $e;
+        }
+        $this->inTailPosition = $savedTailPos;
+        $this->teardownExecuteFunction(
+            $fn,
+            $setCallerProp,
+            $autoUpdateCaller,
+            $autoUpdateArguments,
+            $savedCaller,
+            $savedArguments,
+            $savedCallerValue,
+            $savedArgumentsValue,
+            $previousStrictMode,
+        );
+        if ($vmReturn === null) {
+            // Compiler bailed (rare, on first call). Fall back via the
+            // standard call entry point so the slow tree-walker takes
+            // over correctly. The VM caller will pop the call stack
+            // again — that's fine, callFunction's prologue pushes too.
+            return $this->callFunction($fn, $thisValue, $args);
+        }
+        // Resolve tail-call thunks in-line so the VM caller gets a
+        // plain JsValue back. Same loop as callFunction's trampoline.
+        while ($vmReturn instanceof TailCallThunk) {
+            $vmReturn = $this->callFunction(
+                $vmReturn->function,
+                $vmReturn->thisValue,
+                $vmReturn->args,
+            );
+        }
+        return $vmReturn;
+    }
+
+    /**
      * Restore Annex B caller / arguments slots and pop the call /
      * caller stacks. Shared by the executeFunction VM fast path and
      * (in spirit) the slow-path try/finally; the slow path inlines the
