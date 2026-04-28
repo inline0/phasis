@@ -116,6 +116,17 @@ final class Compiler
     private array $handlers = [];
 
     /**
+     * Class AST nodes referenced by MAKE_CLASS opcodes. Each entry is a
+     * ClassDeclaration or ClassExpression node that the VM will hand to
+     * Interpreter::vmMakeClass at run time. The enclosing function
+     * compiles to bytecode without needing the compiler to model class
+     * semantics directly.
+     *
+     * @var list<\PhpJs\Ast\Node>
+     */
+    private array $classNodes = [];
+
+    /**
      * Per-function tracking of operand-stack depth at the start of
      * each compiled statement. The compiler doesn't otherwise track
      * stack depth, so we approximate by snapshotting the depth
@@ -241,6 +252,7 @@ final class Compiler
             canSkipEnvAlloc: !$needsThis,
         );
         $cf->handlers = $this->handlers;
+        $cf->classNodes = $this->classNodes;
         return $cf;
     }
 
@@ -431,6 +443,16 @@ final class Compiler
         }
         if ($stmt instanceof \PhpJs\Ast\Statement\LabeledStatement) {
             $this->collectStatementLocals($stmt->body);
+            return;
+        }
+        if ($stmt instanceof \PhpJs\Ast\Declaration\ClassDeclaration) {
+            // Class declarations create a let-style binding under the
+            // class name. Allocate a slot just like a function decl;
+            // the actual class object is built by MAKE_CLASS at run
+            // time and stored via STORE_LOCAL.
+            if ($stmt->id !== null && !isset($this->localSlots[$stmt->id->name])) {
+                $this->declareLocal($stmt->id->name);
+            }
             return;
         }
         if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
@@ -772,6 +794,25 @@ final class Compiler
         }
         if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
             $this->compileTryCatch($node);
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Declaration\ClassDeclaration) {
+            // Classes that reference outer locals (e.g. `class C extends
+            // OuterParam { ... }`) need env-based resolution for those
+            // names. The VM-compiled body keeps locals in frame slots,
+            // so the class body would fail to find them. Bail to the
+            // tree-walker for now.
+            if ($this->capturesOuterLocal($node)) {
+                throw new CompilerBailout('class captures outer local');
+            }
+            $idx = count($this->classNodes);
+            $this->classNodes[] = $node;
+            $this->emit(Op::MAKE_CLASS, $idx);
+            if ($node->id !== null) {
+                $this->emit(Op::STORE_LOCAL, $this->localSlots[$node->id->name]);
+            } else {
+                $this->emit(Op::POP);
+            }
             return;
         }
         throw new CompilerBailout('unsupported statement: ' . $node->type());
@@ -1280,6 +1321,15 @@ final class Compiler
             || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
         ) {
             $this->compileNestedFunction($node);
+            return;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ClassExpression) {
+            if ($this->capturesOuterLocal($node)) {
+                throw new CompilerBailout('class expression captures outer local');
+            }
+            $idx = count($this->classNodes);
+            $this->classNodes[] = $node;
+            $this->emit(Op::MAKE_CLASS, $idx);
             return;
         }
         throw new CompilerBailout('unsupported expression: ' . $node->type());

@@ -123,6 +123,14 @@ final class Op
                                        //     pushes a JsFunction whose closure is
                                        //     the current env.
 
+    // ---- Classes -------------------------------------------------------
+    // Pushes a JsFunction (the class constructor) built by the
+    // tree-walker's class evaluator. The class body — methods, super
+    // bindings, [[HomeObject]] wiring, instance fields — still runs in
+    // the tree-walker; this op just lets the *enclosing* function be
+    // VM-compiled instead of bailing on the whole thing.
+    public const MAKE_CLASS = 101;     // I — index into CompiledFunction::$classNodes;
+
     // ---- Throw -----------------------------------------------------------
     public const THROW = 110;          // pop value, raise as JsThrowable.
 
@@ -196,6 +204,7 @@ final class Op
             case self::STORE_MEMBER:
             case self::CALL_METHOD:
             case self::MAKE_FUNCTION:
+            case self::MAKE_CLASS:
                 return 1;
             // 3-operand opcodes
             case self::JUMP_IF_LOCAL_GE_CONST:

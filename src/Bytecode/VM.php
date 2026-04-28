@@ -761,6 +761,14 @@ final class VM
                     $pc += 2;
                     break;
 
+                case Op::MAKE_CLASS:
+                    $stack[$sp++] = $this->interp->vmMakeClass(
+                        $cf->classNodes[$code[$pc + 1]],
+                        $env,
+                    );
+                    $pc += 2;
+                    break;
+
                 case Op::THROW:
                     $val = $stack[--$sp];
                     $this->interp->throwJsValue($val);

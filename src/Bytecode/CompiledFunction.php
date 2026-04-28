@@ -44,6 +44,18 @@ final class CompiledFunction
      */
     public array $handlers = [];
 
+    /**
+     * AST nodes for nested class declarations / expressions. Op::MAKE_CLASS
+     * carries an index into this list and the VM hands the node to
+     * Interpreter::vmMakeClass, which delegates to the tree-walker's
+     * class evaluator. The class body (methods, super, [[HomeObject]],
+     * field initializers) still runs in the tree-walker; the enclosing
+     * function is what actually gets VM-compiled now.
+     *
+     * @var list<\PhpJs\Ast\Node>
+     */
+    public array $classNodes = [];
+
 
     /**
      * @param list<int>     $code        Flat instruction stream.

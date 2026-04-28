@@ -6127,6 +6127,43 @@ class Interpreter
      * evaluators so spec-name-inference / strict-flag-propagation
      * stays correct.
      */
+    /**
+     * VM helper for Op::MAKE_CLASS: build a JsFunction (the class
+     * constructor) by delegating to the tree-walker's class evaluator.
+     * The class body, methods, super wiring, and instance fields all
+     * still run in the tree-walker; this helper just lets the
+     * enclosing function compile to bytecode rather than bailing on
+     * the whole thing.
+     */
+    public function vmMakeClass(Node $node, Environment $env): JsValue
+    {
+        if ($node instanceof ClassExpression) {
+            return $this->evalClassExpression($node, $env);
+        }
+        if ($node instanceof ClassDeclaration) {
+            // Spec ClassDefinitionEvaluation: methods close over an
+            // immutable inner binding for the class name. Replicate the
+            // child env + declareConst + initialize pattern from
+            // execClassDeclaration so super-method dispatch and
+            // self-reference work the same way.
+            $classEnv = $env;
+            if ($node->id !== null) {
+                $classEnv = $env->createChild();
+                $classEnv->declareConst($node->id->name);
+            }
+            $cls = $this->buildClass($node->id?->name, $node->superClass, $node->body, $classEnv);
+            if ($node->id !== null && $classEnv->isInTdz($node->id->name)) {
+                $classEnv->initialize($node->id->name, $cls);
+            }
+            if ($node->sourceText !== null) {
+                $cls->setSourceText($node->sourceText);
+            }
+            $cls = $this->applyClassDecorators($node->decorators, $cls, $env);
+            return $cls;
+        }
+        throw new InternalError('vmMakeClass: ' . $node->type());
+    }
+
     public function vmMakeFunction(Node $node, Environment $env): JsValue
     {
         if ($node instanceof ArrowFunction) {
