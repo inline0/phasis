@@ -6,11 +6,46 @@ namespace PhpJs\Value;
 
 use PhpJs\Object\PropertyDescriptor;
 
+/**
+ * JS Array exotic object with packed-element fast storage.
+ *
+ * Integer-indexed elements with default attributes (writable, enumerable,
+ * configurable; no accessor) live in $denseElements as a plain PHP list
+ * so that hot paths — push, [i] read, [i] write, length tracking — skip
+ * the property-map hash and PropertyDescriptor allocation entirely.
+ *
+ * The instance flips to dictionary mode (denseMode = false) the first
+ * time defineOwnProperty installs a non-default attribute set or an
+ * accessor on an array-index slot. At that point every dense slot is
+ * migrated into PropertyMap and the dense storage is dropped.
+ *
+ * Length and 'length' descriptor remain exotic owned by JsArray; only
+ * actual element values move to dense storage. Symbol-keyed and named
+ * properties (including 'length') always go through PropertyMap.
+ */
 class JsArray extends JsObject
 {
     private int $length = 0;
     private bool $lengthWritable = true;
     private static ?JsObject $globalPrototype = null;
+
+    /**
+     * Packed integer-indexed elements when in dense mode. NULL slots
+     * are holes (the index has no own property). The raw list lets
+     * arr-push / arr[i]= / arr[i] all dispatch as a single array
+     * indexing in PHP, no descriptor or hash involved.
+     *
+     * @var array<int, ?JsValue>
+     */
+    private array $denseElements = [];
+
+    /**
+     * When true, integer-indexed elements live in $denseElements and
+     * carry the default {writable, enumerable, configurable} attribute
+     * set. Flipping to false migrates everything to PropertyMap and
+     * stays there for the lifetime of the instance.
+     */
+    private bool $denseMode = true;
 
     public static function setGlobalPrototype(JsObject $proto): void
     {
@@ -34,10 +69,11 @@ class JsArray extends JsObject
     {
         parent::__construct($prototype ?? self::$globalPrototype);
 
+        // Dense init: skip defineOwnProperty entirely so seeded elements
+        // never touch PropertyMap.
         foreach ($elements as $index => $element) {
-            $this->defineOwnProperty((string) $index, PropertyDescriptor::data($element));
+            $this->denseElements[$index] = $element;
         }
-
         $this->length = count($elements);
     }
 
@@ -80,7 +116,11 @@ class JsArray extends JsObject
     public function push(JsValue $value): void
     {
         $index = $this->length;
-        parent::set((string) $index, $value);
+        if ($this->denseMode) {
+            $this->denseElements[$index] = $value;
+        } else {
+            parent::set((string) $index, $value);
+        }
         $this->length = $index + 1;
     }
 
@@ -147,7 +187,15 @@ class JsArray extends JsObject
         if ($name === 'length') {
             return new JsNumber((float) $this->length);
         }
-
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $idx = (int) $name;
+            $val = $this->denseElements[$idx] ?? null;
+            if ($val !== null) {
+                return $val;
+            }
+            // Hole: defer to prototype chain (Array.prototype lookup).
+            return $this->getWithReceiver($name, $this);
+        }
         return parent::get($name);
     }
 
@@ -156,7 +204,19 @@ class JsArray extends JsObject
         if ($name === 'length') {
             return new JsNumber((float) $this->length);
         }
-
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $idx = (int) $name;
+            $val = $this->denseElements[$idx] ?? null;
+            if ($val !== null) {
+                return $val;
+            }
+            // Hole: walk the prototype chain.
+            $proto = $this->getPrototype();
+            if ($proto !== null) {
+                return $proto->getWithValueReceiver($name, $receiver);
+            }
+            return JsUndefined::instance();
+        }
         return parent::getWithReceiver($name, $receiver);
     }
 
@@ -168,15 +228,69 @@ class JsArray extends JsObject
         if ($name === 'length') {
             return new JsNumber((float) $this->length);
         }
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $idx = (int) $name;
+            $val = $this->denseElements[$idx] ?? null;
+            if ($val !== null) {
+                return $val;
+            }
+            // Hole: continue walking the chain.
+            $proto = $this->getPrototype();
+            if ($proto !== null) {
+                return $proto->getWithValueReceiver($name, $receiver);
+            }
+            return JsUndefined::instance();
+        }
         return parent::getWithValueReceiver($name, $receiver);
     }
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        // All properties including "length" go through the standard set path,
-        // which calls internalSet -> ordinarySetWithOwnDescriptor ->
-        // defineOwnProperty -> arraySetLength. This ensures value coercion
-        // happens before writable checks per ES spec.
+        // Hot path: writing an array index in dense mode with the array
+        // as receiver. Skips the OrdinarySet → defineOwnProperty →
+        // PropertyMap chain entirely and just stores the value, bumping
+        // length. Used heavily by push, splice, fill, etc.
+        //
+        // We can shortcut whenever OrdinarySet would observably do the
+        // same thing as the in-place dense write:
+        //   1. The array already has an own dense element at this index.
+        //      Own writable data descriptor wins over the prototype chain
+        //      per spec, so any inherited accessor / readonly slot is
+        //      irrelevant and the write must succeed.
+        //   2. There is no own dense element AND the prototype chain has
+        //      no own property at this name. We're creating a fresh own
+        //      data slot and there's nothing inherited to defer to.
+        // If neither condition holds (no own slot but proto has one), we
+        // fall through to the standard internalSet path so accessors
+        // installed on Array.prototype run.
+        if (
+            $name !== 'length'
+            && $this->denseMode
+            && self::isArrayIndex($name)
+        ) {
+            $idx = (int) $name;
+            $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
+            if ($hasOwnDense || !$this->prototypeChainHasOwnProperty($name)) {
+                if ($idx >= $this->length && !$this->lengthWritable) {
+                    if ($strict) {
+                        throw new \PhpJs\Exceptions\TypeError(
+                            "Cannot assign to read only property '{$name}' of object '[object Array]'"
+                        );
+                    }
+                    return;
+                }
+                $this->denseElements[$idx] = $value;
+                if ($idx >= $this->length) {
+                    $this->length = $idx + 1;
+                }
+                return;
+            }
+        }
+        // All other properties (length, named, dictionary mode) go
+        // through the standard set path, which calls internalSet ->
+        // ordinarySetWithOwnDescriptor -> defineOwnProperty ->
+        // arraySetLength. This ensures value coercion happens before
+        // writable checks per ES spec.
         $success = $this->internalSet($name, $value, $this);
         if (!$success && $strict) {
             throw new \PhpJs\Exceptions\TypeError(
@@ -222,6 +336,29 @@ class JsArray extends JsObject
             // otherwise CreateDataProperty on the receiver. Defer to the
             // standard implementation.
             return parent::internalSet($name, $value, $receiver);
+        }
+        // Dense fast path: array index, this receiver, dense mode, length
+        // is writable. Mirrors set()'s shortcut: write inline whenever
+        // OrdinarySet would observably do the same thing — either the
+        // own dense element exists (own writable data desc wins over
+        // proto) or the proto chain is clean.
+        if (
+            $receiver === $this
+            && $this->denseMode
+            && self::isArrayIndex($name)
+        ) {
+            $idx = (int) $name;
+            $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
+            if ($hasOwnDense || !$this->prototypeChainHasOwnProperty($name)) {
+                if ($idx >= $this->length && !$this->lengthWritable) {
+                    return false;
+                }
+                $this->denseElements[$idx] = $value;
+                if ($idx >= $this->length) {
+                    $this->length = $idx + 1;
+                }
+                return true;
+            }
         }
         if ($receiver === $this) {
             $result = parent::internalSet($name, $value, $receiver);
@@ -297,36 +434,17 @@ class JsArray extends JsObject
             // push/Array.from/etc.) skip the O(n) properties scan.
             $deleteSucceeded = true;
             if ($newLen < $this->length) {
-                // Collect only actually-existing array-index properties >= newLen
-                // to avoid iterating billions of empty slots on sparse arrays.
-                $indicesToDelete = [];
-                foreach ($this->properties->keys() as $key) {
-                    if (self::isArrayIndex($key)) {
-                        $idx = (int) $key;
-                        if ($idx >= $newLen) {
-                            $indicesToDelete[] = $idx;
-                        }
+                $deleteSucceeded = $this->shrinkLength($newLen);
+                if (!$deleteSucceeded) {
+                    // shrinkLength left $this->length at the highest index it
+                    // could not delete + 1; commit that and report failure.
+                    if (!$newWritable) {
+                        $this->lengthWritable = false;
                     }
-                }
-                rsort($indicesToDelete, SORT_NUMERIC);
-                foreach ($indicesToDelete as $i) {
-                    $key = (string) $i;
-                    $elemDesc = parent::getOwnPropertyDescriptor($key);
-                    if ($elemDesc !== null && $elemDesc->configurable === false) {
-                        $newLen = $i + 1;
-                        $deleteSucceeded = false;
-                        break;
-                    }
-                    $this->delete($key);
+                    return false;
                 }
             }
             $this->length = $newLen;
-            if (!$deleteSucceeded) {
-                if (!$newWritable) {
-                    $this->lengthWritable = false;
-                }
-                return false;
-            }
             if (!$newWritable) {
                 $this->lengthWritable = false;
             }
@@ -338,6 +456,20 @@ class JsArray extends JsObject
             $index = (int) $name;
             if ($index >= $this->length && !$this->lengthWritable) {
                 return false;
+            }
+            // Dense fast path: default-attr data descriptor on an array
+            // index slot. Anything that doesn't fit (accessor, non-default
+            // flags, value=null) migrates the array to dictionary mode and
+            // re-enters via PropertyMap.
+            if ($this->denseMode && self::isDefaultDataDescriptor($desc)) {
+                $this->denseElements[$index] = $desc->value;
+                if ($index >= $this->length) {
+                    $this->length = $index + 1;
+                }
+                return true;
+            }
+            if ($this->denseMode) {
+                $this->migrateToDictionary();
             }
         }
         $result = parent::defineOwnProperty($name, $desc);
@@ -356,6 +488,15 @@ class JsArray extends JsObject
         if ($name === 'length') {
             return true;
         }
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $idx = (int) $name;
+            if (($this->denseElements[$idx] ?? null) !== null) {
+                return true;
+            }
+            // Hole on this array; fall through to prototype chain.
+            $proto = $this->getPrototype();
+            return $proto !== null && $proto->has($name);
+        }
         return parent::has($name);
     }
 
@@ -363,6 +504,9 @@ class JsArray extends JsObject
     {
         if ($name === 'length') {
             return true;
+        }
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            return ($this->denseElements[(int) $name] ?? null) !== null;
         }
         return parent::hasOwnProperty($name);
     }
@@ -377,13 +521,40 @@ class JsArray extends JsObject
                 configurable: false,
             );
         }
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $val = $this->denseElements[(int) $name] ?? null;
+            if ($val === null) {
+                return null;
+            }
+            return PropertyDescriptor::data($val);
+        }
         return parent::getOwnPropertyDescriptor($name);
     }
 
     /** @return list<string> */
     public function getOwnPropertyNames(): array
     {
-        $keys = parent::getOwnPropertyNames();
+        $keys = [];
+        if ($this->denseMode) {
+            // Dense indices in ascending order (skipping holes).
+            for ($i = 0; $i < $this->length; $i++) {
+                if (($this->denseElements[$i] ?? null) !== null) {
+                    $keys[] = (string) $i;
+                }
+            }
+        }
+        $rest = parent::getOwnPropertyNames();
+        if ($this->denseMode) {
+            // Dictionary path is empty for indices, but PropertyMap may
+            // hold non-index named keys.
+            foreach ($rest as $k) {
+                if (!self::isArrayIndex($k)) {
+                    $keys[] = $k;
+                }
+            }
+        } else {
+            $keys = $rest;
+        }
         if (!in_array('length', $keys, true)) {
             // Insert 'length' after array indices but before non-index string keys,
             // matching OrdinaryOwnPropertyKeys ordering.
@@ -405,7 +576,24 @@ class JsArray extends JsObject
      */
     public function ordinaryOwnPropertyKeys(): array
     {
-        $result = parent::ordinaryOwnPropertyKeys();
+        $result = [];
+        if ($this->denseMode) {
+            for ($i = 0; $i < $this->length; $i++) {
+                if (($this->denseElements[$i] ?? null) !== null) {
+                    $result[] = new JsString((string) $i);
+                }
+            }
+        }
+        $parentKeys = parent::ordinaryOwnPropertyKeys();
+        if ($this->denseMode) {
+            foreach ($parentKeys as $k) {
+                if (!($k instanceof JsString && self::isArrayIndex($k->value))) {
+                    $result[] = $k;
+                }
+            }
+        } else {
+            $result = $parentKeys;
+        }
         // Insert 'length' after all integer indices but before non-index string keys.
         // Array.length is a non-enumerable, non-configurable own property.
         $insertPos = 0;
@@ -431,7 +619,138 @@ class JsArray extends JsObject
             }
             return false;
         }
-
+        if ($this->denseMode && self::isArrayIndex($name)) {
+            $idx = (int) $name;
+            // Mark the slot as a hole. Dense default-attr elements are
+            // always configurable; delete always succeeds.
+            unset($this->denseElements[$idx]);
+            return true;
+        }
         return parent::delete($name, $strict);
+    }
+
+    /**
+     * Walk the prototype chain looking for an own property at $name.
+     * Used by the dense write fast paths to refuse the shortcut when
+     * an inherited slot (typically a setter installed on
+     * Array.prototype) needs to participate in [[Set]] per spec
+     * OrdinarySetWithOwnDescriptor. The common case (clean
+     * Array.prototype with no integer-indexed properties) returns
+     * false after a single hash miss per chain level.
+     */
+    private function prototypeChainHasOwnProperty(string $name): bool
+    {
+        for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
+            if ($cur->hasOwnProperty($name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a PropertyDescriptor describes the default array-element
+     * data shape: a value, no accessor, and either explicit defaults
+     * (writable=true, enumerable=true, configurable=true) or all-null
+     * attribute fields (filled by completeDescriptor downstream).
+     */
+    private static function isDefaultDataDescriptor(PropertyDescriptor $desc): bool
+    {
+        if ($desc->get !== null || $desc->set !== null) {
+            return false;
+        }
+        if ($desc->value === null) {
+            return false;
+        }
+        // Treat null attribute fields as "missing → completed to true"
+        // (the spec ValidateAndApplyPropertyDescriptor path), not as
+        // explicit false.
+        if ($desc->writable === false) {
+            return false;
+        }
+        if ($desc->enumerable === false) {
+            return false;
+        }
+        if ($desc->configurable === false) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Migrate dense element storage to PropertyMap-backed dictionary
+     * mode. Called the first time an array-index slot is given a
+     * non-default descriptor (accessor or non-default flag combination).
+     */
+    private function migrateToDictionary(): void
+    {
+        if (!$this->denseMode) {
+            return;
+        }
+        // Use the low-level defineProperty bypass so a non-extensible
+        // array (e.g. one mid-Object.freeze, where preventExtensions
+        // already fired before the per-key defineOwnProperty pass) still
+        // gets its dense slots faithfully migrated. Their descriptor
+        // shape — default attrs — is invariant, so the bypass cannot
+        // produce a spec-visible state we couldn't have reached
+        // through defineOwnProperty earlier.
+        foreach ($this->denseElements as $i => $value) {
+            if ($value === null) {
+                continue;
+            }
+            parent::defineProperty(
+                (string) $i,
+                PropertyDescriptor::data($value, true, true, true),
+            );
+        }
+        $this->denseElements = [];
+        $this->denseMode = false;
+    }
+
+    /**
+     * Per ArraySetLength: walk array-index own properties >= $newLen
+     * highest-first, deleting where possible. If a non-configurable
+     * index is encountered, length is pinned at index + 1 and false is
+     * returned so the caller can also pin the writable bit.
+     */
+    private function shrinkLength(int $newLen): bool
+    {
+        if ($this->denseMode) {
+            // Dense default-attr elements are always configurable, so the
+            // shrink can never fail. Walk only the existing keys instead
+            // of [newLen..length); a sparse array with length=1e9 would
+            // otherwise iterate a billion empty slots here.
+            foreach (array_keys($this->denseElements) as $idx) {
+                if ($idx >= $newLen) {
+                    unset($this->denseElements[$idx]);
+                }
+            }
+            $this->length = $newLen;
+            return true;
+        }
+        // Dictionary mode: collect array-index keys that exist and are
+        // >= newLen, sorted descending so we hit the highest index
+        // first (matching the spec walk).
+        $indicesToDelete = [];
+        foreach ($this->properties->keys() as $key) {
+            if (self::isArrayIndex($key)) {
+                $idx = (int) $key;
+                if ($idx >= $newLen) {
+                    $indicesToDelete[] = $idx;
+                }
+            }
+        }
+        rsort($indicesToDelete, SORT_NUMERIC);
+        foreach ($indicesToDelete as $i) {
+            $key = (string) $i;
+            $elemDesc = parent::getOwnPropertyDescriptor($key);
+            if ($elemDesc !== null && $elemDesc->configurable === false) {
+                $this->length = $i + 1;
+                return false;
+            }
+            $this->delete($key);
+        }
+        $this->length = $newLen;
+        return true;
     }
 }
