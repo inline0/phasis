@@ -275,6 +275,11 @@ class JsObject implements JsValue
         // in real code update an existing field on the same object.
         // Mutating the descriptor's value field avoids allocating a fresh
         // PropertyDescriptor and skips the OrdinarySet trampoline.
+        // The isDataDescriptor() check guards against an accessor whose
+        // get/set were both explicitly set to undefined (defineProperty
+        // with `{set: undefined}`): such a descriptor has get===null and
+        // set===null but is still an accessor, and assignments to it
+        // must fail per OrdinarySetWithOwnDescriptor.
         if ($receiver === $this) {
             $ownDesc = $this->properties->get($name);
             if (
@@ -282,6 +287,7 @@ class JsObject implements JsValue
                 && $ownDesc->get === null
                 && $ownDesc->set === null
                 && $ownDesc->writable !== false
+                && $ownDesc->isDataDescriptor()
             ) {
                 $ownDesc->value = $value;
                 return true;
