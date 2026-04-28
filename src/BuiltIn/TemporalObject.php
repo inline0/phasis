@@ -12126,7 +12126,15 @@ class TemporalObject
         if (strtoupper($tz) === 'Z' || strtoupper($tz) === 'UTC' || strtoupper($tz) === 'GMT') {
             return true;
         }
-        return (bool) preg_match('/^[+-]\d{2}(?::\d{2}(?::\d{2}(?:[.,]\d+)?)?)?$/', $tz);
+        // Accept both colon-separated and compact ISO offset forms:
+        //   ±HH, ±HHMM, ±HH:MM, ±HHMMSS, ±HH:MM:SS, plus optional
+        //   fractional seconds. ±HHMM occurs in inputs like
+        //   "2021-08-19T1730-0700" where the time-zone annotation
+        //   strips the date prefix and leaves a compact offset.
+        return (bool) preg_match(
+            '/^[+-]\d{2}(?::?\d{2}(?::?\d{2}(?:[.,]\d+)?)?)?$/',
+            $tz,
+        );
     }
 
     /** Validate ZonedDateTime options in alphabetical order: disambiguation, offset, overflow. */
