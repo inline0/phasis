@@ -1,0 +1,388 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Run bench/microbench.js a few times under bench/run.php, take the median
+ * per-test wall time, and emit BENCH.md + bench.json (mirroring how
+ * bin/compat-report emits COMPAT.md + compat.json). Designed to be run on
+ * demand — typically from .github/workflows/bench.yml after a perf change —
+ * not on every push.
+ *
+ * Usage:
+ *   ./bin/bench-report                 # 5 runs, default benchmark
+ *   ./bin/bench-report --runs 7        # 7 runs (more iterations = less noise)
+ *   ./bin/bench-report --bench foo.js  # custom benchmark JS file
+ *   ./bin/bench-report --no-write      # print summary, do not touch BENCH.md
+ */
+
+ini_set('memory_limit', '2G');
+set_time_limit(0);
+
+benchReportMain($argv);
+
+function benchReportMain(array $argv): void
+{
+    $opts = parseBenchOptions($argv);
+    $rootDir = dirname(__DIR__);
+    $benchFile = $opts['bench'] ?? $rootDir . '/bench/microbench.js';
+    if (!is_file($benchFile)) {
+        fwrite(STDERR, "Benchmark file not found: {$benchFile}\n");
+        exit(1);
+    }
+
+    fwrite(STDERR, sprintf(
+        "Running %d iteration%s of %s ...\n",
+        $opts['runs'],
+        $opts['runs'] === 1 ? '' : 's',
+        relativePath($benchFile, $rootDir),
+    ));
+
+    $iterations = [];
+    for ($i = 0; $i < $opts['runs']; $i++) {
+        fwrite(STDERR, sprintf("  iter %d/%d ... ", $i + 1, $opts['runs']));
+        $iter = runOnce($rootDir, $benchFile);
+        $iterations[] = $iter;
+        fwrite(STDERR, sprintf("%.1fms total\n", $iter['totalMs']));
+    }
+
+    $summary = summarizeIterations($iterations);
+    $report = buildReport($rootDir, $benchFile, $iterations, $summary, $opts);
+
+    if ($opts['write']) {
+        file_put_contents(
+            $rootDir . '/BENCH.md',
+            renderMarkdown($report),
+        );
+        file_put_contents(
+            $rootDir . '/bench.json',
+            json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n",
+        );
+        fwrite(STDERR, "Wrote BENCH.md and bench.json\n");
+    } else {
+        echo renderMarkdown($report);
+    }
+}
+
+/**
+ * @param list<string> $argv
+ * @return array{runs: int, bench: ?string, write: bool}
+ */
+function parseBenchOptions(array $argv): array
+{
+    $opts = [
+        'runs' => 5,
+        'bench' => null,
+        'write' => true,
+    ];
+    $argc = count($argv);
+    for ($i = 1; $i < $argc; $i++) {
+        $arg = $argv[$i];
+        if ($arg === '--runs' && isset($argv[$i + 1])) {
+            $opts['runs'] = max(1, (int) $argv[++$i]);
+            continue;
+        }
+        if ($arg === '--bench' && isset($argv[$i + 1])) {
+            $opts['bench'] = $argv[++$i];
+            continue;
+        }
+        if ($arg === '--no-write') {
+            $opts['write'] = false;
+            continue;
+        }
+        if ($arg === '-h' || $arg === '--help') {
+            fwrite(STDOUT, file_get_contents(__FILE__) ? extractHelp() : '');
+            exit(0);
+        }
+        fwrite(STDERR, "Unknown argument: {$arg}\n");
+        exit(2);
+    }
+    return $opts;
+}
+
+function extractHelp(): string
+{
+    return "Usage: ./bin/bench-report [--runs N] [--bench path/to/file.js] [--no-write]\n";
+}
+
+/**
+ * @return array{tests: array<string, float>, totalMs: float, raw: string}
+ */
+function runOnce(string $rootDir, string $benchFile): array
+{
+    $php = PHP_BINARY;
+    $cmd = sprintf(
+        '%s -d memory_limit=2G %s %s',
+        escapeshellcmd($php),
+        escapeshellarg($rootDir . '/bench/run.php'),
+        escapeshellarg($benchFile),
+    );
+
+    $descriptors = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $process = proc_open($cmd, $descriptors, $pipes, $rootDir);
+    if (!is_resource($process)) {
+        fwrite(STDERR, "Failed to spawn bench/run.php\n");
+        exit(1);
+    }
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+    if ($status !== 0) {
+        fwrite(STDERR, "bench/run.php exited with status {$status}\n");
+        fwrite(STDERR, $stderr);
+        exit($status);
+    }
+
+    $tests = [];
+    foreach (explode("\n", (string) $stdout) as $line) {
+        if (!preg_match('/^(\S+)\s+(\d+(?:\.\d+)?)ms\s+result=/', trim($line), $m)) {
+            continue;
+        }
+        $tests[$m[1]] = (float) $m[2];
+    }
+
+    $totalMs = 0.0;
+    if (preg_match('/TOTAL:\s*(\d+(?:\.\d+)?)ms/', (string) $stderr, $m)) {
+        $totalMs = (float) $m[1];
+    }
+
+    return [
+        'tests' => $tests,
+        'totalMs' => $totalMs,
+        'raw' => trim((string) $stdout),
+    ];
+}
+
+/**
+ * @param list<array{tests: array<string, float>, totalMs: float, raw: string}> $iterations
+ * @return array{
+ *     tests: array<string, array{median: float, min: float, max: float, samples: list<float>}>,
+ *     total: array{median: float, min: float, max: float, samples: list<float>},
+ * }
+ */
+function summarizeIterations(array $iterations): array
+{
+    $names = [];
+    foreach ($iterations as $iter) {
+        foreach ($iter['tests'] as $name => $_) {
+            $names[$name] = true;
+        }
+    }
+    $tests = [];
+    foreach (array_keys($names) as $name) {
+        $samples = [];
+        foreach ($iterations as $iter) {
+            if (isset($iter['tests'][$name])) {
+                $samples[] = $iter['tests'][$name];
+            }
+        }
+        $tests[$name] = aggregateSamples($samples);
+    }
+    $totals = array_map(static fn (array $iter): float => $iter['totalMs'], $iterations);
+
+    return [
+        'tests' => $tests,
+        'total' => aggregateSamples($totals),
+    ];
+}
+
+/**
+ * @param list<float> $samples
+ * @return array{median: float, min: float, max: float, samples: list<float>}
+ */
+function aggregateSamples(array $samples): array
+{
+    if ($samples === []) {
+        return ['median' => 0.0, 'min' => 0.0, 'max' => 0.0, 'samples' => []];
+    }
+    $sorted = $samples;
+    sort($sorted);
+    $n = count($sorted);
+    $median = $n % 2 === 1
+        ? $sorted[(int) ($n / 2)]
+        : ($sorted[(int) ($n / 2) - 1] + $sorted[(int) ($n / 2)]) / 2.0;
+    return [
+        'median' => $median,
+        'min' => $sorted[0],
+        'max' => $sorted[$n - 1],
+        'samples' => $samples,
+    ];
+}
+
+/**
+ * @param list<array{tests: array<string, float>, totalMs: float, raw: string}> $iterations
+ * @param array{
+ *     tests: array<string, array{median: float, min: float, max: float, samples: list<float>}>,
+ *     total: array{median: float, min: float, max: float, samples: list<float>},
+ * } $summary
+ * @param array{runs: int, bench: ?string, write: bool} $opts
+ * @return array<string, mixed>
+ */
+function buildReport(
+    string $rootDir,
+    string $benchFile,
+    array $iterations,
+    array $summary,
+    array $opts,
+): array {
+    return [
+        'snapshotTime' => date('c'),
+        'runs' => $opts['runs'],
+        'bench' => relativePath($benchFile, $rootDir),
+        'host' => [
+            'php' => PHP_VERSION,
+            'os' => php_uname('s') . ' ' . php_uname('r'),
+            'arch' => php_uname('m'),
+        ],
+        'git' => readGitRef($rootDir),
+        'tests' => $summary['tests'],
+        'total' => $summary['total'],
+        'iterations' => array_map(
+            static fn (array $iter): array => [
+                'tests' => $iter['tests'],
+                'totalMs' => $iter['totalMs'],
+            ],
+            $iterations,
+        ),
+    ];
+}
+
+/**
+ * @return array{branch: ?string, head: ?string, dirty: bool}
+ */
+function readGitRef(string $rootDir): array
+{
+    $headFile = $rootDir . '/.git/HEAD';
+    $head = is_file($headFile) ? trim(file_get_contents($headFile)) : null;
+    $branch = null;
+    $sha = null;
+    if ($head !== null) {
+        if (str_starts_with($head, 'ref: refs/heads/')) {
+            $branch = substr($head, strlen('ref: refs/heads/'));
+            $refFile = $rootDir . '/.git/' . substr($head, strlen('ref: '));
+            if (is_file($refFile)) {
+                $sha = trim(file_get_contents($refFile));
+            }
+        } else {
+            // Detached HEAD: contains the sha directly.
+            $sha = $head;
+        }
+    }
+    $dirty = false;
+    $output = [];
+    $status = 0;
+    @exec(
+        sprintf('git -C %s status --porcelain 2>/dev/null', escapeshellarg($rootDir)),
+        $output,
+        $status,
+    );
+    if ($status === 0) {
+        $dirty = $output !== [];
+    }
+    return [
+        'branch' => $branch,
+        'head' => $sha,
+        'dirty' => $dirty,
+    ];
+}
+
+/**
+ * @param array<string, mixed> $report
+ */
+function renderMarkdown(array $report): string
+{
+    $lines = [];
+    $lines[] = '# Benchmark Snapshot';
+    $lines[] = '';
+    $lines[] = 'Generated by `./bin/bench-report`. Do not edit by hand.';
+    $lines[] = '';
+    $lines[] = '- Refresh: `./bin/bench-report`';
+    $lines[] = '- Snapshot time: `' . $report['snapshotTime'] . '`';
+    $lines[] = '- Iterations: `' . $report['runs'] . '`';
+    $lines[] = '- Bench: `' . $report['bench'] . '`';
+    $git = $report['git'];
+    $gitLine = '- Git: ';
+    if ($git['branch'] !== null) {
+        $gitLine .= '`' . $git['branch'] . '`';
+    }
+    if ($git['head'] !== null) {
+        $shortSha = substr($git['head'], 0, 7);
+        $gitLine .= ($git['branch'] !== null ? ' @ ' : '') . '`' . $shortSha . '`';
+    }
+    if ($git['dirty']) {
+        $gitLine .= ' (dirty)';
+    }
+    if ($gitLine !== '- Git: ') {
+        $lines[] = $gitLine;
+    }
+    $host = $report['host'];
+    $lines[] = '- Host: PHP `' . $host['php'] . '` on `' . $host['os'] . '` (`' . $host['arch'] . '`)';
+    $lines[] = '';
+
+    $total = $report['total'];
+    $lines[] = '## Total';
+    $lines[] = '';
+    $lines[] = '| Median | Min | Max | Samples |';
+    $lines[] = '|---:|---:|---:|---|';
+    $lines[] = sprintf(
+        '| %s | %s | %s | %s |',
+        formatMs($total['median']),
+        formatMs($total['min']),
+        formatMs($total['max']),
+        formatSamples($total['samples']),
+    );
+    $lines[] = '';
+
+    $lines[] = '## Per-Test (median wall time, lower is better)';
+    $lines[] = '';
+    $lines[] = '| Test | Median | Min | Max | Samples |';
+    $lines[] = '|---|---:|---:|---:|---|';
+    foreach ($report['tests'] as $name => $stats) {
+        $lines[] = sprintf(
+            '| `%s` | %s | %s | %s | %s |',
+            $name,
+            formatMs($stats['median']),
+            formatMs($stats['min']),
+            formatMs($stats['max']),
+            formatSamples($stats['samples']),
+        );
+    }
+    $lines[] = '';
+
+    return implode("\n", $lines) . "\n";
+}
+
+function formatMs(float $value): string
+{
+    if ($value <= 0.0) {
+        return '—';
+    }
+    return number_format($value, 1, '.', '') . ' ms';
+}
+
+/**
+ * @param list<float> $samples
+ */
+function formatSamples(array $samples): string
+{
+    if ($samples === []) {
+        return '—';
+    }
+    return '`' . implode(' ', array_map(static fn (float $v): string => number_format($v, 1, '.', ''), $samples)) . '`';
+}
+
+function relativePath(string $path, string $rootDir): string
+{
+    $real = realpath($path) ?: $path;
+    $root = realpath($rootDir) ?: $rootDir;
+    if (str_starts_with($real, $root . DIRECTORY_SEPARATOR)) {
+        return substr($real, strlen($root) + 1);
+    }
+    return $path;
+}
