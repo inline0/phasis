@@ -1421,11 +1421,13 @@ final class JsToPhp
         // directly (FunctionDeclaration-bound or assigned earlier from
         // a function-valued call). Otherwise free-variable lookup
         // cached in a $_fnc_ local on first reference.
+        $isLocalFnCallee = false;
         if (isset($this->declaredLocals[$calleeName])) {
             if (($this->localTypes[$calleeName] ?? null) !== 'function') {
                 throw new Bailout('non-function-typed local callee');
             }
             $calleeRef = $this->slotVar($calleeName);
+            $isLocalFnCallee = true;
         } else {
             $calleeRef = '$_fnc_' . preg_replace('/[^A-Za-z0-9_]/', '_', $calleeName);
             if (!isset($this->freeVars['__fnc_' . $calleeName])) {
@@ -1450,8 +1452,17 @@ final class JsToPhp
         // Guard: if the callee isn't a JsFunction we can't dispatch
         // numerically. Bail to VM so the spec-correct TypeError /
         // Proxy / etc. handling fires.
-        $this->pendingStatements[] = 'if (!(' . $calleeRef
-            . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
+        // The instanceof JsFunction guard is only needed for free-var
+        // callees, where env->get could return any JsValue. For
+        // function-typed locals, the assignment site (FunctionDeclaration
+        // emit / function-valued call init) already asserted JsFunction
+        // and the slot type stays invariant — the per-call check is
+        // pure overhead. Free-var callees still need the guard since
+        // global / outer-scope bindings can change shape between calls.
+        if (!$isLocalFnCallee) {
+            $this->pendingStatements[] = 'if (!(' . $calleeRef
+                . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
+        }
         // Direct closure dispatch when phpCompiled is set. The compile
         // path only runs for non-native callees (callFunctionInner
         // routes natives to their callable before reaching tryRunOnVm),
