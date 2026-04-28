@@ -601,6 +601,34 @@ final class VM
                             $callee->vmDirectDispatchCache = true;
                         }
                     }
+                    // Top-tier fast path: callee has a JsToPhp-compiled
+                    // PHP closure. Invoke it directly, skipping
+                    // executeVmFunctionDirect's prologue (callStack /
+                    // callerStack push, frame setup, teardown). The
+                    // closure body's compile-time numeric proof made
+                    // all that bookkeeping unnecessary; runtime
+                    // bailouts (non-numeric arg) throw a Bailout that
+                    // we catch and retry through the normal direct /
+                    // slow path.
+                    if (
+                        $callee->phpCompiled !== null
+                        && !$callee->isClassConstructor()
+                        && !$callee->isDerivedConstructor()
+                        && $callee->getHomeObject() === null
+                    ) {
+                        try {
+                            $stack[$sp++] = ($callee->phpCompiled)(
+                                $args,
+                                $callee->getClosure(),
+                                $this->interp,
+                            );
+                            $pc += 2;
+                            break;
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                            // Fall through to executeVmFunctionDirect /
+                            // callFunction so the call still completes.
+                        }
+                    }
                     if ($eligible) {
                         $stack[$sp++] = $this->interp->executeVmFunctionDirect(
                             $callee,
