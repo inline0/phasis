@@ -1806,12 +1806,18 @@ class ArrayConstructor
             $index = ($indexVal instanceof JsNumber) ? (int) $indexVal->value : 0;
 
             // Per spec 23.1.5.2.1 step 8: if the array is a TypedArray
-            // with a detached buffer, throw TypeError.
+            // with a detached buffer, throw TypeError. For resizable buffers
+            // also throw if the view is now out of bounds.
             if ($array instanceof \PhpJs\Value\JsTypedArray) {
                 $buffer = $array->getBuffer();
                 if ($buffer->isDetached()) {
                     throw new \PhpJs\Exceptions\TypeError(
                         'Cannot perform Array Iterator.prototype.next on a detached ArrayBuffer',
+                    );
+                }
+                if ($array->isOutOfBounds()) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Cannot perform Array Iterator.prototype.next on an out-of-bounds TypedArray',
                     );
                 }
             }

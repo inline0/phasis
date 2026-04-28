@@ -1422,11 +1422,19 @@ class TypedArrayConstructor
                 if ($byteOffset > $bufLen) {
                     throw new RangeError("Start offset of {$typeName} is outside the bounds of the buffer");
                 }
-                $remaining = $bufLen - $byteOffset;
-                if ($remaining % $bpe !== 0) {
-                    throw new RangeError("Byte length of {$typeName} should be a multiple of {$bpe}");
+                if ($isResizable) {
+                    // Length-tracking view on a resizable buffer: per spec the
+                    // bufferByteLength % elementSize check is skipped; the
+                    // current length is computed dynamically from the buffer's
+                    // current byte length.
+                    $length = intdiv($bufLen - $byteOffset, $bpe);
+                } else {
+                    $remaining = $bufLen - $byteOffset;
+                    if ($remaining % $bpe !== 0) {
+                        throw new RangeError("Byte length of {$typeName} should be a multiple of {$bpe}");
+                    }
+                    $length = (int) ($remaining / $bpe);
                 }
-                $length = (int) ($remaining / $bpe);
             }
 
             $ta = new JsTypedArray($typeName, $arg0, $byteOffset, $length, $getProto());
@@ -2417,32 +2425,48 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.subarray called on incompatible receiver");
                 }
-                $len = $this_->getLength();
+                // Per spec: srcLength is 0 if the source view is currently OOB.
+                $srcLength = $this_->isOutOfBounds() ? 0 : $this_->getLength();
                 $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $end = isset($args[1]) && !$args[1] instanceof JsUndefined
                     ? self::toInteger($args[1])
                     : null;
 
-                // Resolve begin.
+                // Resolve begin against srcLength.
                 if ($begin < 0) {
-                    $begin = max(0, $len + $begin);
+                    $begin = max(0, $srcLength + $begin);
                 }
-                $begin = min($begin, $len);
+                $begin = min($begin, $srcLength);
 
-                // Resolve end.
-                if ($end === null) {
-                    $end = $len;
-                } elseif ($end < 0) {
-                    $end = max(0, $len + $end);
-                }
-                $end = min($end, $len);
-
-                $newLength = max(0, $end - $begin);
                 $bpe = $this_->getBytesPerElement();
                 $beginByteOffset = $this_->getByteOffset() + $begin * $bpe;
-
-                // Per spec: TypedArraySpeciesCreate(O, [buffer, beginByteOffset, newLength]).
                 $buffer = $this_->getBuffer();
+
+                // Per spec: if the receiver is auto-length and end is
+                // undefined, build the new view as length-tracking by passing
+                // only [buffer, beginByteOffset]; otherwise pass the explicit
+                // newLength.
+                if ($this_->isAutoLength() && $end === null) {
+                    return self::typedArraySpeciesCreate(
+                        $this_,
+                        0,
+                        [
+                            $buffer,
+                            JsNumber::of((float) $beginByteOffset),
+                        ],
+                    );
+                }
+
+                // Resolve end against srcLength.
+                if ($end === null) {
+                    $end = $srcLength;
+                } elseif ($end < 0) {
+                    $end = max(0, $srcLength + $end);
+                }
+                $end = min($end, $srcLength);
+
+                $newLength = max(0, $end - $begin);
+
                 return self::typedArraySpeciesCreate(
                     $this_,
                     $newLength,
@@ -2466,23 +2490,15 @@ class TypedArrayConstructor
                         "Method {$typeName}.prototype.slice called on incompatible receiver"
                     );
                 }
-                $this_->validateNotDetached();
+                self::validateTypedArray($this_);
+                // Per spec, capture len BEFORE argument coercion.
                 $len = $this_->getLength();
                 $begin = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $end = isset($args[1]) && !$args[1] instanceof JsUndefined
                     ? self::toInteger($args[1])
                     : null;
-                // Per spec: after argument coercion, re-validate that the
-                // TypedArray is not detached and is not out of bounds on
-                // its (possibly resized) buffer.
-                $this_->validateNotDetached();
-                if ($this_->isOutOfBounds()) {
-                    throw new TypeError(
-                        "{$typeName}.prototype.slice: typed array is out of bounds"
-                    );
-                }
 
-                // Resolve begin/end per spec.
+                // Resolve begin/end per spec using the captured len.
                 if ($begin < 0) {
                     $begin = max(0, $len + $begin);
                 }
@@ -2493,23 +2509,22 @@ class TypedArrayConstructor
                     $end = max(0, $len + $end);
                 }
                 $end = min($end, $len);
-                // Re-clamp against the current length in case the buffer was
-                // shrunk by argument coercion.
-                $currentLen = $this_->getLength();
-                $effectiveEnd = min($end, $currentLen);
-                $effectiveBegin = min($begin, $currentLen);
                 $count = max(0, $end - $begin);
-                $copyCount = max(0, $effectiveEnd - $effectiveBegin);
 
                 // TypedArraySpeciesCreate via SpeciesConstructor.
                 $result = self::typedArraySpeciesCreate($this_, $count);
 
                 if ($count > 0) {
-                    $this_->validateNotDetached();
-                }
-
-                for ($i = 0; $i < $copyCount; $i++) {
-                    $result->setIndex($i, $this_->getIndex($effectiveBegin + $i));
+                    // Per spec: re-validate after species ctor, recapture len.
+                    self::validateTypedArray($this_);
+                    $currentLen = $this_->getLength();
+                    // Clamp final to currentLen so we never read beyond the
+                    // (possibly resized) source buffer.
+                    $effectiveEnd = min($end, $currentLen);
+                    $copyCount = max(0, $effectiveEnd - $begin);
+                    for ($i = 0; $i < $copyCount; $i++) {
+                        $result->setIndex($i, $this_->getIndex($begin + $i));
+                    }
                 }
                 return $result;
             },
@@ -2527,8 +2542,9 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.copyWithin called on incompatible receiver");
                 }
-                $this_->validateNotDetached();
-                // Coerce arguments (may detach buffer via valueOf).
+                self::validateTypedArray($this_);
+                // Per spec, capture length BEFORE argument coercion.
+                $capturedLen = $this_->getLength();
                 $target = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
                 $end = isset($args[2]) && !$args[2] instanceof JsUndefined
@@ -2536,7 +2552,7 @@ class TypedArrayConstructor
                 : null;
                 // Per spec: check detached AGAIN after argument coercion.
                 $this_->validateNotDetached();
-                return $this_->copyWithinTyped($target, $start, $end);
+                return $this_->copyWithinTyped($target, $start, $end, $capturedLen);
             },
             2
         );
@@ -2765,6 +2781,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.reduceRight called on incompatible receiver");
                 }
+                self::validateTypedArray($this_);
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');
@@ -2853,14 +2870,15 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.indexOf called on incompatible receiver");
                 }
-                $this_->validateNotDetached();
-                // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
-                if ($this_->getLength() === 0) {
+                self::validateTypedArray($this_);
+                // Per spec, capture length BEFORE fromIndex coercion.
+                $capturedLen = $this_->getLength();
+                if ($capturedLen === 0) {
                     return JsNumber::of(-1.0);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
-                return JsNumber::of((float) $this_->indexOfTyped($search, $fromIndex));
+                return JsNumber::of((float) $this_->indexOfTyped($search, $fromIndex, $capturedLen));
             },
             1
         );
@@ -3176,11 +3194,13 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.at called on incompatible receiver");
                 }
+                self::validateTypedArray($this_);
+                $len = $this_->getLength();
                 $index = isset($args[0]) ? self::toInteger($args[0]) : 0;
                 if ($index < 0) {
-                    $index = $this_->getLength() + $index;
+                    $index = $len + $index;
                 }
-                if ($index < 0 || $index >= $this_->getLength()) {
+                if ($index < 0 || $index >= $len) {
                     return JsUndefined::instance();
                 }
                 return $this_->getIndex($index);

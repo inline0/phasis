@@ -816,9 +816,13 @@ class JsTypedArray extends JsObject
     /**
      * TypedArray.prototype.copyWithin(target, start, end).
      */
-    public function copyWithinTyped(int $target, int $start, ?int $end = null): self
+    public function copyWithinTyped(int $target, int $start, ?int $end = null, ?int $capturedLen = null): self
     {
-        $len = $this->getLength();
+        // Per spec, len was captured before argument coercion. Use the captured
+        // value for clamping target/start/end and computing count; then
+        // re-clamp against the current length in case coercion shrank the
+        // buffer.
+        $len = $capturedLen ?? $this->getLength();
         if ($target < 0) {
             $target = max(0, $len + $target);
         }
@@ -836,12 +840,22 @@ class JsTypedArray extends JsObject
 
         $count = min($end - $start, $len - $target);
 
+        // Re-clamp against the current length: if the buffer shrank between
+        // arg coercion and this point, IntegerIndexedElementGet/Set silently
+        // no-op for out-of-bounds indices, but we still want to skip them.
+        $currentLen = $this->getLength();
+        $effectiveCount = min(
+            $count,
+            max(0, $currentLen - $start),
+            max(0, $currentLen - $target),
+        );
+
         // Copy into a temp buffer to handle overlapping regions.
         $temp = [];
-        for ($i = 0; $i < $count; $i++) {
+        for ($i = 0; $i < $effectiveCount; $i++) {
             $temp[] = $this->getIndex($start + $i);
         }
-        for ($i = 0; $i < $count; $i++) {
+        for ($i = 0; $i < $effectiveCount; $i++) {
             $this->setIndex($target + $i, $temp[$i]);
         }
 
@@ -895,9 +909,11 @@ class JsTypedArray extends JsObject
     /**
      * TypedArray.prototype.indexOf(searchElement, fromIndex).
      */
-    public function indexOfTyped(JsValue $search, int $fromIndex = 0): int
+    public function indexOfTyped(JsValue $search, int $fromIndex = 0, ?int $capturedLen = null): int
     {
-        $len = $this->getLength();
+        // Per spec, fromIndex resolution uses len captured BEFORE coercion;
+        // the loop bound also uses that captured value.
+        $len = $capturedLen ?? $this->getLength();
         if ($fromIndex < 0) {
             $fromIndex = max(0, $len + $fromIndex);
         }
