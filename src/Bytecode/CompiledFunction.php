@@ -33,6 +33,17 @@ final class CompiledFunction
      */
     public array $loadNameIc = [];
 
+    /**
+     * Exception-handler table for this function's bytecode. Each entry
+     * defines a [tryStart, tryEnd) PC range, a catchPc to jump to on
+     * throw, an exception slot for the catch parameter, and the
+     * operand-stack depth at try entry. The VM consults this on every
+     * caught exception to find the innermost matching handler.
+     *
+     * @var list<HandlerEntry>
+     */
+    public array $handlers = [];
+
 
     /**
      * @param list<int>     $code        Flat instruction stream.

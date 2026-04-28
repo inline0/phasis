@@ -107,6 +107,30 @@ final class Compiler
     private array $loopStack = [];
 
     /**
+     * Exception-handler entries collected while compiling. Emitted
+     * onto CompiledFunction at the end so the VM can find the
+     * innermost handler covering a given PC on throw.
+     *
+     * @var list<HandlerEntry>
+     */
+    private array $handlers = [];
+
+    /**
+     * Per-function tracking of operand-stack depth at the start of
+     * each compiled statement. The compiler doesn't otherwise track
+     * stack depth, so we approximate by snapshotting the depth
+     * before compiling a try block and storing that on the
+     * HandlerEntry.stackBase.
+     *
+     * Phase 1: assume try blocks are entered with empty operand
+     * stack (the spec is fine with non-zero, but our
+     * StatementListEvaluation always has the stack drained between
+     * statements). The VM still resets to stackBase so future
+     * support for non-empty entries is a one-line change.
+     */
+    private int $tryEntryStackDepth = 0;
+
+    /**
      * THROW opcode operand: a single int that the VM uses to look
      * up the right exception via thrown JsValue. Throw lowering
      * leaves the value on stack and emits THROW; the VM raises a
@@ -190,7 +214,7 @@ final class Compiler
         $this->emit(Op::RET);
 
         $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
-        return new CompiledFunction(
+        $cf = new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
             names: $this->names,
@@ -202,6 +226,8 @@ final class Compiler
             needsArgsBinding: false,
             canSkipEnvAlloc: !$needsThis,
         );
+        $cf->handlers = $this->handlers;
+        return $cf;
     }
 
     /**
@@ -246,7 +272,33 @@ final class Compiler
             throw new CompilerBailout('with statement');
         }
         if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
-            throw new CompilerBailout('try/catch'); // Phase later
+            // Phase 1: support `try { ... } catch (e) { ... }` only.
+            // The completion-record dance for finally (re-triggering
+            // pending return / break / continue across the finalizer)
+            // still needs design; for now bail when a finalizer is
+            // present so the tree-walker handles it.
+            if ($node->finalizer !== null) {
+                throw new CompilerBailout('try/finally');
+            }
+            if ($node->handler === null) {
+                throw new CompilerBailout('try without catch');
+            }
+            // Optional catch binding (`catch { ... }`) is fine; a
+            // pattern-bound catch parameter (`catch ({a, b}) { ... }`)
+            // would need pattern destructuring on the thrown value
+            // before the body runs. Phase 1 only covers identifier
+            // params.
+            if (
+                $node->handler->param !== null
+                && !($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier)
+            ) {
+                throw new CompilerBailout('destructuring catch param');
+            }
+            // Recurse into the protected blocks so any inner bailout
+            // feature still aborts compilation up front.
+            $this->scanBailout($node->block->body);
+            $this->scanBailout($node->handler->body->body);
+            return;
         }
         if (
             $node instanceof \PhpJs\Ast\Expression\YieldExpression
@@ -360,6 +412,26 @@ final class Compiler
         }
         if ($stmt instanceof \PhpJs\Ast\Statement\LabeledStatement) {
             $this->collectStatementLocals($stmt->body);
+            return;
+        }
+        if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+            $this->collectFunctionLocals($stmt->block->body);
+            if ($stmt->handler !== null) {
+                // Reserve a slot for the catch parameter. Spec says the
+                // catch param introduces a fresh block-scoped binding,
+                // but the slot-based compiler folds it into the function
+                // frame. The TryStatement scanBailout step refuses to
+                // compile shapes that require true block scoping for
+                // catch (destructuring patterns), and the ensureNoTdz
+                // pass rejects let/const conflicts elsewhere.
+                if (
+                    $stmt->handler->param instanceof \PhpJs\Ast\Expression\Identifier
+                    && !isset($this->localSlots[$stmt->handler->param->name])
+                ) {
+                    $this->declareLocal($stmt->handler->param->name);
+                }
+                $this->collectFunctionLocals($stmt->handler->body->body);
+            }
             return;
         }
         // ExpressionStatement / ReturnStatement / ThrowStatement / etc:
@@ -661,7 +733,54 @@ final class Compiler
             $this->emit(Op::THROW);
             return;
         }
+        if ($node instanceof \PhpJs\Ast\Statement\TryStatement) {
+            $this->compileTryCatch($node);
+            return;
+        }
         throw new CompilerBailout('unsupported statement: ' . $node->type());
+    }
+
+    /**
+     * Lower `try { ... } catch (e) { ... }` to a bytecode block plus
+     * a handler-table entry. The try body runs in-line; on normal
+     * completion an unconditional JUMP skips past the catch. On a
+     * thrown JsValue, the VM consults the handler table, finds this
+     * entry's [tryStart, tryEnd) window, stores the thrown value into
+     * the catch parameter's slot, and jumps to catchPc.
+     *
+     * Phase 1 limitations enforced by scanBailout: no finalizer, no
+     * destructuring catch param, only Identifier or absent param.
+     */
+    private function compileTryCatch(\PhpJs\Ast\Statement\TryStatement $node): void
+    {
+        $tryStart = count($this->code);
+        $stackBase = $this->tryEntryStackDepth;
+        foreach ($node->block->body as $stmt) {
+            $this->compileStatement($stmt);
+        }
+        $tryEnd = count($this->code);
+        // Skip the catch on normal completion of the try block.
+        $jmpPastCatch = $this->emitJump(Op::JUMP);
+        $catchPc = count($this->code);
+        $exceptionSlot = -1;
+        if ($node->handler !== null) {
+            if ($node->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+                $name = $node->handler->param->name;
+                $exceptionSlot = $this->localSlots[$name]
+                    ?? $this->declareLocal($name);
+            }
+            foreach ($node->handler->body->body as $stmt) {
+                $this->compileStatement($stmt);
+            }
+        }
+        $this->patchJumpToHere($jmpPastCatch);
+        $this->handlers[] = new HandlerEntry(
+            tryStart: $tryStart,
+            tryEnd: $tryEnd,
+            catchPc: $catchPc,
+            exceptionSlot: $exceptionSlot,
+            stackBase: $stackBase,
+        );
     }
 
     private function compileIf(IfStatement $node): void

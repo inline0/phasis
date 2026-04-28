@@ -151,10 +151,17 @@ final class VM
         $false = JsBoolean::of(false);
 
         $pc = 0;
+        $hasHandlers = $cf->handlers !== [];
 
+        // Outer loop wraps the dispatch in try/catch only when this
+        // function actually has handlers. The bench-relevant hot path
+        // (fib, closure, etc.) has no handlers and runs the cheaper
+        // dispatch loop without the try frame.
         while (true) {
-            $op = $code[$pc];
-            switch ($op) {
+            try {
+                while (true) {
+                    $op = $code[$pc];
+                    switch ($op) {
                 case Op::POP:
                     $sp--;
                     $pc++;
@@ -767,7 +774,41 @@ final class VM
 
                 default:
                     throw new InternalError('VM: unknown opcode ' . $op);
+                }
+            } // end inner while (dispatch loop)
+            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                // Look for a handler whose protected range covers the
+                // current PC (the PC of the instruction that threw or
+                // raised the exception synchronously).
+                if (!$hasHandlers) {
+                    throw $e;
+                }
+                $matched = null;
+                foreach ($cf->handlers as $h) {
+                    if ($pc >= $h->tryStart && $pc < $h->tryEnd) {
+                        $matched = $h;
+                        break;
+                    }
+                }
+                if ($matched === null) {
+                    throw $e;
+                }
+                // Convert the PHP exception to a JsValue for the catch
+                // parameter. JsThrowable wraps a user-thrown JS value;
+                // anything else (TypeError, RangeError, etc.) is a
+                // host-level failure that the spec models as a JS
+                // Error subclass.
+                $jsValue = $e instanceof \PhpJs\Exceptions\JsThrowable
+                    ? $e->jsValue
+                    : $this->interp->phpExceptionToJsValue($e);
+                if ($matched->exceptionSlot >= 0) {
+                    $locals[$matched->exceptionSlot] = $jsValue;
+                }
+                $sp = $matched->stackBase;
+                $pc = $matched->catchPc;
+                // Fall through to outer while: re-enter the try and
+                // resume dispatch at the catch entry.
             }
-        }
+        } // end outer while (try-catch loop)
     }
 }
