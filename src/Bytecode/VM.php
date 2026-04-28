@@ -1210,11 +1210,27 @@ final class VM
                                 $method->builtinKind === 'array.push'
                                 && $receiver instanceof \PhpJs\Value\JsArray
                                 && $argc === 1
+                                && $receiver->isLengthWritable()
+                                && $receiver->isExtensible()
                             ) {
-                                $receiver->push($args[0]);
-                                $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
-                                $pc += 2;
-                                break;
+                                // Skip the inline if Array.prototype has an own
+                                // accessor / data property at the index we're
+                                // about to write — spec Set walks the proto
+                                // chain and may invoke a setter (which can
+                                // freeze the receiver, throw, etc.). Common
+                                // case: Array.prototype has no own indexed
+                                // properties → fast path runs.
+                                $proto = $receiver->getPrototype();
+                                $indexKey = (string) $receiver->getLength();
+                                if (
+                                    $proto === null
+                                    || $proto->getOwnPropertyDescriptor($indexKey) === null
+                                ) {
+                                    $receiver->push($args[0]);
+                                    $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
+                                    $pc += 2;
+                                    break;
+                                }
                             }
                             $kind = $method->builtinKind;
                             // String.prototype.split inline lives in
