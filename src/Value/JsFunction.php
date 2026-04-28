@@ -202,7 +202,7 @@ class JsFunction extends JsObject
             }
         }
         $this->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsNumber((float) $length),
+            value: JsNumber::of((float) $length),
             writable: false,
             enumerable: false,
             configurable: true,

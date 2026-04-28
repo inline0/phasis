@@ -48,7 +48,7 @@ class DateConstructor
             $timeValue = self::constructTimeValue($args);
             $this_->defineOwnProperty(
                 '[[DateValue]]',
-                PropertyDescriptor::data(new JsNumber($timeValue), true, false, true),
+                PropertyDescriptor::data(JsNumber::of($timeValue), true, false, true),
             );
             $this_->defineOwnProperty('[[IsDate]]', PropertyDescriptor::data(new JsBoolean(true), false, false, false));
             return $this_;
@@ -58,7 +58,7 @@ class DateConstructor
         // Static methods.
         $constructor->defineOwnProperty('now', PropertyDescriptor::data(
             JsFunction::fromCallable('now', function (JsValue $this_, array $args): JsValue {
-                return new JsNumber(self::nowMs());
+                return JsNumber::of(self::nowMs());
             }, 0),
             true,
             false,
@@ -68,7 +68,7 @@ class DateConstructor
         $constructor->defineOwnProperty('parse', PropertyDescriptor::data(
             JsFunction::fromCallable('parse', function (JsValue $this_, array $args): JsValue {
                 $str = isset($args[0]) ? TypeConversion::toString($args[0]) : '';
-                return new JsNumber(self::parseDate($str));
+                return JsNumber::of(self::parseDate($str));
             }, 1),
             true,
             false,
@@ -77,7 +77,7 @@ class DateConstructor
 
         $constructor->defineOwnProperty('UTC', PropertyDescriptor::data(
             JsFunction::fromCallable('UTC', function (JsValue $this_, array $args): JsValue {
-                return new JsNumber(self::makeUtcMs($args));
+                return JsNumber::of(self::makeUtcMs($args));
             }, 7),
             true,
             false,
@@ -832,87 +832,87 @@ class DateConstructor
         // --- Getters (local time) ---
 
         $d('getTime', function (JsValue $this_): JsValue {
-            return new JsNumber(self::getTimeValue($this_));
+            return JsNumber::of(self::getTimeValue($this_));
         });
 
         $d('getFullYear', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('Y'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('Y'));
         });
 
         $d('getMonth', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             // JS months are 0-based.
-            return new JsNumber((float) ((int) self::localDateTime($tv)->format('n') - 1));
+            return JsNumber::of((float) ((int) self::localDateTime($tv)->format('n') - 1));
         });
 
         $d('getDate', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('j'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('j'));
         });
 
         $d('getDay', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('w'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('w'));
         });
 
         $d('getHours', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('G'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('G'));
         });
 
         $d('getMinutes', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('i'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('i'));
         });
 
         $d('getSeconds', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::localDateTime($tv)->format('s'));
+            return JsNumber::of((float) (int) self::localDateTime($tv)->format('s'));
         });
 
         $d('getMilliseconds', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $ms = (int) $tv % 1000;
             if ($ms < 0) {
                 $ms += 1000;
             }
-            return new JsNumber((float) $ms);
+            return JsNumber::of((float) $ms);
         });
 
         $d('getTimezoneOffset', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $local = self::localDateTime($tv);
             // Offset in seconds from UTC, JS returns minutes with sign inverted.
             $offsetSec = (int) $local->format('Z');
-            return new JsNumber((float) (-$offsetSec / 60));
+            return JsNumber::of((float) (-$offsetSec / 60));
         });
 
         // --- Getters (UTC) ---
@@ -920,69 +920,69 @@ class DateConstructor
         $d('getUTCFullYear', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('Y'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('Y'));
         });
 
         $d('getUTCMonth', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) ((int) self::utcDateTime($tv)->format('n') - 1));
+            return JsNumber::of((float) ((int) self::utcDateTime($tv)->format('n') - 1));
         });
 
         $d('getUTCDate', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('j'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('j'));
         });
 
         $d('getUTCDay', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('w'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('w'));
         });
 
         $d('getUTCHours', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('G'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('G'));
         });
 
         $d('getUTCMinutes', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('i'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('i'));
         });
 
         $d('getUTCSeconds', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber((float) (int) self::utcDateTime($tv)->format('s'));
+            return JsNumber::of((float) (int) self::utcDateTime($tv)->format('s'));
         });
 
         $d('getUTCMilliseconds', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $ms = (int) $tv % 1000;
             if ($ms < 0) {
                 $ms += 1000;
             }
-            return new JsNumber((float) $ms);
+            return JsNumber::of((float) $ms);
         });
 
         // --- Setters (local time) ---
@@ -993,8 +993,8 @@ class DateConstructor
             }
             $tv = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $tv = self::timeClip($tv);
-            $this_->set('[[DateValue]]', new JsNumber($tv));
-            return new JsNumber($tv);
+            $this_->set('[[DateValue]]', JsNumber::of($tv));
+            return JsNumber::of($tv);
         }, 1);
 
         $d('setMilliseconds', function (JsValue $this_, array $args): JsValue {
@@ -1092,10 +1092,10 @@ class DateConstructor
         $d('getYear', function (JsValue $this_): JsValue {
             $tv = self::getTimeValue($this_);
             if (is_nan($tv)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $local = self::localDateTime($tv);
-            return new JsNumber((float) ((int) $local->format('Y') - 1900));
+            return JsNumber::of((float) ((int) $local->format('Y') - 1900));
         }, 0);
 
         // Annex B: setYear(year) sets the year (adds 1900 if 0-99)
@@ -1106,8 +1106,8 @@ class DateConstructor
             $yearArg = $args[0] ?? JsUndefined::instance();
             $y = TypeConversion::toNumber($yearArg);
             if (is_nan($y)) {
-                $this_->set('[[DateValue]]', new JsNumber(NAN));
-                return new JsNumber(NAN);
+                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                return JsNumber::of(NAN);
             }
             $yi = (int) $y;
             if ($yi >= 0 && $yi <= 99) {
@@ -1128,8 +1128,8 @@ class DateConstructor
                 (int) $local->format('j'),
             );
             $newTv = self::timeClip((float) $newDate->getTimestamp() * 1000 + $ms);
-            $this_->set('[[DateValue]]', new JsNumber($newTv));
-            return new JsNumber($newTv);
+            $this_->set('[[DateValue]]', JsNumber::of($newTv));
+            return JsNumber::of($newTv);
         }, 1);
 
         $d('toJSON', function (JsValue $this_): JsValue {
@@ -1231,7 +1231,7 @@ class DateConstructor
             $formatted = $interp->callFunction(
                 $bound,
                 JsUndefined::instance(),
-                [new JsNumber($tv)],
+                [JsNumber::of($tv)],
             );
             return $formatted instanceof JsString ? $formatted : null;
         };
@@ -1303,7 +1303,7 @@ class DateConstructor
         });
 
         $d('valueOf', function (JsValue $this_): JsValue {
-            return new JsNumber(self::getTimeValue($this_));
+            return JsNumber::of(self::getTimeValue($this_));
         });
 
         // Symbol.toPrimitive for Date: implements ES spec 21.4.4.45.
@@ -1410,15 +1410,15 @@ class DateConstructor
         // If any coerced argument is NaN, the result is NaN
         foreach ($coerced as $c) {
             if (is_nan($c)) {
-                $this_->set('[[DateValue]]', new JsNumber(NAN));
-                return new JsNumber(NAN);
+                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                return JsNumber::of(NAN);
             }
         }
 
         // Per spec, "return NaN" without setting [[DateValue]] so that any
         // side effects from ToNumber (e.g. calling setTime) are preserved.
         if (is_nan($tv) && $field !== 'year') {
-            return new JsNumber(NAN);
+            return JsNumber::of(NAN);
         }
 
         // For setFullYear on an invalid date, start from epoch.
@@ -1510,12 +1510,12 @@ class DateConstructor
         // We avoid mktime because it misinterprets years 0-99 (adds 1900 or 2000).
         $ts = self::composeLocalTimestamp($y, $m, $dt, $h, $min, $sec);
         if ($ts === null) {
-            $this_->set('[[DateValue]]', new JsNumber(NAN));
-            return new JsNumber(NAN);
+            $this_->set('[[DateValue]]', JsNumber::of(NAN));
+            return JsNumber::of(NAN);
         }
         $newTv = self::timeClip((float) $ts * 1000.0 + (float) $ms);
-        $this_->set('[[DateValue]]', new JsNumber($newTv));
-        return new JsNumber($newTv);
+        $this_->set('[[DateValue]]', JsNumber::of($newTv));
+        return JsNumber::of($newTv);
     }
 
     /**
@@ -1547,7 +1547,7 @@ class DateConstructor
         // Per spec, "return NaN" without setting [[DateValue]] so that any
         // side effects from ToNumber (e.g. calling setTime) are preserved.
         if (is_nan($tv) && $field !== 'year') {
-            return new JsNumber(NAN);
+            return JsNumber::of(NAN);
         }
 
         if (is_nan($tv) && $field === 'year') {
@@ -1644,20 +1644,20 @@ class DateConstructor
             $monthIdx = $field === 'year' ? 1 : 0;
             $rawMonth = (float) ($coerced[$monthIdx] ?? $m);
             if (!is_finite($rawYear + floor($rawMonth / 12.0))) {
-                $this_->set('[[DateValue]]', new JsNumber(NAN));
-                return new JsNumber(NAN);
+                $this_->set('[[DateValue]]', JsNumber::of(NAN));
+                return JsNumber::of(NAN);
             }
         }
         // Reconstruct using DateTimeImmutable (UTC).
         // We avoid gmmktime because it misinterprets years 0-99 (adds 1900 or 2000).
         $ts = self::composeUtcTimestamp($y, $m, $dt, $h, $min, $sec);
         if ($ts === null) {
-            $this_->set('[[DateValue]]', new JsNumber(NAN));
-            return new JsNumber(NAN);
+            $this_->set('[[DateValue]]', JsNumber::of(NAN));
+            return JsNumber::of(NAN);
         }
         $newTv = self::timeClip((float) $ts * 1000.0 + (float) $ms);
-        $this_->set('[[DateValue]]', new JsNumber($newTv));
-        return new JsNumber($newTv);
+        $this_->set('[[DateValue]]', JsNumber::of($newTv));
+        return JsNumber::of($newTv);
     }
 
     /**

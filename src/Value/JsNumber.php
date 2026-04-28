@@ -8,6 +8,21 @@ class JsNumber implements JsValue
 {
     private static ?JsObject $numberPrototype = null;
 
+    /**
+     * Singleton cache for small integer values. Tight loops and hot
+     * arithmetic (fib, counter increments, array index iteration) hit
+     * the same small ints over and over; reusing one instance per int
+     * avoids the allocator pressure that 4M+ JsNumber objects per
+     * benchmark would otherwise create. Range [-127, 256] is the same
+     * shape Java uses for Integer.valueOf — wide enough to cover the
+     * common case, narrow enough to fit in a single small array.
+     *
+     * @var array<int, self>
+     */
+    private static array $smallIntCache = [];
+    private const SMALL_INT_CACHE_MIN = -127;
+    private const SMALL_INT_CACHE_MAX = 256;
+
     public static function setNumberPrototype(JsObject $proto): void
     {
         self::$numberPrototype = $proto;
@@ -26,6 +41,42 @@ class JsNumber implements JsValue
     public function __construct(
         public readonly float $value,
     ) {
+    }
+
+    /**
+     * Allocator-free factory for the common case where the value is a
+     * small integer. Reuses cached singletons in [-127, 256]; falls
+     * back to `new self(...)` for fractional, NaN, infinite, or
+     * out-of-range values. Callers in hot VM arithmetic paths should
+     * prefer this over `new JsNumber(...)`.
+     */
+    public static function of(float $value): self
+    {
+        // Fast guard: integer-shaped finite values within the cache
+        // window. The branch order matters — the cache hit path must
+        // be the first case PHP's JIT specializes on.
+        if (
+            $value >= self::SMALL_INT_CACHE_MIN
+            && $value <= self::SMALL_INT_CACHE_MAX
+            && $value === (float) (int) $value
+        ) {
+            $key = (int) $value;
+            // -0 must NOT alias 0: per spec NaN !== NaN, but
+            // Object.is(-0, 0) is false. The (float)(int) round-trip
+            // collapses -0 to 0 (since (int)-0.0 === 0), so we'd
+            // hand out the +0 singleton. Detect the sign-bit case
+            // and bypass the cache for -0 to keep its identity.
+            if ($key === 0 && self::isNegativeZero($value)) {
+                return new self($value);
+            }
+            return self::$smallIntCache[$key] ??= new self((float) $key);
+        }
+        return new self($value);
+    }
+
+    public static function resetSmallIntCache(): void
+    {
+        self::$smallIntCache = [];
     }
 
     public function typeof(): string

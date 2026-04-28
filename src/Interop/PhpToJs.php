@@ -34,7 +34,7 @@ final class PhpToJs
         }
 
         if (is_int($value) || is_float($value)) {
-            return new JsNumber((float) $value);
+            return JsNumber::of((float) $value);
         }
 
         if (is_string($value)) {
@@ -55,7 +55,7 @@ final class PhpToJs
                 foreach ($value as $i => $item) {
                     $jsArr->set((string) $i, self::convert($item));
                 }
-                $jsArr->set('length', new JsNumber((float) count($value)));
+                $jsArr->set('length', JsNumber::of((float) count($value)));
                 return $jsArr;
             }
 

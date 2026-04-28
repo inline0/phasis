@@ -206,16 +206,16 @@ final class VM
                     $slotIdx = $code[$pc + 1];
                     $cur = $locals[$slotIdx];
                     $locals[$slotIdx] = ($cur instanceof JsNumber)
-                        ? new JsNumber($cur->value + 1.0)
-                        : new JsNumber(TypeConversion::toNumber($cur) + 1.0);
+                        ? JsNumber::of($cur->value + 1.0)
+                        : JsNumber::of(TypeConversion::toNumber($cur) + 1.0);
                     $pc += 2;
                     break;
                 case Op::DEC_LOCAL:
                     $slotIdx = $code[$pc + 1];
                     $cur = $locals[$slotIdx];
                     $locals[$slotIdx] = ($cur instanceof JsNumber)
-                        ? new JsNumber($cur->value - 1.0)
-                        : new JsNumber(TypeConversion::toNumber($cur) - 1.0);
+                        ? JsNumber::of($cur->value - 1.0)
+                        : JsNumber::of(TypeConversion::toNumber($cur) - 1.0);
                     $pc += 2;
                     break;
 
@@ -233,7 +233,7 @@ final class VM
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
-                        $stack[$sp++] = new JsNumber($l->value + $r->value);
+                        $stack[$sp++] = JsNumber::of($l->value + $r->value);
                     } elseif ($l instanceof JsString && $r instanceof JsString) {
                         // Both strings: spec ApplyStringOrNumericBinaryOperator
                         // calls ToPrimitive on both (no-op for strings) then,
@@ -253,7 +253,7 @@ final class VM
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
                     $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                        ? new JsNumber($l->value - $r->value)
+                        ? JsNumber::of($l->value - $r->value)
                         : $this->interp->numericBinaryOp($l, $r, '-');
                     $pc++;
                     break;
@@ -261,7 +261,7 @@ final class VM
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
                     $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                        ? new JsNumber($l->value * $r->value)
+                        ? JsNumber::of($l->value * $r->value)
                         : $this->interp->numericBinaryOp($l, $r, '*');
                     $pc++;
                     break;
@@ -421,16 +421,16 @@ final class VM
                 case Op::NEG:
                     $v = $stack[--$sp];
                     if ($v instanceof JsNumber) {
-                        $stack[$sp++] = new JsNumber(-$v->value);
+                        $stack[$sp++] = JsNumber::of(-$v->value);
                     } else {
                         $n = TypeConversion::toNumeric($v);
                         if ($n instanceof JsNumber) {
-                            $stack[$sp++] = new JsNumber(-$n->value);
+                            $stack[$sp++] = JsNumber::of(-$n->value);
                         } else {
                             // BigInt or other: defer to the spec helper
                             // for full correctness.
                             $stack[$sp++] = $this->interp->numericBinaryOp(
-                                new JsNumber(0.0),
+                                JsNumber::of(0.0),
                                 $v,
                                 '-',
                             );
@@ -443,7 +443,7 @@ final class VM
                     if ($v instanceof JsNumber) {
                         $stack[$sp++] = $v;
                     } else {
-                        $stack[$sp++] = new JsNumber(TypeConversion::toNumber($v));
+                        $stack[$sp++] = JsNumber::of(TypeConversion::toNumber($v));
                     }
                     $pc++;
                     break;

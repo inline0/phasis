@@ -30,49 +30,49 @@ class NumberConstructor
 
         // Static constants (non-enumerable in spec, but we use data descriptors for simplicity).
         $existing->defineOwnProperty('MAX_VALUE', PropertyDescriptor::data(
-            new JsNumber(PHP_FLOAT_MAX),
+            JsNumber::of(PHP_FLOAT_MAX),
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('MIN_VALUE', PropertyDescriptor::data(
-            new JsNumber(5e-324), // Smallest positive subnormal double.
+            JsNumber::of(5e-324), // Smallest positive subnormal double.
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('MAX_SAFE_INTEGER', PropertyDescriptor::data(
-            new JsNumber(9007199254740991.0), // 2^53 - 1
+            JsNumber::of(9007199254740991.0), // 2^53 - 1
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('MIN_SAFE_INTEGER', PropertyDescriptor::data(
-            new JsNumber(-9007199254740991.0), // -(2^53 - 1)
+            JsNumber::of(-9007199254740991.0), // -(2^53 - 1)
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('POSITIVE_INFINITY', PropertyDescriptor::data(
-            new JsNumber(INF),
+            JsNumber::of(INF),
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('NEGATIVE_INFINITY', PropertyDescriptor::data(
-            new JsNumber(-INF),
+            JsNumber::of(-INF),
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('NaN', PropertyDescriptor::data(
-            new JsNumber(NAN),
+            JsNumber::of(NAN),
             writable: false,
             enumerable: false,
             configurable: false,
         ));
         $existing->defineOwnProperty('EPSILON', PropertyDescriptor::data(
-            new JsNumber(2.220446049250313e-16), // 2^-52
+            JsNumber::of(2.220446049250313e-16), // 2^-52
             writable: false,
             enumerable: false,
             configurable: false,
@@ -127,7 +127,7 @@ class NumberConstructor
         // Per spec 21.1.4, Number.prototype.[[NumberData]] is +0.
         $proto->defineOwnProperty(
             '[[PrimitiveValue]]',
-            PropertyDescriptor::data(new JsNumber(0.0), false, false, false),
+            PropertyDescriptor::data(JsNumber::of(0.0), false, false, false),
         );
 
         $d = static fn (string $n, \Closure $fn, int $len) => $proto->defineOwnProperty(
@@ -179,7 +179,7 @@ class NumberConstructor
                                 $formatted = $interp->callFunction(
                                     $bound,
                                     JsUndefined::instance(),
-                                    [new JsNumber($numValue)],
+                                    [JsNumber::of($numValue)],
                                 );
                                 if ($formatted instanceof JsString) {
                                     return $formatted;
@@ -454,7 +454,7 @@ class NumberConstructor
             $numValue = self::extractNumberValue($this_);
 
             if (!isset($args[0]) || $args[0] instanceof JsUndefined) {
-                return new JsString((new JsNumber($numValue))->toJsString());
+                return new JsString((JsNumber::of($numValue))->toJsString());
             }
 
             $precision = (int) TypeConversion::toNumber($args[0]);

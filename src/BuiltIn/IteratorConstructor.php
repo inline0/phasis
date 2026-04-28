@@ -380,7 +380,7 @@ class IteratorConstructor
                         return self::iterResult(JsUndefined::instance(), true);
                     }
                     try {
-                        $mapped = $mapper->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                        $mapped = $mapper->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                     } catch (\Throwable $e) {
                         self::closeIterator($itObj, true);
                         throw $e;
@@ -417,7 +417,7 @@ class IteratorConstructor
                             return self::iterResult(JsUndefined::instance(), true);
                         }
                         try {
-                            $selected = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                            $selected = $predicate->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                         } catch (\Throwable $e) {
                             self::closeIterator($itObj, true);
                             throw $e;
@@ -575,7 +575,7 @@ class IteratorConstructor
                         }
 
                         try {
-                            $mapped = $mapper->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                            $mapped = $mapper->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                         } catch (\Throwable $e) {
                             self::closeIterator($itObj, true);
                             throw $e;
@@ -672,7 +672,7 @@ class IteratorConstructor
                     break;
                 }
                 try {
-                    $acc = $reducer->call(JsUndefined::instance(), [$acc, $value, new JsNumber((float) $counter)]);
+                    $acc = $reducer->call(JsUndefined::instance(), [$acc, $value, JsNumber::of((float) $counter)]);
                 } catch (\Throwable $e) {
                     self::closeIterator($itObj, true);
                     throw $e;
@@ -719,7 +719,7 @@ class IteratorConstructor
                     break;
                 }
                 try {
-                    $fn->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                    $fn->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                 } catch (\Throwable $e) {
                     self::closeIterator($itObj, true);
                     throw $e;
@@ -743,7 +743,7 @@ class IteratorConstructor
                     return new JsBoolean(false);
                 }
                 try {
-                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                    $result = $predicate->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                 } catch (\Throwable $e) {
                     self::closeIterator($itObj, true);
                     throw $e;
@@ -770,7 +770,7 @@ class IteratorConstructor
                     return new JsBoolean(true);
                 }
                 try {
-                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                    $result = $predicate->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                 } catch (\Throwable $e) {
                     self::closeIterator($itObj, true);
                     throw $e;
@@ -797,7 +797,7 @@ class IteratorConstructor
                     return JsUndefined::instance();
                 }
                 try {
-                    $result = $predicate->call(JsUndefined::instance(), [$value, new JsNumber((float) $counter)]);
+                    $result = $predicate->call(JsUndefined::instance(), [$value, JsNumber::of((float) $counter)]);
                 } catch (\Throwable $e) {
                     self::closeIterator($itObj, true);
                     throw $e;

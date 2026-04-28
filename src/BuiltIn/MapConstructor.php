@@ -147,7 +147,7 @@ class MapConstructor
             while ($index < $map->slotCount()) {
                 $entry = $map->getSlot($index);
                 $index++;
-                $data->set('index', new JsNumber((float) $index));
+                $data->set('index', JsNumber::of((float) $index));
                 if ($entry !== null) {
                     $result->set('done', new JsBoolean(false));
                     $result->set('value', match ($kind) {
@@ -228,11 +228,11 @@ class MapConstructor
                     break;
                 }
                 $value = $result->get('value');
-                $key = $callbackfn->call(JsUndefined::instance(), [$value, new JsNumber((float) $k)]);
+                $key = $callbackfn->call(JsUndefined::instance(), [$value, JsNumber::of((float) $k)]);
 
                 // Normalize -0 to +0.
                 if ($key instanceof JsNumber && $key->value === 0.0) {
-                    $key = new JsNumber(0.0);
+                    $key = JsNumber::of(0.0);
                 }
 
                 // Find or create the group array.
@@ -519,7 +519,7 @@ class MapConstructor
             if (!$this_ instanceof JsMap) {
                 throw new TypeError('Method get Map.prototype.size called on incompatible receiver');
             }
-            return new JsNumber((float) $this_->mapSize());
+            return JsNumber::of((float) $this_->mapSize());
         }, 0);
         $proto->defineOwnProperty(
             'size',
@@ -554,7 +554,7 @@ class MapConstructor
         $data = new JsObject();
         $data->set('map', $map);
         $data->set('kind', new JsString($kind));
-        $data->set('index', new JsNumber(0.0));
+        $data->set('index', JsNumber::of(0.0));
         $iterator->defineOwnProperty(
             '[[MapIteratorData]]',
             PropertyDescriptor::data($data, false, false, false),

@@ -22,7 +22,7 @@ class MathObject
 
         // Constants.
         $c = static fn (float $v) => PropertyDescriptor::data(
-            new JsNumber($v),
+            JsNumber::of($v),
             writable: false,
             enumerable: false,
             configurable: false,
@@ -74,14 +74,14 @@ class MathObject
         $m('atan2', function (JsValue $this_, array $args): JsValue {
             $y = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             $x = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
-            return new JsNumber(atan2($y, $x));
+            return JsNumber::of(atan2($y, $x));
         }, 2);
         $m('clz32', function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
             if ($x === 0) {
-                return new JsNumber(32.0);
+                return JsNumber::of(32.0);
             }
-            return new JsNumber((float) (31 - (int) floor(log($x, 2))));
+            return JsNumber::of((float) (31 - (int) floor(log($x, 2))));
         });
         $m('imul', function (JsValue $this_, array $args): JsValue {
             $a = isset($args[0]) ? TypeConversion::toUint32($args[0]) : 0;
@@ -97,7 +97,7 @@ class MathObject
             if ($product >= 0x80000000) {
                 $product -= 0x100000000;
             }
-            return new JsNumber((float) $product);
+            return JsNumber::of((float) $product);
         }, 2);
 
         // Multi-argument or special functions.
@@ -122,7 +122,7 @@ class MathObject
     {
         return function (JsValue $this_, array $args) use ($phpFn): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
-            return new JsNumber($phpFn($x));
+            return JsNumber::of($phpFn($x));
         };
     }
 
@@ -131,7 +131,7 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             if (is_nan($x) || is_infinite($x) || $x === 0.0) {
-                return new JsNumber($x);
+                return JsNumber::of($x);
             }
             // JS Math.round uses "round half to positive infinity" (banker's rounding up).
             // PHP round uses "round half away from zero" by default.
@@ -140,16 +140,16 @@ class MathObject
             // round toward positive infinity.
             // Per spec: if x is between -0.5 (inclusive) and +0 (exclusive), return -0.
             if ($x > -0.5 && $x < 0.0) {
-                return new JsNumber(-0.0);
+                return JsNumber::of(-0.0);
             }
             $floored = floor($x);
             $frac = $x - $floored;
             if ($frac === 0.5) {
                 $result = $floored + 1;
                 // Preserve -0 for the case where x === -0.5.
-                return new JsNumber($result == 0 && $x < 0 ? -0.0 : $result);
+                return JsNumber::of($result == 0 && $x < 0 ? -0.0 : $result);
             }
-            return new JsNumber(round($x));
+            return JsNumber::of(round($x));
         };
     }
 
@@ -158,9 +158,9 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             if (is_nan($x) || is_infinite($x) || $x === 0.0) {
-                return new JsNumber($x);
+                return JsNumber::of($x);
             }
-            return new JsNumber($x > 0 ? floor($x) : ceil($x));
+            return JsNumber::of($x > 0 ? floor($x) : ceil($x));
         };
     }
 
@@ -169,7 +169,7 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             if (is_nan($x) || is_infinite($x) || $x === 0.0) {
-                return new JsNumber($x);
+                return JsNumber::of($x);
             }
             // PHP does not have a built-in cbrt; pow(x, 1/3) is imprecise
             // because 1/3 is inexact in IEEE-754. Refine the initial pow
@@ -185,7 +185,7 @@ class MathObject
                 }
                 $y = (2.0 * $y + $a / ($y * $y)) / 3.0;
             }
-            return new JsNumber($sign * $y);
+            return JsNumber::of($sign * $y);
         };
     }
 
@@ -193,7 +193,7 @@ class MathObject
     {
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
-            return new JsNumber(log($x, 2));
+            return JsNumber::of(log($x, 2));
         };
     }
 
@@ -202,13 +202,13 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             if (is_nan($x)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             if ($x === 0.0) {
                 // Preserve sign of zero.
-                return new JsNumber($x);
+                return JsNumber::of($x);
             }
-            return new JsNumber($x > 0 ? 1.0 : -1.0);
+            return JsNumber::of($x > 0 ? 1.0 : -1.0);
         };
     }
 
@@ -219,7 +219,7 @@ class MathObject
             // Convert to 32-bit float and back to simulate fround.
             $packed = pack('f', $x);
             $unpacked = unpack('f', $packed);
-            return new JsNumber($unpacked !== false ? (float) $unpacked[1] : $x);
+            return JsNumber::of($unpacked !== false ? (float) $unpacked[1] : $x);
         };
     }
 
@@ -229,13 +229,13 @@ class MathObject
         return function (JsValue $this_, array $args): JsValue {
             $x = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
             if (is_nan($x) || is_infinite($x) || $x === 0.0) {
-                return new JsNumber($x);
+                return JsNumber::of($x);
             }
             $sign = $x < 0 ? -1.0 : 1.0;
             $abs = abs($x);
             // Overflow to Infinity: >= 65520 rounds up per IEEE.
             if ($abs >= 65520.0) {
-                return new JsNumber($sign * INF);
+                return JsNumber::of($sign * INF);
             }
             // Extract 64-bit IEEE representation.
             $bits = unpack('Q', pack('d', $abs));
@@ -249,7 +249,7 @@ class MathObject
                 $sig53 = (1 << 52) | $mant64;
                 $shift = 43 - $exp16;
                 if ($shift >= 64) {
-                    return new JsNumber($sign * 0.0);
+                    return JsNumber::of($sign * 0.0);
                 }
                 $mant16 = $sig53 >> $shift;
                 $rem = $sig53 & ((1 << $shift) - 1);
@@ -257,7 +257,7 @@ class MathObject
                 if ($rem > $half || ($rem === $half && ($mant16 & 1))) {
                     $mant16++;
                 }
-                return new JsNumber($sign * $mant16 * (2.0 ** -24));
+                return JsNumber::of($sign * $mant16 * (2.0 ** -24));
             }
             // Normal: drop low 42 bits with rounding.
             $mant16 = $mant64 >> 42;
@@ -269,12 +269,12 @@ class MathObject
                     $mant16 = 0;
                     $exp16++;
                     if ($exp16 >= 31) {
-                        return new JsNumber($sign * INF);
+                        return JsNumber::of($sign * INF);
                     }
                 }
             }
             $val = (2.0 ** ($exp16 - 15)) * (1.0 + $mant16 / 1024.0);
-            return new JsNumber($sign * $val);
+            return JsNumber::of($sign * $val);
         };
     }
 
@@ -285,26 +285,26 @@ class MathObject
             $exp = isset($args[1]) ? TypeConversion::toNumber($args[1]) : NAN;
             // ES spec 6.1.6.1.3: special cases
             if (is_nan($exp)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             if ($exp === 0.0) {
-                return new JsNumber(1.0);
+                return JsNumber::of(1.0);
             }
             if (is_nan($base)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             // abs(base) === 1 and exp is infinite -> NaN
             if (abs($base) === 1.0 && is_infinite($exp)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             if ($base === 0.0 && $exp < 0) {
                 // -0 to odd negative integer -> -Infinity, otherwise Infinity
                 if (JsNumber::isNegativeZero($base) && fmod($exp, 2) === -1.0) {
-                    return new JsNumber(-INF);
+                    return JsNumber::of(-INF);
                 }
-                return new JsNumber(INF);
+                return JsNumber::of(INF);
             }
-            return new JsNumber(@($base ** $exp));
+            return JsNumber::of(@($base ** $exp));
         };
     }
 
@@ -312,7 +312,7 @@ class MathObject
     {
         return function (JsValue $this_, array $args): JsValue {
             if (empty($args)) {
-                return new JsNumber(-INF);
+                return JsNumber::of(-INF);
             }
             // Per spec: coerce ALL arguments first, then find max
             $coerced = [];
@@ -322,7 +322,7 @@ class MathObject
             $result = -INF;
             foreach ($coerced as $n) {
                 if (is_nan($n)) {
-                    return new JsNumber(NAN);
+                    return JsNumber::of(NAN);
                 }
                 if ($n > $result || ($result === -INF && $n === -INF)) {
                     $result = $n;
@@ -332,7 +332,7 @@ class MathObject
                     $result = 0.0;
                 }
             }
-            return new JsNumber($result);
+            return JsNumber::of($result);
         };
     }
 
@@ -340,7 +340,7 @@ class MathObject
     {
         return function (JsValue $this_, array $args): JsValue {
             if (empty($args)) {
-                return new JsNumber(INF);
+                return JsNumber::of(INF);
             }
             // Per spec: coerce ALL arguments first, then find min
             $coerced = [];
@@ -350,7 +350,7 @@ class MathObject
             $result = INF;
             foreach ($coerced as $n) {
                 if (is_nan($n)) {
-                    return new JsNumber(NAN);
+                    return JsNumber::of(NAN);
                 }
                 if ($n < $result || ($result === INF && $n === INF)) {
                     $result = $n;
@@ -360,14 +360,14 @@ class MathObject
                     $result = $n;
                 }
             }
-            return new JsNumber($result);
+            return JsNumber::of($result);
         };
     }
 
     private static function randomFn(): \Closure
     {
         return function (): JsValue {
-            return new JsNumber(mt_rand() / mt_getrandmax());
+            return JsNumber::of(mt_rand() / mt_getrandmax());
         };
     }
 
@@ -375,7 +375,7 @@ class MathObject
     {
         return function (JsValue $this_, array $args): JsValue {
             if (empty($args)) {
-                return new JsNumber(0.0);
+                return JsNumber::of(0.0);
             }
             // Per spec: coerce ALL arguments to numbers first (for error propagation),
             // then check for Infinity (takes precedence over NaN).
@@ -396,12 +396,12 @@ class MathObject
                 }
             }
             if ($hasInf) {
-                return new JsNumber(INF);
+                return JsNumber::of(INF);
             }
             if ($hasNaN) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
-            return new JsNumber(sqrt($sum));
+            return JsNumber::of(sqrt($sum));
         };
     }
 
@@ -468,7 +468,7 @@ class MathObject
             }
 
             if (empty($values)) {
-                return new JsNumber(-0.0);
+                return JsNumber::of(-0.0);
             }
 
             $hasNaN = false;
@@ -490,19 +490,19 @@ class MathObject
             }
 
             if ($hasNaN) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             if ($hasPosInf && $hasNegInf) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             if ($hasPosInf) {
-                return new JsNumber(INF);
+                return JsNumber::of(INF);
             }
             if ($hasNegInf) {
-                return new JsNumber(-INF);
+                return JsNumber::of(-INF);
             }
             if ($allNegZero) {
-                return new JsNumber(-0.0);
+                return JsNumber::of(-0.0);
             }
 
             // Per spec: compute the exact mathematical sum, then round to nearest
@@ -529,11 +529,11 @@ class MathObject
                     }
                 }
                 if (!$hasPositive) {
-                    return new JsNumber(-0.0);
+                    return JsNumber::of(-0.0);
                 }
             }
 
-            return new JsNumber($finalResult);
+            return JsNumber::of($finalResult);
         };
     }
 

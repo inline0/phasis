@@ -67,7 +67,7 @@ class StringPrototype
             $result = new JsObject();
             if ($index < $total) {
                 $char = $charsVal instanceof JsObject ? $charsVal->get((string) $index) : JsUndefined::instance();
-                $data->set('index', new JsNumber((float) ($index + 1)));
+                $data->set('index', JsNumber::of((float) ($index + 1)));
                 $result->set('value', $char);
                 $result->set('done', new JsBoolean(false));
             } else {
@@ -130,8 +130,8 @@ class StringPrototype
 
         $data = new JsObject();
         $data->set('chars', $charsArr);
-        $data->set('index', new JsNumber(0.0));
-        $data->set('total', new JsNumber((float) count($chars)));
+        $data->set('index', JsNumber::of(0.0));
+        $data->set('total', JsNumber::of((float) count($chars)));
         $iterator->defineOwnProperty(
             '[[StringIteratorData]]',
             PropertyDescriptor::data($data, false, false, false),
@@ -196,7 +196,7 @@ class StringPrototype
         $d('toWellFormed', self::toWellFormed(), 0);
 
         // String.prototype.length is 0 per spec (it is the empty string object).
-        $proto->defineOwnProperty('length', PropertyDescriptor::data(new JsNumber(0), false, false, false));
+        $proto->defineOwnProperty('length', PropertyDescriptor::data(JsNumber::of(0), false, false, false));
 
         // AnnexB methods: B.2.3.1 String.prototype.substr(start, length)
         // Operates on UTF-16 code units per spec.
@@ -391,7 +391,7 @@ class StringPrototype
         $firstMatch = $matches[0];
         $byteOffset = is_array($firstMatch) ? (is_int($firstMatch[1] ?? null) ? $firstMatch[1] : 0) : 0;
         $charPos = mb_strlen(substr($str, 0, $byteOffset), 'UTF-8');
-        $result->set('index', new JsNumber((float) $charPos));
+        $result->set('index', JsNumber::of((float) $charPos));
         $result->set('input', new JsString($str));
 
         if ($includeGroups) {
@@ -498,10 +498,10 @@ class StringPrototype
             $u16 = JsString::utf8ToUtf16LE($str);
             $len = (int) (strlen($u16) / 2);
             if ($index < 0 || $index >= $len) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $cu = ord($u16[$index * 2]) | (ord($u16[$index * 2 + 1]) << 8);
-            return new JsNumber((float) $cu);
+            return JsNumber::of((float) $cu);
         };
     }
 
@@ -530,9 +530,9 @@ class StringPrototype
 
             if ($fromIndex >= $hayLen) {
                 if ($search === '' && $fromIndex === (int) $hayLen) {
-                    return new JsNumber((float) $hayLen);
+                    return JsNumber::of((float) $hayLen);
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
 
             // strpos over UTF-16LE bytes could in principle match at an
@@ -545,9 +545,9 @@ class StringPrototype
                 $byteOffset = strpos($hayU16, $needleU16, $byteOffset + 1);
             }
             if ($byteOffset === false) {
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
-            return new JsNumber((float) ($byteOffset / 2));
+            return JsNumber::of((float) ($byteOffset / 2));
         };
     }
 
@@ -570,7 +570,7 @@ class StringPrototype
             $fromIndex = max(0, min($fromIndex, $strLen));
 
             if ($search === '') {
-                return new JsNumber((float) $fromIndex);
+                return JsNumber::of((float) $fromIndex);
             }
 
             $needleLen = (int) (strlen($needleU16) / 2);
@@ -588,13 +588,13 @@ class StringPrototype
                 $byteOffset = strrpos($slice2, $needleU16);
             }
             if ($byteOffset === false) {
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
             $pos = (int) ($byteOffset / 2);
             if ($pos > $fromIndex) {
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
-            return new JsNumber((float) $pos);
+            return JsNumber::of((float) $pos);
         };
     }
 
@@ -1295,7 +1295,7 @@ class StringPrototype
             }
 
             if ($functionalReplace) {
-                $jsArgs = [new JsString($search), new JsNumber((float) $pos), new JsString($str)];
+                $jsArgs = [new JsString($search), JsNumber::of((float) $pos), new JsString($str)];
                 $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
                 $replacement = TypeConversion::toString($ret);
             } else {
@@ -1500,7 +1500,7 @@ class StringPrototype
         foreach ($captures as $cap) {
             $jsArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
         }
-        $jsArgs[] = new JsNumber((float) $charOffset);
+        $jsArgs[] = JsNumber::of((float) $charOffset);
         $jsArgs[] = new JsString($str);
 
         $ret = $replArg->call(JsUndefined::instance(), $jsArgs);
@@ -1820,7 +1820,7 @@ class StringPrototype
                 if ($functionalReplace) {
                     $repVal = $replaceValue->call(JsUndefined::instance(), [
                         new JsString($search),
-                        new JsNumber((float) $pos),
+                        JsNumber::of((float) $pos),
                         new JsString($str),
                     ]);
                     $result .= TypeConversion::toString($repVal);
@@ -1891,9 +1891,9 @@ class StringPrototype
             $pcre = '/' . str_replace('/', '\\/', $pattern) . '/u';
             if (@preg_match($pcre, $str, $matches, PREG_OFFSET_CAPTURE)) {
                 $charPos = mb_strlen(substr($str, 0, $matches[0][1]), 'UTF-8');
-                return new JsNumber((float) $charPos);
+                return JsNumber::of((float) $charPos);
             }
-            return new JsNumber(-1.0);
+            return JsNumber::of(-1.0);
         };
     }
 
@@ -1949,7 +1949,7 @@ class StringPrototype
                 if ($isGlobal) {
                     // Global match: return array of all match strings, no capture groups.
                     // Reset lastIndex to 0 per spec.
-                    $searchArg->set('lastIndex', new JsNumber(0.0));
+                    $searchArg->set('lastIndex', JsNumber::of(0.0));
                     $count = @preg_match_all($pcre, $str, $matches);
                     if ($count === 0 || $count === false) {
                         return JsNull::instance();
@@ -2110,7 +2110,7 @@ class StringPrototype
                 $len = mb_strlen($str, 'UTF-8');
                 for ($i = 0; $i <= $len; $i++) {
                     $match = JsArray::fromArray([new JsString('')]);
-                    $match->set('index', new JsNumber((float) $i));
+                    $match->set('index', JsNumber::of((float) $i));
                     $match->set('input', new JsString($str));
                     $allMatches[] = $match;
                 }
@@ -2121,7 +2121,7 @@ class StringPrototype
                 while (@preg_match($pcre, $str, $m, PREG_OFFSET_CAPTURE, $byteOffset)) {
                     $match = JsArray::fromArray([new JsString($m[0][0])]);
                     $charPos = mb_strlen(substr($str, 0, $m[0][1]), 'UTF-8');
-                    $match->set('index', new JsNumber((float) $charPos));
+                    $match->set('index', JsNumber::of((float) $charPos));
                     $match->set('input', new JsString($str));
                     $allMatches[] = $match;
                     $matchLen = strlen($m[0][0]);
@@ -2177,19 +2177,19 @@ class StringPrototype
 
             // If first is not a leading surrogate, or position+1 == size, return first.
             if ($first < 0xD800 || $first > 0xDBFF || $position + 1 === $size) {
-                return new JsNumber((float) $first);
+                return JsNumber::of((float) $first);
             }
 
             $second = ord($u16[($position + 1) * 2]) | (ord($u16[($position + 1) * 2 + 1]) << 8);
 
             // If second is not a trailing surrogate, return first.
             if ($second < 0xDC00 || $second > 0xDFFF) {
-                return new JsNumber((float) $first);
+                return JsNumber::of((float) $first);
             }
 
             // UTF-16 decode: (lead - 0xD800) * 1024 + (trail - 0xDC00) + 0x10000.
             $cp = ($first - 0xD800) * 0x400 + ($second - 0xDC00) + 0x10000;
-            return new JsNumber((float) $cp);
+            return JsNumber::of((float) $cp);
         };
     }
 
@@ -2274,12 +2274,12 @@ class StringPrototype
             // Fallback: PHP strcmp with no locale awareness.
             $cmp = strcmp($str, $that);
             if ($cmp < 0) {
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
             if ($cmp > 0) {
-                return new JsNumber(1.0);
+                return JsNumber::of(1.0);
             }
-            return new JsNumber(0.0);
+            return JsNumber::of(0.0);
         };
     }
 

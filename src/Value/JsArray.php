@@ -185,7 +185,7 @@ class JsArray extends JsObject
     public function get(string $name): JsValue
     {
         if ($name === 'length') {
-            return new JsNumber((float) $this->length);
+            return JsNumber::of((float) $this->length);
         }
         if ($this->denseMode && self::isArrayIndex($name)) {
             $idx = (int) $name;
@@ -202,7 +202,7 @@ class JsArray extends JsObject
     protected function getWithReceiver(string $name, JsObject $receiver): JsValue
     {
         if ($name === 'length') {
-            return new JsNumber((float) $this->length);
+            return JsNumber::of((float) $this->length);
         }
         if ($this->denseMode && self::isArrayIndex($name)) {
             $idx = (int) $name;
@@ -226,7 +226,7 @@ class JsArray extends JsObject
         // prototype chain, the length slot must still be reported or the
         // inherited lookup will miss it (no descriptor sits in $properties).
         if ($name === 'length') {
-            return new JsNumber((float) $this->length);
+            return JsNumber::of((float) $this->length);
         }
         if ($this->denseMode && self::isArrayIndex($name)) {
             $idx = (int) $name;
@@ -515,7 +515,7 @@ class JsArray extends JsObject
     {
         if ($name === 'length') {
             return new \PhpJs\Object\PropertyDescriptor(
-                value: new JsNumber((float) $this->length),
+                value: JsNumber::of((float) $this->length),
                 writable: $this->lengthWritable,
                 enumerable: false,
                 configurable: false,

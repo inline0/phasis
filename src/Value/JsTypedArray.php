@@ -340,18 +340,18 @@ class JsTypedArray extends JsObject
         $bytes = substr($this->buffer->getData(), $offset, $this->bytesPerElement);
 
         if (strlen($bytes) < $this->bytesPerElement) {
-            return new JsNumber(0.0);
+            return JsNumber::of(0.0);
         }
 
         // Float16Array uses custom half-precision IEEE 754 decode.
         if ($this->packFormat === 'H') {
             $u16 = unpack('v', $bytes);
-            return new JsNumber(self::float16Decode($u16 === false ? 0 : $u16[1]));
+            return JsNumber::of(self::float16Decode($u16 === false ? 0 : $u16[1]));
         }
 
         $unpacked = unpack($this->packFormat . 'val', $bytes);
         if ($unpacked === false) {
-            return new JsNumber(0.0);
+            return JsNumber::of(0.0);
         }
 
         $val = $unpacked['val'];
@@ -370,7 +370,7 @@ class JsTypedArray extends JsObject
         // byte-order fixup on big-endian systems. For simplicity, we rely
         // on the fact that nearly all contemporary systems are little-endian.
         // Float types are already IEEE 754 via 'g' (LE float) and 'e' (LE double).
-        return new JsNumber((float) $val);
+        return JsNumber::of((float) $val);
     }
 
     /** Set element at typed index. */
@@ -471,7 +471,7 @@ class JsTypedArray extends JsObject
         // which emits "1.0E+21" for 1e21 and "1.0E-6" for 1e-6).
         if (is_numeric($name)) {
             $f = (float) $name;
-            $jsString = (new JsNumber($f))->toJsString();
+            $jsString = (JsNumber::of($f))->toJsString();
             return $jsString === $name;
         }
         return false;
@@ -491,23 +491,23 @@ class JsTypedArray extends JsObject
             return parent::get($name);
         }
         if ($name === 'length') {
-            return new JsNumber((float) $this->getLength());
+            return JsNumber::of((float) $this->getLength());
         }
         if ($name === 'byteLength') {
-            return new JsNumber((float) ($this->getLength() * $this->bytesPerElement));
+            return JsNumber::of((float) ($this->getLength() * $this->bytesPerElement));
         }
         if ($name === 'byteOffset') {
             // Per spec: byteOffset is 0 when buffer is detached or out of bounds.
             if ($this->buffer->isDetached() || $this->isOutOfBounds()) {
-                return new JsNumber(0.0);
+                return JsNumber::of(0.0);
             }
-            return new JsNumber((float) $this->byteOffset);
+            return JsNumber::of((float) $this->byteOffset);
         }
         if ($name === 'buffer') {
             return $this->buffer;
         }
         if ($name === 'BYTES_PER_ELEMENT') {
-            return new JsNumber((float) $this->bytesPerElement);
+            return JsNumber::of((float) $this->bytesPerElement);
         }
 
         // Numeric index access: only round-trippable digit strings.

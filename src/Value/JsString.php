@@ -45,12 +45,12 @@ class JsString implements JsValue
 
     public function toInt32(): int
     {
-        return (new JsNumber($this->toNumber()))->toInt32();
+        return (JsNumber::of($this->toNumber()))->toInt32();
     }
 
     public function toUint32(): int
     {
-        return (new JsNumber($this->toNumber()))->toUint32();
+        return (JsNumber::of($this->toNumber()))->toUint32();
     }
 
     public function toJsString(): string

@@ -975,7 +975,7 @@ class Interpreter
             return $node->cached = new JsBoolean($value);
         }
         if (is_int($value) || is_float($value)) {
-            return $node->cached = new JsNumber((float) $value);
+            return $node->cached = JsNumber::of((float) $value);
         }
         if (is_string($value)) {
             if (str_starts_with($node->raw, '__BIGINT__')) {
@@ -1018,11 +1018,11 @@ class Interpreter
             $r = $right->value;
             switch ($node->operator) {
                 case '+':
-                    return new JsNumber($l + $r);
+                    return JsNumber::of($l + $r);
                 case '-':
-                    return new JsNumber($l - $r);
+                    return JsNumber::of($l - $r);
                 case '*':
-                    return new JsNumber($l * $r);
+                    return JsNumber::of($l * $r);
                 case '<':
                     return JsBoolean::of(!is_nan($l) && !is_nan($r) && $l < $r);
                 case '>':
@@ -1104,7 +1104,7 @@ class Interpreter
         }
 
         // Both are JsNumber after the BigInt rejection above.
-        return new JsNumber(TypeConversion::toNumber($lnum) + TypeConversion::toNumber($rnum));
+        return JsNumber::of(TypeConversion::toNumber($lnum) + TypeConversion::toNumber($rnum));
     }
 
     /**
@@ -1134,8 +1134,8 @@ class Interpreter
         $r = TypeConversion::toNumber($rnum);
 
         return match ($op) {
-            '-' => new JsNumber($l - $r),
-            '*' => new JsNumber($l * $r),
+            '-' => JsNumber::of($l - $r),
+            '*' => JsNumber::of($l * $r),
             '/' => $this->divide($l, $r),
             '%' => $this->modulo($l, $r),
             '**' => $this->exponentiate($lnum, $rnum),
@@ -1219,7 +1219,7 @@ class Interpreter
         $l = TypeConversion::toInt32($lnum);
         $r = TypeConversion::toInt32($rnum);
 
-        return new JsNumber((float) match ($op) {
+        return JsNumber::of((float) match ($op) {
             '&' => $l & $r,
             '|' => $l | $r,
             '^' => $l ^ $r,
@@ -1251,9 +1251,9 @@ class Interpreter
         }
 
         return match ($op) {
-            '<<' => new JsNumber(TypeConversion::leftShift($lnum, $rnum)),
-            '>>' => new JsNumber(TypeConversion::signedRightShift($lnum, $rnum)),
-            '>>>' => new JsNumber(TypeConversion::unsignedRightShift($lnum, $rnum)),
+            '<<' => JsNumber::of(TypeConversion::leftShift($lnum, $rnum)),
+            '>>' => JsNumber::of(TypeConversion::signedRightShift($lnum, $rnum)),
+            '>>>' => JsNumber::of(TypeConversion::unsignedRightShift($lnum, $rnum)),
         };
     }
 
@@ -1364,27 +1364,27 @@ class Interpreter
     {
         if ($right === 0.0) {
             if ($left === 0.0 || is_nan($left)) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
             $leftNeg = $left < 0 || JsNumber::isNegativeZero($left);
             $rightNeg = JsNumber::isNegativeZero($right);
-            return new JsNumber(($leftNeg xor $rightNeg) ? -INF : INF);
+            return JsNumber::of(($leftNeg xor $rightNeg) ? -INF : INF);
         }
-        return new JsNumber($left / $right);
+        return JsNumber::of($left / $right);
     }
 
     private function modulo(float $left, float $right): JsNumber
     {
         if (is_nan($left) || is_nan($right) || is_infinite($left) || $right === 0.0) {
-            return new JsNumber(NAN);
+            return JsNumber::of(NAN);
         }
         if (is_infinite($right)) {
-            return new JsNumber($left);
+            return JsNumber::of($left);
         }
         if ($left === 0.0) {
-            return new JsNumber($left); // preserves -0
+            return JsNumber::of($left); // preserves -0
         }
-        return new JsNumber(fmod($left, $right));
+        return JsNumber::of(fmod($left, $right));
     }
 
     /**
@@ -1418,15 +1418,15 @@ class Interpreter
         $exp = TypeConversion::toNumber($rnum);
 
         if (abs($base) === 1.0 && is_infinite($exp)) {
-            return new JsNumber(NAN);
+            return JsNumber::of(NAN);
         }
         if ($base === 0.0 && $exp < 0) {
             if (JsNumber::isNegativeZero($base) && fmod($exp, 2) === -1.0) {
-                return new JsNumber(-INF);
+                return JsNumber::of(-INF);
             }
-            return new JsNumber(INF);
+            return JsNumber::of(INF);
         }
-        return new JsNumber(@($base ** $exp));
+        return JsNumber::of(@($base ** $exp));
     }
 
     public function relational(JsValue $x, JsValue $y, string $op): JsValue
@@ -1533,14 +1533,14 @@ class Interpreter
                 $negated = str_starts_with($v, '-') ? substr($v, 1) : '-' . $v;
                 return new JsBigInt($negated);
             }
-            return new JsNumber(-($numeric instanceof JsNumber ? $numeric->value : TypeConversion::toNumber($numeric)));
+            return JsNumber::of(-($numeric instanceof JsNumber ? $numeric->value : TypeConversion::toNumber($numeric)));
         }
 
         return match ($node->operator) {
             '!' => new JsBoolean(!TypeConversion::toBoolean($value)),
             '+' => $value instanceof JsBigInt
                 ? throw new TypeError('Cannot convert a BigInt value to a number')
-                : new JsNumber(TypeConversion::toNumber($value)),
+                : JsNumber::of(TypeConversion::toNumber($value)),
             '~' => (function () use ($value) {
                 // Per §13.5.6.1 step 2: ToNumeric unboxes wrappers (e.g.
                 // Object(1n) → 1n) and distinguishes BigInt from Number.
@@ -1548,7 +1548,7 @@ class Interpreter
                 if ($numeric instanceof JsBigInt) {
                     return new JsBigInt(self::bigIntBitwiseNot($numeric->value));
                 }
-                return new JsNumber((float) (~TypeConversion::toInt32($numeric)));
+                return JsNumber::of((float) (~TypeConversion::toInt32($numeric)));
             })(),
             'void' => JsUndefined::instance(),
             default => throw new InternalError("Unknown unary operator: {$node->operator}"),
@@ -1726,7 +1726,7 @@ class Interpreter
             $current = $env->get($name, $this->strictMode);
             if ($current instanceof JsNumber) {
                 $delta = $node->operator === '++' ? 1.0 : -1.0;
-                $newValue = new JsNumber($current->value + $delta);
+                $newValue = JsNumber::of($current->value + $delta);
                 $env->set($name, $newValue, $this->strictMode);
                 return $node->prefix ? $newValue : $current;
             }
@@ -1766,11 +1766,11 @@ class Interpreter
             return $node->prefix ? $newValue : $oldNumeric;
         }
 
-        $oldValue = new JsNumber(
+        $oldValue = JsNumber::of(
             $oldNumeric instanceof JsNumber ? $oldNumeric->value : TypeConversion::toNumber($oldNumeric),
         );
         $delta = $node->operator === '++' ? 1.0 : -1.0;
-        $newValue = new JsNumber($oldValue->value + $delta);
+        $newValue = JsNumber::of($oldValue->value + $delta);
         $this->withSetMutableBindingCheck($ref, $newValue);
 
         return $node->prefix ? $newValue : $oldValue;
@@ -1905,13 +1905,13 @@ class Interpreter
                 $right = $this->evaluate($node->right, $env);
                 $result = match ($node->operator) {
                     '+=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
-                        ? new JsNumber($leftVal->value + $right->value)
+                        ? JsNumber::of($leftVal->value + $right->value)
                         : $this->addOperator($leftVal, $right),
                     '-=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
-                        ? new JsNumber($leftVal->value - $right->value)
+                        ? JsNumber::of($leftVal->value - $right->value)
                         : $this->numericBinaryOp($leftVal, $right, '-'),
                     '*=' => $leftVal instanceof JsNumber && $right instanceof JsNumber
-                        ? new JsNumber($leftVal->value * $right->value)
+                        ? JsNumber::of($leftVal->value * $right->value)
                         : $this->numericBinaryOp($leftVal, $right, '*'),
                     '/=' => $this->numericBinaryOp($leftVal, $right, '/'),
                     '%=' => $this->numericBinaryOp($leftVal, $right, '%'),
@@ -5647,7 +5647,7 @@ class Interpreter
             configurable: false,
         ));
         $argsObj->defineOwnProperty('length', PropertyDescriptor::data(
-            new JsNumber((float) count($args)),
+            JsNumber::of((float) count($args)),
             writable: true,
             enumerable: false,
             configurable: true,
@@ -6066,7 +6066,7 @@ class Interpreter
         // the relevant branches here:
         if ($obj instanceof JsString) {
             if ($name === 'length') {
-                return new JsNumber((float) $obj->length());
+                return JsNumber::of((float) $obj->length());
             }
             if (ctype_digit($name)) {
                 $idx = (int) $name;
@@ -6894,7 +6894,7 @@ class Interpreter
         // String property access (length, indices, prototype methods)
         if ($obj instanceof JsString) {
             if ($key === 'length') {
-                return new JsNumber((float) $obj->length());
+                return JsNumber::of((float) $obj->length());
             }
             if (ctype_digit($key)) {
                 $idx = (int) $key;
@@ -8229,13 +8229,13 @@ class Interpreter
             }
             // Set length as non-writable, non-enumerable, non-configurable.
             $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                new JsNumber((float) $count),
+                JsNumber::of((float) $count),
                 false,
                 false,
                 false,
             ));
             $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                new JsNumber((float) $count),
+                JsNumber::of((float) $count),
                 false,
                 false,
                 false,
@@ -10992,13 +10992,13 @@ class Interpreter
                 ));
             }
             $strings->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                new JsNumber((float) $count),
+                JsNumber::of((float) $count),
                 false,
                 false,
                 false,
             ));
             $raw->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                new JsNumber((float) $count),
+                JsNumber::of((float) $count),
                 false,
                 false,
                 false,
@@ -13816,7 +13816,7 @@ class Interpreter
         // own data properties. Do not install them as own properties so that
         // Object.defineProperty overrides and the prototype getters work correctly.
         // lastIndex is writable but not enumerable, not configurable per spec.
-        $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(new JsNumber(0.0), true, false, false));
+        $obj->defineOwnProperty('lastIndex', PropertyDescriptor::data(JsNumber::of(0.0), true, false, false));
 
         // Build PCRE pattern.
         $pcreFlags = '';
@@ -13952,7 +13952,7 @@ class Interpreter
             if ($lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
                     // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                    $obj->set('lastIndex', new JsNumber(0.0), true);
+                    $obj->set('lastIndex', JsNumber::of(0.0), true);
                 }
                 return JsNull::instance();
             }
@@ -13965,7 +13965,7 @@ class Interpreter
                 // For sticky regex, the match must start exactly at lastIndex.
                 if ($isSticky && $matchBytePos !== $byteOffset) {
                     // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                    $obj->set('lastIndex', new JsNumber(0.0), true);
+                    $obj->set('lastIndex', JsNumber::of(0.0), true);
                     return JsNull::instance();
                 }
 
@@ -14003,7 +14003,7 @@ class Interpreter
 
                 if ($isGlobal || $isSticky) {
                     // Per spec: Set(R, "lastIndex", matchEnd, Throw=true).
-                    $obj->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
+                    $obj->set('lastIndex', JsNumber::of((float) ($matchCharPos + $matchCharLen)), true);
                 }
 
                 // Build result array with numeric capture groups.
@@ -14021,7 +14021,7 @@ class Interpreter
                 // Per spec, index/input/groups are added via CreateDataProperty.
                 $result->defineOwnProperty(
                     'index',
-                    PropertyDescriptor::data(new JsNumber((float) $matchCharPos), true, true, true),
+                    PropertyDescriptor::data(JsNumber::of((float) $matchCharPos), true, true, true),
                 );
                 $result->defineOwnProperty(
                     'input',
@@ -14072,8 +14072,8 @@ class Interpreter
                                 'UTF-8'
                             );
                             $indEls[] = JsArray::fromArray([
-                                new JsNumber((float) $isc),
-                                new JsNumber((float) $iec),
+                                JsNumber::of((float) $isc),
+                                JsNumber::of((float) $iec),
                             ]);
                         }
                     }
@@ -14105,8 +14105,8 @@ class Interpreter
                                 $ik,
                                 PropertyDescriptor::data(
                                     JsArray::fromArray([
-                                        new JsNumber((float) $igsc),
-                                        new JsNumber((float) $igec),
+                                        JsNumber::of((float) $igsc),
+                                        JsNumber::of((float) $igec),
                                     ])
                                 )
                             );
@@ -14139,7 +14139,7 @@ class Interpreter
 
             if ($isGlobal || $isSticky) {
                 // Per spec: Set(R, "lastIndex", 0, Throw=true).
-                $obj->set('lastIndex', new JsNumber(0.0), true);
+                $obj->set('lastIndex', JsNumber::of(0.0), true);
             }
             return JsNull::instance();
         };

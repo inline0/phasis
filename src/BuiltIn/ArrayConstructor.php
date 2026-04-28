@@ -197,7 +197,7 @@ class ArrayConstructor
         if (!$c instanceof JsFunction || !$c->isConstructable()) {
             throw new TypeError('Species constructor is not a valid constructor');
         }
-        $result = $c->construct([new JsNumber((float) $length)]);
+        $result = $c->construct([JsNumber::of((float) $length)]);
         if (!$result instanceof JsObject) {
             throw new TypeError('Species constructor did not return an object');
         }
@@ -272,8 +272,8 @@ class ArrayConstructor
                     $len++;
                 }
                 // Per §23.1.3.22 step 6: Set(O, "length", 𝔽(len), true).
-                $o->set('length', new JsNumber((float) $len), true);
-                return new JsNumber((float) $len);
+                $o->set('length', JsNumber::of((float) $len), true);
+                return JsNumber::of((float) $len);
             },
             1
         ), true, false, true));
@@ -285,7 +285,7 @@ class ArrayConstructor
                 $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
                     // Per spec, Set(O, "length", +0F, true): throws on failure.
-                    $o->set('length', new JsNumber(0.0), true);
+                    $o->set('length', JsNumber::of(0.0), true);
                     return JsUndefined::instance();
                 }
                 $newLen = $len - 1;
@@ -299,7 +299,7 @@ class ArrayConstructor
                     );
                 }
                 // Per spec, Set(O, "length", newLen, true): throw on failure.
-                $o->set('length', new JsNumber((float) $newLen), true);
+                $o->set('length', JsNumber::of((float) $newLen), true);
                 return $val;
             },
             0
@@ -312,7 +312,7 @@ class ArrayConstructor
                 $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
                     // Per spec, Set(O, "length", +0F, true).
-                    $o->set('length', new JsNumber(0.0), true);
+                    $o->set('length', JsNumber::of(0.0), true);
                     return JsUndefined::instance();
                 }
                 $first = $o->get('0');
@@ -334,7 +334,7 @@ class ArrayConstructor
                     throw new \PhpJs\Exceptions\TypeError("Cannot delete property '" . ($len - 1) . "'");
                 }
                 // Per spec, Set(O, "length", len - 1, true).
-                $o->set('length', new JsNumber((float) ($len - 1)), true);
+                $o->set('length', JsNumber::of((float) ($len - 1)), true);
                 return $first;
             },
             0
@@ -380,8 +380,8 @@ class ArrayConstructor
                     }
                 }
                 $newLen = $len + $count;
-                $o->set('length', new JsNumber((float) $newLen), true);
-                return new JsNumber((float) $newLen);
+                $o->set('length', JsNumber::of((float) $newLen), true);
+                return JsNumber::of((float) $newLen);
             },
             1
         ), true, false, true));
@@ -392,7 +392,7 @@ class ArrayConstructor
                 $o = self::toObject($this_);
                 $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $nNum = isset($args[1]) ? TypeConversion::toNumber($args[1]) : 0.0;
@@ -400,7 +400,7 @@ class ArrayConstructor
                     $nNum = 0.0;
                 }
                 if ($nNum === INF || $nNum >= $len) {
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
                 if ($nNum >= 0) {
                     $k = (int) min($nNum, (float) ($len - 1));
@@ -412,19 +412,19 @@ class ArrayConstructor
                     foreach (self::numericPropertyIndicesInRange($o, $k, $len - 1) as $i) {
                         $key = (string) $i;
                         if (AbstractOperations::strictEquals($o->get($key), $search)) {
-                            return new JsNumber((float) $i);
+                            return JsNumber::of((float) $i);
                         }
                     }
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
 
                 for ($i = $k; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         ), true, false, true));
@@ -435,7 +435,7 @@ class ArrayConstructor
                 $o = self::toObject($this_);
                 $len = self::lengthOfArrayLike($o);
                 if ($len === 0) {
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $nNum = isset($args[1]) ? TypeConversion::toNumber($args[1]) : (float) ($len - 1);
@@ -446,7 +446,7 @@ class ArrayConstructor
                     $k = $nNum === INF ? $len - 1 : (int) min($nNum, (float) ($len - 1));
                 } else {
                     if ($nNum === -INF) {
-                        return new JsNumber(-1.0);
+                        return JsNumber::of(-1.0);
                     }
                     $k = $len + (int) $nNum;
                 }
@@ -455,19 +455,19 @@ class ArrayConstructor
                     foreach (self::numericPropertyIndicesInRange($o, 0, $k, true) as $i) {
                         $key = (string) $i;
                         if (AbstractOperations::strictEquals($o->get($key), $search)) {
-                            return new JsNumber((float) $i);
+                            return JsNumber::of((float) $i);
                         }
                     }
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
 
                 for ($i = $k; $i >= 0; $i--) {
                     $key = (string) $i;
                     if ($o->has($key) && AbstractOperations::strictEquals($o->get($key), $search)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1,
         ), true, false, true));
@@ -565,7 +565,7 @@ class ArrayConstructor
                 if ($a instanceof JsArray) {
                     $a->setLength($count);
                 } else {
-                    $a->set('length', new JsNumber((float) $count));
+                    $a->set('length', JsNumber::of((float) $count));
                 }
                 return $a;
             },
@@ -635,7 +635,7 @@ class ArrayConstructor
                 if ($result instanceof JsArray) {
                     $result->setLength($n);
                 } else {
-                    $result->set('length', new JsNumber((float) $n));
+                    $result->set('length', JsNumber::of((float) $n));
                 }
                 return $result;
             },
@@ -713,7 +713,7 @@ class ArrayConstructor
                     $key = (string) $i;
                     if ($o->has($key)) {
                         $val = $o->get($key);
-                        $mapped = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                        $mapped = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $o]);
                         // Per §23.1.3.15 step 4.c.iii.3: CreateDataPropertyOrThrow.
                         $ok = $result->defineOwnProperty(
                             $key,
@@ -753,7 +753,7 @@ class ArrayConstructor
                         continue;
                     }
                     $val = $o->get($key);
-                    $keep = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                    $keep = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $o]);
                     if (TypeConversion::toBoolean($keep)) {
                         // Per §23.1.3.8 step 4.c.iii.3: CreateDataPropertyOrThrow.
                         $ok = $a->defineOwnProperty(
@@ -771,7 +771,7 @@ class ArrayConstructor
                 if ($a instanceof JsArray) {
                     $a->setLength($to);
                 } else {
-                    $a->set('length', new JsNumber((float) $to));
+                    $a->set('length', JsNumber::of((float) $to));
                 }
                 return $a;
             },
@@ -814,7 +814,7 @@ class ArrayConstructor
                     if ($o->has((string) $i)) {
                         $acc = $callback->call(
                             JsUndefined::instance(),
-                            [$acc, $o->get((string) $i), new JsNumber((float) $i), $o],
+                            [$acc, $o->get((string) $i), JsNumber::of((float) $i), $o],
                         );
                     }
                 }
@@ -851,7 +851,7 @@ class ArrayConstructor
 
                     foreach ($indices as $index) {
                         $val = $o->get((string) $index);
-                        $idx = new JsNumber((float) $index);
+                        $idx = JsNumber::of((float) $index);
                         $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $o]);
                     }
 
@@ -879,7 +879,7 @@ class ArrayConstructor
                 for ($i = $start; $i >= 0; $i--) {
                     if ($o->has((string) $i)) {
                         $val = $o->get((string) $i);
-                        $idx = new JsNumber((float) $i);
+                        $idx = JsNumber::of((float) $i);
                         $acc = $callback->call(JsUndefined::instance(), [$acc, $val, $idx, $o]);
                     }
                 }
@@ -901,7 +901,7 @@ class ArrayConstructor
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
                     if ($o->has((string) $i)) {
-                        $callback->call($thisArg, [$o->get((string) $i), new JsNumber((float) $i), $o]);
+                        $callback->call($thisArg, [$o->get((string) $i), JsNumber::of((float) $i), $o]);
                     }
                 }
                 return JsUndefined::instance();
@@ -924,7 +924,7 @@ class ArrayConstructor
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
-                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return $val;
                     }
@@ -946,12 +946,12 @@ class ArrayConstructor
                 $len = self::getLen($this_);
                 for ($i = 0; $i < $len; $i++) {
                     $val = $this_->get((string) $i);
-                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         ), true, false, true));
@@ -968,7 +968,7 @@ class ArrayConstructor
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 for ($i = $len - 1; $i >= 0; $i--) {
                     $val = $o->get((string) $i);
-                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                    $result = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $o]);
                     if (TypeConversion::toBoolean($result)) {
                         return $val;
                     }
@@ -990,12 +990,12 @@ class ArrayConstructor
                 $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined) ? $args[1] : JsUndefined::instance();
                 for ($i = $len - 1; $i >= 0; $i--) {
                     $val = $o->get((string) $i);
-                    $result = $callback->call($thisArg, [$val, new JsNumber((float) $i), $o]);
+                    $result = $callback->call($thisArg, [$val, JsNumber::of((float) $i), $o]);
                     if (TypeConversion::toBoolean($result)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         ), true, false, true));
@@ -1013,7 +1013,7 @@ class ArrayConstructor
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key)) {
-                        $result = $callback->call($thisArg, [$o->get($key), new JsNumber((float) $i), $o]);
+                        $result = $callback->call($thisArg, [$o->get($key), JsNumber::of((float) $i), $o]);
                         if (TypeConversion::toBoolean($result)) {
                             return new JsBoolean(true);
                         }
@@ -1037,7 +1037,7 @@ class ArrayConstructor
                 for ($i = 0; $i < $len; $i++) {
                     $key = (string) $i;
                     if ($o->has($key)) {
-                        $result = $callback->call($thisArg, [$o->get($key), new JsNumber((float) $i), $o]);
+                        $result = $callback->call($thisArg, [$o->get($key), JsNumber::of((float) $i), $o]);
                         if (!TypeConversion::toBoolean($result)) {
                             return new JsBoolean(false);
                         }
@@ -1074,7 +1074,7 @@ class ArrayConstructor
                 if ($a instanceof JsArray) {
                     $a->setLength($finalIndex);
                 } else {
-                    $a->set('length', new JsNumber((float) $finalIndex));
+                    $a->set('length', JsNumber::of((float) $finalIndex));
                 }
                 return $a;
             },
@@ -1234,7 +1234,7 @@ class ArrayConstructor
                     }
                 }
                 // Per spec step 8: Set(A, "length", actualDeleteCount, true).
-                $removed->set('length', new JsNumber((float) $deleteCount), true);
+                $removed->set('length', JsNumber::of((float) $deleteCount), true);
 
                 $diff = $insertCount - $deleteCount;
                 $newLen = $len + $diff;
@@ -1288,7 +1288,7 @@ class ArrayConstructor
                 }
 
                 // Per spec, Set(O, "length", newLen, true): throw on failure.
-                $this_->set('length', new JsNumber((float) $newLen), true);
+                $this_->set('length', JsNumber::of((float) $newLen), true);
                 return $removed;
             },
             2
@@ -1688,7 +1688,7 @@ class ArrayConstructor
                 if ($mapperFunction !== null) {
                     $element = $mapperFunction->call(
                         $thisArg ?? JsUndefined::instance(),
-                        [$element, new JsNumber((float) $sourceIndex), $source],
+                        [$element, JsNumber::of((float) $sourceIndex), $source],
                     );
                 }
                 $shouldFlatten = false;
@@ -1792,8 +1792,8 @@ class ArrayConstructor
 
             $result = new JsObject();
             if ($index < $len) {
-                $data->set('index', new JsNumber((float) ($index + 1)));
-                $key = new JsNumber((float) $index);
+                $data->set('index', JsNumber::of((float) ($index + 1)));
+                $key = JsNumber::of((float) $index);
                 $value = $array->get((string) $index);
                 $result->set('done', new JsBoolean(false));
                 $result->set('value', match ($kind) {
@@ -1845,7 +1845,7 @@ class ArrayConstructor
         $data = new JsObject();
         $data->set('array', $array);
         $data->set('kind', new JsString($kind));
-        $data->set('index', new JsNumber(0.0));
+        $data->set('index', JsNumber::of(0.0));
         $iterator->defineOwnProperty(
             '[[ArrayIteratorData]]',
             PropertyDescriptor::data($data, false, false, false),
@@ -1995,7 +1995,7 @@ class ArrayConstructor
                             try {
                                 $val = $mapFn->call(
                                     $mapThisArg,
-                                    [$val, new JsNumber((float) $index)]
+                                    [$val, JsNumber::of((float) $index)]
                                 );
                             } catch (\Throwable $mapErr) {
                                 // Per spec: IteratorClose(iterator, mappedValue).
@@ -2060,7 +2060,7 @@ class ArrayConstructor
                     if ($a instanceof JsArray) {
                         $a->setLength($index);
                     } else {
-                        $a->set('length', new JsNumber((float) $index), true);
+                        $a->set('length', JsNumber::of((float) $index), true);
                     }
                     return $a;
                 }
@@ -2082,7 +2082,7 @@ class ArrayConstructor
             // Create result: use constructor if available.
             if ($isConstructor) {
                 /** @var JsFunction $c */
-                $a = self::constructWith($c, [new JsNumber((float) $len)]);
+                $a = self::constructWith($c, [JsNumber::of((float) $len)]);
             } else {
                 // ArrayCreate(len): length must fit in a canonical array index.
                 if ($len > 4294967295) {
@@ -2094,7 +2094,7 @@ class ArrayConstructor
             for ($i = 0; $i < $len; $i++) {
                 $val = $arrayLikeObj->get((string) $i);
                 if ($mapFn !== null) {
-                    $val = $mapFn->call($mapThisArg, [$val, new JsNumber((float) $i)]);
+                    $val = $mapFn->call($mapThisArg, [$val, JsNumber::of((float) $i)]);
                 }
                 // CreateDataPropertyOrThrow per spec.
                 $success = $a->defineOwnProperty(
@@ -2114,7 +2114,7 @@ class ArrayConstructor
             if ($a instanceof JsArray) {
                 $a->setLength($len);
             } else {
-                $a->set('length', new JsNumber((float) $len), true);
+                $a->set('length', JsNumber::of((float) $len), true);
             }
             return $a;
         };
@@ -2207,7 +2207,7 @@ class ArrayConstructor
                             $val = new JsString(mb_substr($str, $i, 1, 'UTF-8'));
                             $val = self::awaitValue($val);
                             if ($mapFn !== null) {
-                                $val = $mapFn->call($thisArg, [$val, new JsNumber((float) $index)]);
+                                $val = $mapFn->call($thisArg, [$val, JsNumber::of((float) $index)]);
                                 $val = self::awaitValue($val);
                             }
                             $a->defineOwnProperty(
@@ -2240,7 +2240,7 @@ class ArrayConstructor
                             public ?\Closure $step = null;
                         };
                         $finish = function () use ($promise, $a, &$idxRef): void {
-                            $a->set('length', new JsNumber((float) $idxRef), true);
+                            $a->set('length', JsNumber::of((float) $idxRef), true);
                             if ($a instanceof JsArray) {
                                 $a->setLength($idxRef);
                             }
@@ -2297,7 +2297,7 @@ class ArrayConstructor
                                     try {
                                         $val = $mapFn->call(
                                             $thisArg,
-                                            [$val, new JsNumber((float) $idxRef)],
+                                            [$val, JsNumber::of((float) $idxRef)],
                                         );
                                         $val = self::awaitValue($val);
                                     } catch (\Throwable $mapErr) {
@@ -2375,7 +2375,7 @@ class ArrayConstructor
                     }
                     // Per spec the final length set is `Set(A, "length", k, true)`
                     // (throw on failure), so use the strict-mode variant.
-                    $a->set('length', new JsNumber((float) $index), true);
+                    $a->set('length', JsNumber::of((float) $index), true);
                     if ($a instanceof JsArray) {
                         $a->setLength($index);
                     }
@@ -2398,7 +2398,7 @@ class ArrayConstructor
 
                 if ($isConstructor) {
                     /** @var JsFunction $c */
-                    $a = self::constructWith($c, [new JsNumber((float) $lenNum)]);
+                    $a = self::constructWith($c, [JsNumber::of((float) $lenNum)]);
                 } else {
                     // Per spec, the non-constructor path is `A = ? ArrayCreate(len)`.
                     // ArrayCreate throws RangeError for len > 2^32 - 1.
@@ -2412,7 +2412,7 @@ class ArrayConstructor
                     $val = $arrayLike->get((string) $i);
                     $val = self::awaitValue($val);
                     if ($mapFn !== null) {
-                        $val = $mapFn->call($thisArg, [$val, new JsNumber((float) $i)]);
+                        $val = $mapFn->call($thisArg, [$val, JsNumber::of((float) $i)]);
                         $val = self::awaitValue($val);
                     }
                     $a->defineOwnProperty(
@@ -2420,7 +2420,7 @@ class ArrayConstructor
                         PropertyDescriptor::data($val, true, true, true),
                     );
                 }
-                $a->set('length', new JsNumber((float) $lenNum), true);
+                $a->set('length', JsNumber::of((float) $lenNum), true);
                 if ($a instanceof JsArray) {
                     $a->setLength($lenNum);
                 }
@@ -2537,7 +2537,7 @@ class ArrayConstructor
             $isConstructor = ($this_ instanceof JsFunction && $this_->isConstructable());
             if ($isConstructor) {
                 /** @var JsFunction $this_ */
-                $a = self::constructWith($this_, [new JsNumber((float) $len)]);
+                $a = self::constructWith($this_, [JsNumber::of((float) $len)]);
             } else {
                 $a = new JsArray();
             }
@@ -2558,7 +2558,7 @@ class ArrayConstructor
             if ($a instanceof JsArray) {
                 $a->setLength($len);
             } else {
-                $a->set('length', new JsNumber((float) $len));
+                $a->set('length', JsNumber::of((float) $len));
             }
             return $a;
         };

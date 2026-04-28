@@ -22,8 +22,8 @@ class GlobalObject
         // Use defineVar so they're accessible by name, but they will be
         // overridden as non-writable on the global object in Engine::setupGlobal.
         $env->defineVar('undefined', JsUndefined::instance());
-        $env->defineVar('NaN', new JsNumber(NAN));
-        $env->defineVar('Infinity', new JsNumber(INF));
+        $env->defineVar('NaN', JsNumber::of(NAN));
+        $env->defineVar('Infinity', JsNumber::of(INF));
 
         $env->defineVar('parseInt', JsFunction::fromCallable('parseInt', self::parseInt(), 2));
         $env->defineVar('parseFloat', JsFunction::fromCallable('parseFloat', self::parseFloat(), 1));
@@ -364,7 +364,7 @@ class GlobalObject
         // Freeze %ThrowTypeError%: non-extensible, all props non-configurable
         $thrower->defineOwnProperty(
             'length',
-            \PhpJs\Object\PropertyDescriptor::data(new JsNumber(0.0), false, false, false),
+            \PhpJs\Object\PropertyDescriptor::data(JsNumber::of(0.0), false, false, false),
         );
         $thrower->defineOwnProperty(
             'name',
@@ -620,7 +620,7 @@ class GlobalObject
 
             // Always override the length property with the computed bound length.
             $boundFn->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-                value: new JsNumber($boundLengthFloat),
+                value: JsNumber::of($boundLengthFloat),
                 writable: false,
                 enumerable: false,
                 configurable: true,
@@ -912,7 +912,7 @@ class GlobalObject
         $genFnConstructor->setConstructable();
         // Per spec 27.3.2: GeneratorFunction.length = 1.
         $genFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsNumber(1.0),
+            value: JsNumber::of(1.0),
             writable: false,
             enumerable: false,
             configurable: true,
@@ -1108,7 +1108,7 @@ class GlobalObject
         );
         $asyncGenFnConstructor->setConstructable();
         $asyncGenFnConstructor->defineOwnProperty('length', new \PhpJs\Object\PropertyDescriptor(
-            value: new JsNumber(1.0),
+            value: JsNumber::of(1.0),
             writable: false,
             enumerable: false,
             configurable: true,
@@ -1162,7 +1162,7 @@ class GlobalObject
             // preg_replace returns null on invalid UTF-8; fall back to ASCII trim.
             $string = $replaced ?? trim($string, " \t\n\r\x0B\x0C");
             if ($string === '') {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
 
             $negative = false;
@@ -1187,7 +1187,7 @@ class GlobalObject
             }
 
             if ($radix < 2 || $radix > 36) {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
 
             $validChars = substr('0123456789abcdefghijklmnopqrstuvwxyz', 0, $radix);
@@ -1201,7 +1201,7 @@ class GlobalObject
             }
 
             if ($result === '') {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
 
             // Use float arithmetic to avoid PHP_INT overflow.
@@ -1213,7 +1213,7 @@ class GlobalObject
                 );
                 $value = $value * $radix + $digit;
             }
-            return new JsNumber($negative ? -$value : $value);
+            return JsNumber::of($negative ? -$value : $value);
         };
     }
 
@@ -1237,7 +1237,7 @@ class GlobalObject
             $string = $replaced ?? ltrim($string, " \t\n\r\x0B\x0C");
 
             if ($string === '') {
-                return new JsNumber(NAN);
+                return JsNumber::of(NAN);
             }
 
             // Check for Infinity prefix (not exact match).
@@ -1245,10 +1245,10 @@ class GlobalObject
                 str_starts_with($string, 'Infinity')
                 || str_starts_with($string, '+Infinity')
             ) {
-                return new JsNumber(INF);
+                return JsNumber::of(INF);
             }
             if (str_starts_with($string, '-Infinity')) {
-                return new JsNumber(-INF);
+                return JsNumber::of(-INF);
             }
 
             if (
@@ -1258,10 +1258,10 @@ class GlobalObject
                     $matches,
                 )
             ) {
-                return new JsNumber((float) $matches[0]);
+                return JsNumber::of((float) $matches[0]);
             }
 
-            return new JsNumber(NAN);
+            return JsNumber::of(NAN);
         };
     }
 
@@ -1345,14 +1345,14 @@ class GlobalObject
             // When called as constructor (new Number(x)), set up wrapper.
             // valueOf/toString come from Number.prototype, not own properties.
             if ($this_ instanceof \PhpJs\Value\JsObject && $this_->has('[[NewTarget]]')) {
-                $val = new JsNumber($num);
+                $val = JsNumber::of($num);
                 $this_->defineOwnProperty(
                     '[[PrimitiveValue]]',
                     \PhpJs\Object\PropertyDescriptor::data($val, false, false, false),
                 );
                 return $this_;
             }
-            return new JsNumber($num);
+            return JsNumber::of($num);
         };
     }
 

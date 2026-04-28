@@ -705,7 +705,7 @@ final class Compiler
         }
         $localSlot = $this->localSlots[$left->name];
         $constIdx = $this->internConst(
-            new JsNumber((float) $right->value),
+            JsNumber::of((float) $right->value),
             'n:' . $right->value,
         );
         $opcodePc = count($this->code);
@@ -1390,7 +1390,7 @@ final class Compiler
                 if (!$node->prefix) {
                     $this->emit(Op::DUP);
                 }
-                $oneIdx = $this->internConst(new JsNumber(1.0), 'n:1');
+                $oneIdx = $this->internConst(JsNumber::of(1.0), 'n:1');
                 $this->emit(Op::LOAD_CONST, $oneIdx);
                 $this->emit($isInc ? Op::ADD : Op::SUB);
                 if ($node->prefix) {
@@ -1485,7 +1485,7 @@ final class Compiler
             return;
         }
         if (is_int($value) || is_float($value)) {
-            $idx = $this->internConst(new JsNumber((float) $value), 'n:' . $value);
+            $idx = $this->internConst(JsNumber::of((float) $value), 'n:' . $value);
             $this->emit(Op::LOAD_CONST, $idx);
             return;
         }

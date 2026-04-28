@@ -154,7 +154,7 @@ class RegExpPrototype
                         $li = (int) TypeConversion::toNumber($R->get('lastIndex'));
                         $next = $isUnicode
                             ? self::advanceStringIndex($S, $li) : $li + 1;
-                        $R->set('lastIndex', new JsNumber((float) $next));
+                        $R->set('lastIndex', JsNumber::of((float) $next));
                     }
                 } else {
                     $this_->set('[[Done]]', new JsBoolean(true));
@@ -557,7 +557,7 @@ class RegExpPrototype
             $this_->forceDelete('toString');
 
             // Set lastIndex to 0 per spec. This may throw if lastIndex is non-writable.
-            $this_->set('lastIndex', new JsNumber(0.0), true);
+            $this_->set('lastIndex', JsNumber::of(0.0), true);
 
             return $this_;
         }, 2);
@@ -630,7 +630,7 @@ class RegExpPrototype
 
             if ($lastIndex > $strLen) {
                 if ($isGlobal || $isSticky) {
-                    $this_->set('lastIndex', new JsNumber(0.0), true);
+                    $this_->set('lastIndex', JsNumber::of(0.0), true);
                 }
                 return JsNull::instance();
             }
@@ -643,7 +643,7 @@ class RegExpPrototype
             if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
                 if ($isSticky && $matchBytePos !== $byteOffset) {
-                    $this_->set('lastIndex', new JsNumber(0.0), true);
+                    $this_->set('lastIndex', JsNumber::of(0.0), true);
                     return JsNull::instance();
                 }
 
@@ -661,7 +661,7 @@ class RegExpPrototype
                 $matchCharLen = (int) (strlen(JsString::utf8ToUtf16LE($matchStr)) / 2);
 
                 if ($isGlobal || $isSticky) {
-                    $this_->set('lastIndex', new JsNumber((float) ($matchCharPos + $matchCharLen)), true);
+                    $this_->set('lastIndex', JsNumber::of((float) ($matchCharPos + $matchCharLen)), true);
                 }
 
                 $elements = [];
@@ -679,7 +679,7 @@ class RegExpPrototype
                 // Array.prototype). Use defineOwnProperty.
                 $result->defineOwnProperty(
                     'index',
-                    PropertyDescriptor::data(new JsNumber((float) $matchCharPos), true, true, true),
+                    PropertyDescriptor::data(JsNumber::of((float) $matchCharPos), true, true, true),
                 );
                 $result->defineOwnProperty(
                     'input',
@@ -736,8 +736,8 @@ class RegExpPrototype
                         $startCp = (int) (strlen(JsString::utf8ToUtf16LE(substr($str, 0, $m[1]))) / 2);
                         $endCp = $startCp + (int) (strlen(JsString::utf8ToUtf16LE($m[0])) / 2);
                         $indicesArr[] = JsArray::fromArray([
-                            new JsNumber((float) $startCp),
-                            new JsNumber((float) $endCp),
+                            JsNumber::of((float) $startCp),
+                            JsNumber::of((float) $endCp),
                         ]);
                     }
                     $iArr = JsArray::fromArray($indicesArr);
@@ -766,8 +766,8 @@ class RegExpPrototype
                             $eCp = $sCp + (int) (strlen(JsString::utf8ToUtf16LE($im[0])) / 2);
                             $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
                                 JsArray::fromArray([
-                                    new JsNumber((float) $sCp),
-                                    new JsNumber((float) $eCp),
+                                    JsNumber::of((float) $sCp),
+                                    JsNumber::of((float) $eCp),
                                 ]),
                                 true,
                                 true,
@@ -817,7 +817,7 @@ class RegExpPrototype
             }
 
             if ($isGlobal || $isSticky) {
-                $this_->set('lastIndex', new JsNumber(0.0), true);
+                $this_->set('lastIndex', JsNumber::of(0.0), true);
             }
             return JsNull::instance();
         };
@@ -914,8 +914,8 @@ class RegExpPrototype
             // Per spec, the comparisons use SameValue (not SameValueZero),
             // so -0 vs +0 is observable: if lastIndex was -0 and exec set
             // it to +0 the spec considers them different and restores -0.
-            if (!\PhpJs\Spec\AbstractOperations::sameValue($previousLastIndex, new JsNumber(0.0))) {
-                $this_->set('lastIndex', new JsNumber(0.0), true);
+            if (!\PhpJs\Spec\AbstractOperations::sameValue($previousLastIndex, JsNumber::of(0.0))) {
+                $this_->set('lastIndex', JsNumber::of(0.0), true);
             }
 
             // Call exec.
@@ -928,7 +928,7 @@ class RegExpPrototype
             }
 
             if ($result instanceof JsNull) {
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             }
 
             return $result->get('index');
@@ -966,7 +966,7 @@ class RegExpPrototype
             $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
 
             // Per spec: Set(rx, "lastIndex", +0, Throw=true).
-            $this_->set('lastIndex', new JsNumber(0.0), true);
+            $this_->set('lastIndex', JsNumber::of(0.0), true);
 
             $elements = [];
             $n = 0;
@@ -991,7 +991,7 @@ class RegExpPrototype
                     $nextIndex = $fullUnicode
                         ? self::advanceStringIndex($S, $thisIndex)
                         : $thisIndex + 1;
-                    $this_->set('lastIndex', new JsNumber((float) $nextIndex), true);
+                    $this_->set('lastIndex', JsNumber::of((float) $nextIndex), true);
                 }
             }
         };
@@ -1034,7 +1034,7 @@ class RegExpPrototype
                 // Per spec step 9a: fullUnicode if flags contain "u" or "v".
                 $fullUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
                 // Per spec step 10.c: Set(rx, "lastIndex", +0, Throw=true).
-                $this_->set('lastIndex', new JsNumber(0.0), true);
+                $this_->set('lastIndex', JsNumber::of(0.0), true);
             }
 
             // Collect all results first.
@@ -1056,7 +1056,7 @@ class RegExpPrototype
                             $nextIndex = $fullUnicode
                                 ? self::advanceStringIndex($S, $thisIndex)
                                 : $thisIndex + 1;
-                            $this_->set('lastIndex', new JsNumber((float) $nextIndex), true);
+                            $this_->set('lastIndex', JsNumber::of((float) $nextIndex), true);
                         }
                     }
                 }
@@ -1095,7 +1095,7 @@ class RegExpPrototype
                     foreach ($captures as $cap) {
                         $callArgs[] = $cap === null ? JsUndefined::instance() : new JsString($cap);
                     }
-                    $callArgs[] = new JsNumber((float) $position);
+                    $callArgs[] = JsNumber::of((float) $position);
                     $callArgs[] = new JsString($S);
                     // Per spec step 14.k.iv: if namedCaptures is not undefined,
                     // append it directly (no ToObject for functional replace).
@@ -1204,7 +1204,7 @@ class RegExpPrototype
 
             $lastIndexVal = $this_->get('lastIndex');
             $startIndex = TypeConversion::toLength($lastIndexVal);
-            $matcher->set('lastIndex', new JsNumber((float) $startIndex), true);
+            $matcher->set('lastIndex', JsNumber::of((float) $startIndex), true);
 
             // Create the iterator closure over $matcher, $S, $global, $fullUnicode.
             $done = false;
@@ -1479,7 +1479,7 @@ class RegExpPrototype
         $q = 0;
 
         while ($q < $size) {
-            $rx->set('lastIndex', new JsNumber((float) $q));
+            $rx->set('lastIndex', JsNumber::of((float) $q));
             $z = self::regExpExec($rx, $S);
 
             if ($z instanceof JsNull) {

@@ -141,7 +141,7 @@ class SetConstructor
             while ($index < $set->slotCount()) {
                 $value = $set->getSlot($index);
                 $index++;
-                $data->set('index', new JsNumber((float) $index));
+                $data->set('index', JsNumber::of((float) $index));
                 if ($value !== null) {
                     $result->set('done', new JsBoolean(false));
                     $result->set('value', match ($kind) {
@@ -343,7 +343,7 @@ class SetConstructor
             if (!$this_ instanceof JsSet) {
                 throw new TypeError('Method get Set.prototype.size called on incompatible receiver');
             }
-            return new JsNumber((float) $this_->setSize());
+            return JsNumber::of((float) $this_->setSize());
         }, 0);
         $proto->defineOwnProperty(
             'size',
@@ -597,7 +597,7 @@ class SetConstructor
         $data = new JsObject();
         $data->set('set', $set);
         $data->set('kind', new JsString($kind));
-        $data->set('index', new JsNumber(0.0));
+        $data->set('index', JsNumber::of(0.0));
         $iterator->defineOwnProperty(
             '[[SetIteratorData]]',
             PropertyDescriptor::data($data, false, false, false),
@@ -696,7 +696,7 @@ class SetConstructor
             }
             $value = $result->get('value');
             if ($value instanceof JsNumber && $value->value === 0.0) {
-                $value = new JsNumber(0.0);
+                $value = JsNumber::of(0.0);
             }
             $ret = $callback($value);
             // If callback returns false, close iterator and stop.

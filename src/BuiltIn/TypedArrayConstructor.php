@@ -74,7 +74,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor ArrayBuffer requires \'new\'');
                 }
-                $arg0 = $args[0] ?? new JsNumber(0.0);
+                $arg0 = $args[0] ?? JsNumber::of(0.0);
                 // Step 2: ToIndex(length).
                 $length = TypeConversion::toIndex($arg0);
 
@@ -174,7 +174,7 @@ class TypedArrayConstructor
                 $isCtor = ($ctor instanceof JsFunction && $ctor->isConstructable())
                     || ($ctor instanceof JsProxy && $ctor->isConstructable());
                 if ($isCtor) {
-                    $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
+                    $newBuf = $ctor->construct([JsNumber::of((float) $newLen)]);
                 } else {
                     // Default: create a plain ArrayBuffer.
                     $newBuf = new JsArrayBuffer($newLen, $this_->getPrototype());
@@ -233,7 +233,7 @@ class TypedArrayConstructor
                         'Method get ArrayBuffer.prototype.byteLength called on incompatible receiver'
                     );
                 }
-                return new JsNumber((float) $this_->getByteLength());
+                return JsNumber::of((float) $this_->getByteLength());
             },
             0,
         );
@@ -252,9 +252,9 @@ class TypedArrayConstructor
                     );
                 }
                 if ($this_->isDetached()) {
-                    return new JsNumber(0.0);
+                    return JsNumber::of(0.0);
                 }
-                return new JsNumber((float) $this_->getMaxByteLength());
+                return JsNumber::of((float) $this_->getMaxByteLength());
             },
             0,
         );
@@ -411,7 +411,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsObject || $this_->get('[[NewTarget]]') instanceof JsUndefined) {
                     throw new TypeError('Constructor SharedArrayBuffer requires \'new\'');
                 }
-                $arg0 = $args[0] ?? new JsNumber(0.0);
+                $arg0 = $args[0] ?? JsNumber::of(0.0);
                 $length = TypeConversion::toIndex($arg0);
 
                 // Handle options argument for growable SharedArrayBuffer.
@@ -451,7 +451,7 @@ class TypedArrayConstructor
                         'Method get SharedArrayBuffer.prototype.byteLength called on incompatible receiver'
                     );
                 }
-                return new JsNumber((float) $this_->getByteLength());
+                return JsNumber::of((float) $this_->getByteLength());
             },
             0,
         );
@@ -470,7 +470,7 @@ class TypedArrayConstructor
                         . ' called on incompatible receiver'
                     );
                 }
-                return new JsNumber((float) $this_->getMaxByteLength());
+                return JsNumber::of((float) $this_->getMaxByteLength());
             },
             0,
         );
@@ -569,7 +569,7 @@ class TypedArrayConstructor
 
                 // Construct(ctor, newLen).
                 if ($ctor->isConstructable()) {
-                    $newBuf = $ctor->construct([new JsNumber((float) $newLen)]);
+                    $newBuf = $ctor->construct([JsNumber::of((float) $newLen)]);
                 } else {
                     $newBuf = new JsSharedArrayBuffer(
                         $newLen,
@@ -763,7 +763,7 @@ class TypedArrayConstructor
                 }
                 // Per spec: throw TypeError if buffer is detached.
                 $this_->validateNotDetached();
-                return new JsNumber((float) $this_->getByteLength());
+                return JsNumber::of((float) $this_->getByteLength());
             },
             0,
         );
@@ -782,7 +782,7 @@ class TypedArrayConstructor
                 }
                 // Per spec: throw TypeError if buffer is detached.
                 $this_->validateNotDetached();
-                return new JsNumber((float) $this_->getByteOffset());
+                return JsNumber::of((float) $this_->getByteOffset());
             },
             0,
         );
@@ -827,31 +827,31 @@ class TypedArrayConstructor
     {
         $methods = [
             'getInt8' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getInt8($offset));
+                return JsNumber::of((float) $dv->getInt8($offset));
             }],
             'getUint8' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getUint8($offset));
+                return JsNumber::of((float) $dv->getUint8($offset));
             }],
             'getInt16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getInt16($offset, $le));
+                return JsNumber::of((float) $dv->getInt16($offset, $le));
             }],
             'getUint16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getUint16($offset, $le));
+                return JsNumber::of((float) $dv->getUint16($offset, $le));
             }],
             'getInt32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getInt32($offset, $le));
+                return JsNumber::of((float) $dv->getInt32($offset, $le));
             }],
             'getUint32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber((float) $dv->getUint32($offset, $le));
+                return JsNumber::of((float) $dv->getUint32($offset, $le));
             }],
             'getFloat16' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber($dv->getFloat16($offset, $le));
+                return JsNumber::of($dv->getFloat16($offset, $le));
             }],
             'getFloat32' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber($dv->getFloat32($offset, $le));
+                return JsNumber::of($dv->getFloat32($offset, $le));
             }],
             'getFloat64' => [1, false, function (JsDataView $dv, int $offset, bool $le): JsValue {
-                return new JsNumber($dv->getFloat64($offset, $le));
+                return JsNumber::of($dv->getFloat64($offset, $le));
             }],
             'setInt8' => [2, false, null],
             'setUint8' => [2, false, null],
@@ -1176,7 +1176,7 @@ class TypedArrayConstructor
         // Static property: BYTES_PER_ELEMENT.
         $constructor->defineOwnProperty(
             'BYTES_PER_ELEMENT',
-            PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
+            PropertyDescriptor::data(JsNumber::of((float) $bpe), false, false, false),
         );
 
         // Static methods from()/of() live on %TypedArray% and are inherited
@@ -1191,7 +1191,7 @@ class TypedArrayConstructor
         // Prototype property: BYTES_PER_ELEMENT (own, not inherited from %TypedArray%.prototype).
         $proto->defineOwnProperty(
             'BYTES_PER_ELEMENT',
-            PropertyDescriptor::data(new JsNumber((float) $bpe), false, false, false),
+            PropertyDescriptor::data(JsNumber::of((float) $bpe), false, false, false),
         );
 
         $proto->defineOwnProperty(
@@ -1276,7 +1276,7 @@ class TypedArrayConstructor
 
                 // TypedArrayCreate(C, [len]): construct via C and then
                 // ValidateTypedArray on the result.
-                $targetObj = $this_->construct([new JsNumber((float) $len)]);
+                $targetObj = $this_->construct([JsNumber::of((float) $len)]);
                 if (!$targetObj instanceof JsTypedArray) {
                     throw new TypeError(
                         'TypedArray.from: constructor did not return a TypedArray'
@@ -1293,7 +1293,7 @@ class TypedArrayConstructor
                     $kValue = $elements[$k];
                     if ($hasMapFn) {
                         /** @var JsFunction $mapFn */
-                        $mappedValue = $mapFn->call($thisArg, [$kValue, new JsNumber((float) $k)]);
+                        $mappedValue = $mapFn->call($thisArg, [$kValue, JsNumber::of((float) $k)]);
                     } else {
                         $mappedValue = $kValue;
                     }
@@ -1323,7 +1323,7 @@ class TypedArrayConstructor
                 }
                 // TypedArrayCreate(C, [len]) + ValidateTypedArray.
                 $len = count($args);
-                $newObj = $this_->construct([new JsNumber((float) $len)]);
+                $newObj = $this_->construct([JsNumber::of((float) $len)]);
                 if (!$newObj instanceof JsTypedArray) {
                     throw new TypeError(
                         'TypedArray.of: constructor did not return a TypedArray'
@@ -1536,7 +1536,7 @@ class TypedArrayConstructor
                 $bytes = self::decodeBase64($str, $alphabet, $lastChunkHandling, null, $read);
                 $ta = JsTypedArray::fromLength('Uint8Array', count($bytes), $proto);
                 foreach ($bytes as $i => $b) {
-                    $ta->setIndex($i, new JsNumber((float) $b));
+                    $ta->setIndex($i, JsNumber::of((float) $b));
                 }
                 return $ta;
             },
@@ -1561,7 +1561,7 @@ class TypedArrayConstructor
                 $bytes = self::decodeHex($str, null, $read);
                 $ta = JsTypedArray::fromLength('Uint8Array', count($bytes), $proto);
                 foreach ($bytes as $i => $b) {
-                    $ta->setIndex($i, new JsNumber((float) $b));
+                    $ta->setIndex($i, JsNumber::of((float) $b));
                 }
                 return $ta;
             },
@@ -1731,14 +1731,14 @@ class TypedArrayConstructor
                         if ($written + 3 > $targetLen) {
                             $readCount = $chunkStartPos;
                             $result = new JsObject();
-                            $result->set('read', new JsNumber((float) $readCount));
-                            $result->set('written', new JsNumber((float) $written));
+                            $result->set('read', JsNumber::of((float) $readCount));
+                            $result->set('written', JsNumber::of((float) $written));
                             return $result;
                         }
 
-                        $this_->setIndex($written, new JsNumber((float) $b0));
-                        $this_->setIndex($written + 1, new JsNumber((float) $b1));
-                        $this_->setIndex($written + 2, new JsNumber((float) $b2));
+                        $this_->setIndex($written, JsNumber::of((float) $b0));
+                        $this_->setIndex($written + 1, JsNumber::of((float) $b1));
+                        $this_->setIndex($written + 2, JsNumber::of((float) $b2));
                         $written += 3;
                         $chunk = [];
                         $readCount = $i;
@@ -1773,8 +1773,8 @@ class TypedArrayConstructor
                 if ($chunkLen === 0) {
                     $readCount = $inputLen;
                     $result = new JsObject();
-                    $result->set('read', new JsNumber((float) $readCount));
-                    $result->set('written', new JsNumber((float) $written));
+                    $result->set('read', JsNumber::of((float) $readCount));
+                    $result->set('written', JsNumber::of((float) $written));
                     return $result;
                 }
 
@@ -1789,8 +1789,8 @@ class TypedArrayConstructor
                     if ($lastChunkHandling === 'stop-before-partial') {
                         $readCount = $chunkStartPos;
                         $result = new JsObject();
-                        $result->set('read', new JsNumber((float) $readCount));
-                        $result->set('written', new JsNumber((float) $written));
+                        $result->set('read', JsNumber::of((float) $readCount));
+                        $result->set('written', JsNumber::of((float) $written));
                         return $result;
                     }
                     throw new SyntaxError('Invalid base64: incomplete final chunk');
@@ -1802,8 +1802,8 @@ class TypedArrayConstructor
                         if ($lastChunkHandling === 'stop-before-partial') {
                             $readCount = $chunkStartPos;
                             $result = new JsObject();
-                            $result->set('read', new JsNumber((float) $readCount));
-                            $result->set('written', new JsNumber((float) $written));
+                            $result->set('read', JsNumber::of((float) $readCount));
+                            $result->set('written', JsNumber::of((float) $written));
                             return $result;
                         }
                         throw new SyntaxError('Invalid base64: partial padding in final chunk');
@@ -1812,8 +1812,8 @@ class TypedArrayConstructor
                         if ($lastChunkHandling === 'stop-before-partial') {
                             $readCount = $chunkStartPos;
                             $result = new JsObject();
-                            $result->set('read', new JsNumber((float) $readCount));
-                            $result->set('written', new JsNumber((float) $written));
+                            $result->set('read', JsNumber::of((float) $readCount));
+                            $result->set('written', JsNumber::of((float) $written));
                             return $result;
                         }
                         if ($lastChunkHandling === 'strict') {
@@ -1821,13 +1821,13 @@ class TypedArrayConstructor
                         }
                         $b0 = ($chunk[0] << 2) | ($chunk[1] >> 4);
                         if ($written < $targetLen) {
-                            $this_->setIndex($written, new JsNumber((float) $b0));
+                            $this_->setIndex($written, JsNumber::of((float) $b0));
                             $written++;
                         }
                         $readCount = $padStart;
                         $result = new JsObject();
-                        $result->set('read', new JsNumber((float) $readCount));
-                        $result->set('written', new JsNumber((float) $written));
+                        $result->set('read', JsNumber::of((float) $readCount));
+                        $result->set('written', JsNumber::of((float) $written));
                         return $result;
                     }
                     // $padCount === 2: correct.
@@ -1836,13 +1836,13 @@ class TypedArrayConstructor
                     }
                     $b0 = ($chunk[0] << 2) | ($chunk[1] >> 4);
                     if ($written < $targetLen) {
-                        $this_->setIndex($written, new JsNumber((float) $b0));
+                        $this_->setIndex($written, JsNumber::of((float) $b0));
                         $written++;
                     }
                     $readCount = $i;
                     $result = new JsObject();
-                    $result->set('read', new JsNumber((float) $readCount));
-                    $result->set('written', new JsNumber((float) $written));
+                    $result->set('read', JsNumber::of((float) $readCount));
+                    $result->set('written', JsNumber::of((float) $written));
                     return $result;
                 }
 
@@ -1852,8 +1852,8 @@ class TypedArrayConstructor
                     if ($lastChunkHandling === 'stop-before-partial') {
                         $readCount = $chunkStartPos;
                         $result = new JsObject();
-                        $result->set('read', new JsNumber((float) $readCount));
-                        $result->set('written', new JsNumber((float) $written));
+                        $result->set('read', JsNumber::of((float) $readCount));
+                        $result->set('written', JsNumber::of((float) $written));
                         return $result;
                     }
                     if ($lastChunkHandling === 'strict') {
@@ -1863,20 +1863,20 @@ class TypedArrayConstructor
                     if ($written + 2 > $targetLen) {
                         $readCount = $chunkStartPos;
                         $result = new JsObject();
-                        $result->set('read', new JsNumber((float) $readCount));
-                        $result->set('written', new JsNumber((float) $written));
+                        $result->set('read', JsNumber::of((float) $readCount));
+                        $result->set('written', JsNumber::of((float) $written));
                         return $result;
                     }
                     $b0 = ($chunk[0] << 2) | ($chunk[1] >> 4);
                     $b1 = (($chunk[1] & 0x0F) << 4) | ($chunk[2] >> 2);
-                    $this_->setIndex($written, new JsNumber((float) $b0));
+                    $this_->setIndex($written, JsNumber::of((float) $b0));
                     $written++;
-                    $this_->setIndex($written, new JsNumber((float) $b1));
+                    $this_->setIndex($written, JsNumber::of((float) $b1));
                     $written++;
                     $readCount = $padStart;
                     $result = new JsObject();
-                    $result->set('read', new JsNumber((float) $readCount));
-                    $result->set('written', new JsNumber((float) $written));
+                    $result->set('read', JsNumber::of((float) $readCount));
+                    $result->set('written', JsNumber::of((float) $written));
                     return $result;
                 }
                 if ($padCount > 1) {
@@ -1890,20 +1890,20 @@ class TypedArrayConstructor
                 if ($written + 2 > $targetLen) {
                     $readCount = $chunkStartPos;
                     $result = new JsObject();
-                    $result->set('read', new JsNumber((float) $readCount));
-                    $result->set('written', new JsNumber((float) $written));
+                    $result->set('read', JsNumber::of((float) $readCount));
+                    $result->set('written', JsNumber::of((float) $written));
                     return $result;
                 }
                 $b0 = ($chunk[0] << 2) | ($chunk[1] >> 4);
                 $b1 = (($chunk[1] & 0x0F) << 4) | ($chunk[2] >> 2);
-                $this_->setIndex($written, new JsNumber((float) $b0));
+                $this_->setIndex($written, JsNumber::of((float) $b0));
                 $written++;
-                $this_->setIndex($written, new JsNumber((float) $b1));
+                $this_->setIndex($written, JsNumber::of((float) $b1));
                 $written++;
                 $readCount = $i;
                 $result = new JsObject();
-                $result->set('read', new JsNumber((float) $readCount));
-                $result->set('written', new JsNumber((float) $written));
+                $result->set('read', JsNumber::of((float) $readCount));
+                $result->set('written', JsNumber::of((float) $written));
                 return $result;
             },
             1,
@@ -1947,8 +1947,8 @@ class TypedArrayConstructor
                     if ($written >= $targetLen) {
                         $readCount = $i;
                         $result = new JsObject();
-                        $result->set('read', new JsNumber((float) $readCount));
-                        $result->set('written', new JsNumber((float) $written));
+                        $result->set('read', JsNumber::of((float) $readCount));
+                        $result->set('written', JsNumber::of((float) $written));
                         return $result;
                     }
                     $hi = $str[$i];
@@ -1956,14 +1956,14 @@ class TypedArrayConstructor
                     if (!ctype_xdigit($hi) || !ctype_xdigit($lo)) {
                         throw new SyntaxError("Invalid hex character in input: '{$hi}{$lo}'");
                     }
-                    $this_->setIndex($written, new JsNumber((float) hexdec($hi . $lo)));
+                    $this_->setIndex($written, JsNumber::of((float) hexdec($hi . $lo)));
                     $written++;
                     $readCount = $i + 2;
                 }
 
                 $result = new JsObject();
-                $result->set('read', new JsNumber((float) $readCount));
-                $result->set('written', new JsNumber((float) $written));
+                $result->set('read', JsNumber::of((float) $readCount));
+                $result->set('written', JsNumber::of((float) $written));
                 return $result;
             },
             1,
@@ -2375,7 +2375,7 @@ class TypedArrayConstructor
                                 new JsString(mb_substr($str, $i, 1, 'UTF-8')),
                             );
                         }
-                        $srcObj->set('length', new JsNumber((float) $srcLen));
+                        $srcObj->set('length', JsNumber::of((float) $srcLen));
                     } else {
                         // Number, boolean, symbol: ToObject wraps them, length 0.
                         $srcLen = 0;
@@ -2398,7 +2398,7 @@ class TypedArrayConstructor
                                 $this_->setIndex($offset + $i, $coerced);
                             } else {
                                 $num = TypeConversion::toNumber($val);
-                                $this_->setIndex($offset + $i, new JsNumber($num));
+                                $this_->setIndex($offset + $i, JsNumber::of($num));
                             }
                         }
                     }
@@ -2448,8 +2448,8 @@ class TypedArrayConstructor
                     $newLength,
                     [
                         $buffer,
-                        new JsNumber((float) $beginByteOffset),
-                        new JsNumber((float) $newLength),
+                        JsNumber::of((float) $beginByteOffset),
+                        JsNumber::of((float) $newLength),
                     ],
                 );
             },
@@ -2566,7 +2566,7 @@ class TypedArrayConstructor
                     }
                 } else {
                     $numVal = TypeConversion::toNumber($value);
-                    $coerced = new JsNumber($numVal);
+                    $coerced = JsNumber::of($numVal);
                 }
 
                 $start = isset($args[1]) ? self::toInteger($args[1]) : 0;
@@ -2597,7 +2597,7 @@ class TypedArrayConstructor
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
                     $el = $this_->getIndex($i);
-                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    $result = $predicate->call($thisArg, [$el, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return $el;
                     }
@@ -2625,12 +2625,12 @@ class TypedArrayConstructor
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
                     $el = $this_->getIndex($i);
-                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    $result = $predicate->call($thisArg, [$el, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         );
@@ -2652,7 +2652,7 @@ class TypedArrayConstructor
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
-                    $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                    $callback->call($thisArg, [$this_->getIndex($i), JsNumber::of((float) $i), $this_]);
                 }
                 return JsUndefined::instance();
             },
@@ -2678,7 +2678,7 @@ class TypedArrayConstructor
                 for ($i = 0; $i < $len; $i++) {
                     $mapped = $callback->call(
                         $thisArg,
-                        [$this_->getIndex($i), new JsNumber((float) $i), $this_],
+                        [$this_->getIndex($i), JsNumber::of((float) $i), $this_],
                     );
                     $result->setIndex($i, $mapped);
                 }
@@ -2708,7 +2708,7 @@ class TypedArrayConstructor
                     $el = $this_->getIndex($i);
                     $result = $callback->call(
                         $thisArg,
-                        [$el, new JsNumber((float) $i), $this_],
+                        [$el, JsNumber::of((float) $i), $this_],
                     );
                     if (TypeConversion::toBoolean($result)) {
                         $kept[] = $el;
@@ -2749,7 +2749,7 @@ class TypedArrayConstructor
                 for (; $k < $len; $k++) {
                     $accumulator = $callback->call(
                         JsUndefined::instance(),
-                        [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
+                        [$accumulator, $this_->getIndex($k), JsNumber::of((float) $k), $this_],
                     );
                 }
                 return $accumulator;
@@ -2783,7 +2783,7 @@ class TypedArrayConstructor
                 for (; $k >= 0; $k--) {
                     $accumulator = $callback->call(
                         JsUndefined::instance(),
-                        [$accumulator, $this_->getIndex($k), new JsNumber((float) $k), $this_],
+                        [$accumulator, $this_->getIndex($k), JsNumber::of((float) $k), $this_],
                     );
                 }
                 return $accumulator;
@@ -2808,7 +2808,7 @@ class TypedArrayConstructor
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$this_->getIndex($i), JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return new JsBoolean(true);
                     }
@@ -2835,7 +2835,7 @@ class TypedArrayConstructor
                 }
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = 0; $i < $len; $i++) {
-                    $result = $callback->call($thisArg, [$this_->getIndex($i), new JsNumber((float) $i), $this_]);
+                    $result = $callback->call($thisArg, [$this_->getIndex($i), JsNumber::of((float) $i), $this_]);
                     if (!TypeConversion::toBoolean($result)) {
                         return new JsBoolean(false);
                     }
@@ -2856,11 +2856,11 @@ class TypedArrayConstructor
                 $this_->validateNotDetached();
                 // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
                 if ($this_->getLength() === 0) {
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 $fromIndex = isset($args[1]) ? self::toInteger($args[1]) : 0;
-                return new JsNumber((float) $this_->indexOfTyped($search, $fromIndex));
+                return JsNumber::of((float) $this_->indexOfTyped($search, $fromIndex));
             },
             1
         );
@@ -2877,7 +2877,7 @@ class TypedArrayConstructor
                 $len = $this_->getLength();
                 // Per spec: if length is 0, return -1 before ToInteger(fromIndex).
                 if ($len === 0) {
-                    return new JsNumber(-1.0);
+                    return JsNumber::of(-1.0);
                 }
                 $search = $args[0] ?? JsUndefined::instance();
                 // Per spec: n defaults to len - 1.
@@ -2893,16 +2893,16 @@ class TypedArrayConstructor
                     // Strict equality: NaN !== NaN.
                     if ($el instanceof JsNumber && $search instanceof JsNumber) {
                         if (!is_nan($el->value) && !is_nan($search->value) && $el->value === $search->value) {
-                            return new JsNumber((float) $i);
+                            return JsNumber::of((float) $i);
                         }
                     }
                     if ($el instanceof \PhpJs\Value\JsBigInt && $search instanceof \PhpJs\Value\JsBigInt) {
                         if ($el->value === $search->value) {
-                            return new JsNumber((float) $i);
+                            return JsNumber::of((float) $i);
                         }
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         );
@@ -3132,7 +3132,7 @@ class TypedArrayConstructor
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
                     $el = $this_->getIndex($i);
-                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    $result = $predicate->call($thisArg, [$el, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
                         return $el;
                     }
@@ -3158,12 +3158,12 @@ class TypedArrayConstructor
                 $thisArg = $args[1] ?? JsUndefined::instance();
                 for ($i = $this_->getLength() - 1; $i >= 0; $i--) {
                     $el = $this_->getIndex($i);
-                    $result = $predicate->call($thisArg, [$el, new JsNumber((float) $i), $this_]);
+                    $result = $predicate->call($thisArg, [$el, JsNumber::of((float) $i), $this_]);
                     if (TypeConversion::toBoolean($result)) {
-                        return new JsNumber((float) $i);
+                        return JsNumber::of((float) $i);
                     }
                 }
-                return new JsNumber(-1.0);
+                return JsNumber::of(-1.0);
             },
             1
         );
@@ -3333,7 +3333,7 @@ class TypedArrayConstructor
                     $coerced = TypeConversion::toBigInt($value);
                 } else {
                     $numVal = TypeConversion::toNumber($value);
-                    $coerced = new JsNumber($numVal);
+                    $coerced = JsNumber::of($numVal);
                 }
 
                 // Resolve relative index (against the captured len, per spec).
@@ -3385,7 +3385,7 @@ class TypedArrayConstructor
                         "Method get {$typeName}.prototype.length called on incompatible receiver"
                     );
                 }
-                return new JsNumber((float) $this_->getLength());
+                return JsNumber::of((float) $this_->getLength());
             },
             0
         );
@@ -3421,7 +3421,7 @@ class TypedArrayConstructor
                         "Method get {$typeName}.prototype.byteLength called on incompatible receiver"
                     );
                 }
-                return new JsNumber((float) ($this_->getLength() * $this_->getBytesPerElement()));
+                return JsNumber::of((float) ($this_->getLength() * $this_->getBytesPerElement()));
             },
             0
         );
@@ -3439,7 +3439,7 @@ class TypedArrayConstructor
                         "Method get {$typeName}.prototype.byteOffset called on incompatible receiver"
                     );
                 }
-                return new JsNumber((float) $this_->getByteOffset());
+                return JsNumber::of((float) $this_->getByteOffset());
             },
             0
         );
@@ -3520,7 +3520,7 @@ class TypedArrayConstructor
             $species instanceof JsFunction
             && $species->isConstructable()
         ) {
-            $constructArgs = $speciesArgs ?? [new JsNumber((float) $length)];
+            $constructArgs = $speciesArgs ?? [JsNumber::of((float) $length)];
             $result = $species->construct($constructArgs);
             if ($result instanceof JsTypedArray) {
                 // Per spec: TypedArrayCreate step 3: if argumentList is a single

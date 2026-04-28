@@ -134,7 +134,7 @@ final class TypeConversion
         if ($primValue instanceof JsBigInt) {
             return $primValue;
         }
-        return new JsNumber(self::toNumber($primValue));
+        return JsNumber::of(self::toNumber($primValue));
     }
 
     /**
@@ -600,7 +600,7 @@ final class TypeConversion
                 ));
             }
             $wrapper->defineOwnProperty('length', \PhpJs\Object\PropertyDescriptor::data(
-                new JsNumber((float) $len),
+                JsNumber::of((float) $len),
                 false,
                 false,
                 false,

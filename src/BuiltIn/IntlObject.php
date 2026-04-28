@@ -461,7 +461,7 @@ class IntlObject
             foreach ($canonicalized as $i => $tag) {
                 $result->set((string) $i, new JsString($tag));
             }
-            $result->set('length', new JsNumber((float) count($canonicalized)));
+            $result->set('length', JsNumber::of((float) count($canonicalized)));
             return $result;
         };
     }
@@ -504,7 +504,7 @@ class IntlObject
             foreach ($values as $i => $v) {
                 $result->set((string) $i, new JsString($v));
             }
-            $result->set('length', new JsNumber((float) count($values)));
+            $result->set('length', JsNumber::of((float) count($values)));
             return $result;
         };
     }
@@ -831,7 +831,7 @@ class IntlObject
                 );
                 $count++;
             }
-            $result->set('length', new JsNumber((float) $count));
+            $result->set('length', JsNumber::of((float) $count));
             return $result;
         }, 1);
         return $fn;
@@ -1071,12 +1071,12 @@ class IntlObject
                 );
 
                 $result = $collator->compare($x, $y);
-                return new JsNumber((float) ($result === false ? 0 : $result));
+                return JsNumber::of((float) ($result === false ? 0 : $result));
             }
 
             // Fallback: PHP strcmp.
             $cmp = strcmp($x, $y);
-            return new JsNumber((float) ($cmp < 0 ? -1 : ($cmp > 0 ? 1 : 0)));
+            return JsNumber::of((float) ($cmp < 0 ? -1 : ($cmp > 0 ? 1 : 0)));
         }, 2);
 
         // Per spec, compare is a bound getter on the prototype.
@@ -1383,7 +1383,7 @@ class IntlObject
                     $minIntDigits = (int) TypeConversion::toNumber($midVal);
                 }
                 $obj->defineOwnProperty('[[MinimumIntegerDigits]]', PropertyDescriptor::data(
-                    new JsNumber((float) $minIntDigits),
+                    JsNumber::of((float) $minIntDigits),
                     false,
                     false,
                     false,
@@ -1424,13 +1424,13 @@ class IntlObject
                     $minSig = $defaultNumberOption($msdVal, 1, 21, 1, 'minimumSignificantDigits');
                     $maxSig = $defaultNumberOption($xsdVal, $minSig, 21, 21, 'maximumSignificantDigits');
                     $obj->defineOwnProperty('[[MinimumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minSig),
+                        JsNumber::of((float) $minSig),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxSig),
+                        JsNumber::of((float) $maxSig),
                         false,
                         false,
                         false,
@@ -1438,13 +1438,13 @@ class IntlObject
                     $minFrac = $defaultNumberOption($mfdVal, 0, 100, 0, 'minimumFractionDigits');
                     $maxFrac = $defaultNumberOption($xfdVal, 0, 100, max(3, $minFrac), 'maximumFractionDigits');
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minFrac),
+                        JsNumber::of((float) $minFrac),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxFrac),
+                        JsNumber::of((float) $maxFrac),
                         false,
                         false,
                         false,
@@ -1496,13 +1496,13 @@ class IntlObject
                     $minSig = $defaultNumberOption($msdVal, 1, 21, 1, 'minimumSignificantDigits');
                     $maxSig = $defaultNumberOption($xsdVal, $minSig, 21, 21, 'maximumSignificantDigits');
                     $obj->defineOwnProperty('[[MinimumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minSig),
+                        JsNumber::of((float) $minSig),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxSig),
+                        JsNumber::of((float) $maxSig),
                         false,
                         false,
                         false,
@@ -1537,13 +1537,13 @@ class IntlObject
                         'maximumFractionDigits',
                     );
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minFrac),
+                        JsNumber::of((float) $minFrac),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxFrac),
+                        JsNumber::of((float) $maxFrac),
                         false,
                         false,
                         false,
@@ -1584,7 +1584,7 @@ class IntlObject
                     $roundingIncrement = (int) $riNum;
                 }
                 $obj->defineOwnProperty('[[RoundingIncrement]]', PropertyDescriptor::data(
-                    new JsNumber((float) $roundingIncrement),
+                    JsNumber::of((float) $roundingIncrement),
                     false,
                     false,
                     false,
@@ -2035,7 +2035,7 @@ class IntlObject
                 $emit('literal', self::numberFormatRangeSeparator($this_), 'shared');
                 $appendTyped($endParts, 'endRange');
             }
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty(
@@ -2082,22 +2082,22 @@ class IntlObject
                     self::extractInternalString($this_, '[[UnitDisplay]]', 'short'),
                 ));
             }
-            self::defineDataProp($result, 'minimumIntegerDigits', new JsNumber(
+            self::defineDataProp($result, 'minimumIntegerDigits', JsNumber::of(
                 self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
             ));
             $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
             if ($rt === 'significantDigits') {
-                self::defineDataProp($result, 'minimumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumSignificantDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
                 ));
-                self::defineDataProp($result, 'maximumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumSignificantDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
                 ));
             } else {
-                self::defineDataProp($result, 'minimumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumFractionDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
                 ));
-                self::defineDataProp($result, 'maximumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumFractionDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
                 ));
             }
@@ -2122,7 +2122,7 @@ class IntlObject
             ));
             // Spec key ordering: roundingIncrement, roundingMode,
             // roundingPriority, trailingZeroDisplay (after signDisplay).
-            self::defineDataProp($result, 'roundingIncrement', new JsNumber(
+            self::defineDataProp($result, 'roundingIncrement', JsNumber::of(
                 self::extractInternalNumber($this_, '[[RoundingIncrement]]', 1),
             ));
             self::defineDataProp($result, 'roundingMode', new JsString(
@@ -2217,7 +2217,7 @@ class IntlObject
                     }
                 }
                 self::emitUnitTemplateSegments($suffixTpl, $emit);
-                $result->set('length', new JsNumber((float) $idx));
+                $result->set('length', JsNumber::of((float) $idx));
                 return $result;
             }
         }
@@ -2250,7 +2250,7 @@ class IntlObject
             if ($trailing !== '') {
                 $emit('literal', $trailing);
             }
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }
 
@@ -2261,7 +2261,7 @@ class IntlObject
             if ($trailing !== '') {
                 $emit('literal', $trailing);
             }
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }
 
@@ -2471,7 +2471,7 @@ class IntlObject
             $emit('literal', $trailing);
         }
         unset($isNegative);
-        $result->set('length', new JsNumber((float) $idx));
+        $result->set('length', JsNumber::of((float) $idx));
         return $result;
     }
 
@@ -4169,7 +4169,7 @@ class IntlObject
                             $intVal = (int) floor($fsd);
                             $hasExplicitFormatComponents = true;
                             $obj->defineOwnProperty("[[{$prop}]]", PropertyDescriptor::data(
-                                new JsNumber((float) $intVal),
+                                JsNumber::of((float) $intVal),
                                 false,
                                 false,
                                 false,
@@ -4712,7 +4712,7 @@ class IntlObject
                     $appendTyped($endParts, 'endRange');
                 }
             }
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty(
@@ -4775,7 +4775,7 @@ class IntlObject
                     $num = $val instanceof JsNumber
                         ? $val->value
                         : TypeConversion::toNumber($val);
-                    self::defineDataProp($result, $comp, new JsNumber((float) $num));
+                    self::defineDataProp($result, $comp, JsNumber::of((float) $num));
                 } else {
                     self::defineDataProp($result, $comp, new JsString(TypeConversion::toString($val)));
                 }
@@ -5157,7 +5157,7 @@ class IntlObject
         // Without intl we already only have a literal output.
         if (!extension_loaded('intl')) {
             $emit('literal', $formatted);
-            $parts->set('length', new JsNumber((float) $idx));
+            $parts->set('length', JsNumber::of((float) $idx));
             return $parts;
         }
         // Reuse the same formatter the format() pipeline used so
@@ -5170,7 +5170,7 @@ class IntlObject
         $pattern = $formatter->getPattern();
         if ($pattern === false || $pattern === '') {
             $emit('literal', $formatted);
-            $parts->set('length', new JsNumber((float) $idx));
+            $parts->set('length', JsNumber::of((float) $idx));
             return $parts;
         }
 
@@ -5330,7 +5330,7 @@ class IntlObject
         if ($cursor < $outLen) {
             $emit('literal', substr($formatted, $cursor));
         }
-        $parts->set('length', new JsNumber((float) $idx));
+        $parts->set('length', JsNumber::of((float) $idx));
         return $parts;
     }
 
@@ -6597,7 +6597,7 @@ class IntlObject
                     $minInt = (int) TypeConversion::toNumber($midVal);
                 }
                 $obj->defineOwnProperty('[[MinimumIntegerDigits]]', PropertyDescriptor::data(
-                    new JsNumber((float) $minInt),
+                    JsNumber::of((float) $minInt),
                     false,
                     false,
                     false,
@@ -6612,13 +6612,13 @@ class IntlObject
                     $minSig = !$msdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($msdVal) : 1;
                     $maxSig = !$xsdVal instanceof JsUndefined ? (int) TypeConversion::toNumber($xsdVal) : 21;
                     $obj->defineOwnProperty('[[MinimumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minSig),
+                        JsNumber::of((float) $minSig),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumSignificantDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxSig),
+                        JsNumber::of((float) $maxSig),
                         false,
                         false,
                         false,
@@ -6635,13 +6635,13 @@ class IntlObject
                     $maxFrac = !$xfdVal instanceof JsUndefined
                         ? (int) TypeConversion::toNumber($xfdVal) : max(3, $minFrac);
                     $obj->defineOwnProperty('[[MinimumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $minFrac),
+                        JsNumber::of((float) $minFrac),
                         false,
                         false,
                         false,
                     ));
                     $obj->defineOwnProperty('[[MaximumFractionDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) $maxFrac),
+                        JsNumber::of((float) $maxFrac),
                         false,
                         false,
                         false,
@@ -6673,7 +6673,7 @@ class IntlObject
                         throw new RangeError("Invalid roundingIncrement: {$riNum}");
                     }
                     $obj->defineOwnProperty('[[RoundingIncrement]]', PropertyDescriptor::data(
-                        new JsNumber((float) (int) $riNum),
+                        JsNumber::of((float) (int) $riNum),
                         false,
                         false,
                         false,
@@ -6816,22 +6816,22 @@ class IntlObject
             self::defineDataProp($result, 'type', new JsString(
                 self::extractInternalString($this_, '[[Type]]', 'cardinal'),
             ));
-            self::defineDataProp($result, 'minimumIntegerDigits', new JsNumber(
+            self::defineDataProp($result, 'minimumIntegerDigits', JsNumber::of(
                 self::extractInternalNumber($this_, '[[MinimumIntegerDigits]]', 1),
             ));
             $rt = self::extractInternalString($this_, '[[RoundingType]]', 'fractionDigits');
             if ($rt === 'significantDigits') {
-                self::defineDataProp($result, 'minimumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumSignificantDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MinimumSignificantDigits]]', 1),
                 ));
-                self::defineDataProp($result, 'maximumSignificantDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumSignificantDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MaximumSignificantDigits]]', 21),
                 ));
             } else {
-                self::defineDataProp($result, 'minimumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'minimumFractionDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MinimumFractionDigits]]', 0),
                 ));
-                self::defineDataProp($result, 'maximumFractionDigits', new JsNumber(
+                self::defineDataProp($result, 'maximumFractionDigits', JsNumber::of(
                     self::extractInternalNumber($this_, '[[MaximumFractionDigits]]', 3),
                 ));
             }
@@ -6850,7 +6850,7 @@ class IntlObject
                     PropertyDescriptor::data(new JsString($cat), true, true, true),
                 );
             }
-            $categories->set('length', new JsNumber((float) count($cats)));
+            $categories->set('length', JsNumber::of((float) count($cats)));
             self::defineDataProp($result, 'pluralCategories', $categories);
             self::defineDataProp($result, 'roundingMode', new JsString(
                 self::extractInternalString($this_, '[[RoundingMode]]', 'halfExpand'),
@@ -7217,7 +7217,7 @@ class IntlObject
                         foreach (array_values($val) as $item) {
                             $arr->set((string) $idx++, new JsString((string) $item));
                         }
-                        $arr->set('length', new JsNumber((float) $idx));
+                        $arr->set('length', JsNumber::of((float) $idx));
                         $jsVal = $arr;
                     } else {
                         $jsVal = new JsString((string) $val);
@@ -7404,7 +7404,7 @@ class IntlObject
                 foreach ($values as $i => $v) {
                     $result->set((string) $i, new JsString($v));
                 }
-                $result->set('length', new JsNumber((float) count($values)));
+                $result->set('length', JsNumber::of((float) count($values)));
                 return $result;
             }, 0);
             $proto->defineOwnProperty($name, PropertyDescriptor::data($fn, true, false, true));
@@ -7442,13 +7442,13 @@ class IntlObject
                 }
             }
             $result = new JsObject();
-            $result->set('firstDay', new JsNumber((float) $firstDay));
+            $result->set('firstDay', JsNumber::of((float) $firstDay));
             $weekend = new JsArray();
-            $weekend->set('0', new JsNumber(6.0));
-            $weekend->set('1', new JsNumber(7.0));
-            $weekend->set('length', new JsNumber(2.0));
+            $weekend->set('0', JsNumber::of(6.0));
+            $weekend->set('1', JsNumber::of(7.0));
+            $weekend->set('length', JsNumber::of(2.0));
             $result->set('weekend', $weekend);
-            $result->set('minimalDays', new JsNumber(1.0));
+            $result->set('minimalDays', JsNumber::of(1.0));
             return $result;
         }, 0);
         $proto->defineOwnProperty('getWeekInfo', PropertyDescriptor::data($getWeekInfo, true, false, true));
@@ -7468,7 +7468,7 @@ class IntlObject
             foreach ($limited as $i => $tz) {
                 $result->set((string) $i, new JsString($tz));
             }
-            $result->set('length', new JsNumber((float) count($limited)));
+            $result->set('length', JsNumber::of((float) count($limited)));
             return $result;
         }, 0);
         $proto->defineOwnProperty('getTimeZones', PropertyDescriptor::data($getTimeZones, true, false, true));
@@ -9698,12 +9698,12 @@ class IntlObject
                 $result->set((string) $idx++, $part);
             };
             if ($count === 0) {
-                $result->set('length', new JsNumber(0.0));
+                $result->set('length', JsNumber::of(0.0));
                 return $result;
             }
             if ($count === 1) {
                 $emit('element', $items[0]);
-                $result->set('length', new JsNumber((float) $idx));
+                $result->set('length', JsNumber::of((float) $idx));
                 return $result;
             }
             [$pairSep, $startSep, $midSep, $endSep] = self::listSeparators($type, $style, $locale);
@@ -9711,7 +9711,7 @@ class IntlObject
                 $emit('element', $items[0]);
                 $emit('literal', $pairSep);
                 $emit('element', $items[1]);
-                $result->set('length', new JsNumber((float) $idx));
+                $result->set('length', JsNumber::of((float) $idx));
                 return $result;
             }
             // 3+ items: first, startSep, second, midSep*, last via endSep.
@@ -9724,7 +9724,7 @@ class IntlObject
             }
             $emit('literal', $endSep);
             $emit('element', $items[$count - 1]);
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }, 1);
         $proto->defineOwnProperty('formatToParts', PropertyDescriptor::data($formatToParts, true, false, true));
@@ -10243,7 +10243,7 @@ class IntlObject
                     $result->set((string) $idx++, $part);
                 }
             }
-            $result->set('length', new JsNumber((float) $idx));
+            $result->set('length', JsNumber::of((float) $idx));
             return $result;
         }, 2);
         $proto->defineOwnProperty('formatToParts', PropertyDescriptor::data($formatToParts, true, false, true));
@@ -10440,7 +10440,7 @@ class IntlObject
                 $result->set('segment', new JsString($segment));
                 $result->set(
                     'index',
-                    new JsNumber((float) self::utf8ByteToUtf16Index($str, $start)),
+                    JsNumber::of((float) self::utf8ByteToUtf16Index($str, $start)),
                 );
                 $result->set('input', new JsString($str));
                 if ($granularity === 'word') {
@@ -10541,7 +10541,7 @@ class IntlObject
                     $idx++;
                     $segObj = new JsObject();
                     $segObj->set('segment', new JsString($entry['segment']));
-                    $segObj->set('index', new JsNumber((float) $entry['index']));
+                    $segObj->set('index', JsNumber::of((float) $entry['index']));
                     $segObj->set('input', new JsString($str));
                     if ($granularity === 'word') {
                         $segObj->set('isWordLike', new JsBoolean(
@@ -10770,7 +10770,7 @@ class IntlObject
                         throw new RangeError("Invalid fractionalDigits: {$n}");
                     }
                     $obj->defineOwnProperty('[[FractionalDigits]]', PropertyDescriptor::data(
-                        new JsNumber((float) (int) floor($n)),
+                        JsNumber::of((float) (int) floor($n)),
                         false,
                         false,
                         false,
@@ -10974,7 +10974,7 @@ class IntlObject
     {
         $obj = new JsObject();
         foreach ($values as $key => $n) {
-            $obj->set($key, new JsNumber((float) $n));
+            $obj->set($key, JsNumber::of((float) $n));
         }
         return $obj;
     }
@@ -11079,7 +11079,7 @@ class IntlObject
             }
             $isFirstSegment = false;
         }
-        $arr->set('length', new JsNumber((float) $idx));
+        $arr->set('length', JsNumber::of((float) $idx));
         return $arr;
     }
 

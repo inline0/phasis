@@ -221,7 +221,7 @@ class JsonObject
             $trimmed = trim($text);
 
             if ($trimmed === '-0') {
-                return new JsNumber(-0.0);
+                return JsNumber::of(-0.0);
             }
 
             // Decode objects to stdClass so we can distinguish {} from [];
@@ -299,7 +299,7 @@ class JsonObject
         if ($ch === '-' || ($ch >= '0' && $ch <= '9')) {
             $start = $pos;
             $numVal = self::parseJsonNumberRaw($text, $pos);
-            $val = new JsNumber($numVal);
+            $val = JsNumber::of($numVal);
             $sourceMap[spl_object_id($holder) . ':' . $key] = [substr($text, $start, $pos - $start), $val];
             return $val;
         }
@@ -395,7 +395,7 @@ class JsonObject
             $propVal = self::parseJsonValue($text, $pos, $sourceMap, $arr, $propKey);
             $arr->defineOwnProperty($propKey, PropertyDescriptor::data($propVal, true, true, true));
             $index++;
-            $arr->set('length', new JsNumber($index));
+            $arr->set('length', JsNumber::of($index));
             self::skipWhitespace($text, $pos);
             if ($pos >= strlen($text)) {
                 break;
@@ -588,7 +588,7 @@ class JsonObject
 
             if ($space instanceof JsObject && !$space instanceof JsFunction) {
                 if (self::hasNumberData($space)) {
-                    $space = new JsNumber(TypeConversion::toNumber($space));
+                    $space = JsNumber::of(TypeConversion::toNumber($space));
                 } elseif (self::hasStringData($space)) {
                     $space = new JsString(TypeConversion::toString($space));
                 }
@@ -658,7 +658,7 @@ class JsonObject
             return new JsBoolean($value);
         }
         if (is_int($value) || is_float($value)) {
-            return new JsNumber((float) $value);
+            return JsNumber::of((float) $value);
         }
         if (is_string($value)) {
             return new JsString($value);
@@ -735,7 +735,7 @@ class JsonObject
 
         if ($value instanceof JsObject && !self::jsIsArray($value) && !$value instanceof JsFunction) {
             if (self::hasNumberData($value)) {
-                $value = new JsNumber(TypeConversion::toNumber($value));
+                $value = JsNumber::of(TypeConversion::toNumber($value));
             } elseif (self::hasStringData($value)) {
                 $value = new JsString(TypeConversion::toString($value));
             } elseif (self::hasBooleanData($value)) {

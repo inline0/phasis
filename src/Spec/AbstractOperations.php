@@ -59,18 +59,18 @@ final class AbstractOperations
 
         // 3. Number == String -> Number == ToNumber(String).
         if ($x instanceof JsNumber && $y instanceof JsString) {
-            return self::abstractEquals($x, new JsNumber(TypeConversion::toNumber($y)));
+            return self::abstractEquals($x, JsNumber::of(TypeConversion::toNumber($y)));
         }
         if ($x instanceof JsString && $y instanceof JsNumber) {
-            return self::abstractEquals(new JsNumber(TypeConversion::toNumber($x)), $y);
+            return self::abstractEquals(JsNumber::of(TypeConversion::toNumber($x)), $y);
         }
 
         // 4. Boolean == anything -> ToNumber(Boolean) == anything.
         if ($x instanceof JsBoolean) {
-            return self::abstractEquals(new JsNumber(TypeConversion::toNumber($x)), $y);
+            return self::abstractEquals(JsNumber::of(TypeConversion::toNumber($x)), $y);
         }
         if ($y instanceof JsBoolean) {
-            return self::abstractEquals($x, new JsNumber(TypeConversion::toNumber($y)));
+            return self::abstractEquals($x, JsNumber::of(TypeConversion::toNumber($y)));
         }
 
         // 5. Object == String/Number/BigInt/Symbol -> ToPrimitive(Object) == other.
@@ -361,7 +361,7 @@ final class AbstractOperations
         $lnum = TypeConversion::toNumber($lprim);
         $rnum = TypeConversion::toNumber($rprim);
 
-        return new JsNumber($lnum + $rnum);
+        return JsNumber::of($lnum + $rnum);
     }
 
     /**

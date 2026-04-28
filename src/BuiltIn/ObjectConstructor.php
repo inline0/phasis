@@ -238,7 +238,7 @@ class ObjectConstructor
                 }
                 $value = $result->get('value');
                 try {
-                    $key = $callbackfn->call(JsUndefined::instance(), [$value, new JsNumber((float) $k)]);
+                    $key = $callbackfn->call(JsUndefined::instance(), [$value, JsNumber::of((float) $k)]);
                 } catch (\Throwable $e) {
                     // Close iterator on abrupt callback.
                     $returnMethod = $iterator->get('return');

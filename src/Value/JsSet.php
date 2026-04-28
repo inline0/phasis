@@ -36,7 +36,7 @@ class JsSet extends JsObject
     {
         // Normalize -0 to +0 per spec.
         if ($value instanceof JsNumber && $value->value === 0.0) {
-            $value = new JsNumber(0.0);
+            $value = JsNumber::of(0.0);
         }
 
         if (!$this->setHas($value)) {

@@ -57,7 +57,7 @@ class ShadowRealmConstructor
 
         // ShadowRealm.length = 0
         $constructor->defineOwnProperty('length', PropertyDescriptor::data(
-            new JsNumber(0.0),
+            JsNumber::of(0.0),
             false,
             false,
             true,
@@ -482,17 +482,17 @@ class ShadowRealmConstructor
         if ($targetLength instanceof JsNumber) {
             $v = $targetLength->value;
             if (is_nan($v)) {
-                $len = new JsNumber(0.0);
+                $len = JsNumber::of(0.0);
             } elseif ($v === INF) {
-                $len = new JsNumber(INF);
+                $len = JsNumber::of(INF);
             } elseif ($v === -INF) {
-                $len = new JsNumber(0.0);
+                $len = JsNumber::of(0.0);
             } else {
                 $intLen = ($v >= 0 ? 1 : -1) * floor(abs($v));
-                $len = new JsNumber(max(0.0, $intLen));
+                $len = JsNumber::of(max(0.0, $intLen));
             }
         } else {
-            $len = new JsNumber(0.0);
+            $len = JsNumber::of(0.0);
         }
         $wrapped->defineOwnProperty('length', PropertyDescriptor::data($len, false, false, true));
 

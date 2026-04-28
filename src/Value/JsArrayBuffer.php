@@ -307,10 +307,10 @@ class JsArrayBuffer extends JsObject
         $ownDesc = $this->properties->get($name);
         if ($ownDesc === null) {
             if ($name === 'byteLength') {
-                return new JsNumber((float) $this->byteLength);
+                return JsNumber::of((float) $this->byteLength);
             }
             if ($name === 'maxByteLength') {
-                return new JsNumber((float) $this->getMaxByteLength());
+                return JsNumber::of((float) $this->getMaxByteLength());
             }
             if ($name === 'resizable') {
                 return new JsBoolean($this->isResizable());

@@ -161,7 +161,7 @@ class AtomicsObject
         if ($isBigInt) {
             $coerced = TypeConversion::toBigInt($value);
         } else {
-            $coerced = new JsNumber(TypeConversion::toIntegerOrInfinity($value));
+            $coerced = JsNumber::of(TypeConversion::toIntegerOrInfinity($value));
         }
 
         $ta->setIndex($index, $value);
@@ -197,7 +197,7 @@ class AtomicsObject
                 $operandNum = TypeConversion::toIntegerOrInfinity($value);
                 $oldNum = (int) TypeConversion::toNumber($oldValue);
                 $resultNum = self::intOp($op, $oldNum, (int) $operandNum);
-                $ta->setIndex($index, new JsNumber((float) $resultNum));
+                $ta->setIndex($index, JsNumber::of((float) $resultNum));
             }
 
             return $oldValue;
@@ -271,7 +271,7 @@ class AtomicsObject
             // the equality check when expectedValue passes 12345.
             $expectedTruncated = self::truncateForElementType($typeName, $expectedNum);
             if ($currentNum === $expectedTruncated) {
-                $ta->setIndex($index, new JsNumber($replacementNum));
+                $ta->setIndex($index, JsNumber::of($replacementNum));
             }
         }
 
@@ -416,7 +416,7 @@ class AtomicsObject
         $buffer = $ta->getBuffer();
         $woken = 0;
         if (!$buffer instanceof JsSharedArrayBuffer) {
-            return new JsNumber(0.0);
+            return JsNumber::of(0.0);
         }
         // Walk the queue in registration order; resolve up to $count waiters
         // whose buffer + index match.
@@ -435,7 +435,7 @@ class AtomicsObject
             $remaining[] = $entry;
         }
         self::$waitAsyncQueue = $remaining;
-        return new JsNumber((float) $woken);
+        return JsNumber::of((float) $woken);
     }
 
     /**

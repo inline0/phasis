@@ -45,7 +45,7 @@ class JsMap extends JsObject
     {
         // Normalize -0 to +0 for key storage per spec.
         if ($key instanceof JsNumber && $key->value === 0.0) {
-            $key = new JsNumber(0.0);
+            $key = JsNumber::of(0.0);
         }
 
         $index = $this->findIndex($key);
