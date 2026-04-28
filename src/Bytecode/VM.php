@@ -475,7 +475,8 @@ final class VM
                             );
                             $accIsNumber = $acc instanceof JsNumber;
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {}
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                        }
                     }
                     $acc = $this->interp->callFunction(
                         $callback,
@@ -518,7 +519,8 @@ final class VM
                                 $callback->phpCompiledNodes,
                             );
                             continue;
-                        } catch (\PhpJs\Bytecode\Bailout) {}
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                        }
                     }
                     $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
                 }

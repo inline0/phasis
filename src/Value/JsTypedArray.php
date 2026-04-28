@@ -116,7 +116,17 @@ class JsTypedArray extends JsObject
      */
     public function preventExtensions(): bool
     {
-        if ($this->buffer->isResizable()) {
+        // Per spec 10.4.5.2 / IsTypedArrayFixedLength:
+        //   - Auto-length (length-tracking) views are never fixed-length.
+        //   - Views on resizable, non-shared buffers (RAB) are never
+        //     fixed-length, since the buffer can shrink.
+        //   - Fixed-length views on growable SharedArrayBuffers (GSAB)
+        //     remain fixed-length because the buffer can only grow.
+        if ($this->autoLength) {
+            return false;
+        }
+        $isShared = $this->buffer instanceof \PhpJs\Value\JsSharedArrayBuffer;
+        if ($this->buffer->isResizable() && !$isShared) {
             return false;
         }
         return parent::preventExtensions();

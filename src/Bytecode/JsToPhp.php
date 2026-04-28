@@ -393,12 +393,27 @@ final class JsToPhp
         }
         if ($node instanceof BinaryExpression) {
             switch ($node->operator) {
-                case '+': case '-': case '*': case '/': case '%':
-                case '**': case '&': case '|': case '^':
-                case '<<': case '>>': case '>>>':
+                case '+':
+                case '-':
+                case '*':
+                case '/':
+                case '%':
+                case '**':
+                case '&':
+                case '|':
+                case '^':
+                case '<<':
+                case '>>':
+                case '>>>':
                     return 'numeric';
-                case '<': case '>': case '<=': case '>=':
-                case '==': case '!=': case '===': case '!==':
+                case '<':
+                case '>':
+                case '<=':
+                case '>=':
+                case '==':
+                case '!=':
+                case '===':
+                case '!==':
                     return 'boolean';
                 default:
                     return 'unknown';
@@ -406,7 +421,9 @@ final class JsToPhp
         }
         if ($node instanceof UnaryExpression) {
             switch ($node->operator) {
-                case '-': case '+': case '~':
+                case '-':
+                case '+':
+                case '~':
                     return 'numeric';
                 case '!':
                     return 'boolean';

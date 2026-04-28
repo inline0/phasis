@@ -1460,6 +1460,19 @@ class TypedArrayConstructor
 
         // new TypedArray(typedArray): copy elements.
         if ($arg0 instanceof JsTypedArray) {
+            // Per spec InitializeTypedArrayFromTypedArray, validate the
+            // source: throw TypeError if its buffer is detached or the
+            // view is now out of bounds.
+            if ($arg0->getBuffer()->isDetached()) {
+                throw new TypeError(
+                    'Cannot construct typed array from a detached buffer'
+                );
+            }
+            if ($arg0->isOutOfBounds()) {
+                throw new TypeError(
+                    'Cannot construct typed array from an out-of-bounds source'
+                );
+            }
             $srcLen = $arg0->getLength();
             $result = JsTypedArray::fromLength($typeName, $srcLen, $getProto());
             for ($i = 0; $i < $srcLen; $i++) {

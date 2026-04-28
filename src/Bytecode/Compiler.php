@@ -468,18 +468,18 @@ final class Compiler
         if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
             $this->collectFunctionLocals($stmt->block->body);
             if ($stmt->handler !== null) {
-                // Reserve a slot for the catch parameter. Spec says the
-                // catch param introduces a fresh block-scoped binding,
-                // but the slot-based compiler folds it into the function
-                // frame. The TryStatement scanBailout step refuses to
-                // compile shapes that require true block scoping for
-                // catch (destructuring patterns), and the ensureNoTdz
-                // pass rejects let/const conflicts elsewhere.
-                if (
-                    $stmt->handler->param instanceof \PhpJs\Ast\Expression\Identifier
-                    && !isset($this->localSlots[$stmt->handler->param->name])
-                ) {
-                    $this->declareLocal($stmt->handler->param->name);
+                if ($stmt->handler->param instanceof \PhpJs\Ast\Expression\Identifier) {
+                    $catchName = $stmt->handler->param->name;
+                    if (isset($this->localSlots[$catchName])) {
+                        // catch (a) where `a` is already a local would
+                        // alias the outer binding's slot. Per spec the
+                        // catch param introduces a fresh block-scoped
+                        // binding that shadows outer names; the slot-based
+                        // compiler can't model that — bail to the tree
+                        // walker.
+                        throw new CompilerBailout('catch param shadows outer local');
+                    }
+                    $this->declareLocal($catchName);
                 }
                 $this->collectFunctionLocals($stmt->handler->body->body);
             }

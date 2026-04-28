@@ -319,6 +319,7 @@ class JsArray extends JsObject
             // doesn't own the property. The dense fast path's
             // prototypeChainHasOwnProperty check would miss the trap.
             && !$this->prototypeChainHasProxy()
+            && !$this->prototypeChainHasTypedArray()
         ) {
             $idx = (int) $name;
             $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
@@ -413,6 +414,7 @@ class JsArray extends JsObject
             && $this->denseMode
             && self::isArrayIndex($name)
             && !$this->prototypeChainHasProxy()
+            && !$this->prototypeChainHasTypedArray()
         ) {
             $idx = (int) $name;
             $hasOwnDense = ($this->denseElements[$idx] ?? null) !== null;
@@ -727,6 +729,23 @@ class JsArray extends JsObject
     {
         for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
             if ($cur instanceof \PhpJs\Value\JsProxy) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The dense fast path bypasses OrdinarySetWithOwnDescriptor, but a
+     * TypedArray in the proto chain has its own integer-indexed exotic
+     * [[Set]] that returns true for invalid indices without creating an
+     * own property on the receiver. Detect that case so the slow path
+     * runs and the spec semantics are preserved.
+     */
+    private function prototypeChainHasTypedArray(): bool
+    {
+        for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
+            if ($cur instanceof \PhpJs\Value\JsTypedArray) {
                 return true;
             }
         }

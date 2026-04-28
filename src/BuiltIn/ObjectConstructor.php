@@ -1209,14 +1209,18 @@ class ObjectConstructor
             $allKeys = $obj->ordinaryOwnPropertyKeys();
             foreach ($allKeys as $keyVal) {
                 if ($keyVal instanceof JsSymbol) {
-                    $obj->definePropertyBySymbol($keyVal, new PropertyDescriptor(
+                    $ok = $obj->definePropertyBySymbol($keyVal, new PropertyDescriptor(
                         configurable: false,
                     ));
                 } else {
                     $key = $keyVal instanceof JsString ? $keyVal->value : TypeConversion::toString($keyVal);
-                    $obj->defineOwnProperty($key, new PropertyDescriptor(
+                    $ok = $obj->defineOwnProperty($key, new PropertyDescriptor(
                         configurable: false,
                     ));
+                }
+                // Per spec DefinePropertyOrThrow: throw TypeError if [[DefineOwnProperty]] returns false.
+                if ($ok === false) {
+                    throw new \PhpJs\Exceptions\TypeError('Cannot seal object');
                 }
             }
 
@@ -1231,7 +1235,11 @@ class ObjectConstructor
             if (!$obj instanceof JsObject) {
                 return $obj;
             }
-            $obj->preventExtensions();
+            // Per spec, if [[PreventExtensions]] returns false (e.g. a
+            // TypedArray backed by a resizable buffer), throw TypeError.
+            if (!$obj->preventExtensions()) {
+                throw new TypeError('Object.preventExtensions: object cannot be made non-extensible');
+            }
             return $obj;
         };
     }
