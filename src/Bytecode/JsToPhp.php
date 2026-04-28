@@ -191,6 +191,16 @@ final class JsToPhp
         ) {
             return null;
         }
+        // Strict-mode functions can require tail-call optimisation
+        // (`return f(n-1)` recursion at $MAX_ITERATIONS depth).
+        // The tree-walker honours the spec via TailCallThunk +
+        // callFunction trampoline; the JsToPhp closure invokes
+        // its callees directly via PHP function calls which grow
+        // the PHP stack. Bail strict-mode functions whose body
+        // contains a return-with-call shape so the spec path runs.
+        if ($fn->isStrict() && self::bodyHasReturnCall($fn->getBody())) {
+            return null;
+        }
         $body = $fn->getBody();
         $isExpressionBody = !$body instanceof BlockStatement;
         if ($isExpressionBody && !$body instanceof Node) {
@@ -669,6 +679,63 @@ final class JsToPhp
                     }
                 }
             }
+        }
+        return false;
+    }
+
+    /**
+     * True when $body contains a ReturnStatement whose argument is
+     * (or could resolve to) a CallExpression in tail position. Used
+     * to bail strict-mode JsToPhp compile so the tree-walker's
+     * TailCallThunk + callFunction trampoline handles the recursion
+     * without growing the PHP call stack.
+     *
+     * Conservatively returns true for any return-with-call shape,
+     * including ternary / logical-short-circuit / sequence wrappers
+     * around a call. Doesn't descend into nested functions.
+     */
+    private static function bodyHasReturnCall(Node $body): bool
+    {
+        if ($body instanceof ReturnStatement) {
+            return $body->argument !== null && self::exprHasTailCall($body->argument);
+        }
+        if (
+            $body instanceof FunctionDeclaration
+            || $body instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $body instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        foreach ((array) $body as $value) {
+            if ($value instanceof Node) {
+                if (self::bodyHasReturnCall($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::bodyHasReturnCall($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private static function exprHasTailCall(Node $node): bool
+    {
+        if ($node instanceof CallExpression) {
+            return true;
+        }
+        if ($node instanceof ConditionalExpression) {
+            return self::exprHasTailCall($node->consequent)
+                || self::exprHasTailCall($node->alternate);
+        }
+        if ($node instanceof LogicalExpression) {
+            return self::exprHasTailCall($node->left)
+                || self::exprHasTailCall($node->right);
         }
         return false;
     }
