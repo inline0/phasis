@@ -308,14 +308,17 @@ class TypedArrayConstructor
                         'Method ArrayBuffer.prototype.resize called on incompatible receiver'
                     );
                 }
-                if ($this_->isDetached()) {
-                    throw new TypeError('Cannot resize a detached ArrayBuffer');
-                }
+                // Per spec: check resizable BEFORE coercion, but defer the
+                // detached check until AFTER ToIndex so user-supplied valueOf
+                // observably runs even on a detached buffer.
                 if (!$this_->isResizable()) {
                     throw new TypeError('ArrayBuffer is not resizable');
                 }
                 $newLenArg = $args[0] ?? JsUndefined::instance();
                 $newByteLength = TypeConversion::toIndex($newLenArg);
+                if ($this_->isDetached()) {
+                    throw new TypeError('Cannot resize a detached ArrayBuffer');
+                }
                 $this_->resize($newByteLength);
                 return JsUndefined::instance();
             },
@@ -715,8 +718,8 @@ class TypedArrayConstructor
                     if ($newTarget instanceof JsFunction) {
                         // Per spec OrdinaryCreateFromConstructor, the
                         // newTarget.prototype lookup is observable and may
-                        // detach the buffer through a getter; re-validate
-                        // before instantiation.
+                        // detach or resize the buffer through a getter;
+                        // re-validate before instantiation.
                         $ntProto = $newTarget->get('prototype');
                         if ($ntProto instanceof JsObject) {
                             $effectiveProto = $ntProto;
@@ -725,6 +728,17 @@ class TypedArrayConstructor
                             throw new TypeError(
                                 'Cannot construct DataView on a detached ArrayBuffer'
                             );
+                        }
+                        // Re-validate ranges against the (possibly resized)
+                        // buffer length.
+                        $newBufLen = $buffer->getByteLength();
+                        if ($byteOffset > $newBufLen) {
+                            throw new RangeError(
+                                'Start offset is outside the bounds of the buffer'
+                            );
+                        }
+                        if ($byteLength !== null && ($byteOffset + $byteLength) > $newBufLen) {
+                            throw new RangeError('Invalid DataView length');
                         }
                     }
                 }
