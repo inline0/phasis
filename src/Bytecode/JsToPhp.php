@@ -384,7 +384,8 @@ final class JsToPhp
     private static function bodyReferencesPerCallBindings(Node $node): bool
     {
         if ($node instanceof Identifier) {
-            return $node->name === 'arguments';
+            // 'super' / 'arguments' / 'new.target' — all per-call.
+            return $node->name === 'arguments' || $node->name === 'super';
         }
         if ($node instanceof \PhpJs\Ast\Expression\ThisExpression) {
             return true;
