@@ -133,6 +133,236 @@ final class VM
         return $this->interp->vmLookupPrimitiveComputed($obj, $key);
     }
 
+    /**
+     * Inline implementation of hot Array.prototype methods on a dense
+     * JsArray receiver. Returns the JS result on success, or null to
+     * indicate the spec path should run instead (callback shape that
+     * doesn't fit the inline template, sparse element, etc.). The
+     * caller asserts the receiver is a dense JsArray; this helper
+     * still rechecks sub-conditions per method.
+     *
+     * The inline loops dispatch the JsFunction callback directly via
+     * its phpCompiled closure when one is cached, skipping callFunction
+     * / executeFunction entirely. When the callback returns a value
+     * incompatible with the inline assumptions (non-numeric for
+     * accumulator, etc.) it bails out so the spec path takes over.
+     *
+     * @param list<JsValue> $args
+     */
+    private function inlineDenseArrayMethod(
+        string $kind,
+        \PhpJs\Value\JsArray $receiver,
+        array $args,
+        int $argc,
+    ): ?JsValue {
+        switch ($kind) {
+            case 'array.fill':
+                if ($argc !== 1) {
+                    return null;
+                }
+                $value = $args[0];
+                $len = $receiver->getLength();
+                for ($i = 0; $i < $len; $i++) {
+                    $receiver->setDenseElement($i, $value);
+                }
+                return $receiver;
+
+            case 'array.map':
+                if ($argc < 1 || !($args[0] instanceof JsFunction)) {
+                    return null;
+                }
+                // Spec ArraySpeciesCreate inspects the receiver's own
+                // 'constructor' property (then Symbol.species on it) to
+                // decide what type of array to allocate. Bail if the
+                // receiver has its own constructor override so the
+                // spec path picks up the species hook.
+                if ($receiver->getOwnPropertyDescriptor('constructor') !== null) {
+                    return null;
+                }
+                $callback = $args[0];
+                if (
+                    $callback->isClassConstructor()
+                    || $callback->isDerivedConstructor()
+                    || $callback->getHomeObject() !== null
+                ) {
+                    return null;
+                }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
+                    ? $args[1] : $undef = JsUndefined::instance();
+                $len = $receiver->getLength();
+                $elements = $receiver->getDenseElements();
+                $result = new \PhpJs\Value\JsArray();
+                $compiled = $callback->phpCompiled;
+                for ($i = 0; $i < $len; $i++) {
+                    $val = $elements[$i] ?? null;
+                    if ($val === null) {
+                        return null;
+                    }
+                    $idx = JsNumber::of((float) $i);
+                    if ($compiled !== null) {
+                        try {
+                            $mapped = $compiled(
+                                [$val, $idx, $receiver],
+                                $callback->getClosure(),
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                            $mapped = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
+                        }
+                    } else {
+                        $mapped = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
+                    }
+                    $result->push($mapped);
+                }
+                return $result;
+
+            case 'array.reduce':
+                if ($argc < 1 || !($args[0] instanceof JsFunction)) {
+                    return null;
+                }
+                $callback = $args[0];
+                if (
+                    $callback->isClassConstructor()
+                    || $callback->isDerivedConstructor()
+                    || $callback->getHomeObject() !== null
+                ) {
+                    return null;
+                }
+                $len = $receiver->getLength();
+                $elements = $receiver->getDenseElements();
+                $hasInitial = $argc >= 2;
+                if (!$hasInitial && $len === 0) {
+                    return null;
+                }
+                $start = 0;
+                if ($hasInitial) {
+                    $acc = $args[1];
+                } else {
+                    $acc = $elements[0] ?? null;
+                    if ($acc === null) {
+                        return null;
+                    }
+                    $start = 1;
+                }
+                $undef = JsUndefined::instance();
+                $compiled = $callback->phpCompiled;
+                for ($i = $start; $i < $len; $i++) {
+                    $val = $elements[$i] ?? null;
+                    if ($val === null) {
+                        return null;
+                    }
+                    $idx = JsNumber::of((float) $i);
+                    if ($compiled !== null) {
+                        try {
+                            $acc = $compiled(
+                                [$acc, $val, $idx, $receiver],
+                                $callback->getClosure(),
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                            continue;
+                        } catch (\PhpJs\Bytecode\Bailout) {}
+                    }
+                    $acc = $this->interp->callFunction(
+                        $callback,
+                        $undef,
+                        [$acc, $val, $idx, $receiver],
+                    );
+                }
+                return $acc;
+
+            case 'array.forEach':
+                if ($argc < 1 || !($args[0] instanceof JsFunction)) {
+                    return null;
+                }
+                $callback = $args[0];
+                if (
+                    $callback->isClassConstructor()
+                    || $callback->isDerivedConstructor()
+                    || $callback->getHomeObject() !== null
+                ) {
+                    return null;
+                }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
+                    ? $args[1] : JsUndefined::instance();
+                $len = $receiver->getLength();
+                $elements = $receiver->getDenseElements();
+                $compiled = $callback->phpCompiled;
+                for ($i = 0; $i < $len; $i++) {
+                    $val = $elements[$i] ?? null;
+                    if ($val === null) {
+                        return null;
+                    }
+                    $idx = JsNumber::of((float) $i);
+                    if ($compiled !== null) {
+                        try {
+                            $compiled(
+                                [$val, $idx, $receiver],
+                                $callback->getClosure(),
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                            continue;
+                        } catch (\PhpJs\Bytecode\Bailout) {}
+                    }
+                    $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
+                }
+                return JsUndefined::instance();
+
+            case 'array.filter':
+                if ($argc < 1 || !($args[0] instanceof JsFunction)) {
+                    return null;
+                }
+                // Same species-detection rule as map: own 'constructor'
+                // override means the spec ArraySpeciesCreate path needs
+                // to run so the species hook can fire.
+                if ($receiver->getOwnPropertyDescriptor('constructor') !== null) {
+                    return null;
+                }
+                $callback = $args[0];
+                if (
+                    $callback->isClassConstructor()
+                    || $callback->isDerivedConstructor()
+                    || $callback->getHomeObject() !== null
+                ) {
+                    return null;
+                }
+                $thisArg = (isset($args[1]) && !$args[1] instanceof JsUndefined)
+                    ? $args[1] : JsUndefined::instance();
+                $len = $receiver->getLength();
+                $elements = $receiver->getDenseElements();
+                $result = new \PhpJs\Value\JsArray();
+                $compiled = $callback->phpCompiled;
+                for ($i = 0; $i < $len; $i++) {
+                    $val = $elements[$i] ?? null;
+                    if ($val === null) {
+                        return null;
+                    }
+                    $idx = JsNumber::of((float) $i);
+                    if ($compiled !== null) {
+                        try {
+                            $keep = $compiled(
+                                [$val, $idx, $receiver],
+                                $callback->getClosure(),
+                                $this->interp,
+                                $callback->phpCompiledNodes,
+                            );
+                        } catch (\PhpJs\Bytecode\Bailout) {
+                            $keep = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
+                        }
+                    } else {
+                        $keep = $this->interp->callFunction($callback, $thisArg, [$val, $idx, $receiver]);
+                    }
+                    if (TypeConversion::toBoolean($keep)) {
+                        $result->push($val);
+                    }
+                }
+                return $result;
+        }
+        return null;
+    }
+
     public function execute(CompiledFunction $cf, Frame $frame): JsValue
     {
         $code = $cf->code;
@@ -737,6 +967,24 @@ final class VM
                                 $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
                                 $pc += 2;
                                 break;
+                            }
+                            $kind = $method->builtinKind;
+                            if (
+                                $kind !== null
+                                && $receiver instanceof \PhpJs\Value\JsArray
+                                && $receiver->isDenseMode()
+                            ) {
+                                $inlined = $this->inlineDenseArrayMethod(
+                                    $kind,
+                                    $receiver,
+                                    $args,
+                                    $argc,
+                                );
+                                if ($inlined !== null) {
+                                    $stack[$sp++] = $inlined;
+                                    $pc += 2;
+                                    break;
+                                }
                             }
                             $stack[$sp++] = $this->interp->callFunction(
                                 $method,

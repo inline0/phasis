@@ -113,6 +113,40 @@ class JsArray extends JsObject
         $this->length = $length;
     }
 
+    /**
+     * Whether integer-indexed elements live in $denseElements with
+     * default attributes. VM inline paths for hot Array prototype
+     * methods read this to decide whether they can skip the spec
+     * descriptor lookups; non-dense arrays drop back to the spec
+     * implementation on the host side.
+     */
+    public function isDenseMode(): bool
+    {
+        return $this->denseMode;
+    }
+
+    /**
+     * Snapshot the dense element list for VM inline paths. The
+     * returned array is keyed [0..length-1]; holes appear as null
+     * entries. Callers must already have checked isDenseMode().
+     *
+     * @return array<int, ?JsValue>
+     */
+    public function getDenseElements(): array
+    {
+        return $this->denseElements;
+    }
+
+    /**
+     * Direct dense-element write used by VM inline paths (e.g.
+     * Array.prototype.map's per-element set). Caller guarantees the
+     * index is within [0, length-1] and the array is in dense mode.
+     */
+    public function setDenseElement(int $index, JsValue $value): void
+    {
+        $this->denseElements[$index] = $value;
+    }
+
     public function push(JsValue $value): void
     {
         $index = $this->length;

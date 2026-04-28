@@ -700,7 +700,7 @@ class ArrayConstructor
             0
         ), true, false, true));
 
-        $proto->defineOwnProperty('map', PropertyDescriptor::data(JsFunction::fromCallable(
+        $mapFn = JsFunction::fromCallable(
             'map',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -735,9 +735,14 @@ class ArrayConstructor
                 return $result;
             },
             1
-        ), true, false, true));
+        );
+        // Tag for VM inline path: dense JsArray receiver + JsFunction
+        // callback runs the iteration in a tight host loop, dispatching
+        // the callback's phpCompiled closure directly when available.
+        $mapFn->builtinKind = 'array.map';
+        $proto->defineOwnProperty('map', PropertyDescriptor::data($mapFn, true, false, true));
 
-        $proto->defineOwnProperty('filter', PropertyDescriptor::data(JsFunction::fromCallable(
+        $filterFn = JsFunction::fromCallable(
             'filter',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -782,9 +787,11 @@ class ArrayConstructor
                 return $a;
             },
             1
-        ), true, false, true));
+        );
+        $filterFn->builtinKind = 'array.filter';
+        $proto->defineOwnProperty('filter', PropertyDescriptor::data($filterFn, true, false, true));
 
-        $proto->defineOwnProperty('reduce', PropertyDescriptor::data(JsFunction::fromCallable(
+        $reduceFn = JsFunction::fromCallable(
             'reduce',
             function (JsValue $this_, array $args): JsValue {
                 // Per spec: read length BEFORE validating the callback so the
@@ -827,7 +834,9 @@ class ArrayConstructor
                 return $acc;
             },
             1
-        ), true, false, true));
+        );
+        $reduceFn->builtinKind = 'array.reduce';
+        $proto->defineOwnProperty('reduce', PropertyDescriptor::data($reduceFn, true, false, true));
 
         $proto->defineOwnProperty('reduceRight', PropertyDescriptor::data(JsFunction::fromCallable(
             'reduceRight',
@@ -894,7 +903,7 @@ class ArrayConstructor
             1,
         ), true, false, true));
 
-        $proto->defineOwnProperty('forEach', PropertyDescriptor::data(JsFunction::fromCallable(
+        $forEachFn = JsFunction::fromCallable(
             'forEach',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -913,7 +922,9 @@ class ArrayConstructor
                 return JsUndefined::instance();
             },
             1
-        ), true, false, true));
+        );
+        $forEachFn->builtinKind = 'array.forEach';
+        $proto->defineOwnProperty('forEach', PropertyDescriptor::data($forEachFn, true, false, true));
 
         $proto->defineOwnProperty('find', PropertyDescriptor::data(JsFunction::fromCallable(
             'find',
@@ -1113,7 +1124,7 @@ class ArrayConstructor
             1
         ), true, false, true));
 
-        $proto->defineOwnProperty('fill', PropertyDescriptor::data(JsFunction::fromCallable(
+        $fillFn = JsFunction::fromCallable(
             'fill',
             function (JsValue $this_, array $args): JsValue {
                 // Spec §23.1.3.7 uses Set(O, Pk, value, true) — failure throws
@@ -1135,7 +1146,9 @@ class ArrayConstructor
                 return $this_;
             },
             1
-        ), true, false, true));
+        );
+        $fillFn->builtinKind = 'array.fill';
+        $proto->defineOwnProperty('fill', PropertyDescriptor::data($fillFn, true, false, true));
 
         $proto->defineOwnProperty('copyWithin', PropertyDescriptor::data(JsFunction::fromCallable(
             'copyWithin',
