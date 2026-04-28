@@ -49,15 +49,30 @@ After every meaningful work pass, run the full matrix from the repo root before 
 ./bin/verify-all
 ```
 
-No partial sign-off. `./bin/verify-all` is the repo gate.
+`./bin/verify-all` runs PHPStan + cs + phpunit + the oracle scenario regression. It is the gate for "did I break the engine itself."
 
-After any meaningful compliance work (not every small fix, but after a batch of improvements), update the canonical compatibility snapshot:
+**It is NOT enough on its own.** test262 compliance must never regress. After every change, also run a representative test262 sweep:
 
 ```bash
-./bin/compat-report --jobs 4
+# Local: spot-check categories your change might touch.
+./bin/test262 --category built-ins --jobs 1 --limit 200
+./bin/test262 --category language --jobs 1 --limit 200
+
+# CI: trigger the matrix workflow for the canonical snapshot.
+gh workflow run compat-matrix.yml
 ```
 
-This writes `compat.json` and `COMPAT.md`. Commit both. This is how compliance is tracked across sessions. Do not rely on ad-hoc test runs for compliance numbers.
+The matrix run is the only canonical compliance number; commit the regenerated `compat.json` + `COMPAT.md` (auto-pushed by the workflow). Performance changes regress test262 just as easily as feature changes — the JsToPhp emitter and VM inline paths cut spec corners that surface in surprising places.
+
+**Bench changes:** every perf change to `src/Bytecode/VM.php`, `src/Bytecode/JsToPhp.php`, or hot built-ins must pass under PHP 8.5 + tracing JIT before push:
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app php:8.5-cli \
+  php -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=64M \
+  bench/run.php
+```
+
+The CI bench workflow uses the same JIT setup. If it crashes locally, it'll crash in CI.
 
 test262 compliance must never regress. If a change reduces the test262 pass count, the change is broken.
 
