@@ -1412,12 +1412,16 @@ final class JsToPhp
         // Proxy / etc. handling fires.
         $this->pendingStatements[] = 'if (!(' . $calleeRef
             . ' instanceof \\PhpJs\\Value\\JsFunction)) { throw new \\PhpJs\\Bytecode\\Bailout("non-function callee"); }';
-        $this->pendingStatements[] = $resultTemp . ' = ('
+        // Direct closure dispatch when phpCompiled is set. The compile
+        // path only runs for non-native callees (callFunctionInner
+        // routes natives to their callable before reaching tryRunOnVm),
+        // so phpCompiled !== null implies non-native. Direct property
+        // access on $closure / phpCompiledNodes skips the getter
+        // method dispatch in this hot path.
+        $this->pendingStatements[] = $resultTemp . ' = '
             . $calleeRef . '->phpCompiled !== null'
-            . ' && ' . $calleeRef . '->getNativeCallable() === null'
-            . ')'
             . ' ? (' . $calleeRef . '->phpCompiled)('
-            . $argsArr . ', ' . $calleeRef . '->getClosure(), $interp, '
+            . $argsArr . ', ' . $calleeRef . '->closure, $interp, '
             . $calleeRef . '->phpCompiledNodes)'
             . ' : $interp->callFunction(' . $calleeRef . ', '
             . '\\PhpJs\\Value\\JsUndefined::instance(), ' . $argsArr . ');';

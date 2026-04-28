@@ -849,7 +849,7 @@ final class VM
                                 try {
                                     $stack[$sp++] = ($callee->phpCompiled)(
                                         $args,
-                                        $callee->getClosure(),
+                                        $callee->closure,
                                         $this->interp,
                                         $callee->phpCompiledNodes,
                                     );
