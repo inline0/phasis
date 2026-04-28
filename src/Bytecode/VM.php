@@ -463,7 +463,14 @@ final class VM
                     break;
                 case Op::JUMP_IF_TRUE:
                     $v = $stack[--$sp];
-                    if (TypeConversion::toBoolean($v)) {
+                    // Hot path: comparison ops produce JsBoolean
+                    // results, which feed straight into conditional
+                    // jumps. Read the value field directly to skip
+                    // toBoolean's dispatch chain.
+                    $truthy = $v instanceof JsBoolean
+                        ? $v->value
+                        : TypeConversion::toBoolean($v);
+                    if ($truthy) {
                         $pc += $code[$pc + 1];
                     } else {
                         $pc += 2;
@@ -471,7 +478,10 @@ final class VM
                     break;
                 case Op::JUMP_IF_FALSE:
                     $v = $stack[--$sp];
-                    if (!TypeConversion::toBoolean($v)) {
+                    $truthy = $v instanceof JsBoolean
+                        ? $v->value
+                        : TypeConversion::toBoolean($v);
+                    if (!$truthy) {
                         $pc += $code[$pc + 1];
                     } else {
                         $pc += 2;
