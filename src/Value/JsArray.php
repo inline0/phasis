@@ -196,7 +196,34 @@ class JsArray extends JsObject
 
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
-        if ($receiver === $this && $name !== 'length') {
+        if ($name === 'length') {
+            // length is an exotic own slot maintained by JsArray (not in
+            // $properties). Mirror OrdinarySetWithOwnDescriptor inline so
+            // we do not fall through to JsObject::internalSet's "no own
+            // descriptor → walk prototype chain" path, which would hand
+            // the write to a proxy on Array.prototype and break the
+            // length-zeroed-via-valueOf semantics tested by
+            // built-ins/Array/prototype/(indexOf|lastIndexOf|reverse).
+            // The non-writable-length check still has to fire so frozen
+            // arrays surface the TypeError on pop/shift/etc.
+            if (!$this->lengthWritable) {
+                return false;
+            }
+            if ($receiver === $this) {
+                return $this->defineOwnProperty($name, new PropertyDescriptor(
+                    value: $value,
+                    writable: $this->lengthWritable,
+                    enumerable: false,
+                    configurable: false,
+                ));
+            }
+            // Different receiver: per OrdinarySetWithOwnDescriptor, if the
+            // receiver has its own length descriptor we update there;
+            // otherwise CreateDataProperty on the receiver. Defer to the
+            // standard implementation.
+            return parent::internalSet($name, $value, $receiver);
+        }
+        if ($receiver === $this) {
             $result = parent::internalSet($name, $value, $receiver);
             // Only bump length if the set produced an actual own array-index
             // property. When an inherited accessor (setter) handled the write,
@@ -209,8 +236,7 @@ class JsArray extends JsObject
             }
             return $result;
         }
-        // Length and non-self receiver use standard OrdinarySet which
-        // calls defineOwnProperty -> arraySetLength for length.
+        // Non-self receiver: defer to the standard OrdinarySet path.
         return parent::internalSet($name, $value, $receiver);
     }
 
