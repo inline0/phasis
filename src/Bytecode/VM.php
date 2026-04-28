@@ -304,7 +304,7 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv < $rv);
+                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv < $rv) ? $true : $false;
                     } else {
                         $stack[$sp++] = $this->interp->relational($l, $r, '<');
                     }
@@ -316,7 +316,7 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv > $rv);
+                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv > $rv) ? $true : $false;
                     } else {
                         $stack[$sp++] = $this->interp->relational($r, $l, '>');
                     }
@@ -328,7 +328,7 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv <= $rv);
+                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv <= $rv) ? $true : $false;
                     } else {
                         $stack[$sp++] = $this->interp->relational($r, $l, '<=');
                     }
@@ -340,7 +340,7 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(!is_nan($lv) && !is_nan($rv) && $lv >= $rv);
+                        $stack[$sp++] = (!is_nan($lv) && !is_nan($rv) && $lv >= $rv) ? $true : $false;
                     } else {
                         $stack[$sp++] = $this->interp->relational($l, $r, '>=');
                     }
@@ -349,13 +349,13 @@ final class VM
                 case Op::EQ:
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
-                    $stack[$sp++] = JsBoolean::of(AbstractOperations::abstractEquals($l, $r));
+                    $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $true : $false;
                     $pc++;
                     break;
                 case Op::NEQ:
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
-                    $stack[$sp++] = JsBoolean::of(!AbstractOperations::abstractEquals($l, $r));
+                    $stack[$sp++] = AbstractOperations::abstractEquals($l, $r) ? $false : $true;
                     $pc++;
                     break;
                 case Op::SEQ:
@@ -364,11 +364,9 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(
-                            $lv === $rv && !is_nan($lv)
-                        );
+                        $stack[$sp++] = ($lv === $rv && !is_nan($lv)) ? $true : $false;
                     } else {
-                        $stack[$sp++] = JsBoolean::of(AbstractOperations::strictEquals($l, $r));
+                        $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $true : $false;
                     }
                     $pc++;
                     break;
@@ -378,11 +376,9 @@ final class VM
                     if ($l instanceof JsNumber && $r instanceof JsNumber) {
                         $lv = $l->value;
                         $rv = $r->value;
-                        $stack[$sp++] = JsBoolean::of(
-                            $lv !== $rv || is_nan($lv)
-                        );
+                        $stack[$sp++] = ($lv !== $rv || is_nan($lv)) ? $true : $false;
                     } else {
-                        $stack[$sp++] = JsBoolean::of(!AbstractOperations::strictEquals($l, $r));
+                        $stack[$sp++] = AbstractOperations::strictEquals($l, $r) ? $false : $true;
                     }
                     $pc++;
                     break;
@@ -428,7 +424,7 @@ final class VM
                 // ---- Unary ----------------------------------------------
                 case Op::NOT:
                     $v = $stack[--$sp];
-                    $stack[$sp++] = JsBoolean::of(!TypeConversion::toBoolean($v));
+                    $stack[$sp++] = TypeConversion::toBoolean($v) ? $false : $true;
                     $pc++;
                     break;
                 case Op::NEG:
