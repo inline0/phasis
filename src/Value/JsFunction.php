@@ -507,6 +507,16 @@ class JsFunction extends JsObject
     public bool $compileFailed = false;
 
     /**
+     * Memoised: whether VM Op::CALL can dispatch this function via
+     * Interpreter::executeVmFunctionDirect (the inlined fast path) or
+     * must fall back to callFunction. Computed lazily after the
+     * callee's $compiled is populated, since canSkipEnvAlloc lives on
+     * CompiledFunction. Once true, all the JsFunction flag reads
+     * collapse to a single bool fetch on the hot CALL path.
+     */
+    public ?bool $vmDirectDispatchCache = null;
+
+    /**
      * Memoised: results of isNonSimpleParameterList and
      * hasParameterExpressions analyses on this function's parameter
      * list. Both are pure functions of $params, which never changes

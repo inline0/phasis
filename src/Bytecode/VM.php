@@ -532,7 +532,19 @@ final class VM
                 case Op::CALL:
                     $argc = $code[$pc + 1];
                     $base = $sp - $argc;
-                    $args = $argc === 0 ? [] : array_slice($stack, $base, $argc);
+                    // Inline small-argc arg packing — array_slice
+                    // allocates a new array even for argc=1 (the most
+                    // common case for closures). Manual packing for
+                    // argc <= 2 saves an allocation per call site.
+                    if ($argc === 0) {
+                        $args = [];
+                    } elseif ($argc === 1) {
+                        $args = [$stack[$base]];
+                    } elseif ($argc === 2) {
+                        $args = [$stack[$base], $stack[$base + 1]];
+                    } else {
+                        $args = array_slice($stack, $base, $argc);
+                    }
                     $callee = $stack[$base - 1];
                     $sp = $base - 1;
                     if (!$callee instanceof JsFunction) {
@@ -544,18 +556,26 @@ final class VM
                     // shape. Skip callFunction's tail-call trampoline and
                     // callFunctionInner's kind dispatcher — both of which
                     // are pure overhead for the case we hit ~99% of the
-                    // time (regular non-async, non-generator, non-class
-                    // ctor JS functions calling each other).
-                    if (
-                        $callee->compiled !== null
-                        && $callee->compiled->canSkipEnvAlloc
-                        && !$callee->isClassConstructor()
-                        && !$callee->isDerivedConstructor()
-                        && $callee->getHomeObject() === null
-                        && $callee->getNativeCallable() === null
-                        && !$callee->isAsync()
-                        && !$callee->isGenerator()
-                    ) {
+                    // time. Eligibility is memoised on JsFunction so the
+                    // hot CALL path collapses to a single field fetch.
+                    $eligible = $callee->vmDirectDispatchCache;
+                    if ($eligible === null) {
+                        $eligible = $callee->compiled !== null
+                            && $callee->compiled->canSkipEnvAlloc
+                            && !$callee->isClassConstructor()
+                            && !$callee->isDerivedConstructor()
+                            && $callee->getHomeObject() === null
+                            && $callee->getNativeCallable() === null
+                            && !$callee->isAsync()
+                            && !$callee->isGenerator();
+                        // Only memoise positive results; a negative on
+                        // first call could later become positive once
+                        // the lazy compiler populates $compiled.
+                        if ($eligible) {
+                            $callee->vmDirectDispatchCache = true;
+                        }
+                    }
+                    if ($eligible) {
                         $stack[$sp++] = $this->interp->executeVmFunctionDirect(
                             $callee,
                             $undef,
