@@ -7925,6 +7925,19 @@ class Interpreter
 
         try {
             $specifier = TypeConversion::toString($sourceValue);
+            // Source-phase imports: GetModuleSource for SourceTextModule
+            // always returns an abrupt SyntaxError (16.2.1.7.2). Same shape
+            // for the deferred phase since we don't expose deferred
+            // namespace objects.
+            if ($node->phase === 'source' || $node->phase === 'defer') {
+                $err = $this->phpExceptionToJsValue(
+                    new \PhpJs\Exceptions\SyntaxError(
+                        "import.{$node->phase}() is not supported on this module type"
+                    )
+                );
+                $promise->reject($err);
+                return $promise;
+            }
             $loader = $this->getModuleLoader();
             $namespace = $loader->loadModule($specifier, $this->currentModulePath);
             $promise->resolve($namespace);

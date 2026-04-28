@@ -20,6 +20,16 @@ class ImportExpression extends Node
         SourceLocation $location,
         public readonly Node $source,
         public readonly ?Node $options = null,
+        /**
+         * Phase per the source-phase-imports / import-defer proposals.
+         * "evaluation" (the default) loads and evaluates the module.
+         * "source" requests the module's SourceTextModule, which always
+         * rejects with SyntaxError per spec.
+         * "defer" defers evaluation; not implemented as a distinct phase
+         * — runtime rejects with SyntaxError to match the SourceTextModule
+         * abrupt-completion shape.
+         */
+        public readonly string $phase = 'evaluation',
     ) {
         parent::__construct($location);
     }

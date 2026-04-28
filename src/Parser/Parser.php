@@ -7832,17 +7832,19 @@ class Parser
                 $this->advance();
                 return new MetaProperty($location, 'import', 'meta');
             }
-            // ES2024+ proposals: `import.source(x)` and `import.defer(x)` —
-            // parse as a dynamic import for compatibility; semantic phase is
-            // not distinguished (we evaluate the same way as import(x)).
+            // ES2024+ proposals: `import.source(x)` and `import.defer(x)`.
+            // Track the requested phase on the AST. For SourceTextModule,
+            // GetModuleSource always returns an abrupt SyntaxError (per
+            // 16.2.1.7.2), so the runtime rejects the returned promise.
             if (
                 $prop->type === TokenType::Identifier
                 && ($prop->value === 'source' || $prop->value === 'defer')
             ) {
+                $phase = $prop->value;
                 $this->advance();
                 if (!$this->check(TokenType::LeftParen)) {
                     throw new ParseError(
-                        'Expected "(" after "import.' . $prop->value . '"',
+                        'Expected "(" after "import.' . $phase . '"',
                         $this->current(),
                     );
                 }
@@ -7859,7 +7861,12 @@ class Parser
                     }
                 }
                 $this->expect(TokenType::RightParen);
-                return new \PhpJs\Ast\Expression\ImportExpression($location, $source, $options);
+                return new \PhpJs\Ast\Expression\ImportExpression(
+                    $location,
+                    $source,
+                    $options,
+                    $phase,
+                );
             }
             throw new ParseError('Expected "meta" after "import."', $prop);
         }
