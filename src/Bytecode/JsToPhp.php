@@ -780,8 +780,11 @@ final class JsToPhp
             if ($this->numericMode) {
                 // Numeric entry: caller (another JsToPhp closure) has
                 // already validated the arg shape and passes raw
-                // float values via $rawArgs. Nothing to unbox.
-                $this->emitLine($php . ' = $rawArgs[' . $idx . '];');
+                // float values via $rawArgs. Default missing args to
+                // NAN — JS spec says ToNumber(undefined) is NaN, and
+                // a numeric body computing on a missing param should
+                // propagate NaN rather than silently treat as 0.
+                $this->emitLine($php . ' = $rawArgs[' . $idx . '] ?? NAN;');
             } else {
                 $this->emitLine(
                     $php . ' = isset($args[' . $idx . ']) && $args[' . $idx . '] '
