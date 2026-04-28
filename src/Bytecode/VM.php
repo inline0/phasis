@@ -441,6 +441,40 @@ final class VM
         return null;
     }
 
+    /**
+     * String.prototype.split inline: receiver is a JsString, single
+     * non-empty JsString separator. Lowers to PHP's native explode +
+     * JsString wrapping per part. Spec features that this path skips
+     * (regex separators, Symbol.split, surrogate handling) trigger a
+     * null return so the spec body runs.
+     *
+     * Lives outside the CALL_METHOD switch so the dispatch-loop body
+     * stays compact enough for PHP 8.5 tracing JIT (otherwise trace
+     * length exceeds jit_max_trace_length and the entire VM execute
+     * runs uncompiled).
+     *
+     * @param list<JsValue> $args
+     */
+    private function inlineStringSplit(JsString $receiver, array $args, int $argc): ?JsValue
+    {
+        if ($argc !== 1) {
+            return null;
+        }
+        $sepArg = $args[0];
+        if (!$sepArg instanceof JsString) {
+            return null;
+        }
+        if ($sepArg->value === '') {
+            return null;
+        }
+        $parts = explode($sepArg->value, $receiver->value);
+        $arr = new \PhpJs\Value\JsArray();
+        foreach ($parts as $p) {
+            $arr->push(new JsString($p));
+        }
+        return $arr;
+    }
+
     public function execute(CompiledFunction $cf, Frame $frame): JsValue
     {
         $code = $cf->code;
@@ -1047,26 +1081,20 @@ final class VM
                                 break;
                             }
                             $kind = $method->builtinKind;
-                            // String.prototype.split with a single
-                            // ASCII string separator → PHP explode.
-                            // Receiver must be a JsString (no auto-box
-                            // here; the inline path handles the bench
-                            // shape exactly). Arg must be a JsString.
-                            if (
-                                $kind === 'string.split'
-                                && $receiver instanceof JsString
-                                && $argc === 1
-                                && $args[0] instanceof JsString
-                                && $args[0]->value !== ''
-                            ) {
-                                $parts = explode($args[0]->value, $receiver->value);
-                                $arr = new \PhpJs\Value\JsArray();
-                                foreach ($parts as $p) {
-                                    $arr->push(new JsString($p));
+                            // String.prototype.split inline lives in
+                            // a helper so the dispatch-loop body stays
+                            // small enough for PHP 8.5's tracing JIT
+                            // to compile (otherwise the trace exceeds
+                            // jit_max_trace_length and the entire
+                            // VM->execute() runs uncompiled — way
+                            // worse than the spec path).
+                            if ($kind === 'string.split' && $receiver instanceof JsString) {
+                                $inlined = $this->inlineStringSplit($receiver, $args, $argc);
+                                if ($inlined !== null) {
+                                    $stack[$sp++] = $inlined;
+                                    $pc += 2;
+                                    break;
                                 }
-                                $stack[$sp++] = $arr;
-                                $pc += 2;
-                                break;
                             }
                             // JSON.parse / JSON.stringify dispatch goes
                             // straight to the native callable, skipping
