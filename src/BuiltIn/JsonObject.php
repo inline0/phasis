@@ -19,18 +19,50 @@ use PhpJs\Value\JsValue;
 
 class JsonObject
 {
+    /**
+     * Sentinel returned by trivialJsonValue when the JsValue tree is
+     * not trivially serialisable. Caller uses === to detect and falls
+     * through to the spec serializer. A unique stdClass instance so
+     * it can never collide with a user-supplied value.
+     */
+    private static ?\stdClass $trivialBailoutSentinel = null;
+
+    /**
+     * Sentinel for "top-level value was undefined" — spec
+     * JSON.stringify(undefined) returns undefined, distinct from PHP
+     * null which is a valid JSON value 'null'.
+     */
+    private static ?\stdClass $trivialUndefinedSentinel = null;
+
+    private static function trivialBailout(): \stdClass
+    {
+        return self::$trivialBailoutSentinel ??= new \stdClass();
+    }
+
+    private static function trivialUndefined(): \stdClass
+    {
+        return self::$trivialUndefinedSentinel ??= new \stdClass();
+    }
+
     public static function install(Environment $env): void
     {
         $json = new JsObject();
 
+        $parseFn = JsFunction::fromCallable('parse', self::parse(), 2);
+        // Tag for VM CALL_METHOD inline path: bypass callFunction's
+        // tail-call trampoline + class-constructor guard for these
+        // hot built-ins. The native callable runs unchanged.
+        $parseFn->builtinKind = 'json.parse';
         $json->defineOwnProperty('parse', PropertyDescriptor::data(
-            JsFunction::fromCallable('parse', self::parse(), 2),
+            $parseFn,
             true,
             false,
             true,
         ));
+        $stringifyFn = JsFunction::fromCallable('stringify', self::stringify(), 3);
+        $stringifyFn->builtinKind = 'json.stringify';
         $json->defineOwnProperty('stringify', PropertyDescriptor::data(
-            JsFunction::fromCallable('stringify', self::stringify(), 3),
+            $stringifyFn,
             true,
             false,
             true,
@@ -118,6 +150,170 @@ class JsonObject
     {
         return $value instanceof JsObject
             && $value->getInternalProperty('[[IsRawJSON]]') === true;
+    }
+
+    /**
+     * Walk a JsValue tree into native PHP scalars / arrays for the
+     * fast-path stringifier (no replacer / space). Returns the PHP
+     * representation, or trivialBailout() if anything spec-y is
+     * encountered: toJSON method, accessor / non-default descriptor,
+     * symbol key, sparse array hole, JsProxy, cyclic reference,
+     * BigInt (which JS rejects), or any non-primitive value type.
+     * Top-level undefined returns trivialUndefined() so the caller
+     * can produce JsUndefined per spec.
+     *
+     * @param array<int, JsObject> $stack Cycle detection (visited objects)
+     */
+    private static function trivialJsonValue(JsValue $value, array &$stack): mixed
+    {
+        if ($value instanceof JsUndefined) {
+            return self::trivialUndefined();
+        }
+        if ($value instanceof JsNull) {
+            return null;
+        }
+        if ($value instanceof JsBoolean) {
+            return $value->value;
+        }
+        if ($value instanceof JsString) {
+            return $value->value;
+        }
+        if ($value instanceof JsNumber) {
+            // JS JSON.stringify(NaN) === 'null' and stringify(Infinity)
+            // === 'null'. PHP json_encode would otherwise refuse those.
+            if (is_nan($value->value) || is_infinite($value->value)) {
+                return null;
+            }
+            // Spec NumberToString: -0 serialises as "0". PHP json_encode
+            // would emit "-0", so collapse the sign here.
+            if ($value->value === 0.0) {
+                return 0;
+            }
+            return $value->value;
+        }
+        if ($value instanceof \PhpJs\Value\JsBigInt) {
+            // BigInt throws TypeError per spec — bail to spec path so
+            // it produces the correct error message.
+            return self::trivialBailout();
+        }
+        if ($value instanceof \PhpJs\Value\JsSymbol) {
+            // Top-level symbol → undefined per spec; the spec path
+            // handles it but the bailout sentinel is fine — caller
+            // falls through and the normal path returns undefined.
+            return self::trivialBailout();
+        }
+        if ($value instanceof JsFunction) {
+            // Functions serialize as undefined at top level. Bailing
+            // delegates to the standard path which already does this.
+            return self::trivialBailout();
+        }
+        if ($value instanceof \PhpJs\Value\JsProxy) {
+            return self::trivialBailout();
+        }
+        if (!$value instanceof JsObject) {
+            return self::trivialBailout();
+        }
+        // Cycle detection: SplObjectStorage is heavier than a plain
+        // array of object refs for our 3-level test object.
+        foreach ($stack as $seen) {
+            if ($seen === $value) {
+                // Spec throws TypeError on cycles. Bail to spec path.
+                return self::trivialBailout();
+            }
+        }
+        // Bail if the object has a [[PrimitiveValue]] slot (boxed
+        // Boolean / Number / String / BigInt) since spec ToJSON
+        // unwraps these to their primitives, while our walker would
+        // emit them as bare {} objects.
+        if ($value->getOwnPropertyDescriptor('[[PrimitiveValue]]') !== null) {
+            return self::trivialBailout();
+        }
+        // RawJSON object: bail so the spec serialiser emits its raw
+        // rawJSON property verbatim.
+        if ($value->getInternalProperty('[[IsRawJSON]]') === true) {
+            return self::trivialBailout();
+        }
+        // Bail if the object has a toJSON method anywhere in the
+        // chain (spec calls it before any other handling).
+        if ($value->getOwnPropertyDescriptor('toJSON') !== null) {
+            return self::trivialBailout();
+        }
+        // Walk the prototype chain for toJSON; required by spec.
+        $proto = $value->getPrototype();
+        while ($proto !== null) {
+            if ($proto->getOwnPropertyDescriptor('toJSON') !== null) {
+                return self::trivialBailout();
+            }
+            $proto = $proto->getPrototype();
+        }
+        $stack[] = $value;
+        try {
+            if ($value instanceof JsArray) {
+                if (!$value->isDenseMode()) {
+                    return self::trivialBailout();
+                }
+                $len = $value->getLength();
+                $elements = $value->getDenseElements();
+                $out = [];
+                for ($i = 0; $i < $len; $i++) {
+                    $el = $elements[$i] ?? null;
+                    if ($el === null) {
+                        return self::trivialBailout();
+                    }
+                    $resolved = self::trivialJsonValue($el, $stack);
+                    if ($resolved === self::trivialBailout()) {
+                        return self::trivialBailout();
+                    }
+                    if ($resolved === self::trivialUndefined()) {
+                        // Array hole / undefined element → null per spec.
+                        $out[] = null;
+                        continue;
+                    }
+                    $out[] = $resolved;
+                }
+                return $out;
+            }
+            // Plain JsObject: ordinaryOwnPropertyKeys preserves insertion
+            // order which is what JS JSON.stringify produces.
+            $keys = $value->ordinaryOwnPropertyKeys();
+            $out = [];
+            foreach ($keys as $key) {
+                if (!$key instanceof JsString) {
+                    // Symbol key — spec skips these.
+                    continue;
+                }
+                $name = $key->value;
+                $desc = $value->getOwnPropertyDescriptor($name);
+                if ($desc === null) {
+                    continue;
+                }
+                if ($desc->get !== null || $desc->set !== null) {
+                    // Accessor — bail; would need to invoke getter.
+                    return self::trivialBailout();
+                }
+                if (!$desc->enumerable) {
+                    continue;
+                }
+                $resolved = self::trivialJsonValue($desc->value, $stack);
+                if ($resolved === self::trivialBailout()) {
+                    return self::trivialBailout();
+                }
+                if ($resolved === self::trivialUndefined()) {
+                    // Skip property whose value is undefined.
+                    continue;
+                }
+                $out[$name] = $resolved;
+            }
+            // PHP json_encode encodes [] as '[]' (array) but we want
+            // '{}' for empty objects. Always coerce to stdClass so
+            // JS-object output is unambiguous regardless of whether
+            // PHP collapsed numeric-string keys to ints (which would
+            // make json_encode emit a JSON array). Field order is
+            // preserved by stdClass casting in PHP.
+            return (object) $out;
+        } finally {
+            array_pop($stack);
+        }
     }
 
     private static function jsIsArray(JsValue $value): bool
@@ -585,6 +781,33 @@ class JsonObject
             $value = $args[0] ?? JsUndefined::instance();
             $replacerArg = $args[1] ?? JsUndefined::instance();
             $space = $args[2] ?? JsUndefined::instance();
+
+            // Fast path: no replacer, no space (compact output) and a
+            // trivially serialisable value tree. Walks the JsValue tree
+            // into native PHP scalars/arrays then defers to json_encode.
+            // Bails the moment it sees anything spec-y (toJSON, getter,
+            // symbol, cycle, accessor, replacer-affected key) — the
+            // standard serializer takes over below for those.
+            if (
+                ($replacerArg instanceof JsUndefined || $replacerArg instanceof JsNull)
+                && ($space instanceof JsUndefined || $space instanceof JsNull)
+            ) {
+                $stack = [];
+                $php = self::trivialJsonValue($value, $stack);
+                $bailout = self::trivialBailout();
+                if ($php !== $bailout) {
+                    if ($php === self::trivialUndefined()) {
+                        return JsUndefined::instance();
+                    }
+                    $encoded = json_encode(
+                        $php,
+                        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+                    );
+                    if ($encoded !== false) {
+                        return new JsString($encoded);
+                    }
+                }
+            }
 
             if ($space instanceof JsObject && !$space instanceof JsFunction) {
                 if (self::hasNumberData($space)) {

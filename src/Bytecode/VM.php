@@ -969,6 +969,27 @@ final class VM
                                 break;
                             }
                             $kind = $method->builtinKind;
+                            // JSON.parse / JSON.stringify dispatch goes
+                            // straight to the native callable, skipping
+                            // callFunction's tail-call trampoline +
+                            // class-constructor guard. These are static
+                            // built-in helpers, never callable as
+                            // constructors, so the bypass is safe.
+                            if (
+                                $kind === 'json.parse'
+                                || $kind === 'json.stringify'
+                            ) {
+                                $native = $method->getNativeCallable();
+                                if ($native !== null) {
+                                    $stack[$sp++] = $native(
+                                        $receiver,
+                                        $args,
+                                        $this->interp,
+                                    );
+                                    $pc += 2;
+                                    break;
+                                }
+                            }
                             if (
                                 $kind !== null
                                 && $receiver instanceof \PhpJs\Value\JsArray
