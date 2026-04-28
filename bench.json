@@ -1,5 +1,5 @@
 {
-    "snapshotTime": "2026-04-28T11:39:20+00:00",
+    "snapshotTime": "2026-04-28T12:24:36+00:00",
     "runs": 5,
     "bench": "bench/microbench.js",
     "host": {
@@ -9,252 +9,252 @@
     },
     "git": {
         "branch": "main",
-        "head": "21ee17e54cc9712c6325388af4c6720de22faf41",
+        "head": "48ce4a3a1d534a728b43ab8df04edcc01432dfb2",
         "dirty": false
     },
     "tests": {
         "loop-arith": {
-            "median": 233,
-            "min": 228,
-            "max": 260,
+            "median": 232,
+            "min": 221,
+            "max": 244,
             "samples": [
-                260,
-                228,
-                250,
-                233,
+                244,
+                235,
+                232,
+                221,
                 231
             ]
         },
         "loop-fib": {
-            "median": 99,
-            "min": 98,
-            "max": 102,
+            "median": 95,
+            "min": 91,
+            "max": 96,
             "samples": [
-                102,
-                98,
-                99,
-                99,
-                100
+                96,
+                95,
+                95,
+                91,
+                95
             ]
         },
         "fn-recurse": {
-            "median": 632,
-            "min": 629,
-            "max": 655,
+            "median": 824,
+            "min": 784,
+            "max": 859,
             "samples": [
-                632,
-                629,
-                646,
-                632,
-                655
+                859,
+                784,
+                824,
+                786,
+                852
             ]
         },
         "obj-create": {
-            "median": 64,
-            "min": 63,
-            "max": 65,
+            "median": 50,
+            "min": 46,
+            "max": 53,
             "samples": [
-                65,
-                63,
-                65,
-                63,
-                64
+                53,
+                50,
+                50,
+                46,
+                50
             ]
         },
         "obj-prop": {
-            "median": 180,
-            "min": 176,
-            "max": 202,
+            "median": 173,
+            "min": 159,
+            "max": 174,
             "samples": [
-                202,
-                180,
-                179,
-                183,
-                176
+                173,
+                174,
+                170,
+                159,
+                174
             ]
         },
         "arr-push": {
-            "median": 301,
-            "min": 300,
-            "max": 438,
+            "median": 198,
+            "min": 192,
+            "max": 201,
             "samples": [
-                438,
-                300,
-                302,
-                301,
-                301
+                198,
+                199,
+                198,
+                192,
+                201
             ]
         },
         "arr-map": {
-            "median": 166,
-            "min": 165,
-            "max": 245,
+            "median": 117,
+            "min": 106,
+            "max": 118,
             "samples": [
-                245,
-                165,
-                166,
-                166,
-                168
+                106,
+                117,
+                117,
+                117,
+                118
             ]
         },
         "str-concat": {
-            "median": 26,
-            "min": 25,
+            "median": 25,
+            "min": 23,
             "max": 26,
             "samples": [
                 26,
-                26,
-                26,
-                26,
-                25
+                25,
+                25,
+                23,
+                24
             ]
         },
         "str-split-join": {
-            "median": 39,
-            "min": 38,
-            "max": 40,
+            "median": 34,
+            "min": 33,
+            "max": 36,
             "samples": [
-                38,
-                39,
-                39,
-                40,
-                40
+                36,
+                34,
+                34,
+                33,
+                35
             ]
         },
         "json-roundtrip": {
-            "median": 179,
-            "min": 178,
-            "max": 181,
+            "median": 177,
+            "min": 175,
+            "max": 180,
             "samples": [
-                181,
+                180,
                 178,
-                179,
-                178,
-                179
+                175,
+                177,
+                177
             ]
         },
         "closure": {
-            "median": 440,
-            "min": 409,
-            "max": 448,
+            "median": 447,
+            "min": 405,
+            "max": 640,
             "samples": [
-                409,
-                440,
-                440,
-                448,
-                441
+                405,
+                446,
+                447,
+                640,
+                447
             ]
         },
         "destructure": {
-            "median": 112,
-            "min": 109,
-            "max": 113,
+            "median": 96,
+            "min": 87,
+            "max": 99,
             "samples": [
-                113,
-                112,
-                112,
-                111,
-                109
+                96,
+                99,
+                95,
+                87,
+                96
             ]
         }
     },
     "total": {
-        "median": 2589.4,
-        "min": 2559.2,
-        "max": 2846.3,
+        "median": 2588.6,
+        "min": 2539.8,
+        "max": 2678.3,
         "samples": [
-            2846.3,
-            2559.2,
-            2601.9,
-            2576.9,
-            2589.4
+            2588.6,
+            2539.8,
+            2568.8,
+            2678.3,
+            2606.3
         ]
     },
     "iterations": [
         {
             "tests": {
-                "loop-arith": 260,
-                "loop-fib": 102,
-                "fn-recurse": 632,
-                "obj-create": 65,
-                "obj-prop": 202,
-                "arr-push": 438,
-                "arr-map": 245,
+                "loop-arith": 244,
+                "loop-fib": 96,
+                "fn-recurse": 859,
+                "obj-create": 53,
+                "obj-prop": 173,
+                "arr-push": 198,
+                "arr-map": 106,
                 "str-concat": 26,
-                "str-split-join": 38,
-                "json-roundtrip": 181,
-                "closure": 409,
-                "destructure": 113
+                "str-split-join": 36,
+                "json-roundtrip": 180,
+                "closure": 405,
+                "destructure": 96
             },
-            "totalMs": 2846.3
+            "totalMs": 2588.6
         },
         {
             "tests": {
-                "loop-arith": 228,
-                "loop-fib": 98,
-                "fn-recurse": 629,
-                "obj-create": 63,
-                "obj-prop": 180,
-                "arr-push": 300,
-                "arr-map": 165,
-                "str-concat": 26,
-                "str-split-join": 39,
+                "loop-arith": 235,
+                "loop-fib": 95,
+                "fn-recurse": 784,
+                "obj-create": 50,
+                "obj-prop": 174,
+                "arr-push": 199,
+                "arr-map": 117,
+                "str-concat": 25,
+                "str-split-join": 34,
                 "json-roundtrip": 178,
-                "closure": 440,
-                "destructure": 112
+                "closure": 446,
+                "destructure": 99
             },
-            "totalMs": 2559.2
+            "totalMs": 2539.8
         },
         {
             "tests": {
-                "loop-arith": 250,
-                "loop-fib": 99,
-                "fn-recurse": 646,
-                "obj-create": 65,
-                "obj-prop": 179,
-                "arr-push": 302,
-                "arr-map": 166,
-                "str-concat": 26,
-                "str-split-join": 39,
-                "json-roundtrip": 179,
-                "closure": 440,
-                "destructure": 112
+                "loop-arith": 232,
+                "loop-fib": 95,
+                "fn-recurse": 824,
+                "obj-create": 50,
+                "obj-prop": 170,
+                "arr-push": 198,
+                "arr-map": 117,
+                "str-concat": 25,
+                "str-split-join": 34,
+                "json-roundtrip": 175,
+                "closure": 447,
+                "destructure": 95
             },
-            "totalMs": 2601.9
+            "totalMs": 2568.8
         },
         {
             "tests": {
-                "loop-arith": 233,
-                "loop-fib": 99,
-                "fn-recurse": 632,
-                "obj-create": 63,
-                "obj-prop": 183,
-                "arr-push": 301,
-                "arr-map": 166,
-                "str-concat": 26,
-                "str-split-join": 40,
-                "json-roundtrip": 178,
-                "closure": 448,
-                "destructure": 111
+                "loop-arith": 221,
+                "loop-fib": 91,
+                "fn-recurse": 786,
+                "obj-create": 46,
+                "obj-prop": 159,
+                "arr-push": 192,
+                "arr-map": 117,
+                "str-concat": 23,
+                "str-split-join": 33,
+                "json-roundtrip": 177,
+                "closure": 640,
+                "destructure": 87
             },
-            "totalMs": 2576.9
+            "totalMs": 2678.3
         },
         {
             "tests": {
                 "loop-arith": 231,
-                "loop-fib": 100,
-                "fn-recurse": 655,
-                "obj-create": 64,
-                "obj-prop": 176,
-                "arr-push": 301,
-                "arr-map": 168,
-                "str-concat": 25,
-                "str-split-join": 40,
-                "json-roundtrip": 179,
-                "closure": 441,
-                "destructure": 109
+                "loop-fib": 95,
+                "fn-recurse": 852,
+                "obj-create": 50,
+                "obj-prop": 174,
+                "arr-push": 201,
+                "arr-map": 118,
+                "str-concat": 24,
+                "str-split-join": 35,
+                "json-roundtrip": 177,
+                "closure": 447,
+                "destructure": 96
             },
-            "totalMs": 2589.4
+            "totalMs": 2606.3
         }
     ]
 }
