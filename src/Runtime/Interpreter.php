@@ -4588,7 +4588,6 @@ class Interpreter
         if (
             $fn->compiled !== null
             && $fn->compiled->canSkipEnvAlloc
-            && !$fn->isArrow()
             && !$fn->isClassConstructor()
             && !$fn->isDerivedConstructor()
             && $fn->getHomeObject() === null
@@ -4600,7 +4599,11 @@ class Interpreter
                         && $this->hasUseStrictDirective($body->body));
             }
             $this->strictMode = $fn->effectiveStrictCache;
-            if (!$this->strictMode) {
+            // Arrows inherit `this` from their closure — skip sloppy
+            // coercion, which would only burn cycles since LOAD_THIS
+            // (not emitted for canSkipEnvAlloc bodies) wouldn't read
+            // the coerced value anyway.
+            if (!$this->strictMode && !$fn->isArrow()) {
                 if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
                     $thisValue = $this->getGlobalObject();
                 } elseif (
