@@ -4406,6 +4406,26 @@ class Interpreter
             return $this->executeAsyncFunction($fn, $thisValue, $args);
         }
 
+        // JsToPhp fast path: if the body is already lowered to a PHP
+        // closure, invoke it directly. Skips the entire executeFunction
+        // prologue (callStack push, callerStack push, frame setup,
+        // sloppy this coercion, env binding) — the JsToPhp emitter
+        // verified at compile time that the body needs none of that.
+        // Runtime bailouts (non-numeric arg, etc.) fall through to the
+        // standard executeFunction path so spec semantics are preserved.
+        if (
+            $fn->phpCompiled !== null
+            && !$fn->isClassConstructor()
+            && !$fn->isDerivedConstructor()
+            && $fn->getHomeObject() === null
+        ) {
+            try {
+                return ($fn->phpCompiled)($args, $fn->getClosure(), $this);
+            } catch (\PhpJs\Bytecode\Bailout) {
+                // Fall through to the slow path below.
+            }
+        }
+
         // Interpreted function
         return $this->executeFunction($fn, $thisValue, $args);
     }
