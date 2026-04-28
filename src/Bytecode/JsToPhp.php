@@ -1076,15 +1076,44 @@ final class JsToPhp
             // first reference; subsequent uses pull the raw $_fv_*
             // PHP local. Bail if the free var is not a JsNumber so
             // the VM falls back gracefully.
+            //
+            // Cache strategy: gate the env lookup on Environment::
+            // $globalBindingsVersion. The static persists across
+            // closure invocations; if no binding has been written
+            // since the previous call (closure / fib hot path), we
+            // skip env->get entirely and reuse the cached raw value.
+            // The env identity check guards against the same compiled
+            // closure being reused on a different env; if so, the
+            // cache invalidates and we re-resolve.
             $name = $node->name;
             if (!isset($this->freeVars[$name])) {
                 $this->freeVars[$name] = true;
-                $box = '$_fvbox_' . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
+                $safe = preg_replace('/[^A-Za-z0-9_]/', '_', $name);
+                $box = '$_fvbox_' . $safe;
                 $php = $this->freeVar($name);
-                $this->pendingStatements[] = $box . ' = $env->get(' . var_export($name, true) . ');';
-                $this->pendingStatements[] = 'if (!(' . $box
+                $envCacheVar = '$_fvenv_' . $safe;
+                $verCacheVar = '$_fvver_' . $safe;
+                $this->pendingStatements[] = 'static ' . $envCacheVar
+                    . ' = null, ' . $verCacheVar . ' = -1, ' . $php . ' = 0.0;';
+                $this->pendingStatements[] = '$_curVer = \\PhpJs\\Runtime\\Environment::'
+                    . '$globalBindingsVersion;';
+                $this->pendingStatements[] = 'if ($env !== ' . $envCacheVar
+                    . ' || $_curVer !== ' . $verCacheVar . ') {';
+                $this->pendingStatements[] = '    ' . $box
+                    . ' = $env->get(' . var_export($name, true) . ');';
+                $this->pendingStatements[] = '    if (!(' . $box
                     . ' instanceof \\PhpJs\\Value\\JsNumber)) { throw new \\PhpJs\\Bytecode\\Bailout("non-numeric freevar"); }';
-                $this->pendingStatements[] = $php . ' = ' . $box . '->value;';
+                // Update the cache only AFTER the JsNumber check
+                // succeeds. If the value is not numeric we throw
+                // Bailout, and the cache must stay unchanged so the
+                // next call re-enters the if-block and re-throws,
+                // routing again to the VM fallback. Mutating env /
+                // version before the throw makes the cache appear
+                // valid on retry and returns the stale default.
+                $this->pendingStatements[] = '    ' . $envCacheVar . ' = $env;';
+                $this->pendingStatements[] = '    ' . $verCacheVar . ' = $_curVer;';
+                $this->pendingStatements[] = '    ' . $php . ' = ' . $box . '->value;';
+                $this->pendingStatements[] = '}';
             }
             return $this->freeVar($name);
         }
