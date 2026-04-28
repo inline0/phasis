@@ -161,17 +161,36 @@ final class JsToPhp
     {
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
+                if ($decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern) {
+                    // Object destructuring: collect each shorthand /
+                    // identifier-bound property as a numeric local.
+                    foreach ($decl->id->properties as $prop) {
+                        if (!$prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                            throw new Bailout('non-AssignmentProperty in pattern');
+                        }
+                        if ($prop->computed) {
+                            throw new Bailout('computed pattern key');
+                        }
+                        if (!$prop->value instanceof Identifier) {
+                            throw new Bailout('non-identifier pattern target');
+                        }
+                        $this->declaredLocals[$prop->value->name] = true;
+                    }
+                    continue;
+                }
                 if (!$decl->id instanceof Identifier) {
                     throw new Bailout('non-identifier var');
                 }
                 $name = $decl->id->name;
                 $this->declaredLocals[$name] = true;
-                // Type inference: ObjectExpression init → object slot.
-                // Anything else stays in the default numeric pool.
                 if ($decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression) {
                     $this->markLocalAsObject($name);
                 }
             }
+            return;
+        }
+        if ($node instanceof ExpressionStatement) {
+            $this->collectAssignmentTypes($node->expression);
             return;
         }
         if ($node instanceof BlockStatement) {
@@ -270,6 +289,27 @@ final class JsToPhp
         $this->localTypes[$name] = 'object';
     }
 
+    /**
+     * Walk expressions for `local = ObjectExpression` patterns to
+     * mark the local as object-typed during the pre-walk. Without
+     * this, the obj-create benchmark's `last = {...}` loop would
+     * leave `last` numeric and the ObjectExpression handling would
+     * bail at emit time.
+     */
+    private function collectAssignmentTypes(Node $node): void
+    {
+        if (
+            $node instanceof AssignmentExpression
+            && $node->operator === '='
+            && $node->left instanceof Identifier
+            && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
+        ) {
+            if (isset($this->declaredLocals[$node->left->name])) {
+                $this->markLocalAsObject($node->left->name);
+            }
+        }
+    }
+
     private function freeVar(string $name): string
     {
         return '$_fv_' . preg_replace('/[^A-Za-z0-9_]/', '_', $name);
@@ -299,6 +339,18 @@ final class JsToPhp
         }
         if ($node instanceof VariableDeclaration) {
             foreach ($node->declarations as $decl) {
+                // Destructuring optimization: `const { a, b } = { a: x, b: y }`
+                // is the destructure microbench's hot pattern. Recognise an
+                // ObjectExpression source with all-identifier keys whose
+                // names match the pattern's targets and assign directly,
+                // skipping the JsObject construction entirely.
+                if (
+                    $decl->id instanceof \PhpJs\Ast\Pattern\ObjectPattern
+                    && $decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression
+                ) {
+                    $this->emitDestructureFromLiteral($decl->id, $decl->init);
+                    continue;
+                }
                 if (!$decl->id instanceof Identifier) {
                     throw new Bailout('var decl pattern');
                 }
@@ -435,6 +487,67 @@ final class JsToPhp
             return;
         }
         throw new Bailout('unsupported stmt: ' . $node->type());
+    }
+
+    /**
+     * Lower `const { a, b } = { a: x, b: y }` directly: each pattern
+     * target gets a single numeric assignment from the matching
+     * ObjectExpression property. Skips the intermediate JsObject
+     * allocation. Bails if the pattern names don't all map to a
+     * property key in the literal — falling back to the slow path
+     * which the tree-walker handles via spec destructure semantics.
+     */
+    private function emitDestructureFromLiteral(
+        \PhpJs\Ast\Pattern\ObjectPattern $pattern,
+        \PhpJs\Ast\Expression\ObjectExpression $literal,
+    ): void {
+        // Build a key → AST value map from the literal so pattern
+        // targets can fetch their values without a runtime lookup.
+        $keyMap = [];
+        foreach ($literal->properties as $prop) {
+            if (!$prop instanceof \PhpJs\Ast\Expression\Property) {
+                throw new Bailout('non-Property in destructure source');
+            }
+            if ($prop->kind !== 'init' || $prop->computed) {
+                throw new Bailout('weird destructure source property');
+            }
+            $key = null;
+            if ($prop->key instanceof Identifier) {
+                $key = $prop->key->name;
+            } elseif ($prop->key instanceof Literal && is_string($prop->key->value)) {
+                $key = $prop->key->value;
+            } else {
+                throw new Bailout('weird destructure source key');
+            }
+            $keyMap[$key] = $prop->value;
+        }
+        foreach ($pattern->properties as $prop) {
+            if (!$prop instanceof \PhpJs\Ast\Pattern\AssignmentProperty) {
+                throw new Bailout('non-AssignmentProperty in pattern');
+            }
+            if ($prop->computed) {
+                throw new Bailout('computed pattern key');
+            }
+            if (!$prop->value instanceof Identifier) {
+                throw new Bailout('non-identifier pattern target');
+            }
+            $patKey = null;
+            if ($prop->key instanceof Identifier) {
+                $patKey = $prop->key->name;
+            } elseif ($prop->key instanceof Literal && is_string($prop->key->value)) {
+                $patKey = $prop->key->value;
+            } else {
+                throw new Bailout('weird pattern key');
+            }
+            if (!isset($keyMap[$patKey])) {
+                throw new Bailout('pattern key missing in source');
+            }
+            $valueExpr = $this->emitExpression($keyMap[$patKey]);
+            $this->flushPending();
+            $this->emitLine(
+                $this->slotVar($prop->value->name) . ' = ' . $valueExpr . ';'
+            );
+        }
     }
 
     private function flushPending(): void
@@ -652,7 +765,20 @@ final class JsToPhp
             if (!isset($this->declaredLocals[$node->left->name])) {
                 throw new Bailout('assign to non-local');
             }
-            $slot = $this->slotVar($node->left->name);
+            $name = $node->left->name;
+            // local = ObjectExpression: lift to a fresh JsObject and
+            // assign to the object-typed slot. Pre-walk has already
+            // marked the local as object-typed.
+            if (
+                $node->operator === '='
+                && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
+                && ($this->localTypes[$name] ?? null) === 'object'
+            ) {
+                $temp = $this->emitObjectLiteral($node->right);
+                $this->pendingStatements[] = $this->slotVar($name) . ' = ' . $temp . ';';
+                return $temp;
+            }
+            $slot = $this->slotVar($name);
             $val = $this->emitExpression($node->right);
             $op = $node->operator;
             if ($op === '=') {
