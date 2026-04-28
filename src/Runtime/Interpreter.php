@@ -5126,7 +5126,41 @@ class Interpreter
         $savedTailPos = $this->inTailPosition;
         $this->inTailPosition = $this->strictMode;
         try {
-            $vmReturn = $this->tryRunOnVm($fn, $fn->getClosure(), $thisValue, $args);
+            // Inlined tryRunOnVm: callee is known compiled (the
+            // direct-dispatch eligibility cache verified that), so we
+            // can skip the recompile-check + method-call hop and go
+            // straight to Frame setup + vm->execute.
+            $cf = $fn->compiled;
+            $undef = JsUndefined::instance();
+            $depth = $this->framePoolDepth;
+            $closureEnv = $fn->getClosure();
+            if ($depth < count($this->framePool)) {
+                $frame = $this->framePool[$depth];
+                $frame->reset($closureEnv, $thisValue, $cf->slotCount, $undef);
+            } else {
+                $frame = new \PhpJs\Bytecode\Frame(
+                    env: $closureEnv,
+                    thisValue: $thisValue,
+                    slotCount: $cf->slotCount,
+                    undefined: $undef,
+                );
+                $this->framePool[] = $frame;
+            }
+            $this->framePoolDepth = $depth + 1;
+            $paramSlots = $cf->paramSlots;
+            $argCount = count($args);
+            $paramCount = count($paramSlots);
+            for ($i = 0; $i < $paramCount; $i++) {
+                $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
+            }
+            if ($this->vm === null) {
+                $this->vm = new \PhpJs\Bytecode\VM($this);
+            }
+            try {
+                $vmReturn = $this->vm->execute($cf, $frame);
+            } finally {
+                $this->framePoolDepth = $depth;
+            }
         } catch (\Throwable $e) {
             $this->inTailPosition = $savedTailPos;
             $this->teardownExecuteFunction(
@@ -5154,15 +5188,11 @@ class Interpreter
             $savedArgumentsValue,
             $previousStrictMode,
         );
-        if ($vmReturn === null) {
-            // Compiler bailed (rare, on first call). Fall back via the
-            // standard call entry point so the slow tree-walker takes
-            // over correctly. The VM caller will pop the call stack
-            // again — that's fine, callFunction's prologue pushes too.
-            return $this->callFunction($fn, $thisValue, $args);
-        }
         // Resolve tail-call thunks in-line so the VM caller gets a
         // plain JsValue back. Same loop as callFunction's trampoline.
+        // No null check: the inlined fast path requires $fn->compiled
+        // to be non-null (the dispatch eligibility cache verified it),
+        // and vm->execute returns a JsValue (not nullable).
         while ($vmReturn instanceof TailCallThunk) {
             $vmReturn = $this->callFunction(
                 $vmReturn->function,
