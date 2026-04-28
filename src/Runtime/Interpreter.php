@@ -4762,13 +4762,13 @@ class Interpreter
             }
 
             // Collect parameter names for Annex B hoisting checks.
-            // Per spec step 21.f, when an arguments object is created
-            // "arguments" is appended to parameterNames, which would
-            // disqualify `function arguments() {}` from Annex B var
-            // hoisting. V8 and SpiderMonkey diverge from the strict spec
-            // and DO propagate the function to the var scope, overwriting
-            // the implicit arguments. This project's oracle is V8, so we
-            // follow V8 and skip adding "arguments" to parameterNames.
+            // Per spec FunctionDeclarationInstantiation step 22.f, when
+            // an arguments object is created "arguments" is appended to
+            // parameterNames. Per Annex B B.3.2.1 step c, that disqualifies
+            // a same-named block-scoped FunctionDeclaration from being
+            // hoisted to the function scope, preserving the implicit
+            // arguments binding (test262
+            // annexB/language/function-code/block-decl-func-skip-arguments).
             //
             // currentParamNames is read only by hoistDeclarations'
             // canHoist check. If the body trips no hoisting at all
@@ -4783,6 +4783,9 @@ class Interpreter
                     foreach ($this->patternBoundNames($p) as $pName) {
                         $this->currentParamNames[$pName] = true;
                     }
+                }
+                if (!$fn->isArrow() && $argsObj !== null) {
+                    $this->currentParamNames['arguments'] = true;
                 }
             }
 
