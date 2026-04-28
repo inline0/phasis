@@ -540,7 +540,7 @@ class ArrayConstructor
         $joinFn->builtinKind = 'array.join';
         $proto->defineOwnProperty('join', PropertyDescriptor::data($joinFn, true, false, true));
 
-        $proto->defineOwnProperty('slice', PropertyDescriptor::data(JsFunction::fromCallable(
+        $sliceFn = JsFunction::fromCallable(
             'slice',
             function (JsValue $this_, array $args): JsValue {
                 $this_ = self::toObject($this_);
@@ -584,7 +584,9 @@ class ArrayConstructor
                 return $a;
             },
             2
-        ), true, false, true));
+        );
+        $sliceFn->builtinKind = 'array.slice';
+        $proto->defineOwnProperty('slice', PropertyDescriptor::data($sliceFn, true, false, true));
 
         $proto->defineOwnProperty('concat', PropertyDescriptor::data(JsFunction::fromCallable(
             'concat',

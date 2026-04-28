@@ -224,6 +224,55 @@ final class VM
                 }
                 return JsNumber::of(-1.0);
 
+            case 'array.slice':
+                // 0/1/2 args, all optional numeric. Bail if a custom
+                // 'constructor' override is present so spec
+                // ArraySpeciesCreate runs.
+                if ($argc > 2) {
+                    return null;
+                }
+                if ($receiver->getOwnPropertyDescriptor('constructor') !== null) {
+                    return null;
+                }
+                $len = $receiver->getLength();
+                $startN = 0;
+                $endN = $len;
+                if ($argc >= 1) {
+                    $startArg = $args[0];
+                    if ($startArg instanceof JsUndefined) {
+                        // start defaults to 0; nothing to do.
+                    } elseif ($startArg instanceof JsNumber) {
+                        $sv = (int) $startArg->value;
+                        $startN = $sv < 0 ? max($len + $sv, 0) : min($sv, $len);
+                    } else {
+                        return null;
+                    }
+                }
+                if ($argc >= 2) {
+                    $endArg = $args[1];
+                    if ($endArg instanceof JsUndefined) {
+                        $endN = $len;
+                    } elseif ($endArg instanceof JsNumber) {
+                        $ev = (int) $endArg->value;
+                        $endN = $ev < 0 ? max($len + $ev, 0) : min($ev, $len);
+                    } else {
+                        return null;
+                    }
+                }
+                $elements = $receiver->getDenseElements();
+                $result = new \PhpJs\Value\JsArray();
+                for ($i = $startN; $i < $endN; $i++) {
+                    $el = $elements[$i] ?? null;
+                    if ($el === null) {
+                        // Hole: spec preserves it; the new array shouldn't
+                        // claim a value here. Bail to spec path so the
+                        // hole-vs-undefined distinction is preserved.
+                        return null;
+                    }
+                    $result->push($el);
+                }
+                return $result;
+
             case 'array.includes':
                 if ($argc < 1) {
                     return null;
