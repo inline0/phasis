@@ -2747,6 +2747,7 @@ class TypedArrayConstructor
                 if (!$this_ instanceof JsTypedArray) {
                     throw new TypeError("Method {$typeName}.prototype.reduce called on incompatible receiver");
                 }
+                self::validateTypedArray($this_);
                 $callback = $args[0] ?? JsUndefined::instance();
                 if (!$callback instanceof JsFunction) {
                     throw new TypeError('callback is not a function');

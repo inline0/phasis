@@ -344,9 +344,15 @@ class Engine
         $bigIntLocale = \PhpJs\Value\JsFunction::fromCallable(
             'toLocaleString',
             function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
-                if (!$this_ instanceof \PhpJs\Value\JsBigInt) {
+                $bigint = $this_ instanceof \PhpJs\Value\JsBigInt ? $this_ : null;
+                if ($bigint === null && $this_ instanceof \PhpJs\Value\JsObject) {
+                    $v = $this_->get('[[BigIntData]]');
+                    $bigint = $v instanceof \PhpJs\Value\JsBigInt ? $v : null;
+                }
+                if ($bigint === null) {
                     throw new \PhpJs\Exceptions\TypeError('BigInt.prototype.toLocaleString called on non-BigInt');
                 }
+                $this_ = $bigint;
                 if (extension_loaded('intl')) {
                     $env = self::getCurrentInterpreter()?->getGlobalEnv();
                     $intlObj = $env?->get('Intl', false);
