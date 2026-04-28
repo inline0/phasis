@@ -62,6 +62,29 @@ final class JsToPhp
     private array $declaredLocals = [];
 
     /**
+     * Locals declared without an initializer (e.g. `var x;`,
+     * `let x;`). The prologue sets their slot to a numeric default
+     * (0.0) which makes a subsequent unassigned read return 0
+     * instead of the spec-correct undefined. After collectLocals,
+     * we cross-check against $assignedNames; any name still in
+     * $unassignedDeclares is provably read-as-undefined and forces
+     * a compile bailout so the tree-walker handles it.
+     *
+     * @var array<string, true>
+     */
+    private array $unassignedDeclares = [];
+
+    /**
+     * Locals seen as the LHS of an AssignmentExpression at any point
+     * in the body. Combined with $unassignedDeclares to detect the
+     * "var x; ...; return x" shape that JsToPhp would otherwise
+     * silently wrap as JsNumber(0).
+     *
+     * @var array<string, true>
+     */
+    private array $assignedNames = [];
+
+    /**
      * Per-local type kind. Values:
      *   - 'numeric'  (default): PHP raw double, stored in $_l_NAME.
      *   - 'object'           : JsObject reference, stored in $_lo_NAME.
@@ -245,6 +268,16 @@ final class JsToPhp
             } else {
                 $compiler->collectLocals($body->body);
                 $compiler->checkNestedCaptures($body->body);
+                // Bail if any declared local has no init AND no
+                // AssignmentExpression target anywhere in the body.
+                // Reading it would observe the prologue default
+                // (0.0 for numeric, null for object) instead of the
+                // spec-mandated undefined.
+                foreach ($compiler->unassignedDeclares as $name => $_) {
+                    if (!isset($compiler->assignedNames[$name])) {
+                        return null;
+                    }
+                }
                 $compiler->emitPrologue($params);
                 foreach ($body->body as $stmt) {
                     $compiler->emitStatement($stmt);
@@ -678,6 +711,13 @@ final class JsToPhp
                 }
                 $name = $decl->id->name;
                 $this->declaredLocals[$name] = true;
+                if ($decl->init === null) {
+                    // Track no-init declarations so the post-collect
+                    // pass can detect the read-as-undefined pattern.
+                    // Removed from the set the moment any assignment
+                    // to this name appears in the body.
+                    $this->unassignedDeclares[$name] = true;
+                }
                 if ($decl->init instanceof \PhpJs\Ast\Expression\ObjectExpression) {
                     $this->markLocalAsObject($name);
                 }
@@ -1164,6 +1204,12 @@ final class JsToPhp
             && $node->left instanceof Identifier
             && isset($this->declaredLocals[$node->left->name])
         ) {
+            // Mark this declared local as assigned somewhere in the
+            // body. After the full collect pass, any local still
+            // present in $unassignedDeclares is provably read as
+            // its prologue default — for numeric locals that's 0
+            // not undefined, so we bail compile.
+            $this->assignedNames[$node->left->name] = true;
             if (
                 $node->operator === '='
                 && $node->right instanceof \PhpJs\Ast\Expression\ObjectExpression
