@@ -88,6 +88,15 @@ final class Op
     public const JUMP_IF_NULLISH = 73; // I — peek; if null/undef jump (preserves stack for ??)
     public const JUMP_IF_TRUTHY_KEEP = 74; // I — peek; jump if truthy (for ||, &&)
     public const JUMP_IF_FALSY_KEEP = 75;  // I — peek; jump if falsy
+    // Fused for-loop test: jump (operand offset) if locals[L] is not
+    // numerically less than consts[K]. Operands: L K offset. Falls
+    // through (continues the loop body) when locals[L] < consts[K].
+    // Used for the `for (let i = 0; i < N; i++)` pattern where N is
+    // a numeric literal — saves four dispatches per iteration vs the
+    // generic LOAD_LOCAL / LOAD_CONST / LT / JUMP_IF_FALSE chain.
+    // The hot path requires both operands to be JsNumber; anything
+    // else falls back to the generic relational + branch.
+    public const JUMP_IF_LOCAL_GE_CONST = 76;
 
     // ---- Calls & returns -----------------------------------------------
     public const CALL = 80;          // I — argc; callee at stack[-argc-1]
@@ -188,6 +197,9 @@ final class Op
             case self::CALL_METHOD:
             case self::MAKE_FUNCTION:
                 return 1;
+            // 3-operand opcodes
+            case self::JUMP_IF_LOCAL_GE_CONST:
+                return 3;
             default:
                 throw new \LogicException('Unknown opcode: ' . $op);
         }

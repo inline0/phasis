@@ -232,9 +232,21 @@ final class VM
                 case Op::ADD:
                     $r = $stack[--$sp];
                     $l = $stack[--$sp];
-                    $stack[$sp++] = ($l instanceof JsNumber && $r instanceof JsNumber)
-                        ? new JsNumber($l->value + $r->value)
-                        : $this->interp->addOperator($l, $r);
+                    if ($l instanceof JsNumber && $r instanceof JsNumber) {
+                        $stack[$sp++] = new JsNumber($l->value + $r->value);
+                    } elseif ($l instanceof JsString && $r instanceof JsString) {
+                        // Both strings: spec ApplyStringOrNumericBinaryOperator
+                        // calls ToPrimitive on both (no-op for strings) then,
+                        // since at least one primitive is string, returns a
+                        // string concatenation. Skip the addOperator dispatch
+                        // but route through concatNormalize so a trailing
+                        // CESU-8 high surrogate in $l merges with a leading
+                        // low surrogate in $r into a proper supplementary
+                        // codepoint.
+                        $stack[$sp++] = new JsString(JsString::concatNormalize($l->value, $r->value));
+                    } else {
+                        $stack[$sp++] = $this->interp->addOperator($l, $r);
+                    }
                     $pc++;
                     break;
                 case Op::SUB:
@@ -454,6 +466,33 @@ final class VM
                         $pc += $code[$pc + 1];
                     } else {
                         $pc += 2;
+                    }
+                    break;
+                case Op::JUMP_IF_LOCAL_GE_CONST:
+                    // Fused for-loop test: pc += offset (jump to loop
+                    // exit) when locals[L] >= consts[K], else fall
+                    // through to body. Hot path is JsNumber/JsNumber;
+                    // any other operand type runs the spec-correct
+                    // AbstractRelational comparison.
+                    $localVal = $locals[$code[$pc + 1]];
+                    $constVal = $consts[$code[$pc + 2]];
+                    if ($localVal instanceof JsNumber && $constVal instanceof JsNumber) {
+                        if (!($localVal->value < $constVal->value)) {
+                            $pc += $code[$pc + 3];
+                        } else {
+                            $pc += 4;
+                        }
+                    } else {
+                        // Spec-correct fallback: local < const via the
+                        // shared abstractRelational helper. NaN (null
+                        // result) or false collapses to "exit loop";
+                        // true means continue.
+                        $rel = AbstractOperations::abstractRelational($localVal, $constVal, true);
+                        if ($rel !== true) {
+                            $pc += $code[$pc + 3];
+                        } else {
+                            $pc += 4;
+                        }
                     }
                     break;
                 case Op::JUMP_IF_TRUTHY_KEEP:

@@ -675,6 +675,44 @@ final class Compiler
         }
     }
 
+    /**
+     * Detect the canonical for-loop test `local < numericLiteral` and
+     * emit a single fused JUMP_IF_LOCAL_GE_CONST opcode. Returns the
+     * opcode pc on success (used by compileFor to patch the offset
+     * cell at opcodePc + 3 directly, since patchJumpToHere assumes a
+     * 1-operand jump). Returns -1 if the pattern does not apply and
+     * the caller should fall back to LT + JUMP_IF_FALSE.
+     */
+    private function tryEmitFusedLoopTest(\PhpJs\Ast\Node $test): int
+    {
+        if (!$test instanceof BinaryExpression || $test->operator !== '<') {
+            return -1;
+        }
+        $left = $test->left;
+        $right = $test->right;
+        if (!$left instanceof Identifier) {
+            return -1;
+        }
+        if (!isset($this->localSlots[$left->name])) {
+            return -1;
+        }
+        if (!$right instanceof Literal || (!is_int($right->value) && !is_float($right->value))) {
+            return -1;
+        }
+        $localSlot = $this->localSlots[$left->name];
+        $constIdx = $this->internConst(
+            new JsNumber((float) $right->value),
+            'n:' . $right->value,
+        );
+        $opcodePc = count($this->code);
+        // Layout: opcode, localSlot, constIdx, offset (patched later).
+        $this->code[] = Op::JUMP_IF_LOCAL_GE_CONST;
+        $this->code[] = $localSlot;
+        $this->code[] = $constIdx;
+        $this->code[] = 0; // placeholder offset
+        return $opcodePc;
+    }
+
     private function compileFor(ForStatement $node): void
     {
         // Init.
@@ -687,11 +725,16 @@ final class Compiler
             }
         }
         $loopStart = count($this->code);
-        // Test.
+        // Test. Try the fused JUMP_IF_LOCAL_GE_CONST shortcut first
+        // for the canonical `for (let i = 0; i < N; i++)` pattern.
         $jmpExit = -1;
+        $fusedOpcodePc = -1;
         if ($node->test !== null) {
-            $this->compileExpression($node->test);
-            $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
+            $fusedOpcodePc = $this->tryEmitFusedLoopTest($node->test);
+            if ($fusedOpcodePc === -1) {
+                $this->compileExpression($node->test);
+                $jmpExit = $this->emitJump(Op::JUMP_IF_FALSE);
+            }
         }
         // Body.
         $this->loopStack[] = [
@@ -720,6 +763,12 @@ final class Compiler
         $loopExit = count($this->code);
         if ($jmpExit !== -1) {
             $this->patchJumpToHere($jmpExit);
+        }
+        if ($fusedOpcodePc !== -1) {
+            // JUMP_IF_LOCAL_GE_CONST layout: opcode at fusedOpcodePc,
+            // operands at +1, +2, +3. The dispatcher does pc += offset
+            // where pc starts at the opcode position.
+            $this->code[$fusedOpcodePc + 3] = $loopExit - $fusedOpcodePc;
         }
         $frame = array_pop($this->loopStack);
         foreach ($frame['continues'] as $idx) {
