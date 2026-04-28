@@ -495,23 +495,29 @@ final class JsToPhp
     {
         if ($node instanceof BlockStatement) {
             // Entering this block bumps blockDepth for its inner
-            // statements. Flag only when blockDepth > 0 (we're in a
-            // NESTED block, not the function body itself) AND a
-            // let / const is preceded by a non-declaration statement
-            // in the same block — the "use before initialization"
-            // shape. Patterns like `for (...) { const {a,b} = ...;
-            // s += a+b; }` keep the const as the first statement,
-            // so JsToPhp stays on the fast path.
+            // statements. Flag a let / const as TDZ-risky when
+            // either (a) it's preceded by a non-declaration statement
+            // in the same block, or (b) its init expression reads
+            // the binding being declared (`const x = x + 1`).
             $innerDepth = $blockDepth + 1;
             $sawNonDecl = false;
             foreach ($node->body as $inner) {
                 if (
-                    $innerDepth > 0
-                    && $sawNonDecl
-                    && $inner instanceof VariableDeclaration
+                    $inner instanceof VariableDeclaration
                     && ($inner->kind === 'let' || $inner->kind === 'const')
                 ) {
-                    return true;
+                    if ($innerDepth > 0 && $sawNonDecl) {
+                        return true;
+                    }
+                    foreach ($inner->declarations as $decl) {
+                        if (
+                            $decl->id instanceof Identifier
+                            && $decl->init !== null
+                            && self::initReadsName($decl->init, $decl->id->name)
+                        ) {
+                            return true;
+                        }
+                    }
                 }
                 if (
                     !($inner instanceof VariableDeclaration)
