@@ -691,6 +691,24 @@ final class VM
                             (TypeConversion::toString($method) ?: 'value') . ' is not a function'
                         );
                     }
+                    // Inline path for tagged hot built-ins: when the
+                    // receiver shape matches what the built-in's spec
+                    // path simplifies to (plain JsArray for array
+                    // methods), do the operation directly and skip the
+                    // entire callFunction → native dispatch chain. The
+                    // marker is set at engine init when the built-in
+                    // is installed; absence falls through to the spec
+                    // path so semantics never diverge.
+                    if (
+                        $method->builtinKind === 'array.push'
+                        && $receiver instanceof \PhpJs\Value\JsArray
+                        && $argc === 1
+                    ) {
+                        $receiver->push($args[0]);
+                        $stack[$sp++] = JsNumber::of((float) $receiver->getLength());
+                        $pc += 2;
+                        break;
+                    }
                     $stack[$sp++] = $this->interp->callFunction(
                         $method,
                         $receiver,

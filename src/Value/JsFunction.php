@@ -535,6 +535,15 @@ class JsFunction extends JsObject
     public bool $phpCompileFailed = false;
 
     /**
+     * Tag identifying a hot built-in function whose VM call site can
+     * inline the host operation directly instead of going through the
+     * spec-faithful native callable. Set when constructing the
+     * built-in (e.g. 'array.push'), checked in Op::CALL_METHOD before
+     * the fall-through to callFunction. Null for non-tagged functions.
+     */
+    public ?string $builtinKind = null;
+
+    /**
      * Memoised: whether VM Op::CALL can dispatch this function via
      * Interpreter::executeVmFunctionDirect (the inlined fast path) or
      * must fall back to callFunction. Computed lazily after the

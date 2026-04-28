@@ -255,7 +255,7 @@ class ArrayConstructor
 
     private static function installPrototypeMethods(JsArray $proto): void
     {
-        $proto->defineOwnProperty('push', PropertyDescriptor::data(JsFunction::fromCallable(
+        $pushFn = JsFunction::fromCallable(
             'push',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -276,7 +276,13 @@ class ArrayConstructor
                 return JsNumber::of((float) $len);
             },
             1
-        ), true, false, true));
+        );
+        // Tag for VM inline path. CALL_METHOD checks the marker and,
+        // when the receiver is a plain JsArray, performs the dense
+        // append + length bump directly — skipping the spec-faithful
+        // native dispatch which is overkill for that shape.
+        $pushFn->builtinKind = 'array.push';
+        $proto->defineOwnProperty('push', PropertyDescriptor::data($pushFn, true, false, true));
 
         $proto->defineOwnProperty('pop', PropertyDescriptor::data(JsFunction::fromCallable(
             'pop',
