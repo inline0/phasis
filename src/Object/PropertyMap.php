@@ -7,75 +7,63 @@ namespace PhpJs\Object;
 use PhpJs\Value\JsValue;
 
 /**
- * Property map with in-object data slots.
+ * Property map with separate fast / slow stores.
  *
- * Slots whose descriptor matches the default-attr data shape (writable,
- * enumerable, configurable; no accessor) live in $slots as a raw JsValue
- * with no PropertyDescriptor wrapper. Hot-path reads and writes on
- * JsObject go straight through the public $slots array — no method
- * dispatch, no descriptor materialization, no allocation.
+ * Default-attr data slots live in $dataSlots as raw JsValue; non-default
+ * and accessor slots live in $descriptors as PropertyDescriptor. The two
+ * are mutually exclusive: a key is in at most one store at a time. Hot
+ * paths in JsObject access $dataSlots directly via the public field for
+ * a single isset / array hit with no instanceof or method dispatch.
  *
- * Non-default and accessor descriptors share the same $slots array as
- * full PropertyDescriptor instances. Insertion order across both shapes
- * is preserved because there is only one underlying array.
- *
- * @phpstan-type SlotValue JsValue|PropertyDescriptor
+ * Insertion order across both stores is tracked in $order so ownKeys /
+ * for-in / Object.keys preserve spec ordering through promote / demote.
  */
 class PropertyMap
 {
     /**
-     * Combined property storage. Each slot is either a raw JsValue
-     * (default-attr data slot, fast path) or a PropertyDescriptor
-     * (non-default attrs or accessor). PropertyDescriptor does not
-     * implement JsValue, so an `instanceof JsValue` check
-     * distinguishes the two without ambiguity.
+     * Default-attr data slots. Public so JsObject can read and update
+     * inline without method dispatch.
      *
-     * @var array<string, JsValue|PropertyDescriptor>
+     * @var array<string, JsValue>
      */
-    public array $slots = [];
+    public array $dataSlots = [];
+
+    /**
+     * Slow-path descriptors. Public so JsObject's slow paths can read
+     * inline too.
+     *
+     * @var array<string, PropertyDescriptor>
+     */
+    public array $descriptors = [];
+
+    /**
+     * Insertion-ordered set of keys spanning both stores. The value is
+     * unused; array_keys($order) gives the merged ordering.
+     *
+     * @var array<string, bool>
+     */
+    private array $order = [];
 
     public function get(string $key): ?PropertyDescriptor
     {
-        $val = $this->slots[$key] ?? null;
-        if ($val === null) {
-            return null;
+        if (isset($this->dataSlots[$key])) {
+            return PropertyDescriptor::data($this->dataSlots[$key]);
         }
-        if ($val instanceof PropertyDescriptor) {
-            return $val;
-        }
-        return PropertyDescriptor::data($val);
+        return $this->descriptors[$key] ?? null;
     }
 
-    /**
-     * Returns the raw slot value when it is a default-attr data slot,
-     * otherwise null. Lets hot paths skip the temp PropertyDescriptor
-     * allocation that get() would do.
-     */
     public function getValue(string $key): ?JsValue
     {
-        $val = $this->slots[$key] ?? null;
-        if ($val instanceof JsValue) {
-            return $val;
-        }
-        return null;
+        return $this->dataSlots[$key] ?? null;
     }
 
-    /**
-     * Returns the slow descriptor when one exists, otherwise null.
-     * Distinct from get() in that it does not materialize a temp
-     * descriptor for fast slots.
-     */
     public function getDescriptor(string $key): ?PropertyDescriptor
     {
-        $val = $this->slots[$key] ?? null;
-        return ($val instanceof PropertyDescriptor) ? $val : null;
+        return $this->descriptors[$key] ?? null;
     }
 
     public function set(string $key, PropertyDescriptor $desc): void
     {
-        // Promote to fast slot when the descriptor matches the default
-        // data shape. This is the common case for object-literal
-        // properties and CreateDataProperty.
         if (
             $desc->get === null
             && $desc->set === null
@@ -85,50 +73,54 @@ class PropertyMap
             && $desc->configurable === true
             && !$desc->isAccessorDescriptor()
         ) {
-            $this->slots[$key] = $desc->value;
+            unset($this->descriptors[$key]);
+            $this->dataSlots[$key] = $desc->value;
+            $this->order[$key] = true;
             return;
         }
-        $this->slots[$key] = $desc;
+        unset($this->dataSlots[$key]);
+        $this->descriptors[$key] = $desc;
+        $this->order[$key] = true;
     }
 
-    /**
-     * Direct fast-slot write. Caller is responsible for ensuring no
-     * existing slow descriptor would be silently replaced.
-     */
     public function setDataSlot(string $key, JsValue $value): void
     {
-        $this->slots[$key] = $value;
+        $this->dataSlots[$key] = $value;
+        $this->order[$key] = true;
     }
 
     public function has(string $key): bool
     {
-        return isset($this->slots[$key]);
+        return isset($this->order[$key]);
     }
 
     public function delete(string $key): bool
     {
-        unset($this->slots[$key]);
+        unset($this->dataSlots[$key]);
+        unset($this->descriptors[$key]);
+        unset($this->order[$key]);
         return true;
     }
 
     /** @return list<string> Keys in insertion order. */
     public function keys(): array
     {
-        return array_map('strval', array_keys($this->slots));
+        return array_map('strval', array_keys($this->order));
     }
 
     /** @return list<string> Only enumerable keys, in insertion order. */
     public function enumerableKeys(): array
     {
         $result = [];
-        foreach ($this->slots as $key => $val) {
-            if ($val instanceof PropertyDescriptor) {
-                if ($val->enumerable === true) {
-                    $result[] = (string) $key;
-                }
-            } else {
-                // Fast slots are enumerable by construction.
-                $result[] = (string) $key;
+        foreach ($this->order as $key => $_) {
+            $key = (string) $key;
+            if (isset($this->dataSlots[$key])) {
+                $result[] = $key;
+                continue;
+            }
+            $desc = $this->descriptors[$key] ?? null;
+            if ($desc !== null && $desc->enumerable === true) {
+                $result[] = $key;
             }
         }
         return $result;
@@ -136,6 +128,6 @@ class PropertyMap
 
     public function count(): int
     {
-        return count($this->slots);
+        return count($this->order);
     }
 }
