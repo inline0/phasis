@@ -6356,14 +6356,17 @@ class Interpreter
         }
         $cf = $fn->compiled;
         $undef = JsUndefined::instance();
+        $paramSlots = $cf->paramSlots;
+        $paramCount = count($paramSlots);
         // Pool a Frame per active call depth: at depth N, reuse
         // framePool[N] if it exists, else allocate one and stash it.
-        // Reset clears slot state; stack array is left in place since
-        // sp = 0 makes prior entries unreachable.
+        // Reset clears non-param slots only; param slots are about
+        // to be overwritten by the param-binding loop. Stack is left
+        // in place since sp = 0 makes prior entries unreachable.
         $depth = $this->framePoolDepth;
         if ($depth < count($this->framePool)) {
             $frame = $this->framePool[$depth];
-            $frame->reset($fnEnv, $thisValue, $cf->slotCount, $undef);
+            $frame->reset($fnEnv, $thisValue, $cf->slotCount, $paramCount, $undef);
         } else {
             $frame = new \PhpJs\Bytecode\Frame(
                 env: $fnEnv,
@@ -6377,9 +6380,7 @@ class Interpreter
         // Wire parameter slots: the compiler assigned each parameter
         // a numbered slot in $paramSlots; the runtime args go straight
         // into those slots without going through env->defineVar.
-        $paramSlots = $cf->paramSlots;
         $argCount = count($args);
-        $paramCount = count($paramSlots);
         for ($i = 0; $i < $paramCount; $i++) {
             $frame->locals[$paramSlots[$i]] = $i < $argCount ? $args[$i] : $undef;
         }

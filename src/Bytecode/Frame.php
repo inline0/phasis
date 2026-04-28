@@ -52,11 +52,18 @@ final class Frame
      * locals array if the new slot count is larger than what's
      * currently allocated. Stack is left in place — sp = 0 makes any
      * leftover entries unreachable.
+     *
+     * Param slots [0..paramCount-1] are NOT cleared here because the
+     * caller's param-binding loop overwrites them immediately. Skipping
+     * the redundant write is the per-call savings on workloads like
+     * fib(n) where slotCount == paramCount and the reset would
+     * otherwise dominate the per-call cost.
      */
     public function reset(
         Environment $env,
         JsValue $thisValue,
         int $slotCount,
+        int $paramCount,
         JsValue $undefined,
     ): void {
         $this->env = $env;
@@ -65,19 +72,16 @@ final class Frame
         $needed = max(1, $slotCount);
         $have = count($this->locals);
         if ($have < $needed) {
-            // Grow and fill the new tail with undefined; preserve
-            // existing slots so the reset writes below can overwrite
-            // them in one pass.
             for ($i = $have; $i < $needed; $i++) {
                 $this->locals[$i] = $undefined;
             }
         }
-        // Reset every slot up to slotCount to undefined. The VM writes
-        // params and declared locals before reading them, but slots
-        // that are declared-yet-uninitialized (let in TDZ that the
-        // compiler optimistically allowed past its bail check) must
-        // observe undefined, not the previous call's stale value.
-        for ($i = 0; $i < $needed; $i++) {
+        // Reset only the non-param slots: declared-but-uninitialized
+        // let / var / function bindings must observe undefined on
+        // entry rather than the previous call's stale value. Param
+        // slots [0..paramCount-1] are about to be overwritten so a
+        // reset here would be wasted work.
+        for ($i = $paramCount; $i < $needed; $i++) {
             $this->locals[$i] = $undefined;
         }
     }
