@@ -284,7 +284,7 @@ class ArrayConstructor
         $pushFn->builtinKind = 'array.push';
         $proto->defineOwnProperty('push', PropertyDescriptor::data($pushFn, true, false, true));
 
-        $proto->defineOwnProperty('pop', PropertyDescriptor::data(JsFunction::fromCallable(
+        $popFn = JsFunction::fromCallable(
             'pop',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -309,7 +309,9 @@ class ArrayConstructor
                 return $val;
             },
             0
-        ), true, false, true));
+        );
+        $popFn->builtinKind = 'array.pop';
+        $proto->defineOwnProperty('pop', PropertyDescriptor::data($popFn, true, false, true));
 
         $proto->defineOwnProperty('shift', PropertyDescriptor::data(JsFunction::fromCallable(
             'shift',
@@ -392,7 +394,7 @@ class ArrayConstructor
             1
         ), true, false, true));
 
-        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data(JsFunction::fromCallable(
+        $indexOfFn = JsFunction::fromCallable(
             'indexOf',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -433,7 +435,9 @@ class ArrayConstructor
                 return JsNumber::of(-1.0);
             },
             1
-        ), true, false, true));
+        );
+        $indexOfFn->builtinKind = 'array.indexOf';
+        $proto->defineOwnProperty('indexOf', PropertyDescriptor::data($indexOfFn, true, false, true));
 
         $proto->defineOwnProperty('lastIndexOf', PropertyDescriptor::data(JsFunction::fromCallable(
             'lastIndexOf',
@@ -478,7 +482,7 @@ class ArrayConstructor
             1,
         ), true, false, true));
 
-        $proto->defineOwnProperty('includes', PropertyDescriptor::data(JsFunction::fromCallable(
+        $includesFn = JsFunction::fromCallable(
             'includes',
             function (JsValue $this_, array $args): JsValue {
                 $o = self::toObject($this_);
@@ -510,7 +514,9 @@ class ArrayConstructor
                 return new JsBoolean(false);
             },
             1
-        ), true, false, true));
+        );
+        $includesFn->builtinKind = 'array.includes';
+        $proto->defineOwnProperty('includes', PropertyDescriptor::data($includesFn, true, false, true));
 
         $joinFn = JsFunction::fromCallable(
             'join',

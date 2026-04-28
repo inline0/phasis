@@ -126,6 +126,19 @@ class JsArray extends JsObject
     }
 
     /**
+     * VM inline guard: pop / push / fill don't go through the spec
+     * [[Set]] for length, so they need to bail when the array's
+     * length descriptor was made non-writable (Object.freeze /
+     * Object.preventExtensions / Object.defineProperty(arr, 'length',
+     * {writable: false})). The spec path then surfaces the correct
+     * TypeError.
+     */
+    public function isLengthWritable(): bool
+    {
+        return $this->lengthWritable;
+    }
+
+    /**
      * Snapshot the dense element list for VM inline paths. The
      * returned array is keyed [0..length-1]; holes appear as null
      * entries. Callers must already have checked isDenseMode().

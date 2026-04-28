@@ -167,6 +167,93 @@ final class VM
                 }
                 return $receiver;
 
+            case 'array.pop':
+                if ($argc !== 0) {
+                    return null;
+                }
+                // Bail when the length descriptor is non-writable
+                // (Object.freeze / preventExtensions / explicit
+                // defineProperty). Spec path then surfaces the
+                // TypeError that ours would silently skip.
+                if (!$receiver->isLengthWritable()) {
+                    return null;
+                }
+                $len = $receiver->getLength();
+                if ($len === 0) {
+                    return JsUndefined::instance();
+                }
+                $elements = $receiver->getDenseElements();
+                $last = $elements[$len - 1] ?? null;
+                if ($last === null) {
+                    return null;
+                }
+                // Spec uses DeletePropertyOrThrow + Set(length). On a
+                // dense JsArray with default attributes, both reduce
+                // to setLength(N-1) which drops the trailing dense
+                // entry.
+                $receiver->setLength($len - 1);
+                return $last;
+
+            case 'array.indexOf':
+                if ($argc < 1) {
+                    return null;
+                }
+                $search = $args[0];
+                $len = $receiver->getLength();
+                $start = 0;
+                if ($argc >= 2) {
+                    $startArg = $args[1];
+                    if (!$startArg instanceof JsNumber) {
+                        return null;
+                    }
+                    $startN = (int) $startArg->value;
+                    if ($startN < 0) {
+                        $startN = max($len + $startN, 0);
+                    }
+                    $start = $startN;
+                }
+                $elements = $receiver->getDenseElements();
+                for ($i = $start; $i < $len; $i++) {
+                    $el = $elements[$i] ?? null;
+                    if ($el === null) {
+                        return null;
+                    }
+                    if (AbstractOperations::strictEquals($el, $search)) {
+                        return JsNumber::of((float) $i);
+                    }
+                }
+                return JsNumber::of(-1.0);
+
+            case 'array.includes':
+                if ($argc < 1) {
+                    return null;
+                }
+                $search = $args[0];
+                $len = $receiver->getLength();
+                $start = 0;
+                if ($argc >= 2) {
+                    $startArg = $args[1];
+                    if (!$startArg instanceof JsNumber) {
+                        return null;
+                    }
+                    $startN = (int) $startArg->value;
+                    if ($startN < 0) {
+                        $startN = max($len + $startN, 0);
+                    }
+                    $start = $startN;
+                }
+                $elements = $receiver->getDenseElements();
+                for ($i = $start; $i < $len; $i++) {
+                    $el = $elements[$i] ?? null;
+                    if ($el === null) {
+                        return null;
+                    }
+                    if (AbstractOperations::sameValueZero($el, $search)) {
+                        return new JsBoolean(true);
+                    }
+                }
+                return new JsBoolean(false);
+
             case 'array.join':
                 // Single-arg ASCII string join over a dense JsArray
                 // whose elements are all JsStrings. PHP's implode
