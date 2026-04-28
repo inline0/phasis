@@ -290,6 +290,22 @@ final class JsToPhp
                         return null;
                     }
                 }
+                // Even when the local IS assigned somewhere, the
+                // prologue's default-zero is wrong for any read that
+                // happens BEFORE the assignment (e.g.
+                // `function f(a) { var x; if (a===1) return x; ... x = 0; }`
+                // — when a is 1, x must be undefined, not 0). If the
+                // body has any IfStatement / ConditionalExpression
+                // along with a no-init declaration, control flow may
+                // observe the unassigned slot. Bail conservatively
+                // so the tree-walker (which initialises x to undefined)
+                // produces the spec-correct result.
+                if (
+                    $compiler->unassignedDeclares !== []
+                    && self::bodyHasConditional($body)
+                ) {
+                    return null;
+                }
                 // Bail if any const-declared local is mutated.
                 // JsToPhp emits all locals as plain mutable PHP
                 // variables; a `for (const i = 0; ...; i++) {}`
@@ -604,6 +620,51 @@ final class JsToPhp
             if (is_array($value)) {
                 foreach ($value as $item) {
                     if ($item instanceof Node && self::stmtHasNestedLexical($item, $blockDepth)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Walks a function body looking for any conditional construct
+     * (IfStatement / ConditionalExpression / SwitchStatement). Used
+     * by the no-init-local guard to decide whether the local could
+     * be observably read before its first assignment along some
+     * control-flow path. Without conditionals, the source-order
+     * walk is the actual execution order, so a no-init local with
+     * an unconditional assign-then-read is safe.
+     */
+    private static function bodyHasConditional(Node $node): bool
+    {
+        if (
+            $node instanceof IfStatement
+            || $node instanceof ConditionalExpression
+            || $node instanceof \PhpJs\Ast\Statement\SwitchStatement
+            || $node instanceof \PhpJs\Ast\Statement\TryStatement
+            || $node instanceof LogicalExpression
+        ) {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+        ) {
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if (self::bodyHasConditional($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::bodyHasConditional($item)) {
                         return true;
                     }
                 }
