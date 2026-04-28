@@ -4,19 +4,19 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-04-28T10:17:43+00:00`
+- Snapshot time: `2026-04-28T11:29:06+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `a6fa2ad` (dirty)
+- Git: `main` @ `1dace62` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 47861 | 76 | 2083 | 16 | 832 | 0 | 47937 | 50036 | 50868 | 99.8% |
+| 47862 | 76 | 2083 | 15 | 832 | 0 | 47938 | 50036 | 50868 | 99.8% |
 
 ## Top-Level Areas
 
@@ -27,7 +27,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | harness | PASS | 114 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | intl402 | PARTIAL | 1552 | 4 | 10 | 0 | 0 | 0 | 99.7% |
 | language | INCOMPLETE | 22467 | 4 | 902 | 0 | 11 | 0 | 100.0% |
-| staging | INCOMPLETE | 1476 | 52 | 93 | 11 | 250 | 0 | 96.6% |
+| staging | INCOMPLETE | 1477 | 52 | 93 | 10 | 250 | 0 | 96.6% |
 
 ## Group Coverage
 
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PARTIAL | 2 | 1 | 0 | 0 | 0 | 0 | 66.7% |
 | staging/explicit-resource-management | PASS | 53 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | INCOMPLETE | 1286 | 46 | 85 | 11 | 250 | 0 | 96.5% |
+| staging/sm | INCOMPLETE | 1287 | 46 | 85 | 10 | 250 | 0 | 96.5% |
 | staging/source-phase-imports | SKIPPED | 0 | 0 | 1 | 0 | 0 | 0 | n/a |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -206,38 +206,37 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` | `.compat-state-staging/logs/59f611b1d8f6087de2cf8dd8fc9a3ce8ba03416e.log` |
 | staging/sm | OOM | 1 | `test262/test/staging/sm/regress/regress-610026.js` | `.compat-state-staging/logs/537ed06105d89d7ac3ee10433e9263eb05ce1aab.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` | `.compat-state-staging/logs/1d8bc8ec59afa4977eac427273dcca4bb1c34b5e.log` |
-| staging/sm | OOM | 1 | `test262/test/staging/sm/String/replace-math.js` | `.compat-state-staging/logs/05d8c12e9055c0e405b4fc8ebd3aee35b95f8c6f.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` | `.compat-state-staging/logs/f31cff08aae8050007f42d47f3ce1d7c29321ebb.log` |
+| staging/sm | OOM | 1 | `test262/test/staging/sm/String/replace-math.js` | `.compat-state-staging/logs/05d8c12e9055c0e405b4fc8ebd3aee35b95f8c6f.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` | `.compat-state-staging/logs/f1232104e4d338c7c76a723ace84621f84895ca1.log` |
 | staging/sm | OOM | 1 | `test262/test/staging/sm/regress/regress-567152.js` | `.compat-state-staging/logs/f2fc29f0b2ecc140a7956dac1e2335e2f3b2da5e.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` | `.compat-state-staging/logs/655e0e3f8baf6b2fbdfb85776837eb8131d920b4.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js` | `.compat-state-staging/logs/0653a64bbdf4e13db7f99cd06d14f9609716f3a6.log` |
-| staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` | `.compat-state-staging/logs/52f623545148a1d44ec09f914a582ab83c001e20.log` |
 
 ## Slowest Chunks
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/decodeURIComponent | NORMAL | 88.281s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
-| built-ins/decodeURI | NORMAL | 84.516s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
-| language/literals | NORMAL | 69.556s | 25 | `test262/test/language/literals/regexp/7.8.5-2gs.js`<br>`test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js` |
-| staging/sm | NORMAL | 62.435s | 25 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/property-reflection.js`<br>`test262/test/staging/sm/Symbol/realms.js` |
-| staging/sm | CRASH | 61.409s | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` |
-| staging/sm | CRASH | 61.368s | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` |
-| staging/sm | CRASH | 61.224s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| staging/sm | CRASH | 60.954s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
-| staging/sm | CRASH | 60.364s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 57.858s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js` |
-| built-ins/RegExp/CharacterClassEscapes | CRASH | 57.854s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js` |
-| staging/sm | CRASH | 54.678s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
-| intl402 | NORMAL | 52.512s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
-| built-ins/RegExp/CharacterClassEscapes | NORMAL | 52.073s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` |
-| staging/sm | NORMAL | 51.771s | 13 | `test262/test/staging/sm/Temporal/PlainDate/from-constrain-hebrew.js`<br>`test262/test/staging/sm/Temporal/PlainDate/from-constrain-japanese.js`<br>...<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js`<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js` |
-| staging/sm | NORMAL | 51.466s | 1 | `test262/test/staging/sm/TypedArray/sort_modifications.js` |
-| staging/sm | CRASH | 47.632s | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` |
-| staging/sm | CRASH | 46.648s | 1 | `test262/test/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js` |
-| annexB/built-ins/RegExp | NORMAL | 46.251s | 25 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js`<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js` |
-| staging/sm | OOM | 44.100s | 1 | `test262/test/staging/sm/regress/regress-567152.js` |
+| built-ins/decodeURIComponent | NORMAL | 88.522s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js` |
+| built-ins/decodeURI | NORMAL | 84.514s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js` |
+| staging/sm | NORMAL | 63.602s | 25 | `test262/test/staging/sm/String/string-pad-start-end.js`<br>`test262/test/staging/sm/String/string-space-trim.js`<br>...<br>`test262/test/staging/sm/Symbol/property-reflection.js`<br>`test262/test/staging/sm/Symbol/realms.js` |
+| staging/sm | CRASH | 62.234s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
+| staging/sm | CRASH | 61.055s | 1 | `test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js` |
+| staging/sm | CRASH | 60.669s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
+| staging/sm | CRASH | 60.550s | 1 | `test262/test/staging/sm/TypedArray/set-same-buffer-different-source-target-types.js` |
+| language/literals | NORMAL | 60.088s | 25 | `test262/test/language/literals/regexp/7.8.5-2gs.js`<br>`test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js`<br>...<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js`<br>`test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 59.460s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js` |
+| staging/sm | CRASH | 59.357s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| built-ins/RegExp/CharacterClassEscapes | CRASH | 58.228s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js` |
+| intl402 | NORMAL | 56.321s | 22 | `test262/test/intl402/constructors-string-and-single-element-array.js`<br>`test262/test/intl402/constructors-taint-Object-prototype-2.js`<br>...<br>`test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js`<br>`test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js` |
+| built-ins/RegExp/CharacterClassEscapes | NORMAL | 53.467s | 1 | `test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js` |
+| staging/sm | NORMAL | 53.167s | 13 | `test262/test/staging/sm/Temporal/PlainDate/from-constrain-hebrew.js`<br>`test262/test/staging/sm/Temporal/PlainDate/from-constrain-japanese.js`<br>...<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js`<br>`test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js` |
+| staging/sm | CRASH | 52.461s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
+| staging/sm | NORMAL | 45.080s | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` |
+| staging/sm | NORMAL | 45.001s | 1 | `test262/test/staging/sm/TypedArray/sort_modifications.js` |
+| annexB/built-ins/RegExp | NORMAL | 44.998s | 25 | `test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js`<br>`test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js`<br>...<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js`<br>`test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js` |
+| staging/sm | OOM | 44.806s | 1 | `test262/test/staging/sm/regress/regress-567152.js` |
+| staging/sm | CRASH | 43.990s | 1 | `test262/test/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js` |
 
 ## Runner Caveats
 
