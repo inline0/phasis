@@ -161,6 +161,15 @@ final class JsToPhp
         if ($isExpressionBody && !$body instanceof Node) {
             return null;
         }
+        // Refuse to compile bodies that reference 'arguments' /
+        // 'this' / 'new.target' as identifiers. The JsToPhp closure
+        // runs in the function's lexical $closure environment, NOT
+        // the per-invocation environment that defines those bindings,
+        // so emitting `$env->get('arguments')` would either throw
+        // ReferenceError or read a stale binding from an outer scope.
+        if (self::bodyReferencesPerCallBindings($body)) {
+            return null;
+        }
         $standard = self::compileWith($fn, false);
         if ($standard === null) {
             return null;
@@ -361,6 +370,58 @@ final class JsToPhp
             return 'numeric';
         }
         return 'unknown';
+    }
+
+    /**
+     * Walk a function body looking for identifier references to
+     * `arguments` / `this` / `new.target`. These resolve through the
+     * per-invocation environment that executeFunction sets up; the
+     * JsToPhp closure runs in the function's lexical $closure env
+     * which has no such bindings. Touching them would either throw
+     * ReferenceError ("arguments is not defined") or — worse —
+     * silently read an outer-scope binding with the same name.
+     */
+    private static function bodyReferencesPerCallBindings(Node $node): bool
+    {
+        if ($node instanceof Identifier) {
+            return $node->name === 'arguments';
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\ThisExpression) {
+            return true;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\MetaProperty) {
+            return true;
+        }
+        // Don't descend into nested function bodies — those have their
+        // own arguments / this binding scopes. The outer body's
+        // reference is what matters.
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+        ) {
+            return false;
+        }
+        // ArrowFunction bodies CAN see the outer arguments / this,
+        // but we already bail on outer-local capture in
+        // checkNestedCaptures; arguments isn't in declaredLocals so
+        // checkNestedCaptures wouldn't catch it. Walk into arrow
+        // bodies too.
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if (self::bodyReferencesPerCallBindings($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::bodyReferencesPerCallBindings($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
