@@ -36,6 +36,14 @@ final class CompiledFunction
      *        cover). When false, executeFunction can skip
      *        bindParameters because LOAD_LOCAL / paramSlot handles
      *        every reference.
+     * @param bool $canSkipEnvAlloc True when the bytecode never needs
+     *        a fresh scope distinct from the closure: no `this` binding
+     *        read via env, no nested-function capture difference, no
+     *        body declarations that go through env (the compiler maps
+     *        every var/let/const to a frame slot). When true,
+     *        executeFunction can hand the closure environment to the
+     *        Frame directly and skip the per-call createChild
+     *        allocation.
      */
     public function __construct(
         public readonly array $code,
@@ -47,6 +55,7 @@ final class CompiledFunction
         public readonly array $nestedFns = [],
         public readonly bool $needsThis = true,
         public readonly bool $needsArgsBinding = true,
+        public readonly bool $canSkipEnvAlloc = false,
     ) {
     }
 }

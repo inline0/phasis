@@ -4576,6 +4576,85 @@ class Interpreter
         // Save and potentially update strict mode for this function body.
         $previousStrictMode = $this->strictMode;
 
+        // Hot path for VM-compiled bodies with no env-binding needs:
+        // bytecode never reads `this` via env (needsThis=false), never
+        // touches `arguments` / `new.target` / `eval` / `with` (compiler
+        // bailouts), and the compiler routes every var/let/const to a
+        // frame slot. The closure env is therefore semantically
+        // equivalent to a fresh child env for the duration of this call,
+        // so we hand it straight to the Frame and skip the per-call
+        // Environment allocation. fn-recurse on fib(22) is ~4M calls;
+        // dropping the createChild here cuts the dominant per-call cost.
+        if (
+            $fn->compiled !== null
+            && $fn->compiled->canSkipEnvAlloc
+            && !$fn->isArrow()
+            && !$fn->isClassConstructor()
+            && !$fn->isDerivedConstructor()
+            && $fn->getHomeObject() === null
+        ) {
+            if ($fn->effectiveStrictCache === null) {
+                $body = $fn->getBody();
+                $fn->effectiveStrictCache = $fn->isStrict()
+                    || ($body instanceof BlockStatement
+                        && $this->hasUseStrictDirective($body->body));
+            }
+            $this->strictMode = $fn->effectiveStrictCache;
+            if (!$this->strictMode) {
+                if ($thisValue instanceof JsUndefined || $thisValue instanceof JsNull) {
+                    $thisValue = $this->getGlobalObject();
+                } elseif (
+                    !$thisValue instanceof JsObject
+                    && ($thisValue instanceof JsNumber
+                        || $thisValue instanceof JsString
+                        || $thisValue instanceof JsBoolean
+                        || $thisValue instanceof JsSymbol
+                        || $thisValue instanceof JsBigInt)
+                ) {
+                    $thisValue = TypeConversion::toObject($thisValue);
+                }
+            }
+            $savedTailPos = $this->inTailPosition;
+            $this->inTailPosition = $this->strictMode;
+            try {
+                $vmReturn = $this->tryRunOnVm($fn, $fn->getClosure(), $thisValue, $args);
+            } catch (\Throwable $e) {
+                $this->inTailPosition = $savedTailPos;
+                $this->teardownExecuteFunction(
+                    $fn,
+                    $setCallerProp,
+                    $autoUpdateCaller,
+                    $autoUpdateArguments,
+                    $savedCaller,
+                    $savedArguments,
+                    $savedCallerValue,
+                    $savedArgumentsValue,
+                    $previousStrictMode,
+                );
+                throw $e;
+            }
+            $this->inTailPosition = $savedTailPos;
+            if ($vmReturn !== null) {
+                $this->teardownExecuteFunction(
+                    $fn,
+                    $setCallerProp,
+                    $autoUpdateCaller,
+                    $autoUpdateArguments,
+                    $savedCaller,
+                    $savedArguments,
+                    $savedCallerValue,
+                    $savedArgumentsValue,
+                    $previousStrictMode,
+                );
+                return $vmReturn;
+            }
+            // tryRunOnVm bailed (compiler returned null on first
+            // attempt). Reset strict mode and fall through to the
+            // normal slow path; the slow path's try/finally takes
+            // over from here, including the caller-stack teardown.
+            $this->strictMode = $previousStrictMode;
+        }
+
         try {
             $fnEnv = $fn->getClosure()->createChild();
 
@@ -4923,6 +5002,51 @@ class Interpreter
             $this->strictMode = $previousStrictMode;
             $this->callStack->pop();
         }
+    }
+
+    /**
+     * Restore Annex B caller / arguments slots and pop the call /
+     * caller stacks. Shared by the executeFunction VM fast path and
+     * (in spirit) the slow-path try/finally; the slow path inlines the
+     * same teardown for clarity, but the fast path needs it from two
+     * exit points (return + exception) so it lives here.
+     */
+    private function teardownExecuteFunction(
+        JsFunction $fn,
+        bool $setCallerProp,
+        bool $autoUpdateCaller,
+        bool $autoUpdateArguments,
+        ?PropertyDescriptor $savedCaller,
+        ?PropertyDescriptor $savedArguments,
+        ?JsValue $savedCallerValue,
+        ?JsValue $savedArgumentsValue,
+        bool $previousStrictMode,
+    ): void {
+        array_pop($this->callerStack);
+        if ($setCallerProp) {
+            if ($autoUpdateCaller) {
+                if (!$fn->tryUpdateDataValue("caller", $savedCallerValue ?? JsNull::instance())) {
+                    $fn->defineOwnProperty("caller", $savedCaller ?? PropertyDescriptor::data(
+                        JsNull::instance(),
+                        true,
+                        false,
+                        true,
+                    ));
+                }
+            }
+            if ($autoUpdateArguments) {
+                if (!$fn->tryUpdateDataValue("arguments", $savedArgumentsValue ?? JsNull::instance())) {
+                    $fn->defineOwnProperty("arguments", $savedArguments ?? PropertyDescriptor::data(
+                        JsNull::instance(),
+                        true,
+                        false,
+                        true,
+                    ));
+                }
+            }
+        }
+        $this->strictMode = $previousStrictMode;
+        $this->callStack->pop();
     }
 
     /**

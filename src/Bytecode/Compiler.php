@@ -148,6 +148,7 @@ final class Compiler
             // single expression directly.
             $this->compileExpression($body);
             $this->emit(Op::RET);
+            $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
             return new CompiledFunction(
                 code: $this->code,
                 consts: $this->consts,
@@ -156,8 +157,9 @@ final class Compiler
                 paramSlots: $this->paramSlots,
                 slotCount: max(1, count($this->localNames)),
                 nestedFns: $this->nestedFns,
-                needsThis: in_array(Op::LOAD_THIS, $this->code, true),
+                needsThis: $needsThis,
                 needsArgsBinding: false,
+                canSkipEnvAlloc: !$needsThis,
             );
         }
 
@@ -187,6 +189,7 @@ final class Compiler
         $this->emit(Op::LOAD_UNDEF);
         $this->emit(Op::RET);
 
+        $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
         return new CompiledFunction(
             code: $this->code,
             consts: $this->consts,
@@ -195,8 +198,9 @@ final class Compiler
             paramSlots: $this->paramSlots,
             slotCount: max(1, count($this->localNames)),
             nestedFns: $this->nestedFns,
-            needsThis: in_array(Op::LOAD_THIS, $this->code, true),
+            needsThis: $needsThis,
             needsArgsBinding: false,
+            canSkipEnvAlloc: !$needsThis,
         );
     }
 
