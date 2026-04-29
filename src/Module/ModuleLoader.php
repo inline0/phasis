@@ -116,36 +116,48 @@ class ModuleLoader
     }
 
     /**
-     * BFS from $entryPath through eager edges; mark each visited
-     * record's eagerlyReachable flag. Idempotent so dynamic imports
-     * (which call into the same entry-point handler) can re-run it
-     * after adding new edges.
+     * Walk the entry module graph through eager edges; mark every
+     * visited record's eagerlyReachable flag and emit the entries in
+     * spec InnerModuleEvaluation order — depth-first, post-order, in
+     * source order at each level. The drainer consumes the list so
+     * defer-only edges leave their bodies pending while eager edges
+     * evaluate before the importer that owned them, exactly as
+     * GatherAsynchronousTransitiveDependencies prescribes for sync
+     * graphs.
+     *
+     * Idempotent against duplicate dynamic imports — the visited set
+     * is shared with subsequent calls in the same loadModule pass.
      */
     private function markEagerlyReachable(string $entryPath): void
     {
-        $entry = $this->modules[$entryPath] ?? null;
-        if ($entry === null) {
+        if (!isset($this->modules[$entryPath])) {
             return;
         }
-        $queue = [$entryPath];
         $visited = [];
-        while ($queue !== []) {
-            $path = array_shift($queue);
-            if (isset($visited[$path])) {
-                continue;
-            }
-            $visited[$path] = true;
-            $rec = $this->modules[$path] ?? null;
-            if ($rec === null) {
-                continue;
-            }
-            $rec->eagerlyReachable = true;
-            foreach (array_keys($rec->eagerEdges) as $next) {
-                if (!isset($visited[$next])) {
-                    $queue[] = $next;
-                }
-            }
+        $order = [];
+        $this->walkEager($entryPath, $visited, $order);
+        $this->bodyQueue = $order;
+    }
+
+    /**
+     * @param array<string, true> $visited
+     * @param list<string>        $order
+     */
+    private function walkEager(string $path, array &$visited, array &$order): void
+    {
+        if (isset($visited[$path])) {
+            return;
         }
+        $visited[$path] = true;
+        $rec = $this->modules[$path] ?? null;
+        if ($rec === null) {
+            return;
+        }
+        $rec->eagerlyReachable = true;
+        foreach (array_keys($rec->eagerEdges) as $next) {
+            $this->walkEager($next, $visited, $order);
+        }
+        $order[] = $path;
     }
 
     /**
