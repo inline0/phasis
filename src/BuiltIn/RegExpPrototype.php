@@ -692,6 +692,23 @@ class RegExpPrototype
                 $groupNameMap = ($groupNameMapDesc !== null && $groupNameMapDesc->value instanceof JsObject)
                     ? $groupNameMapDesc->value
                     : null;
+                // Pre-populate every distinct named group with undefined so
+                // that names that did not participate in the match still
+                // appear in source order (per duplicate-named-groups
+                // proposal).
+                $namedListDesc = $this_->getOwnPropertyDescriptor('[[NamedGroupNames]]');
+                if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
+                    $hasGroups = true;
+                    $len = $namedListDesc->value->getLength();
+                    for ($ni = 0; $ni < $len; $ni++) {
+                        $nameVal = $namedListDesc->value->get((string) $ni);
+                        if ($nameVal instanceof JsString) {
+                            $groups->defineOwnProperty($nameVal->value, PropertyDescriptor::data(
+                                JsUndefined::instance(),
+                            ));
+                        }
+                    }
+                }
                 foreach ($matches as $key => $match) {
                     if (is_string($key)) {
                         $hasGroups = true;
@@ -702,10 +719,14 @@ class RegExpPrototype
                             }
                         }
                         // Per spec: CreateDataProperty(groups, s, capturedValue).
+                        // Skip when this group did not match — the slot
+                        // was already pre-populated with undefined and we
+                        // must not overwrite a successfully matched name.
+                        if ($match[1] === -1 || $match[0] === null) {
+                            continue;
+                        }
                         $groups->defineOwnProperty($key, PropertyDescriptor::data(
-                            ($match[1] === -1 || $match[0] === null)
-                                ? JsUndefined::instance()
-                                : new JsString($match[0]),
+                            new JsString($match[0]),
                         ));
                     }
                 }
@@ -743,6 +764,25 @@ class RegExpPrototype
                     $iArr = JsArray::fromArray($indicesArr);
                     $iGrp = JsObject::createNullPrototype();
                     $iHasGrp = false;
+                    // Pre-populate every distinct named group with
+                    // undefined so that names that did not participate in
+                    // the match still appear in source order on the
+                    // indices.groups object too.
+                    if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
+                        $iHasGrp = true;
+                        $nlen = $namedListDesc->value->getLength();
+                        for ($ni = 0; $ni < $nlen; $ni++) {
+                            $nameVal = $namedListDesc->value->get((string) $ni);
+                            if ($nameVal instanceof JsString) {
+                                $iGrp->defineOwnProperty($nameVal->value, PropertyDescriptor::data(
+                                    JsUndefined::instance(),
+                                    true,
+                                    true,
+                                    true,
+                                ));
+                            }
+                        }
+                    }
                     foreach ($matches as $ik => $im) {
                         if (!is_string($ik)) {
                             continue;
@@ -755,25 +795,22 @@ class RegExpPrototype
                             }
                         }
                         if ($im[1] === -1 || $im[0] === null) {
-                            $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
-                                JsUndefined::instance(),
-                                true,
-                                true,
-                                true,
-                            ));
-                        } else {
-                            $sCp = (int) (strlen(JsString::utf8ToUtf16LE(substr($str, 0, $im[1]))) / 2);
-                            $eCp = $sCp + (int) (strlen(JsString::utf8ToUtf16LE($im[0])) / 2);
-                            $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
-                                JsArray::fromArray([
-                                    JsNumber::of((float) $sCp),
-                                    JsNumber::of((float) $eCp),
-                                ]),
-                                true,
-                                true,
-                                true,
-                            ));
+                            // Don't overwrite a non-matching alternative
+                            // when an earlier match populated the same
+                            // name (e.g. duplicate named groups).
+                            continue;
                         }
+                        $sCp = (int) (strlen(JsString::utf8ToUtf16LE(substr($str, 0, $im[1]))) / 2);
+                        $eCp = $sCp + (int) (strlen(JsString::utf8ToUtf16LE($im[0])) / 2);
+                        $iGrp->defineOwnProperty($ik, PropertyDescriptor::data(
+                            JsArray::fromArray([
+                                JsNumber::of((float) $sCp),
+                                JsNumber::of((float) $eCp),
+                            ]),
+                            true,
+                            true,
+                            true,
+                        ));
                     }
                     $iArr->defineOwnProperty('groups', PropertyDescriptor::data(
                         $iHasGrp ? $iGrp : JsUndefined::instance(),

@@ -14077,6 +14077,28 @@ class Interpreter
             );
         }
 
+        // [[NamedGroupNames]] preserves every distinct named group in the
+        // pattern in source order. exec() uses this to pre-populate the
+        // result.groups object so groups that did not participate in the
+        // match still appear (with value undefined) — required by the
+        // duplicate-named-groups proposal.
+        $namedGroupNames = self::extractNamedGroupNames($pattern);
+        if (!empty($namedGroupNames)) {
+            $namedListArr = [];
+            foreach ($namedGroupNames as $n) {
+                $namedListArr[] = new JsString($n);
+            }
+            $obj->defineOwnProperty(
+                '[[NamedGroupNames]]',
+                PropertyDescriptor::data(
+                    JsArray::fromArray($namedListArr),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+        }
+
         // exec(): handles lastIndex for global/sticky regexes per spec 22.2.5.2.
         $execFn = function (
             JsValue $this_,
@@ -18186,5 +18208,70 @@ class Interpreter
             $i++;
         }
         return false;
+    }
+
+    /**
+     * Extract every distinct named group from the pattern, in source
+     * order. Used by exec() to pre-populate the `groups` object so
+     * named groups that did not participate in the match still appear
+     * with the value undefined (per spec 22.2.6.13.5 Group Specifier
+     * Properties — and required by the duplicate-named-groups
+     * proposal).
+     *
+     * @return list<string>
+     */
+    public static function extractNamedGroupNames(string $pattern): array
+    {
+        $names = [];
+        $seen = [];
+        $len = strlen($pattern);
+        $i = 0;
+        $inClass = false;
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $ch === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($inClass && $ch === ']') {
+                $inClass = false;
+                $i++;
+                continue;
+            }
+            if ($inClass) {
+                $i++;
+                continue;
+            }
+            if (
+                $ch === '('
+                && $i + 3 < $len
+                && $pattern[$i + 1] === '?'
+                && $pattern[$i + 2] === '<'
+                && $pattern[$i + 3] !== '='
+                && $pattern[$i + 3] !== '!'
+            ) {
+                $nameStart = $i + 3;
+                $nameEnd = $nameStart;
+                while ($nameEnd < $len && $pattern[$nameEnd] !== '>') {
+                    $nameEnd++;
+                }
+                if ($nameEnd < $len) {
+                    $name = substr($pattern, $nameStart, $nameEnd - $nameStart);
+                    if (!isset($seen[$name])) {
+                        $names[] = $name;
+                        $seen[$name] = true;
+                    }
+                }
+                $i = $nameEnd + 1;
+                continue;
+            }
+            $i++;
+        }
+        return $names;
     }
 }
