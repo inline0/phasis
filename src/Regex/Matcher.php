@@ -789,9 +789,22 @@ class Matcher
                 $captures[$gi] = null;
             }
             $newPos = $this->matchNode($atom, $pos, $captures, $direction);
-            if ($newPos === null || $newPos === $pos) {
+            if ($newPos === null) {
                 $captures = $saved;
                 return;
+            }
+            if ($newPos === $pos) {
+                // Zero-width iteration. Per ECMA-262 RepeatMatcher,
+                // each iteration counts toward min, but once min
+                // has been satisfied another zero-width attempt at
+                // the same position would loop forever; that path
+                // returns failure. Below min, count the iteration
+                // and keep looping; at or above min, bail.
+                if ($iterCount >= $min) {
+                    return;
+                }
+                $iterCount++;
+                continue;
             }
             $pos = $newPos;
             $iterCount++;
