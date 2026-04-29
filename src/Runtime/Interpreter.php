@@ -18640,7 +18640,13 @@ class Interpreter
             || $hasQuantifiedCapture
             || $hasDotInNonUnicode
             || $hasLookbehind
-            || $hasNonAsciiInIWithoutU;
+            || $hasNonAsciiInIWithoutU
+            // /i without /u must use ASCII-only Canonicalize per
+            // ECMA-262 §22.2.2.7. PCRE2 with /iu folds Unicode in
+            // both directions (e.g. k matches Kelvin sign), so we
+            // route every /i-without-/u pattern through the custom
+            // matcher whose Canonicalize() honours the spec.
+            || ($isCaseless && !$isUnicode);
     }
 
     /**

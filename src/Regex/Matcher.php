@@ -742,9 +742,12 @@ class Matcher
             }
             $upper = mb_strtoupper($ch, 'UTF-8');
             $folded = mb_ord($upper, 'UTF-8');
-            // Per spec, in non-/u mode an ASCII char must not fold
-            // to a non-ASCII char.
-            if ($cp < 128 && $folded >= 128) {
+            // ECMA-262 §22.2.2.7.5 step 2.g: when the candidate is
+            // non-ASCII but its uppercase folds to ASCII, suppress
+            // the fold so a non-Latin1 letter does not collide
+            // with an ASCII letter (e.g. ſ.toUpperCase() = S
+            // — yet /S/i must NOT match ſ).
+            if ($cp >= 128 && $folded < 128) {
                 return $cp;
             }
             return $folded;

@@ -540,11 +540,24 @@ class RegExpPrototype
             // data properties, so defineOwnProperty would silently reject the change.
             // Use defineProperty (direct map set) to bypass validation since these
             // are engine-internal slots, not user-visible properties.
-            $internalSlots = ['[[OriginalSource]]', '[[OriginalFlags]]', '[[PCREPattern]]'];
+            $internalSlots = [
+                '[[OriginalSource]]',
+                '[[OriginalFlags]]',
+                '[[PCREPattern]]',
+                '[[GroupNameMap]]',
+                '[[NamedGroupNames]]',
+                '[[CustomRegexAst]]',
+                '[[CustomRegexFlags]]',
+            ];
             foreach ($internalSlots as $slot) {
                 $desc = $temp->getOwnPropertyDescriptor($slot);
                 if ($desc !== null) {
                     $this_->defineProperty($slot, $desc);
+                } else {
+                    // Slot absent on the freshly-compiled regex — drop
+                    // any stale slot from the previous pattern so
+                    // exec() does not route through a leftover AST.
+                    $this_->forceDelete($slot);
                 }
             }
 
