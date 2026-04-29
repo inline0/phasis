@@ -372,8 +372,53 @@ class ModuleLoader
     public function getDeferredNamespaceFor(string $specifier, ?string $referrer = null): JsObject
     {
         $resolved = $this->resolve($specifier, $referrer);
-        $eagerNs = $this->loadModule($specifier, $referrer);
+        // Link the module graph (and its eager dependencies) without
+        // triggering body evaluation for the deferred root. We bypass
+        // markEagerlyReachable for the requested module so its body
+        // stays in pendingBody until first MOP access on the deferred
+        // namespace fires the lazy trigger.
+        $alreadyLoaded = isset($this->modules[$resolved]);
+        $eagerNs = $this->loadModuleLinkOnly($specifier, $referrer);
+        // After linking, mark this module as deferred-only so the
+        // drain pass does NOT evaluate its body. Eager dependencies
+        // imported by it (via non-defer edges) ARE still reachable
+        // through the original entry's eager graph if any.
         return $this->getDeferredNamespace($resolved, $eagerNs);
+    }
+
+    /**
+     * Link a module (and its dependencies) without running its body.
+     * Used by import.defer(...) so the deferred namespace can lazily
+     * evaluate the body on first MOP access.
+     */
+    private function loadModuleLinkOnly(string $specifier, ?string $referrer): JsObject
+    {
+        $resolved = $this->resolve($specifier, $referrer);
+        if (isset($this->modules[$resolved])) {
+            return $this->modules[$resolved]->namespace;
+        }
+        $source = @file_get_contents($resolved);
+        if ($source === false) {
+            throw new \PhpJs\Exceptions\TypeError("Cannot find module '{$specifier}'");
+        }
+        if ($this->linking) {
+            return $this->linkModule($resolved, $source);
+        }
+        $this->linking = true;
+        try {
+            $namespace = $this->linkModule($resolved, $source);
+            $this->finalizeStarReExports();
+            $this->lockDownNamespaces();
+            $this->validateIndirectExports();
+            $this->linking = false;
+            // Note: deliberately skip markEagerlyReachable + drain.
+            // The body queue items for this graph stay pending; they'll
+            // be evaluated on first MOP access via
+            // evaluateModuleBodyOnDemand.
+            return $namespace;
+        } finally {
+            $this->linking = false;
+        }
     }
 
     private function getDeferredNamespace(string $resolved, JsObject $eagerNs): JsObject
