@@ -351,7 +351,22 @@ final class JsToPhp
         $signature = $numeric
             ? 'function (array $rawArgs, $env, $interp, $nestedFns)'
             : 'function ($args, $env, $interp, $nestedFns)';
-        $php = "return " . $signature . " {\n" . $compiler->out . "};";
+        // Guard against unbounded recursion. The interpreter's
+        // CallStack enforces a 1024-frame limit, but a JsToPhp
+        // closure dispatching through phpCompiled bypasses
+        // callFunctionInner's push/pop entirely. Without a check
+        // here a self-recursive compiled body (e.g. eval()
+        // recursion stress tests in staging/sm) walks PHP's heap
+        // until it OOMs. Use a static counter local to the closure
+        // so we don't depend on private CallStack APIs.
+        $bodyPrologue = "static \$_jstophp_depth = 0;\n"
+            . "if (\$_jstophp_depth >= 512) { throw new \\PhpJs\\Exceptions\\InternalError('Maximum call stack size exceeded'); }\n"
+            . "\$_jstophp_depth++;\n"
+            . "try {\n";
+        $bodyEpilogue = "} finally { \$_jstophp_depth--; }\n";
+        $php = "return " . $signature . " {\n"
+            . $bodyPrologue . $compiler->out . $bodyEpilogue
+            . "};";
         try {
             /** @var \Closure $closure */
             $closure = eval($php);
