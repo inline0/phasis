@@ -1282,7 +1282,10 @@ class RegExpPrototype
             $replaceValue = $args[1] ?? JsUndefined::instance();
 
             $S = TypeConversion::toString($string);
-            $lengthS = mb_strlen($S, 'UTF-8');
+            // $lengthS is used to clamp the match's UTF-16 index, which
+            // exec returns in UTF-16 code units — so codepoint count
+            // would clip away astrals past mb_strlen.
+            $lengthS = (int) (strlen(JsString::utf8ToUtf16LE($S)) / 2);
 
             $functionalReplace = $replaceValue instanceof JsFunction;
             if (!$functionalReplace) {
@@ -1337,7 +1340,12 @@ class RegExpPrototype
                 // Get capture count from result length.
                 $nCaptures = max((int) TypeConversion::toNumber($result->get('length')) - 1, 0);
                 $matched = TypeConversion::toString($result->get('0'));
-                $matchLength = mb_strlen($matched, 'UTF-8');
+                // $position arrives in UTF-16 code units (the contract
+                // for exec's match.index and the value passed to a
+                // functional replacer per spec 22.2.6.10 step 14.k.iii).
+                // Match length is also expressed in UTF-16 units so the
+                // matchEnd arithmetic below stays in the same space.
+                $matchLength = (int) (strlen(JsString::utf8ToUtf16LE($matched)) / 2);
 
                 $position = TypeConversion::toIntegerOrInfinity($result->get('index'));
                 $position = (int) max(0, min($position, $lengthS));
@@ -1391,13 +1399,19 @@ class RegExpPrototype
                 }
 
                 if ($position >= $nextSourcePosition) {
-                    $accumulatedResult .= mb_substr($S, $nextSourcePosition, $position - $nextSourcePosition, 'UTF-8');
+                    // Slice in UTF-16 code unit space — both endpoints
+                    // are UTF-16 indices, mb_substr (codepoints) skews
+                    // when an astral lies between them.
+                    $sliceStart = self::utf16IndexToByteOffset($S, $nextSourcePosition);
+                    $sliceEnd = self::utf16IndexToByteOffset($S, $position);
+                    $accumulatedResult .= substr($S, $sliceStart, $sliceEnd - $sliceStart);
                     $accumulatedResult .= $replacement;
                     $nextSourcePosition = $position + $matchLength;
                 }
             }
 
-            return new JsString($accumulatedResult . mb_substr($S, $nextSourcePosition, null, 'UTF-8'));
+            $tailStart = self::utf16IndexToByteOffset($S, $nextSourcePosition);
+            return new JsString($accumulatedResult . substr($S, $tailStart));
         };
     }
 
