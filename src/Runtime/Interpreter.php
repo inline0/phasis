@@ -14277,11 +14277,14 @@ class Interpreter
         }
 
         // [[CustomMatcher]] is set when the pattern uses a feature that
-        // PCRE2 cannot match exactly (lookbehind containing capture
-        // groups — different capture order — or a quantified group
-        // containing captures — different capture-reset semantics).
+        // PCRE2 cannot match exactly:
+        //   - lookbehind containing capture groups (capture order),
+        //   - quantified group containing captures (capture reset),
+        //   - any `.` in non-unicode mode (PCRE2 matches UTF-8 code
+        //     points; ES non-unicode mode requires UTF-16 code units,
+        //     so `.` must NOT match an astral character).
         // exec() routes through the in-engine matcher in those cases.
-        if (self::patternNeedsCustomMatcher($pattern)) {
+        if (self::patternNeedsCustomMatcher($pattern, $flags)) {
             try {
                 $regexAst = (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
                 $obj->defineOwnProperty(
@@ -18453,11 +18456,14 @@ class Interpreter
      * the regex object so exec() can route through the in-engine
      * matcher (see src/Regex/Matcher.php).
      */
-    public static function patternNeedsCustomMatcher(string $pattern): bool
+    public static function patternNeedsCustomMatcher(string $pattern, string $flags = ''): bool
     {
+        $isUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
         $len = strlen($pattern);
         $i = 0;
         $inClass = false;
+        $hasDotInNonUnicode = false;
+        $hasInlineModifier = false;
         // Track group nesting and whether we're inside a lookbehind.
         $lookbehindDepth = 0;
         // Track which group has captures inside it for quantifier
@@ -18487,6 +18493,9 @@ class Interpreter
                 $i++;
                 continue;
             }
+            if ($ch === '.' && !$isUnicode) {
+                $hasDotInNonUnicode = true;
+            }
             if ($ch === '(') {
                 $kind = 'capture';
                 $consume = 1;
@@ -18508,6 +18517,13 @@ class Interpreter
                             $kind = 'capture';
                             $consume = 1;
                         }
+                    } elseif ($next === 'i' || $next === 'm' || $next === 's' || $next === '-') {
+                        // Inline modifier (?ims:...) / (?-ims:...) —
+                        // PCRE2 handles these; our custom matcher
+                        // does not honour the per-group flag overrides.
+                        $hasInlineModifier = true;
+                        $kind = 'noncapture';
+                        $consume = 1;
                     }
                 }
                 if ($kind === 'capture') {
@@ -18560,7 +18576,12 @@ class Interpreter
             }
             $i++;
         }
-        return $hasLookbehindWithCapture || $hasQuantifiedCapture;
+        if ($hasInlineModifier) {
+            // Cede the whole pattern to PCRE2 — our matcher can't
+            // model per-group flag overrides yet.
+            return false;
+        }
+        return $hasLookbehindWithCapture || $hasQuantifiedCapture || $hasDotInNonUnicode;
     }
 
     /**

@@ -457,6 +457,29 @@ class Matcher
                 $direction,
             );
         }
+        if (
+            $term instanceof Group
+            && (
+                $term->body instanceof Quantified
+                || $term->body instanceof Disjunction
+                || $term->body instanceof Sequence
+            )
+        ) {
+            // A capturing/non-capturing group whose body is variable-
+            // length (quantifier, alternation, sub-sequence) needs to
+            // participate in backtracking too — otherwise a lazy
+            // quantifier inside a capturing group settles for the
+            // shortest length and the rest of the sequence can never
+            // ask it to extend.
+            return $this->matchGroupInSequence(
+                $term,
+                $terms,
+                $idx,
+                $pos,
+                $captures,
+                $direction,
+            );
+        }
         // Single-position term: match it, then continue.
         $savedCaptures = $captures;
         $end = $this->matchNode($term, $pos, $captures, $direction);
@@ -473,11 +496,157 @@ class Matcher
     }
 
     /**
-     * Match a quantifier embedded in a sequence. Generates each
-     * possible iteration count (greedy: longest first; lazy:
-     * shortest first), running the rest of the sequence after each;
-     * the first combination that succeeds wins.
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     */
+    private function matchGroupInSequence(
+        Group $g,
+        array $terms,
+        int $idx,
+        int $pos,
+        array &$captures,
+        int $direction,
+    ): ?int {
+        // Wrap the body as a single-term sequence so we get the
+        // multi-end-position machinery. Then for each yielded end
+        // position, set the capture and try the rest.
+        $bodyTerms = [$g->body];
+        $savedAll = $captures;
+        $result = $this->matchSequenceWithContinuation(
+            $bodyTerms,
+            $pos,
+            $captures,
+            $direction,
+            function (int $end, array &$caps) use ($g, $terms, $idx, $direction, $pos): ?int {
+                if ($g->isCapturing()) {
+                    $lo = min($pos, $end);
+                    $hi = max($pos, $end);
+                    $caps[$g->index] = [$lo, $hi];
+                }
+                return $this->matchSequenceFrom($terms, $idx + 1, $end, $caps, $direction);
+            },
+        );
+        if ($result === null) {
+            $captures = $savedAll;
+        }
+        return $result;
+    }
+
+    /**
+     * Match a sequence of terms, calling $cont for each successful
+     * end position. Returns the first non-null result.
      *
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function matchSequenceWithContinuation(
+        array $terms,
+        int $pos,
+        array &$captures,
+        int $direction,
+        \Closure $cont,
+    ): ?int {
+        return $this->matchSeqWithCont($terms, 0, $pos, $captures, $direction, $cont);
+    }
+
+    /**
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function matchSeqWithCont(
+        array $terms,
+        int $idx,
+        int $pos,
+        array &$captures,
+        int $direction,
+        \Closure $cont,
+    ): ?int {
+        if ($idx >= count($terms)) {
+            return $cont($pos, $captures);
+        }
+        $term = $direction > 0 ? $terms[$idx] : $terms[count($terms) - 1 - $idx];
+        if ($term instanceof Quantified) {
+            $innerGroups = $this->collectGroupIndices($term->atom);
+            $positions = [];
+            $this->enumerateQuantifier(
+                $term->atom,
+                $term->min,
+                $term->max,
+                $innerGroups,
+                $pos,
+                $captures,
+                $direction,
+                iterCount: 0,
+                positions: $positions,
+            );
+            $order = $term->greedy ? array_reverse($positions, true) : $positions;
+            foreach ($order as $entry) {
+                $captures = $entry[1];
+                $rest = $this->matchSeqWithCont($terms, $idx + 1, $entry[0], $captures, $direction, $cont);
+                if ($rest !== null) {
+                    return $rest;
+                }
+            }
+            return null;
+        }
+        if ($term instanceof Disjunction) {
+            $saved = $captures;
+            foreach ($term->alternatives as $alt) {
+                $captures = $saved;
+                $end = $this->matchNode($alt, $pos, $captures, $direction);
+                if ($end === null) {
+                    continue;
+                }
+                $rest = $this->matchSeqWithCont($terms, $idx + 1, $end, $captures, $direction, $cont);
+                if ($rest !== null) {
+                    return $rest;
+                }
+            }
+            $captures = $saved;
+            return null;
+        }
+        if (
+            $term instanceof Group
+            && (
+                $term->body instanceof Quantified
+                || $term->body instanceof Disjunction
+                || $term->body instanceof Sequence
+            )
+        ) {
+            $startPos = $pos;
+            return $this->matchSeqWithCont(
+                [$term->body],
+                0,
+                $pos,
+                $captures,
+                $direction,
+                function (int $end, array &$caps) use ($term, $terms, $idx, $direction, $cont, $startPos): ?int {
+                    if ($term->isCapturing()) {
+                        $lo = min($startPos, $end);
+                        $hi = max($startPos, $end);
+                        $caps[$term->index] = [$lo, $hi];
+                    }
+                    return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
+                },
+            );
+        }
+        $saved = $captures;
+        $end = $this->matchNode($term, $pos, $captures, $direction);
+        if ($end === null) {
+            $captures = $saved;
+            return null;
+        }
+        $rest = $this->matchSeqWithCont($terms, $idx + 1, $end, $captures, $direction, $cont);
+        if ($rest === null) {
+            $captures = $saved;
+            return null;
+        }
+        return $rest;
+    }
+
+    /**
      * @param list<Node> $terms
      * @param array<int, ?array{0:int,1:int}> $captures
      */
@@ -539,37 +708,28 @@ class Matcher
         int $iterCount,
         array &$positions,
     ): void {
-        if ($iterCount >= $min) {
-            $positions[] = [$pos, $captures];
+        // Iterative loop instead of recursion so a quantifier matching
+        // 100k+ times (e.g. `.+` against a long input) does not blow
+        // the PHP call stack.
+        while (true) {
+            if ($iterCount >= $min) {
+                $positions[] = [$pos, $captures];
+            }
+            if ($max !== null && $iterCount >= $max) {
+                return;
+            }
+            $saved = $captures;
+            foreach ($innerGroups as $gi) {
+                $captures[$gi] = null;
+            }
+            $newPos = $this->matchNode($atom, $pos, $captures, $direction);
+            if ($newPos === null || $newPos === $pos) {
+                $captures = $saved;
+                return;
+            }
+            $pos = $newPos;
+            $iterCount++;
         }
-        if ($max !== null && $iterCount >= $max) {
-            return;
-        }
-        $saved = $captures;
-        foreach ($innerGroups as $gi) {
-            $captures[$gi] = null;
-        }
-        $newPos = $this->matchNode($atom, $pos, $captures, $direction);
-        if ($newPos === null) {
-            $captures = $saved;
-            return;
-        }
-        if ($newPos === $pos) {
-            // Avoid infinite loop on zero-width matches.
-            $captures = $saved;
-            return;
-        }
-        $this->enumerateQuantifier(
-            $atom,
-            $min,
-            $max,
-            $innerGroups,
-            $newPos,
-            $captures,
-            $direction,
-            $iterCount + 1,
-            $positions,
-        );
     }
 
     /**
@@ -621,85 +781,43 @@ class Matcher
      */
     private function matchQuantified(Quantified $q, int $pos, array &$captures, int $direction): ?int
     {
-        // Per spec: each iteration of a quantified atom resets the
-        // captures of every group inside that atom. This is the
-        // capture-reset semantics PCRE2 lacks.
+        // Iterative quantifier: greedy goes as far as possible (then
+        // returns the longest position), lazy returns the shortest
+        // valid position. Per spec the captures of inner groups reset
+        // on each iteration. The iterative form avoids deep recursion
+        // for `.+` matching long inputs.
         $innerGroups = $this->collectGroupIndices($q->atom);
-        return $this->matchQuantifiedRec(
-            $q->atom,
-            $q->min,
-            $q->max,
-            $q->greedy,
-            $innerGroups,
-            $pos,
-            $captures,
-            $direction,
-            iterCount: 0,
-        );
-    }
-
-    /**
-     * @param list<int> $innerGroups
-     * @param array<int, ?array{0:int,1:int}> $captures
-     */
-    private function matchQuantifiedRec(
-        Node $atom,
-        int $min,
-        ?int $max,
-        bool $greedy,
-        array $innerGroups,
-        int $pos,
-        array &$captures,
-        int $direction,
-        int $iterCount,
-    ): ?int {
-        $reachedMax = $max !== null && $iterCount >= $max;
-        $satisfiedMin = $iterCount >= $min;
-        if ($reachedMax) {
-            return $pos;
+        if (!$q->greedy) {
+            // Lazy: return as soon as min is satisfied.
+            if ($q->min === 0) {
+                return $pos;
+            }
         }
-        // Try to extend: reset inner captures, then match one more.
-        $tryExtend = function () use ($atom, $min, $max, $greedy, $innerGroups, $pos, &$captures, $direction, $iterCount) {
+        $iterCount = 0;
+        $lastValid = $q->min === 0 ? $pos : null;
+        while (true) {
+            if ($q->max !== null && $iterCount >= $q->max) {
+                break;
+            }
             $saved = $captures;
-            // Reset captures of inner groups before matching another iter.
             foreach ($innerGroups as $gi) {
                 $captures[$gi] = null;
             }
-            $newPos = $this->matchNode($atom, $pos, $captures, $direction);
-            if ($newPos === null) {
+            $newPos = $this->matchNode($q->atom, $pos, $captures, $direction);
+            if ($newPos === null || $newPos === $pos) {
                 $captures = $saved;
-                return null;
+                break;
             }
-            // Avoid infinite loops on zero-width matches.
-            if ($newPos === $pos) {
-                // Stop quantifying; treat current state as max reached.
-                $captures = $saved;
-                return null;
+            $pos = $newPos;
+            $iterCount++;
+            if ($iterCount >= $q->min) {
+                $lastValid = $pos;
+                if (!$q->greedy) {
+                    return $pos;
+                }
             }
-            return $this->matchQuantifiedRec(
-                $atom,
-                $min,
-                $max,
-                $greedy,
-                $innerGroups,
-                $newPos,
-                $captures,
-                $direction,
-                $iterCount + 1,
-            );
-        };
-        if ($greedy) {
-            $extendResult = $tryExtend();
-            if ($extendResult !== null) {
-                return $extendResult;
-            }
-            return $satisfiedMin ? $pos : null;
         }
-        // Non-greedy: try to stop first.
-        if ($satisfiedMin) {
-            return $pos;
-        }
-        return $tryExtend();
+        return $lastValid;
     }
 
     /**

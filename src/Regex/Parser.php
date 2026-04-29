@@ -38,6 +38,7 @@ class Parser
     private int $pos = 0;
     private int $len;
     private bool $unicode;
+    private bool $dotAll;
     private int $groupCount = 0;
     /** @var array<int, string> */
     private array $indexToName = [];
@@ -51,6 +52,7 @@ class Parser
         $this->src = $source;
         $this->len = strlen($source);
         $this->unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $this->dotAll = str_contains($flags, 's');
     }
 
     public function parse(): Pattern
@@ -173,12 +175,7 @@ class Parser
         $ch = $this->src[$this->pos];
         if ($ch === '.') {
             $this->pos++;
-            // Caller (matcher) decides between dotAll/non-dotAll based
-            // on flags; we encode `.` as the "any char" placeholder
-            // here. We use a marker char class with all code points
-            // and let the matcher swap it for the line-terminator
-            // exclusion in non-dotAll mode by referencing the flag.
-            return CharClass::any();
+            return $this->dotAll ? CharClass::any() : CharClass::dotNoDotAll();
         }
         if ($ch === '^') {
             $this->pos++;
@@ -421,9 +418,47 @@ class Parser
                 $this->expect(')');
                 return new Group($body, $idx, $name);
             }
-            // Inline modifier (?flags:...). Skip for now — the matcher
-            // ignores them and the caller's flag setup applies to the
-            // whole pattern. PCRE2 fast path will handle modifiers.
+            // Inline modifier (?flags:...) or (?flags-flags:...).
+            // Skip past the flag chars + ':' and treat the body as a
+            // non-capturing group. The matcher's flag interpretation
+            // is whole-pattern, so the modifier flags within the
+            // group are not honoured — but parsing them prevents
+            // syntax errors and lets the body match correctly when
+            // the modifier flags happen to align with the regex's
+            // own flags.
+            $j = $this->pos + 1;
+            $sawFlag = false;
+            while (
+                $j < $this->len
+                && (
+                    $this->src[$j] === 'i'
+                    || $this->src[$j] === 'm'
+                    || $this->src[$j] === 's'
+                )
+            ) {
+                $j++;
+                $sawFlag = true;
+            }
+            if ($j < $this->len && $this->src[$j] === '-') {
+                $j++;
+                while (
+                    $j < $this->len
+                    && (
+                        $this->src[$j] === 'i'
+                        || $this->src[$j] === 'm'
+                        || $this->src[$j] === 's'
+                    )
+                ) {
+                    $j++;
+                    $sawFlag = true;
+                }
+            }
+            if ($sawFlag && $j < $this->len && $this->src[$j] === ':') {
+                $this->pos = $j + 1;
+                $body = $this->parseDisjunction();
+                $this->expect(')');
+                return new Group($body, -1, null);
+            }
         }
         $idx = ++$this->groupCount;
         $body = $this->parseDisjunction();
