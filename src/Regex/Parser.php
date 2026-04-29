@@ -308,6 +308,32 @@ class Parser
                     return $this->parseUnicodePropertyEscape($ch === 'P');
                 }
                 break;
+            case 'c':
+                // \cX → control char (X mod 32) when X is A-Z/a-z.
+                // In /u mode this is mandatory; in non-/u (Annex B
+                // B.1.4) when the following char is not a control
+                // letter the sequence is treated as literal `\c`,
+                // i.e. emit backslash then c and let the next atom
+                // pick up X.
+                if ($this->pos + 1 < $this->len) {
+                    $cl = $this->src[$this->pos + 1];
+                    $isLetter = ($cl >= 'A' && $cl <= 'Z') || ($cl >= 'a' && $cl <= 'z');
+                    if ($isLetter) {
+                        $this->pos += 2;
+                        return new Literal(ord($cl) & 0x1F);
+                    }
+                }
+                if ($this->unicode) {
+                    throw new SyntaxError('Invalid \\c escape');
+                }
+                // Non-/u: literal `\c`. We're currently positioned
+                // at 'c' (the backslash was consumed); produce a
+                // sequence of two literals.
+                $this->pos++; // consume c
+                return new Sequence([
+                    new Literal(0x5C),
+                    new Literal(0x63),
+                ]);
         }
         if (ctype_digit($ch)) {
             return $this->parseNumericBackref();
