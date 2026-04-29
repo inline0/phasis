@@ -158,12 +158,10 @@ class Matcher
                 continue;
             }
             [$s, $e] = $cap;
-            $byteStart = $this->codeUnitToByteOffset($inputUtf8, $s);
-            $byteEnd = $this->codeUnitToByteOffset($inputUtf8, $e);
             $out['captures'][$i] = [
                 $this->internalIndexToUtf16($s),
                 $this->internalIndexToUtf16($e),
-                substr($inputUtf8, $byteStart, $byteEnd - $byteStart),
+                $this->sliceCapture($inputUtf8, $s, $e),
             ];
         }
         return $out;
@@ -183,6 +181,37 @@ class Matcher
         for ($i = 0; $i < $idx && $i < $this->inputLen; $i++) {
             $cp = $this->input[$i];
             $out += $cp >= 0x10000 ? 2 : 1;
+        }
+        return $out;
+    }
+
+    /**
+     * Extract the matched slice from internal positions $s..$e. In
+     * non-/u mode positions are UTF-16 code unit indices; if the
+     * slice covers half of a surrogate pair we must emit just that
+     * unit as CESU-8, not the whole UTF-8 codepoint, so the caller
+     * sees the lone surrogate the matcher actually consumed (per
+     * ECMA-262 22.2.2.1 PatternMatch on UTF-16 code units).
+     */
+    private function sliceCapture(string $inputUtf8, int $s, int $e): string
+    {
+        if ($this->unicode) {
+            $byteStart = $this->codeUnitToByteOffset($inputUtf8, $s);
+            $byteEnd = $this->codeUnitToByteOffset($inputUtf8, $e);
+            return substr($inputUtf8, $byteStart, $byteEnd - $byteStart);
+        }
+        $out = '';
+        for ($i = $s; $i < $e && $i < $this->inputLen; $i++) {
+            $cu = $this->input[$i];
+            if ($cu < 0x80) {
+                $out .= chr($cu);
+            } elseif ($cu < 0x800) {
+                $out .= chr(0xC0 | ($cu >> 6)) . chr(0x80 | ($cu & 0x3F));
+            } else {
+                $out .= chr(0xE0 | ($cu >> 12))
+                    . chr(0x80 | (($cu >> 6) & 0x3F))
+                    . chr(0x80 | ($cu & 0x3F));
+            }
         }
         return $out;
     }

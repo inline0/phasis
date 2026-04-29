@@ -604,7 +604,13 @@ class RegExpPrototype
             // Per spec: if no argument, convert undefined to "undefined".
             $str = isset($args[0]) ? TypeConversion::toString($args[0])
                 : TypeConversion::toString(\PhpJs\Value\JsUndefined::instance());
-            $strLen = mb_strlen($str, 'UTF-8');
+            // lastIndex is a UTF-16 code unit offset (spec
+            // 22.2.7.2 RegExpBuiltinExec step 6), so $strLen must be the
+            // UTF-16 code unit count too — mb_strlen gives codepoints,
+            // which would short-circuit any iteration that has stepped
+            // past `mb_strlen` units into the second half of an astral
+            // character (e.g. /./gu over '👨‍👩‍👧‍👦').
+            $strLen = (int) (strlen(JsString::utf8ToUtf16LE($str)) / 2);
 
             // Per spec step 4: read lastIndex first so any observable side
             // effects (e.g. a valueOf that calls regExp.compile) settle the
