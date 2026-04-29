@@ -1485,6 +1485,18 @@ final class JsToPhp
             return;
         }
         if ($node instanceof ExpressionStatement) {
+            // For a discarded call result we don't need the JsNumber
+            // unbox assertion that emitCallExpression appends — it
+            // forces a Bailout when the callee returns anything but a
+            // number, which then triggers the slow interpreter path
+            // and re-runs the call (with all its side effects). Skip
+            // straight to emitCallCore so the call only runs once.
+            if ($node->expression instanceof CallExpression) {
+                $resultTemp = $this->emitCallCore($node->expression);
+                $this->flushPending();
+                $this->emitLine($resultTemp . ';');
+                return;
+            }
             $expr = $this->emitExpression($node->expression);
             $this->flushPending();
             $this->emitLine($expr . ';');
