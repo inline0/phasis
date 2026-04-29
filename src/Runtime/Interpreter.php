@@ -18583,6 +18583,13 @@ class Interpreter
             // model per-group flag overrides yet.
             return false;
         }
+        // Patterns with duplicate named groups also route through the
+        // custom matcher so backreferences resolve the right capture
+        // (PCRE2 with the J flag picks differently from spec when
+        // multiple named groups share a name).
+        if (self::hasDuplicateNamedGroups($pattern)) {
+            return true;
+        }
         return $hasLookbehindWithCapture
             || $hasQuantifiedCapture
             || $hasDotInNonUnicode
