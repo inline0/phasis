@@ -70,7 +70,14 @@ class ModuleLoader
 
         // Return cached module namespace if already evaluated.
         if (isset($this->modules[$resolved])) {
-            return $this->modules[$resolved]->namespace;
+            $cached = $this->modules[$resolved];
+            // If a previous evaluation rejected, re-throw the same
+            // value so subsequent callers observe the rejection per
+            // EvaluateSync semantics.
+            if ($cached->evaluationError !== null) {
+                throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
+            }
+            return $cached->namespace;
         }
 
         $source = @file_get_contents($resolved);
