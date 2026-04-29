@@ -4622,6 +4622,19 @@ class Interpreter
         // Save and potentially update strict mode for this function body.
         $previousStrictMode = $this->strictMode;
 
+        // Per spec GetActiveScriptOrModule, code inside a function body
+        // resolves import.meta against the module that DEFINED the
+        // function, not the caller's module. Switch the interpreter's
+        // currentModulePath to the function's defining path during the
+        // call (only when the function captured one), and restore on
+        // return.
+        $previousModulePath = $this->currentModulePath;
+        $switchModulePath = $fn->definingModulePath !== null
+            && $fn->definingModulePath !== $this->currentModulePath;
+        if ($switchModulePath) {
+            $this->currentModulePath = $fn->definingModulePath;
+        }
+
         // Hot path for VM-compiled bodies with no env-binding needs:
         // bytecode never reads `this` via env (needsThis=false), never
         // touches `arguments` / `new.target` / `eval` / `with` (compiler
@@ -4679,6 +4692,8 @@ class Interpreter
                     $savedCallerValue,
                     $savedArgumentsValue,
                     $previousStrictMode,
+                    $previousModulePath,
+                    $switchModulePath,
                 );
                 throw $e;
             }
@@ -4694,6 +4709,8 @@ class Interpreter
                     $savedCallerValue,
                     $savedArgumentsValue,
                     $previousStrictMode,
+                    $previousModulePath,
+                    $switchModulePath,
                 );
                 return $vmReturn;
             }
@@ -5053,6 +5070,9 @@ class Interpreter
                 }
             }
             $this->strictMode = $previousStrictMode;
+            if ($switchModulePath) {
+                $this->currentModulePath = $previousModulePath;
+            }
             $this->callStack->pop();
         }
     }
@@ -5144,6 +5164,12 @@ class Interpreter
         }
 
         $previousStrictMode = $this->strictMode;
+        $previousModulePath = $this->currentModulePath;
+        $switchModulePath = $fn->definingModulePath !== null
+            && $fn->definingModulePath !== $this->currentModulePath;
+        if ($switchModulePath) {
+            $this->currentModulePath = $fn->definingModulePath;
+        }
         if ($fn->effectiveStrictCache === null) {
             $body = $fn->getBody();
             $fn->effectiveStrictCache = $fn->isStrict()
@@ -5181,6 +5207,8 @@ class Interpreter
                 $savedCallerValue,
                 $savedArgumentsValue,
                 $previousStrictMode,
+                $previousModulePath,
+                $switchModulePath,
             );
             throw $e;
         }
@@ -5195,6 +5223,8 @@ class Interpreter
             $savedCallerValue,
             $savedArgumentsValue,
             $previousStrictMode,
+            $previousModulePath,
+            $switchModulePath,
         );
         if ($vmReturn === null) {
             // Compiler bailed (rare, on first call). Fall back via the
@@ -5232,7 +5262,12 @@ class Interpreter
         ?JsValue $savedCallerValue,
         ?JsValue $savedArgumentsValue,
         bool $previousStrictMode,
+        ?string $previousModulePath = null,
+        bool $restoreModulePath = false,
     ): void {
+        if ($restoreModulePath) {
+            $this->currentModulePath = $previousModulePath;
+        }
         array_pop($this->callerStack);
         if ($setCallerProp) {
             if ($autoUpdateCaller) {
@@ -7479,6 +7514,7 @@ class Interpreter
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
         }
+        $fn->definingModulePath = $this->currentModulePath;
         return $fn;
     }
 
@@ -7497,6 +7533,7 @@ class Interpreter
         if ($node->sourceText !== null) {
             $fn->setSourceText($node->sourceText);
         }
+        $fn->definingModulePath = $this->currentModulePath;
         // Named function expressions have an immutable binding for their own name.
         // Per spec 15.2.5: the BindingIdentifier is created as an immutable binding
         // in the function's scope. In strict mode, assignment throws TypeError.
@@ -11459,6 +11496,7 @@ class Interpreter
                 if ($stmt->sourceText !== null) {
                     $fn->setSourceText($stmt->sourceText);
                 }
+                $fn->definingModulePath = $this->currentModulePath;
                 $this->installFunctionPrototype($fn, $stmt->generator, $stmt->async);
                 // At global scope, function declarations are enumerable, non-configurable properties.
                 // In nested scopes (env has no linked object), use defineVar as usual.

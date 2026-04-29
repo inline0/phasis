@@ -128,6 +128,15 @@ class JsFunction extends JsObject
     /** True for class constructors: calling without new throws TypeError. */
     private bool $isClassConstructor = false;
 
+    /**
+     * Module path of the defining script/module. Captured at function
+     * creation when running inside a module body so that import.meta
+     * inside the function body resolves to the module that defined it,
+     * not the caller's module (per GetActiveScriptOrModule semantics).
+     * Null for functions defined at script (non-module) scope.
+     */
+    public ?string $definingModulePath = null;
+
     /** True for derived class constructors (class C extends B). */
     private bool $isDerivedConstructor = false;
 
