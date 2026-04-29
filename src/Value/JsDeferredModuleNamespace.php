@@ -49,6 +49,10 @@ class JsDeferredModuleNamespace extends JsObject
     public function __construct(?\Closure $trigger = null)
     {
         parent::__construct(null);
+        // Per spec ModuleNamespaceCreate, [[GetPrototypeOf]] returns
+        // null. JsObject's constructor coalesces a null argument to
+        // the global prototype, so reset it explicitly.
+        $this->setPrototype(null);
         $this->trigger = $trigger;
     }
 
