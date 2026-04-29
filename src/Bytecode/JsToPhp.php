@@ -462,11 +462,17 @@ final class JsToPhp
             return 'numeric';
         }
         if ($node instanceof CallExpression) {
-            // emitCallExpression returns the call result already
-            // unboxed as a raw double (with runtime JsNumber check).
-            // We only reach this when the call is in numeric pipeline,
-            // so the result type is numeric by contract.
-            return 'numeric';
+            // CallExpression results are not statically typeable — the
+            // callee may return any JsValue, including JsUndefined. We
+            // used to claim 'numeric' here, which let
+            // `function fn() { return f(); }` enter the numeric
+            // pipeline; on a non-numeric return PHP would throw a
+            // Bailout and fall back to the standard interpreter, but
+            // only AFTER the call had already run with full side
+            // effects, leading to a second invocation. Marking as
+            // unknown forces JsToPhp to bail at compile time so the
+            // call only ever runs once.
+            return 'unknown';
         }
         if ($node instanceof AssignmentExpression) {
             // Result of an assignment is the assigned value; most
