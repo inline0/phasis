@@ -541,7 +541,13 @@ class Parser
                 $this->pos++; // consume -
                 $second = $this->parseClassAtom($negatedRanges);
                 if ($second !== null) {
-                    // $first was already non-null per the if guard.
+                    // Per ECMA-262 §22.2.1.6, the first endpoint
+                    // must be <= the second; otherwise SyntaxError.
+                    if ($first > $second) {
+                        throw new SyntaxError(
+                            'Invalid regular expression: range out of order in character class'
+                        );
+                    }
                     $ranges[] = [$first, $second];
                 } else {
                     $ranges[] = [$first, $first];
