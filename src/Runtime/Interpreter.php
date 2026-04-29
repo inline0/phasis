@@ -18464,6 +18464,7 @@ class Interpreter
         $inClass = false;
         $hasDotInNonUnicode = false;
         $hasInlineModifier = false;
+        $hasLookbehind = false;
         // Track group nesting and whether we're inside a lookbehind.
         $lookbehindDepth = 0;
         // Track which group has captures inside it for quantifier
@@ -18535,6 +18536,7 @@ class Interpreter
                 }
                 if ($kind === 'lookbehind') {
                     $lookbehindDepth++;
+                    $hasLookbehind = true;
                 }
                 $stack[] = ['kind' => $kind, 'sawCapture' => false];
                 $i += $consume;
@@ -18581,7 +18583,10 @@ class Interpreter
             // model per-group flag overrides yet.
             return false;
         }
-        return $hasLookbehindWithCapture || $hasQuantifiedCapture || $hasDotInNonUnicode;
+        return $hasLookbehindWithCapture
+            || $hasQuantifiedCapture
+            || $hasDotInNonUnicode
+            || $hasLookbehind;
     }
 
     /**
