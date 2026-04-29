@@ -18492,9 +18492,17 @@ class Interpreter
         // custom matcher whose canonicalize() honours that
         // distinction.
         $hasNonAsciiInIWithoutU = false;
+        // PCRE2 with /u flag treats any Unicode letter as a word
+        // character (PCRE2_UCP semantics). ECMA-262 GetWordCharacters
+        // is ASCII-only except in /u+/i mode where it extends via
+        // Canonicalize. Patterns containing \\b / \\B / \\w / \\W
+        // outside of /u+/i must route to the custom matcher whose
+        // isWordCu honours the spec.
+        $hasWordToken = false;
         // Track group nesting and whether we're inside a lookbehind.
         $lookbehindDepth = 0;
         $needNonAsciiScan = $isCaseless && !$isUnicode;
+        $needAsciiWordCheck = !($isUnicode && $isCaseless);
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -18505,18 +18513,26 @@ class Interpreter
         while ($i < $len) {
             $ch = $pattern[$i];
             if ($ch === '\\') {
-                if ($needNonAsciiScan && $i + 1 < $len) {
+                if ($i + 1 < $len) {
                     $next = $pattern[$i + 1];
-                    if ($next === 'u' && $i + 5 < $len) {
-                        $hex = substr($pattern, $i + 2, 4);
-                        if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
-                            $hasNonAsciiInIWithoutU = true;
+                    if ($needNonAsciiScan) {
+                        if ($next === 'u' && $i + 5 < $len) {
+                            $hex = substr($pattern, $i + 2, 4);
+                            if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                                $hasNonAsciiInIWithoutU = true;
+                            }
+                        } elseif ($next === 'x' && $i + 3 < $len) {
+                            $hex = substr($pattern, $i + 2, 2);
+                            if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                                $hasNonAsciiInIWithoutU = true;
+                            }
                         }
-                    } elseif ($next === 'x' && $i + 3 < $len) {
-                        $hex = substr($pattern, $i + 2, 2);
-                        if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
-                            $hasNonAsciiInIWithoutU = true;
-                        }
+                    }
+                    if (
+                        $needAsciiWordCheck
+                        && ($next === 'b' || $next === 'B' || $next === 'w' || $next === 'W')
+                    ) {
+                        $hasWordToken = true;
                     }
                 }
                 $i += 2;
@@ -18641,6 +18657,7 @@ class Interpreter
             || $hasDotInNonUnicode
             || $hasLookbehind
             || $hasNonAsciiInIWithoutU
+            || $hasWordToken
             // /i without /u must use ASCII-only Canonicalize per
             // ECMA-262 §22.2.2.7. PCRE2 with /iu folds Unicode in
             // both directions (e.g. k matches Kelvin sign), so we
