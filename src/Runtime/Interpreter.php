@@ -2772,6 +2772,54 @@ class Interpreter
         return false;
     }
 
+    /**
+     * Detect a top-level await in module body. Stops at every function,
+     * arrow, and class boundary because those open their own (possibly
+     * async) closure where await refers to the inner function's
+     * suspension, not the module's.
+     *
+     * @param Node[] $statements
+     */
+    public function astContainsTopLevelAwait(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->nodeContainsTopLevelAwait($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsTopLevelAwait(Node $node): bool
+    {
+        if ($node instanceof AwaitExpression) {
+            return true;
+        }
+        if (
+            $node instanceof FunctionDeclaration
+            || $node instanceof FunctionExpression
+            || $node instanceof ArrowFunction
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        foreach ((array) $node as $value) {
+            if ($value instanceof Node) {
+                if ($this->nodeContainsTopLevelAwait($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeContainsTopLevelAwait($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private function nodeContainsSuperTransparent(Node $node): bool
     {
         if ($node instanceof CallExpression && $node->callee instanceof Identifier && $node->callee->name === 'super') {
@@ -8201,7 +8249,15 @@ class Interpreter
         }
     }
 
-    public function executeModuleBody(array $body, Environment $moduleEnv, bool $alreadyHoisted = false): JsValue
+    /**
+     * @param ?\Closure(\PhpJs\Value\JsPromise): void $onAsyncStart If
+     *   provided and the body has top-level await, the closure receives
+     *   the body's pending evaluation promise. The body returns
+     *   immediately to the caller without draining microtasks; the
+     *   caller is responsible for draining once every sibling body has
+     *   started.
+     */
+    public function executeModuleBody(array $body, Environment $moduleEnv, bool $alreadyHoisted = false, ?\Closure $onAsyncStart = null): JsValue
     {
         $prevStrict = $this->strictMode;
         // Modules are always strict per spec.
@@ -8240,6 +8296,19 @@ class Interpreter
             ),
         );
 
+        // Top-level await: when the module body contains an `await` outside
+        // any nested function/arrow/class, run the body inside an async
+        // Fiber so each await suspends the module body, lets the
+        // microtask queue interleave (Promise.then continuations,
+        // sibling import resolutions), then resumes the body. Without
+        // this wrap, the synchronous loop blocks all microtasks until
+        // each await unwraps inline, breaking spec tick ordering.
+        if ($this->astContainsTopLevelAwait($body)) {
+            $moduleEnv->setFunctionKind('async');
+            $this->strictMode = $prevStrict;
+            return $this->executeModuleBodyAsync($body, $moduleEnv, $onAsyncStart);
+        }
+
         $result = JsUndefined::instance();
         foreach ($body as $stmt) {
             // Import declarations are already processed by the module loader.
@@ -8274,6 +8343,90 @@ class Interpreter
 
         $this->strictMode = $prevStrict;
         return $result;
+    }
+
+    /**
+     * Run a top-level-await module body in a Fiber so awaits suspend
+     * the body and let unrelated microtasks (sibling Promise.then
+     * chains, resolution of in-flight imports) interleave per spec.
+     *
+     * The synchronous interpreter doesn't truly run multiple stacks;
+     * we drive the fiber to completion right here, but Fiber::suspend
+     * on each await yields control back to driveAsyncFiber, which
+     * uses .then on the awaited value. Promise's .then enqueues a
+     * microtask, so other already-queued microtasks fire first when
+     * we drain. The end effect is the spec-correct interleaved tick
+     * order even within a single PHP call stack.
+     *
+     * @param Node[] $body
+     */
+    private function executeModuleBodyAsync(array $body, Environment $moduleEnv, ?\Closure $onAsyncStart = null): JsValue
+    {
+        $promise = new \PhpJs\Value\JsPromise();
+        $self = $this;
+        $modulePath = $this->currentModulePath;
+        $fiber = new \Fiber(function () use ($self, $body, $moduleEnv, $modulePath): JsValue {
+            $prevStrict = $self->strictMode;
+            $prevPath = $self->getCurrentModulePath();
+            $self->strictMode = true;
+            // Restore the module path inside the fiber: the fiber may
+            // resume long after the loader has moved on to a sibling,
+            // and our await suspensions need the correct module path
+            // for import.meta and source-phase resolution.
+            $self->setCurrentModulePath($modulePath);
+            try {
+                $last = JsUndefined::instance();
+                foreach ($body as $stmt) {
+                    if ($stmt instanceof ImportDeclaration) {
+                        continue;
+                    }
+                    if ($stmt instanceof \PhpJs\Ast\Declaration\FunctionDeclaration) {
+                        continue;
+                    }
+                    if (
+                        $stmt instanceof ExportDeclaration
+                        && $stmt->declaration instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+                    ) {
+                        continue;
+                    }
+                    $completion = $self->executeStatement($stmt, $moduleEnv);
+                    if ($completion->type !== CompletionType::Normal) {
+                        if ($completion->type === CompletionType::Throw) {
+                            $self->throwJsValue($completion->value);
+                        }
+                        return $completion->value;
+                    }
+                    if (!$completion->empty) {
+                        $last = $completion->value;
+                    }
+                }
+                return $last;
+            } finally {
+                $self->strictMode = $prevStrict;
+                $self->setCurrentModulePath($prevPath);
+            }
+        });
+        $this->driveAsyncFiber($fiber, $promise, true, JsUndefined::instance());
+
+        // If the caller registered an async-start hook (the module
+        // loader does, so siblings can evaluate while this module is
+        // suspended), hand the promise off and return without draining.
+        if ($onAsyncStart !== null) {
+            $onAsyncStart($promise);
+            return JsUndefined::instance();
+        }
+
+        // No hook: drain microtasks until the body promise settles.
+        // Bound the loop so a never-resolving promise can't hang.
+        $iter = 0;
+        while ($promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
+            \PhpJs\Value\JsPromise::drainMicrotasks();
+        }
+
+        if ($promise->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+            $this->throwJsValue($promise->getResolvedValue());
+        }
+        return $promise->getResolvedValue();
     }
 
     private function evalClassExpression(ClassExpression $node, Environment $env, ?string $nameHint = null): JsValue

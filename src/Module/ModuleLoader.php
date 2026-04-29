@@ -251,12 +251,21 @@ class ModuleLoader
      */
     private function drainBodyQueue(): void
     {
+        $asyncRecords = [];
         while ($this->bodyQueue !== []) {
             $path = array_shift($this->bodyQueue);
             $record = $this->modules[$path] ?? null;
             if ($record === null || $record->pendingBody === null) {
                 continue;
             }
+            // Per spec InnerModuleEvaluation, before evaluating M, every
+            // async dependency in M's import graph must have settled.
+            // Drain microtasks until each transitively-imported async
+            // module's promise resolves. This makes
+            //   import foo from "./async.js";
+            //   foo.something // already initialized
+            // work even when async.js has top-level await.
+            $this->awaitAsyncDeps($record);
             $pending = $record->pendingBody;
             $record->pendingBody = null;
             $prevModulePath = $this->interpreter->getCurrentModulePath();
@@ -266,11 +275,111 @@ class ModuleLoader
                     $pending['program']->body,
                     $pending['moduleEnv'],
                     alreadyHoisted: true,
+                    onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record, &$asyncRecords): void {
+                        $record->evaluationPromise = $p;
+                        $asyncRecords[] = $record;
+                    },
                 );
             } finally {
                 $this->interpreter->setCurrentModulePath($prevModulePath);
             }
         }
+        // Drain remaining async-module promises (any module without an
+        // importer still pending). Bound the loop so a never-resolving
+        // promise can't hang the engine.
+        if ($asyncRecords !== []) {
+            $iter = 0;
+            $allSettled = false;
+            while (!$allSettled && $iter++ < 100000) {
+                \PhpJs\Value\JsPromise::drainMicrotasks();
+                $allSettled = true;
+                foreach ($asyncRecords as $r) {
+                    $p = $r->evaluationPromise;
+                    if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                        $allSettled = false;
+                        break;
+                    }
+                }
+            }
+            // Surface the first rejection as a thrown JS error so the
+            // caller of loadModule sees the failure.
+            foreach ($asyncRecords as $r) {
+                $p = $r->evaluationPromise;
+                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                    $this->interpreter->throwJsValue($p->getResolvedValue());
+                }
+            }
+        }
+    }
+
+    /**
+     * Drain microtasks until every async dependency reachable from the
+     * given record has settled. Works against the transitive closure
+     * of importedPaths so a chain main → A → B(async) blocks main on
+     * B's promise even though main only directly imports A.
+     */
+    private function awaitAsyncDeps(ModuleRecord $record): void
+    {
+        $deps = $this->collectAsyncDeps($record, []);
+        if ($deps === []) {
+            return;
+        }
+        $iter = 0;
+        while ($iter++ < 100000) {
+            $allSettled = true;
+            foreach ($deps as $dep) {
+                $p = $dep->evaluationPromise;
+                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                    $allSettled = false;
+                    break;
+                }
+            }
+            if ($allSettled) {
+                break;
+            }
+            \PhpJs\Value\JsPromise::drainMicrotasks();
+        }
+        // A rejected dependency must propagate immediately: per spec
+        // 16.2.1.5 ContinueDynamicImport / InnerModuleEvaluation, a
+        // module whose async dep rejected itself rejects with the same
+        // value, and importers throw rather than evaluating their
+        // bodies.
+        foreach ($deps as $dep) {
+            $p = $dep->evaluationPromise;
+            if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                $this->interpreter->throwJsValue($p->getResolvedValue());
+            }
+        }
+    }
+
+    /**
+     * Walk importedPaths transitively and collect every record that has
+     * an outstanding evaluation promise. Avoids re-entering already
+     * visited records to terminate on cyclic imports.
+     *
+     * @param array<string, true> $visited
+     * @return list<ModuleRecord>
+     */
+    private function collectAsyncDeps(ModuleRecord $record, array $visited): array
+    {
+        $result = [];
+        foreach (array_keys($record->importedPaths) as $path) {
+            if (isset($visited[$path])) {
+                continue;
+            }
+            $visited[$path] = true;
+            $dep = $this->modules[$path] ?? null;
+            if ($dep === null) {
+                continue;
+            }
+            if ($dep->evaluationPromise !== null) {
+                $result[] = $dep;
+            }
+            foreach ($this->collectAsyncDeps($dep, $visited) as $nested) {
+                $result[] = $nested;
+            }
+        }
+        return $result;
     }
 
     /**
@@ -540,13 +649,21 @@ class ModuleLoader
      */
     private function preloadRequestedModules(array $body, string $modulePath): void
     {
+        $currentRecord = $this->modules[$modulePath] ?? null;
         foreach ($body as $node) {
+            $source = null;
             if ($node instanceof ImportDeclaration) {
-                $this->loadModule($node->source, $modulePath);
+                $source = $node->source;
+            } elseif ($node instanceof ExportDeclaration && $node->source !== null) {
+                $source = $node->source;
+            }
+            if ($source === null) {
                 continue;
             }
-            if ($node instanceof ExportDeclaration && $node->source !== null) {
-                $this->loadModule($node->source, $modulePath);
+            $this->loadModule($source, $modulePath);
+            if ($currentRecord !== null) {
+                $resolved = $this->resolve($source, $modulePath);
+                $currentRecord->importedPaths[$resolved] = true;
             }
         }
     }

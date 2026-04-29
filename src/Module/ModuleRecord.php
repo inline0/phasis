@@ -62,6 +62,26 @@ class ModuleRecord
      */
     public ?array $pendingBody = null;
 
+    /**
+     * Outstanding evaluation promise for an async (top-level-await)
+     * module. The body has started in a Fiber but hasn't settled yet;
+     * the loader drains microtasks across all such records after
+     * dispatching every body, so a TLA module doesn't block its
+     * siblings' synchronous evaluation.
+     */
+    public ?\PhpJs\Value\JsPromise $evaluationPromise = null;
+
+    /**
+     * Distinct absolute paths of every module this one imports
+     * (including export-from sources). Populated during linkModule so
+     * the body-queue drainer can block a module's body on every async
+     * dependency that hasn't yet settled, matching the spec's
+     * InnerModuleEvaluation post-order semantics.
+     *
+     * @var array<string, true>
+     */
+    public array $importedPaths = [];
+
     public function __construct(
         public readonly string $path,
         public readonly JsObject $namespace,
