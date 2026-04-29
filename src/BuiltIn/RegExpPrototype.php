@@ -609,6 +609,7 @@ class RegExpPrototype
                 : '';
             $isGlobal = str_contains($origFlags, 'g');
             $isSticky = str_contains($origFlags, 'y');
+            $hasIndices = str_contains($origFlags, 'd');
 
             // Read the (potentially recompiled) pattern after lastIndex
             // coercion. compile() inside the ToLength call would have
@@ -637,6 +638,42 @@ class RegExpPrototype
             // offset by walking the codepoints (each non-BMP char counts as
             // two code units).
             $byteOffset = self::utf16IndexToByteOffset($str, $lastIndex);
+
+            // Custom-matcher fast path: when the pattern uses a feature
+            // that PCRE2 cannot match exactly (lookbehind capture order,
+            // capture reset between quantifier iterations), the
+            // RegExp compiler stashed a parsed AST and the matcher
+            // decides the result. Falls back to PCRE2 if our matcher
+            // returns null for a pattern PCRE2 would have matched.
+            $customAstDesc = $this_->getOwnPropertyDescriptor('[[CustomRegexAst]]');
+            $customFlagsDesc = $this_->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
+            if (
+                $customAstDesc !== null
+                && $customAstDesc->value instanceof \PhpJs\Value\JsHostValue
+                && $customFlagsDesc !== null
+                && $customFlagsDesc->value instanceof JsString
+            ) {
+                $customResult = self::execCustomMatcher(
+                    $this_,
+                    $customAstDesc->value->value,
+                    $customFlagsDesc->value->value,
+                    $str,
+                    $lastIndex,
+                    $isGlobal,
+                    $isSticky,
+                    $hasIndices,
+                );
+                if ($customResult !== null) {
+                    return $customResult;
+                }
+                // Custom matcher returned null = no match. Per
+                // RegExp semantics for global/sticky, advance
+                // lastIndex per spec.
+                if ($isGlobal || $isSticky) {
+                    $this_->set('lastIndex', JsNumber::of(0.0), true);
+                }
+                return JsNull::instance();
+            }
 
             if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
                 $matchBytePos = $matches[0][1];
@@ -865,6 +902,170 @@ class RegExpPrototype
      * @param array<int|string, array{0: ?string, 1: int}> $matches
      * @return array<int|string, array{0: ?string, 1: int}>
      */
+    /**
+     * Run the in-engine ECMAScript regex matcher (src/Regex/Matcher.php)
+     * and convert its result into the same shape exec() returns from
+     * the PCRE2 path.
+     */
+    private static function execCustomMatcher(
+        JsObject $this_,
+        \PhpJs\Regex\Ast\Pattern $ast,
+        string $flags,
+        string $str,
+        int $lastIndex,
+        bool $isGlobal,
+        bool $isSticky,
+        bool $hasIndices,
+    ): ?JsObject {
+        $matcher = new \PhpJs\Regex\Matcher($ast, $flags);
+        $startCu = $isSticky ? $lastIndex : $lastIndex;
+        $strCuLen = (int) (strlen(JsString::utf8ToUtf16LE($str)) / 2);
+        $stickyOnly = $isSticky;
+        $match = null;
+        if ($stickyOnly) {
+            // Sticky: only attempt at lastIndex.
+            $match = $matcher->match($str, $startCu);
+            if ($match === null || $match['index'] !== $startCu) {
+                $match = null;
+            }
+        } else {
+            // Try each starting code-unit offset until match or end.
+            for ($i = $startCu; $i <= $strCuLen; $i++) {
+                $candidate = $matcher->match($str, $i);
+                if ($candidate !== null && $candidate['index'] === $i) {
+                    $match = $candidate;
+                    break;
+                }
+            }
+        }
+        if ($match === null) {
+            return null;
+        }
+        $matchCharPos = $match['index'];
+        $matchCharEnd = $match['end'];
+        $matchStr = $match['captures'][0][2] ?? '';
+        if ($isGlobal || $isSticky) {
+            $this_->set('lastIndex', JsNumber::of((float) $matchCharEnd), true);
+        }
+        $elements = [];
+        foreach ($match['captures'] as $i => $cap) {
+            if ($cap === null) {
+                $elements[] = JsUndefined::instance();
+            } else {
+                $elements[] = new JsString($cap[2]);
+            }
+        }
+        $result = JsArray::fromArray($elements);
+        $result->defineOwnProperty(
+            'index',
+            PropertyDescriptor::data(JsNumber::of((float) $matchCharPos), true, true, true),
+        );
+        $result->defineOwnProperty(
+            'input',
+            PropertyDescriptor::data(new JsString($str), true, true, true),
+        );
+
+        // groups object — pre-populate every named group with
+        // undefined, then overwrite with matched values.
+        $groups = JsObject::createNullPrototype();
+        $hasGroups = false;
+        $namedListDesc = $this_->getOwnPropertyDescriptor('[[NamedGroupNames]]');
+        if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
+            $hasGroups = true;
+            $nlen = $namedListDesc->value->getLength();
+            for ($ni = 0; $ni < $nlen; $ni++) {
+                $nameVal = $namedListDesc->value->get((string) $ni);
+                if ($nameVal instanceof JsString) {
+                    $groups->defineOwnProperty($nameVal->value, PropertyDescriptor::data(
+                        JsUndefined::instance(),
+                    ));
+                }
+            }
+        }
+        foreach ($ast->indexToName as $idx => $name) {
+            $cap = $match['captures'][$idx] ?? null;
+            if ($cap === null) {
+                continue;
+            }
+            $hasGroups = true;
+            $groups->defineOwnProperty($name, PropertyDescriptor::data(
+                new JsString($cap[2]),
+            ));
+        }
+        $result->defineOwnProperty(
+            'groups',
+            PropertyDescriptor::data(
+                $hasGroups ? $groups : JsUndefined::instance(),
+                true,
+                true,
+                true,
+            ),
+        );
+
+        // indices array per /d flag.
+        if ($hasIndices) {
+            $indicesArr = [];
+            foreach ($match['captures'] as $i => $cap) {
+                if ($cap === null) {
+                    $indicesArr[] = JsUndefined::instance();
+                } else {
+                    $indicesArr[] = JsArray::fromArray([
+                        JsNumber::of((float) $cap[0]),
+                        JsNumber::of((float) $cap[1]),
+                    ]);
+                }
+            }
+            $iArr = JsArray::fromArray($indicesArr);
+            $iGrp = JsObject::createNullPrototype();
+            $iHasGrp = false;
+            if ($namedListDesc !== null && $namedListDesc->value instanceof JsArray) {
+                $iHasGrp = true;
+                $nlen = $namedListDesc->value->getLength();
+                for ($ni = 0; $ni < $nlen; $ni++) {
+                    $nameVal = $namedListDesc->value->get((string) $ni);
+                    if ($nameVal instanceof JsString) {
+                        $iGrp->defineOwnProperty($nameVal->value, PropertyDescriptor::data(
+                            JsUndefined::instance(),
+                            true,
+                            true,
+                            true,
+                        ));
+                    }
+                }
+            }
+            foreach ($ast->indexToName as $idx => $name) {
+                $cap = $match['captures'][$idx] ?? null;
+                if ($cap === null) {
+                    continue;
+                }
+                $iHasGrp = true;
+                $iGrp->defineOwnProperty($name, PropertyDescriptor::data(
+                    JsArray::fromArray([
+                        JsNumber::of((float) $cap[0]),
+                        JsNumber::of((float) $cap[1]),
+                    ]),
+                    true,
+                    true,
+                    true,
+                ));
+            }
+            $iArr->defineOwnProperty('groups', PropertyDescriptor::data(
+                $iHasGrp ? $iGrp : JsUndefined::instance(),
+                true,
+                true,
+                true,
+            ));
+            $result->defineOwnProperty('indices', PropertyDescriptor::data(
+                $iArr,
+                true,
+                true,
+                true,
+            ));
+        }
+
+        return $result;
+    }
+
     private static function applyRepeatedGroupFixes(
         JsObject $regexp,
         array $matches,

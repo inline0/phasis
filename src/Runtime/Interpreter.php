@@ -14276,6 +14276,38 @@ class Interpreter
             );
         }
 
+        // [[CustomMatcher]] is set when the pattern uses a feature that
+        // PCRE2 cannot match exactly (lookbehind containing capture
+        // groups — different capture order — or a quantified group
+        // containing captures — different capture-reset semantics).
+        // exec() routes through the in-engine matcher in those cases.
+        if (self::patternNeedsCustomMatcher($pattern)) {
+            try {
+                $regexAst = (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
+                $obj->defineOwnProperty(
+                    '[[CustomRegexAst]]',
+                    PropertyDescriptor::data(
+                        new \PhpJs\Value\JsHostValue($regexAst),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+                $obj->defineOwnProperty(
+                    '[[CustomRegexFlags]]',
+                    PropertyDescriptor::data(
+                        new JsString($flags),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+            } catch (\Throwable) {
+                // If our parser bails on something it doesn't model
+                // yet, fall back to PCRE2.
+            }
+        }
+
         // [[NamedGroupNames]] preserves every distinct named group in the
         // pattern in source order. exec() uses this to pre-populate the
         // result.groups object so groups that did not participate in the
@@ -18407,6 +18439,128 @@ class Interpreter
             $i++;
         }
         return false;
+    }
+
+    /**
+     * Detect whether the pattern uses any feature where PCRE2's
+     * matching diverges from ECMA-262 in a user-visible way:
+     *   - A lookbehind that contains a capture group (PCRE2 captures
+     *     left-to-right, ES specifies right-to-left).
+     *   - A quantified group containing captures (PCRE2 keeps state
+     *     between iterations, ES resets).
+     *
+     * When this returns true the regex compiler keeps a parsed AST on
+     * the regex object so exec() can route through the in-engine
+     * matcher (see src/Regex/Matcher.php).
+     */
+    public static function patternNeedsCustomMatcher(string $pattern): bool
+    {
+        $len = strlen($pattern);
+        $i = 0;
+        $inClass = false;
+        // Track group nesting and whether we're inside a lookbehind.
+        $lookbehindDepth = 0;
+        // Track which group has captures inside it for quantifier
+        // detection. We approximate by scanning for `(...){n,m}`-like
+        // shapes that contain captures.
+        $hasLookbehindWithCapture = false;
+        $hasQuantifiedCapture = false;
+        // Stack of: ['kind' => 'capture' | 'noncapture' | 'lookbehind' | 'lookahead', 'sawCapture' => bool]
+        $stack = [];
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $ch === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($inClass && $ch === ']') {
+                $inClass = false;
+                $i++;
+                continue;
+            }
+            if ($inClass) {
+                $i++;
+                continue;
+            }
+            if ($ch === '(') {
+                $kind = 'capture';
+                $consume = 1;
+                if ($i + 2 < $len && $pattern[$i + 1] === '?') {
+                    $next = $pattern[$i + 2];
+                    if ($next === ':') {
+                        $kind = 'noncapture';
+                        $consume = 3;
+                    } elseif ($next === '=' || $next === '!') {
+                        $kind = 'lookahead';
+                        $consume = 3;
+                    } elseif ($next === '<' && $i + 3 < $len) {
+                        $third = $pattern[$i + 3];
+                        if ($third === '=' || $third === '!') {
+                            $kind = 'lookbehind';
+                            $consume = 4;
+                        } else {
+                            // Named capture (?<name>
+                            $kind = 'capture';
+                            $consume = 1;
+                        }
+                    }
+                }
+                if ($kind === 'capture') {
+                    // Mark every enclosing scope as having seen a capture.
+                    foreach ($stack as &$frame) {
+                        $frame['sawCapture'] = true;
+                    }
+                    unset($frame);
+                }
+                if ($kind === 'lookbehind') {
+                    $lookbehindDepth++;
+                }
+                $stack[] = ['kind' => $kind, 'sawCapture' => false];
+                $i += $consume;
+                continue;
+            }
+            if ($ch === ')') {
+                $top = array_pop($stack);
+                if ($top !== null && $top['kind'] === 'lookbehind') {
+                    $lookbehindDepth--;
+                }
+                // Check if a quantifier follows.
+                $j = $i + 1;
+                $hasQuant = false;
+                if ($j < $len) {
+                    $q = $pattern[$j];
+                    if ($q === '*' || $q === '+' || $q === '?' || $q === '{') {
+                        $hasQuant = true;
+                    }
+                }
+                if ($hasQuant && $top !== null && $top['sawCapture']) {
+                    // (...){...} containing a capture — needs spec
+                    // capture-reset semantics PCRE2 lacks.
+                    $hasQuantifiedCapture = true;
+                }
+                if (
+                    $top !== null
+                    && $top['sawCapture']
+                    && $lookbehindDepth > 0
+                ) {
+                    // We're still inside a lookbehind and just closed
+                    // a group that had captures.
+                    $hasLookbehindWithCapture = true;
+                }
+                if ($top !== null && $top['kind'] === 'lookbehind' && $top['sawCapture']) {
+                    $hasLookbehindWithCapture = true;
+                }
+                $i++;
+                continue;
+            }
+            $i++;
+        }
+        return $hasLookbehindWithCapture || $hasQuantifiedCapture;
     }
 
     /**
