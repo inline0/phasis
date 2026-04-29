@@ -18472,14 +18472,23 @@ class Interpreter
     public static function patternNeedsCustomMatcher(string $pattern, string $flags = ''): bool
     {
         $isUnicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $isCaseless = str_contains($flags, 'i');
         $len = strlen($pattern);
         $i = 0;
         $inClass = false;
         $hasDotInNonUnicode = false;
         $hasInlineModifier = false;
         $hasLookbehind = false;
+        // PCRE2 in /u mode applies Unicode case-folding under /i; ES
+        // without /u must use ASCII-only folding. If the pattern
+        // contains any non-ASCII code point (literal byte or
+        // \uXXXX/\xHH escape) under /i but not /u, route to the
+        // custom matcher whose canonicalize() honours that
+        // distinction.
+        $hasNonAsciiInIWithoutU = false;
         // Track group nesting and whether we're inside a lookbehind.
         $lookbehindDepth = 0;
+        $needNonAsciiScan = $isCaseless && !$isUnicode;
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -18490,8 +18499,25 @@ class Interpreter
         while ($i < $len) {
             $ch = $pattern[$i];
             if ($ch === '\\') {
+                if ($needNonAsciiScan && $i + 1 < $len) {
+                    $next = $pattern[$i + 1];
+                    if ($next === 'u' && $i + 5 < $len) {
+                        $hex = substr($pattern, $i + 2, 4);
+                        if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                            $hasNonAsciiInIWithoutU = true;
+                        }
+                    } elseif ($next === 'x' && $i + 3 < $len) {
+                        $hex = substr($pattern, $i + 2, 2);
+                        if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                            $hasNonAsciiInIWithoutU = true;
+                        }
+                    }
+                }
                 $i += 2;
                 continue;
+            }
+            if ($needNonAsciiScan && ord($ch) > 0x7F) {
+                $hasNonAsciiInIWithoutU = true;
             }
             if (!$inClass && $ch === '[') {
                 $inClass = true;
@@ -18607,7 +18633,8 @@ class Interpreter
         return $hasLookbehindWithCapture
             || $hasQuantifiedCapture
             || $hasDotInNonUnicode
-            || $hasLookbehind;
+            || $hasLookbehind
+            || $hasNonAsciiInIWithoutU;
     }
 
     /**
