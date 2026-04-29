@@ -14370,7 +14370,11 @@ class Interpreter
             // Per spec: if no argument, convert undefined to "undefined".
             $str = isset($args[0]) ? TypeConversion::toString($args[0])
                 : TypeConversion::toString(JsUndefined::instance());
-            $strLen = mb_strlen($str, 'UTF-8');
+            // lastIndex is a UTF-16 code unit offset; comparing it
+            // against mb_strlen (codepoints) short-circuits any iter
+            // that has stepped past mb_strlen units into the second
+            // half of an astral. Use UTF-16 unit count instead.
+            $strLen = (int) (strlen(JsString::utf8ToUtf16LE($str)) / 2);
 
             // Per spec step 4: always read lastIndex (for observable side effects
             // like valueOf calls), even when global/sticky are unset.
