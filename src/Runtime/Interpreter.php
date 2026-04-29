@@ -14227,11 +14227,24 @@ class Interpreter
         $escapedPattern = $this->escapeForPcreDelimiter($transformedPattern);
         $pcrePattern = '/' . $escapedPattern . '/' . $pcreFlags . 'u';
 
-        // Validate the pattern compiles. Throw SyntaxError if invalid.
-        if (@preg_match($pcrePattern, '') === false) {
-            throw new \PhpJs\Exceptions\SyntaxError(
-                'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
-            );
+        // Validate the pattern compiles. If PCRE2 rejects it but our
+        // in-engine matcher can parse it (e.g. backreferences inside
+        // lookbehinds — valid in ECMAScript, rejected by PCRE2), let
+        // the custom matcher carry the load instead of failing.
+        $pcreCompiles = @preg_match($pcrePattern, '') !== false;
+        if (!$pcreCompiles) {
+            $customParseOk = false;
+            try {
+                (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
+                $customParseOk = true;
+            } catch (\Throwable) {
+                $customParseOk = false;
+            }
+            if (!$customParseOk) {
+                throw new \PhpJs\Exceptions\SyntaxError(
+                    'Invalid regular expression: /' . $pattern . '/: ' . preg_last_error_msg(),
+                );
+            }
         }
 
         $isGlobal = str_contains($flags, 'g');

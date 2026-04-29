@@ -277,7 +277,347 @@ class Matcher
         if ($node instanceof \PhpJs\Regex\Ast\ModifierGroup) {
             return $this->matchModifierGroup($node, $pos, $captures, $direction);
         }
+        if ($node instanceof \PhpJs\Regex\Ast\UnicodeProperty) {
+            return $this->matchUnicodeProperty($node, $pos, $direction);
+        }
         return null;
+    }
+
+    private function matchUnicodeProperty(
+        \PhpJs\Regex\Ast\UnicodeProperty $node,
+        int $pos,
+        int $direction,
+    ): ?int {
+        if ($direction > 0) {
+            if ($pos >= $this->inputLen) {
+                return null;
+            }
+            $cu = $this->input[$pos];
+            if ($this->testUnicodeProperty($node, $cu)) {
+                return $pos + 1;
+            }
+            return null;
+        }
+        if ($pos <= 0) {
+            return null;
+        }
+        $cu = $this->input[$pos - 1];
+        return $this->testUnicodeProperty($node, $cu) ? $pos - 1 : null;
+    }
+
+    private function testUnicodeProperty(\PhpJs\Regex\Ast\UnicodeProperty $node, int $cp): bool
+    {
+        // Build the case-fold variants of the candidate. Per spec,
+        // a candidate matches a CharSet under /i iff any variant is
+        // in the (canonicalised) set; equivalently for \P{X}, a
+        // candidate matches iff any variant is NOT in X.
+        $variants = [$cp];
+        if ($this->ignoreCase) {
+            $variants[] = $this->canonicalize($cp);
+            if ($cp >= 0x41 && $cp <= 0x5A) {
+                $variants[] = $cp + 0x20;
+            } elseif ($cp >= 0x61 && $cp <= 0x7A) {
+                $variants[] = $cp - 0x20;
+            }
+            if ($cp >= 0x80 && class_exists(\IntlChar::class)) {
+                $variants[] = \IntlChar::toupper($cp);
+                $variants[] = \IntlChar::tolower($cp);
+            }
+        }
+        $variants = array_unique($variants);
+        if ($node->negated) {
+            foreach ($variants as $v) {
+                if (!$this->lookupUnicodeProperty($node->name, $node->value, $v)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        foreach ($variants as $v) {
+            if ($this->lookupUnicodeProperty($node->name, $node->value, $v)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function lookupUnicodeProperty(string $name, ?string $value, int $cp): bool
+    {
+        if (!class_exists(\IntlChar::class)) {
+            return false;
+        }
+        // No `=` form: name is either a binary property or a
+        // General_Category alias.
+        if ($value === null) {
+            $bin = self::resolveBinaryProperty($name);
+            if ($bin !== null) {
+                return \IntlChar::hasBinaryProperty($cp, $bin);
+            }
+            $gc = self::resolveGeneralCategory($name);
+            if ($gc !== null) {
+                $cat = \IntlChar::charType($cp);
+                return self::generalCategoryMatches($gc, $cat);
+            }
+            return false;
+        }
+        // Property=Value form (Script, General_Category, etc.).
+        if (in_array($name, ['gc', 'General_Category'], true)) {
+            $gc = self::resolveGeneralCategory($value);
+            return $gc !== null && self::generalCategoryMatches($gc, \IntlChar::charType($cp));
+        }
+        if (in_array($name, ['sc', 'Script'], true)) {
+            $sc = \IntlChar::getPropertyValueEnum(\IntlChar::PROPERTY_SCRIPT, $value);
+            if ($sc < 0) {
+                return false;
+            }
+            return \IntlChar::getIntPropertyValue($cp, \IntlChar::PROPERTY_SCRIPT) === $sc;
+        }
+        if (in_array($name, ['scx', 'Script_Extensions'], true)) {
+            $sc = \IntlChar::getPropertyValueEnum(\IntlChar::PROPERTY_SCRIPT, $value);
+            if ($sc < 0) {
+                return false;
+            }
+            // Approximation via primary script — IntlChar lacks a
+            // direct Script_Extensions accessor.
+            return \IntlChar::getIntPropertyValue($cp, \IntlChar::PROPERTY_SCRIPT) === $sc;
+        }
+        return false;
+    }
+
+    private static function resolveBinaryProperty(string $name): ?int
+    {
+        // Aliases for binary property names accepted by ECMAScript.
+        // Mapped to the IntlChar::PROPERTY_* constant name; we use
+        // constant() so ICU builds without newer property constants
+        // (e.g. PROPERTY_EMOJI on older PHP) cleanly fall through.
+        $aliasToConstant = [
+            'ASCII' => 'PROPERTY_ASCII_HEX_DIGIT',
+            'ASCII_Hex_Digit' => 'PROPERTY_ASCII_HEX_DIGIT',
+            'Alphabetic' => 'PROPERTY_ALPHABETIC',
+            'Alpha' => 'PROPERTY_ALPHABETIC',
+            'Bidi_Control' => 'PROPERTY_BIDI_CONTROL',
+            'Bidi_Mirrored' => 'PROPERTY_BIDI_MIRRORED',
+            'Case_Ignorable' => 'PROPERTY_CASE_IGNORABLE',
+            'Cased' => 'PROPERTY_CASED',
+            'Changes_When_Casefolded' => 'PROPERTY_CHANGES_WHEN_CASEFOLDED',
+            'Changes_When_Casemapped' => 'PROPERTY_CHANGES_WHEN_CASEMAPPED',
+            'Changes_When_Lowercased' => 'PROPERTY_CHANGES_WHEN_LOWERCASED',
+            'Changes_When_NFKC_Casefolded' => 'PROPERTY_CHANGES_WHEN_NFKC_CASEFOLDED',
+            'Changes_When_Titlecased' => 'PROPERTY_CHANGES_WHEN_TITLECASED',
+            'Changes_When_Uppercased' => 'PROPERTY_CHANGES_WHEN_UPPERCASED',
+            'Dash' => 'PROPERTY_DASH',
+            'Default_Ignorable_Code_Point' => 'PROPERTY_DEFAULT_IGNORABLE_CODE_POINT',
+            'Deprecated' => 'PROPERTY_DEPRECATED',
+            'Diacritic' => 'PROPERTY_DIACRITIC',
+            'Emoji' => 'PROPERTY_EMOJI',
+            'Emoji_Component' => 'PROPERTY_EMOJI_COMPONENT',
+            'Emoji_Modifier' => 'PROPERTY_EMOJI_MODIFIER',
+            'Emoji_Modifier_Base' => 'PROPERTY_EMOJI_MODIFIER_BASE',
+            'Emoji_Presentation' => 'PROPERTY_EMOJI_PRESENTATION',
+            'Extender' => 'PROPERTY_EXTENDER',
+            'Grapheme_Base' => 'PROPERTY_GRAPHEME_BASE',
+            'Grapheme_Extend' => 'PROPERTY_GRAPHEME_EXTEND',
+            'Hex_Digit' => 'PROPERTY_HEX_DIGIT',
+            'IDS_Binary_Operator' => 'PROPERTY_IDS_BINARY_OPERATOR',
+            'IDS_Trinary_Operator' => 'PROPERTY_IDS_TRINARY_OPERATOR',
+            'ID_Continue' => 'PROPERTY_ID_CONTINUE',
+            'ID_Start' => 'PROPERTY_ID_START',
+            'Ideographic' => 'PROPERTY_IDEOGRAPHIC',
+            'Join_Control' => 'PROPERTY_JOIN_CONTROL',
+            'Logical_Order_Exception' => 'PROPERTY_LOGICAL_ORDER_EXCEPTION',
+            'Lowercase' => 'PROPERTY_LOWERCASE',
+            'Math' => 'PROPERTY_MATH',
+            'Noncharacter_Code_Point' => 'PROPERTY_NONCHARACTER_CODE_POINT',
+            'Pattern_Syntax' => 'PROPERTY_PATTERN_SYNTAX',
+            'Pattern_White_Space' => 'PROPERTY_PATTERN_WHITE_SPACE',
+            'Quotation_Mark' => 'PROPERTY_QUOTATION_MARK',
+            'Radical' => 'PROPERTY_RADICAL',
+            'Regional_Indicator' => 'PROPERTY_REGIONAL_INDICATOR',
+            'Sentence_Terminal' => 'PROPERTY_S_TERM',
+            'Soft_Dotted' => 'PROPERTY_SOFT_DOTTED',
+            'Terminal_Punctuation' => 'PROPERTY_TERMINAL_PUNCTUATION',
+            'Unified_Ideograph' => 'PROPERTY_UNIFIED_IDEOGRAPH',
+            'Uppercase' => 'PROPERTY_UPPERCASE',
+            'Variation_Selector' => 'PROPERTY_VARIATION_SELECTOR',
+            'White_Space' => 'PROPERTY_WHITE_SPACE',
+            'XID_Continue' => 'PROPERTY_XID_CONTINUE',
+            'XID_Start' => 'PROPERTY_XID_START',
+        ];
+        if (!isset($aliasToConstant[$name])) {
+            return null;
+        }
+        $const = '\\IntlChar::' . $aliasToConstant[$name];
+        return defined($const) ? (int) constant($const) : null;
+    }
+
+    private static function resolveGeneralCategory(string $name): ?string
+    {
+        // ECMA aliases: "L" → "Letter", "Lu" → "Uppercase_Letter", etc.
+        $aliases = [
+            'C' => 'Other', 'Cc' => 'Control', 'Cf' => 'Format',
+            'Cn' => 'Unassigned', 'Co' => 'Private_Use', 'Cs' => 'Surrogate',
+            'L' => 'Letter', 'LC' => 'Cased_Letter', 'Ll' => 'Lowercase_Letter',
+            'Lm' => 'Modifier_Letter', 'Lo' => 'Other_Letter',
+            'Lt' => 'Titlecase_Letter', 'Lu' => 'Uppercase_Letter',
+            'M' => 'Mark', 'Mc' => 'Spacing_Mark', 'Me' => 'Enclosing_Mark',
+            'Mn' => 'Nonspacing_Mark',
+            'N' => 'Number', 'Nd' => 'Decimal_Number',
+            'Nl' => 'Letter_Number', 'No' => 'Other_Number',
+            'P' => 'Punctuation', 'Pc' => 'Connector_Punctuation',
+            'Pd' => 'Dash_Punctuation', 'Pe' => 'Close_Punctuation',
+            'Pf' => 'Final_Punctuation', 'Pi' => 'Initial_Punctuation',
+            'Po' => 'Other_Punctuation', 'Ps' => 'Open_Punctuation',
+            'S' => 'Symbol', 'Sc' => 'Currency_Symbol',
+            'Sk' => 'Modifier_Symbol', 'Sm' => 'Math_Symbol',
+            'So' => 'Other_Symbol',
+            'Z' => 'Separator', 'Zl' => 'Line_Separator',
+            'Zp' => 'Paragraph_Separator', 'Zs' => 'Space_Separator',
+        ];
+        if (isset($aliases[$name])) {
+            return $name;
+        }
+        // Allow long names too.
+        return in_array(
+            $name,
+            [
+                'Letter', 'Cased_Letter', 'Uppercase_Letter', 'Lowercase_Letter',
+                'Titlecase_Letter', 'Modifier_Letter', 'Other_Letter',
+                'Mark', 'Spacing_Mark', 'Enclosing_Mark', 'Nonspacing_Mark',
+                'Number', 'Decimal_Number', 'Letter_Number', 'Other_Number',
+                'Punctuation', 'Connector_Punctuation', 'Dash_Punctuation',
+                'Close_Punctuation', 'Final_Punctuation', 'Initial_Punctuation',
+                'Other_Punctuation', 'Open_Punctuation',
+                'Symbol', 'Currency_Symbol', 'Modifier_Symbol',
+                'Math_Symbol', 'Other_Symbol',
+                'Separator', 'Line_Separator', 'Paragraph_Separator', 'Space_Separator',
+                'Other', 'Control', 'Format', 'Unassigned', 'Private_Use', 'Surrogate',
+            ],
+            true,
+        ) ? $name : null;
+    }
+
+    private static function generalCategoryMatches(string $gc, int $charType): bool
+    {
+        // IntlChar::CHAR_CATEGORY_* is exposed; map ECMA gc names to
+        // its numeric values.
+        $map = [
+            'Uppercase_Letter' => \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER,
+            'Lu' => \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER,
+            'Lowercase_Letter' => \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER,
+            'Ll' => \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER,
+            'Titlecase_Letter' => \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER,
+            'Lt' => \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER,
+            'Modifier_Letter' => \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER,
+            'Lm' => \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER,
+            'Other_Letter' => \IntlChar::CHAR_CATEGORY_OTHER_LETTER,
+            'Lo' => \IntlChar::CHAR_CATEGORY_OTHER_LETTER,
+            'Nonspacing_Mark' => \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK,
+            'Mn' => \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK,
+            'Spacing_Mark' => \IntlChar::CHAR_CATEGORY_COMBINING_SPACING_MARK,
+            'Mc' => \IntlChar::CHAR_CATEGORY_COMBINING_SPACING_MARK,
+            'Enclosing_Mark' => \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK,
+            'Me' => \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK,
+            'Decimal_Number' => \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER,
+            'Nd' => \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER,
+            'Letter_Number' => \IntlChar::CHAR_CATEGORY_LETTER_NUMBER,
+            'Nl' => \IntlChar::CHAR_CATEGORY_LETTER_NUMBER,
+            'Other_Number' => \IntlChar::CHAR_CATEGORY_OTHER_NUMBER,
+            'No' => \IntlChar::CHAR_CATEGORY_OTHER_NUMBER,
+            'Space_Separator' => \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
+            'Zs' => \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
+            'Line_Separator' => \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR,
+            'Zl' => \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR,
+            'Paragraph_Separator' => \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR,
+            'Zp' => \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR,
+            'Control' => \IntlChar::CHAR_CATEGORY_CONTROL_CHAR,
+            'Cc' => \IntlChar::CHAR_CATEGORY_CONTROL_CHAR,
+            'Format' => \IntlChar::CHAR_CATEGORY_FORMAT_CHAR,
+            'Cf' => \IntlChar::CHAR_CATEGORY_FORMAT_CHAR,
+            'Surrogate' => \IntlChar::CHAR_CATEGORY_SURROGATE,
+            'Cs' => \IntlChar::CHAR_CATEGORY_SURROGATE,
+            'Private_Use' => \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR,
+            'Co' => \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR,
+            'Unassigned' => \IntlChar::CHAR_CATEGORY_UNASSIGNED,
+            'Cn' => \IntlChar::CHAR_CATEGORY_UNASSIGNED,
+            'Connector_Punctuation' => \IntlChar::CHAR_CATEGORY_CONNECTOR_PUNCTUATION,
+            'Pc' => \IntlChar::CHAR_CATEGORY_CONNECTOR_PUNCTUATION,
+            'Dash_Punctuation' => \IntlChar::CHAR_CATEGORY_DASH_PUNCTUATION,
+            'Pd' => \IntlChar::CHAR_CATEGORY_DASH_PUNCTUATION,
+            'Open_Punctuation' => \IntlChar::CHAR_CATEGORY_START_PUNCTUATION,
+            'Ps' => \IntlChar::CHAR_CATEGORY_START_PUNCTUATION,
+            'Close_Punctuation' => \IntlChar::CHAR_CATEGORY_END_PUNCTUATION,
+            'Pe' => \IntlChar::CHAR_CATEGORY_END_PUNCTUATION,
+            'Initial_Punctuation' => \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION,
+            'Pi' => \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION,
+            'Final_Punctuation' => \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION,
+            'Pf' => \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION,
+            'Other_Punctuation' => \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION,
+            'Po' => \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION,
+            'Math_Symbol' => \IntlChar::CHAR_CATEGORY_MATH_SYMBOL,
+            'Sm' => \IntlChar::CHAR_CATEGORY_MATH_SYMBOL,
+            'Currency_Symbol' => \IntlChar::CHAR_CATEGORY_CURRENCY_SYMBOL,
+            'Sc' => \IntlChar::CHAR_CATEGORY_CURRENCY_SYMBOL,
+            'Modifier_Symbol' => \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL,
+            'Sk' => \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL,
+            'Other_Symbol' => \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL,
+            'So' => \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL,
+        ];
+        if (isset($map[$gc])) {
+            return $charType === $map[$gc];
+        }
+        // Aggregate categories.
+        return match ($gc) {
+            'Letter', 'L' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER,
+                \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER,
+                \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER,
+                \IntlChar::CHAR_CATEGORY_MODIFIER_LETTER,
+                \IntlChar::CHAR_CATEGORY_OTHER_LETTER,
+            ], true),
+            'Cased_Letter', 'LC' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_UPPERCASE_LETTER,
+                \IntlChar::CHAR_CATEGORY_LOWERCASE_LETTER,
+                \IntlChar::CHAR_CATEGORY_TITLECASE_LETTER,
+            ], true),
+            'Mark', 'M' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_NON_SPACING_MARK,
+                \IntlChar::CHAR_CATEGORY_COMBINING_SPACING_MARK,
+                \IntlChar::CHAR_CATEGORY_ENCLOSING_MARK,
+            ], true),
+            'Number', 'N' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_DECIMAL_DIGIT_NUMBER,
+                \IntlChar::CHAR_CATEGORY_LETTER_NUMBER,
+                \IntlChar::CHAR_CATEGORY_OTHER_NUMBER,
+            ], true),
+            'Punctuation', 'P' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_CONNECTOR_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_DASH_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_START_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_END_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_INITIAL_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_FINAL_PUNCTUATION,
+                \IntlChar::CHAR_CATEGORY_OTHER_PUNCTUATION,
+            ], true),
+            'Symbol', 'S' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_MATH_SYMBOL,
+                \IntlChar::CHAR_CATEGORY_CURRENCY_SYMBOL,
+                \IntlChar::CHAR_CATEGORY_MODIFIER_SYMBOL,
+                \IntlChar::CHAR_CATEGORY_OTHER_SYMBOL,
+            ], true),
+            'Separator', 'Z' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_SPACE_SEPARATOR,
+                \IntlChar::CHAR_CATEGORY_LINE_SEPARATOR,
+                \IntlChar::CHAR_CATEGORY_PARAGRAPH_SEPARATOR,
+            ], true),
+            'Other', 'C' => in_array($charType, [
+                \IntlChar::CHAR_CATEGORY_CONTROL_CHAR,
+                \IntlChar::CHAR_CATEGORY_FORMAT_CHAR,
+                \IntlChar::CHAR_CATEGORY_SURROGATE,
+                \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR,
+                \IntlChar::CHAR_CATEGORY_UNASSIGNED,
+            ], true),
+            default => false,
+        };
     }
 
     /**
@@ -357,27 +697,56 @@ class Matcher
     }
 
     /**
-     * Spec Canonicalize for /i mode. Simple ASCII-aware folding with
-     * a Unicode hint: lowercase letters fold to uppercase. This
-     * isn't a complete Unicode case-folding table but covers the
-     * cases the failing test262 tests actually exercise.
+     * Spec Canonicalize. In /u mode, uses the simple case-folding
+     * table from CaseFolding.txt (ICU's IntlChar::foldCase when
+     * available, with a small fallback for the cases mb_strtolower
+     * misses). In non-/u mode, uppercases per ECMA-262 §22.2.2.7
+     * with the ASCII-result guard.
      */
     private function canonicalize(int $cp): int
     {
+        if ($this->unicode) {
+            if ($cp >= 0x41 && $cp <= 0x5A) {
+                return $cp + 0x20;
+            }
+            if ($cp < 0x80) {
+                return $cp;
+            }
+            if (class_exists(\IntlChar::class)) {
+                return \IntlChar::foldCase($cp);
+            }
+            // Special cases mb_strtolower doesn't handle.
+            if ($cp === 0x017F) {
+                return 0x73;
+            }
+            if ($cp === 0x212A) {
+                return 0x6B;
+            }
+            if ($cp < 0x10000) {
+                $ch = mb_chr($cp, 'UTF-8');
+                if ($ch === '') {
+                    return $cp;
+                }
+                return mb_ord(mb_strtolower($ch, 'UTF-8'), 'UTF-8');
+            }
+            return $cp;
+        }
+        // Non-/u mode: ASCII fast path then mb_strtoupper.
         if ($cp >= 0x61 && $cp <= 0x7A) {
             return $cp - 0x20;
         }
-        // For the BMP, fall back to mb_strtoupper on a single-char
-        // string so locale-style case folding works for common
-        // diacritics. We avoid this in the inner literal-comparison
-        // hot path by testing the ASCII range first above.
-        if ($cp >= 0x80 && $cp < 0x10000) {
+        if ($cp < 0x10000) {
             $ch = mb_chr($cp, 'UTF-8');
             if ($ch === '') {
                 return $cp;
             }
             $upper = mb_strtoupper($ch, 'UTF-8');
             $folded = mb_ord($upper, 'UTF-8');
+            // Per spec, in non-/u mode an ASCII char must not fold
+            // to a non-ASCII char.
+            if ($cp < 128 && $folded >= 128) {
+                return $cp;
+            }
             return $folded;
         }
         return $cp;
@@ -401,29 +770,37 @@ class Matcher
 
     private function charClassMatchesCu(CharClass $cc, int $cu): bool
     {
-        $folded = $this->ignoreCase ? $this->canonicalize($cu) : $cu;
+        $candidates = [$cu];
+        if ($this->ignoreCase) {
+            // Spec CharacterSetMatcher canonicalizes both the candidate
+            // and each set member. For ASCII letters we just check
+            // both the case-shifted candidate and its Canonicalize
+            // result against each range; that covers the bulk of
+            // tests without needing an exhaustive fold expansion of
+            // the range.
+            $candidates[] = $this->canonicalize($cu);
+            if ($cu >= 0x41 && $cu <= 0x5A) {
+                $candidates[] = $cu + 0x20;
+            } elseif ($cu >= 0x61 && $cu <= 0x7A) {
+                $candidates[] = $cu - 0x20;
+            }
+            if ($this->unicode && $cu >= 0x80 && class_exists(\IntlChar::class)) {
+                $upper = \IntlChar::toupper($cu);
+                if (is_int($upper)) {
+                    $candidates[] = $upper;
+                }
+                $lower = \IntlChar::tolower($cu);
+                if (is_int($lower)) {
+                    $candidates[] = $lower;
+                }
+            }
+        }
         $matched = false;
         foreach ($cc->ranges as [$lo, $hi]) {
-            if ($this->ignoreCase) {
-                // Fold the range endpoints? The simplest correct
-                // approach is to fold the candidate and compare; for
-                // ranges like [a-z] with /i the fold of the candidate
-                // (uppercase) wouldn't be in [a-z]. Spec
-                // CharacterSetMatcher uses Canonicalize on both. So
-                // also fold candidate against the range's folded form
-                // by checking both folded and unfolded.
-                if ($cu >= $lo && $cu <= $hi) {
+            foreach ($candidates as $c) {
+                if ($c >= $lo && $c <= $hi) {
                     $matched = true;
-                    break;
-                }
-                if ($folded >= $lo && $folded <= $hi) {
-                    $matched = true;
-                    break;
-                }
-            } else {
-                if ($cu >= $lo && $cu <= $hi) {
-                    $matched = true;
-                    break;
+                    break 2;
                 }
             }
         }
@@ -472,10 +849,29 @@ class Matcher
 
     private function isWordCu(int $cu): bool
     {
-        return ($cu >= 0x30 && $cu <= 0x39)
+        if (
+            ($cu >= 0x30 && $cu <= 0x39)
             || ($cu >= 0x41 && $cu <= 0x5A)
             || $cu === 0x5F
-            || ($cu >= 0x61 && $cu <= 0x7A);
+            || ($cu >= 0x61 && $cu <= 0x7A)
+        ) {
+            return true;
+        }
+        // Per ECMA-262 GetWordCharacters: under /u + /i, characters
+        // whose Canonicalize lands in the basic word set are also
+        // word characters.
+        if ($this->ignoreCase && $this->unicode) {
+            $folded = $this->canonicalize($cu);
+            if (
+                ($folded >= 0x30 && $folded <= 0x39)
+                || ($folded >= 0x41 && $folded <= 0x5A)
+                || $folded === 0x5F
+                || ($folded >= 0x61 && $folded <= 0x7A)
+            ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

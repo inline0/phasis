@@ -302,6 +302,12 @@ class Parser
                 return $this->parseUnicodeEscape();
             case 'k':
                 return $this->parseNamedBackref();
+            case 'p':
+            case 'P':
+                if ($this->unicode) {
+                    return $this->parseUnicodePropertyEscape($ch === 'P');
+                }
+                break;
         }
         if (ctype_digit($ch)) {
             return $this->parseNumericBackref();
@@ -347,6 +353,31 @@ class Parser
             $num .= $this->src[$this->pos++];
         }
         return new Backreference((int) $num, null);
+    }
+
+    private function parseUnicodePropertyEscape(bool $negated): Node
+    {
+        $this->pos++; // consume p / P
+        if ($this->pos >= $this->len || $this->src[$this->pos] !== '{') {
+            throw new SyntaxError('Invalid \\p escape');
+        }
+        $this->pos++; // consume {
+        $body = '';
+        while ($this->pos < $this->len && $this->src[$this->pos] !== '}') {
+            $body .= $this->src[$this->pos++];
+        }
+        if ($this->pos >= $this->len) {
+            throw new SyntaxError('Unterminated \\p escape');
+        }
+        $this->pos++; // consume }
+        if ($body === '') {
+            throw new SyntaxError('Empty \\p escape');
+        }
+        if (str_contains($body, '=')) {
+            [$name, $value] = explode('=', $body, 2);
+            return new \PhpJs\Regex\Ast\UnicodeProperty($name, $value, $negated);
+        }
+        return new \PhpJs\Regex\Ast\UnicodeProperty($body, null, $negated);
     }
 
     private function parseNamedBackref(): Node
