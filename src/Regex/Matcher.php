@@ -99,13 +99,16 @@ class Matcher
      */
     private function buildResult(int $startCu, int $endCu, array $captures, string $inputUtf8): array
     {
+        // In /u mode the matcher's internal indices count code
+        // POINTS. Spec requires match.index and indices entries to
+        // be UTF-16 code UNIT offsets — astrals span 2 units. In
+        // non-/u mode the internal counter already matches code
+        // units, so the conversion is a no-op.
         $out = [
-            'index' => $startCu,
-            'end' => $endCu,
+            'index' => $this->internalIndexToUtf16($startCu),
+            'end' => $this->internalIndexToUtf16($endCu),
             'captures' => [],
         ];
-        // Convert each capture's code-unit range to byte offsets in
-        // the source UTF-8 string + extracted value.
         for ($i = 0; $i <= $this->pattern->groupCount; $i++) {
             $cap = $captures[$i] ?? null;
             if ($cap === null) {
@@ -116,10 +119,28 @@ class Matcher
             $byteStart = $this->codeUnitToByteOffset($inputUtf8, $s);
             $byteEnd = $this->codeUnitToByteOffset($inputUtf8, $e);
             $out['captures'][$i] = [
-                $s,
-                $e,
+                $this->internalIndexToUtf16($s),
+                $this->internalIndexToUtf16($e),
                 substr($inputUtf8, $byteStart, $byteEnd - $byteStart),
             ];
+        }
+        return $out;
+    }
+
+    /**
+     * Convert an internal matcher index (code points in /u mode,
+     * code units in non-/u mode) to a UTF-16 code unit offset for
+     * the public match record.
+     */
+    private function internalIndexToUtf16(int $idx): int
+    {
+        if (!$this->unicode) {
+            return $idx;
+        }
+        $out = 0;
+        for ($i = 0; $i < $idx && $i < $this->inputLen; $i++) {
+            $cp = $this->input[$i];
+            $out += $cp >= 0x10000 ? 2 : 1;
         }
         return $out;
     }

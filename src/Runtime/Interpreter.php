@@ -18505,6 +18505,15 @@ class Interpreter
         $lookbehindDepth = 0;
         $needNonAsciiScan = $isCaseless && !$isUnicode;
         $needAsciiWordCheck = !($isUnicode && $isCaseless);
+        // PCRE2 with /u rejects lone surrogate code units in input
+        // strings as invalid UTF-8 (we encode them via CESU-8).
+        // Patterns containing astral characters (or \\u{XXXXX} with
+        // value > BMP) will get tested against inputs that may
+        // contain those astrals split into surrogate halves; route
+        // them through the custom matcher so the codepoint walk
+        // handles either form.
+        $hasAstralInUnicode = false;
+        $needAstralScan = $isUnicode;
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -18517,8 +18526,22 @@ class Interpreter
             if ($ch === '\\') {
                 if ($i + 1 < $len) {
                     $next = $pattern[$i + 1];
-                    if ($needNonAsciiScan) {
-                        if ($next === 'u' && $i + 5 < $len) {
+                    if ($needNonAsciiScan || $needAstralScan) {
+                        if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                            $closeBrace = strpos($pattern, '}', $i + 3);
+                            if ($closeBrace !== false) {
+                                $hex = substr($pattern, $i + 3, $closeBrace - $i - 3);
+                                if (ctype_xdigit($hex)) {
+                                    $cp = (int) hexdec($hex);
+                                    if ($needNonAsciiScan && $cp > 0x7F) {
+                                        $hasNonAsciiInIWithoutU = true;
+                                    }
+                                    if ($needAstralScan && $cp > 0xFFFF) {
+                                        $hasAstralInUnicode = true;
+                                    }
+                                }
+                            }
+                        } elseif ($next === 'u' && $i + 5 < $len) {
                             $hex = substr($pattern, $i + 2, 4);
                             if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
                                 $hasNonAsciiInIWithoutU = true;
@@ -18543,6 +18566,10 @@ class Interpreter
             if ($needNonAsciiScan && ord($ch) > 0x7F) {
                 $hasNonAsciiInIWithoutU = true;
             }
+            if ($needAstralScan && (ord($ch) & 0xF8) === 0xF0) {
+                // 4-byte UTF-8 = astral codepoint.
+                $hasAstralInUnicode = true;
+            }
             if (!$inClass && $ch === '[') {
                 $inClass = true;
                 $i++;
@@ -18557,7 +18584,14 @@ class Interpreter
                 $i++;
                 continue;
             }
-            if ($ch === '.' && !$isUnicode) {
+            if ($ch === '.') {
+                // Dot semantics where PCRE2 diverges from spec:
+                //   - non-unicode mode: PCRE2 treats astrals as one
+                //     codepoint, ECMAScript needs UTF-16 code units.
+                //   - /u or /u+/s: spec includes lone surrogates,
+                //     which our CESU-8 encoding produces as bytes
+                //     PCRE2 rejects as invalid UTF-8. Route through
+                //     the custom matcher in every case.
                 $hasDotInNonUnicode = true;
             }
             if ($ch === '(') {
@@ -18660,6 +18694,7 @@ class Interpreter
             || $hasLookbehind
             || $hasNonAsciiInIWithoutU
             || $hasWordToken
+            || $hasAstralInUnicode
             // /i without /u must use ASCII-only Canonicalize per
             // ECMA-262 §22.2.2.7. PCRE2 with /iu folds Unicode in
             // both directions (e.g. k matches Kelvin sign), so we

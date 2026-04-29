@@ -432,6 +432,7 @@ class Parser
     private function readGroupName(): string
     {
         $name = '';
+        $pendingHigh = -1; // pending lead surrogate awaiting trail (-1 = none)
         while ($this->pos < $this->len && $this->src[$this->pos] !== '>') {
             $ch = $this->src[$this->pos];
             if ($ch === '\\' && $this->pos + 1 < $this->len && $this->src[$this->pos + 1] === 'u') {
@@ -455,11 +456,35 @@ class Parser
                 if ($hex === '' || !ctype_xdigit($hex)) {
                     throw new SyntaxError('Invalid \\u escape in group name');
                 }
-                $name .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                $cp = (int) hexdec($hex);
+                // /u mode: combine an adjacent surrogate pair into
+                // its astral codepoint (UTF16Decode in spec).
+                if ($this->unicode && $pendingHigh >= 0 && $cp >= 0xDC00 && $cp <= 0xDFFF) {
+                    $cp = 0x10000 + (($pendingHigh - 0xD800) << 10) + ($cp - 0xDC00);
+                    $pendingHigh = -1;
+                    $name .= mb_chr($cp, 'UTF-8') ?: '';
+                    continue;
+                }
+                if ($pendingHigh >= 0) {
+                    $name .= mb_chr($pendingHigh, 'UTF-8') ?: '';
+                    $pendingHigh = -1;
+                }
+                if ($this->unicode && $cp >= 0xD800 && $cp <= 0xDBFF) {
+                    $pendingHigh = $cp;
+                    continue;
+                }
+                $name .= mb_chr($cp, 'UTF-8') ?: '';
                 continue;
+            }
+            if ($pendingHigh >= 0) {
+                $name .= mb_chr($pendingHigh, 'UTF-8') ?: '';
+                $pendingHigh = -1;
             }
             $name .= $ch;
             $this->pos++;
+        }
+        if ($pendingHigh >= 0) {
+            $name .= mb_chr($pendingHigh, 'UTF-8') ?: '';
         }
         return $name;
     }
@@ -594,6 +619,27 @@ class Parser
         $negatedRanges = []; // For unioning negative escapes.
         while ($this->pos < $this->len && $this->src[$this->pos] !== ']') {
             $first = $this->parseClassAtom($negatedRanges);
+            // /u mode: an adjacent high+low surrogate pair encodes
+            // a single astral codepoint (UTF16Decode in spec terms).
+            // Combine them so [\\uD834\\uDF06]/u matches U+1D306.
+            if (
+                $this->unicode
+                && $first !== null
+                && $first >= 0xD800 && $first <= 0xDBFF
+                && $this->pos < $this->len
+                && $this->src[$this->pos] !== ']'
+                && $this->src[$this->pos] !== '-'
+            ) {
+                $savePos = $this->pos;
+                $second = $this->parseClassAtom($negatedRanges);
+                if ($second !== null && $second >= 0xDC00 && $second <= 0xDFFF) {
+                    $first = 0x10000 + (($first - 0xD800) << 10) + ($second - 0xDC00);
+                } else {
+                    // Not a pair; rewind so the next iteration sees
+                    // the second atom as a standalone class member.
+                    $this->pos = $savePos;
+                }
+            }
             // Range: a-b.
             if (
                 $first !== null
