@@ -1399,19 +1399,20 @@ class RegExpPrototype
                 }
 
                 if ($position >= $nextSourcePosition) {
-                    // Slice in UTF-16 code unit space — both endpoints
-                    // are UTF-16 indices, mb_substr (codepoints) skews
-                    // when an astral lies between them.
-                    $sliceStart = self::utf16IndexToByteOffset($S, $nextSourcePosition);
-                    $sliceEnd = self::utf16IndexToByteOffset($S, $position);
-                    $accumulatedResult .= substr($S, $sliceStart, $sliceEnd - $sliceStart);
+                    // Slice in UTF-16 code unit space — splitting a
+                    // surrogate pair (e.g. /^|\udf06/g where one match
+                    // ends inside an astral) requires emitting just
+                    // the lone surrogate; utf8ToUtf16LE + utf16LEToUtf8
+                    // round-trips that via CESU-8.
+                    $accumulatedResult .= self::sliceUtf16Range($S, $nextSourcePosition, $position);
                     $accumulatedResult .= $replacement;
                     $nextSourcePosition = $position + $matchLength;
                 }
             }
 
-            $tailStart = self::utf16IndexToByteOffset($S, $nextSourcePosition);
-            return new JsString($accumulatedResult . substr($S, $tailStart));
+            return new JsString(
+                $accumulatedResult . self::sliceUtf16Range($S, $nextSourcePosition, PHP_INT_MAX)
+            );
         };
     }
 
@@ -1849,6 +1850,33 @@ class RegExpPrototype
      * $S is the input string in UTF-8 byte form; $index is in UTF-16 code
      * units.
      */
+    /**
+     * Slice $str by UTF-16 code unit range [$from, $to). Astral
+     * codepoints in $str span 2 code units; if a slice boundary lies
+     * inside an astral pair we must emit just the lone surrogate
+     * (otherwise mid-pair endpoints would silently round to the
+     * codepoint boundary and duplicate or drop bytes). The conversion
+     * to UTF-16LE + back through utf16LEToUtf8 keeps lone surrogates
+     * as CESU-8 3-byte sequences, which is the same encoding the
+     * engine uses elsewhere for lone surrogates.
+     */
+    private static function sliceUtf16Range(string $str, int $from, int $to): string
+    {
+        $u16 = JsString::utf8ToUtf16LE($str);
+        $totalCu = (int) (strlen($u16) / 2);
+        if ($from < 0) {
+            $from = 0;
+        }
+        if ($to > $totalCu) {
+            $to = $totalCu;
+        }
+        if ($from >= $to) {
+            return '';
+        }
+        $sliced = substr($u16, $from * 2, ($to - $from) * 2);
+        return JsString::utf16LEToUtf8($sliced);
+    }
+
     private static function utf16IndexToByteOffset(string $str, int $cuIndex): int
     {
         if ($cuIndex <= 0) {
