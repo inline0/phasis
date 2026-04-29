@@ -36,8 +36,7 @@ class Matcher
     private int $inputLen;
     private bool $ignoreCase;
     private bool $multiline;
-    /** Reserved for matchNode's CharClass::any() / dot handling. */
-    private bool $dotAll; // @phpstan-ignore-line
+    private bool $dotAll;
     private bool $unicode;
 
     private Pattern $pattern;
@@ -232,6 +231,12 @@ class Matcher
         if ($node instanceof CharClass) {
             return $this->matchCharClass($node, $pos, $direction);
         }
+        if ($node instanceof \PhpJs\Regex\Ast\Dot) {
+            // `.` honours the currently-active dotAll flag (which can
+            // be flipped by an enclosing (?s:...) / (?-s:...) group).
+            $cc = $this->dotAll ? CharClass::any() : CharClass::dotNoDotAll();
+            return $this->matchCharClass($cc, $pos, $direction);
+        }
         if ($node instanceof Anchor) {
             return $this->matchAnchor($node, $pos);
         }
@@ -253,7 +258,52 @@ class Matcher
         if ($node instanceof Backreference) {
             return $this->matchBackreference($node, $pos, $captures, $direction);
         }
+        if ($node instanceof \PhpJs\Regex\Ast\ModifierGroup) {
+            return $this->matchModifierGroup($node, $pos, $captures, $direction);
+        }
         return null;
+    }
+
+    /**
+     * Apply the inline modifier flags for the group's body, run the
+     * body, then restore.
+     *
+     * @param array<int, ?array{0:int,1:int}> $captures
+     */
+    private function matchModifierGroup(
+        \PhpJs\Regex\Ast\ModifierGroup $g,
+        int $pos,
+        array &$captures,
+        int $direction,
+    ): ?int {
+        $savedI = $this->ignoreCase;
+        $savedM = $this->multiline;
+        $savedS = $this->dotAll;
+        if ($g->addI) {
+            $this->ignoreCase = true;
+        }
+        if ($g->addM) {
+            $this->multiline = true;
+        }
+        if ($g->addS) {
+            $this->dotAll = true;
+        }
+        if ($g->removeI) {
+            $this->ignoreCase = false;
+        }
+        if ($g->removeM) {
+            $this->multiline = false;
+        }
+        if ($g->removeS) {
+            $this->dotAll = false;
+        }
+        try {
+            return $this->matchNode($g->body, $pos, $captures, $direction);
+        } finally {
+            $this->ignoreCase = $savedI;
+            $this->multiline = $savedM;
+            $this->dotAll = $savedS;
+        }
     }
 
     private function matchLiteral(int $cp, int $pos, int $direction): ?int

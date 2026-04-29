@@ -38,7 +38,6 @@ class Parser
     private int $pos = 0;
     private int $len;
     private bool $unicode;
-    private bool $dotAll;
     private int $groupCount = 0;
     /** @var array<int, string> */
     private array $indexToName = [];
@@ -52,7 +51,6 @@ class Parser
         $this->src = $source;
         $this->len = strlen($source);
         $this->unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
-        $this->dotAll = str_contains($flags, 's');
     }
 
     public function parse(): Pattern
@@ -175,7 +173,7 @@ class Parser
         $ch = $this->src[$this->pos];
         if ($ch === '.') {
             $this->pos++;
-            return $this->dotAll ? CharClass::any() : CharClass::dotNoDotAll();
+            return new \PhpJs\Regex\Ast\Dot();
         }
         if ($ch === '^') {
             $this->pos++;
@@ -418,46 +416,62 @@ class Parser
                 $this->expect(')');
                 return new Group($body, $idx, $name);
             }
-            // Inline modifier (?flags:...) or (?flags-flags:...).
-            // Skip past the flag chars + ':' and treat the body as a
-            // non-capturing group. The matcher's flag interpretation
-            // is whole-pattern, so the modifier flags within the
-            // group are not honoured — but parsing them prevents
-            // syntax errors and lets the body match correctly when
-            // the modifier flags happen to align with the regex's
-            // own flags.
+            // Inline modifier (?ims:...) / (?ims-:...) / (?-ims:...).
+            // Parse the flag overrides and emit a ModifierGroup node
+            // so the matcher can apply them during the body's match.
             $j = $this->pos + 1;
-            $sawFlag = false;
-            while (
-                $j < $this->len
-                && (
-                    $this->src[$j] === 'i'
-                    || $this->src[$j] === 'm'
-                    || $this->src[$j] === 's'
-                )
-            ) {
+            $addI = $addM = $addS = false;
+            $remI = $remM = $remS = false;
+            $sawAdd = false;
+            while ($j < $this->len) {
+                $c = $this->src[$j];
+                if ($c === 'i') {
+                    $addI = true;
+                    $sawAdd = true;
+                } elseif ($c === 'm') {
+                    $addM = true;
+                    $sawAdd = true;
+                } elseif ($c === 's') {
+                    $addS = true;
+                    $sawAdd = true;
+                } else {
+                    break;
+                }
                 $j++;
-                $sawFlag = true;
             }
+            $sawSub = false;
             if ($j < $this->len && $this->src[$j] === '-') {
                 $j++;
-                while (
-                    $j < $this->len
-                    && (
-                        $this->src[$j] === 'i'
-                        || $this->src[$j] === 'm'
-                        || $this->src[$j] === 's'
-                    )
-                ) {
+                while ($j < $this->len) {
+                    $c = $this->src[$j];
+                    if ($c === 'i') {
+                        $remI = true;
+                        $sawSub = true;
+                    } elseif ($c === 'm') {
+                        $remM = true;
+                        $sawSub = true;
+                    } elseif ($c === 's') {
+                        $remS = true;
+                        $sawSub = true;
+                    } else {
+                        break;
+                    }
                     $j++;
-                    $sawFlag = true;
                 }
             }
-            if ($sawFlag && $j < $this->len && $this->src[$j] === ':') {
+            if (($sawAdd || $sawSub) && $j < $this->len && $this->src[$j] === ':') {
                 $this->pos = $j + 1;
                 $body = $this->parseDisjunction();
                 $this->expect(')');
-                return new Group($body, -1, null);
+                return new \PhpJs\Regex\Ast\ModifierGroup(
+                    $body,
+                    $addI,
+                    $addM,
+                    $addS,
+                    $remI,
+                    $remM,
+                    $remS,
+                );
             }
         }
         $idx = ++$this->groupCount;

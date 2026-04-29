@@ -18579,9 +18579,10 @@ class Interpreter
             $i++;
         }
         if ($hasInlineModifier) {
-            // Cede the whole pattern to PCRE2 — our matcher can't
-            // model per-group flag overrides yet.
-            return false;
+            // Inline-modifier patterns route through the custom
+            // matcher (which honours per-group flag overrides via
+            // ModifierGroup AST nodes).
+            return true;
         }
         // Patterns with duplicate named groups also route through the
         // custom matcher so backreferences resolve the right capture
