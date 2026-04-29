@@ -98,6 +98,14 @@ class ModuleRecord
      */
     public bool $bodyEvaluated = false;
 
+    /**
+     * True while the body is actively running. Used by deferred
+     * namespaces to detect re-entrance: per ECMA-262
+     * EnsureDeferredNamespaceEvaluation, accessing a deferred
+     * namespace whose module is still ~evaluating~ throws TypeError.
+     */
+    public bool $bodyEvaluating = false;
+
     /** Count of importers that reached this module via the eager phase. */
     public int $eagerImporterCount = 0;
 

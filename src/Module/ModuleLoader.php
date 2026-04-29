@@ -439,6 +439,16 @@ class ModuleLoader
         $self = $this;
         $deferred = new \PhpJs\Value\JsDeferredModuleNamespace(
             function (\PhpJs\Value\JsDeferredModuleNamespace $ns) use ($self, $record): void {
+                // Per ECMA-262 EnsureDeferredNamespaceEvaluation, when
+                // the underlying module is mid-evaluation any access
+                // that would otherwise trigger evaluation throws
+                // TypeError instead. Catches both self-imports and
+                // cross-module re-entry while a body is on stack.
+                if ($record->bodyEvaluating) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Cannot access deferred namespace of module that is currently evaluating'
+                    );
+                }
                 // Run the module body if it has not already been
                 // evaluated by an eager importer. The export-binding
                 // accessors copied at construction time read live
@@ -509,6 +519,7 @@ class ModuleLoader
         $pending = $record->pendingBody;
         $record->pendingBody = null;
         $record->bodyEvaluated = true;
+        $record->bodyEvaluating = true;
         $prevModulePath = $this->interpreter->getCurrentModulePath();
         $this->interpreter->setCurrentModulePath($record->path);
         try {
@@ -533,6 +544,7 @@ class ModuleLoader
             );
         } finally {
             $this->interpreter->setCurrentModulePath($prevModulePath);
+            $record->bodyEvaluating = false;
         }
     }
 

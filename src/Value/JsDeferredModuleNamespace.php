@@ -86,13 +86,18 @@ class JsDeferredModuleNamespace extends JsObject
             return;
         }
         $trigger = $this->trigger;
-        // Mark before invoking to break cycles if the trigger ends up
-        // re-entering this namespace during evaluation.
+        if ($trigger === null) {
+            $this->evaluated = true;
+            return;
+        }
+        // Run the trigger first, then mark evaluated only if it
+        // completed normally. A trigger that throws (e.g. because
+        // the module is still on stack) should be re-runnable: the
+        // next access must throw the same TypeError, not silently
+        // see undefined exports.
+        $trigger($this);
         $this->evaluated = true;
         $this->trigger = null;
-        if ($trigger !== null) {
-            $trigger($this);
-        }
     }
 
     /**
