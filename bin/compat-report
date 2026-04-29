@@ -918,7 +918,26 @@ function persistChunkLog(
         $sections[] = "[stdout]\n" . trim($stdout);
     }
     if (is_file($stderrPath)) {
-        $stderr = trim((string) file_get_contents($stderrPath));
+        // Same head+tail truncation as finalizeCompatWorker — a
+        // runaway test can flood stderr with hundreds of MB and
+        // we'd OOM trying to slurp it whole.
+        $maxRead = 4 * 1024 * 1024;
+        $errSize = filesize($stderrPath);
+        if ($errSize !== false && $errSize > $maxRead) {
+            $fh = fopen($stderrPath, 'rb');
+            if ($fh !== false) {
+                $stderr = (string) fread($fh, (int) ($maxRead / 2));
+                fseek($fh, -((int) ($maxRead / 2)), SEEK_END);
+                $stderr .= "\n... [truncated " . ($errSize - $maxRead) . " bytes] ...\n";
+                $stderr .= (string) fread($fh, (int) ($maxRead / 2));
+                fclose($fh);
+            } else {
+                $stderr = '';
+            }
+        } else {
+            $stderr = (string) file_get_contents($stderrPath);
+        }
+        $stderr = trim($stderr);
         if ($stderr !== '') {
             $sections[] = "[stderr]\n" . $stderr;
         }
