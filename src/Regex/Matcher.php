@@ -81,15 +81,57 @@ class Matcher
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
         $this->stepsUsed = 0;
+        // In /u mode the caller hands us a UTF-16 code unit offset
+        // (per spec 22.2.5.2.1 RegExpBuiltinExec step 6) but our
+        // internal positions are codepoint indices. Convert here.
+        // A UTF-16 index that lands inside a surrogate pair has no
+        // codepoint anchor, so return null without attempting.
+        $startInternal = $this->unicode
+            ? $this->utf16IndexToInternal($startCodeUnit)
+            : $startCodeUnit;
+        if ($startInternal === null) {
+            return null;
+        }
         // Initialize capture array sized to groupCount + 1 (1-based).
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
-        for ($pos = $startCodeUnit; $pos <= $this->inputLen; $pos++) {
+        for ($pos = $startInternal; $pos <= $this->inputLen; $pos++) {
             $caps = $captures;
             $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
             if ($end !== null) {
                 $caps[0] = [$pos, $end];
                 return $this->buildResult($pos, $end, $caps, $inputUtf8);
             }
+        }
+        return null;
+    }
+
+    /**
+     * Convert a UTF-16 code unit offset to the matcher's internal
+     * codepoint index when /u is active. Returns null if the offset
+     * lands inside a surrogate pair.
+     */
+    private function utf16IndexToInternal(int $cu): ?int
+    {
+        if (!$this->unicode) {
+            return $cu;
+        }
+        if ($cu <= 0) {
+            return 0;
+        }
+        $cuPos = 0;
+        for ($cpIdx = 0; $cpIdx < $this->inputLen; $cpIdx++) {
+            if ($cuPos === $cu) {
+                return $cpIdx;
+            }
+            $cp = $this->input[$cpIdx];
+            $width = $cp >= 0x10000 ? 2 : 1;
+            if ($cuPos + $width > $cu) {
+                return null; // mid-surrogate
+            }
+            $cuPos += $width;
+        }
+        if ($cu >= $cuPos) {
+            return $this->inputLen;
         }
         return null;
     }

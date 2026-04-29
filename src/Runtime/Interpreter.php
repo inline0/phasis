@@ -18543,12 +18543,20 @@ class Interpreter
                             }
                         } elseif ($next === 'u' && $i + 5 < $len) {
                             $hex = substr($pattern, $i + 2, 4);
-                            if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                            if (
+                                $needNonAsciiScan
+                                && ctype_xdigit($hex)
+                                && (int) hexdec($hex) > 0x7F
+                            ) {
                                 $hasNonAsciiInIWithoutU = true;
                             }
                         } elseif ($next === 'x' && $i + 3 < $len) {
                             $hex = substr($pattern, $i + 2, 2);
-                            if (ctype_xdigit($hex) && (int) hexdec($hex) > 0x7F) {
+                            if (
+                                $needNonAsciiScan
+                                && ctype_xdigit($hex)
+                                && (int) hexdec($hex) > 0x7F
+                            ) {
                                 $hasNonAsciiInIWithoutU = true;
                             }
                         }
