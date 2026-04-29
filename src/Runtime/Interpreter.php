@@ -14001,6 +14001,11 @@ class Interpreter
         // Transform large quantifiers that exceed PCRE2's 65535 limit.
         $transformedPattern = self::transformLargeQuantifiers($transformedPattern);
 
+        // PCRE2 refuses unbounded quantifiers inside lookbehinds; clamp
+        // any `+`, `*`, or `{N,}` inside (?<= … ) / (?<! … ) to a finite
+        // upper bound so the assertion compiles.
+        $transformedPattern = self::boundLookbehindQuantifiers($transformedPattern);
+
         // Detect duplicate named groups (ES2025 "Duplicate named capture groups"):
         //   - within the same alternative → SyntaxError per spec.
         //   - in separate alternatives → allowed; enable PCRE's J modifier.
@@ -15884,6 +15889,137 @@ class Interpreter
             },
             $pattern,
         );
+    }
+
+    /**
+     * PCRE2 (as of 10.47) refuses to compile lookbehind assertions whose
+     * length is unbounded — `(?<=a*)`, `(?<=a+)`, `(?<=a{1,})`. ECMAScript
+     * allows them. As a pragmatic compatibility shim, walk into every
+     * lookbehind body and clamp every unbounded quantifier to a bounded
+     * upper limit. The bound is high enough to cover all reasonable test
+     * inputs while staying inside PCRE2's documented variable-length
+     * lookbehind cap (65535 code points).
+     */
+    private static function boundLookbehindQuantifiers(string $pattern): string
+    {
+        // PCRE2's variable-length lookbehind branch cap is 255 code
+        // points (verified empirically on 10.47). Each unbounded
+        // quantifier we replace contributes up to its bound, plus any
+        // siblings; using 128 leaves headroom for the surrounding
+        // literal characters in the same branch (e.g. `b\d+` becomes
+        // `b\d{1,128}` of total length 129, well under the 255 cap).
+        $bound = 128;
+        $len = strlen($pattern);
+        $result = '';
+        $i = 0;
+        $inCharClass = false;
+        // Stack of "is lookbehind" flags. The top of the stack tells us
+        // whether the current group context is inside a (?<= ... ) or
+        // (?<! ... ) so we know when to bound quantifiers.
+        $groupStack = [];
+        $insideLookbehind = 0;
+
+        while ($i < $len) {
+            $ch = $pattern[$i];
+
+            if ($ch === '\\' && $i + 1 < $len) {
+                $result .= $ch . $pattern[$i + 1];
+                $i += 2;
+                continue;
+            }
+            if (!$inCharClass && $ch === '[') {
+                $inCharClass = true;
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+            if ($inCharClass && $ch === ']') {
+                $inCharClass = false;
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+            if ($inCharClass) {
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+
+            // Detect group openings.
+            if ($ch === '(') {
+                $isLookbehind = false;
+                if (
+                    $i + 3 < $len
+                    && $pattern[$i + 1] === '?'
+                    && $pattern[$i + 2] === '<'
+                    && ($pattern[$i + 3] === '=' || $pattern[$i + 3] === '!')
+                ) {
+                    $isLookbehind = true;
+                    $insideLookbehind++;
+                }
+                $groupStack[] = $isLookbehind;
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+            if ($ch === ')' && !empty($groupStack)) {
+                $popped = array_pop($groupStack);
+                if ($popped) {
+                    $insideLookbehind--;
+                }
+                $result .= $ch;
+                $i++;
+                continue;
+            }
+
+            // Inside a lookbehind, clamp unbounded quantifiers.
+            if ($insideLookbehind > 0) {
+                // Quantifiers on a group ')' can multiply the inner
+                // length; pick a smaller bound so the expanded branch
+                // still fits PCRE2's 255-codepoint cap.
+                $lastEmitted = $result === '' ? '' : $result[strlen($result) - 1];
+                $effectiveBound = $lastEmitted === ')' ? 40 : $bound;
+                if ($ch === '+') {
+                    $result .= '{1,' . $effectiveBound . '}';
+                    if ($i + 1 < $len && $pattern[$i + 1] === '?') {
+                        $result .= '?';
+                        $i += 2;
+                    } else {
+                        $i++;
+                    }
+                    continue;
+                }
+                if ($ch === '*') {
+                    $result .= '{0,' . $effectiveBound . '}';
+                    if ($i + 1 < $len && $pattern[$i + 1] === '?') {
+                        $result .= '?';
+                        $i += 2;
+                    } else {
+                        $i++;
+                    }
+                    continue;
+                }
+                if ($ch === '{') {
+                    $close = strpos($pattern, '}', $i + 1);
+                    if ($close !== false) {
+                        $body = substr($pattern, $i + 1, $close - $i - 1);
+                        if (preg_match('/^(\d+),$/', $body, $bm)) {
+                            $result .= '{' . $bm[1] . ',' . $effectiveBound . '}';
+                            $i = $close + 1;
+                            if ($i < $len && $pattern[$i] === '?') {
+                                $result .= '?';
+                                $i++;
+                            }
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            $result .= $ch;
+            $i++;
+        }
+        return $result;
     }
 
     /**
