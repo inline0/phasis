@@ -330,6 +330,7 @@ class ModuleLoader
             $pending = $record->pendingBody;
             $record->pendingBody = null;
             $record->bodyEvaluated = true;
+            $record->bodyEvaluating = true;
             $prevModulePath = $this->interpreter->getCurrentModulePath();
             $this->interpreter->setCurrentModulePath($path);
             try {
@@ -342,8 +343,12 @@ class ModuleLoader
                         $asyncRecords[] = $record;
                     },
                 );
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                $record->evaluationError = $e->jsValue;
+                throw $e;
             } finally {
                 $this->interpreter->setCurrentModulePath($prevModulePath);
+                $record->bodyEvaluating = false;
             }
         }
         // Drain remaining async-module promises (any module without an
