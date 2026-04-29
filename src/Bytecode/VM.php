@@ -1381,10 +1381,13 @@ final class VM
                             throw new InternalError('VM: unknown opcode ' . $op);
                     }
                 } // end inner while (dispatch loop)
-            } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            } catch (\PhpJs\Exceptions\RuntimeError | \PhpJs\Exceptions\SyntaxError $e) {
                 // Look for a handler whose protected range covers the
                 // current PC (the PC of the instruction that threw or
-                // raised the exception synchronously).
+                // raised the exception synchronously). SyntaxError
+                // gets the same treatment as RuntimeError so an
+                // eval() / Function() parse failure still surfaces
+                // through a JS try/catch in the calling frame.
                 if (!$hasHandlers) {
                     throw $e;
                 }
