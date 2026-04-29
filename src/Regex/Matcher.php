@@ -42,6 +42,16 @@ class Matcher
     private Pattern $pattern;
 
     /**
+     * Budget guard against catastrophic backtracking. Counts every
+     * matchNode dispatch; once exhausted, throws
+     * MatcherBudgetExceeded so the caller can fall back to PCRE2
+     * instead of letting PHP's own execution-time limit kill the
+     * whole chunk.
+     */
+    private int $stepBudget = 2_000_000;
+    private int $stepsUsed = 0;
+
+    /**
      * @param Pattern $pattern Parsed AST.
      * @param string $flags Spec flags (g, i, m, s, u, v, y, d).
      */
@@ -70,6 +80,7 @@ class Matcher
             ? self::utf8ToCodePoints($inputUtf8)
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
+        $this->stepsUsed = 0;
         // Initialize capture array sized to groupCount + 1 (1-based).
         $captures = array_fill(0, $this->pattern->groupCount + 1, null);
         for ($pos = $startCodeUnit; $pos <= $this->inputLen; $pos++) {
@@ -225,6 +236,11 @@ class Matcher
      */
     private function matchNode(Node $node, int $pos, array &$captures, int $direction): ?int
     {
+        if (++$this->stepsUsed > $this->stepBudget) {
+            throw new MatcherBudgetExceeded(
+                'regex matcher step budget exhausted; pattern likely needs a non-backtracking matcher'
+            );
+        }
         if ($node instanceof Literal) {
             return $this->matchLiteral($node->codePoint, $pos, $direction);
         }

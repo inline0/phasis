@@ -653,26 +653,38 @@ class RegExpPrototype
                 && $customFlagsDesc !== null
                 && $customFlagsDesc->value instanceof JsString
             ) {
-                $customResult = self::execCustomMatcher(
-                    $this_,
-                    $customAstDesc->value->value,
-                    $customFlagsDesc->value->value,
-                    $str,
-                    $lastIndex,
-                    $isGlobal,
-                    $isSticky,
-                    $hasIndices,
-                );
-                if ($customResult !== null) {
-                    return $customResult;
+                $budgetBlown = false;
+                $customResult = null;
+                try {
+                    $customResult = self::execCustomMatcher(
+                        $this_,
+                        $customAstDesc->value->value,
+                        $customFlagsDesc->value->value,
+                        $str,
+                        $lastIndex,
+                        $isGlobal,
+                        $isSticky,
+                        $hasIndices,
+                    );
+                } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+                    // Pattern triggered catastrophic backtracking
+                    // in our tree-walker; let PCRE2 handle it
+                    // instead of failing the whole test chunk.
+                    $budgetBlown = true;
                 }
-                // Custom matcher returned null = no match. Per
-                // RegExp semantics for global/sticky, advance
-                // lastIndex per spec.
-                if ($isGlobal || $isSticky) {
-                    $this_->set('lastIndex', JsNumber::of(0.0), true);
+                if (!$budgetBlown) {
+                    if ($customResult !== null) {
+                        return $customResult;
+                    }
+                    // Custom matcher returned null = no match. Per
+                    // RegExp semantics for global/sticky, advance
+                    // lastIndex per spec.
+                    if ($isGlobal || $isSticky) {
+                        $this_->set('lastIndex', JsNumber::of(0.0), true);
+                    }
+                    return JsNull::instance();
                 }
-                return JsNull::instance();
+                // Fall through to PCRE2 path.
             }
 
             if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
