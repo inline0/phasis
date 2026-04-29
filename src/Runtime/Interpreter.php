@@ -18492,12 +18492,14 @@ class Interpreter
         // custom matcher whose canonicalize() honours that
         // distinction.
         $hasNonAsciiInIWithoutU = false;
-        // PCRE2 with /u flag treats any Unicode letter as a word
-        // character (PCRE2_UCP semantics). ECMA-262 GetWordCharacters
-        // is ASCII-only except in /u+/i mode where it extends via
-        // Canonicalize. Patterns containing \\b / \\B / \\w / \\W
-        // outside of /u+/i must route to the custom matcher whose
-        // isWordCu honours the spec.
+        // PCRE2 with /u (PCRE2_UTF) treats every Unicode letter as a
+        // word character — broader than ECMA-262 outside /u+/i mode.
+        // GetWordCharacters limits the basic set to ASCII A-Z a-z 0-9
+        // _; under /u+/i it adds chars whose Canonicalize lands in
+        // that basic set. PCRE2's match-the-Unicode-letters behaviour
+        // happens to coincide closely enough with the spec under
+        // /u+/i (test262 passes there), so route only when /u+/i is
+        // NOT both set; that's where PCRE2 over-matches.
         $hasWordToken = false;
         // Track group nesting and whether we're inside a lookbehind.
         $lookbehindDepth = 0;

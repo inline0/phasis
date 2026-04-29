@@ -413,15 +413,55 @@ class Parser
             throw new SyntaxError('Invalid \\k named backreference');
         }
         $this->pos++;
-        $name = '';
-        while ($this->pos < $this->len && $this->src[$this->pos] !== '>') {
-            $name .= $this->src[$this->pos++];
-        }
+        $name = $this->readGroupName();
         if ($this->pos >= $this->len || $this->src[$this->pos] !== '>') {
             throw new SyntaxError('Invalid \\k named backreference');
         }
         $this->pos++;
         return new Backreference(null, $name);
+    }
+
+    /**
+     * Read a group-name token, decoding \\uXXXX / \\u{XXXX} escapes
+     * to their UTF-8 representation. Per ECMA-262 group names follow
+     * IdentifierName grammar where unicode escapes encode the same
+     * code point as the literal character — `(?<a\\u{62}>...)` and
+     * `(?<ab>...)` must produce the same group name so the result
+     * object's accessor works either way.
+     */
+    private function readGroupName(): string
+    {
+        $name = '';
+        while ($this->pos < $this->len && $this->src[$this->pos] !== '>') {
+            $ch = $this->src[$this->pos];
+            if ($ch === '\\' && $this->pos + 1 < $this->len && $this->src[$this->pos + 1] === 'u') {
+                $this->pos += 2;
+                if ($this->pos < $this->len && $this->src[$this->pos] === '{') {
+                    $this->pos++;
+                    $hex = '';
+                    while ($this->pos < $this->len && $this->src[$this->pos] !== '}') {
+                        $hex .= $this->src[$this->pos++];
+                    }
+                    if ($this->pos < $this->len && $this->src[$this->pos] === '}') {
+                        $this->pos++;
+                    }
+                } else {
+                    if ($this->pos + 4 > $this->len) {
+                        throw new SyntaxError('Invalid \\u escape in group name');
+                    }
+                    $hex = substr($this->src, $this->pos, 4);
+                    $this->pos += 4;
+                }
+                if ($hex === '' || !ctype_xdigit($hex)) {
+                    throw new SyntaxError('Invalid \\u escape in group name');
+                }
+                $name .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                continue;
+            }
+            $name .= $ch;
+            $this->pos++;
+        }
+        return $name;
     }
 
     private function parseGroup(): Node
@@ -455,11 +495,8 @@ class Parser
                 }
                 // Named capturing: (?<name>...)
                 $this->pos += 2;
-                $name = '';
-                while ($this->pos < $this->len && $this->src[$this->pos] !== '>') {
-                    $name .= $this->src[$this->pos++];
-                }
-                if ($this->pos >= $this->len) {
+                $name = $this->readGroupName();
+                if ($this->pos >= $this->len || $this->src[$this->pos] !== '>') {
                     throw new SyntaxError('Invalid named group');
                 }
                 $this->pos++; // consume >
