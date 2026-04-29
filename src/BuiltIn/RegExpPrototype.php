@@ -616,9 +616,7 @@ class RegExpPrototype
             // guaranteed present by the early check above; only its
             // (possibly mutated) value type still needs validation.
             $pcrePatternDesc = $this_->getOwnPropertyDescriptor('[[PCREPattern]]');
-            $pcrePatternVal = $pcrePatternDesc instanceof PropertyDescriptor
-                ? $pcrePatternDesc->value
-                : null;
+            $pcrePatternVal = $pcrePatternDesc->value;
             if (!$pcrePatternVal instanceof JsString) {
                 throw new \PhpJs\Exceptions\TypeError('RegExp.prototype.exec called on incompatible receiver');
             }

@@ -23,6 +23,13 @@ class ImportDeclaration extends Node
         public readonly array $specifiers,
         public readonly string $source,
         public readonly ?Node $attributes = null,
+        /**
+         * Phase per the source-phase-imports / import-defer proposals.
+         * "evaluation" is the normal binding; "source" requests the
+         * SourceTextModule (always rejects with SyntaxError);
+         * "defer" requests the deferred namespace exotic object.
+         */
+        public readonly string $phase = 'evaluation',
     ) {
         parent::__construct($location);
     }

@@ -91,6 +91,12 @@ class ModuleLoader
             $this->finalizeStarReExports();
             $this->lockDownNamespaces();
             $this->validateIndirectExports();
+            // Mark every module reachable from the entry through only
+            // eager (non-defer) edges. Modules NOT in this set are
+            // imported transitively via at least one defer edge and
+            // wait for their deferred-namespace's first MOP access
+            // before evaluation.
+            $this->markEagerlyReachable($resolved);
             // Clear the linking flag before draining so dynamic imports
             // issued from a body can start their own link/validate/drain
             // cycles.
@@ -99,6 +105,39 @@ class ModuleLoader
             return $namespace;
         } finally {
             $this->linking = false;
+        }
+    }
+
+    /**
+     * BFS from $entryPath through eager edges; mark each visited
+     * record's eagerlyReachable flag. Idempotent so dynamic imports
+     * (which call into the same entry-point handler) can re-run it
+     * after adding new edges.
+     */
+    private function markEagerlyReachable(string $entryPath): void
+    {
+        $entry = $this->modules[$entryPath] ?? null;
+        if ($entry === null) {
+            return;
+        }
+        $queue = [$entryPath];
+        $visited = [];
+        while ($queue !== []) {
+            $path = array_shift($queue);
+            if (isset($visited[$path])) {
+                continue;
+            }
+            $visited[$path] = true;
+            $rec = $this->modules[$path] ?? null;
+            if ($rec === null) {
+                continue;
+            }
+            $rec->eagerlyReachable = true;
+            foreach (array_keys($rec->eagerEdges) as $next) {
+                if (!isset($visited[$next])) {
+                    $queue[] = $next;
+                }
+            }
         }
     }
 
@@ -123,6 +162,7 @@ class ModuleLoader
             $this->finalizeStarReExports();
             $this->lockDownNamespaces();
             $this->validateIndirectExports();
+            $this->markEagerlyReachable($absolutePath);
             $this->linking = false;
             $this->drainBodyQueue();
             return $namespace;
@@ -258,16 +298,19 @@ class ModuleLoader
             if ($record === null || $record->pendingBody === null) {
                 continue;
             }
+            // Skip modules that aren't eagerly reachable from the
+            // entry point. Their bodies wait for the first MOP access
+            // on their deferred namespace (per import-defer Stage 3
+            // evaluation triggers).
+            if (!$record->eagerlyReachable) {
+                continue;
+            }
             // Per spec InnerModuleEvaluation, before evaluating M, every
             // async dependency in M's import graph must have settled.
-            // Drain microtasks until each transitively-imported async
-            // module's promise resolves. This makes
-            //   import foo from "./async.js";
-            //   foo.something // already initialized
-            // work even when async.js has top-level await.
             $this->awaitAsyncDeps($record);
             $pending = $record->pendingBody;
             $record->pendingBody = null;
+            $record->bodyEvaluated = true;
             $prevModulePath = $this->interpreter->getCurrentModulePath();
             $this->interpreter->setCurrentModulePath($path);
             try {
@@ -318,6 +361,136 @@ class ModuleLoader
      * of importedPaths so a chain main → A → B(async) blocks main on
      * B's promise even though main only directly imports A.
      */
+    /**
+     * Public entry point used by dynamic `import.defer(...)` and the
+     * static-import processor. Returns a deferred-namespace exotic
+     * for the resolved module, creating it the first time a deferred
+     * import asks for it. The returned object has the same exports as
+     * the module's evaluation namespace, but with an "Deferred Module"
+     * @@toStringTag and a stable identity across deferred imports.
+     */
+    public function getDeferredNamespaceFor(string $specifier, ?string $referrer = null): JsObject
+    {
+        $resolved = $this->resolve($specifier, $referrer);
+        $eagerNs = $this->loadModule($specifier, $referrer);
+        return $this->getDeferredNamespace($resolved, $eagerNs);
+    }
+
+    private function getDeferredNamespace(string $resolved, JsObject $eagerNs): JsObject
+    {
+        $record = $this->modules[$resolved] ?? null;
+        if ($record === null) {
+            return $eagerNs;
+        }
+        if ($record->deferredNamespace !== null) {
+            return $record->deferredNamespace;
+        }
+        // Per spec ModuleNamespaceCreate with phase ~defer~: the
+        // deferred namespace has its own identity (distinct from the
+        // eager namespace) and Symbol.toStringTag = "Deferred Module".
+        // We model lazy evaluation via JsDeferredModuleNamespace, whose
+        // observable MOP traps fire a one-shot trigger that runs the
+        // module body before returning.
+        $self = $this;
+        $deferred = new \PhpJs\Value\JsDeferredModuleNamespace(
+            function (\PhpJs\Value\JsDeferredModuleNamespace $ns) use ($self, $record): void {
+                // Run the module body if it has not already been
+                // evaluated by an eager importer. The export-binding
+                // accessors copied at construction time read live
+                // values from the source moduleEnv, so the
+                // post-evaluation state surfaces automatically without
+                // any further mirror pass.
+                if (!$record->bodyEvaluated) {
+                    $self->evaluateModuleBodyOnDemand($record);
+                }
+            },
+        );
+        $deferred->setEagerNamespace($eagerNs);
+        // Mirror the eager namespace's export-binding accessors so the
+        // deferred namespace exposes the same keys with live access to
+        // the underlying moduleEnv bindings. We use the raw stored
+        // descriptors (not the materialized form) so accessors stay
+        // accessors and reflect post-evaluation values. Bypass the
+        // lazy-eval trigger during this construction-time mirror so
+        // we don't accidentally evaluate the module while wiring up
+        // its own deferred namespace.
+        $deferred->setBypassTrigger(true);
+        foreach ($eagerNs->getOwnPropertyNames() as $name) {
+            $rawDesc = $eagerNs->getOwnPropertyDescriptorRaw($name);
+            if ($rawDesc === null) {
+                continue;
+            }
+            $deferred->defineOwnProperty($name, clone $rawDesc);
+        }
+        $deferred->setBypassTrigger(false);
+        // Stamp Symbol.toStringTag and prevent extensions per spec
+        // ModuleNamespaceCreate with phase = ~defer~.
+        $deferred->definePropertyBySymbol(
+            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+            \PhpJs\Object\PropertyDescriptor::data(
+                new \PhpJs\Value\JsString('Deferred Module'),
+                false,
+                false,
+                false,
+            ),
+        );
+        $deferred->markAsModuleNamespace();
+        $deferred->preventExtensions();
+        $record->deferredNamespace = $deferred;
+        return $deferred;
+    }
+
+    /**
+     * Run a previously-skipped (deferred-only) module's body now,
+     * matching the spec's lazy evaluation trigger. Handles top-level
+     * await by draining microtasks until the body's promise settles.
+     */
+    public function evaluateModuleBodyOnDemand(ModuleRecord $record): void
+    {
+        if ($record->bodyEvaluated || $record->pendingBody === null) {
+            $record->bodyEvaluated = true;
+            return;
+        }
+        // First, evaluate any of this module's EAGER dependencies that
+        // we skipped during the top-level drain. We must NOT
+        // transitively evaluate deferred edges — those wait for their
+        // own MOP-trigger.
+        foreach (array_keys($record->eagerEdges) as $depPath) {
+            $dep = $this->modules[$depPath] ?? null;
+            if ($dep !== null && !$dep->bodyEvaluated && $dep->pendingBody !== null) {
+                $this->evaluateModuleBodyOnDemand($dep);
+            }
+        }
+        $pending = $record->pendingBody;
+        $record->pendingBody = null;
+        $record->bodyEvaluated = true;
+        $prevModulePath = $this->interpreter->getCurrentModulePath();
+        $this->interpreter->setCurrentModulePath($record->path);
+        try {
+            $this->interpreter->executeModuleBody(
+                $pending['program']->body,
+                $pending['moduleEnv'],
+                alreadyHoisted: true,
+                onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record): void {
+                    $record->evaluationPromise = $p;
+                    // Drain microtasks until this module's TLA promise
+                    // settles. Lazy triggers run synchronously from the
+                    // host's perspective so the consumer of the
+                    // deferred namespace sees fully-evaluated exports.
+                    $iter = 0;
+                    while ($p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
+                        \PhpJs\Value\JsPromise::drainMicrotasks();
+                    }
+                    if ($p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                        $this->interpreter->throwJsValue($p->getResolvedValue());
+                    }
+                },
+            );
+        } finally {
+            $this->interpreter->setCurrentModulePath($prevModulePath);
+        }
+    }
+
     private function awaitAsyncDeps(ModuleRecord $record): void
     {
         $deps = $this->collectAsyncDeps($record, []);
@@ -652,8 +825,10 @@ class ModuleLoader
         $currentRecord = $this->modules[$modulePath] ?? null;
         foreach ($body as $node) {
             $source = null;
+            $isDefer = false;
             if ($node instanceof ImportDeclaration) {
                 $source = $node->source;
+                $isDefer = ($node->phase) === 'defer';
             } elseif ($node instanceof ExportDeclaration && $node->source !== null) {
                 $source = $node->source;
             }
@@ -661,9 +836,27 @@ class ModuleLoader
                 continue;
             }
             $this->loadModule($source, $modulePath);
+            $resolved = $this->resolve($source, $modulePath);
             if ($currentRecord !== null) {
-                $resolved = $this->resolve($source, $modulePath);
                 $currentRecord->importedPaths[$resolved] = true;
+            }
+            // Track per-importer phase so the drain pass knows which
+            // modules were reached only via deferred importers; their
+            // bodies wait for first MOP access on the deferred
+            // namespace per the import-defer proposal.
+            $depRecord = $this->modules[$resolved] ?? null;
+            if ($depRecord !== null) {
+                if ($isDefer) {
+                    $depRecord->deferredImporterCount++;
+                } else {
+                    $depRecord->eagerImporterCount++;
+                }
+            }
+            // Record outgoing eager edges for the post-link reachability
+            // pass. Eager edges propagate "needs-eager-evaluation" from
+            // the entry module to its dependencies.
+            if ($currentRecord !== null && !$isDefer) {
+                $currentRecord->eagerEdges[$resolved] = true;
             }
         }
     }
@@ -694,11 +887,17 @@ class ModuleLoader
         $importedNs = $this->loadModule($node->source, $modulePath);
         $resolved = $this->resolve($node->source, $modulePath);
         $currentRecord = $this->modules[$modulePath] ?? null;
+        $isDefer = ($node->phase) === 'defer';
 
         foreach ($node->specifiers as $spec) {
             if ($spec->specType === 'namespace') {
-                // Namespace imports snapshot the namespace object itself.
-                $moduleEnv->defineConst($spec->local, $importedNs);
+                // Namespace imports snapshot the namespace object itself,
+                // or the deferred-namespace exotic if the import phase is
+                // ~defer~.
+                $bindingNs = $isDefer
+                    ? $this->getDeferredNamespace($resolved, $importedNs)
+                    : $importedNs;
+                $moduleEnv->defineConst($spec->local, $bindingNs);
                 continue;
             }
             // Install a live indirect binding that resolves the imported name

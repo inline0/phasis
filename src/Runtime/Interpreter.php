@@ -8010,20 +8010,28 @@ class Interpreter
 
         try {
             $specifier = TypeConversion::toString($sourceValue);
+            $loader = $this->getModuleLoader();
             // Source-phase imports: GetModuleSource for SourceTextModule
-            // always returns an abrupt SyntaxError (16.2.1.7.2). Same shape
-            // for the deferred phase since we don't expose deferred
-            // namespace objects.
-            if ($node->phase === 'source' || $node->phase === 'defer') {
+            // always returns an abrupt SyntaxError (16.2.1.7.2). Reject
+            // the returned promise to match.
+            if ($node->phase === 'source') {
                 $err = $this->phpExceptionToJsValue(
                     new \PhpJs\Exceptions\SyntaxError(
-                        "import.{$node->phase}() is not supported on this module type"
+                        "import.source() is not supported on this module type"
                     )
                 );
                 $promise->reject($err);
                 return $promise;
             }
-            $loader = $this->getModuleLoader();
+            // Deferred phase: load the module eagerly (we don't yet
+            // model true lazy evaluation) but return the deferred
+            // namespace exotic so identity, toStringTag, and the
+            // namespace's export bindings line up with the spec.
+            if ($node->phase === 'defer') {
+                $deferred = $loader->getDeferredNamespaceFor($specifier, $this->currentModulePath);
+                $promise->resolve($deferred);
+                return $promise;
+            }
             $namespace = $loader->loadModule($specifier, $this->currentModulePath);
             $promise->resolve($namespace);
         } catch (\PhpJs\Exceptions\JsThrowable $e) {

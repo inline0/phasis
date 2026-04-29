@@ -965,12 +965,12 @@ class Parser
         //   `import defer * as ns from ...`   (defer + namespace)
         //   `import source * as ns from ...`  (source + namespace)
         //   `import source ImportedBinding from ...` (source + default)
-        // The phase modifier is treated as a no-op (we do not distinguish
-        // evaluation phases at runtime — source-phase ImportCall already
-        // rejects via SyntaxError; the static form just allows the parse).
-        // We must not consume `source` / `defer` when it is itself the
-        // default binding name (`import source from "x"`,
+        // Track the phase on the ImportDeclaration so the runtime can
+        // pick the deferred namespace / source representation. We must
+        // not consume `source` / `defer` when it is itself the default
+        // binding name (`import source from "x"`,
         // `import defer from "x"`).
+        $phase = 'evaluation';
         if (
             $this->check(TokenType::Identifier)
             && ($this->current()->value === 'defer' || $this->current()->value === 'source')
@@ -990,6 +990,7 @@ class Parser
                 $consumeModifier = true;
             }
             if ($consumeModifier) {
+                $phase = $this->current()->value;
                 $this->advance();
             }
         }
@@ -1006,7 +1007,7 @@ class Parser
                 $this->skipAttributeClause();
             }
             $this->consumeSemicolon();
-            return new ImportDeclaration($location, $specifiers, $source);
+            return new ImportDeclaration($location, $specifiers, $source, null, $phase);
         }
 
         // import * as ns from 'source'
@@ -1075,7 +1076,7 @@ class Parser
         }
 
         $this->consumeSemicolon();
-        return new ImportDeclaration($location, $specifiers, $source);
+        return new ImportDeclaration($location, $specifiers, $source, null, $phase);
     }
 
     /** Consume and discard `{ key: "val", ... }` from a WithClause. */

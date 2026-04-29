@@ -858,6 +858,18 @@ class JsObject implements JsValue
      *
      * @phpstan-impure
      */
+    /**
+     * Return the raw stored property descriptor without applying any
+     * exotic-namespace accessor materialization. Used by callers that
+     * want to clone or re-install the underlying live binding (e.g.
+     * the deferred-module-namespace mirror) rather than a one-shot
+     * snapshot of its current value.
+     */
+    public function getOwnPropertyDescriptorRaw(string $name): ?PropertyDescriptor
+    {
+        return $this->properties->get($name);
+    }
+
     public function getOwnPropertyDescriptor(string $name): ?PropertyDescriptor
     {
         $desc = $this->properties->get($name);
