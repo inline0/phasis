@@ -14227,18 +14227,24 @@ class Interpreter
         $escapedPattern = $this->escapeForPcreDelimiter($transformedPattern);
         $pcrePattern = '/' . $escapedPattern . '/' . $pcreFlags . 'u';
 
-        // Validate the pattern compiles. If PCRE2 rejects it but our
-        // in-engine matcher can parse it (e.g. backreferences inside
-        // lookbehinds — valid in ECMAScript, rejected by PCRE2), let
-        // the custom matcher carry the load instead of failing.
+        // Validate the pattern compiles. If PCRE2 rejects it but the
+        // pattern is one we deliberately route through the in-engine
+        // matcher (lookbehind, duplicate names, etc.), let our parser
+        // accept it — its grammar is the authoritative ECMAScript
+        // validator there. For every other PCRE2 rejection treat it
+        // as an ECMAScript SyntaxError, since accepting silently
+        // would let invalid patterns pass.
         $pcreCompiles = @preg_match($pcrePattern, '') !== false;
         if (!$pcreCompiles) {
+            $customNeeded = self::patternNeedsCustomMatcher($pattern, $flags);
             $customParseOk = false;
-            try {
-                (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
-                $customParseOk = true;
-            } catch (\Throwable) {
-                $customParseOk = false;
+            if ($customNeeded) {
+                try {
+                    (new \PhpJs\Regex\Parser($pattern, $flags))->parse();
+                    $customParseOk = true;
+                } catch (\Throwable) {
+                    $customParseOk = false;
+                }
             }
             if (!$customParseOk) {
                 throw new \PhpJs\Exceptions\SyntaxError(
