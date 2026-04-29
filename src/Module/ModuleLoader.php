@@ -449,6 +449,12 @@ class ModuleLoader
                         'Cannot access deferred namespace of module that is currently evaluating'
                     );
                 }
+                // If a previous evaluation failed, re-throw the same
+                // JsValue (per EvaluateSync — rejected evaluation
+                // promises propagate forever).
+                if ($record->evaluationError !== null) {
+                    throw new \PhpJs\Exceptions\JsThrowable($record->evaluationError);
+                }
                 // Run the module body if it has not already been
                 // evaluated by an eager importer. The export-binding
                 // accessors copied at construction time read live
@@ -542,6 +548,13 @@ class ModuleLoader
                     }
                 },
             );
+        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            // Stash the thrown value so subsequent deferred-namespace
+            // accesses re-throw the same JsValue (per spec
+            // EvaluateSync: a rejected evaluation promise propagates
+            // forever).
+            $record->evaluationError = $e->jsValue;
+            throw $e;
         } finally {
             $this->interpreter->setCurrentModulePath($prevModulePath);
             $record->bodyEvaluating = false;

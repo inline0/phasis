@@ -106,6 +106,15 @@ class ModuleRecord
      */
     public bool $bodyEvaluating = false;
 
+    /**
+     * If the module body threw during evaluation, the JsValue that
+     * was thrown is stashed here so subsequent deferred-namespace
+     * accesses can re-throw the same value (per
+     * sec-evaluatesync — a rejected evaluation promise propagates
+     * forever).
+     */
+    public ?\PhpJs\Value\JsValue $evaluationError = null;
+
     /** Count of importers that reached this module via the eager phase. */
     public int $eagerImporterCount = 0;
 
