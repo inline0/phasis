@@ -583,7 +583,12 @@ function finalizeCompatWorker(array $worker, bool $timedOut): array
         }
     }
 
-    $stdout = stream_get_contents($worker['stdout']);
+    // Cap how much stdout/stderr we slurp into memory. A runaway test
+    // can produce hundreds of MB of output, and the matrix runners
+    // are capped at 1GB — concatenating two unbounded reads has hit
+    // OOM in CI. 4MB per stream is plenty for any well-behaved chunk.
+    $maxRead = 4 * 1024 * 1024;
+    $stdout = (string) stream_get_contents($worker['stdout'], $maxRead);
     fclose($worker['stdout']);
     $exitCode = proc_close($worker['process']);
 
@@ -591,9 +596,23 @@ function finalizeCompatWorker(array $worker, bool $timedOut): array
         unlink($worker['manifestPath']);
     }
 
-    $stderr = is_file($worker['stderrPath'])
-        ? (string) file_get_contents($worker['stderrPath'])
-        : '';
+    $stderr = '';
+    if (is_file($worker['stderrPath'])) {
+        $errSize = filesize($worker['stderrPath']);
+        if ($errSize !== false && $errSize > $maxRead) {
+            // Read the head + tail so the error fingerprint survives.
+            $fh = fopen($worker['stderrPath'], 'rb');
+            if ($fh !== false) {
+                $stderr = (string) fread($fh, $maxRead / 2);
+                fseek($fh, -((int) $maxRead / 2), SEEK_END);
+                $stderr .= "\n... [truncated " . ($errSize - $maxRead) . " bytes] ...\n";
+                $stderr .= (string) fread($fh, $maxRead / 2);
+                fclose($fh);
+            }
+        } else {
+            $stderr = (string) file_get_contents($worker['stderrPath']);
+        }
+    }
     $durationSec = round(microtime(true) - $worker['startedAt'], 3);
 
     if ($timedOut) {
