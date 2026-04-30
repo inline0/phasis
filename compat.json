@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-04-30T03:01:46+00:00",
-    "updatedAt": "2026-04-30T03:01:46+00:00",
+    "generatedAt": "2026-04-30T04:28:27+00:00",
+    "updatedAt": "2026-04-30T04:28:27+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "617760a",
+        "commit": "439cf5c",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "3447c9458e7321354540efa5dc3812391a24b33f"
+        "fingerprint": "6e1ec349ddf8f93ba91ad7f19f312de56ba8433a"
     },
     "discovery": {
         "groupCount": 159,
@@ -196,15 +196,15 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 49505,
+            "pass": 49504,
             "fail": 111,
             "skip": 403,
-            "blocked": 17,
-            "pending": 782,
+            "blocked": 18,
+            "pending": 832,
             "running": 0,
-            "attempted": 49616,
+            "attempted": 49615,
             "known": 50036,
-            "total": 50818,
+            "total": 50868,
             "passRate": 99.8
         },
         "areas": [
@@ -281,13 +281,13 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1498,
+                "pass": 1497,
                 "fail": 40,
                 "skip": 86,
-                "blocked": 8,
-                "pending": 175,
+                "blocked": 9,
+                "pending": 225,
                 "running": 0,
-                "attempted": 1538,
+                "attempted": 1537,
                 "known": 1632,
                 "total": 1632,
                 "passRate": 97.4
@@ -2638,13 +2638,13 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1301,
+                "pass": 1300,
                 "fail": 34,
                 "skip": 85,
-                "blocked": 8,
-                "pending": 175,
+                "blocked": 9,
+                "pending": 225,
                 "running": 0,
-                "attempted": 1335,
+                "attempted": 1334,
                 "known": 1428,
                 "total": 1428,
                 "passRate": 97.5
@@ -2684,7 +2684,7 @@
             {
                 "group": "built-ins/RegExp",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Regex/Matcher.php on line 1287",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Regex/Matcher.php on line 895",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/S15.10.2_A1_T1.js"
@@ -2694,7 +2694,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsString.php on line 156",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 964",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
@@ -2704,7 +2704,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsString.php on line 161",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 1944",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
@@ -2714,7 +2714,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Regex/Matcher.php on line 329",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Regex/Matcher.php on line 267",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js"
@@ -2734,7 +2734,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 144",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 590",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
@@ -2744,7 +2744,7 @@
             {
                 "group": "built-ins/RegExp/CharacterClassEscapes",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsString.php on line 103",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 10782",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
@@ -2752,19 +2752,9 @@
                 "logFile": ".compat-state-builtins-RegExp-rest/logs/9022b8c5942fd25645927bb1658a3645cd98d06e.log"
             },
             {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 681",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
-                ],
-                "logFile": ".compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log"
-            },
-            {
                 "group": "built-ins/decodeURI",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 61",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/TypeConversion.php on line 137",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -2772,9 +2762,19 @@
                 "logFile": ".compat-state-builtins-lower-de/logs/6687624bd5fb87a6a4ff167cd35af4b69d14f50d.log"
             },
             {
+                "group": "built-ins/decodeURIComponent",
+                "kind": "crash",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 2411",
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
+                ],
+                "logFile": ".compat-state-builtins-lower-de/logs/5a3e033d7be8e84f9d36d0440da488ff5b100e26.log"
+            },
+            {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 133",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/AbstractOperations.php on line 530",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
@@ -2783,13 +2783,13 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "oom",
-                "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 803209248 bytes) in /home/runner/work/php-js/php-js/src/BuiltIn/StringPrototype.php on line 1728",
+                "kind": "crash",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 806",
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/String/replace-math.js"
+                    "test262/test/staging/sm/Array/toSpliced-dense.js"
                 ],
-                "logFile": ".compat-state-staging/logs/05d8c12e9055c0e405b4fc8ebd3aee35b95f8c6f.log"
+                "logFile": ".compat-state-staging/logs/1d8bc8ec59afa4977eac427273dcca4bb1c34b5e.log"
             },
             {
                 "group": "staging/sm",
@@ -2804,6 +2804,26 @@
             {
                 "group": "staging/sm",
                 "kind": "oom",
+                "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 803209248 bytes) in /home/runner/work/php-js/php-js/src/BuiltIn/StringPrototype.php on line 1728",
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/String/replace-math.js"
+                ],
+                "logFile": ".compat-state-staging/logs/05d8c12e9055c0e405b4fc8ebd3aee35b95f8c6f.log"
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsTypedArray.php on line 411",
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
+                ],
+                "logFile": ".compat-state-staging/logs/f1232104e4d338c7c76a723ace84621f84895ca1.log"
+            },
+            {
+                "group": "staging/sm",
+                "kind": "oom",
                 "message": "PHP Fatal error:  Allowed memory size of 1073741824 bytes exhausted (tried to allocate 20480 bytes) in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 108",
                 "filesCount": 1,
                 "sampleFiles": [
@@ -2814,17 +2834,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 7063",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ],
-                "logFile": ".compat-state-staging/logs/f1232104e4d338c7c76a723ace84621f84895ca1.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 16593",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 18365",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/RegExp/unicode-braced.js"
@@ -2834,7 +2844,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 47",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 261",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
@@ -2844,7 +2854,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Parser/Parser.php on line 5927",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 18650",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/RegExp/unicode-class-braced.js"
@@ -2856,188 +2866,7 @@
             {
                 "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 81.277,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Symbol/species.js",
-                    "test262/test/staging/sm/Symbol/surfaces.js",
-                    "...",
-                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js",
-                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 80.013,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.10_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T3.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.14_T4.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 74.329,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.10_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T3.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.14_T4.js"
-                ]
-            },
-            {
-                "group": "language/literals",
-                "kind": "normal",
-                "durationSec": 66.073,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/language/literals/regexp/7.8.5-2gs.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
-                    "...",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js",
-                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js"
-                ]
-            },
-            {
-                "group": "language/expressions",
-                "kind": "normal",
-                "durationSec": 61.781,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/language/expressions/call/spread-sngl-iter.js",
-                    "test262/test/language/expressions/call/spread-sngl-literal.js",
-                    "...",
-                    "test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js",
-                    "test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 61.689,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 61.418,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 60.767,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/RegExp/unicode-class-braced.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.76,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.746,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.638,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 60.501,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp",
-                "kind": "crash",
-                "durationSec": 60.208,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/S15.10.2_A1_T1.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "crash",
-                "durationSec": 60.109,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
-                ]
-            },
-            {
-                "group": "built-ins/RegExp/CharacterClassEscapes",
-                "kind": "crash",
-                "durationSec": 59.406,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 57.192,
-                "filesCount": 25,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Array/splice-species-changes-length.js",
-                    "test262/test/staging/sm/Array/splice-suppresses-unvisited-indexes.js",
-                    "...",
-                    "test262/test/staging/sm/AsyncGenerators/for-await-of-error.js",
-                    "test262/test/staging/sm/Atomics/cross-compartment.js"
-                ]
-            },
-            {
-                "group": "intl402",
-                "kind": "normal",
-                "durationSec": 51.648,
-                "filesCount": 22,
-                "sampleFiles": [
-                    "test262/test/intl402/constructors-string-and-single-element-array.js",
-                    "test262/test/intl402/constructors-taint-Object-prototype-2.js",
-                    "...",
-                    "test262/test/intl402/supportedLocalesOf-throws-if-element-not-string-or-object.js",
-                    "test262/test/intl402/supportedLocalesOf-unicode-extensions-ignored.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "normal",
-                "durationSec": 48.733,
+                "durationSec": 83.185,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/staging/sm/expressions/destructuring-object-__proto__-2.js",
@@ -3048,25 +2877,195 @@
                 ]
             },
             {
+                "group": "language/expressions",
+                "kind": "normal",
+                "durationSec": 71.484,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/language/expressions/call/spread-sngl-iter.js",
+                    "test262/test/language/expressions/call/spread-sngl-literal.js",
+                    "...",
+                    "test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js",
+                    "test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 68.169,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/reduce-and-reduceRight.js",
+                    "test262/test/staging/sm/TypedArray/reverse.js",
+                    "...",
+                    "test262/test/staging/sm/TypedArray/sort_errors.js",
+                    "test262/test/staging/sm/TypedArray/sort_globals.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 61.653,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-word-class-escape-negative-cases.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 61.518,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-digit-class-escape-positive-cases.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 46.94,
+                "durationSec": 61.388,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/RegExp/unicode-class-braced.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 61.366,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-whitespace-class-escape-negative-cases.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 61.135,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 60.877,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Array/toSpliced-dense.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 60.835,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/regress/regress-1507322-deep-weakmap.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 60.789,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-digit-class-escape-negative-cases.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 60.762,
+                "filesCount": 12,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Symbol/species.js",
+                    "test262/test/staging/sm/Symbol/surfaces.js",
+                    "...",
+                    "test262/test/staging/sm/Symbol/well-known.js",
+                    "test262/test/staging/sm/Temporal/Calendar/compare-to-datetimeformat.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 60.713,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-whitespace-class-escape-positive-cases.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "crash",
+                "durationSec": 60.491,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/RegExp/unicode-braced.js"
                 ]
             },
             {
-                "group": "annexB/built-ins/RegExp",
+                "group": "staging/sm",
                 "kind": "normal",
-                "durationSec": 45.345,
+                "durationSec": 60.002,
+                "filesCount": 2,
+                "sampleFiles": [
+                    "test262/test/staging/sm/TypedArray/sort_modifications.js",
+                    "test262/test/staging/sm/TypedArray/sort_small.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp/CharacterClassEscapes",
+                "kind": "crash",
+                "durationSec": 59.955,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/CharacterClassEscapes/character-class-non-word-class-escape-positive-cases.js"
+                ]
+            },
+            {
+                "group": "built-ins/RegExp",
+                "kind": "crash",
+                "durationSec": 59.031,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/RegExp/S15.10.2_A1_T1.js"
+                ]
+            },
+            {
+                "group": "language/literals",
+                "kind": "normal",
+                "durationSec": 58.751,
                 "filesCount": 25,
                 "sampleFiles": [
-                    "test262/test/annexB/built-ins/RegExp/RegExp-control-escape-russian-letter.js",
-                    "test262/test/annexB/built-ins/RegExp/RegExp-decimal-escape-class-range.js",
+                    "test262/test/language/literals/regexp/7.8.5-2gs.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
                     "...",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js",
-                    "test262/test/annexB/built-ins/RegExp/legacy-accessors/lastParen/this-not-regexp-constructor.js"
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T1.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "normal",
+                "durationSec": 56.069,
+                "filesCount": 13,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Temporal/PlainDate/from-constrain-hebrew.js",
+                    "test262/test/staging/sm/Temporal/PlainDate/from-constrain-japanese.js",
+                    "...",
+                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-coptic.js",
+                    "test262/test/staging/sm/Temporal/PlainMonthDay/from-gregory.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "oom",
+                "durationSec": 51.504,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/regress/regress-567152.js"
                 ]
             }
         ]
