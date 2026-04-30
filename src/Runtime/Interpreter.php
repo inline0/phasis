@@ -14735,7 +14735,16 @@ class Interpreter
                     if ($end !== false) {
                         $hex = substr($pattern, $i + 3, $end - ($i + 3));
                         if (ctype_xdigit($hex)) {
-                            $result .= '\\x{' . strtoupper($hex) . '}';
+                            // Strip leading zeros — PCRE2 caps \\x{...}
+                            // hex digits at 8, but spec allows up to
+                            // 0x10FFFF expressed with arbitrary leading
+                            // zeros, so /\\u{000000000000000000041}/u
+                            // is valid input that compiles to PCRE.
+                            $trimmed = ltrim($hex, '0');
+                            if ($trimmed === '') {
+                                $trimmed = '0';
+                            }
+                            $result .= '\\x{' . strtoupper($trimmed) . '}';
                             $i = $end + 1;
                             continue;
                         }
