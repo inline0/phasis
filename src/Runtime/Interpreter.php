@@ -18640,18 +18640,16 @@ class Interpreter
                 $hasAstralInUnicode = true;
             }
             if (!$inClass && $ch === '[') {
-                // /u patterns with `[^]` (negated empty class — i.e.
-                // "match any code unit including lone surrogates")
-                // need the custom matcher: PCRE2 with /u rejects
-                // lone-surrogate input as invalid UTF-8 and returns
-                // an internal error, so /[^]/u.exec("\uD83D") would
-                // always return null even though the spec says it
-                // should match.
+                // /u patterns with a negated character class need the
+                // custom matcher: PCRE2 with /u rejects lone-surrogate
+                // input as invalid UTF-8, so any [^X]/u that should
+                // match a lone surrogate (e.g. /[^A]/u on "A\uD83D")
+                // returns null where the spec says it should match
+                // the lone surrogate.
                 if (
                     $isUnicode
-                    && $i + 2 < $len
+                    && $i + 1 < $len
                     && $pattern[$i + 1] === '^'
-                    && $pattern[$i + 2] === ']'
                 ) {
                     $hasLoneSurrogateEscape = true;
                 }
