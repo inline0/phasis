@@ -741,19 +741,7 @@ class Parser
                     $ranges[] = [0x2D, 0x2D]; // literal -
                 }
             } elseif ($first !== null) {
-                // In non-/u mode an astral codepoint is two UTF-16
-                // code units in the input. The matcher's input array
-                // holds UTF-16 units (utf8ToUtf16Units), so adding
-                // the astral as a single 0x1XXXX range would never
-                // match. Split into the high+low surrogate pair so
-                // [🐸] in non-/u matches either D83D or DC38.
-                if (!$this->unicode && $first > 0xFFFF) {
-                    $cp = $first - 0x10000;
-                    $ranges[] = [0xD800 + ($cp >> 10), 0xD800 + ($cp >> 10)];
-                    $ranges[] = [0xDC00 + ($cp & 0x3FF), 0xDC00 + ($cp & 0x3FF)];
-                } else {
-                    $ranges[] = [$first, $first];
-                }
+                $ranges[] = [$first, $first];
             }
         }
         if ($this->pos >= $this->len) {

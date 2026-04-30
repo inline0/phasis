@@ -18639,17 +18639,6 @@ class Interpreter
                 // 4-byte UTF-8 = astral codepoint.
                 $hasAstralInUnicode = true;
             }
-            // Non-/u patterns whose CHARACTER CLASS contains an astral
-            // codepoint need the custom matcher: PCRE2 in byte mode
-            // treats those bytes as independent units, but the spec
-            // says non-/u classes operate on UTF-16 code units, so
-            // /[🐸]/.exec("\uD83D") should match the lone surrogate.
-            // Outside a class, an astral literal in non-/u splits
-            // naturally into a surrogate pair sequence in PCRE byte
-            // mode and works fine.
-            if (!$isUnicode && $inClass && (ord($ch) & 0xF8) === 0xF0) {
-                $hasLoneSurrogateEscape = true;
-            }
             if (!$inClass && $ch === '[') {
                 // /u patterns with `[^]` (negated empty class — i.e.
                 // "match any code unit including lone surrogates")
