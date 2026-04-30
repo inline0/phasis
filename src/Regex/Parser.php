@@ -39,6 +39,7 @@ class Parser
     private int $len;
     private bool $unicode;
     private int $groupCount = 0;
+    private int $totalGroups = 0;
     /** @var array<int, string> */
     private array $indexToName = [];
     /** @var list<string> Ordered, distinct named groups. */
@@ -51,6 +52,52 @@ class Parser
         $this->src = $source;
         $this->len = strlen($source);
         $this->unicode = str_contains($flags, 'u') || str_contains($flags, 'v');
+        $this->totalGroups = $this->countGroupsForward($source);
+    }
+
+    /**
+     * Count the total number of capturing groups in the pattern in
+     * advance. parseNumericBackref needs this so it can fall back to
+     * an Annex B octal/identity escape when \N references a group that
+     * does not exist anywhere in the pattern.
+     */
+    private function countGroupsForward(string $src): int
+    {
+        $count = 0;
+        $len = strlen($src);
+        $i = 0;
+        $inClass = false;
+        while ($i < $len) {
+            $ch = $src[$i];
+            if ($ch === '\\') {
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $ch === '[') {
+                $inClass = true;
+                $i++;
+                continue;
+            }
+            if ($inClass && $ch === ']') {
+                $inClass = false;
+                $i++;
+                continue;
+            }
+            if (!$inClass && $ch === '(' && ($i + 1 >= $len || $src[$i + 1] !== '?')) {
+                $count++;
+            } elseif (
+                !$inClass
+                && $ch === '('
+                && $i + 2 < $len
+                && $src[$i + 1] === '?'
+                && $src[$i + 2] === '<'
+                && ($i + 3 < $len && $src[$i + 3] !== '=' && $src[$i + 3] !== '!')
+            ) {
+                $count++;
+            }
+            $i++;
+        }
+        return $count;
     }
 
     public function parse(): Pattern
@@ -374,11 +421,42 @@ class Parser
 
     private function parseNumericBackref(): Node
     {
+        $startPos = $this->pos;
         $num = '';
         while ($this->pos < $this->len && ctype_digit($this->src[$this->pos])) {
             $num .= $this->src[$this->pos++];
         }
-        return new Backreference((int) $num, null);
+        $refNum = (int) $num;
+        // In non-/u mode, Annex B B.1.4.1.1 says \N where N is not a
+        // valid backreference (no group N exists anywhere in the
+        // pattern) is treated as a LegacyOctalEscapeSequence (digits
+        // 0-7) or an identity escape (digits 8-9). The custom matcher
+        // would otherwise treat it as a backreference to an
+        // unparticipated group and match the empty string, which
+        // diverges from V8/SpiderMonkey for /\b(\w+) \2\b/.
+        if (!$this->unicode && $refNum > $this->totalGroups) {
+            // Re-walk the digits as octal/identity. parseAtom already
+            // consumed the leading digit; restart at $startPos.
+            $this->pos = $startPos;
+            $first = $this->src[$startPos];
+            if ($first >= '0' && $first <= '7') {
+                $maxLen = ($first >= '4' && $first <= '7') ? 2 : 3;
+                $oct = '';
+                while (
+                    $this->pos < $this->len
+                    && $this->src[$this->pos] >= '0'
+                    && $this->src[$this->pos] <= '7'
+                    && strlen($oct) < $maxLen
+                ) {
+                    $oct .= $this->src[$this->pos++];
+                }
+                return new Literal((int) octdec($oct));
+            }
+            // \8 or \9: identity escape.
+            $this->pos++;
+            return new Literal(ord($first));
+        }
+        return new Backreference($refNum, null);
     }
 
     private function parseUnicodePropertyEscape(bool $negated): Node
