@@ -18629,6 +18629,15 @@ class Interpreter
                     ) {
                         $hasWordToken = true;
                     }
+                    // Negated character class escapes (\D, \S, \W) in
+                    // /u patterns match any non-digit/non-whitespace/
+                    // non-word character — including lone surrogates,
+                    // which PCRE2 with /u rejects as invalid UTF-8.
+                    // Route through the custom matcher whose codepoint
+                    // walk handles them.
+                    if ($isUnicode && ($next === 'D' || $next === 'S' || $next === 'W')) {
+                        $hasLoneSurrogateEscape = true;
+                    }
                 }
                 $i += 2;
                 continue;
