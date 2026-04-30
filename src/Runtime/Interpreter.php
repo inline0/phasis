@@ -18527,14 +18527,15 @@ class Interpreter
         // handles either form.
         $hasAstralInUnicode = false;
         $needAstralScan = $isUnicode;
-        // Lone surrogate escapes (\uD800–\uDFFF) in non-/u patterns
+        // Lone surrogate escapes (\uD800–\uDFFF) in patterns
         // need the custom matcher: PCRE2 with UTF mode rejects them
-        // as invalid byte sequences, so /\udf06/ would never match
-        // even though the spec says non-/u regexes match individual
-        // UTF-16 code units (so /\udf06/ should find DF06 inside the
-        // surrogate pair of an astral input).
+        // as invalid byte sequences. In non-/u mode, patterns like
+        // /\udf06/ should still match the lone surrogate per spec
+        // (regex operates on UTF-16 code units). In /u mode,
+        // /[\uD83D]/u should match the lone high surrogate per spec.
+        // Both routes rely on the custom matcher's UTF-16 walk.
         $hasLoneSurrogateEscape = false;
-        $needSurrogateScan = !$isUnicode;
+        $needSurrogateScan = true;
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -18547,80 +18548,80 @@ class Interpreter
             if ($ch === '\\') {
                 if ($i + 1 < $len) {
                     $next = $pattern[$i + 1];
-                    if ($needNonAsciiScan || $needAstralScan || $needSurrogateScan) {
-                        if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
-                            $closeBrace = strpos($pattern, '}', $i + 3);
-                            if ($closeBrace !== false) {
-                                $hex = substr($pattern, $i + 3, $closeBrace - $i - 3);
-                                if (ctype_xdigit($hex)) {
-                                    $cp = (int) hexdec($hex);
-                                    if ($needNonAsciiScan && $cp > 0x7F) {
-                                        $hasNonAsciiInIWithoutU = true;
-                                    }
-                                    if ($needAstralScan && $cp > 0xFFFF) {
-                                        $hasAstralInUnicode = true;
-                                    }
-                                    if ($needSurrogateScan && $cp >= 0xD800 && $cp <= 0xDFFF) {
-                                        $hasLoneSurrogateEscape = true;
-                                    }
-                                }
-                            }
-                        } elseif ($next === 'u' && $i + 5 < $len) {
-                            $hex = substr($pattern, $i + 2, 4);
+                    {
+                    if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                        $closeBrace = strpos($pattern, '}', $i + 3);
+                        if ($closeBrace !== false) {
+                            $hex = substr($pattern, $i + 3, $closeBrace - $i - 3);
                             if (ctype_xdigit($hex)) {
                                 $cp = (int) hexdec($hex);
                                 if ($needNonAsciiScan && $cp > 0x7F) {
                                     $hasNonAsciiInIWithoutU = true;
                                 }
-                                // A high surrogate followed by an
-                                // adjacent low surrogate is a valid
-                                // pair (PCRE2 handles it as an astral
-                                // codepoint). A bare lone surrogate,
-                                // or a low surrogate not preceded by
-                                // its high pair, needs the custom
-                                // matcher because PCRE2 rejects it as
-                                // invalid UTF-8.
-                                if ($needSurrogateScan && $cp >= 0xD800 && $cp <= 0xDFFF) {
-                                    $paired = false;
-                                    if ($cp <= 0xDBFF) {
-                                        // Look ahead for paired low.
-                                        if (
-                                            $i + 11 < $len
-                                            && $pattern[$i + 6] === '\\'
-                                            && $pattern[$i + 7] === 'u'
-                                            && ctype_xdigit(substr($pattern, $i + 8, 4))
-                                        ) {
-                                            $n2 = (int) hexdec(substr($pattern, $i + 8, 4));
-                                            $paired = $n2 >= 0xDC00 && $n2 <= 0xDFFF;
-                                        }
-                                    } else {
-                                        // Low surrogate: paired iff
-                                        // preceded by an adjacent high.
-                                        if (
-                                            $i >= 6
-                                            && $pattern[$i - 6] === '\\'
-                                            && $pattern[$i - 5] === 'u'
-                                            && ctype_xdigit(substr($pattern, $i - 4, 4))
-                                        ) {
-                                            $p1 = (int) hexdec(substr($pattern, $i - 4, 4));
-                                            $paired = $p1 >= 0xD800 && $p1 <= 0xDBFF;
-                                        }
-                                    }
-                                    if (!$paired) {
-                                        $hasLoneSurrogateEscape = true;
-                                    }
+                                if ($needAstralScan && $cp > 0xFFFF) {
+                                    $hasAstralInUnicode = true;
+                                }
+                                if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                                    $hasLoneSurrogateEscape = true;
                                 }
                             }
-                        } elseif ($next === 'x' && $i + 3 < $len) {
-                            $hex = substr($pattern, $i + 2, 2);
-                            if (
-                                $needNonAsciiScan
-                                && ctype_xdigit($hex)
-                                && (int) hexdec($hex) > 0x7F
-                            ) {
+                        }
+                    } elseif ($next === 'u' && $i + 5 < $len) {
+                        $hex = substr($pattern, $i + 2, 4);
+                        if (ctype_xdigit($hex)) {
+                            $cp = (int) hexdec($hex);
+                            if ($needNonAsciiScan && $cp > 0x7F) {
                                 $hasNonAsciiInIWithoutU = true;
                             }
+                            // A high surrogate followed by an
+                            // adjacent low surrogate is a valid
+                            // pair (PCRE2 handles it as an astral
+                            // codepoint). A bare lone surrogate,
+                            // or a low surrogate not preceded by
+                            // its high pair, needs the custom
+                            // matcher because PCRE2 rejects it as
+                            // invalid UTF-8.
+                            if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+                                $paired = false;
+                                if ($cp <= 0xDBFF) {
+                                    // Look ahead for paired low.
+                                    if (
+                                        $i + 11 < $len
+                                        && $pattern[$i + 6] === '\\'
+                                        && $pattern[$i + 7] === 'u'
+                                        && ctype_xdigit(substr($pattern, $i + 8, 4))
+                                    ) {
+                                        $n2 = (int) hexdec(substr($pattern, $i + 8, 4));
+                                        $paired = $n2 >= 0xDC00 && $n2 <= 0xDFFF;
+                                    }
+                                } else {
+                                    // Low surrogate: paired iff
+                                    // preceded by an adjacent high.
+                                    if (
+                                        $i >= 6
+                                        && $pattern[$i - 6] === '\\'
+                                        && $pattern[$i - 5] === 'u'
+                                        && ctype_xdigit(substr($pattern, $i - 4, 4))
+                                    ) {
+                                        $p1 = (int) hexdec(substr($pattern, $i - 4, 4));
+                                        $paired = $p1 >= 0xD800 && $p1 <= 0xDBFF;
+                                    }
+                                }
+                                if (!$paired) {
+                                    $hasLoneSurrogateEscape = true;
+                                }
+                            }
                         }
+                    } elseif ($next === 'x' && $i + 3 < $len) {
+                        $hex = substr($pattern, $i + 2, 2);
+                        if (
+                            $needNonAsciiScan
+                            && ctype_xdigit($hex)
+                            && (int) hexdec($hex) > 0x7F
+                        ) {
+                            $hasNonAsciiInIWithoutU = true;
+                        }
+                    }
                     }
                     if (
                         $needAsciiWordCheck
