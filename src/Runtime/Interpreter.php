@@ -14687,6 +14687,28 @@ class Interpreter
                     if ($closeBrace !== false) {
                         $propExpr = substr($pattern, $i + 3, $closeBrace - ($i + 3));
                         if ($isUnicodeMode) {
+                            // Property of strings under /v: expand to a
+                            // string alternation rather than emitting
+                            // the never-match \\x{FFFE} sentinel. The
+                            // data file stores codepoints in JS
+                            // \\u{HEX} form so the in-class route
+                            // (which re-runs through this char-level
+                            // pass) gets them rewritten correctly;
+                            // for the top-level emit we have to
+                            // pre-translate to PCRE \\x{HEX}.
+                            if ($isVFlag && $next === 'p' && !$inCharClass) {
+                                $stringSet = self::vFlagPropertyOfStringsSet($propExpr);
+                                if ($stringSet !== null) {
+                                    $pcreSet = array_map(
+                                        static fn (string $s): string =>
+                                            str_replace('\\u{', '\\x{', $s),
+                                        $stringSet,
+                                    );
+                                    $result .= '(?:' . implode('|', $pcreSet) . ')';
+                                    $i = $closeBrace + 1;
+                                    continue;
+                                }
+                            }
                             $pcreProperty = self::mapEsPropertyToPcre($propExpr, $next === 'P');
                             if ($pcreProperty === null) {
                                 throw new \PhpJs\Exceptions\SyntaxError(
@@ -15986,8 +16008,19 @@ class Interpreter
                     while ($j < $len && $pattern[$j] !== '}') {
                         $j++;
                     }
-                    $esc = substr($pattern, $pos, $j + 1 - $pos);
-                    $current .= $esc;
+                    $body = substr($pattern, $pos + 3, $j - ($pos + 3));
+                    // Properties of strings (`\p{Emoji_Keycap_Sequence}`,
+                    // `\p{RGI_Emoji}`, …) expand to a string-set in /v
+                    // mode. PCRE2 doesn't carry these properties; emit
+                    // a synthesized \\q{...} alternation backed by the
+                    // precomputed property-string data.
+                    $stringSet = self::vFlagPropertyOfStringsSet($body);
+                    if ($stringSet !== null && $escNext === 'p') {
+                        $current .= '\\q{' . implode('|', $stringSet) . '}';
+                    } else {
+                        $esc = substr($pattern, $pos, $j + 1 - $pos);
+                        $current .= $esc;
+                    }
                     $pos = $j + 1;
                 } elseif ($escNext === 'q' && $pos + 2 < $len && $pattern[$pos + 2] === '{') {
                     $j = $pos + 3;
@@ -16030,17 +16063,24 @@ class Interpreter
             return ['output' => '[' . ($negated ? '^' : '') . $classContent . ']', 'pos' => $pos];
         }
 
-        // Apply set operators left-to-right using lookahead patterns.
-        $base = $this->vFlagOperandToMatcher($operands[0]);
+        // Apply set operators left-to-right. /v set ops operate on
+        // strings — a multi-codepoint string in lhs is removed by
+        // difference only when the rhs contains that exact string.
+        // A single-char alternation `(?!rhs)atom` works for single-
+        // codepoint atoms but mis-fires on a multi-codepoint atom
+        // (the lookahead only inspects one position, so it would
+        // exclude "9️⃣" from `\q{9️⃣}--[0-9]`
+        // because the lookahead sees the leading "9"). Decompose
+        // each operand into its multi-char string set + single-char
+        // class part so the emission can apply rhs filtering only
+        // to the parts where it's spec-correct.
+        $lhs = $this->decomposeVFlagOperand($operands[0]);
         for ($oi = 0; $oi < count($operators); $oi++) {
             $op = $operators[$oi];
-            $rhs = $this->vFlagOperandToMatcher($operands[$oi + 1]);
-            if ($op === '&&') {
-                $base = '(?=' . $base . ')' . $rhs;
-            } elseif ($op === '--') {
-                $base = '(?=' . $base . ')(?!' . $rhs . ').';
-            }
+            $rhs = $this->decomposeVFlagOperand($operands[$oi + 1]);
+            $lhs = $this->applyVFlagSetOp($op, $lhs, $rhs);
         }
+        $base = $this->emitDecomposedVFlagOperand($lhs);
 
         if ($negated) {
             $base = '(?!' . $base . ').';
@@ -16050,37 +16090,397 @@ class Interpreter
     }
 
     /**
-     * Convert a v-flag class operand into a PCRE matcher.
-     * Operands that contain `\q{X|Y|Z}` produce an alternation
-     * `(?:X|Y|Z|[remaining])`; plain operands wrap as `[...]`.
+     * Resolve a `\p{Property}` body (like `Emoji_Keycap_Sequence` or
+     * `RGI_Emoji`) to its string set under /v mode. Returns null when
+     * the property is not a property-of-strings or is unknown.
+     *
+     * @return list<string>|null
      */
-    private function vFlagOperandToMatcher(string $operand): string
+    private static function vFlagPropertyOfStringsSet(string $body): ?array
     {
-        if (str_contains($operand, '\\q{')) {
-            $stringAlts = [];
-            $remaining = preg_replace_callback(
-                '/\\\\q\\{([^}]*)\\}/',
-                function (array $m) use (&$stringAlts): string {
-                    foreach (explode('|', $m[1]) as $alt) {
-                        if ($alt !== '') {
-                            $stringAlts[] = $alt;
+        // Handle `Property=Value` syntax — strings of property is a
+        // standalone form, no `=` allowed.
+        if (str_contains($body, '=')) {
+            return null;
+        }
+        static $data = null;
+        if ($data === null) {
+            $path = __DIR__ . '/../../config/regex_property_strings.php';
+            $data = file_exists($path) ? require $path : [];
+        }
+        return $data[$body] ?? null;
+    }
+
+    /**
+     * Decompose a /v class operand into its multi-codepoint string
+     * literals and its single-character class part.
+     *
+     * Returns ['strings' => list<string>, 'charClass' => string]
+     * where `strings` are raw PCRE pattern fragments (already
+     * translated, e.g. with \\uXXXX intact) and `charClass` is the
+     * remainder suitable for `[$charClass]` (empty when nothing left).
+     *
+     * @return array{strings: list<string>, charClass: string}
+     */
+    private function decomposeVFlagOperand(string $operand): array
+    {
+        // First strip \\p{Property} property-of-strings escapes —
+        // each one expands to a fixed set of multi-codepoint strings
+        // (Emoji_Keycap_Sequence, RGI_Emoji…). PCRE2 doesn't carry
+        // these properties so the class operand needs them already
+        // decomposed before any set ops apply.
+        $stringAlts = [];
+        $remaining = preg_replace_callback(
+            '/\\\\p\\{([^}]*)\\}/',
+            function (array $m) use (&$stringAlts): string {
+                $set = self::vFlagPropertyOfStringsSet($m[1]);
+                if ($set === null) {
+                    return $m[0];
+                }
+                foreach ($set as $s) {
+                    $stringAlts[] = $s;
+                }
+                return '';
+            },
+            $operand,
+        );
+        // Then peel off explicit \\q{...} alternations using the same
+        // brace-aware scan as transformClassWithStringLiterals so
+        // nested `\\x{HEX}` escapes don't trip the parser.
+        $cleaned = '';
+        $len = strlen($remaining);
+        $i = 0;
+        while ($i < $len) {
+            if (
+                $remaining[$i] === '\\'
+                && $i + 2 < $len
+                && $remaining[$i + 1] === 'q'
+                && $remaining[$i + 2] === '{'
+            ) {
+                $j = $i + 3;
+                $depth = 1;
+                while ($j < $len) {
+                    if ($remaining[$j] === '\\' && $j + 1 < $len) {
+                        $j += 2;
+                        continue;
+                    }
+                    if ($remaining[$j] === '{') {
+                        $depth++;
+                    } elseif ($remaining[$j] === '}') {
+                        $depth--;
+                        if ($depth === 0) {
+                            break;
                         }
                     }
-                    return '';
-                },
-                $operand,
-            );
-            usort($stringAlts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
-            $alts = $stringAlts;
-            if ($remaining !== '') {
-                $alts[] = '[' . $remaining . ']';
+                    $j++;
+                }
+                if ($j < $len) {
+                    $body = substr($remaining, $i + 3, $j - ($i + 3));
+                    $cur = '';
+                    $blen = strlen($body);
+                    $bi = 0;
+                    $bdepth = 0;
+                    while ($bi < $blen) {
+                        $bc = $body[$bi];
+                        if ($bc === '\\' && $bi + 1 < $blen) {
+                            $cur .= $bc . $body[$bi + 1];
+                            $bi += 2;
+                            continue;
+                        }
+                        if ($bc === '{') {
+                            $bdepth++;
+                        } elseif ($bc === '}') {
+                            $bdepth--;
+                        } elseif ($bc === '|' && $bdepth === 0) {
+                            if ($cur !== '') {
+                                $stringAlts[] = $cur;
+                            }
+                            $cur = '';
+                            $bi++;
+                            continue;
+                        }
+                        $cur .= $bc;
+                        $bi++;
+                    }
+                    if ($cur !== '') {
+                        $stringAlts[] = $cur;
+                    }
+                    $i = $j + 1;
+                    continue;
+                }
             }
-            if (empty($alts)) {
-                return '(?![\\s\\S])';
-            }
-            return '(?:' . implode('|', $alts) . ')';
+            $cleaned .= $remaining[$i];
+            $i++;
         }
-        return '[' . $operand . ']';
+        return ['strings' => $stringAlts, 'charClass' => $cleaned];
+    }
+
+    /**
+     * Apply a /v set operator (`&&` intersection or `--` difference)
+     * to a decomposed lhs and rhs, returning a new decomposed shape.
+     *
+     * /v set ops operate on STRINGS: a string s is in (LHS -- RHS)
+     * iff s is in LHS and not in RHS, regardless of length. So a
+     * multi-codepoint string in LHS survives `--` against a single-
+     * char rhs unconditionally; a single-char string survives only
+     * when its codepoint isn't in rhs's char set.
+     *
+     * @param array{strings: list<string>, charClass: string} $lhs
+     * @param array{strings: list<string>, charClass: string} $rhs
+     * @return array{strings: list<string>, charClass: string}
+     */
+    private function applyVFlagSetOp(string $op, array $lhs, array $rhs): array
+    {
+        // Multi-char strings: those with PCRE-source length > 1 char
+        // (heuristic — escapes like \\uFE0F are 6 bytes but one
+        // codepoint, so use mb_strlen on the literal interpretation
+        // by counting after stripping common escapes).
+        $isMultiChar = function (string $s): bool {
+            // Count codepoints after collapsing common escapes:
+            // \\uXXXX → 1, \\u{X..} → 1, \\xHH → 1, \\C → 1, ch → 1.
+            $count = 0;
+            $i = 0;
+            $n = strlen($s);
+            while ($i < $n) {
+                if ($s[$i] === '\\' && $i + 1 < $n) {
+                    if ($s[$i + 1] === 'u' && $i + 2 < $n && $s[$i + 2] === '{') {
+                        $end = strpos($s, '}', $i + 3);
+                        $i = $end !== false ? $end + 1 : $i + 2;
+                    } elseif ($s[$i + 1] === 'u') {
+                        $i += 6;
+                    } elseif ($s[$i + 1] === 'x') {
+                        $i += 4;
+                    } else {
+                        $i += 2;
+                    }
+                } else {
+                    // Skip a UTF-8 codepoint.
+                    $b = ord($s[$i]);
+                    if ($b < 0x80) {
+                        $i++;
+                    } elseif (($b & 0xE0) === 0xC0) {
+                        $i += 2;
+                    } elseif (($b & 0xF0) === 0xE0) {
+                        $i += 3;
+                    } else {
+                        $i += 4;
+                    }
+                }
+                $count++;
+                if ($count > 1) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if ($op === '&&') {
+            // Build a normalized lookup of rhs strings so escape-form
+            // differences (e.g. \\u{X} vs \\uXXXX vs raw UTF-8) don't
+            // break in_array matching.
+            $rhsNormalized = [];
+            foreach ($rhs['strings'] as $rs) {
+                $rhsNormalized[self::normalizeVFlagString($rs)] = true;
+            }
+            $resultStrings = [];
+            $resultNormalized = [];
+            $addResult = function (string $s) use (&$resultStrings, &$resultNormalized): void {
+                $norm = self::normalizeVFlagString($s);
+                if (isset($resultNormalized[$norm])) {
+                    return;
+                }
+                $resultNormalized[$norm] = true;
+                $resultStrings[] = $s;
+            };
+            foreach ($lhs['strings'] as $s) {
+                $norm = self::normalizeVFlagString($s);
+                if ($isMultiChar($s)) {
+                    if (isset($rhsNormalized[$norm])) {
+                        $addResult($s);
+                    }
+                    continue;
+                }
+                if (isset($rhsNormalized[$norm])) {
+                    $addResult($s);
+                    continue;
+                }
+                if ($rhs['charClass'] !== '' && $this->matchesPcreClass($rhs['charClass'], $norm)) {
+                    $addResult($s);
+                }
+            }
+            if ($lhs['charClass'] !== '') {
+                foreach ($rhs['strings'] as $s) {
+                    if ($isMultiChar($s)) {
+                        continue;
+                    }
+                    $norm = self::normalizeVFlagString($s);
+                    if (isset($resultNormalized[$norm])) {
+                        continue;
+                    }
+                    if ($this->matchesPcreClass($lhs['charClass'], $norm)) {
+                        $addResult($s);
+                    }
+                }
+            }
+            $resultClass = '';
+            if ($lhs['charClass'] !== '' && $rhs['charClass'] !== '') {
+                $resultClass = '(?=[' . $lhs['charClass'] . '])[' . $rhs['charClass'] . ']';
+            }
+            return ['strings' => $resultStrings, 'charClass' => $resultClass];
+        }
+        if ($op === '--') {
+            // Difference.
+            $rhsNormalized = [];
+            foreach ($rhs['strings'] as $rs) {
+                $rhsNormalized[self::normalizeVFlagString($rs)] = true;
+            }
+            $resultStrings = [];
+            foreach ($lhs['strings'] as $s) {
+                $norm = self::normalizeVFlagString($s);
+                if (isset($rhsNormalized[$norm])) {
+                    continue;
+                }
+                if ($isMultiChar($s)) {
+                    $resultStrings[] = $s;
+                    continue;
+                }
+                if ($rhs['charClass'] !== '' && $this->matchesPcreClass($rhs['charClass'], $norm)) {
+                    continue;
+                }
+                $resultStrings[] = $s;
+            }
+            $resultClass = '';
+            if ($lhs['charClass'] !== '') {
+                // Subtract from char class:
+                //   * rhs single-char strings: exclude codepoint
+                //   * rhs multi-char strings: lookahead-exclude the
+                //     start of that string (rhs string match would
+                //     otherwise overlap a single-char lhs match)
+                //   * rhs char class: standard `(?!rhs)lhs`
+                $rhsExcludes = [];
+                foreach ($rhs['strings'] as $rs) {
+                    $rhsExcludes[] = $rs;
+                }
+                if ($rhs['charClass'] !== '') {
+                    $rhsExcludes[] = '[' . $rhs['charClass'] . ']';
+                }
+                if (!empty($rhsExcludes)) {
+                    $resultClass = '(?!(?:' . implode('|', $rhsExcludes) . '))[' . $lhs['charClass'] . ']';
+                } else {
+                    $resultClass = '[' . $lhs['charClass'] . ']';
+                }
+            }
+            return ['strings' => $resultStrings, 'charClass' => $resultClass];
+        }
+        // Unknown op — just return lhs.
+        return $lhs;
+    }
+
+    /**
+     * Test whether a single-codepoint string matches a PCRE-style
+     * char class body. Used to filter single-char strings from a
+     * \\q{...} alternation against a char-class operand under /v
+     * intersection / difference.
+     */
+    private function matchesPcreClass(string $classContent, string $needle): bool
+    {
+        $r = @preg_match('/[' . $classContent . ']/u', $needle);
+        return $r === 1;
+    }
+
+    /**
+     * Normalize a /v-class string fragment into a canonical UTF-8
+     * form so comparisons across escape conventions agree
+     * (\\u{HEX}, \\uHHHH, raw chars all map to the same string).
+     */
+    private static function normalizeVFlagString(string $s): string
+    {
+        $out = '';
+        $len = strlen($s);
+        $i = 0;
+        while ($i < $len) {
+            if ($s[$i] === '\\' && $i + 1 < $len) {
+                $next = $s[$i + 1];
+                if ($next === 'u' && $i + 2 < $len && $s[$i + 2] === '{') {
+                    $end = strpos($s, '}', $i + 3);
+                    if ($end !== false) {
+                        $hex = substr($s, $i + 3, $end - ($i + 3));
+                        if (ctype_xdigit($hex)) {
+                            $out .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                            $i = $end + 1;
+                            continue;
+                        }
+                    }
+                }
+                if ($next === 'u' && $i + 5 < $len) {
+                    $hex = substr($s, $i + 2, 4);
+                    if (ctype_xdigit($hex)) {
+                        $out .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                        $i += 6;
+                        continue;
+                    }
+                }
+                if ($next === 'x' && $i + 2 < $len && $s[$i + 2] === '{') {
+                    $end = strpos($s, '}', $i + 3);
+                    if ($end !== false) {
+                        $hex = substr($s, $i + 3, $end - ($i + 3));
+                        if (ctype_xdigit($hex)) {
+                            $out .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                            $i = $end + 1;
+                            continue;
+                        }
+                    }
+                }
+                if ($next === 'x' && $i + 3 < $len) {
+                    $hex = substr($s, $i + 2, 2);
+                    if (ctype_xdigit($hex)) {
+                        $out .= mb_chr((int) hexdec($hex), 'UTF-8') ?: '';
+                        $i += 4;
+                        continue;
+                    }
+                }
+                // Other escape — pass through next char as literal.
+                $out .= $next;
+                $i += 2;
+                continue;
+            }
+            $out .= $s[$i];
+            $i++;
+        }
+        return $out;
+    }
+
+    /**
+     * Emit a decomposed /v operand back into a PCRE alternation.
+     *
+     * @param array{strings: list<string>, charClass: string} $op
+     */
+    private function emitDecomposedVFlagOperand(array $op): string
+    {
+        $alts = $op['strings'];
+        // Sort by codepoint length descending so longer strings get
+        // tried first — required since "9️⃣" must beat "9" at the
+        // same start position.
+        usort($alts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+        $cc = $op['charClass'];
+        if ($cc !== '') {
+            // If charClass starts with a lookahead/lookbehind sentinel
+            // (intersection / difference encoding from applyVFlagSetOp),
+            // wrap in a non-capturing group so it joins the alternation
+            // without precedence issues.
+            if ($cc[0] === '(') {
+                $alts[] = $cc;
+            } else {
+                $alts[] = '[' . $cc . ']';
+            }
+        }
+        if (empty($alts)) {
+            return '(?![\\s\\S])';
+        }
+        if (count($alts) === 1) {
+            return '(?:' . $alts[0] . ')';
+        }
+        return '(?:' . implode('|', $alts) . ')';
     }
 
     /**
@@ -16090,20 +16490,84 @@ class Interpreter
      */
     private function transformClassWithStringLiterals(string $classContent, bool $negated, int $pos): array
     {
+        // Manually peel out `\\q{...}` blocks so nested `\\x{HEX}` /
+        // `\\u{HEX}` escapes (which contain `}`) don't trip a naive
+        // `\\q\\{[^}]*\\}` regex. The body is split on `|` only at
+        // the top level — embedded brace pairs are skipped.
         $stringAlts = [];
-        $remaining = preg_replace_callback(
-            '/\\\\q\\{([^}]*)\\}/',
-            function (array $m) use (&$stringAlts): string {
-                foreach (explode('|', $m[1]) as $alt) {
-                    if ($alt !== '') {
-                        $stringAlts[] = $alt;
+        $remaining = '';
+        $len = strlen($classContent);
+        $i = 0;
+        while ($i < $len) {
+            if (
+                $classContent[$i] === '\\'
+                && $i + 2 < $len
+                && $classContent[$i + 1] === 'q'
+                && $classContent[$i + 2] === '{'
+            ) {
+                $j = $i + 3;
+                $depth = 1;
+                while ($j < $len) {
+                    if ($classContent[$j] === '\\' && $j + 1 < $len) {
+                        $j += 2;
+                        continue;
                     }
+                    if ($classContent[$j] === '{') {
+                        $depth++;
+                    } elseif ($classContent[$j] === '}') {
+                        $depth--;
+                        if ($depth === 0) {
+                            break;
+                        }
+                    }
+                    $j++;
                 }
-                return '';
-            },
-            $classContent,
-        );
-        usort($stringAlts, static fn (string $a, string $b): int => mb_strlen($b) - mb_strlen($a));
+                if ($j < $len) {
+                    $body = substr($classContent, $i + 3, $j - ($i + 3));
+                    // Split body on top-level `|` (skip ones inside braces).
+                    $alts = [];
+                    $cur = '';
+                    $blen = strlen($body);
+                    $bi = 0;
+                    $bdepth = 0;
+                    while ($bi < $blen) {
+                        $bc = $body[$bi];
+                        if ($bc === '\\' && $bi + 1 < $blen) {
+                            $cur .= $bc . $body[$bi + 1];
+                            $bi += 2;
+                            continue;
+                        }
+                        if ($bc === '{') {
+                            $bdepth++;
+                        } elseif ($bc === '}') {
+                            $bdepth--;
+                        } elseif ($bc === '|' && $bdepth === 0) {
+                            $alts[] = $cur;
+                            $cur = '';
+                            $bi++;
+                            continue;
+                        }
+                        $cur .= $bc;
+                        $bi++;
+                    }
+                    if ($cur !== '') {
+                        $alts[] = $cur;
+                    }
+                    foreach ($alts as $a) {
+                        if ($a !== '') {
+                            $stringAlts[] = $a;
+                        }
+                    }
+                    $i = $j + 1;
+                    continue;
+                }
+            }
+            $remaining .= $classContent[$i];
+            $i++;
+        }
+        // Sort longer alternatives first so PCRE alternation tries
+        // them before shorter prefixes at the same position.
+        usort($stringAlts, static fn (string $a, string $b): int => strlen($b) - strlen($a));
         $parts = $stringAlts;
         if ($remaining !== '') {
             $parts[] = '[' . ($negated ? '^' : '') . $remaining . ']';
