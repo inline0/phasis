@@ -4977,9 +4977,10 @@ class Interpreter
                         $this->currentParamNames[$pName] = true;
                     }
                 }
-                if (!$fn->isArrow() && $argsObj !== null) {
-                    $this->currentParamNames['arguments'] = true;
-                }
+                // Per spec arguments is not a formal parameter for the
+                // purposes of Annex B.3.3.1 step 1.b.ii — V8 / SpiderMonkey
+                // both let `function arguments() {}` inside a block hoist
+                // and replace the implicit args object.
             }
 
             // When the function has parameter expressions (defaults, destructuring
