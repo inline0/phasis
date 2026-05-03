@@ -109,6 +109,36 @@ class JsProxy extends JsObject
     }
 
     /**
+     * Format a symbol description for error messages.
+     *
+     * Per SpiderMonkey error message conventions, a symbol property name in a
+     * proxy invariant TypeError is rendered as 'Symbol("desc")' (single quotes
+     * around the entire form). When the symbol's description is null we emit
+     * 'Symbol()'.
+     */
+    private static function formatSymbolForError(JsSymbol $sym): string
+    {
+        $desc = $sym->description;
+        if ($desc === null) {
+            return "'Symbol()'";
+        }
+        return "'Symbol(\"{$desc}\")'";
+    }
+
+    /**
+     * Format a property key (JsString name, raw PHP string, or JsSymbol) for
+     * inclusion in a proxy invariant TypeError message. Strings are wrapped in
+     * double quotes; symbols pass through formatSymbolForError().
+     */
+    private static function formatKeyForError(string|JsSymbol $name): string
+    {
+        if ($name instanceof JsSymbol) {
+            return self::formatSymbolForError($name);
+        }
+        return "\"{$name}\"";
+    }
+
+    /**
      * Try to get a trap function from the handler.
      * Returns null if the handler does not have the named trap.
      * Throws TypeError if the trap value exists but is not callable (per GetMethod spec).
@@ -277,7 +307,7 @@ class JsProxy extends JsObject
      * - If target property is non-configurable accessor with get=undefined,
      *   trap result must be undefined.
      */
-    private function validateGetInvariants(string $name, JsValue $trapResult, ?JsObject $target = null): void
+    private function validateGetInvariants(string|JsSymbol $name, JsValue $trapResult, ?JsObject $target = null): void
     {
         // A revoked proxy has a null target; the caller should have already
         // thrown TypeError before invoking a trap, but guard defensively so a
@@ -286,16 +316,19 @@ class JsProxy extends JsObject
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
         if ($targetDesc->configurable === false) {
+            $key = self::formatKeyForError($name);
             if ($targetDesc->isDataDescriptor() && $targetDesc->writable === false) {
                 $targetValue = $targetDesc->value ?? JsUndefined::instance();
                 if (!$this->sameValue($trapResult, $targetValue)) {
                     throw new TypeError(
-                        "'get' on proxy: property '{$name}' is a read-only and"
+                        "'get' on proxy: property {$key} is a read-only and"
                         . " non-configurable data property on the proxy target"
                         . " but the proxy did not return its actual value"
                     );
@@ -304,7 +337,7 @@ class JsProxy extends JsObject
             if ($targetDesc->isAccessorDescriptor() && $targetDesc->get === null) {
                 if (!$trapResult instanceof JsUndefined) {
                     throw new TypeError(
-                        "'get' on proxy: property '{$name}' is a non-configurable accessor"
+                        "'get' on proxy: property {$key} is a non-configurable accessor"
                         . " property on the proxy target and does not have a getter function,"
                         . " but the trap did not return 'undefined'"
                     );
@@ -319,7 +352,8 @@ class JsProxy extends JsObject
     {
         $success = $this->internalSet($name, $value, $this);
         if (!$success && $strict) {
-            throw new TypeError("'set' on proxy: trap returned falsish for property '{$name}'");
+            $key = self::formatKeyForError($name);
+            throw new TypeError("'set' on proxy: trap returned falsish for property {$key}");
         }
     }
 
@@ -373,23 +407,26 @@ class JsProxy extends JsObject
      * - Data property with writable=false: value must be SameValue as V.
      * - Accessor property with set=undefined: must throw TypeError.
      */
-    private function validateSetInvariants(string $name, JsValue $value, ?JsObject $target = null): void
+    private function validateSetInvariants(string|JsSymbol $name, JsValue $value, ?JsObject $target = null): void
     {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
         if ($targetDesc->configurable === false) {
+            $key = self::formatKeyForError($name);
             if ($targetDesc->isDataDescriptor() && $targetDesc->writable === false) {
                 $targetValue = $targetDesc->value ?? JsUndefined::instance();
                 if (!$this->sameValue($value, $targetValue)) {
                     throw new TypeError(
                         "'set' on proxy: trap returned truish for property"
-                        . " '{$name}' which exists in the proxy target as a"
+                        . " {$key} which exists in the proxy target as a"
                         . " non-configurable and non-writable data property"
                         . " with a different value"
                     );
@@ -398,7 +435,7 @@ class JsProxy extends JsObject
             if ($targetDesc->isAccessorDescriptor() && $targetDesc->set === null) {
                 throw new TypeError(
                     "'set' on proxy: trap returned truish for property"
-                    . " '{$name}' which exists in the proxy target as a"
+                    . " {$key} which exists in the proxy target as a"
                     . " non-configurable and non-writable accessor"
                     . " property without a setter"
                 );
@@ -470,23 +507,26 @@ class JsProxy extends JsObject
      * - If property is non-configurable on target, throw TypeError.
      * - If target is not extensible and property exists on target, throw TypeError.
      */
-    private function validateHasInvariants(string $name, ?JsObject $target = null): void
+    private function validateHasInvariants(string|JsSymbol $name, ?JsObject $target = null): void
     {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         if ($targetDesc !== null) {
+            $key = self::formatKeyForError($name);
             if ($targetDesc->configurable === false) {
                 throw new TypeError(
-                    "'has' on proxy: property '{$name}' is a non-configurable own"
+                    "'has' on proxy: property {$key} is a non-configurable own"
                     . " property of the proxy target but the has trap returned false"
                 );
             }
             if (!$target->isExtensible()) {
                 throw new TypeError(
-                    "'has' on proxy: property '{$name}' is an own property of the"
+                    "'has' on proxy: property {$key} is an own property of the"
                     . " non-extensible proxy target but the has trap returned false"
                 );
             }
@@ -508,7 +548,8 @@ class JsProxy extends JsObject
                 $this->validateDeleteInvariants($name, $target);
             }
             if (!$booleanTrapResult && $strict) {
-                throw new TypeError("'deleteProperty' on proxy: property '{$name}' is non-configurable");
+                $key = self::formatKeyForError($name);
+                throw new TypeError("'deleteProperty' on proxy: property {$key} is non-configurable");
             }
             return $booleanTrapResult;
         }
@@ -522,23 +563,26 @@ class JsProxy extends JsObject
      * - If target property is non-configurable, throw TypeError.
      * - If target property exists and target is not extensible, throw TypeError.
      */
-    private function validateDeleteInvariants(string $name, ?JsObject $target = null): void
+    private function validateDeleteInvariants(string|JsSymbol $name, ?JsObject $target = null): void
     {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         if ($targetDesc !== null) {
+            $key = self::formatKeyForError($name);
             if ($targetDesc->configurable === false) {
                 throw new TypeError(
-                    "'deleteProperty' on proxy: property '{$name}' is"
+                    "'deleteProperty' on proxy: property {$key} is"
                     . " non-configurable and can't be deleted"
                 );
             }
             if (!$target->isExtensible()) {
                 throw new TypeError(
-                    "'deleteProperty' on proxy: property '{$name}' exists on a"
+                    "'deleteProperty' on proxy: property {$key} exists on a"
                     . " non-extensible proxy target and can't be deleted"
                 );
             }
@@ -555,14 +599,7 @@ class JsProxy extends JsObject
         if ($trap !== null) {
             $result = $trap->call($handler, [$target]);
             $trapResult = $this->trapResultToPropertyKeys($result);
-            // Build stringified list for invariant validation.
-            $stringified = [];
-            foreach ($trapResult as $k) {
-                $stringified[] = ($k instanceof JsSymbol)
-                    ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
-                    : ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
-            }
-            $this->validateOwnKeysInvariants($stringified, $target);
+            $this->validateOwnKeysInvariants($trapResult, $target);
             // Return string keys only (symbols handled via ordinaryOwnPropertyKeys).
             $stringKeys = [];
             foreach ($trapResult as $k) {
@@ -579,13 +616,21 @@ class JsProxy extends JsObject
     /**
      * Validate ownKeys trap invariants per ES spec 10.5.11 steps 17-25.
      *
-     * @param list<string> $trapResult
+     * @param list<JsValue> $trapResult List of JsString and JsSymbol values.
      */
     private function validateOwnKeysInvariants(array $trapResult, ?JsObject $target = null): void
     {
-        // Step 17: Check for duplicate entries.
-        if (count($trapResult) !== count(array_unique($trapResult))) {
-            throw new TypeError("'ownKeys' on proxy: trap returned duplicate entries");
+        // Step 17: Check for duplicate entries. We compare on a stable string
+        // form: "S:..." for strings, "Y:<id>" for symbols (object identity).
+        $seen = [];
+        foreach ($trapResult as $k) {
+            $tag = $k instanceof JsSymbol
+                ? 'Y:' . $k->getId()
+                : 'S:' . ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
+            if (isset($seen[$tag])) {
+                throw new TypeError("'ownKeys' on proxy: trap returned duplicate entries");
+            }
+            $seen[$tag] = true;
         }
 
         $target ??= $this->target;
@@ -608,41 +653,67 @@ class JsProxy extends JsObject
             }
         }
 
-        // Also check symbol keys for non-configurable invariant.
-        // Per spec, non-configurable symbol keys must appear in trap result.
+        // Symbol keys on target.
         $targetSymbolPairs = $target->getOwnSymbolsWithDescriptors();
+        $targetNonconfigurableSymbols = [];
+        $targetConfigurableSymbols = [];
         foreach ($targetSymbolPairs as [$sym, $desc]) {
             if ($desc->configurable === false) {
-                // Non-configurable symbol key must be in trap result.
-                // Since trap result is string-only, this always fails.
-                throw new TypeError(
-                    "'ownKeys' on proxy: trap result did not include "
-                    . 'non-configurable symbol key'
-                );
+                $targetNonconfigurableSymbols[] = $sym;
+            } else {
+                $targetConfigurableSymbols[] = $sym;
+            }
+        }
+
+        // Build trap-result lookup sets for strings and symbols.
+        $trapStringSet = [];
+        $trapSymbolSet = [];
+        foreach ($trapResult as $k) {
+            if ($k instanceof JsString) {
+                $trapStringSet[$k->value] = true;
+            } elseif ($k instanceof JsSymbol) {
+                $trapSymbolSet[$k->getId()] = true;
             }
         }
 
         // Step 21: All non-configurable target keys must appear in trap result.
-        $trapSet = array_flip($trapResult);
         foreach ($targetNonconfigurableKeys as $key) {
-            if (!isset($trapSet[$key])) {
+            if (!isset($trapStringSet[$key])) {
+                $formatted = self::formatKeyForError($key);
                 throw new TypeError(
-                    "'ownKeys' on proxy: trap result did not include '{$key}'"
+                    "'ownKeys' on proxy: trap result did not include {$formatted}"
+                );
+            }
+        }
+        foreach ($targetNonconfigurableSymbols as $sym) {
+            if (!isset($trapSymbolSet[$sym->getId()])) {
+                $formatted = self::formatKeyForError($sym);
+                throw new TypeError(
+                    "'ownKeys' on proxy: trap result did not include {$formatted}"
                 );
             }
         }
 
         // Step 23: If target is non-extensible, all target keys must be in trap result
         // and no extra keys allowed.
-        $totalTargetKeys = count($targetKeys) + count($targetSymbolPairs);
         if (!$extensibleTarget) {
             foreach ($targetConfigurableKeys as $key) {
-                if (!isset($trapSet[$key])) {
+                if (!isset($trapStringSet[$key])) {
+                    $formatted = self::formatKeyForError($key);
                     throw new TypeError(
-                        "'ownKeys' on proxy: trap result did not include '{$key}'"
+                        "'ownKeys' on proxy: trap result did not include {$formatted}"
                     );
                 }
             }
+            foreach ($targetConfigurableSymbols as $sym) {
+                if (!isset($trapSymbolSet[$sym->getId()])) {
+                    $formatted = self::formatKeyForError($sym);
+                    throw new TypeError(
+                        "'ownKeys' on proxy: trap result did not include {$formatted}"
+                    );
+                }
+            }
+            $totalTargetKeys = count($targetKeys) + count($targetSymbolPairs);
             if (count($trapResult) !== $totalTargetKeys) {
                 throw new TypeError(
                     "'ownKeys' on proxy: trap returned extra keys for non-extensible target"
@@ -686,14 +757,7 @@ class JsProxy extends JsObject
         if ($trap !== null) {
             $result = $trap->call($this->handler, [$this->target]);
             $trapResult = $this->trapResultToPropertyKeys($result);
-            // Validate invariants using string representation for duplicate checking.
-            $stringified = [];
-            foreach ($trapResult as $k) {
-                $stringified[] = ($k instanceof JsSymbol)
-                    ? 'Symbol(' . ($k->description ?? '') . ')#' . $k->getId()
-                    : ($k instanceof JsString ? $k->value : \PhpJs\Spec\TypeConversion::toString($k));
-            }
-            $this->validateOwnKeysInvariants($stringified);
+            $this->validateOwnKeysInvariants($trapResult);
             return $trapResult;
         }
         return $this->target->ordinaryOwnPropertyKeys();
@@ -807,171 +871,228 @@ class JsProxy extends JsObject
 
     /**
      * Validate defineProperty invariants per spec 10.5.6 steps 17-22.
+     *
+     * Emits a SpiderMonkey-style detailed message for each invariant violation
+     * so test262 / regress-1383630 can match on the specific cause via
+     * `assertThrowsTypeErrorIncludes`. The detail strings mirror the SM
+     * JSMSG_* table so cross-engine compat tests stay aligned.
      */
-    private function validateDefinePropertyInvariants(string $name, PropertyDescriptor $desc, ?JsObject $target = null): void
-    {
+    private function validateDefinePropertyInvariants(
+        string|JsSymbol $name,
+        PropertyDescriptor $desc,
+        ?JsObject $target = null,
+    ): void {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         $extensibleTarget = $target->isExtensible();
-
-        // Step 19: If target property does not exist and target is not extensible, throw.
-        if ($targetDesc === null && !$extensibleTarget) {
-            throw new TypeError(
-                "'defineProperty' on proxy: trap returned truish for defining"
-                . " non-configurable property '{$name}' which cannot exist"
-                . " on the non-extensible proxy target"
-            );
-        }
+        $key = self::formatKeyForError($name);
 
         // "settingConfigFalse" flag per spec step 16.
         $settingConfigFalse = $desc->configurable === false;
 
-        if ($targetDesc !== null) {
-            // Step 20a: IsCompatiblePropertyDescriptor check.
-            if (!self::isCompatiblePropertyDescriptor($extensibleTarget, $desc, $targetDesc)) {
+        // Step 19: If target property does not exist.
+        if ($targetDesc === null) {
+            if (!$extensibleTarget) {
                 throw new TypeError(
-                    "'defineProperty' on proxy: trap returned truish for"
-                    . " property '{$name}' which is incompatible with the"
-                    . " existing property on the proxy target"
+                    "'defineProperty' on proxy: trap returned truish for adding"
+                    . " property {$key}, but the proxy target is not extensible"
                 );
             }
-
-            // Step 20b: If settingConfigFalse is true and targetDesc.configurable is true, throw.
-            if ($settingConfigFalse && ($targetDesc->configurable ?? false)) {
+            if ($settingConfigFalse) {
                 throw new TypeError(
                     "'defineProperty' on proxy: trap returned truish for"
-                    . " defining non-configurable property '{$name}' which"
-                    . " is already configurable in the proxy target"
+                    . " defining non-configurable property {$key}"
+                    . " on a target that does not have this property"
                 );
             }
-
-            // Step 20c: If targetDesc is non-configurable data and desc makes it non-writable
-            // but targetDesc is writable, throw TypeError.
-            if (
-                ($targetDesc->configurable ?? false) === false
-                && $targetDesc->isDataDescriptor()
-                && ($targetDesc->writable ?? false)
-                && $desc->isDataDescriptor()
-                && $desc->writable === false
-            ) {
-                throw new TypeError(
-                    "'defineProperty' on proxy: trap returned truish for"
-                    . " defining non-configurable non-writable property '{$name}'"
-                    . " which is writable in the proxy target"
-                );
-            }
+            return;
         }
 
-        // Step 19 variant: desc is non-configurable and target property does not exist.
-        if ($settingConfigFalse && $targetDesc === null) {
+        // From here, targetDesc !== null. Mirror the per-attribute checks in
+        // ValidateAndApplyPropertyDescriptor so each violation surfaces a
+        // specific message matching SpiderMonkey's JSMSG details.
+
+        // Step 20b (DETAILS_CANT_REPORT_NC_AS_C): targetDesc non-configurable but
+        // desc is configurable.
+        if (
+            ($targetDesc->configurable ?? false) === false
+            && $desc->configurable === true
+        ) {
             throw new TypeError(
                 "'defineProperty' on proxy: trap returned truish for"
-                . " defining non-configurable property '{$name}'"
-                . " on a target that does not have this property"
+                . " property {$key}: proxy can't report an existing"
+                . " non-configurable property as configurable"
             );
         }
-    }
 
-    /**
-     * IsCompatiblePropertyDescriptor for proxy defineProperty invariant checking.
-     * Per spec ValidateAndApplyPropertyDescriptor.
-     */
-    private function isCompatiblePropertyDescriptor(
-        bool $extensible,
-        PropertyDescriptor $desc,
-        PropertyDescriptor $current,
-    ): bool {
-        // If current is not configurable, apply restrictions.
-        if ($current->configurable === false) {
-            if ($desc->configurable === true) {
-                return false;
+        // Inverse: target configurable, desc forces non-configurable. The
+        // spec only allows this when the target also exists as non-configurable.
+        if (
+            $settingConfigFalse
+            && ($targetDesc->configurable ?? false) === true
+        ) {
+            throw new TypeError(
+                "'defineProperty' on proxy: trap returned truish for"
+                . " property {$key}: proxy can't define an existing"
+                . " configurable property as non-configurable"
+            );
+        }
+
+        // (DETAILS_ENUM_DIFFERENT): targetDesc non-configurable but desc has a
+        // different enumerable.
+        if (
+            ($targetDesc->configurable ?? false) === false
+            && $desc->enumerable !== null
+            && $desc->enumerable !== ($targetDesc->enumerable ?? false)
+        ) {
+            throw new TypeError(
+                "'defineProperty' on proxy: trap returned truish for"
+                . " property {$key}: proxy can't report a different"
+                . " 'enumerable' from target when target is not configurable"
+            );
+        }
+
+        // (DETAILS_CURRENT_NC_DIFF_TYPE): targetDesc non-configurable but
+        // descriptor type (data vs accessor) differs.
+        if (
+            ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isDataDescriptor() !== $desc->isDataDescriptor()
+            && ($desc->isDataDescriptor() || $desc->isAccessorDescriptor())
+        ) {
+            throw new TypeError(
+                "'defineProperty' on proxy: trap returned truish for"
+                . " property {$key}: proxy can't report a different"
+                . " descriptor type when target is not configurable"
+            );
+        }
+
+        // Both data descriptors with targetDesc non-configurable.
+        if (
+            ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isDataDescriptor()
+            && $desc->isDataDescriptor()
+        ) {
+            // (DETAILS_CANT_REPORT_NW_AS_W): targetDesc non-writable but desc
+            // is writable.
+            if (($targetDesc->writable ?? false) === false && $desc->writable === true) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " property {$key}: proxy can't report a"
+                    . " non-configurable, non-writable property as writable"
+                );
             }
-            if ($desc->enumerable !== null && $desc->enumerable !== ($current->enumerable ?? false)) {
-                return false;
+            // SpiderMonkey also emits the W-as-NW form for readability when
+            // the trap promotes a writable property to non-writable on a
+            // non-configurable target. That's the legacy path covered below
+            // (kept distinct from DETAILS_DIFFERENT_VALUE).
+            if (($targetDesc->writable ?? false) === true && $desc->writable === false) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " property {$key}: proxy can't define a"
+                    . " non-configurable non-writable property when the"
+                    . " target's property is writable"
+                );
             }
-        }
-
-        // Generic descriptor (no value/writable/get/set): always compatible.
-        if (!$desc->isDataDescriptor() && !$desc->isAccessorDescriptor()) {
-            return true;
-        }
-
-        // Switching between data and accessor.
-        $currentIsData = $current->isDataDescriptor();
-        $descIsData = $desc->isDataDescriptor();
-        if ($currentIsData !== $descIsData) {
-            return $current->configurable !== false;
-        }
-
-        // Both data descriptors.
-        if ($currentIsData && $descIsData) {
-            if ($current->configurable === false && $current->writable === false) {
-                if ($desc->writable === true) {
-                    return false;
+            // (DETAILS_DIFFERENT_VALUE): targetDesc non-writable, desc has
+            // different value.
+            if (($targetDesc->writable ?? false) === false && $desc->value !== null) {
+                $curVal = $targetDesc->value ?? JsUndefined::instance();
+                if (!$this->sameValue($desc->value, $curVal)) {
+                    throw new TypeError(
+                        "'defineProperty' on proxy: trap returned truish for"
+                        . " property {$key}: proxy must report the same value"
+                        . " for the non-writable, non-configurable property"
+                    );
                 }
-                $curVal = $current->value ?? JsUndefined::instance();
-                if ($desc->value !== null && !$this->sameValue($desc->value, $curVal)) {
-                    return false;
-                }
             }
-            return true;
         }
 
-        // Both accessor descriptors.
-        if ($current->configurable === false) {
-            if ($desc->set !== null && $desc->set !== $current->set) {
-                return false;
+        // Both accessor descriptors with targetDesc non-configurable.
+        if (
+            ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isAccessorDescriptor()
+            && $desc->isAccessorDescriptor()
+        ) {
+            // (DETAILS_SETTERS_DIFFERENT)
+            if ($desc->hasSet && $desc->set !== $targetDesc->set) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " property {$key}: proxy can't report different setters"
+                    . " for a currently non-configurable property"
+                );
             }
-            if ($desc->get !== null && $desc->get !== $current->get) {
-                return false;
+            // (DETAILS_GETTERS_DIFFERENT)
+            if ($desc->hasGet && $desc->get !== $targetDesc->get) {
+                throw new TypeError(
+                    "'defineProperty' on proxy: trap returned truish for"
+                    . " property {$key}: proxy can't report different getters"
+                    . " for a currently non-configurable property"
+                );
             }
         }
-        return true;
     }
 
     public function defineProperty(string $name, PropertyDescriptor $desc): void
     {
         if (!$this->defineOwnProperty($name, $desc)) {
-            throw new TypeError("'defineProperty' on proxy: trap returned falsish for property '{$name}'");
+            $key = self::formatKeyForError($name);
+            throw new TypeError("'defineProperty' on proxy: trap returned falsish for property {$key}");
         }
     }
 
-    /** Symbol-keyed getOwnPropertyDescriptor that goes through the trap. */
+    /**
+     * Symbol-keyed getOwnPropertyDescriptor that goes through the trap, with
+     * the same invariant validation as the string-keyed path.
+     */
     public function getSymbolPropertyDescriptor(JsSymbol $symbol): ?PropertyDescriptor
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('getOwnPropertyDescriptor');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, $symbol]);
+            $result = $trap->call($handler, [$target, $symbol]);
             if ($result instanceof JsUndefined) {
+                $this->validateGetOwnPropertyUndefinedInvariants($symbol, $target);
                 return null;
             }
             if (!$result instanceof JsObject) {
+                $key = self::formatKeyForError($symbol);
                 throw new TypeError(
                     "'getOwnPropertyDescriptor' on proxy: trap returned"
-                    . " neither Object nor undefined for symbol property"
+                    . " neither Object nor undefined for property {$key}"
                 );
             }
-            return self::objectToDescriptor($result);
+            $resultDesc = self::objectToDescriptor($result);
+            $this->validateGetOwnPropertyInvariants($symbol, $resultDesc, $target);
+            return $resultDesc;
         }
-        return $this->target->getSymbolPropertyDescriptor($symbol);
+        return $target->getSymbolPropertyDescriptor($symbol);
     }
 
-    /** Symbol-keyed defineProperty that goes through the defineProperty trap. */
+    /**
+     * Symbol-keyed defineProperty that goes through the defineProperty trap,
+     * including invariant validation.
+     */
     public function definePropertyBySymbol(JsSymbol $symbol, PropertyDescriptor $desc): bool
     {
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('defineProperty');
         if ($trap !== null) {
             $descObj = self::descriptorToObject($desc);
-            $result = $trap->call($this->handler, [$this->target, $symbol, $descObj]);
+            $result = $trap->call($handler, [$target, $symbol, $descObj]);
             if (!\PhpJs\Spec\TypeConversion::toBoolean($result)) {
                 return false;
             }
+            $this->validateDefinePropertyInvariants($symbol, $desc, $target);
             return true;
         }
-        return $this->target->definePropertyBySymbol($symbol, $desc);
+        return $target->definePropertyBySymbol($symbol, $desc);
     }
 
     // -- [[GetOwnProperty]] --
@@ -996,9 +1117,10 @@ class JsProxy extends JsObject
             }
             if (!$result instanceof JsObject) {
                 // Step 11: result must be Object or Undefined.
+                $key = self::formatKeyForError($name);
                 throw new TypeError(
                     "'getOwnPropertyDescriptor' on proxy: trap returned"
-                    . " neither Object nor undefined for property '{$name}'"
+                    . " neither Object nor undefined for property {$key}"
                 );
             }
             $resultDesc = self::objectToDescriptor($result);
@@ -1013,27 +1135,30 @@ class JsProxy extends JsObject
      * Validate getOwnPropertyDescriptor invariants when trap returns undefined.
      * Per spec 10.5.5 step 14.
      */
-    private function validateGetOwnPropertyUndefinedInvariants(string $name, ?JsObject $target = null): void
+    private function validateGetOwnPropertyUndefinedInvariants(string|JsSymbol $name, ?JsObject $target = null): void
     {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         if ($targetDesc === null) {
             return;
         }
+        $key = self::formatKeyForError($name);
         // 14b: non-configurable property cannot be reported as non-existent.
         if ($targetDesc->configurable === false) {
             throw new TypeError(
-                "'getOwnPropertyDescriptor' on proxy: property '{$name}' is non-configurable"
+                "'getOwnPropertyDescriptor' on proxy: property {$key} is non-configurable"
                 . " on the proxy target but the trap returned undefined"
             );
         }
         // 14e: if target is non-extensible, existing property cannot be reported as non-existent.
         if (!$target->isExtensible()) {
             throw new TypeError(
-                "'getOwnPropertyDescriptor' on proxy: property '{$name}' exists on the"
+                "'getOwnPropertyDescriptor' on proxy: property {$key} exists on the"
                 . " non-extensible proxy target but the trap returned undefined"
             );
         }
@@ -1042,45 +1167,160 @@ class JsProxy extends JsObject
     /**
      * Validate getOwnPropertyDescriptor invariants when trap returns a descriptor.
      * Per spec 10.5.5 steps 16-22.
+     *
+     * Emits SpiderMonkey-style detail messages for each specific invariant
+     * violation so test262 / regress-1383630's
+     * `assertThrowsTypeErrorIncludes` checks can match them.
      */
-    private function validateGetOwnPropertyInvariants(string $name, PropertyDescriptor $resultDesc, ?JsObject $target = null): void
-    {
+    private function validateGetOwnPropertyInvariants(
+        string|JsSymbol $name,
+        PropertyDescriptor $resultDesc,
+        ?JsObject $target = null,
+    ): void {
         $target ??= $this->target;
         if ($target === null) {
             return;
         }
-        $targetDesc = $target->getOwnPropertyDescriptor($name);
+        $targetDesc = $name instanceof JsSymbol
+            ? $target->getSymbolPropertyDescriptor($name)
+            : $target->getOwnPropertyDescriptor($name);
         $extensibleTarget = $target->isExtensible();
+        $key = self::formatKeyForError($name);
 
-        // Step 20: IsCompatiblePropertyDescriptor check.
-        // If target is non-extensible and target property does not exist, throw.
+        // (DETAILS_NOT_EXTENSIBLE): target non-extensible and target property
+        // does not exist, but trap reported a descriptor for it.
         if (!$extensibleTarget && $targetDesc === null) {
             throw new TypeError(
-                "'getOwnPropertyDescriptor' on proxy: property '{$name}' is reported"
-                . " but does not exist on the non-extensible proxy target"
+                "'getOwnPropertyDescriptor' on proxy: trap reported descriptor for"
+                . " property {$key}: proxy can't report an extensible object as"
+                . " non-extensible"
             );
         }
 
-        // Step 22: non-configurable result checks.
-        if ($resultDesc->configurable === false) {
-            // 22a: if target desc is undefined or configurable, throw.
-            if ($targetDesc === null || $targetDesc->configurable !== false) {
+        // (DETAILS_CANT_REPORT_NC_AS_C): target property is non-configurable but
+        // trap reports it as configurable.
+        if (
+            $targetDesc !== null
+            && ($targetDesc->configurable ?? false) === false
+            && $resultDesc->configurable === true
+        ) {
+            throw new TypeError(
+                "'getOwnPropertyDescriptor' on proxy: trap reported descriptor for"
+                . " property {$key}: proxy can't report an existing"
+                . " non-configurable property as configurable"
+            );
+        }
+
+        // Inverse mismatch: result reported as non-configurable but the target
+        // either has no own property or has it as configurable. The same
+        // SpiderMonkey detail message ("non-configurable property as
+        // configurable") covers both directions in the test corpus.
+        if (
+            $resultDesc->configurable === false
+            && ($targetDesc === null || ($targetDesc->configurable ?? true) !== false)
+        ) {
+            throw new TypeError(
+                "'getOwnPropertyDescriptor' on proxy: trap reported descriptor for"
+                . " property {$key}: proxy can't report an existing"
+                . " non-configurable property as configurable"
+            );
+        }
+
+        // (DETAILS_ENUM_DIFFERENT): target property non-configurable but result
+        // reports a different `enumerable`.
+        if (
+            $targetDesc !== null
+            && ($targetDesc->configurable ?? false) === false
+            && $resultDesc->enumerable !== null
+            && $resultDesc->enumerable !== ($targetDesc->enumerable ?? false)
+        ) {
+            throw new TypeError(
+                "'getOwnPropertyDescriptor' on proxy: trap reported descriptor for"
+                . " property {$key}: proxy can't report a different 'enumerable'"
+                . " from target when target is not configurable"
+            );
+        }
+
+        // (DETAILS_CURRENT_NC_DIFF_TYPE): target property non-configurable but
+        // descriptor type (data vs accessor) differs.
+        if (
+            $targetDesc !== null
+            && ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isDataDescriptor() !== $resultDesc->isDataDescriptor()
+            && ($resultDesc->isDataDescriptor() || $resultDesc->isAccessorDescriptor())
+        ) {
+            throw new TypeError(
+                "'getOwnPropertyDescriptor' on proxy: trap reported descriptor for"
+                . " property {$key}: proxy can't report a different descriptor"
+                . " type when target is not configurable"
+            );
+        }
+
+        // Both data descriptors with target non-configurable.
+        if (
+            $targetDesc !== null
+            && ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isDataDescriptor()
+            && $resultDesc->isDataDescriptor()
+        ) {
+            // (DETAILS_CANT_REPORT_NW_AS_W): target non-writable but result is
+            // writable.
+            if (($targetDesc->writable ?? false) === false && $resultDesc->writable === true) {
                 throw new TypeError(
-                    "'getOwnPropertyDescriptor' on proxy: property '{$name}' is"
-                    . " reported as non-configurable but is configurable or"
-                    . " non-existent on the proxy target"
+                    "'getOwnPropertyDescriptor' on proxy: trap reported descriptor"
+                    . " for property {$key}: proxy can't report a"
+                    . " non-configurable, non-writable property as writable"
                 );
             }
-            // 22b: non-configurable non-writable in result, but target is writable.
+            // 22b legacy: result non-writable but target is writable.
             if (
-                $resultDesc->isDataDescriptor()
-                && $resultDesc->writable === false
-                && $targetDesc->isDataDescriptor()
-                && $targetDesc->writable === true
+                $resultDesc->writable === false
+                && ($targetDesc->writable ?? false) === true
             ) {
                 throw new TypeError(
-                    "'getOwnPropertyDescriptor' on proxy: property '{$name}' is reported"
-                    . " as non-configurable and non-writable but is writable on the target"
+                    "'getOwnPropertyDescriptor' on proxy: trap reported descriptor"
+                    . " for property {$key} as non-configurable and non-writable"
+                    . " but is writable on the target"
+                );
+            }
+            // (DETAILS_DIFFERENT_VALUE): both non-writable but value differs.
+            if (
+                ($targetDesc->writable ?? false) === false
+                && $resultDesc->writable === false
+                && $resultDesc->value !== null
+            ) {
+                $curVal = $targetDesc->value ?? JsUndefined::instance();
+                if (!$this->sameValue($resultDesc->value, $curVal)) {
+                    throw new TypeError(
+                        "'getOwnPropertyDescriptor' on proxy: trap reported descriptor"
+                        . " for property {$key}: proxy must report the same value"
+                        . " for the non-writable, non-configurable property"
+                    );
+                }
+            }
+        }
+
+        // Both accessor descriptors with target non-configurable.
+        if (
+            $targetDesc !== null
+            && ($targetDesc->configurable ?? false) === false
+            && $targetDesc->isAccessorDescriptor()
+            && $resultDesc->isAccessorDescriptor()
+        ) {
+            // (DETAILS_SETTERS_DIFFERENT)
+            if ($resultDesc->hasSet && $resultDesc->set !== $targetDesc->set) {
+                throw new TypeError(
+                    "'getOwnPropertyDescriptor' on proxy: trap reported descriptor"
+                    . " for property {$key}: proxy can't report different setters"
+                    . " for a currently non-configurable property"
+                );
+            }
+            // (DETAILS_GETTERS_DIFFERENT)
+            if ($resultDesc->hasGet && $resultDesc->get !== $targetDesc->get) {
+                throw new TypeError(
+                    "'getOwnPropertyDescriptor' on proxy: trap reported descriptor"
+                    . " for property {$key}: proxy can't report different getters"
+                    . " for a currently non-configurable property"
                 );
             }
         }
@@ -1166,36 +1406,55 @@ class JsProxy extends JsObject
     public function getBySymbolWithReceiver(JsSymbol $symbol, JsValue $receiver): JsValue
     {
         $this->assertNotRevoked('get');
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('get');
         if ($trap !== null) {
-            return $trap->call($this->handler, [$this->target, $symbol, $receiver]);
+            $result = $trap->call($handler, [$target, $symbol, $receiver]);
+            // Symbol-keyed [[Get]] enforces the same invariants as the
+            // string-keyed path per spec 10.5.8 steps 10-11.
+            $this->validateGetInvariants($symbol, $result, $target);
+            return $result;
         }
         // Without a trap, the proxy's [[Get]] forwards to the target's
         // [[Get]] with the receiver preserved. JsObject.getBySymbolWithReceiver
         // walks the target's symbol properties and prototype chain.
-        return $this->target->getBySymbolWithReceiver($symbol, $receiver);
+        return $target->getBySymbolWithReceiver($symbol, $receiver);
     }
 
     public function setBySymbol(JsSymbol $symbol, JsValue $value, bool $strict = false): void
     {
         $this->assertNotRevoked('set');
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('set');
         if ($trap !== null) {
-            $trap->call($this->handler, [$this->target, $symbol, $value, $this]);
+            $result = $trap->call($handler, [$target, $symbol, $value, $this]);
+            $boolean = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            if ($boolean) {
+                // Validate invariants per spec 10.5.9 step 14.
+                $this->validateSetInvariants($symbol, $value, $target);
+            }
             return;
         }
-        $this->target->setBySymbol($symbol, $value);
+        $target->setBySymbol($symbol, $value);
     }
 
     public function hasBySymbol(JsSymbol $symbol): bool
     {
         $this->assertNotRevoked('has');
+        $target = $this->target;
+        $handler = $this->handler;
         $trap = $this->getTrap('has');
         if ($trap !== null) {
-            $result = $trap->call($this->handler, [$this->target, $symbol]);
-            return \PhpJs\Spec\TypeConversion::toBoolean($result);
+            $result = $trap->call($handler, [$target, $symbol]);
+            $booleanTrapResult = \PhpJs\Spec\TypeConversion::toBoolean($result);
+            if (!$booleanTrapResult) {
+                $this->validateHasInvariants($symbol, $target);
+            }
+            return $booleanTrapResult;
         }
-        return $this->target->hasBySymbol($symbol);
+        return $target->hasBySymbol($symbol);
     }
 
     // -- typeof --
@@ -1430,12 +1689,17 @@ class JsProxy extends JsObject
         }
 
         if ($hasGetOrSet) {
-            return PropertyDescriptor::accessor(
+            $desc = PropertyDescriptor::accessor(
                 get: $getter,
                 set: $setter,
                 enumerable: $enumerable ?? false,
                 configurable: $configurable ?? false,
             );
+            // Preserve "explicitly present" markers so proxy invariant checks
+            // can distinguish "field was supplied" from "field was omitted".
+            $desc->hasGet = $obj->has('get');
+            $desc->hasSet = $obj->has('set');
+            return $desc;
         }
 
         return new PropertyDescriptor(

@@ -73,6 +73,14 @@ class ReflectObject
                 $propKey = TypeConversion::toPropertyKey($key);
 
                 if ($propKey instanceof JsSymbol) {
+                    // Proxy symbol-keyed [[Set]] runs through the proxy's set
+                    // trap (and its invariant validation). Falling through to
+                    // ordinarySetSymbol would bypass the trap and lose the
+                    // post-trap invariant checks (e.g. nw/nc data property).
+                    if ($target instanceof \PhpJs\Value\JsProxy) {
+                        $target->setBySymbol($propKey, $value);
+                        return new JsBoolean(true);
+                    }
                     return new JsBoolean(
                         self::ordinarySetSymbol($target, $propKey, $value, $receiver)
                     );
