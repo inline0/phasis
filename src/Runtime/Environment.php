@@ -133,6 +133,19 @@ class Environment
         return $this->linkedObject;
     }
 
+    /** Whether this scope or any parent is a `with` (Object Environment) scope. */
+    public function isUnderWithScope(): bool
+    {
+        $cursor = $this;
+        while ($cursor !== null) {
+            if ($cursor->withObject !== null) {
+                return true;
+            }
+            $cursor = $cursor->parent;
+        }
+        return false;
+    }
+
     /** Check whether a binding exists in this scope only (not parents). */
     public function hasOwnBinding(string $name): bool
     {

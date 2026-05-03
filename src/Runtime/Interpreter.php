@@ -6505,6 +6505,17 @@ class Interpreter
         // subsequent calls reuse the cached closure or skip the
         // attempt entirely on prior bailout.
         if (!$fn->phpCompileFailed) {
+            // Functions defined inside a `with (...)` body resolve free
+            // identifiers via the with-object's [[HasProperty]] hook,
+            // which also threads the object as `this` for direct calls.
+            // The PHP closure path skips that lookup so identifier-call
+            // sites would never see the with-base. Fail compile in that
+            // case so subsequent calls go through the interpreter.
+            if ($fn->getClosure()->isUnderWithScope()) {
+                $fn->phpCompileFailed = true;
+            }
+        }
+        if (!$fn->phpCompileFailed) {
             if ($fn->phpCompiled === null) {
                 try {
                     $fn->phpCompiled = \PhpJs\Bytecode\JsToPhp::compile($fn);
@@ -6528,6 +6539,15 @@ class Interpreter
             }
         }
         if ($fn->compileFailed) {
+            return null;
+        }
+        // Functions defined under a `with (...)` body need with-aware
+        // identifier lookups for free-variable callees so the call site
+        // can read the with-base off the looked-up reference and pass
+        // it as `this`. The bytecode compiler skips that path; route
+        // such functions through the tree-walker instead.
+        if ($fn->getClosure()->isUnderWithScope()) {
+            $fn->compileFailed = true;
             return null;
         }
         if ($fn->compiled === null) {
