@@ -15886,10 +15886,18 @@ class Interpreter
         // Decide which dashes are range operators vs literal hyphens. A dash
         // is a range operator only when it sits between two atoms that are
         // both single characters; if either neighbour is `\d/\D/\s/\S/\w/\W`
-        // (or a property escape) the dash is literal per Annex B.
+        // (or a property escape) the dash is literal per Annex B. When the
+        // dash is a range operator, also validate the range endpoints are in
+        // order (left <= right) and reject inverted ranges per spec.
         $rebuilt = '';
         $count = count($atoms);
+        $consumeNext = false;
         for ($k = 0; $k < $count; $k++) {
+            if ($consumeNext) {
+                $consumeNext = false;
+                $rebuilt .= $atoms[$k]['text'];
+                continue;
+            }
             $atom = $atoms[$k];
             if ($atom['type'] !== 'dash') {
                 $rebuilt .= $atom['text'];
@@ -15902,20 +15910,67 @@ class Interpreter
             }
             $prev = $atoms[$k - 1];
             $nextAtom = $atoms[$k + 1];
-            // If previous atom was itself a dash that was already used as the
-            // operator side of a previous range, this dash is literal.
-            if ($prev['type'] === 'dash' || $nextAtom['type'] === 'dash') {
-                $rebuilt .= '\\-';
-                continue;
-            }
             if ($prev['isSet'] || $nextAtom['isSet']) {
                 $rebuilt .= '\\-';
                 continue;
+            }
+            // Spec: when the right side of a range is itself the dash atom,
+            // this is `[lit-lit]` where the right `-` is a literal class
+            // atom. Validate range a-'-' where left > '-' is invalid.
+            if ($prev['type'] === 'dash' || $nextAtom['type'] === 'dash') {
+                if ($nextAtom['type'] === 'dash' && $prev['type'] === 'lit') {
+                    $left = self::singleCharCodepoint($prev['text']);
+                    if ($left !== null && $left > 0x2D) {
+                        throw new \PhpJs\Exceptions\SyntaxError(
+                            'Invalid regular expression: Range out of order in character class',
+                        );
+                    }
+                    // Emit explicit range so PCRE2 sees the same set.
+                    $rebuilt .= '-' . $nextAtom['text'];
+                    $consumeNext = true;
+                    continue;
+                }
+                $rebuilt .= '\\-';
+                continue;
+            }
+            // Both neighbours are single-char atoms; validate the range.
+            if ($prev['type'] === 'lit' && $nextAtom['type'] === 'lit') {
+                $left = self::singleCharCodepoint($prev['text']);
+                $right = self::singleCharCodepoint($nextAtom['text']);
+                if ($left !== null && $right !== null && $left > $right) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        'Invalid regular expression: Range out of order in character class',
+                    );
+                }
             }
             $rebuilt .= '-';
         }
 
         return $prefix . $rebuilt . ']';
+    }
+
+    private static function singleCharCodepoint(string $text): ?int
+    {
+        if ($text === '') {
+            return null;
+        }
+        $byte = ord($text[0]);
+        if ($byte < 0x80) {
+            return strlen($text) === 1 ? $byte : null;
+        }
+        // Multi-byte UTF-8: ensure the entire sequence is one codepoint.
+        $width = 1;
+        if (($byte & 0xE0) === 0xC0) {
+            $width = 2;
+        } elseif (($byte & 0xF0) === 0xE0) {
+            $width = 3;
+        } elseif (($byte & 0xF8) === 0xF0) {
+            $width = 4;
+        }
+        if (strlen($text) !== $width) {
+            return null;
+        }
+        return mb_ord($text, 'UTF-8');
     }
 
     /**
