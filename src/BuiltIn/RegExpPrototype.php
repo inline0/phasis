@@ -706,7 +706,60 @@ class RegExpPrototype
                 // Fall through to PCRE2 path.
             }
 
-            if (@preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset)) {
+            $pregResult = @preg_match($pcrePattern, $str, $matches, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $byteOffset);
+            if ($pregResult === false && preg_last_error() === PREG_BAD_UTF8_ERROR) {
+                // PCRE2 with /u rejects lone-surrogate input as invalid
+                // UTF-8. The custom matcher walks JS strings code unit by
+                // code unit and handles them per spec. Compile the AST
+                // on demand and route the match through it. Cache the
+                // AST on the regex object so subsequent execs reuse it.
+                $sourceVal = $this_->get('source');
+                $flagsVal = $this_->get('flags');
+                $patternStr = $sourceVal instanceof JsString ? $sourceVal->value : '';
+                $patFlags = $flagsVal instanceof JsString ? $flagsVal->value : '';
+                try {
+                    $regexAst = (new \PhpJs\Regex\Parser($patternStr, $patFlags))->parse();
+                    $this_->defineOwnProperty(
+                        '[[CustomRegexAst]]',
+                        PropertyDescriptor::data(
+                            new \PhpJs\Value\JsHostValue($regexAst),
+                            false,
+                            false,
+                            false,
+                        ),
+                    );
+                    $this_->defineOwnProperty(
+                        '[[CustomRegexFlags]]',
+                        PropertyDescriptor::data(
+                            new JsString($patFlags),
+                            false,
+                            false,
+                            false,
+                        ),
+                    );
+                    $custom = self::execCustomMatcher(
+                        $this_,
+                        $regexAst,
+                        $patFlags,
+                        $str,
+                        $lastIndex,
+                        $isGlobal,
+                        $isSticky,
+                        $hasIndices,
+                    );
+                    if ($custom !== null) {
+                        return $custom;
+                    }
+                    if ($isGlobal || $isSticky) {
+                        $this_->set('lastIndex', JsNumber::of(0.0), true);
+                    }
+                    return JsNull::instance();
+                } catch (\Throwable) {
+                    // Parser couldn't model the pattern; fall through
+                    // to the no-match path below.
+                }
+            }
+            if ($pregResult === 1) {
                 $matchBytePos = $matches[0][1];
                 if ($isSticky && $matchBytePos !== $byteOffset) {
                     $this_->set('lastIndex', JsNumber::of(0.0), true);
