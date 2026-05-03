@@ -123,6 +123,7 @@ jobs:
           - { id: 'language-line-terminators', prefix: 'language/line-terminators', exclude: '' }
           - { id: 'language-punctuators', prefix: 'language/punctuators', exclude: '' }
           - { id: 'language-reserved-words', prefix: 'language/reserved-words', exclude: '' }
+          - { id: 'language-rest-parameters', prefix: 'language/rest-parameters', exclude: '' }
           - { id: 'language-source-text', prefix: 'language/source-text', exclude: '' }
           - { id: 'language-statements-list', prefix: 'language/statementList', exclude: '' }
           - { id: 'language-types', prefix: 'language/types', exclude: '' }
