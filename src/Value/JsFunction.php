@@ -515,6 +515,19 @@ class JsFunction extends JsObject
     public ?bool $setCallerPropCache = null;
 
     /**
+     * Memoised: true when the function body references the `arguments`
+     * Identifier (outside nested non-arrow function/class/method bodies)
+     * at a textual offset earlier than the first block-scoped
+     * `function arguments() {}` declaration. When true, the implicit
+     * arguments object stays bound and Annex B legacy hoisting for
+     * `arguments` must be suppressed (test262
+     * annexB/language/function-code/block-decl-func-skip-arguments).
+     * When false, no such pre-block reference exists; Annex B hoisting
+     * may proceed (staging/sm/regress/regress-602621).
+     */
+    public ?bool $blockArgumentsAnnexBSuppressedCache = null;
+
+    /**
      * Memoised: whether the body contains anything that would change
      * environment bindings during prologue (var/let/const/using
      * declarations, function declarations, class declarations) or

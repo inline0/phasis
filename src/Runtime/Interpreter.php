@@ -4992,10 +4992,34 @@ class Interpreter
                         $this->currentParamNames[$pName] = true;
                     }
                 }
-                // Per spec arguments is not a formal parameter for the
-                // purposes of Annex B.3.3.1 step 1.b.ii — V8 / SpiderMonkey
-                // both let `function arguments() {}` inside a block hoist
-                // and replace the implicit args object.
+                // Spec FunctionDeclarationInstantiation step 22.f appends
+                // "arguments" to parameterNames whenever an implicit
+                // arguments object is bound, which by Annex B B.3.2.1
+                // step 1.b.ii would block every `function arguments() {}`
+                // hoist. V8 / SpiderMonkey relax that: the hoist still
+                // happens unless the body references `arguments` as a
+                // free Identifier (outside nested non-arrow function /
+                // class bodies) at a textual offset earlier than the
+                // first block-scoped `function arguments() {}` decl. A
+                // pre-block reference would otherwise see `undefined`
+                // (the Annex B var placeholder), which is observable.
+                // Post-block references already resolve to whatever the
+                // block left behind, so they need no protection.
+                //
+                // Tests: passes annexB/.../block-decl-func-skip-arguments
+                // (pre-block `arguments.toString()` keeps the args object)
+                // and staging/sm/regress/regress-602621 (no pre-block ref
+                // → Annex B hoists `function arguments(){}` over the args
+                // object).
+                if ($argsObj !== null) {
+                    if ($fn->blockArgumentsAnnexBSuppressedCache === null) {
+                        $fn->blockArgumentsAnnexBSuppressedCache =
+                            $this->bodyShouldBlockArgumentsAnnexB($body->body);
+                    }
+                    if ($fn->blockArgumentsAnnexBSuppressedCache) {
+                        $this->currentParamNames['arguments'] = true;
+                    }
+                }
             }
 
             // When the function has parameter expressions (defaults, destructuring
@@ -6815,6 +6839,146 @@ class Interpreter
             } elseif (is_array($value)) {
                 foreach ($value as $item) {
                     if ($item instanceof Node && $this->nodeReferencesArguments($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Decide whether the implicit `arguments` binding should block Annex B
+     * legacy hoisting of a same-named block-scoped `function arguments() {}`.
+     *
+     * Spec FunctionDeclarationInstantiation step 22.f appends "arguments" to
+     * parameterNames when an arguments object is created, which by Annex B
+     * B.3.2.1 step 1.b.ii blocks the var-binding hoist. V8 / SpiderMonkey
+     * relax that to keep `function arguments(){}` overriding the args object
+     * AS LONG AS the enclosing block contains nothing besides the function
+     * declaration that observes `arguments`. When a sibling statement in the
+     * SAME block as `function arguments(){}` references the `arguments`
+     * Identifier (excluding the func decl's own body and excluding nested
+     * non-arrow function / class bodies), the var hoist is suppressed and
+     * the implicit args object survives the block.
+     *
+     * Tests covered:
+     *  - annexB/.../block-decl-func-skip-arguments: sibling `arguments()`
+     *    calls in the block → suppress → args object stays.
+     *  - staging/sm/lexical-environment/block-scoped-functions-annex-b-arguments:
+     *    block has only the func decl → allow Annex B → arguments becomes
+     *    the function after the block.
+     *  - staging/sm/regress/regress-602621: block has only the func decl →
+     *    allow Annex B → `return arguments` returns the function.
+     *
+     * @param Node[] $statements Function body statement list.
+     */
+    private function bodyShouldBlockArgumentsAnnexB(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if ($this->subtreeBlocksArgumentsAnnexB($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Recursively look for a BlockStatement that declares
+     * `function arguments(){}` AND contains some other child statement
+     * that references the `arguments` Identifier. Stops at nested non-arrow
+     * function and class bodies (those are separate `arguments` scopes).
+     */
+    private function subtreeBlocksArgumentsAnnexB(Node $node): bool
+    {
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof FunctionDeclaration
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        if ($node instanceof BlockStatement && $this->blockSuppressesArgumentsAnnexB($node)) {
+            return true;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->subtreeBlocksArgumentsAnnexB($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->subtreeBlocksArgumentsAnnexB($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when this block declares `function arguments(){}` AND has at
+     * least one OTHER child statement that textually references the
+     * `arguments` Identifier.
+     */
+    private function blockSuppressesArgumentsAnnexB(BlockStatement $block): bool
+    {
+        $hasFuncDecl = false;
+        $siblingRef = false;
+        foreach ($block->body as $child) {
+            $inner = $child;
+            if ($inner instanceof LabeledStatement) {
+                $inner = $inner->body;
+            }
+            $isArgsFuncDecl = $inner instanceof FunctionDeclaration
+                && $inner->id !== null
+                && $inner->id->name === 'arguments'
+                && !$inner->async
+                && !$inner->generator;
+            if ($isArgsFuncDecl) {
+                $hasFuncDecl = true;
+                continue;
+            }
+            if (!$siblingRef && $this->nodeReferencesArgumentsIdentifier($child)) {
+                $siblingRef = true;
+            }
+        }
+        return $hasFuncDecl && $siblingRef;
+    }
+
+    /**
+     * Whether the subtree contains a free `arguments` Identifier reference
+     * (no descent into nested non-arrow function or class bodies). Differs
+     * from nodeReferencesArguments by NOT treating bare `eval` references
+     * or `with` as implicit arguments uses — only literal `arguments`.
+     */
+    private function nodeReferencesArgumentsIdentifier(Node $node): bool
+    {
+        if ($node instanceof Identifier) {
+            return $node->name === 'arguments';
+        }
+        if (
+            $node instanceof FunctionExpression
+            || $node instanceof FunctionDeclaration
+            || $node instanceof ClassDeclaration
+            || $node instanceof ClassExpression
+        ) {
+            return false;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeReferencesArgumentsIdentifier($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeReferencesArgumentsIdentifier($item)) {
                         return true;
                     }
                 }
