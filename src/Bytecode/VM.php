@@ -104,7 +104,13 @@ final class VM
         $resolved = TypeConversion::toPropertyKey($key);
         if ($resolved instanceof \PhpJs\Value\JsSymbol) {
             if ($obj instanceof JsObject) {
-                $obj->internalSetBySymbol($resolved, $value, $obj);
+                $ok = $obj->internalSetBySymbol($resolved, $value, $obj);
+                if (!$ok && $this->interp->isStrictMode()) {
+                    throw new TypeError(
+                        "Cannot assign to read only property 'Symbol(" .
+                        ($resolved->getDescription() ?? '') . ")' of object",
+                    );
+                }
                 return;
             }
             // Symbol-keyed write on a primitive needs the same
@@ -1001,6 +1007,70 @@ final class VM
                                 }
                             }
                             break;
+                        case Op::JUMP_IF_LOCAL_GE_LOCAL:
+                            // Fused `for (i = a; i < j; i++)`. Body runs while
+                            // i < j. Jump (exit) when i >= j.
+                            $a = $locals[$code[$pc + 1]];
+                            $b = $locals[$code[$pc + 2]];
+                            if ($a instanceof JsNumber && $b instanceof JsNumber) {
+                                if (!($a->value < $b->value)) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            } else {
+                                $rel = AbstractOperations::abstractRelational($a, $b, true);
+                                if ($rel !== true) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            }
+                            break;
+                        case Op::JUMP_IF_LOCAL_GT_LOCAL:
+                            // Fused `for (i = a; i <= j; i++)`. Body runs while
+                            // i <= j. Jump (exit) when i > j.
+                            $a = $locals[$code[$pc + 1]];
+                            $b = $locals[$code[$pc + 2]];
+                            if ($a instanceof JsNumber && $b instanceof JsNumber) {
+                                if ($a->value > $b->value) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            } else {
+                                // Per spec, `a <= b` is the negation of `b < a`
+                                // when neither side is NaN; if either is NaN,
+                                // the result is false (don't continue, jump).
+                                $rel = AbstractOperations::abstractRelational($b, $a, false);
+                                if ($rel === false) {
+                                    $pc += 4;
+                                } else {
+                                    $pc += $code[$pc + 3];
+                                }
+                            }
+                            break;
+                        case Op::JUMP_IF_LOCAL_GT_CONST:
+                            // Fused `for (i = a; i <= N; i++)`. Same shape as
+                            // JUMP_IF_LOCAL_GT_LOCAL with the bound interned
+                            // as a constant.
+                            $a = $locals[$code[$pc + 1]];
+                            $b = $consts[$code[$pc + 2]];
+                            if ($a instanceof JsNumber && $b instanceof JsNumber) {
+                                if ($a->value > $b->value) {
+                                    $pc += $code[$pc + 3];
+                                } else {
+                                    $pc += 4;
+                                }
+                            } else {
+                                $rel = AbstractOperations::abstractRelational($b, $a, false);
+                                if ($rel === false) {
+                                    $pc += 4;
+                                } else {
+                                    $pc += $code[$pc + 3];
+                                }
+                            }
+                            break;
                         case Op::JUMP_IF_TRUTHY_KEEP:
                             $v = $stack[$sp - 1];
                             if (TypeConversion::toBoolean($v)) {
@@ -1372,6 +1442,28 @@ final class VM
                             $val = $stack[--$sp];
                             $key = $stack[--$sp];
                             $obj = $stack[--$sp];
+                            // Hot path: `arr[i] = v` with a JsArray base and a
+                            // non-negative-integer JsNumber index. Skips the
+                            // toPropertyKey roundtrip (which would allocate a
+                            // JsString from the JsNumber) and the JsArray::set
+                            // method dispatch by writing the dense slot inline.
+                            // Falls through to the spec path on bailout.
+                            if (
+                                $obj instanceof \PhpJs\Value\JsArray
+                                && $key instanceof JsNumber
+                            ) {
+                                $kv = $key->value;
+                                $kvi = (int) $kv;
+                                if (
+                                    $kvi >= 0
+                                    && (float) $kvi === $kv
+                                    && $obj->tryDenseWrite($kvi, $val)
+                                ) {
+                                    $stack[$sp++] = $val;
+                                    $pc++;
+                                    break;
+                                }
+                            }
                             $this->writeComputed($obj, $key, $val);
                             $stack[$sp++] = $val;
                             $pc++;

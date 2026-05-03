@@ -97,6 +97,13 @@ final class Op
     // The hot path requires both operands to be JsNumber; anything
     // else falls back to the generic relational + branch.
     public const JUMP_IF_LOCAL_GE_CONST = 76;
+    // Same family, additional shapes used by hot for-loops where the
+    // bound is a JS-source local (e.g. `for (i = start; i <= end; i++)`).
+    // Operands: L1 L2 offset. JsNumber/JsNumber fast path; any other
+    // operand type falls through to the spec relational helper.
+    public const JUMP_IF_LOCAL_GE_LOCAL = 77; // for `i < j` test
+    public const JUMP_IF_LOCAL_GT_LOCAL = 78; // for `i <= j` test
+    public const JUMP_IF_LOCAL_GT_CONST = 79; // for `i <= N` test
 
     // ---- Calls & returns -----------------------------------------------
     public const CALL = 80;          // I — argc; callee at stack[-argc-1]
@@ -208,6 +215,9 @@ final class Op
                 return 1;
             // 3-operand opcodes
             case self::JUMP_IF_LOCAL_GE_CONST:
+            case self::JUMP_IF_LOCAL_GE_LOCAL:
+            case self::JUMP_IF_LOCAL_GT_LOCAL:
+            case self::JUMP_IF_LOCAL_GT_CONST:
                 return 3;
             default:
                 throw new \LogicException('Unknown opcode: ' . $op);

@@ -76,17 +76,23 @@ class PropertyMap
             unset($this->descriptors[$key]);
             $this->dataSlots[$key] = $desc->value;
             $this->order[$key] = true;
+            self::touchIntegerIndex($key);
             return;
         }
         unset($this->dataSlots[$key]);
         $this->descriptors[$key] = $desc;
         $this->order[$key] = true;
+        self::touchIntegerIndex($key);
     }
 
     public function setDataSlot(string $key, JsValue $value): void
     {
+        $isNew = !isset($this->order[$key]);
         $this->dataSlots[$key] = $value;
         $this->order[$key] = true;
+        if ($isNew) {
+            self::touchIntegerIndex($key);
+        }
     }
 
     public function has(string $key): bool
@@ -96,10 +102,48 @@ class PropertyMap
 
     public function delete(string $key): bool
     {
+        $existed = isset($this->order[$key]);
         unset($this->dataSlots[$key]);
         unset($this->descriptors[$key]);
         unset($this->order[$key]);
+        if ($existed) {
+            self::touchIntegerIndex($key);
+        }
         return true;
+    }
+
+    /**
+     * Bump the static version counter that JsArray's dense-write
+     * fast path uses to invalidate its "prototype chain has no
+     * integer-indexed property" cache. Only triggers for numeric
+     * key strings shaped like array indices (max 4_294_967_294
+     * per spec). Non-index keys (named props, symbols-as-strings)
+     * are skipped — they don't affect dense-write semantics.
+     */
+    private static function touchIntegerIndex(string $key): void
+    {
+        // Inline the array-index check: digits only, no leading zero
+        // (except the single character "0"), value < 2^32 - 1.
+        $len = strlen($key);
+        if ($len === 0) {
+            return;
+        }
+        if ($len > 1 && $key[0] === '0') {
+            return;
+        }
+        if ($len > 10) {
+            return;
+        }
+        for ($i = 0; $i < $len; $i++) {
+            $c = $key[$i];
+            if ($c < '0' || $c > '9') {
+                return;
+            }
+        }
+        if ($len === 10 && strcmp($key, '4294967294') > 0) {
+            return;
+        }
+        \PhpJs\Value\JsArray::$protoIntegerPropsVersion++;
     }
 
     /** @return list<string> Keys in insertion order. */

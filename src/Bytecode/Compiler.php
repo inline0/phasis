@@ -98,6 +98,18 @@ final class Compiler
     private array $constSlots = [];
 
     /**
+     * Names declared via `var` (function-scoped) anywhere in the
+     * function body. Captured during collectStatementLocals. Used by
+     * the TDZ check to suppress false positives when a `let X` inside
+     * a block shares a name with an outer `var X`: the slot-based
+     * compiler folds them to one slot, and source-order references
+     * to the var resolve to the same slot, so there's no actual TDZ.
+     *
+     * @var array<string,bool>
+     */
+    private array $varDeclaredNames = [];
+
+    /**
      * Stack of (continueTargetPc, breakPatchOperandIndices). Each
      * loop / switch entry pushes; break/continue inside the body
      * read the top entry to emit jumps. Patched at scope close.
@@ -417,6 +429,9 @@ final class Compiler
                     if ($isLexical && isset($this->localSlots[$decl->id->name])) {
                         throw new CompilerBailout('let/const shadowing existing local');
                     }
+                    if (!$isLexical) {
+                        $this->varDeclaredNames[$decl->id->name] = true;
+                    }
                     $this->declareLocal($decl->id->name);
                     continue;
                 }
@@ -464,9 +479,13 @@ final class Compiler
         }
         if ($stmt instanceof ForStatement) {
             if ($stmt->init instanceof VariableDeclaration) {
+                $isLexical = $stmt->init->kind === 'let' || $stmt->init->kind === 'const';
                 foreach ($stmt->init->declarations as $decl) {
                     if (!($decl->id instanceof Identifier)) {
                         throw new CompilerBailout('destructuring for-init');
+                    }
+                    if (!$isLexical) {
+                        $this->varDeclaredNames[$decl->id->name] = true;
                     }
                     $this->declareLocal($decl->id->name);
                 }
@@ -569,7 +588,11 @@ final class Compiler
                 if ($decl->init !== null) {
                     $this->collectLetConstOrderNode($decl->init, $out, $idx);
                 }
-                if ($decl->id instanceof Identifier && !isset($out[$decl->id->name])) {
+                if (
+                    $decl->id instanceof Identifier
+                    && !isset($out[$decl->id->name])
+                    && !isset($this->varDeclaredNames[$decl->id->name])
+                ) {
                     $idx++;
                     $out[$decl->id->name] = $idx;
                 }
@@ -584,6 +607,16 @@ final class Compiler
             || $node instanceof \PhpJs\Ast\Expression\ClassExpression
             || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
         ) {
+            return;
+        }
+        // Mirror checkTdzReferencesNode: skip non-reference identifier
+        // positions so the index stays in sync between the two walks.
+        if ($node instanceof MemberExpression && !$node->computed) {
+            $this->collectLetConstOrderNode($node->object, $out, $idx);
+            return;
+        }
+        if ($node instanceof Property && !$node->computed) {
+            $this->collectLetConstOrderNode($node->value, $out, $idx);
             return;
         }
         $ref = new \ReflectionObject($node);
@@ -654,6 +687,23 @@ final class Compiler
             $this->scanIdentifiersForTdz($node, $declOrder, $myIdx);
             return;
         }
+        // MemberExpression `obj.prop`: the `property` is a name, not
+        // an identifier reference. Visiting it walks the variable
+        // declaration index past `prop` and (worse) raises spurious
+        // "let used before decl" errors when a property happens to
+        // share a name with a later let/const binding (e.g. `arr.length`
+        // alongside a hot-loop `let length`).
+        if ($node instanceof MemberExpression && !$node->computed) {
+            $this->checkTdzReferencesNode($node->object, $declOrder, $idx);
+            return;
+        }
+        // ObjectExpression property keys: same story. `{length: 0}`
+        // shouldn't count as a reference to a hoisted `length`. Only
+        // the value side carries a reference.
+        if ($node instanceof Property && !$node->computed) {
+            $this->checkTdzReferencesNode($node->value, $declOrder, $idx);
+            return;
+        }
         $ref = new \ReflectionObject($node);
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $value = $prop->getValue($node);
@@ -681,6 +731,14 @@ final class Compiler
             if (isset($declOrder[$node->name]) && $closurePos < $declOrder[$node->name]) {
                 throw new CompilerBailout('inner closure refs let/const pre-decl: ' . $node->name);
             }
+            return;
+        }
+        if ($node instanceof MemberExpression && !$node->computed) {
+            $this->scanIdentifiersForTdz($node->object, $declOrder, $closurePos);
+            return;
+        }
+        if ($node instanceof Property && !$node->computed) {
+            $this->scanIdentifiersForTdz($node->value, $declOrder, $closurePos);
             return;
         }
         $ref = new \ReflectionObject($node);
@@ -1107,41 +1165,53 @@ final class Compiler
     }
 
     /**
-     * Detect the canonical for-loop test `local < numericLiteral` and
-     * emit a single fused JUMP_IF_LOCAL_GE_CONST opcode. Returns the
-     * opcode pc on success (used by compileFor to patch the offset
-     * cell at opcodePc + 3 directly, since patchJumpToHere assumes a
-     * 1-operand jump). Returns -1 if the pattern does not apply and
-     * the caller should fall back to LT + JUMP_IF_FALSE.
+     * Detect a canonical for-loop test of the form `local op rhs`
+     * where op is `<` or `<=` and rhs is either a numeric literal or
+     * another local. Emits one of the fused 3-operand jump opcodes
+     * so the dispatcher hits a single arm per iteration instead of
+     * LOAD_LOCAL + (LOAD_LOCAL|LOAD_CONST) + LT|LE + JUMP_IF_FALSE.
+     * Returns the opcode pc on success so the caller can patch the
+     * offset cell at +3 once the loop body is compiled. Returns -1
+     * for any unsupported test shape.
      */
     private function tryEmitFusedLoopTest(\PhpJs\Ast\Node $test): int
     {
-        if (!$test instanceof BinaryExpression || $test->operator !== '<') {
+        if (!$test instanceof BinaryExpression) {
+            return -1;
+        }
+        $op = $test->operator;
+        if ($op !== '<' && $op !== '<=') {
             return -1;
         }
         $left = $test->left;
         $right = $test->right;
-        if (!$left instanceof Identifier) {
-            return -1;
-        }
-        if (!isset($this->localSlots[$left->name])) {
-            return -1;
-        }
-        if (!$right instanceof Literal || (!is_int($right->value) && !is_float($right->value))) {
+        if (!$left instanceof Identifier || !isset($this->localSlots[$left->name])) {
             return -1;
         }
         $localSlot = $this->localSlots[$left->name];
-        $constIdx = $this->internConst(
-            JsNumber::of((float) $right->value),
-            'n:' . $right->value,
-        );
-        $opcodePc = count($this->code);
-        // Layout: opcode, localSlot, constIdx, offset (patched later).
-        $this->code[] = Op::JUMP_IF_LOCAL_GE_CONST;
-        $this->code[] = $localSlot;
-        $this->code[] = $constIdx;
-        $this->code[] = 0; // placeholder offset
-        return $opcodePc;
+
+        if ($right instanceof Literal && (is_int($right->value) || is_float($right->value))) {
+            $constIdx = $this->internConst(
+                JsNumber::of((float) $right->value),
+                'n:' . $right->value,
+            );
+            $opcodePc = count($this->code);
+            $this->code[] = $op === '<' ? Op::JUMP_IF_LOCAL_GE_CONST : Op::JUMP_IF_LOCAL_GT_CONST;
+            $this->code[] = $localSlot;
+            $this->code[] = $constIdx;
+            $this->code[] = 0; // placeholder offset
+            return $opcodePc;
+        }
+        if ($right instanceof Identifier && isset($this->localSlots[$right->name])) {
+            $rightSlot = $this->localSlots[$right->name];
+            $opcodePc = count($this->code);
+            $this->code[] = $op === '<' ? Op::JUMP_IF_LOCAL_GE_LOCAL : Op::JUMP_IF_LOCAL_GT_LOCAL;
+            $this->code[] = $localSlot;
+            $this->code[] = $rightSlot;
+            $this->code[] = 0; // placeholder offset
+            return $opcodePc;
+        }
+        return -1;
     }
 
     private function compileFor(ForStatement $node): void
@@ -2173,7 +2243,34 @@ final class Compiler
                 throw new CompilerBailout('private assign');
             }
             if ($left->computed) {
-                throw new CompilerBailout('computed assign');
+                // Computed `obj[key] = rhs` (and compound `obj[key] op= rhs`).
+                // Hot in code like `codePoints[length++] = codePoint`. Without
+                // this path the entire enclosing function falls back to the
+                // tree-walker, which adds a 5-10x dispatch overhead per
+                // iteration. Compound forms only emit when no in-bytecode op
+                // for the operator exists; logical compound (`&&=` etc.)
+                // already bailed before this branch.
+                if ($op === '=') {
+                    // Stack: obj, key, val. STORE_COMPUTED writes and
+                    // re-pushes val so the assignment expression yields rhs.
+                    $this->compileExpression($left->object);
+                    $this->compileExpression($left->property);
+                    $this->compileExpression($node->right);
+                    $this->emit(Op::STORE_COMPUTED);
+                    return;
+                }
+                // Compound `obj[key] op= rhs`. Each side must be evaluated
+                // once. The spec order is:
+                //   1. Evaluate obj.
+                //   2. Evaluate key (and ToPropertyKey).
+                //   3. GetValue using obj+key.
+                //   4. Evaluate rhs.
+                //   5. ApplyOp.
+                //   6. PutValue using obj+key.
+                // We don't have a stack-shuffle op, so route through the
+                // tree-walker for compound on a computed target. The plain
+                // `=` form is the actually hot case.
+                throw new CompilerBailout('compound computed assign');
             }
             if (!($left->property instanceof Identifier)) {
                 throw new CompilerBailout('non-identifier assign target');

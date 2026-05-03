@@ -160,6 +160,97 @@ class JsArray extends JsObject
         $this->denseElements[$index] = $value;
     }
 
+    /**
+     * Per-instance cache for the dense-write fast path:
+     * - `denseFastChainCachedProto` is the prototype object captured
+     *   when the chain was last verified to contain no JsProxy, no
+     *   JsTypedArray, no integer-indexed own property, and the array
+     *   itself was extensible with writable length.
+     * - `denseFastChainCachedVer` is the value of the static
+     *   `$protoIntegerPropsVersion` counter at that time.
+     * The cache is consulted per write inside `tryDenseWrite`. As
+     * long as the prototype pointer is unchanged and no integer-
+     * indexed property has been added/removed on any object since,
+     * subsequent fresh-slot writes skip the three chain walks.
+     */
+    private ?JsObject $denseFastChainCachedProto = null;
+    private int $denseFastChainCachedVer = -1;
+
+    /**
+     * Bump every time integer-indexed properties are added or removed
+     * on any object that may sit on a JsArray's prototype chain (most
+     * commonly Array.prototype or Object.prototype). Cached entries
+     * captured at an older version are invalidated on the next read.
+     */
+    public static int $protoIntegerPropsVersion = 0;
+
+    /**
+     * VM hot-path write for `arr[i] = v` where i is a non-negative
+     * integer index. Mirrors the dense-mode branch of `set` but
+     * skips the (string) name → (int) name → string-key isArrayIndex
+     * roundtrip the spec path takes, plus the JsObject::set method
+     * dispatch. Returns true on a successful dense write, false to
+     * signal the caller must fall back to the spec [[Set]] path
+     * (proxy on chain, non-extensible, length not writable, own
+     * property on prototype, etc.).
+     */
+    public function tryDenseWrite(int $index, JsValue $value): bool
+    {
+        if ($index < 0 || !$this->denseMode) {
+            return false;
+        }
+        $hasOwnDense = ($this->denseElements[$index] ?? null) !== null;
+        if (!$hasOwnDense) {
+            // Per-instance chain cache: as long as the prototype
+            // pointer hasn't changed and no integer-indexed proto
+            // property has been added since the cache was captured,
+            // skip the three chain walks.
+            $proto = $this->getPrototype();
+            $ver = self::$protoIntegerPropsVersion;
+            if (
+                $this->denseFastChainCachedProto !== $proto
+                || $this->denseFastChainCachedVer !== $ver
+            ) {
+                if ($this->prototypeChainHasProxy() || $this->prototypeChainHasTypedArray()) {
+                    return false;
+                }
+                if (!$this->isExtensible()) {
+                    return false;
+                }
+                if ($this->prototypeChainHasOwnIntegerIndex()) {
+                    return false;
+                }
+                $this->denseFastChainCachedProto = $proto;
+                $this->denseFastChainCachedVer = $ver;
+            }
+            if ($index >= $this->length && !$this->lengthWritable) {
+                return false;
+            }
+        }
+        $this->denseElements[$index] = $value;
+        if ($index >= $this->length) {
+            $this->length = $index + 1;
+        }
+        return true;
+    }
+
+    /**
+     * Whether any prototype on the chain has an own integer-indexed
+     * property. Spec-correct conservative check used by tryDenseWrite
+     * to avoid the per-write `prototypeChainHasOwnProperty` call.
+     */
+    private function prototypeChainHasOwnIntegerIndex(): bool
+    {
+        for ($cur = $this->getPrototype(); $cur !== null; $cur = $cur->getPrototype()) {
+            foreach ($cur->properties->keys() as $key) {
+                if (self::isArrayIndex($key)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public function push(JsValue $value): void
     {
         $index = $this->length;
