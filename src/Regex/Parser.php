@@ -593,9 +593,15 @@ class Parser
                     throw new SyntaxError('Invalid \\u escape in group name');
                 }
                 $cp = (int) hexdec($hex);
-                // /u mode: combine an adjacent surrogate pair into
-                // its astral codepoint (UTF16Decode in spec).
-                if ($this->unicode && $pendingHigh >= 0 && $cp >= 0xDC00 && $cp <= 0xDFFF) {
+                // Combine adjacent surrogate-pair escapes into the
+                // astral codepoint they encode. The RegExpIdentifierName
+                // grammar identifies the name by codepoints (not
+                // UTF-16 code units), so the same name must result
+                // whether written as `\\uHHHH\\uLLLL`, `\\u{XXXXX}`,
+                // or the raw codepoint character. This applies in
+                // both /u and non-/u modes — group identifiers are
+                // codepoints either way.
+                if ($pendingHigh >= 0 && $cp >= 0xDC00 && $cp <= 0xDFFF) {
                     $cp = 0x10000 + (($pendingHigh - 0xD800) << 10) + ($cp - 0xDC00);
                     $pendingHigh = -1;
                     $name .= mb_chr($cp, 'UTF-8') ?: '';
@@ -605,7 +611,7 @@ class Parser
                     $name .= mb_chr($pendingHigh, 'UTF-8') ?: '';
                     $pendingHigh = -1;
                 }
-                if ($this->unicode && $cp >= 0xD800 && $cp <= 0xDBFF) {
+                if ($cp >= 0xD800 && $cp <= 0xDBFF) {
                     $pendingHigh = $cp;
                     continue;
                 }
