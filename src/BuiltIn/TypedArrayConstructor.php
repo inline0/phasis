@@ -2467,8 +2467,14 @@ class TypedArrayConstructor
                         }
                         $srcObj->set('length', JsNumber::of((float) $srcLen));
                     } else {
-                        // Number, boolean, symbol: ToObject wraps them, length 0.
-                        $srcLen = 0;
+                        // Number, boolean, symbol: ToObject wraps to a primitive
+                        // wrapper whose prototype may carry length/indexed
+                        // properties (test262 monkey-patches Number.prototype).
+                        $srcObj = TypeConversion::toObject($source);
+                        $srcLen = (int) TypeConversion::toNumber($srcObj->get('length'));
+                        if ($srcLen < 0) {
+                            $srcLen = 0;
+                        }
                     }
 
                     // Per current spec, the size check uses the target length
@@ -2479,17 +2485,15 @@ class TypedArrayConstructor
                         throw new RangeError('Source is too large');
                     }
 
-                    if ($srcObj !== null) {
-                        for ($i = 0; $i < $srcLen; $i++) {
-                            $val = $srcObj->get((string) $i);
-                            // Per spec: for BigInt arrays, use ToBigInt; for others, ToNumber.
-                            if ($isBigTarget) {
-                                $coerced = TypeConversion::toBigInt($val);
-                                $this_->setIndex($offset + $i, $coerced);
-                            } else {
-                                $num = TypeConversion::toNumber($val);
-                                $this_->setIndex($offset + $i, JsNumber::of($num));
-                            }
+                    for ($i = 0; $i < $srcLen; $i++) {
+                        $val = $srcObj->get((string) $i);
+                        // Per spec: for BigInt arrays, use ToBigInt; for others, ToNumber.
+                        if ($isBigTarget) {
+                            $coerced = TypeConversion::toBigInt($val);
+                            $this_->setIndex($offset + $i, $coerced);
+                        } else {
+                            $num = TypeConversion::toNumber($val);
+                            $this_->setIndex($offset + $i, JsNumber::of($num));
                         }
                     }
                 }
@@ -3123,10 +3127,12 @@ class TypedArrayConstructor
                 }
                 $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
-                if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
+                $isCallable = $arg0 instanceof JsFunction
+                    || ($arg0 instanceof \PhpJs\Value\JsProxy && $arg0->isCallable());
+                if (!$arg0 instanceof JsUndefined && !$isCallable) {
                     throw new TypeError('The comparison function must be either a function or undefined');
                 }
-                $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
+                $comparefn = $isCallable ? $arg0 : null;
                 $elements = $this_->toList();
 
                 usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
@@ -3334,17 +3340,23 @@ class TypedArrayConstructor
                 }
                 $this_->validateNotDetached();
                 $arg0 = $args[0] ?? JsUndefined::instance();
-                if (!$arg0 instanceof JsUndefined && !$arg0 instanceof JsFunction) {
+                $isCallable = $arg0 instanceof JsFunction
+                    || ($arg0 instanceof \PhpJs\Value\JsProxy && $arg0->isCallable());
+                if (!$arg0 instanceof JsUndefined && !$isCallable) {
                     throw new TypeError(
                         'The comparison function must be either a function or undefined'
                     );
                 }
-                $comparefn = $arg0 instanceof JsFunction ? $arg0 : null;
+                $comparefn = $isCallable ? $arg0 : null;
                 $elements = $this_->toList();
 
                 usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {
                     if ($comparefn !== null) {
-                        $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
+                        if ($comparefn instanceof JsFunction) {
+                            $result = $comparefn->call(JsUndefined::instance(), [$a, $b]);
+                        } else {
+                            $result = $comparefn->apply(JsUndefined::instance(), [$a, $b]);
+                        }
                         return (int) TypeConversion::toNumber($result);
                     }
                     // Default numeric sort for typed arrays per spec.

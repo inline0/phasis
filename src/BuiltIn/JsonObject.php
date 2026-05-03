@@ -44,6 +44,24 @@ class JsonObject
         return self::$trivialUndefinedSentinel ??= new \stdClass();
     }
 
+    /**
+     * Spec OrdinaryOwnPropertyKeys treats a string as an integer index when
+     * it is the canonical decimal of a non-negative integer below 2^32-1.
+     */
+    private static function isArrayIndexKey(string $key): bool
+    {
+        if ($key === '' || $key[0] === '-') {
+            return false;
+        }
+        if ($key === '0') {
+            return true;
+        }
+        if (!ctype_digit($key) || $key[0] === '0') {
+            return false;
+        }
+        return ((int) $key) < 4294967295;
+    }
+
     public static function install(Environment $env): void
     {
         $json = new JsObject();
@@ -287,18 +305,35 @@ class JsonObject
             // Symbol-keyed properties live in a separate store on
             // JsObject; reaching here means the dataSlots iteration
             // covers all keys we care about (spec skips symbols).
-            $out = [];
-            foreach ($value->properties->dataSlots as $name => $slotVal) {
-                // Internal slot keys (e.g. [[PrimitiveValue]]) are
-                // checked above and would have triggered earlier
-                // bailouts; skip any that slipped through, e.g.
-                // engine-internal '__' keys.
+            // Sort keys per OrdinaryOwnPropertyKeys: integer-index keys
+            // first (numeric ascending), then string keys in insertion order.
+            $integerKeys = [];
+            $stringKeys = [];
+            foreach (array_keys($value->properties->dataSlots) as $name) {
                 if (
                     isset($name[0])
                     && ($name[0] === '[' || ($name[0] === '_' && isset($name[1]) && $name[1] === '_'))
                 ) {
                     continue;
                 }
+                // PHP stdClass treats NUL bytes / non-printable chars as
+                // invalid property names and json_encode silently drops them.
+                // Bail to the spec path which encodes keys directly.
+                if (preg_match('/[\\x00-\\x1F]/', (string) $name) === 1) {
+                    return self::trivialBailout();
+                }
+                if (self::isArrayIndexKey((string) $name)) {
+                    $integerKeys[] = (string) $name;
+                } else {
+                    $stringKeys[] = (string) $name;
+                }
+            }
+            usort($integerKeys, fn(string $a, string $b) => (int) $a <=> (int) $b);
+            $orderedKeys = array_merge($integerKeys, $stringKeys);
+
+            $out = [];
+            foreach ($orderedKeys as $name) {
+                $slotVal = $value->properties->dataSlots[$name];
                 $resolved = self::trivialJsonValue($slotVal, $stack);
                 if ($resolved === self::trivialBailout()) {
                     return self::trivialBailout();
