@@ -1517,7 +1517,10 @@ class Interpreter
         return match ($node->operator) {
             '&&' => TypeConversion::toBoolean($left) ? $this->evaluate($node->right, $env) : $left,
             '||' => TypeConversion::toBoolean($left) ? $left : $this->evaluate($node->right, $env),
-            '??' => ($left instanceof JsNull || $left instanceof JsUndefined)
+            // OptionalChain short-circuit returns JsOptionalUndefined
+            // which is "logically undefined" — `??` must treat it the
+            // same as undefined and evaluate the right operand.
+            '??' => ($left instanceof JsNull || $left instanceof JsUndefined || $left instanceof JsOptionalUndefined)
                 ? $this->evaluate($node->right, $env)
                 : $left,
             default => throw new InternalError("Unknown logical operator: {$node->operator}"),
@@ -11280,7 +11283,9 @@ class Interpreter
             $takesRight = match ($node->operator) {
                 '&&' => TypeConversion::toBoolean($left),
                 '||' => !TypeConversion::toBoolean($left),
-                '??' => $left instanceof JsNull || $left instanceof JsUndefined,
+                '??' => $left instanceof JsNull
+                    || $left instanceof JsUndefined
+                    || $left instanceof JsOptionalUndefined,
             };
             if (!$takesRight) {
                 return $left;
