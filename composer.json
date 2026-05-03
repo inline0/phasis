@@ -27,7 +27,7 @@
         "test:unit": "@php -d memory_limit=512M ./vendor/bin/phpunit --testsuite=unit",
         "cs": "@php -d memory_limit=512M ./vendor/bin/phpcs",
         "cs:fix": "@php -d memory_limit=512M ./vendor/bin/phpcbf",
-        "analyse": "@php -d memory_limit=1G ./vendor/bin/phpstan analyse"
+        "analyse": "@php -d memory_limit=4G ./vendor/bin/phpstan analyse"
     },
     "config": {
         "sort-packages": true
