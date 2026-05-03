@@ -2847,6 +2847,7 @@ class Parser
                         $element->static,
                         $element->computed,
                         $elementDecorators,
+                        $element->isAccessor,
                     );
                 }
             }
@@ -3057,9 +3058,10 @@ class Parser
             }
         }
 
-        // Auto-accessor field: `accessor name[;| = init]`. We accept the
-        // syntax and evaluate it as a plain field declaration; the
-        // accessor/decorator semantics are not fully implemented.
+        // Auto-accessor field: `accessor name[;| = init]`. Per ES2023
+        // decorators §15.7.3, this declares a hidden storage slot and a
+        // getter / setter pair on the prototype (or constructor for static).
+        $isAccessor = false;
         if (
             !$isAsync
             && $this->checkContextual('accessor')
@@ -3074,6 +3076,7 @@ class Parser
                 && $next->type !== TokenType::Star
             ) {
                 $this->advance();
+                $isAccessor = true;
             }
         }
 
@@ -3197,7 +3200,7 @@ class Parser
                 );
             }
 
-            return new ClassProperty($location, $key, $value, $isStatic, $computed);
+            return new ClassProperty($location, $key, $value, $isStatic, $computed, [], $isAccessor);
         }
 
         // It's a method. Only plain methods named 'constructor' become

@@ -187,6 +187,9 @@ class Interpreter
     /** Monotonically increasing counter for unique private name brands. */
     private static int $nextPrivateBrandId = 0;
 
+    /** Monotonically increasing counter for unique auto-accessor storage slots. */
+    private static int $nextAutoAccessorId = 0;
+
     /** Module loader for dynamic import() and static import/export. */
     private ?\PhpJs\Module\ModuleLoader $moduleLoader = null;
 
@@ -4191,6 +4194,138 @@ class Interpreter
             }
             $target->defineOwnProperty($strKey, PropertyDescriptor::data($source->get($strKey)));
         }
+    }
+
+    /**
+     * Classify and register an auto-accessor (`accessor name = init`) class element.
+     *
+     * Synthesises a getter / setter pair backed by a unique storage slot and
+     * appends them to the appropriate per-class install lists in source order.
+     * For non-static accessors, also registers an instance field initializer
+     * that primes the storage slot on each new instance.
+     *
+     * @param array<int,JsValue> $computedKeys
+     * @param list<array{0: string, 1: JsValue, 2: string, 3: ?JsSymbol}> $instanceMethods
+     * @param list<array{0: string, 1: JsValue, 2: string, 3: ?JsSymbol}> $staticMethods
+     * @param list<array{0: string, 1: JsValue, 2: string}> $privateInstanceMethods
+     * @param list<array{0: string, 1: JsValue, 2: string}> $privateStaticMethods
+     * @param list<array{0: string, 1: ?Node}> $instanceAutoAccessorInits
+     * @param list<array{0: string, 1: ?Node, 2: bool}> $staticAutoAccessorInits
+     * @param array<string,string> $privateNameMap
+     */
+    private function collectAutoAccessor(
+        ClassProperty $element,
+        int $i,
+        Environment $privateEnv,
+        array $privateNameMap,
+        array $computedKeys,
+        array &$instanceMethods,
+        array &$staticMethods,
+        array &$privateInstanceMethods,
+        array &$privateStaticMethods,
+        array &$instanceAutoAccessorInits,
+        array &$staticAutoAccessorInits,
+    ): void {
+        $isPrivate = $element->key instanceof PrivateIdentifier;
+        $storageKey = '[[AutoAccessor:' . self::$nextAutoAccessorId++ . ']]';
+
+        // Resolve the public-facing key: string, symbol, or branded private name.
+        $symbolKey = null;
+        $publicKey = '';
+        $displayName = '';
+        if ($isPrivate) {
+            $publicKey = $privateNameMap[$element->key->name] ?? $element->key->name;
+            $displayName = $element->key->name;
+        } elseif (isset($computedKeys[$i])) {
+            $keyVal = TypeConversion::toPropertyKey($computedKeys[$i]);
+            if ($keyVal instanceof \PhpJs\Value\JsSymbol) {
+                $symbolKey = $keyVal;
+                $publicKey = '';
+                $desc = $keyVal->getDescription();
+                $displayName = $desc !== null ? "[{$desc}]" : '';
+            } else {
+                $publicKey = TypeConversion::toString($keyVal);
+                $displayName = $publicKey;
+            }
+        } else {
+            $publicKey = $element->key instanceof Identifier
+                ? $element->key->name
+                : TypeConversion::toString($this->evaluate($element->key, $privateEnv));
+            $displayName = $publicKey;
+        }
+
+        [$getter, $setter] = $this->createPublicAutoAccessorPair($storageKey, $displayName);
+
+        if ($isPrivate) {
+            // Private auto-accessor: install a [get, set] private accessor
+            // pair (mirror of `get #x()` + `set #x()`). Storage lives as a
+            // hidden `[[AutoAccessor:N]]` data slot on the host object so
+            // get/set don't recurse through the private brand.
+            if ($element->static) {
+                $privateStaticMethods[] = [$publicKey, $getter, 'get'];
+                $privateStaticMethods[] = [$publicKey, $setter, 'set'];
+                $staticAutoAccessorInits[] = [$storageKey, $element->value, true];
+            } else {
+                $privateInstanceMethods[] = [$publicKey, $getter, 'get'];
+                $privateInstanceMethods[] = [$publicKey, $setter, 'set'];
+                $instanceAutoAccessorInits[] = [$storageKey, $element->value];
+            }
+        } else {
+            // Public auto-accessor: route through the regular instance/static
+            // method installation by appending get and set entries in source
+            // order so they merge with user-declared get/set descriptors.
+            if ($element->static) {
+                $staticMethods[] = [$publicKey, $getter, 'get', $symbolKey];
+                $staticMethods[] = [$publicKey, $setter, 'set', $symbolKey];
+                $staticAutoAccessorInits[] = [$storageKey, $element->value, false];
+            } else {
+                $instanceMethods[] = [$publicKey, $getter, 'get', $symbolKey];
+                $instanceMethods[] = [$publicKey, $setter, 'set', $symbolKey];
+                $instanceAutoAccessorInits[] = [$storageKey, $element->value];
+            }
+        }
+    }
+
+    /**
+     * Build the getter / setter pair for a public auto-accessor (`accessor x = init`).
+     *
+     * Per ES2023 decorators §15.7.3, the synthesized getter and setter read and
+     * write a hidden storage slot on the receiver. The brand check throws
+     * TypeError when the receiver is missing the slot (e.g. a derived class
+     * inheriting a static accessor without redeclaring it).
+     *
+     * @return array{0: JsFunction, 1: JsFunction}
+     */
+    private function createPublicAutoAccessorPair(string $storageKey, string $displayName): array
+    {
+        $getter = JsFunction::fromCallable(
+            'get ' . $displayName,
+            function (JsValue $thisVal, array $args) use ($storageKey, $displayName): JsValue {
+                if (!$thisVal instanceof JsObject || !$thisVal->hasOwnProperty($storageKey)) {
+                    throw new TypeError(
+                        "Cannot read auto-accessor '{$displayName}' from an incompatible receiver",
+                    );
+                }
+                return $thisVal->get($storageKey);
+            },
+        )->setNonConstructable();
+        $setter = JsFunction::fromCallable(
+            'set ' . $displayName,
+            function (JsValue $thisVal, array $args) use ($storageKey, $displayName): JsValue {
+                if (!$thisVal instanceof JsObject || !$thisVal->hasOwnProperty($storageKey)) {
+                    throw new TypeError(
+                        "Cannot write auto-accessor '{$displayName}' on an incompatible receiver",
+                    );
+                }
+                $thisVal->set($storageKey, $args[0] ?? JsUndefined::instance(), false);
+                return JsUndefined::instance();
+            },
+            1,
+        )->setNonConstructable();
+        // Auto-accessor get/set don't have a .prototype slot.
+        $getter->forceDelete('prototype');
+        $setter->forceDelete('prototype');
+        return [$getter, $setter];
     }
 
     public function initializeInstanceFields(JsFunction $ctor, JsObject $instance, Environment $env): void
@@ -9450,6 +9585,11 @@ class Interpreter
         $instanceFields = [];
         $privateInstanceMethods = [];
         $privateStaticMethods = [];
+        // Auto-accessor (`accessor name = init`) storage-slot initializers.
+        // Public and private alike: each entry is [storageKey, initNode|null].
+        // For static accessors, the third element is true if private.
+        $instanceAutoAccessorInits = [];
+        $staticAutoAccessorInits = [];
 
         // Per spec ClassDefinitionEvaluation: create a new PrivateEnvironment.
         // Each evaluation of a class body generates unique branded private names
@@ -9486,6 +9626,22 @@ class Interpreter
                 continue; // Handled after constructor setup
             }
             if ($element instanceof ClassProperty) {
+                if ($element->isAccessor) {
+                    $this->collectAutoAccessor(
+                        $element,
+                        $i,
+                        $privateEnv,
+                        $privateNameMap,
+                        $computedKeys,
+                        $instanceMethods,
+                        $staticMethods,
+                        $privateInstanceMethods,
+                        $privateStaticMethods,
+                        $instanceAutoAccessorInits,
+                        $staticAutoAccessorInits,
+                    );
+                    continue;
+                }
                 if (!$element->static) {
                     $instanceFields[] = [$element, $i];
                 }
@@ -9877,6 +10033,14 @@ class Interpreter
             }
         }
 
+        // Register auto-accessor storage-slot initializers. Each slot is a
+        // hidden `[[AutoAccessor:N]]` data property primed at construction
+        // time. The slot key is a [[…]] internal slot, so it's filtered from
+        // ownKeys / for-in / Object.keys.
+        foreach ($instanceAutoAccessorInits as [$storageKey, $initNode]) {
+            $constructor->addInstanceFieldInitializer($storageKey, $initNode, false, false);
+        }
+
         // Register private instance methods on the constructor.
         foreach ($privateInstanceMethods as [$key, $fn, $kind]) {
             if (!$fn instanceof JsFunction) {
@@ -9959,9 +10123,32 @@ class Interpreter
         // of undefined (they run at class-definition time, not construct).
         $staticEnv->defineVar('[[NewTarget]]', JsUndefined::instance());
 
+        // staticAutoAccessorInits is in source order (collectAutoAccessor is
+        // called from the source-order loop above). Consume entries in order
+        // as we encounter `static accessor` elements in the static-fields pass.
+        $staticAccessorCursor = 0;
+
         // Evaluate static fields and static blocks at class definition time.
         foreach ($elements as $i => $element) {
             if ($element instanceof ClassProperty && $element->static) {
+                if ($element->isAccessor) {
+                    // Initialize the hidden storage slot on the constructor
+                    // for this static auto-accessor. Storage entries are in
+                    // source order (see collectAutoAccessor).
+                    [$storageKey, $initNode] = [
+                        $staticAutoAccessorInits[$staticAccessorCursor][0],
+                        $staticAutoAccessorInits[$staticAccessorCursor][1],
+                    ];
+                    $staticAccessorCursor++;
+                    $value = $initNode !== null
+                        ? $this->evaluate($initNode, $staticEnv)
+                        : JsUndefined::instance();
+                    $constructor->defineOwnProperty(
+                        $storageKey,
+                        PropertyDescriptor::data($value, true, false, true),
+                    );
+                    continue;
+                }
                 $isPrivate = $element->key instanceof PrivateIdentifier;
                 if ($isPrivate) {
                     $fieldKey = $privateNameMap[$element->key->name] ?? $element->key->name;

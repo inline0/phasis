@@ -81,6 +81,11 @@ class PropertyDescriptor
             set: $set,
         );
         $desc->isAccessor = true;
+        // Mark both fields as explicitly specified so subsequent merge
+        // operations replace the existing get/set rather than keeping the
+        // previous value (which would mask intentional `set: undefined`).
+        $desc->hasGet = true;
+        $desc->hasSet = true;
         return $desc;
     }
 }

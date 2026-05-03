@@ -19,6 +19,7 @@ class ClassProperty extends Node
         public readonly bool $static,
         public readonly bool $computed,
         public readonly array $decorators = [],
+        public readonly bool $isAccessor = false,
     ) {
         parent::__construct($location);
     }
