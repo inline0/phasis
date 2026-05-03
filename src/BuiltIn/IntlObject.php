@@ -4016,6 +4016,14 @@ class IntlObject
                     if (in_array($nsRaw, self::getSupportedNumberingSystems(), true)) {
                         $numberingSystem = $nsRaw;
                     }
+                } elseif (preg_match('/-u-(?:[a-wy-z0-9]{2,8}-)*?nu-([a-z0-9]{3,8}(?:-[a-z0-9]{3,8})*)/i', $resolvedLocale, $nsMatch) === 1) {
+                    // -u-nu-<numberingSystem> extension when no explicit
+                    // option was passed. Filter against ICU-supported set
+                    // so algorithmic systems (armn, hebr, ...) fall back.
+                    $nsExt = strtolower($nsMatch[1]);
+                    if (in_array($nsExt, self::getSupportedNumberingSystems(), true)) {
+                        $numberingSystem = $nsExt;
+                    }
                 }
                 $obj->defineOwnProperty('[[NumberingSystem]]', PropertyDescriptor::data(
                     new JsString($numberingSystem),
@@ -5406,7 +5414,28 @@ class IntlObject
         $dt = self::dateTimeFromTimestampMs($timestampMs);
         $result = $formatter->format($dt);
         $secFallback = (int) floor($timestampMs / 1000);
-        return $result === false ? date('Y-m-d H:i:s', $secFallback) : $result;
+        if ($result === false) {
+            return date('Y-m-d H:i:s', $secFallback);
+        }
+        return self::normalizeDateTimeSpaces($result);
+    }
+
+    /**
+     * Replace ICU's narrow no-break space (U+202F) before AM/PM and
+     * other day-period markers with a regular space. CLDR ships en-US
+     * (and many other locales') day-period separators as U+202F, but
+     * V8 normalises this to U+0020 in the output so spec test fixtures
+     * (which assert on plain ASCII spaces around AM/PM) pass.
+     */
+    private static function normalizeDateTimeSpaces(string $formatted): string
+    {
+        if ($formatted === '') {
+            return $formatted;
+        }
+        // U+202F = "\xE2\x80\xAF".
+        return strtr($formatted, [
+            "\xE2\x80\xAF" => ' ',
+        ]);
     }
 
     /**
@@ -5491,7 +5520,7 @@ class IntlObject
             $formatter = self::temporalFormatterFor($dtf, $obj);
             $dt = self::dateTimeFromTimestampMs($tsMs);
             $result = $formatter->format($dt);
-            return $result === false ? '' : $result;
+            return $result === false ? '' : self::normalizeDateTimeSpaces($result);
         }
         // Plain types: assemble a UTC timestamp from the date/time
         // slots, then format with a UTC-locked formatter whose
@@ -5519,7 +5548,7 @@ class IntlObject
         );
         $formatter = self::temporalFormatterFor($dtf, $obj);
         $result = $formatter->format($dt);
-        return $result === false ? '' : $result;
+        return $result === false ? '' : self::normalizeDateTimeSpaces($result);
     }
 
     /**
@@ -6125,6 +6154,7 @@ class IntlObject
     {
         $localeRaw = self::extractInternalString($dtf, '[[Locale]]', 'en');
         $calendar = self::extractInternalString($dtf, '[[Calendar]]', 'gregory');
+        $numberingSystem = self::extractInternalString($dtf, '[[NumberingSystem]]', 'latn');
         $locale = str_replace('-', '_', $localeRaw);
         // iso8601 is a Gregorian-equivalent calendar in ICU; keep
         // the GREGORIAN backend so date formatting matches normal
@@ -6133,17 +6163,29 @@ class IntlObject
         $needsTraditional = $calendar !== 'gregory'
             && $calendar !== ''
             && $calendar !== 'iso8601';
+        // Collect ICU keyword=value pairs so the locale ends up as
+        // "base@k1=v1;k2=v2". Encoding [[NumberingSystem]] here lets
+        // IntlDateFormatter emit non-Latn digits (arab, deva, hanidec,
+        // ...) without a post-format digit-translation pass.
+        $icuKeywords = [];
         if ($needsTraditional) {
-            if (!str_contains($locale, '@')) {
-                // ICU recognizes "ethiopic-amete-alem" not "ethioaa"
-                // for the @calendar= suffix; everything else passes
-                // through verbatim.
-                static $icuCalendarMap = [
-                    'ethioaa' => 'ethiopic-amete-alem',
-                ];
-                $icuCalName = $icuCalendarMap[$calendar] ?? $calendar;
-                $locale .= '@calendar=' . $icuCalName;
+            // ICU recognizes "ethiopic-amete-alem" not "ethioaa"
+            // for the @calendar= suffix; everything else passes
+            // through verbatim.
+            static $icuCalendarMap = [
+                'ethioaa' => 'ethiopic-amete-alem',
+            ];
+            $icuKeywords['calendar'] = $icuCalendarMap[$calendar] ?? $calendar;
+        }
+        if ($numberingSystem !== '' && $numberingSystem !== 'latn') {
+            $icuKeywords['numbers'] = $numberingSystem;
+        }
+        if (!empty($icuKeywords) && !str_contains($locale, '@')) {
+            $parts = [];
+            foreach ($icuKeywords as $k => $v) {
+                $parts[] = $k . '=' . $v;
             }
+            $locale .= '@' . implode(';', $parts);
         }
         $calendarKind = $needsTraditional
             ? \IntlDateFormatter::TRADITIONAL
