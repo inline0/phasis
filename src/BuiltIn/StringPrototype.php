@@ -809,15 +809,56 @@ class StringPrototype
     private static function toLowerCase(): \Closure
     {
         return function (JsValue $this_): JsValue {
-            return new JsString(mb_strtolower(self::extractString($this_), 'UTF-8'));
+            return new JsString(self::caseFoldPreserveSurrogates(self::extractString($this_), false));
         };
     }
 
     private static function toUpperCase(): \Closure
     {
         return function (JsValue $this_): JsValue {
-            return new JsString(mb_strtoupper(self::extractString($this_), 'UTF-8'));
+            return new JsString(self::caseFoldPreserveSurrogates(self::extractString($this_), true));
         };
+    }
+
+    /**
+     * Apply mb_strtoupper / mb_strtolower while preserving CESU-8 lone-surrogate
+     * sequences (3-byte 0xED [0xA0-0xBF] [0x80-0xBF]). mb_* treats these as
+     * invalid UTF-8 and substitutes "?" — splitting around them and casing the
+     * surrounding valid UTF-8 segments individually keeps lone surrogates
+     * round-tripping through toUpperCase / toLowerCase.
+     */
+    private static function caseFoldPreserveSurrogates(string $str, bool $upper): string
+    {
+        $len = strlen($str);
+        $result = '';
+        $segStart = 0;
+        $i = 0;
+        while ($i < $len) {
+            if (
+                ord($str[$i]) === 0xED
+                && $i + 2 < $len
+                && (ord($str[$i + 1]) & 0xE0) === 0xA0
+            ) {
+                if ($i > $segStart) {
+                    $seg = substr($str, $segStart, $i - $segStart);
+                    $result .= $upper
+                        ? mb_strtoupper($seg, 'UTF-8')
+                        : mb_strtolower($seg, 'UTF-8');
+                }
+                $result .= substr($str, $i, 3);
+                $i += 3;
+                $segStart = $i;
+                continue;
+            }
+            $i++;
+        }
+        if ($segStart < $len) {
+            $seg = substr($str, $segStart);
+            $result .= $upper
+                ? mb_strtoupper($seg, 'UTF-8')
+                : mb_strtolower($seg, 'UTF-8');
+        }
+        return $result;
     }
 
     private static function toLocaleLowerCase(): \Closure
