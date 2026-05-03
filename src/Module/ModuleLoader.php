@@ -709,11 +709,71 @@ class ModuleLoader
         // namespace fires the lazy trigger.
         $alreadyLoaded = isset($this->modules[$resolved]);
         $eagerNs = $this->loadModuleLinkOnly($specifier, $referrer);
+        // Per ContinueDynamicImport with phase = ~defer~ (16.2.1.10.1),
+        // before resolving the import.defer promise we run
+        // GatherAsynchronousTransitiveDependencies on the requested
+        // module and Evaluate every TLA module it returns. The
+        // deferred root itself stays unevaluated unless it has TLA;
+        // its non-TLA body waits for first MOP access on the deferred
+        // namespace.
+        $rootRecord = $this->modules[$resolved] ?? null;
+        if ($rootRecord !== null) {
+            $tlaModules = [];
+            $seen = [];
+            $this->gatherAsyncTransitiveDeps($rootRecord, $seen, $tlaModules);
+            foreach ($tlaModules as $tlaRecord) {
+                if ($tlaRecord->bodyEvaluated || $tlaRecord->pendingBody === null) {
+                    continue;
+                }
+                $this->evaluateModuleBodyOnDemand($tlaRecord);
+            }
+        }
         // After linking, mark this module as deferred-only so the
         // drain pass does NOT evaluate its body. Eager dependencies
         // imported by it (via non-defer edges) ARE still reachable
         // through the original entry's eager graph if any.
         return $this->getDeferredNamespace($resolved, $eagerNs);
+    }
+
+    /**
+     * Spec GatherAsynchronousTransitiveDependencies (13.3.10.1.1).
+     * Walks the dependency graph of `record` (following both eager and
+     * defer edges) and collects every TLA module reachable. Stops
+     * descending past a TLA module (the TLA module itself is added but
+     * its own dependencies are handled by its own evaluation). Skips
+     * modules that are already evaluating or evaluated.
+     *
+     * @param array<string, true> $seen
+     * @param list<ModuleRecord>  $result
+     */
+    private function gatherAsyncTransitiveDeps(
+        ModuleRecord $record,
+        array &$seen,
+        array &$result,
+    ): void {
+        if (isset($seen[$record->path])) {
+            return;
+        }
+        $seen[$record->path] = true;
+        if ($record->bodyEvaluated || $record->bodyEvaluating) {
+            return;
+        }
+        if ($record->hasTopLevelAwait) {
+            $result[] = $record;
+            return;
+        }
+        foreach (array_keys($record->eagerEdges) as $depPath) {
+            $dep = $this->modules[$depPath] ?? null;
+            if ($dep !== null) {
+                $this->gatherAsyncTransitiveDeps($dep, $seen, $result);
+            }
+        }
+        foreach (array_keys($record->deferEdges) as $depPath) {
+            $dep = $this->modules[$depPath] ?? null;
+            if ($dep !== null) {
+                $this->gatherAsyncTransitiveDeps($dep, $seen, $result);
+            }
+        }
     }
 
     /**
