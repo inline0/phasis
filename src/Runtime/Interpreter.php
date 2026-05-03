@@ -19388,6 +19388,23 @@ class Interpreter
         if (self::hasDuplicateNamedGroups($pattern)) {
             return true;
         }
+        // /i without /u must use ASCII-only Canonicalize per
+        // ECMA-262 §22.2.2.7. PCRE2 always runs with PCRE2_UTF and
+        // applies Unicode case-folding under /i, which only diverges
+        // for codepoints whose simple-fold lands on an ASCII letter:
+        // U+212A (KELVIN SIGN) → k and U+017F (LATIN SMALL LETTER
+        // LONG S) → s. So the only patterns whose result actually
+        // changes between PCRE2/iu and spec/i are those mentioning
+        // K, k, S, or s (literally or via \uXXXX/\u{...}/\xHH/\cX
+        // escapes). For every other /i-without-/u pattern the two
+        // canonicalizations produce identical match sets, and we can
+        // let PCRE2 handle them — keeping the custom matcher (which
+        // catastrophically backtracks on lazy-quantifier shapes like
+        // `(.*\n?)*?`) out of the path.
+        $caselessNeedsCustom = false;
+        if ($isCaseless && !$isUnicode) {
+            $caselessNeedsCustom = self::patternMentionsCaseDivergentLetter($pattern);
+        }
         return $hasLookbehindWithCapture
             || $hasQuantifiedCapture
             || $hasDotInNonUnicode
@@ -19396,12 +19413,76 @@ class Interpreter
             || $hasWordToken
             || $hasAstralInUnicode
             || $hasLoneSurrogateEscape
-            // /i without /u must use ASCII-only Canonicalize per
-            // ECMA-262 §22.2.2.7. PCRE2 with /iu folds Unicode in
-            // both directions (e.g. k matches Kelvin sign), so we
-            // route every /i-without-/u pattern through the custom
-            // matcher whose Canonicalize() honours the spec.
-            || ($isCaseless && !$isUnicode);
+            || $caselessNeedsCustom;
+    }
+
+    /**
+     * Returns true iff $pattern contains an ASCII K/k/S/s as a
+     * literal byte or via an escape (\uXXXX, \u{...}, \xHH, or \cK
+     * for K). These are the only ASCII letters whose case-fold class
+     * differs between PCRE2's /iu Unicode folding and ECMA-262's
+     * ASCII-only Canonicalize for non-/u patterns: U+212A folds to k
+     * and U+017F folds to s, so PCRE2 over-matches Kelvin / long-s
+     * for those four letters but is spec-equivalent for every other
+     * ASCII letter.
+     */
+    private static function patternMentionsCaseDivergentLetter(string $pattern): bool
+    {
+        $len = strlen($pattern);
+        $i = 0;
+        while ($i < $len) {
+            $ch = $pattern[$i];
+            if ($ch === 'K' || $ch === 'k' || $ch === 'S' || $ch === 's') {
+                return true;
+            }
+            if ($ch === '\\' && $i + 1 < $len) {
+                $next = $pattern[$i + 1];
+                if ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
+                    $closeBrace = strpos($pattern, '}', $i + 3);
+                    if ($closeBrace !== false) {
+                        $hex = substr($pattern, $i + 3, $closeBrace - $i - 3);
+                        if (ctype_xdigit($hex)) {
+                            $cp = (int) hexdec($hex);
+                            if ($cp === 0x4B || $cp === 0x6B || $cp === 0x53 || $cp === 0x73) {
+                                return true;
+                            }
+                        }
+                        $i = $closeBrace + 1;
+                        continue;
+                    }
+                } elseif ($next === 'u' && $i + 5 < $len) {
+                    $hex = substr($pattern, $i + 2, 4);
+                    if (ctype_xdigit($hex)) {
+                        $cp = (int) hexdec($hex);
+                        if ($cp === 0x4B || $cp === 0x6B || $cp === 0x53 || $cp === 0x73) {
+                            return true;
+                        }
+                    }
+                    $i += 6;
+                    continue;
+                } elseif ($next === 'x' && $i + 3 < $len) {
+                    $hex = substr($pattern, $i + 2, 2);
+                    if (ctype_xdigit($hex)) {
+                        $cp = (int) hexdec($hex);
+                        if ($cp === 0x4B || $cp === 0x6B || $cp === 0x53 || $cp === 0x73) {
+                            return true;
+                        }
+                    }
+                    $i += 4;
+                    continue;
+                } elseif ($next === 'c' && $i + 2 < $len) {
+                    // \cX control escape: \cK is U+000B (vertical
+                    // tab) — not k. None of the control escapes
+                    // produce K/k/S/s themselves, so skip.
+                    $i += 3;
+                    continue;
+                }
+                $i += 2;
+                continue;
+            }
+            $i++;
+        }
+        return false;
     }
 
     /**
