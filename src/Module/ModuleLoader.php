@@ -77,6 +77,19 @@ class ModuleLoader
             if ($cached->evaluationError !== null) {
                 throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
             }
+            // A previously deferred-only module may have been linked
+            // but its body never ran — its only importer was the
+            // defer phase, so markEagerlyReachable skipped it. An
+            // eager dynamic import must now evaluate the body so the
+            // returned namespace reflects the post-evaluation state
+            // (and any throw the body produces propagates to the
+            // caller).
+            if (!$cached->bodyEvaluated && $cached->pendingBody !== null && !$this->linking) {
+                $this->evaluateModuleBodyOnDemand($cached);
+                if ($cached->evaluationError !== null) {
+                    throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
+                }
+            }
             return $cached->namespace;
         }
 
@@ -131,6 +144,7 @@ class ModuleLoader
             $this->finalizeStarReExports();
             $this->lockDownNamespaces();
             $this->validateIndirectExports();
+            $this->finalizeDeferredNamespaces();
             // Mark every module reachable from the entry through only
             // eager (non-defer) edges. Modules NOT in this set are
             // imported transitively via at least one defer edge and
@@ -187,22 +201,80 @@ class ModuleLoader
             return;
         }
         $rec->eagerlyReachable = true;
-        foreach (array_keys($rec->eagerEdges) as $next) {
-            $this->walkEager($next, $visited, $order);
+        // Visit edges in source-text order so the resulting evaluation
+        // list mirrors the spec's per-source-position interleaving of
+        // eager and defer dependency traversal. For each defer edge we
+        // hoist transitively-reachable TLA modules into the evaluation
+        // list (per spec GatherAsynchronousTransitiveDependencies); the
+        // deferred target itself stays unevaluated until its namespace
+        // is observed.
+        $edges = $rec->orderedEdges;
+        if ($edges === []) {
+            // Backwards-compatible fallback for any path that didn't
+            // populate the ordered list (e.g. modules from a callsite
+            // outside preloadRequestedModules).
+            foreach (array_keys($rec->eagerEdges) as $next) {
+                $edges[] = ['path' => $next, 'defer' => false];
+            }
+            foreach (array_keys($rec->deferEdges) as $next) {
+                $edges[] = ['path' => $next, 'defer' => true];
+            }
         }
-        // Promote defer edges to eager when the target module uses
-        // top-level await. A TLA module cannot be deferred (the
-        // deferred-namespace's first access would have to invoke
-        // EvaluateSync, which fails for an async-evaluated module),
-        // so it must run eagerly even when reached only via
-        // `import defer`.
-        foreach (array_keys($rec->deferEdges) as $next) {
-            $depRec = $this->modules[$next] ?? null;
-            if ($depRec !== null && $depRec->hasTopLevelAwait) {
+        foreach ($edges as $edge) {
+            $next = $edge['path'];
+            if ($edge['defer'] === false) {
                 $this->walkEager($next, $visited, $order);
+                continue;
+            }
+            // Defer edge: gather TLA modules in the target's subtree
+            // and walk each eagerly so their own synchronous deps run
+            // before the TLA body evaluates.
+            if (!isset($this->modules[$next])) {
+                continue;
+            }
+            $gathered = [];
+            $gatherSeen = [];
+            $this->gatherAsyncTransitiveDeps($next, $gatherSeen, $gathered);
+            foreach ($gathered as $tlaPath) {
+                $this->walkEager($tlaPath, $visited, $order);
             }
         }
         $order[] = $path;
+    }
+
+    /**
+     * Spec GatherAsynchronousTransitiveDependencies. Walks `path`'s
+     * dependency graph (treating defer and eager edges identically,
+     * mirroring [[RequestedModules]] regardless of phase) and returns
+     * every module that hits TLA. Stops descending past a TLA module
+     * — its synchronous deps are reached when walkEager consumes the
+     * gathered path.
+     *
+     * @param array<string, true> $seen
+     * @param list<string>        $result
+     */
+    private function gatherAsyncTransitiveDeps(string $path, array &$seen, array &$result): void
+    {
+        if (isset($seen[$path])) {
+            return;
+        }
+        $seen[$path] = true;
+        $rec = $this->modules[$path] ?? null;
+        if ($rec === null) {
+            return;
+        }
+        if ($rec->hasTopLevelAwait) {
+            if (!in_array($path, $result, true)) {
+                $result[] = $path;
+            }
+            return;
+        }
+        foreach (array_keys($rec->eagerEdges) as $next) {
+            $this->gatherAsyncTransitiveDeps($next, $seen, $result);
+        }
+        foreach (array_keys($rec->deferEdges) as $next) {
+            $this->gatherAsyncTransitiveDeps($next, $seen, $result);
+        }
     }
 
     /**
@@ -226,6 +298,7 @@ class ModuleLoader
             $this->finalizeStarReExports();
             $this->lockDownNamespaces();
             $this->validateIndirectExports();
+            $this->finalizeDeferredNamespaces();
             $this->markEagerlyReachable($absolutePath);
             $this->linking = false;
             $this->drainBodyQueue();
@@ -357,51 +430,107 @@ class ModuleLoader
     }
 
     /**
-     * Execute every module body that was queued by linkModule, in link order.
-     * Each body runs with its own moduleEnv; the interpreter's currentModulePath
-     * is set to the module's path before the body runs and restored after.
+     * Execute every module body that was queued by linkModule, in link
+     * order. Each body runs with its own moduleEnv; the interpreter's
+     * currentModulePath is set to the module's path before the body runs
+     * and restored after.
+     *
+     * Per spec InnerModuleEvaluation, a module whose [[PendingAsyncDependencies]]
+     * is greater than zero — that is, any module whose transitive imports
+     * include a TLA module not yet settled — does NOT run its body in the
+     * synchronous pass. Its body is deferred until every async dependency
+     * settles. This lets sibling sync modules later in source order run
+     * in the correct sync slot rather than blocking on an unrelated TLA
+     * dependency, which is what the import-defer flattening-order tests
+     * verify.
      */
     private function drainBodyQueue(): void
     {
         $asyncRecords = [];
+        // Modules whose body is awaiting one or more pending async deps.
+        // Each entry holds the record plus the closure that runs the body.
+        // Tracked separately from the synchronous run-list so deferred
+        // bodies fire only after their dep promises settle.
+        $deferredBodies = [];
+        // Per spec InnerModuleEvaluation: a module's [[Status]] becomes
+        // ~evaluating~ the moment it is pushed onto the evaluation
+        // stack, BEFORE its dependencies' bodies execute. Mark every
+        // eagerly-reachable module as evaluating up front so a
+        // deferred-namespace observed during a sibling body sees the
+        // expected ~evaluating~ status and throws TypeError per
+        // EnsureDeferredNamespaceEvaluation. The flag is cleared in
+        // runDeferredBody's finally block when the body completes (or,
+        // for TLA modules, when the body suspends — the namespace then
+        // checks the pending evaluation promise instead).
+        foreach ($this->bodyQueue as $queuedPath) {
+            $rec = $this->modules[$queuedPath] ?? null;
+            if ($rec !== null && $rec->eagerlyReachable && $rec->pendingBody !== null) {
+                $rec->bodyEvaluating = true;
+            }
+        }
         while ($this->bodyQueue !== []) {
             $path = array_shift($this->bodyQueue);
             $record = $this->modules[$path] ?? null;
             if ($record === null || $record->pendingBody === null) {
                 continue;
             }
-            // Skip modules that aren't eagerly reachable from the
-            // entry point. Their bodies wait for the first MOP access
-            // on their deferred namespace (per import-defer Stage 3
-            // evaluation triggers).
             if (!$record->eagerlyReachable) {
                 continue;
             }
-            // Per spec InnerModuleEvaluation, before evaluating M, every
-            // async dependency in M's import graph must have settled.
-            $this->awaitAsyncDeps($record);
+            $pendingDeps = $this->collectPendingAsyncDeps($record);
+            if ($pendingDeps === []) {
+                $this->runModuleBody($record, $asyncRecords);
+                continue;
+            }
+            // Module has at least one async dep that hasn't settled.
+            // Capture body + env for later; register a continuation on
+            // the dep promises so the body runs as soon as the last
+            // pending dep settles. Mark pendingBody as "claimed" by
+            // nulling it but preserving the captured snapshot.
             $pending = $record->pendingBody;
             $record->pendingBody = null;
             $record->bodyEvaluated = true;
-            $record->bodyEvaluating = true;
-            $prevModulePath = $this->interpreter->getCurrentModulePath();
-            $this->interpreter->setCurrentModulePath($path);
-            try {
-                $this->interpreter->executeModuleBody(
-                    $pending['program']->body,
-                    $pending['moduleEnv'],
-                    alreadyHoisted: true,
-                    onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record, &$asyncRecords): void {
-                        $record->evaluationPromise = $p;
-                        $asyncRecords[] = $record;
-                    },
-                );
-            } catch (\PhpJs\Exceptions\JsThrowable $e) {
-                $record->evaluationError = $e->jsValue;
-                throw $e;
-            } finally {
-                $this->interpreter->setCurrentModulePath($prevModulePath);
-                $record->bodyEvaluating = false;
+            $deferredBodies[] = [
+                'record' => $record,
+                'pending' => $pending,
+            ];
+        }
+        // Run deferred bodies in source order, draining microtasks
+        // between attempts so each TLA dep can settle and unblock its
+        // dependents. Modules whose deps reject re-throw the same
+        // value, mirroring spec AsyncModuleExecutionRejected.
+        if ($deferredBodies !== []) {
+            $iter = 0;
+            while ($deferredBodies !== [] && $iter++ < 100000) {
+                \PhpJs\Value\JsPromise::drainMicrotasks();
+                $progress = false;
+                $remaining = [];
+                foreach ($deferredBodies as $entry) {
+                    $rec = $entry['record'];
+                    $pendingDeps = $this->collectPendingAsyncDeps($rec);
+                    // If any dep rejected, propagate that rejection
+                    // immediately to this module's evaluationError.
+                    $rejectedDep = $this->firstRejectedDep($rec);
+                    if ($rejectedDep !== null) {
+                        $rec->evaluationError = $rejectedDep;
+                        $progress = true;
+                        continue;
+                    }
+                    if ($pendingDeps === []) {
+                        $this->runDeferredBody($rec, $entry['pending'], $asyncRecords);
+                        $progress = true;
+                        continue;
+                    }
+                    $remaining[] = $entry;
+                }
+                $deferredBodies = $remaining;
+                if (!$progress && $deferredBodies !== []) {
+                    // No deferred body became runnable this iteration.
+                    // Either all pending TLA deps are still pending or
+                    // the loop is genuinely deadlocked — either way the
+                    // microtask drain is the only way forward.
+                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                }
             }
         }
         // Drain remaining async-module promises (any module without an
@@ -429,6 +558,130 @@ class ModuleLoader
                     $this->interpreter->throwJsValue($p->getResolvedValue());
                 }
             }
+        }
+    }
+
+    /**
+     * Collect every TLA module reachable from $record through its
+     * import graph whose evaluation promise is still pending. An empty
+     * result means the module's [[PendingAsyncDependencies]] is zero,
+     * so its body may execute synchronously.
+     *
+     * @return list<ModuleRecord>
+     */
+    private function collectPendingAsyncDeps(ModuleRecord $record): array
+    {
+        $visited = [];
+        $result = [];
+        $this->walkPendingAsyncDeps($record, $visited, $result);
+        return $result;
+    }
+
+    /**
+     * @param array<string, true>  $visited
+     * @param list<ModuleRecord>   $result
+     */
+    private function walkPendingAsyncDeps(ModuleRecord $record, array &$visited, array &$result): void
+    {
+        foreach (array_keys($record->importedPaths) as $depPath) {
+            if (isset($visited[$depPath])) {
+                continue;
+            }
+            $visited[$depPath] = true;
+            $dep = $this->modules[$depPath] ?? null;
+            if ($dep === null) {
+                continue;
+            }
+            $p = $dep->evaluationPromise;
+            if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+                $result[] = $dep;
+            }
+            // Recurse into the dep's own deps so a chain
+            // M → A → tla still reports tla as pending for M.
+            $this->walkPendingAsyncDeps($dep, $visited, $result);
+        }
+    }
+
+    /**
+     * Walk the importedPaths closure looking for the first dep whose
+     * evaluation promise is rejected. Returns the rejected JsValue or
+     * null if none has rejected yet.
+     */
+    private function firstRejectedDep(ModuleRecord $record): ?\PhpJs\Value\JsValue
+    {
+        $visited = [];
+        $stack = [$record];
+        while ($stack !== []) {
+            $current = array_pop($stack);
+            foreach (array_keys($current->importedPaths) as $depPath) {
+                if (isset($visited[$depPath])) {
+                    continue;
+                }
+                $visited[$depPath] = true;
+                $dep = $this->modules[$depPath] ?? null;
+                if ($dep === null) {
+                    continue;
+                }
+                if ($dep->evaluationError !== null) {
+                    return $dep->evaluationError;
+                }
+                $p = $dep->evaluationPromise;
+                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                    return $p->getResolvedValue();
+                }
+                $stack[] = $dep;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Run a body whose pendingBody is still set on the record. Used
+     * during the synchronous drain pass for modules with no pending
+     * async deps.
+     *
+     * @param list<ModuleRecord> $asyncRecords
+     */
+    private function runModuleBody(ModuleRecord $record, array &$asyncRecords): void
+    {
+        $pending = $record->pendingBody;
+        if ($pending === null) {
+            return;
+        }
+        $record->pendingBody = null;
+        $record->bodyEvaluated = true;
+        $this->runDeferredBody($record, $pending, $asyncRecords);
+    }
+
+    /**
+     * Execute a previously-captured body snapshot. Handles the sync
+     * and TLA cases identically: the body either completes inline or
+     * yields its evaluation promise back via the onAsyncStart hook.
+     *
+     * @param array{program: \PhpJs\Ast\Program, moduleEnv: Environment, prevModulePath: ?string} $pending
+     * @param list<ModuleRecord> $asyncRecords
+     */
+    private function runDeferredBody(ModuleRecord $record, array $pending, array &$asyncRecords): void
+    {
+        $record->bodyEvaluating = true;
+        $prevModulePath = $this->interpreter->getCurrentModulePath();
+        $this->interpreter->setCurrentModulePath($record->path);
+        try {
+            $this->interpreter->executeModuleBody(
+                $pending['program']->body,
+                $pending['moduleEnv'],
+                alreadyHoisted: true,
+                onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record, &$asyncRecords): void {
+                    $record->evaluationPromise = $p;
+                    $asyncRecords[] = $record;
+                },
+            );
+        } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            $record->evaluationError = $e->jsValue;
+            throw $e;
+        } finally {
+            $this->interpreter->setCurrentModulePath($prevModulePath);
+            $record->bodyEvaluating = false;
         }
     }
 
@@ -487,6 +740,7 @@ class ModuleLoader
             $this->finalizeStarReExports();
             $this->lockDownNamespaces();
             $this->validateIndirectExports();
+            $this->finalizeDeferredNamespaces();
             $this->linking = false;
             // Note: deliberately skip markEagerlyReachable + drain.
             // The body queue items for this graph stay pending; they'll
@@ -516,29 +770,16 @@ class ModuleLoader
         $self = $this;
         $deferred = new \PhpJs\Value\JsDeferredModuleNamespace(
             function (\PhpJs\Value\JsDeferredModuleNamespace $ns) use ($self, $record): void {
-                // Per ECMA-262 EnsureDeferredNamespaceEvaluation, when
-                // the underlying module is mid-evaluation any access
-                // that would otherwise trigger evaluation throws
-                // TypeError instead. Catches both sync self-imports
-                // and cross-module re-entry while a body is on stack.
-                if ($record->bodyEvaluating) {
-                    throw new \PhpJs\Exceptions\TypeError(
-                        'Cannot access deferred namespace of module that is currently evaluating'
-                    );
-                }
-                // Spec ReadyForSyncExecution returns false when the
-                // module is in the ~evaluating-async~ state, i.e. the
-                // top-level-await promise has been issued but not yet
-                // settled. Detect that by inspecting the cached
-                // evaluation promise: if it exists and is still
-                // pending, the module hasn't reached the ~evaluated~
-                // state and must throw TypeError instead of
-                // re-entering the body.
-                $promise = $record->evaluationPromise;
-                if (
-                    $promise !== null
-                    && $promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
-                ) {
+                // Per ECMA-262 EnsureDeferredNamespaceEvaluation, the
+                // deferred namespace can only complete if
+                // ReadyForSyncExecution(record) is true. The spec walks
+                // the record's [[RequestedModules]] graph and returns
+                // false if any reachable module's [[Status]] is
+                // ~evaluating~ or ~evaluating-async~. Mirror that walk
+                // here so a deferred namespace whose target imports a
+                // mid-evaluation module throws TypeError without
+                // attempting to evaluate the target's body.
+                if (!$self->isReadyForSyncExecution($record)) {
                     throw new \PhpJs\Exceptions\TypeError(
                         'Cannot access deferred namespace of module that is currently evaluating'
                     );
@@ -561,38 +802,117 @@ class ModuleLoader
             },
         );
         $deferred->setEagerNamespace($eagerNs);
-        // Mirror the eager namespace's export-binding accessors so the
-        // deferred namespace exposes the same keys with live access to
-        // the underlying moduleEnv bindings. We use the raw stored
-        // descriptors (not the materialized form) so accessors stay
-        // accessors and reflect post-evaluation values. Bypass the
-        // lazy-eval trigger during this construction-time mirror so
-        // we don't accidentally evaluate the module while wiring up
-        // its own deferred namespace.
-        $deferred->setBypassTrigger(true);
-        foreach ($eagerNs->getOwnPropertyNames() as $name) {
-            $rawDesc = $eagerNs->getOwnPropertyDescriptorRaw($name);
-            if ($rawDesc === null) {
-                continue;
-            }
-            $deferred->defineOwnProperty($name, clone $rawDesc);
-        }
-        $deferred->setBypassTrigger(false);
-        // Stamp Symbol.toStringTag and prevent extensions per spec
-        // ModuleNamespaceCreate with phase = ~defer~.
-        $deferred->definePropertyBySymbol(
-            \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
-            \PhpJs\Object\PropertyDescriptor::data(
-                new \PhpJs\Value\JsString('Deferred Module'),
-                false,
-                false,
-                false,
-            ),
-        );
-        $deferred->markAsModuleNamespace();
-        $deferred->preventExtensions();
+        // Property mirroring + namespace lockdown (toStringTag,
+        // markAsModuleNamespace, preventExtensions) are deferred to
+        // finalizeDeferredNamespaces(), which runs after the whole
+        // module graph is linked. Mirroring at construction time
+        // would race with cyclic imports — when this method runs
+        // during dep-1.1's link pass, dep-1-tla's finalizeExports
+        // may not have populated its namespace yet, leaving the
+        // deferred namespace permanently empty.
         $record->deferredNamespace = $deferred;
         return $deferred;
+    }
+
+    /**
+     * Spec ReadyForSyncExecution. Returns true iff `record` and every
+     * module reachable from it (through both eager and defer edges)
+     * is in a state that allows synchronous evaluation: either already
+     * ~evaluated~, or ~linked~ with no TLA in the transitive closure.
+     * Returns false if any reachable module is ~evaluating~ or
+     * ~evaluating-async~ (mid-evaluation), which signals that a
+     * deferred-namespace observer must throw TypeError instead of
+     * forcing evaluation. Public so the deferred-namespace closure
+     * captured by getDeferredNamespace can call it via $self.
+     */
+    public function isReadyForSyncExecution(ModuleRecord $record): bool
+    {
+        $seen = [];
+        return $this->readyForSyncExecutionImpl($record, $seen);
+    }
+
+    /**
+     * @param array<string, true> $seen
+     */
+    private function readyForSyncExecutionImpl(ModuleRecord $record, array &$seen): bool
+    {
+        if (isset($seen[$record->path])) {
+            return true;
+        }
+        $seen[$record->path] = true;
+        if ($record->bodyEvaluated && $record->evaluationError === null) {
+            $promise = $record->evaluationPromise;
+            if ($promise === null || $promise->getState() !== \PhpJs\Value\JsPromise::STATE_PENDING) {
+                // ~evaluated~: ok.
+            } else {
+                // ~evaluating-async~: not ok.
+                return false;
+            }
+        }
+        if ($record->bodyEvaluating) {
+            return false;
+        }
+        $promise = $record->evaluationPromise;
+        if ($promise !== null && $promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
+            return false;
+        }
+        // Not yet evaluated. ~linked~ state: walk requested modules.
+        if (!$record->bodyEvaluated && $record->hasTopLevelAwait) {
+            // TLA modules in ~linked~ state cannot run synchronously.
+            return false;
+        }
+        foreach (array_keys($record->importedPaths) as $depPath) {
+            $dep = $this->modules[$depPath] ?? null;
+            if ($dep === null) {
+                continue;
+            }
+            if (!$this->readyForSyncExecutionImpl($dep, $seen)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Mirror each deferred namespace's exports from its eager
+     * namespace and seal the deferred namespace per spec
+     * ModuleNamespaceCreate(phase=defer). Runs after the entire
+     * module graph is linked so cyclic imports see the fully
+     * populated eager namespace.
+     */
+    private function finalizeDeferredNamespaces(): void
+    {
+        foreach ($this->modules as $record) {
+            $deferred = $record->deferredNamespace;
+            if (!($deferred instanceof \PhpJs\Value\JsDeferredModuleNamespace)) {
+                continue;
+            }
+            if ($deferred->isFinalized()) {
+                continue;
+            }
+            $eagerNs = $record->namespace;
+            $deferred->setBypassTrigger(true);
+            foreach ($eagerNs->getOwnPropertyNames() as $name) {
+                $rawDesc = $eagerNs->getOwnPropertyDescriptorRaw($name);
+                if ($rawDesc === null) {
+                    continue;
+                }
+                $deferred->defineOwnProperty($name, clone $rawDesc);
+            }
+            $deferred->setBypassTrigger(false);
+            $deferred->definePropertyBySymbol(
+                \PhpJs\BuiltIn\SymbolConstructor::toStringTag(),
+                \PhpJs\Object\PropertyDescriptor::data(
+                    new \PhpJs\Value\JsString('Deferred Module'),
+                    false,
+                    false,
+                    false,
+                ),
+            );
+            $deferred->markAsModuleNamespace();
+            $deferred->preventExtensions();
+            $deferred->markFinalized();
+        }
     }
 
     /**
@@ -653,70 +973,6 @@ class ModuleLoader
             $this->interpreter->setCurrentModulePath($prevModulePath);
             $record->bodyEvaluating = false;
         }
-    }
-
-    private function awaitAsyncDeps(ModuleRecord $record): void
-    {
-        $deps = $this->collectAsyncDeps($record, []);
-        if ($deps === []) {
-            return;
-        }
-        $iter = 0;
-        while ($iter++ < 100000) {
-            $allSettled = true;
-            foreach ($deps as $dep) {
-                $p = $dep->evaluationPromise;
-                if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING) {
-                    $allSettled = false;
-                    break;
-                }
-            }
-            if ($allSettled) {
-                break;
-            }
-            \PhpJs\Value\JsPromise::drainMicrotasks();
-        }
-        // A rejected dependency must propagate immediately: per spec
-        // 16.2.1.5 ContinueDynamicImport / InnerModuleEvaluation, a
-        // module whose async dep rejected itself rejects with the same
-        // value, and importers throw rather than evaluating their
-        // bodies.
-        foreach ($deps as $dep) {
-            $p = $dep->evaluationPromise;
-            if ($p !== null && $p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                $this->interpreter->throwJsValue($p->getResolvedValue());
-            }
-        }
-    }
-
-    /**
-     * Walk importedPaths transitively and collect every record that has
-     * an outstanding evaluation promise. Avoids re-entering already
-     * visited records to terminate on cyclic imports.
-     *
-     * @param array<string, true> $visited
-     * @return list<ModuleRecord>
-     */
-    private function collectAsyncDeps(ModuleRecord $record, array $visited): array
-    {
-        $result = [];
-        foreach (array_keys($record->importedPaths) as $path) {
-            if (isset($visited[$path])) {
-                continue;
-            }
-            $visited[$path] = true;
-            $dep = $this->modules[$path] ?? null;
-            if ($dep === null) {
-                continue;
-            }
-            if ($dep->evaluationPromise !== null) {
-                $result[] = $dep;
-            }
-            foreach ($this->collectAsyncDeps($dep, $visited) as $nested) {
-                $result[] = $nested;
-            }
-        }
-        return $result;
     }
 
     /**
@@ -1035,6 +1291,10 @@ class ModuleLoader
                 } else {
                     $currentRecord->eagerEdges[$resolved] = true;
                 }
+                $currentRecord->orderedEdges[] = [
+                    'path' => $resolved,
+                    'defer' => $isDefer,
+                ];
             }
         }
     }

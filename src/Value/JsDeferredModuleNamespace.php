@@ -28,6 +28,13 @@ class JsDeferredModuleNamespace extends JsObject
     private bool $evaluated = false;
 
     /**
+     * Whether finalizeDeferredNamespaces has already mirrored the
+     * eager namespace's exports and locked this object down. Mirror
+     * runs once the module graph is fully linked.
+     */
+    private bool $finalized = false;
+
+    /**
      * When true, MOP traps go straight to JsObject's implementation
      * without firing the trigger. The module loader sets this during
      * the construction-time mirror pass (where we copy export
@@ -64,6 +71,16 @@ class JsDeferredModuleNamespace extends JsObject
     public function setBypassTrigger(bool $bypass): void
     {
         $this->bypassTrigger = $bypass;
+    }
+
+    public function isFinalized(): bool
+    {
+        return $this->finalized;
+    }
+
+    public function markFinalized(): void
+    {
+        $this->finalized = true;
     }
 
     /** Mark the namespace as already populated; skips trigger on access. */

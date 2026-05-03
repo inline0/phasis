@@ -146,6 +146,18 @@ class ModuleRecord
     public array $deferEdges = [];
 
     /**
+     * Ordered list of import edges in source-text order, each entry
+     * recording the resolved target path and the import phase
+     * (eager or defer). Used by walkEager to mix eager and defer
+     * traversals in source order, mirroring spec
+     * InnerModuleEvaluation's ordered processing of
+     * [[RequestedModules]] entries.
+     *
+     * @var list<array{path:string,defer:bool}>
+     */
+    public array $orderedEdges = [];
+
+    /**
      * Set by markEagerlyReachable after the graph is fully linked.
      * True for the entry module and any module reachable via at
      * least one purely-eager chain of imports from the entry.
