@@ -80,6 +80,39 @@ class ModuleLoader
             return $cached->namespace;
         }
 
+        return $this->loadModuleInternal($resolved, $specifier);
+    }
+
+    /**
+     * Variant of loadModule used by deferred-phase importers. If the
+     * source module has already failed evaluation, returns the cached
+     * namespace without re-throwing — the cached error surfaces later
+     * when an observable Get on the deferred namespace fires
+     * EnsureDeferredNamespaceEvaluation. If the module hasn't been
+     * loaded yet, links it (which doesn't run its body during the
+     * importer's link pass anyway, since defer-only edges are skipped
+     * by markEagerlyReachable).
+     */
+    public function loadModuleForDeferred(string $specifier, ?string $referrer = null): JsObject
+    {
+        $resolved = $this->resolve($specifier, $referrer);
+        if (isset($this->modules[$resolved])) {
+            // Even if the module has a cached evaluation error, return
+            // its namespace so the deferred-namespace exotic can mirror
+            // its export shape. The error will be re-thrown by
+            // ensureEvaluated() when an observable trap actually fires.
+            return $this->modules[$resolved]->namespace;
+        }
+        return $this->loadModuleInternal($resolved, $specifier);
+    }
+
+    /**
+     * Shared body of loadModule / loadModuleForDeferred for the
+     * not-yet-cached path. Reads the source, links it, and (when this
+     * is the outermost load call) drains the eager body queue.
+     */
+    private function loadModuleInternal(string $resolved, string $specifier): JsObject
+    {
         $source = @file_get_contents($resolved);
         if ($source === false) {
             throw new \PhpJs\Exceptions\TypeError("Cannot find module '{$specifier}'");
@@ -156,6 +189,18 @@ class ModuleLoader
         $rec->eagerlyReachable = true;
         foreach (array_keys($rec->eagerEdges) as $next) {
             $this->walkEager($next, $visited, $order);
+        }
+        // Promote defer edges to eager when the target module uses
+        // top-level await. A TLA module cannot be deferred (the
+        // deferred-namespace's first access would have to invoke
+        // EvaluateSync, which fails for an async-evaluated module),
+        // so it must run eagerly even when reached only via
+        // `import defer`.
+        foreach (array_keys($rec->deferEdges) as $next) {
+            $depRec = $this->modules[$next] ?? null;
+            if ($depRec !== null && $depRec->hasTopLevelAwait) {
+                $this->walkEager($next, $visited, $order);
+            }
         }
         $order[] = $path;
     }
@@ -238,6 +283,14 @@ class ModuleLoader
             $parser = new Parser($source);
             $parser->setModuleMode(true);
             $program = $parser->parse();
+
+            // Detect top-level await before linking dependencies. The
+            // markEagerlyReachable walk needs the flag so a deferred
+            // importer of a TLA module can promote the edge to eager
+            // (per the import-defer proposal: TLA modules cannot be
+            // deferred because EvaluateSync would have to wait for an
+            // async settlement).
+            $record->hasTopLevelAwait = $this->programHasTopLevelAwait($program->body);
 
             // Create a fresh module environment linked to the global environment.
             $moduleEnv = new Environment($this->globalEnv);
@@ -466,9 +519,26 @@ class ModuleLoader
                 // Per ECMA-262 EnsureDeferredNamespaceEvaluation, when
                 // the underlying module is mid-evaluation any access
                 // that would otherwise trigger evaluation throws
-                // TypeError instead. Catches both self-imports and
-                // cross-module re-entry while a body is on stack.
+                // TypeError instead. Catches both sync self-imports
+                // and cross-module re-entry while a body is on stack.
                 if ($record->bodyEvaluating) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'Cannot access deferred namespace of module that is currently evaluating'
+                    );
+                }
+                // Spec ReadyForSyncExecution returns false when the
+                // module is in the ~evaluating-async~ state, i.e. the
+                // top-level-await promise has been issued but not yet
+                // settled. Detect that by inspecting the cached
+                // evaluation promise: if it exists and is still
+                // pending, the module hasn't reached the ~evaluated~
+                // state and must throw TypeError instead of
+                // re-entering the body.
+                $promise = $record->evaluationPromise;
+                if (
+                    $promise !== null
+                    && $promise->getState() === \PhpJs\Value\JsPromise::STATE_PENDING
+                ) {
                     throw new \PhpJs\Exceptions\TypeError(
                         'Cannot access deferred namespace of module that is currently evaluating'
                     );
@@ -929,7 +999,17 @@ class ModuleLoader
             if ($source === null) {
                 continue;
             }
-            $this->loadModule($source, $modulePath);
+            // For deferred imports of an already-failed module, link
+            // the source without re-throwing its cached evaluation
+            // error. The error must only surface when the importer
+            // performs an observable Get on the deferred namespace
+            // (per EnsureDeferredNamespaceEvaluation), not at the
+            // importer's own link/load time.
+            if ($isDefer) {
+                $this->loadModuleForDeferred($source, $modulePath);
+            } else {
+                $this->loadModule($source, $modulePath);
+            }
             $resolved = $this->resolve($source, $modulePath);
             if ($currentRecord !== null) {
                 $currentRecord->importedPaths[$resolved] = true;
@@ -949,8 +1029,12 @@ class ModuleLoader
             // Record outgoing eager edges for the post-link reachability
             // pass. Eager edges propagate "needs-eager-evaluation" from
             // the entry module to its dependencies.
-            if ($currentRecord !== null && !$isDefer) {
-                $currentRecord->eagerEdges[$resolved] = true;
+            if ($currentRecord !== null) {
+                if ($isDefer) {
+                    $currentRecord->deferEdges[$resolved] = true;
+                } else {
+                    $currentRecord->eagerEdges[$resolved] = true;
+                }
             }
         }
     }
@@ -978,10 +1062,15 @@ class ModuleLoader
         Environment $moduleEnv,
         string $modulePath,
     ): void {
-        $importedNs = $this->loadModule($node->source, $modulePath);
+        $isDefer = ($node->phase) === 'defer';
+        // Same rationale as preloadRequestedModules: deferred imports
+        // of a previously-failed module must not propagate the cached
+        // evaluation error at link time.
+        $importedNs = $isDefer
+            ? $this->loadModuleForDeferred($node->source, $modulePath)
+            : $this->loadModule($node->source, $modulePath);
         $resolved = $this->resolve($node->source, $modulePath);
         $currentRecord = $this->modules[$modulePath] ?? null;
-        $isDefer = ($node->phase) === 'defer';
 
         foreach ($node->specifiers as $spec) {
             if ($spec->specType === 'namespace') {
@@ -1255,6 +1344,64 @@ class ModuleLoader
             return $this->collectBindingPatternNames($pattern->argument);
         }
         return [];
+    }
+
+    /**
+     * Walk the parsed module body and decide whether it uses a
+     * top-level await. Recurses through statements, expressions, and
+     * declarations but stops at any function / generator / class
+     * member boundary, since `await` inside those bodies is per-call,
+     * not at the module level.
+     *
+     * @param Node[] $body
+     */
+    private function programHasTopLevelAwait(array $body): bool
+    {
+        foreach ($body as $node) {
+            if ($this->nodeContainsTopLevelAwait($node)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeContainsTopLevelAwait(mixed $node): bool
+    {
+        if (!($node instanceof Node)) {
+            return false;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\AwaitExpression) {
+            return true;
+        }
+        // Function bodies, arrow functions, methods, classes, and
+        // generators introduce a new function scope where `await`
+        // is local. Treat them as opaque.
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            return false;
+        }
+        $vars = get_object_vars($node);
+        foreach ($vars as $value) {
+            if ($value instanceof Node) {
+                if ($this->nodeContainsTopLevelAwait($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $child) {
+                    if ($child instanceof Node && $this->nodeContainsTopLevelAwait($child)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**

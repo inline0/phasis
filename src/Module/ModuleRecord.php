@@ -135,11 +135,34 @@ class ModuleRecord
     public array $eagerEdges = [];
 
     /**
+     * Outgoing deferred-import edges as resolved paths. Captured
+     * alongside eagerEdges so that the eager-reachability walk can
+     * promote a defer edge to eager whenever the target module has
+     * TLA (a TLA module cannot be deferred per the import-defer
+     * proposal).
+     *
+     * @var array<string, true>
+     */
+    public array $deferEdges = [];
+
+    /**
      * Set by markEagerlyReachable after the graph is fully linked.
      * True for the entry module and any module reachable via at
      * least one purely-eager chain of imports from the entry.
      */
     public bool $eagerlyReachable = false;
+
+    /**
+     * Whether the module body uses top-level await. Detected during
+     * linkModule by scanning the parsed body for an AwaitExpression
+     * outside any function, generator, or class member. The
+     * import-defer proposal forbids deferring evaluation of TLA
+     * modules: the deferred namespace's first access cannot run an
+     * EvaluateSync on a module whose evaluation is asynchronous, so
+     * such modules must be evaluated eagerly even when every
+     * importer requested the defer phase.
+     */
+    public bool $hasTopLevelAwait = false;
 
     public function __construct(
         public readonly string $path,
