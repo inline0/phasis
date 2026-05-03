@@ -1265,6 +1265,36 @@ class Matcher
         int $iterCount,
         array &$positions,
     ): void {
+        // For atoms that can match at multiple lengths from a fixed start
+        // (Group with a variable-length body, alternation), the iterative
+        // loop below would only see the greedy-max inner match per outer
+        // iteration. Switch to a depth-first variant that enumerates
+        // every reachable [endPos, captures] pair so subsequent terms
+        // (e.g. backreferences) can backtrack into a shorter inner match.
+        if ($this->atomCanVary($atom)) {
+            $startPos = $pos;
+            $this->enumerateQuantifierMulti(
+                $atom,
+                $min,
+                $max,
+                $innerGroups,
+                $pos,
+                $captures,
+                $direction,
+                $iterCount,
+                $positions,
+            );
+            // Caller (matchQuantifiedInSequence) array_reverses for
+            // greedy and expects positions in ascending match-length
+            // order. Sort by absolute distance from the iteration's
+            // start position so reversal yields longest-first.
+            usort($positions, function (array $a, array $b) use ($startPos, $direction): int {
+                $da = $direction > 0 ? $a[0] - $startPos : $startPos - $a[0];
+                $db = $direction > 0 ? $b[0] - $startPos : $startPos - $b[0];
+                return $da <=> $db;
+            });
+            return;
+        }
         // Iterative loop instead of recursion so a quantifier matching
         // 100k+ times (e.g. `.+` against a long input) does not blow
         // the PHP call stack.
@@ -1300,6 +1330,178 @@ class Matcher
             $pos = $newPos;
             $iterCount++;
         }
+    }
+
+    /**
+     * Depth-first quantifier enumerator for atoms whose body can
+     * match at multiple lengths from one start position. Pushes
+     * every [endPos, captures] pair into $positions; caller is
+     * expected to sort by length and apply greedy/lazy ordering.
+     *
+     * @param list<int> $innerGroups
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param list<array{0:int,1:array<int, ?array{0:int,1:int}>}> $positions
+     */
+    private function enumerateQuantifierMulti(
+        Node $atom,
+        int $min,
+        ?int $max,
+        array $innerGroups,
+        int $pos,
+        array $captures,
+        int $direction,
+        int $iterCount,
+        array &$positions,
+    ): void {
+        if ($iterCount >= $min) {
+            $positions[] = [$pos, $captures];
+        }
+        if ($max !== null && $iterCount >= $max) {
+            return;
+        }
+        $cleared = $captures;
+        foreach ($innerGroups as $gi) {
+            $cleared[$gi] = null;
+        }
+        $atomEnds = $this->enumerateAtomEnds($atom, $pos, $cleared, $direction);
+        foreach ($atomEnds as $entry) {
+            [$newPos, $newCaps] = $entry;
+            if ($newPos === $pos) {
+                // Zero-width: only count toward min, never enumerate
+                // further (would loop forever).
+                if ($iterCount < $min) {
+                    $this->enumerateQuantifierMulti(
+                        $atom,
+                        $min,
+                        $max,
+                        $innerGroups,
+                        $newPos,
+                        $newCaps,
+                        $direction,
+                        $iterCount + 1,
+                        $positions,
+                    );
+                }
+                continue;
+            }
+            $this->enumerateQuantifierMulti(
+                $atom,
+                $min,
+                $max,
+                $innerGroups,
+                $newPos,
+                $newCaps,
+                $direction,
+                $iterCount + 1,
+                $positions,
+            );
+        }
+    }
+
+    /**
+     * Whether an atom can match at multiple lengths from a single
+     * start position (so its quantifier needs the full enumerator).
+     */
+    private function atomCanVary(Node $atom): bool
+    {
+        if ($atom instanceof Group) {
+            return $this->bodyCanVary($atom->body);
+        }
+        if ($atom instanceof Disjunction) {
+            return true;
+        }
+        if ($atom instanceof Sequence) {
+            return $this->bodyCanVary($atom);
+        }
+        return false;
+    }
+
+    private function bodyCanVary(Node $body): bool
+    {
+        if ($body instanceof Quantified) {
+            return $body->min !== $body->max;
+        }
+        if ($body instanceof Disjunction) {
+            return true;
+        }
+        if ($body instanceof Sequence) {
+            foreach ($body->terms as $term) {
+                if ($term instanceof Quantified && $term->min !== $term->max) {
+                    return true;
+                }
+                if ($term instanceof Disjunction) {
+                    return true;
+                }
+                if ($term instanceof Group && $this->bodyCanVary($term->body)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Enumerate every reachable [endPos, captures] pair for matching
+     * one occurrence of $atom from $pos. Variable-length atoms yield
+     * multiple entries; fixed-length atoms yield zero or one entry.
+     *
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @return list<array{0:int,1:array<int, ?array{0:int,1:int}>}>
+     */
+    private function enumerateAtomEnds(Node $atom, int $pos, array $captures, int $direction): array
+    {
+        if ($atom instanceof Group) {
+            $results = [];
+            $body = $atom->body;
+            $bodyTerms = $body instanceof Sequence ? $body->terms : [$body];
+            $caps = $captures;
+            $this->matchSequenceWithContinuation(
+                $bodyTerms,
+                $pos,
+                $caps,
+                $direction,
+                function (int $end, array &$innerCaps) use ($atom, $pos, &$results): ?int {
+                    $snapshot = $innerCaps;
+                    if ($atom->isCapturing()) {
+                        $lo = min($pos, $end);
+                        $hi = max($pos, $end);
+                        $snapshot[$atom->index] = [$lo, $hi];
+                    }
+                    $results[] = [$end, $snapshot];
+                    return null; // force backtracking to enumerate more
+                },
+            );
+            return $results;
+        }
+        if ($atom instanceof Disjunction) {
+            $results = [];
+            foreach ($atom->alternatives as $alt) {
+                $caps = $captures;
+                $end = $this->matchNode($alt, $pos, $caps, $direction);
+                if ($end !== null) {
+                    $results[] = [$end, $caps];
+                }
+            }
+            return $results;
+        }
+        if ($atom instanceof Sequence) {
+            $results = [];
+            $caps = $captures;
+            $this->matchSequenceWithContinuation(
+                $atom->terms,
+                $pos,
+                $caps,
+                $direction,
+                function (int $end, array &$innerCaps) use (&$results): ?int {
+                    $results[] = [$end, $innerCaps];
+                    return null;
+                },
+            );
+            return $results;
+        }
+        $caps = $captures;
+        $end = $this->matchNode($atom, $pos, $caps, $direction);
+        return $end === null ? [] : [[$end, $caps]];
     }
 
     /**
