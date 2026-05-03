@@ -1154,6 +1154,31 @@ class Matcher
         $term = $direction > 0 ? $terms[$idx] : $terms[count($terms) - 1 - $idx];
         if ($term instanceof Quantified) {
             $innerGroups = $this->collectGroupIndices($term->atom);
+            // Lazy quantifier with a varying atom (e.g. `((.*\n?)*?)`)
+            // explodes exponentially under enumerateQuantifierMulti
+            // because the DFS materialises every reachable state
+            // before any continuation is tried. Stream iter-by-iter
+            // instead: try the rest of the sequence after each
+            // additional iteration so the lazy semantic stops at the
+            // first viable depth.
+            if (!$term->greedy && $this->atomCanVary($term->atom)) {
+                $rest = $this->matchLazyQuantifierStreaming(
+                    $term->atom,
+                    $term->min,
+                    $term->max,
+                    $innerGroups,
+                    $pos,
+                    $captures,
+                    $direction,
+                    function (int $end, array &$caps) use ($terms, $idx, $direction, $cont): ?int {
+                        return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
+                    },
+                );
+                if ($rest !== null) {
+                    return $rest;
+                }
+                return null;
+            }
             $positions = [];
             $this->enumerateQuantifier(
                 $term->atom,
@@ -1271,6 +1296,28 @@ class Matcher
     ): ?int {
         $innerGroups = $this->collectGroupIndices($q->atom);
         $savedAll = $captures;
+        // Lazy quantifier with a varying atom needs streaming
+        // iter-by-iter enumeration; otherwise enumerateQuantifierMulti
+        // explodes for shapes like `((.*\n?)*?)<\/body>`.
+        if (!$q->greedy && $this->atomCanVary($q->atom)) {
+            $rest = $this->matchLazyQuantifierStreaming(
+                $q->atom,
+                $q->min,
+                $q->max,
+                $innerGroups,
+                $pos,
+                $captures,
+                $direction,
+                function (int $end, array &$caps) use ($terms, $idx, $direction): ?int {
+                    return $this->matchSequenceFrom($terms, $idx + 1, $end, $caps, $direction);
+                },
+            );
+            if ($rest !== null) {
+                return $rest;
+            }
+            $captures = $savedAll;
+            return null;
+        }
         // Generate all reachable iteration end-positions in order.
         // Each entry is [endPos, capturesSnapshot].
         $positions = [];
@@ -1296,6 +1343,139 @@ class Matcher
             }
         }
         $captures = $savedAll;
+        return null;
+    }
+
+    /**
+     * Streaming lazy-quantifier driver. Tries the continuation $cont
+     * after each iteration count starting from $min, stopping at the
+     * first depth where the rest of the sequence accepts. This avoids
+     * the exponential explosion of enumerateQuantifierMulti for
+     * shapes like `((.*\n?)*?)<\/body>` where the lazy outer would
+     * otherwise materialise every reachable [end, captures] state
+     * before any continuation gets to fail.
+     *
+     * For each iteration count we still need to handle the inner
+     * atom's own variability: when the inner atom is a Group whose
+     * body matches at multiple lengths, we enumerate the inner ends
+     * (shortest first, since we want the lazy outer's smallest total
+     * match) and try the continuation at each. If none accept, add
+     * one more outer iteration and recurse.
+     *
+     * @param list<int> $innerGroups
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function matchLazyQuantifierStreaming(
+        Node $atom,
+        int $min,
+        ?int $max,
+        array $innerGroups,
+        int $pos,
+        array &$captures,
+        int $direction,
+        \Closure $cont,
+    ): ?int {
+        // First try with min iterations (which may be 0). We arrive
+        // here with $iterCount=0, so for min>0 we accumulate the
+        // minimum eagerly before any continuation attempt.
+        return $this->lazyQuantifierStep(
+            $atom,
+            $min,
+            $max,
+            $innerGroups,
+            $pos,
+            $captures,
+            $direction,
+            iterCount: 0,
+            cont: $cont,
+        );
+    }
+
+    /**
+     * @param list<int> $innerGroups
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param \Closure(int, array<int, ?array{0:int,1:int}>): ?int $cont
+     */
+    private function lazyQuantifierStep(
+        Node $atom,
+        int $min,
+        ?int $max,
+        array $innerGroups,
+        int $pos,
+        array &$captures,
+        int $direction,
+        int $iterCount,
+        \Closure $cont,
+    ): ?int {
+        // If we've satisfied min, try the continuation here first
+        // (lazy semantics: prefer fewer iterations). Pass captures
+        // through by reference so the cont's updates propagate up
+        // when it succeeds.
+        if ($iterCount >= $min) {
+            $rest = $cont($pos, $captures);
+            if ($rest !== null) {
+                return $rest;
+            }
+        }
+        // Hit the upper bound: cannot extend further.
+        if ($max !== null && $iterCount >= $max) {
+            return null;
+        }
+        // Add one more iteration. Reset inner-group captures per spec
+        // RepeatMatcher (each iteration starts with fresh inner caps).
+        $cleared = $captures;
+        foreach ($innerGroups as $gi) {
+            $cleared[$gi] = null;
+        }
+        // Enumerate the atom's reachable end positions from $pos in
+        // body-preference order. enumerateAtomEnds drives the body
+        // through matchSeqWithCont which already applies the body's
+        // own greedy/lazy ordering: a greedy inner quantifier yields
+        // longest-end first. The lazy outer wants the fewest
+        // iterations, so we trust this body order at each iteration.
+        $atomEnds = $this->enumerateAtomEnds($atom, $pos, $cleared, $direction);
+        foreach ($atomEnds as [$newPos, $newCaps]) {
+            if ($newPos === $pos) {
+                // Zero-width iteration. Per RepeatMatcher this only
+                // counts toward min; once min is satisfied another
+                // zero-width attempt would loop forever. Below min,
+                // count it but don't recurse on the same position.
+                if ($iterCount < $min) {
+                    $rest = $this->lazyQuantifierStep(
+                        $atom,
+                        $min,
+                        $max,
+                        $innerGroups,
+                        $newPos,
+                        $newCaps,
+                        $direction,
+                        $iterCount + 1,
+                        $cont,
+                    );
+                    if ($rest !== null) {
+                        $captures = $newCaps;
+                        return $rest;
+                    }
+                }
+                continue;
+            }
+            $rest = $this->lazyQuantifierStep(
+                $atom,
+                $min,
+                $max,
+                $innerGroups,
+                $newPos,
+                $newCaps,
+                $direction,
+                $iterCount + 1,
+                $cont,
+            );
+            if ($rest !== null) {
+                $captures = $newCaps;
+                return $rest;
+            }
+        }
         return null;
     }
 

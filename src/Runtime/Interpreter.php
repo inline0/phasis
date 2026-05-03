@@ -18321,6 +18321,7 @@ class Interpreter
      *       'innerCaptures' => list of capture indices inside this repeated group,
      *       'bodyPattern' => the pattern text of the group body,
      *       'nullable' => whether the body can match empty,
+     *       'lazy' => whether the quantifier is lazy (suffixed by `?`),
      *   ]
      *
      * @return array{
@@ -18329,6 +18330,7 @@ class Interpreter
      *         bodyPattern: string,
      *         nullable: bool,
      *         quantifier: ?string,
+     *         lazy: bool,
      *     }>,
      *     nullableNonCapturingGroups: list<array{innerCaptures: list<int>}>,
      * }
@@ -18417,21 +18419,38 @@ class Interpreter
 
                 // Check for quantifier after closing paren.
                 $quantifier = null;
+                $lazy = false;
                 if ($i + 1 < $len) {
                     $next = $pattern[$i + 1];
                     if ($next === '*' || $next === '+' || $next === '?') {
                         $quantifier = $next;
+                        // `*?`, `+?`, `??` are lazy variants. Skip the
+                        // ? when it directly follows another quantifier.
+                        if (
+                            $next !== '?'
+                            && $i + 2 < $len
+                            && $pattern[$i + 2] === '?'
+                        ) {
+                            $lazy = true;
+                        }
                     } elseif ($next === '{') {
                         $quantifier = '{';
+                        // Find closing `}` then check for trailing `?`.
+                        $close = strpos($pattern, '}', $i + 2);
+                        if ($close !== false && $close + 1 < $len && $pattern[$close + 1] === '?') {
+                            $lazy = true;
+                        }
                     }
                 }
 
                 if ($grpIdx !== null) {
                     $groups[$grpIdx]['closePos'] = $i;
                     $groups[$grpIdx]['quantifier'] = $quantifier;
+                    $groups[$grpIdx]['lazy'] = $lazy;
                 }
                 $allGroups[$thisSeq]['closePos'] = $i;
                 $allGroups[$thisSeq]['quantifier'] = $quantifier;
+                $allGroups[$thisSeq]['lazy'] = $lazy;
                 continue;
             }
         }
@@ -18489,6 +18508,7 @@ class Interpreter
                 'bodyPattern' => $bodyPattern,
                 'nullable' => $nullable,
                 'quantifier' => $g['quantifier'],
+                'lazy' => $g['lazy'] ?? false,
             ];
         }
 
@@ -19010,7 +19030,7 @@ class Interpreter
      * length against the anchored inner pattern, forcing non-empty matches.
      *
      * @param array<int|string, array{0: ?string, 1: int}> $matches PCRE match result
-     * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool}>} $analysis
+     * @param array{repeatedGroups: array<int, array{innerCaptures: list<int>, bodyPattern: string, nullable: bool, lazy?: bool}>} $analysis
      * @param string $str The full input string
      * @param string $pcreFlags The PCRE flags string (e.g., 'iu')
      * @param callable $transformFn Transforms ES pattern to PCRE pattern
@@ -19029,6 +19049,15 @@ class Interpreter
             }
 
             if (!isset($matches[$groupIdx])) {
+                continue;
+            }
+
+            // Lazy quantifiers (*?, +?, ??, {N,M}?) deliberately match
+            // as few iterations as possible. The "extend" heuristic
+            // below is for greedy nullable bodies where PCRE2 hit a
+            // zero-width match too early — applying it to a lazy
+            // quantifier would consume past the lazy stop point.
+            if (!empty($info['lazy'])) {
                 continue;
             }
 
