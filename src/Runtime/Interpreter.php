@@ -5618,7 +5618,20 @@ class Interpreter
                 throw $e;
             }
         });
-        $this->driveAsyncFiber($fiber, $promise, true, JsUndefined::instance());
+        // Persist the function's defining module path across fiber
+        // resumes. After an `await`, the fiber's PHP stack has unwound,
+        // so the executeFunction prologue's currentModulePath swap has
+        // been reverted. Each fiber resume must restore it so dynamic
+        // import() inside the body resolves relative specifiers
+        // against the function's own module instead of the bare
+        // top-level path that's active when the microtask drains.
+        $this->driveAsyncFiber(
+            $fiber,
+            $promise,
+            true,
+            JsUndefined::instance(),
+            modulePath: $fn->definingModulePath,
+        );
         return $promise;
     }
 
@@ -5635,7 +5648,15 @@ class Interpreter
         JsValue $resumeValue,
         bool $resumeAsThrow = false,
         ?JsValue $throwValue = null,
+        ?string $modulePath = null,
     ): void {
+        // Swap currentModulePath to the async function's defining
+        // module for the duration of the resume so that import() and
+        // import.meta inside the body see the right referrer.
+        $previousModulePath = $this->currentModulePath;
+        if ($modulePath !== null) {
+            $this->currentModulePath = $modulePath;
+        }
         try {
             if ($start) {
                 $suspended = $fiber->start();
@@ -5647,15 +5668,22 @@ class Interpreter
                 $suspended = $fiber->resume($resumeValue);
             }
         } catch (\PhpJs\Exceptions\JsThrowable $e) {
+            $this->currentModulePath = $previousModulePath;
             $promise->reject($e->jsValue);
             return;
         } catch (\PhpJs\Exceptions\RuntimeError $e) {
+            $this->currentModulePath = $previousModulePath;
             $promise->reject($this->phpExceptionToJsValue($e));
             return;
         } catch (\Throwable $e) {
+            $this->currentModulePath = $previousModulePath;
             $promise->reject($this->phpExceptionToJsValue($e));
             return;
         }
+        // Restore on the normal-completion path too. If the fiber
+        // suspended again we've already taken its module path off
+        // the saved trail, and the next resume will reinstate it.
+        $this->currentModulePath = $previousModulePath;
 
         if ($fiber->isTerminated()) {
             $returnValue = $fiber->getReturn();
@@ -5672,7 +5700,7 @@ class Interpreter
             // the resumption as a microtask, so we attach handlers
             // synchronously here. Wrapping in scheduleCallback would add
             // an extra tick that breaks await/microtask interleaving.
-            $this->settleAwaitedAndResume($fiber, $promise, $suspended->value);
+            $this->settleAwaitedAndResume($fiber, $promise, $suspended->value, $modulePath);
             return;
         }
 
@@ -5688,6 +5716,7 @@ class Interpreter
         \Fiber $fiber,
         \PhpJs\Value\JsPromise $promise,
         JsValue $awaited,
+        ?string $modulePath = null,
     ): void {
         // Per spec Await(value): PromiseResolve folds promises and thenables
         // into a single Promise; PerformPromiseThen attaches the resumption
@@ -5697,14 +5726,38 @@ class Interpreter
         $resolverPromise = $this->promiseResolve($awaited);
         $self = $this;
         $resolverPromise->then([
-            JsFunction::fromCallable('', static function (JsValue $this_, array $a) use ($self, $fiber, $promise): JsValue {
-                $self->driveAsyncFiber($fiber, $promise, false, $a[0] ?? JsUndefined::instance());
-                return JsUndefined::instance();
-            }, 1),
-            JsFunction::fromCallable('', static function (JsValue $this_, array $a) use ($self, $fiber, $promise): JsValue {
-                $self->driveAsyncFiber($fiber, $promise, false, JsUndefined::instance(), true, $a[0] ?? JsUndefined::instance());
-                return JsUndefined::instance();
-            }, 1),
+            JsFunction::fromCallable(
+                '',
+                static function (JsValue $this_, array $a) use ($self, $fiber, $promise, $modulePath): JsValue {
+                    $self->driveAsyncFiber(
+                        $fiber,
+                        $promise,
+                        false,
+                        $a[0] ?? JsUndefined::instance(),
+                        false,
+                        null,
+                        $modulePath,
+                    );
+                    return JsUndefined::instance();
+                },
+                1,
+            ),
+            JsFunction::fromCallable(
+                '',
+                static function (JsValue $this_, array $a) use ($self, $fiber, $promise, $modulePath): JsValue {
+                    $self->driveAsyncFiber(
+                        $fiber,
+                        $promise,
+                        false,
+                        JsUndefined::instance(),
+                        true,
+                        $a[0] ?? JsUndefined::instance(),
+                        $modulePath,
+                    );
+                    return JsUndefined::instance();
+                },
+                1,
+            ),
         ]);
     }
 
@@ -8749,7 +8802,13 @@ class Interpreter
                 $self->setCurrentModulePath($prevPath);
             }
         });
-        $this->driveAsyncFiber($fiber, $promise, true, JsUndefined::instance());
+        $this->driveAsyncFiber(
+            $fiber,
+            $promise,
+            true,
+            JsUndefined::instance(),
+            modulePath: $modulePath,
+        );
 
         // If the caller registered an async-start hook (the module
         // loader does, so siblings can evaluate while this module is
