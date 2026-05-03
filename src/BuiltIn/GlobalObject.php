@@ -1491,133 +1491,204 @@ class GlobalObject
     }
 
     /**
+     * Lookup table mapping each two-character hex pair (e.g. "F0", "0a")
+     * to its byte value (0..255). Built lazily on first decode call so we
+     * can replace per-byte hexdec/ctype_xdigit calls with a single isset
+     * + array read in the hot path.
+     *
+     * @var array<string, int>|null
+     */
+    private static ?array $hexPairToByte = null;
+
+    /**
+     * Reserved-byte lookup for decodeURI. Built lazily; decodeURIComponent
+     * never consults it.
+     *
+     * @var array<int, bool>|null
+     */
+    private static ?array $uriReservedBytes = null;
+
+    /**
      * Spec-compliant Decode(string, reservedSet) per ES2023 section 19.2.6.1.2.
+     *
+     * Hot path optimisations:
+     *   - bulk-copy ASCII runs between `%` markers via strpos rather than
+     *     iterating one byte at a time;
+     *   - decode hex pairs through a precomputed 256-entry lookup table to
+     *     avoid hexdec/ctype_xdigit per byte;
+     *   - encode the resulting codepoint to UTF-8 / CESU-8 inline with
+     *     chr() rather than calling JsString::utf16CodeUnitToUtf8 (which
+     *     dispatches to mb_chr).
      *
      * @param bool $isUri true for decodeURI (preserves reserved), false for decodeURIComponent
      */
     private static function specDecode(string $str, bool $isUri, Environment $env): string
     {
-        // Reserved set for decodeURI: uriReserved + "#"
-        // Characters: ; / ? : @ & = + $ , #
-        // Their percent-encoded forms should NOT be decoded.
-        $reservedBytes = [];
-        if ($isUri) {
-            foreach ([';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '#'] as $ch) {
-                $reservedBytes[ord($ch)] = true;
+        $hexMap = self::$hexPairToByte;
+        if ($hexMap === null) {
+            $hexMap = [];
+            $digits = '0123456789ABCDEFabcdef';
+            for ($hi = 0; $hi < 22; $hi++) {
+                for ($lo = 0; $lo < 22; $lo++) {
+                    $value = (($hi < 16 ? $hi : $hi - 6) << 4)
+                        | ($lo < 16 ? $lo : $lo - 6);
+                    $hexMap[$digits[$hi] . $digits[$lo]] = $value;
+                }
             }
+            self::$hexPairToByte = $hexMap;
+        }
+
+        if ($isUri) {
+            $reservedBytes = self::$uriReservedBytes;
+            if ($reservedBytes === null) {
+                $reservedBytes = [];
+                foreach ([';', '/', '?', ':', '@', '&', '=', '+', '$', ',', '#'] as $ch) {
+                    $reservedBytes[ord($ch)] = true;
+                }
+                self::$uriReservedBytes = $reservedBytes;
+            }
+        } else {
+            $reservedBytes = null;
         }
 
         $len = strlen($str);
-        $result = '';
-        $k = 0;
+        if ($len === 0) {
+            return '';
+        }
+
+        // Fast path: no '%' at all means the input has no escapes to decode.
+        // Per spec we still need to reject any byte > 0x7F that isn't part of
+        // a percent-encoded sequence? No: the spec accepts non-ASCII input
+        // verbatim (Decode walks code units, only %-prefixed triplets are
+        // interpreted). We can return as-is.
+        $firstPercent = strpos($str, '%');
+        if ($firstPercent === false) {
+            return $str;
+        }
+
+        $result = $firstPercent > 0 ? substr($str, 0, $firstPercent) : '';
+        $k = $firstPercent;
 
         while ($k < $len) {
-            $ch = $str[$k];
-            if ($ch !== '%') {
-                $result .= $ch;
-                $k++;
-                continue;
-            }
-
-            // '%' found at position $k.
-            $start = $k;
-
-            // Step: k + 2 must be < len, and the two chars after % must be hex digits.
+            // '%' at position $k. Read the percent-encoded byte via hex map.
             if ($k + 2 >= $len) {
                 self::throwURIError('URI malformed', $env);
             }
-            if (!ctype_xdigit($str[$k + 1]) || !ctype_xdigit($str[$k + 2])) {
+            $start = $k;
+            $pair = $str[$k + 1] . $str[$k + 2];
+            if (!isset($hexMap[$pair])) {
                 self::throwURIError('URI malformed', $env);
             }
-
-            $b = (int) hexdec($str[$k + 1] . $str[$k + 2]);
+            $b = $hexMap[$pair];
             $k += 3;
 
             if ($b < 0x80) {
-                // Single-byte: ASCII character.
-                // For decodeURI, check if this byte is in the reserved set.
-                if ($isUri && isset($reservedBytes[$b])) {
-                    // Keep the percent-encoded form exactly as it appeared in the input.
+                // Single-byte ASCII. decodeURI keeps reserved bytes encoded.
+                if ($reservedBytes !== null && isset($reservedBytes[$b])) {
                     $result .= substr($str, $start, 3);
                 } else {
                     $result .= chr($b);
                 }
-                continue;
-            }
-
-            // Multi-byte UTF-8 sequence. Determine the expected byte count from
-            // the leading byte.
-            if (($b & 0xE0) === 0xC0) {
-                $n = 2;
-            } elseif (($b & 0xF0) === 0xE0) {
-                $n = 3;
-            } elseif (($b & 0xF8) === 0xF0) {
-                $n = 4;
             } else {
-                // Invalid leading byte (0x80-0xBF, or 0xF8-0xFF).
-                self::throwURIError('URI malformed', $env);
-            }
-
-            $octets = [$b];
-
-            // Read the remaining n-1 continuation bytes, each as %XX.
-            for ($j = 1; $j < $n; $j++) {
-                if ($k >= $len || $str[$k] !== '%') {
+                // Multi-byte UTF-8 sequence. Determine expected length.
+                if (($b & 0xE0) === 0xC0) {
+                    $n = 2;
+                } elseif (($b & 0xF0) === 0xE0) {
+                    $n = 3;
+                } elseif (($b & 0xF8) === 0xF0) {
+                    $n = 4;
+                } else {
                     self::throwURIError('URI malformed', $env);
                 }
-                if ($k + 2 >= $len) {
-                    self::throwURIError('URI malformed', $env);
+
+                // Read the remaining $n-1 continuation bytes, scalar-only.
+                $b1 = 0;
+                $b2 = 0;
+                $b3 = 0;
+                for ($j = 1; $j < $n; $j++) {
+                    if ($k + 2 >= $len || $str[$k] !== '%') {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                    $cpair = $str[$k + 1] . $str[$k + 2];
+                    if (!isset($hexMap[$cpair])) {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                    $cb = $hexMap[$cpair];
+                    if (($cb & 0xC0) !== 0x80) {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                    if ($j === 1) {
+                        $b1 = $cb;
+                    } elseif ($j === 2) {
+                        $b2 = $cb;
+                    } else {
+                        $b3 = $cb;
+                    }
+                    $k += 3;
                 }
-                if (!ctype_xdigit($str[$k + 1]) || !ctype_xdigit($str[$k + 2])) {
-                    self::throwURIError('URI malformed', $env);
+
+                if ($n === 2) {
+                    $codePoint = (($b & 0x1F) << 6) | ($b1 & 0x3F);
+                    if ($codePoint < 0x80) {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                } elseif ($n === 3) {
+                    $codePoint = (($b & 0x0F) << 12) | (($b1 & 0x3F) << 6) | ($b2 & 0x3F);
+                    if ($codePoint < 0x800) {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                    if ($codePoint >= 0xD800 && $codePoint <= 0xDFFF) {
+                        self::throwURIError('URI malformed', $env);
+                    }
+                } else {
+                    $codePoint = (($b & 0x07) << 18) | (($b1 & 0x3F) << 12)
+                        | (($b2 & 0x3F) << 6) | ($b3 & 0x3F);
+                    if ($codePoint < 0x10000 || $codePoint > 0x10FFFF) {
+                        self::throwURIError('URI malformed', $env);
+                    }
                 }
-                $cb = (int) hexdec($str[$k + 1] . $str[$k + 2]);
-                // Continuation bytes must be 10xxxxxx (0x80-0xBF).
-                if (($cb & 0xC0) !== 0x80) {
-                    self::throwURIError('URI malformed', $env);
+
+                // Inline UTF-8 / CESU-8 encoding so we never call mb_chr in
+                // the hot loop (mb_chr dispatches through a slower path even
+                // for plain BMP codepoints).
+                if ($codePoint <= 0x7FF) {
+                    // 2-byte UTF-8 sequence.
+                    $result .= chr(0xC0 | ($codePoint >> 6))
+                        . chr(0x80 | ($codePoint & 0x3F));
+                } elseif ($codePoint <= 0xFFFF) {
+                    // 3-byte UTF-8 sequence (BMP non-surrogate).
+                    $result .= chr(0xE0 | ($codePoint >> 12))
+                        . chr(0x80 | (($codePoint >> 6) & 0x3F))
+                        . chr(0x80 | ($codePoint & 0x3F));
+                } else {
+                    // Supplementary plane: encode as a CESU-8 surrogate pair
+                    // (two 3-byte sequences) so JsString sees UTF-16 code
+                    // units consistently.
+                    $cp = $codePoint - 0x10000;
+                    $hi = 0xD800 | ($cp >> 10);
+                    $lo = 0xDC00 | ($cp & 0x3FF);
+                    $result .= chr(0xE0 | ($hi >> 12))
+                        . chr(0x80 | (($hi >> 6) & 0x3F))
+                        . chr(0x80 | ($hi & 0x3F))
+                        . chr(0xE0 | ($lo >> 12))
+                        . chr(0x80 | (($lo >> 6) & 0x3F))
+                        . chr(0x80 | ($lo & 0x3F));
                 }
-                $octets[] = $cb;
-                $k += 3;
             }
 
-            // Decode the UTF-8 byte sequence to a Unicode codepoint.
-            $codePoint = match ($n) {
-                2 => (($octets[0] & 0x1F) << 6) | ($octets[1] & 0x3F),
-                3 => (($octets[0] & 0x0F) << 12) | (($octets[1] & 0x3F) << 6) | ($octets[2] & 0x3F),
-                default => (($octets[0] & 0x07) << 18) | (($octets[1] & 0x3F) << 12)
-                     | (($octets[2] & 0x3F) << 6) | ($octets[3] & 0x3F),
-            };
-
-            // Validate: reject overlong encodings and out-of-range codepoints.
-            if ($n === 2 && $codePoint < 0x80) {
-                self::throwURIError('URI malformed', $env);
+            // Bulk-copy the ASCII run between this position and the next '%'.
+            if ($k >= $len) {
+                break;
             }
-            if ($n === 3 && $codePoint < 0x800) {
-                self::throwURIError('URI malformed', $env);
+            $next = strpos($str, '%', $k);
+            if ($next === false) {
+                $result .= substr($str, $k);
+                break;
             }
-            if ($n === 4 && $codePoint < 0x10000) {
-                self::throwURIError('URI malformed', $env);
+            if ($next > $k) {
+                $result .= substr($str, $k, $next - $k);
             }
-            if ($codePoint > 0x10FFFF) {
-                self::throwURIError('URI malformed', $env);
-            }
-            // Surrogates (U+D800-U+DFFF) are not valid Unicode codepoints in UTF-8.
-            if ($codePoint >= 0xD800 && $codePoint <= 0xDFFF) {
-                self::throwURIError('URI malformed', $env);
-            }
-
-            // Convert the codepoint to the internal string representation.
-            // Codepoints > U+FFFF are stored as CESU-8 surrogate pairs internally.
-            if ($codePoint <= 0xFFFF) {
-                $result .= JsString::utf16CodeUnitToUtf8($codePoint);
-            } else {
-                // Supplementary plane: encode as surrogate pair in CESU-8.
-                $cp = $codePoint - 0x10000;
-                $hi = 0xD800 + ($cp >> 10);
-                $lo = 0xDC00 + ($cp & 0x3FF);
-                $result .= JsString::utf16CodeUnitToUtf8($hi);
-                $result .= JsString::utf16CodeUnitToUtf8($lo);
-            }
+            $k = $next;
         }
 
         return $result;
