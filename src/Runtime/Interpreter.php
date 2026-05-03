@@ -14021,7 +14021,7 @@ class Interpreter
         // Use display() rather than ToString so that throwing a Symbol or
         // other non-stringifiable primitive does not raise a secondary
         // TypeError that replaces the original throw value.
-        throw new \PhpJs\Exceptions\JsThrowable($value, $value->display());
+        throw new \PhpJs\Exceptions\JsThrowable($value);
     }
 
     public function getCallStack(): CallStack
@@ -14727,24 +14727,28 @@ class Interpreter
                 }
 
                 if ($next === 's') {
+                    // ECMAScript WhiteSpace ∪ LineTerminator. Spec-frozen
+                    // explicit list. PCRE's \s under /u includes U+180E
+                    // (Mongolian Vowel Separator) which Unicode removed
+                    // from Space_Separator in v6.3 — JS no longer treats
+                    // it as whitespace. Use an explicit class instead.
+                    $wsClass = '\\t\\n\\v\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
                     if ($inCharClass) {
-                        // Inside [...], add \x{FEFF} alongside \s.
-                        $result .= '\\s\\x{FEFF}';
+                        $result .= $wsClass;
                     } else {
-                        // Outside [...], wrap in alternation group.
-                        $result .= '(?:\\s|\\x{FEFF})';
+                        $result .= '[' . $wsClass . ']';
                     }
                     $i += 2;
                     continue;
                 }
                 if ($next === 'S') {
+                    $wsClass = '\\t\\n\\v\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
                     if ($inCharClass) {
-                        // Inside character class, \S excluding FEFF is hard.
-                        // Fall back to PCRE \S (close enough for most tests).
+                        // Inside [...], best-effort fallback to PCRE \S.
+                        // Cannot express set complement portably here.
                         $result .= '\\S';
                     } else {
-                        // Outside [...], use negative lookahead for FEFF.
-                        $result .= '(?:(?!\\x{FEFF})\\S)';
+                        $result .= '[^' . $wsClass . ']';
                     }
                     $i += 2;
                     continue;
@@ -16845,6 +16849,23 @@ class Interpreter
                                 }
                                 $i = $j < $len ? $j : $i + 1;
                             } else {
+                                // \p, \P, \q without `{...}` are invalid in /u.
+                                if (in_array($next, ['p', 'P', 'q'], true)) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: \\{$next} must be followed by {...} in unicode mode",
+                                    );
+                                }
+                                // ClassEscape /u: forbid identity escape of
+                                // ASCII letters except the spec-allowed set
+                                // (b means BS in class context).
+                                if (
+                                    (($next >= 'A' && $next <= 'Z') || ($next >= 'a' && $next <= 'z'))
+                                    && !in_array($next, ['b', 'c', 'd', 'D', 'f', 'n', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x'], true)
+                                ) {
+                                    throw new \PhpJs\Exceptions\SyntaxError(
+                                        "Invalid regular expression: \\{$next} is not a valid identity escape in unicode mode",
+                                    );
+                                }
                                 $i++; // skip the escaped char
                             }
                         }
@@ -16908,7 +16929,8 @@ class Interpreter
                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
                 $i += 2; // skip \cX
             } elseif ($next === 'p' || $next === 'P' || $next === 'q') {
-                // \p{...}, \P{...}, \q{...}: skip to closing }.
+                // \p{...}, \P{...}, \q{...}: must be followed by `{...}`
+                // in /u mode. \q is /v-only at top level.
                 if ($i + 2 < $len && $pattern[$i + 2] === '{') {
                     $j = $i + 3;
                     while ($j < $len && $pattern[$j] !== '}') {
@@ -16920,7 +16942,9 @@ class Interpreter
                         $i++;
                     }
                 } else {
-                    $i++;
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: \\{$next} must be followed by {...} in unicode mode",
+                    );
                 }
             } elseif ($next === 'u') {
                 // \u{HHHH} braced Unicode escape: skip past the closing }.
@@ -16942,6 +16966,16 @@ class Interpreter
                     }
                 }
             } else {
+                // AtomEscape /u: forbid identity escape of ASCII letters
+                // except the spec-allowed set.
+                if (
+                    (($next >= 'A' && $next <= 'Z') || ($next >= 'a' && $next <= 'z'))
+                    && !in_array($next, ['b', 'B', 'c', 'd', 'D', 'f', 'k', 'n', 'p', 'P', 'r', 's', 'S', 't', 'u', 'v', 'w', 'W', 'x'], true)
+                ) {
+                    throw new \PhpJs\Exceptions\SyntaxError(
+                        "Invalid regular expression: \\{$next} is not a valid identity escape in unicode mode",
+                    );
+                }
                 $i++; // skip the backslash and the next character
             }
         }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace PhpJs\Exceptions;
 
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsString;
 use PhpJs\Value\JsValue;
 
 /**
@@ -24,6 +26,26 @@ class JsThrowable extends RuntimeError
         // exception when the thrown value is a Symbol or other primitive
         // whose String conversion is spec-disallowed. The message is for
         // PHP-side diagnostics only; JS code sees the raw $jsValue.
-        parent::__construct($message !== '' ? $message : $jsValue->display());
+        parent::__construct($message !== '' ? $message : self::extractMessage($jsValue));
+    }
+
+    private static function extractMessage(JsValue $v): string
+    {
+        if ($v instanceof JsObject) {
+            $name = $v->get('name');
+            $msg = $v->get('message');
+            $nameStr = $name instanceof JsString ? $name->value : '';
+            $msgStr = $msg instanceof JsString ? $msg->value : '';
+            if ($nameStr !== '' && $msgStr !== '') {
+                return $nameStr . ': ' . $msgStr;
+            }
+            if ($nameStr !== '') {
+                return $nameStr;
+            }
+            if ($msgStr !== '') {
+                return $msgStr;
+            }
+        }
+        return $v->display();
     }
 }
