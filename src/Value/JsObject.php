@@ -353,14 +353,15 @@ class JsObject implements JsValue
                     configurable: $existingDesc->configurable,
                 ));
             }
-            // Receiver does not have property P. Create it if extensible.
-            // Per spec OrdinarySetWithOwnDescriptor step 4.d: return the
-            // result of CreateDataProperty(Receiver, P, V) — propagate the
-            // [[DefineOwnProperty]] success/failure (e.g. for TypedArray
-            // receivers an out-of-bounds index returns false).
-            if (!$receiver->isExtensible()) {
-                return false;
-            }
+            // Receiver does not have property P. Per spec
+            // OrdinarySetWithOwnDescriptor step 2.e: return the result of
+            // CreateDataProperty(Receiver, P, V), which is just
+            // Receiver.[[DefineOwnProperty]] with default attrs. Do NOT
+            // pre-check IsExtensible here: that check belongs inside
+            // [[DefineOwnProperty]] (OrdinaryDefineOwnProperty enforces it
+            // for ordinary objects), and calling it eagerly fires the
+            // proxy's [[IsExtensible]] trap when receiver is a Proxy,
+            // which the spec does not.
             return $receiver->defineOwnProperty($name, PropertyDescriptor::data($value));
         }
 

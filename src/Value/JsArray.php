@@ -531,6 +531,13 @@ class JsArray extends JsObject
             // flags, value=null) migrates the array to dictionary mode and
             // re-enters via PropertyMap.
             if ($this->denseMode && self::isDefaultDataDescriptor($desc)) {
+                // Per spec ValidateAndApplyPropertyDescriptor step 2:
+                // creating a new property on a non-extensible object
+                // returns false. Updating an existing slot is fine.
+                $hasOwnDense = ($this->denseElements[$index] ?? null) !== null;
+                if (!$hasOwnDense && !$this->isExtensible()) {
+                    return false;
+                }
                 $this->denseElements[$index] = $desc->value;
                 if ($index >= $this->length) {
                     $this->length = $index + 1;
