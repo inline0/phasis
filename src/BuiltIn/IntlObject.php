@@ -4691,6 +4691,49 @@ class IntlObject
                     if ($hasYearDiff) {
                         $useCollapse = false;
                     }
+                    // CLDR's dateTimeFormat repeats the dayPeriod
+                    // (AM/PM) on both sides when the diff is purely
+                    // within the time fields. If the collapsed suffix
+                    // includes a dayPeriod part, V8 emits it on both
+                    // sides instead. Shrink the suffix so any
+                    // dayPeriod (and the preceding literal that
+                    // separates it from the seconds) stay per-side.
+                    if ($useCollapse && $suffixLen > 0) {
+                        $hasTimeDiff = false;
+                        $timeRanks = [
+                            self::dateTimePartRank('hour'),
+                            self::dateTimePartRank('minute'),
+                            self::dateTimePartRank('second'),
+                            self::dateTimePartRank('fractionalSecond'),
+                        ];
+                        foreach ($diffRanks as $r) {
+                            if (in_array($r, $timeRanks, true)) {
+                                $hasTimeDiff = true;
+                                break;
+                            }
+                        }
+                        if ($hasTimeDiff) {
+                            // Find the smallest index within the
+                            // currently-collapsed suffix whose part
+                            // is a dayPeriod, and shrink the suffix
+                            // so it begins strictly after that
+                            // dayPeriod. The dayPeriod (and any
+                            // separator literal before it) end up in
+                            // the per-side middle on both sides.
+                            $suffixStart = $sLen - $suffixLen;
+                            $dropAt = -1;
+                            for ($i = $suffixStart; $i < $sLen; $i++) {
+                                if ($startPartsArr[$i]['type'] === 'dayPeriod') {
+                                    $dropAt = $i;
+                                    break;
+                                }
+                            }
+                            if ($dropAt >= 0) {
+                                $newSuffixLen = $sLen - $dropAt - 1;
+                                $suffixLen = max(0, min($newSuffixLen, $suffixLen));
+                            }
+                        }
+                    }
                 }
                 if ($useCollapse) {
                     // Emit shared prefix.
@@ -4715,9 +4758,105 @@ class IntlObject
                         $emit($p['type'], $p['value'], 'shared');
                     }
                 } else {
-                    $appendTyped($startParts, 'startRange');
-                    $emit('literal', " \u{2013} ", 'shared');
-                    $appendTyped($endParts, 'endRange');
+                    // de-AT (and similar) PlainMonthDay format ends in
+                    // a trailing "." literal. CLDR's Md interval
+                    // pattern emits it once at the end of the range
+                    // ("D.M – D.M.") rather than twice. When both
+                    // start and end strings match that shape, drop the
+                    // trailing literal from each side and emit a
+                    // single shared "." after the end-range parts.
+                    $mdTrailing = '/^(\d{1,2})\.(\d{1,2})\.$/';
+                    $bothMdTrailing = preg_match($mdTrailing, $startStr) === 1
+                        && preg_match($mdTrailing, $endStr) === 1
+                        && $sLen > 0
+                        && $eLen > 0
+                        && $startPartsArr[$sLen - 1]['type'] === 'literal'
+                        && $startPartsArr[$sLen - 1]['value'] === '.'
+                        && $endPartsArr[$eLen - 1]['type'] === 'literal'
+                        && $endPartsArr[$eLen - 1]['value'] === '.';
+                    // de-AT PlainDate range "D.M.Y – D.M.Y": when
+                    // year is in the diff (no collapse), CLDR / V8
+                    // pad the month to a uniform 2-digit width on
+                    // both sides ("18.11.1976 – 20.02.2020"). Detect
+                    // by full-date numeric pattern with no trailing
+                    // dot.
+                    $fullDateNum = '/^\d{1,2}\.\d{1,2}\.\d{4}$/';
+                    $bothFullDateNum = preg_match($fullDateNum, $startStr) === 1
+                        && preg_match($fullDateNum, $endStr) === 1;
+                    if ($bothMdTrailing) {
+                        // CLDR's Md interval pattern uses MM (2-digit
+                        // month) on both sides when month widths
+                        // would otherwise differ. Pad both start and
+                        // end month parts so the range output keeps
+                        // a uniform month width.
+                        $maxMonthLenIn = static function (array $arr): int {
+                            $w = 0;
+                            foreach ($arr as $p) {
+                                if ($p['type'] === 'month') {
+                                    $w = max($w, strlen($p['value']));
+                                }
+                            }
+                            return $w;
+                        };
+                        $startMonthLen = $maxMonthLenIn($startPartsArr);
+                        $endMonthLen = $maxMonthLenIn($endPartsArr);
+                        $monthWidth = max($startMonthLen, $endMonthLen, 2);
+                        for ($i = 0; $i < $sLen - 1; $i++) {
+                            $p = $startPartsArr[$i];
+                            $val = $p['value'];
+                            if ($p['type'] === 'month') {
+                                $val = str_pad($val, $monthWidth, '0', STR_PAD_LEFT);
+                            }
+                            $emit($p['type'], $val, 'startRange');
+                        }
+                        $emit('literal', " \u{2013} ", 'shared');
+                        for ($i = 0; $i < $eLen - 1; $i++) {
+                            $p = $endPartsArr[$i];
+                            $val = $p['value'];
+                            if ($p['type'] === 'month') {
+                                $val = str_pad($val, $monthWidth, '0', STR_PAD_LEFT);
+                            }
+                            $emit($p['type'], $val, 'endRange');
+                        }
+                        $emit('literal', '.', 'shared');
+                    } elseif ($bothFullDateNum) {
+                        // Pad the month part on both sides so the
+                        // emitted parts share a consistent width
+                        // matching the formatRange string output.
+                        $maxMonthLenIn2 = static function (array $arr): int {
+                            $w = 0;
+                            foreach ($arr as $p) {
+                                if ($p['type'] === 'month') {
+                                    $w = max($w, strlen($p['value']));
+                                }
+                            }
+                            return $w;
+                        };
+                        $width = max(
+                            $maxMonthLenIn2($startPartsArr),
+                            $maxMonthLenIn2($endPartsArr),
+                            2,
+                        );
+                        foreach ($startPartsArr as $p) {
+                            $val = $p['value'];
+                            if ($p['type'] === 'month') {
+                                $val = str_pad($val, $width, '0', STR_PAD_LEFT);
+                            }
+                            $emit($p['type'], $val, 'startRange');
+                        }
+                        $emit('literal', " \u{2013} ", 'shared');
+                        foreach ($endPartsArr as $p) {
+                            $val = $p['value'];
+                            if ($p['type'] === 'month') {
+                                $val = str_pad($val, $width, '0', STR_PAD_LEFT);
+                            }
+                            $emit($p['type'], $val, 'endRange');
+                        }
+                    } else {
+                        $appendTyped($startParts, 'startRange');
+                        $emit('literal', " \u{2013} ", 'shared');
+                        $appendTyped($endParts, 'endRange');
+                    }
                 }
             }
             $result->set('length', JsNumber::of((float) $idx));
@@ -5056,6 +5195,20 @@ class IntlObject
             $padded = self::padDateRangeMonth($start, $end);
             if ($padded !== null) {
                 [$start, $end] = $padded;
+            }
+            // de-AT (and similar locales) format PlainMonthDay as
+            // "D.M." with a trailing period. CLDR's Md interval
+            // pattern, however, drops the trailing period from the
+            // start side: "D.M – D.M.". Mirror that here so the
+            // string matches the pieces emitted by formatRangeToParts
+            // (which marks the trailing "." as shared).
+            $mdTrailing = '/^(\d{1,2})\.(\d{1,2})\.$/';
+            if (
+                preg_match($mdTrailing, $start) === 1
+                && preg_match($mdTrailing, $end) === 1
+            ) {
+                $startNoTail = substr($start, 0, -1);
+                return $startNoTail . " \u{2013} " . $end;
             }
             return $start . " \u{2013} " . $end;
         }
@@ -5474,6 +5627,36 @@ class IntlObject
             throw new TypeError(
                 'formatRange Temporal arguments must be the same type',
             );
+        }
+        // Spec: when both arguments are calendar-bearing Temporal
+        // types (PlainDate, PlainDateTime, PlainYearMonth, PlainMonthDay,
+        // ZonedDateTime), their [[Calendar]] internal slots must match.
+        // Mismatched calendars throw RangeError, not TypeError.
+        $calendarBearing = [
+            '[[IsPlainDate]]', '[[IsPlainDateTime]]',
+            '[[IsPlainYearMonth]]', '[[IsPlainMonthDay]]',
+            '[[IsZonedDateTime]]',
+        ];
+        $aHasCal = false;
+        $bHasCal = false;
+        foreach ($calendarBearing as $brand) {
+            if ($a->has($brand)) {
+                $aHasCal = true;
+            }
+            if ($b->has($brand)) {
+                $bHasCal = true;
+            }
+        }
+        if ($aHasCal && $bHasCal) {
+            $calA = $a->get('[[Calendar]]');
+            $calB = $b->get('[[Calendar]]');
+            $calAStr = $calA instanceof JsString ? $calA->value : '';
+            $calBStr = $calB instanceof JsString ? $calB->value : '';
+            if ($calAStr !== '' && $calBStr !== '' && $calAStr !== $calBStr) {
+                throw new RangeError(
+                    'formatRange arguments must use the same calendar',
+                );
+            }
         }
     }
 
