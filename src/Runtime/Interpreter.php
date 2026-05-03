@@ -19199,7 +19199,20 @@ class Interpreter
                                         $paired = $p1 >= 0xD800 && $p1 <= 0xDBFF;
                                     }
                                 }
-                                if (!$paired) {
+                                // In /u mode an adjacent pair is one
+                                // astral codepoint atom (PCRE2 handles
+                                // it). Outside /u each surrogate
+                                // escape is its own UTF-16 code unit
+                                // atom; the PCRE transform collapses
+                                // adjacent pairs into a single
+                                // codepoint, which loses the two-atom
+                                // structure when a quantifier is
+                                // attached (e.g. `/\\uD83D\\uDC38?/`
+                                // wants the trail optional, not the
+                                // pair). Route through the custom
+                                // matcher whose UTF-16 walk preserves
+                                // both atoms.
+                                if (!$paired || !$isUnicode) {
                                     $hasLoneSurrogateEscape = true;
                                 }
                             }

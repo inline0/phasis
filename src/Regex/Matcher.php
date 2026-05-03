@@ -201,8 +201,32 @@ class Matcher
             return substr($inputUtf8, $byteStart, $byteEnd - $byteStart);
         }
         $out = '';
-        for ($i = $s; $i < $e && $i < $this->inputLen; $i++) {
+        $i = $s;
+        $lim = min($e, $this->inputLen);
+        while ($i < $lim) {
             $cu = $this->input[$i];
+            // Adjacent valid surrogate pair: emit as a single UTF-8
+            // 4-byte codepoint so byte-level string comparisons match
+            // values built from `\u{1F438}` literals (stored as 4-byte
+            // UTF-8). Without this merge, the captured slice would be
+            // two CESU-8 3-byte sequences and `===` against the 4-byte
+            // codepoint string fails by byte even though the UTF-16
+            // code-unit sequences are identical.
+            if (
+                $cu >= 0xD800
+                && $cu <= 0xDBFF
+                && $i + 1 < $lim
+                && $this->input[$i + 1] >= 0xDC00
+                && $this->input[$i + 1] <= 0xDFFF
+            ) {
+                $cp = 0x10000 + (($cu - 0xD800) << 10) + ($this->input[$i + 1] - 0xDC00);
+                $out .= chr(0xF0 | ($cp >> 18))
+                    . chr(0x80 | (($cp >> 12) & 0x3F))
+                    . chr(0x80 | (($cp >> 6) & 0x3F))
+                    . chr(0x80 | ($cp & 0x3F));
+                $i += 2;
+                continue;
+            }
             if ($cu < 0x80) {
                 $out .= chr($cu);
             } elseif ($cu < 0x800) {
@@ -212,6 +236,7 @@ class Matcher
                     . chr(0x80 | (($cu >> 6) & 0x3F))
                     . chr(0x80 | ($cu & 0x3F));
             }
+            $i++;
         }
         return $out;
     }

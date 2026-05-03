@@ -416,7 +416,32 @@ class Parser
             throw new SyntaxError('Invalid \\u escape');
         }
         $this->pos += 4;
-        return new Literal((int) hexdec($hex));
+        $cp = (int) hexdec($hex);
+        // /u mode: an adjacent `\uHHHH\uLLLL` lead+trail pair forms a
+        // single supplementary codepoint atom. Without combining, the
+        // pair parses as two separate atoms and a quantifier on the
+        // trail half (`/🐸?/u`) only makes the trail
+        // optional, breaking the spec rule that the surrogate pair is
+        // one Atom.
+        if (
+            $this->unicode
+            && $cp >= 0xD800
+            && $cp <= 0xDBFF
+            && $this->pos + 5 < $this->len
+            && $this->src[$this->pos] === '\\'
+            && $this->src[$this->pos + 1] === 'u'
+            && $this->src[$this->pos + 2] !== '{'
+        ) {
+            $loHex = substr($this->src, $this->pos + 2, 4);
+            if (ctype_xdigit($loHex)) {
+                $lo = (int) hexdec($loHex);
+                if ($lo >= 0xDC00 && $lo <= 0xDFFF) {
+                    $this->pos += 6;
+                    $cp = 0x10000 + (($cp - 0xD800) << 10) + ($lo - 0xDC00);
+                }
+            }
+        }
+        return new Literal($cp);
     }
 
     private function parseNumericBackref(): Node
