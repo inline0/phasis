@@ -133,6 +133,18 @@ class Parser
     }
 
     /**
+     * Returns the value of the last `//# sourceURL=URL` (or legacy
+     * `//@ sourceURL=URL`) directive comment seen while tokenizing this
+     * source. Returns null if no such pragma was present. Callers that
+     * read this should call `parse()` (or otherwise force tokenization)
+     * first.
+     */
+    public function getSourceURL(): ?string
+    {
+        return $this->lexer->getSourceURL();
+    }
+
+    /**
      * Pre-seed strict mode for this parser. Callers that know their caller's
      * context (e.g. direct eval inside strict code) should set this so
      * strict-mode early errors (legacy octal literals, reserved identifiers,

@@ -22,6 +22,42 @@ class Engine
 {
     private static ?Interpreter $currentInterpreter = null;
 
+    /**
+     * Stack of `//# sourceURL=` directive values for currently-active eval
+     * (or top-level) frames. The most recently pushed entry is the URL the
+     * Error stack-trace formatter will surface for new Errors created while
+     * that frame is on the stack. Maintained by `Engine::eval`,
+     * `Engine::execFile`, and the JS-level `eval()` builtin in
+     * `GlobalObject`.
+     *
+     * @var list<string>
+     */
+    private static array $sourceUrlStack = [];
+
+    /** Push a sourceURL pragma value onto the active-source stack. */
+    public static function pushSourceURL(string $url): void
+    {
+        self::$sourceUrlStack[] = $url;
+    }
+
+    /** Pop the most recently pushed sourceURL pragma value. */
+    public static function popSourceURL(): void
+    {
+        array_pop(self::$sourceUrlStack);
+    }
+
+    /**
+     * Returns the most recently pushed sourceURL pragma value, or null if
+     * no eval/script frame currently advertises one. Used by the Error
+     * stack-trace formatter so eval'd code with a `//# sourceURL=foo.js`
+     * directive produces stack frames referencing `foo.js`.
+     */
+    public static function getCurrentSourceURL(): ?string
+    {
+        $n = count(self::$sourceUrlStack);
+        return $n === 0 ? null : self::$sourceUrlStack[$n - 1];
+    }
+
     private Environment $globalEnv;
     private Interpreter $interpreter;
     private ConsoleObject $console;
@@ -1080,6 +1116,13 @@ class Engine
     {
         $parser = new Parser($source);
         $program = $parser->parse();
+        // Capture any `//# sourceURL=URL` directive so stack traces emitted
+        // by Errors thrown from this evaluation point at the advertised URL
+        // rather than the caller's location.
+        $sourceUrl = $parser->getSourceURL();
+        if ($sourceUrl !== null) {
+            self::pushSourceURL($sourceUrl);
+        }
         // Restore this engine's interpreter as the active one so realm-
         // sensitive lookups (Symbol.prototype etc.) resolve against this
         // realm's globals rather than a sibling Engine that wrote the
@@ -1093,6 +1136,9 @@ class Engine
             return $this->toPhp($result);
         } finally {
             self::$currentInterpreter = $previousInterpreter;
+            if ($sourceUrl !== null) {
+                self::popSourceURL();
+            }
         }
     }
 

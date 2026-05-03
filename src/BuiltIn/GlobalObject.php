@@ -108,6 +108,13 @@ class GlobalObject
             // [[HomeObject]] is missing, so the invalid case is still caught.
             $parser->setInMethodLike(true);
             $program = $parser->parse();
+            // Capture any `//# sourceURL=URL` directive comment so Errors
+            // thrown (or `new Error().stack` reads) inside the eval'd code
+            // surface the advertised URL in their stack trace.
+            $sourceUrl = $parser->getSourceURL();
+            if ($sourceUrl !== null) {
+                \PhpJs\Engine::pushSourceURL($sourceUrl);
+            }
             // Per spec: top-level break/continue/return in eval code is a
             // SyntaxError. Delegate to the interpreter's shared validator so
             // indirect and direct eval share the same early-error surface.
@@ -127,6 +134,9 @@ class GlobalObject
                 }
                 if ($prevCallback !== null) {
                     JsFunction::setInterpreterCallback($prevCallback);
+                }
+                if ($sourceUrl !== null) {
+                    \PhpJs\Engine::popSourceURL();
                 }
             }
         }, 1);

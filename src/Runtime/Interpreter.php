@@ -2462,6 +2462,7 @@ class Interpreter
         // Parse and validate. Any SyntaxError from parsing or validation
         // must be thrown as a JS SyntaxError catchable by JS try/catch.
         $evalStrict = $this->strictMode;
+        $directEvalSourceUrl = null;
         try {
             if (strlen($arg->value) > 64 * 1024 * 1024) {
                 throw new \PhpJs\Exceptions\SyntaxError('Source too large for eval');
@@ -2485,6 +2486,7 @@ class Interpreter
                 $parser->setInMethodLike(true);
             }
             $program = $parser->parse();
+            $directEvalSourceUrl = $parser->getSourceURL();
 
             // Validate: return, break, and continue are not allowed at the top
             // level of eval code per spec.
@@ -2613,6 +2615,13 @@ class Interpreter
             $this->strictMode = true;
         }
 
+        // Surface any `//# sourceURL=URL` directive in the eval'd code on
+        // Error stack traces produced while it executes. Push here so the
+        // matching pop runs even if execution throws.
+        if ($directEvalSourceUrl !== null) {
+            \PhpJs\Engine::pushSourceURL($directEvalSourceUrl);
+        }
+
         try {
             // In strict mode, eval gets its own variable scope so var and
             // function declarations do not leak to the caller.
@@ -2671,6 +2680,9 @@ class Interpreter
             return $completion->value;
         } finally {
             $this->strictMode = $previousStrictMode;
+            if ($directEvalSourceUrl !== null) {
+                \PhpJs\Engine::popSourceURL();
+            }
         }
     }
 

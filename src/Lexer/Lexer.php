@@ -27,6 +27,13 @@ class Lexer
     /** @var Token[] */
     private array $tokens = [];
 
+    /**
+     * Most recently observed `//# sourceURL=` (or `//@ sourceURL=`) pragma.
+     * Captured during the single-line-comment skip pass. Used by the host so
+     * eval'd code can advertise a logical filename for stack traces.
+     */
+    private ?string $sourceUrl = null;
+
     public function __construct(string $source)
     {
         $this->source = $source;
@@ -36,6 +43,15 @@ class Lexer
     public function setModuleMode(bool $moduleMode): void
     {
         $this->moduleMode = $moduleMode;
+    }
+
+    /**
+     * Returns the value of the last `//# sourceURL=` (or `//@ sourceURL=`)
+     * directive comment seen during tokenization, if any.
+     */
+    public function getSourceURL(): ?string
+    {
+        return $this->sourceUrl;
     }
 
     /** @return Token[] */
@@ -1250,7 +1266,9 @@ class Lexer
             if ($isLineComment) {
                 $this->pos += 2;
                 $this->column += 2;
+                $commentStart = $this->pos;
                 $this->skipToEndOfLine();
+                $this->captureSourceUrlPragma($commentStart, $this->pos);
                 continue;
             }
 
@@ -1341,6 +1359,32 @@ class Lexer
 
             // Not whitespace or comment
             break;
+        }
+    }
+
+    /**
+     * Detect a `//# sourceURL=URL` (or legacy `//@ sourceURL=URL`) directive
+     * comment in the byte range `[start, end)` of the source. The leading
+     * `//` has already been consumed by the caller.
+     *
+     * The match is intentionally lenient: leading whitespace is allowed
+     * around the marker, around `sourceURL`, and around `=`. The captured
+     * URL is everything after `=` up to end-of-line, with surrounding
+     * whitespace trimmed. Multiple pragmas overwrite the previous value
+     * (last-one-wins, matching V8 behavior).
+     */
+    private function captureSourceUrlPragma(int $start, int $end): void
+    {
+        if ($end <= $start) {
+            return;
+        }
+        $body = substr($this->source, $start, $end - $start);
+        // ^[ \t]* [#@] [ \t]* sourceURL [ \t]* = (.*)$
+        if (preg_match('/^[ \t]*[#@][ \t]*sourceURL[ \t]*=(.*)$/', $body, $m) === 1) {
+            $url = trim($m[1]);
+            if ($url !== '') {
+                $this->sourceUrl = $url;
+            }
         }
     }
 

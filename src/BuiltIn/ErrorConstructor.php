@@ -191,17 +191,28 @@ class ErrorConstructor
     {
         $header = "{$name}: " . ($message ?? '');
         $interp = \PhpJs\Engine::getCurrentInterpreter();
-        if ($interp === null) {
-            return $header;
-        }
-        $frames = $interp->getCallStack()->getFrames();
-        if ($frames === []) {
-            return $header;
-        }
+        $sourceUrl = \PhpJs\Engine::getCurrentSourceURL();
+        $frames = $interp === null ? [] : $interp->getCallStack()->getFrames();
+
         $lines = [$header];
-        foreach (array_reverse($frames) as $frame) {
-            $frameName = $frame->name !== '' ? $frame->name : '<anonymous>';
-            $lines[] = "    at {$frameName}";
+        if ($frames !== []) {
+            foreach (array_reverse($frames) as $frame) {
+                $frameName = $frame->name !== '' ? $frame->name : '<anonymous>';
+                if ($sourceUrl !== null) {
+                    $lines[] = "    at {$frameName} ({$sourceUrl})";
+                } else {
+                    $lines[] = "    at {$frameName}";
+                }
+            }
+        } elseif ($sourceUrl !== null) {
+            // Even with no live call frames (e.g. an Error created at the
+            // top level of an eval'd script), the active sourceURL pragma
+            // must surface in the stack string so tooling that greps the
+            // stack for the advertised URL keeps working.
+            $lines[] = "    at {$sourceUrl}";
+        }
+        if (count($lines) === 1) {
+            return $header;
         }
         return implode("\n", $lines);
     }
