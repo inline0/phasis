@@ -5185,8 +5185,38 @@ class Parser
         $lastClosedGroupWasLookahead = false;
         // Tracks whether the previous token can be quantified (an Atom).
         $prevAtom = false;
+        // Bytes that change state during the structural walk — anything
+        // else is a plain atom that just sets prevAtom=true and advances
+        // the cursor. Skipping such runs collapses the 16 MiB \u{…} body
+        // to a single C-level strcspn call.
+        $stopOpen = "\\[](){}*+?|^\$";
+        $stopClass = "\\]";
         while ($i < $len) {
             $c = $pattern[$i];
+            if ($inClass) {
+                if ($c !== '\\' && $c !== ']') {
+                    $skip = strcspn($pattern, $stopClass, $i);
+                    if ($skip > 0) {
+                        // prevAtom stays false inside a class.
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif (
+                $c !== '\\' && $c !== '[' && $c !== ']'
+                && $c !== '(' && $c !== ')' && $c !== '{' && $c !== '}'
+                && $c !== '*' && $c !== '+' && $c !== '?' && $c !== '|'
+                && $c !== '^' && $c !== '$'
+            ) {
+                $skip = strcspn($pattern, $stopOpen, $i);
+                if ($skip > 0) {
+                    $lastClosedGroupWasLookbehind = false;
+                    $lastClosedGroupWasLookahead = false;
+                    $prevAtom = true;
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($c === '\\') {
                 // Escape sequences are atoms — once consumed, any
                 // immediately following quantifier no longer applies to a
@@ -5201,29 +5231,40 @@ class Parser
                 $next = $pattern[$i + 1];
                 if ($next === 'u') {
                     if ($i + 2 < $len && $pattern[$i + 2] === '{') {
-                        $j = $i + 3;
-                        $hex = '';
-                        while ($j < $len && $pattern[$j] !== '}') {
-                            if (!ctype_xdigit($pattern[$j])) {
-                                if ($unicode) {
-                                    throw new \PhpJs\Exceptions\SyntaxError(
-                                        "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
-                                    );
-                                }
-                                break;
+                        // Bulk-extract the hex run via strcspn so a 16 MiB
+                        // zero-padded \\u{…} body validates in one C call
+                        // instead of 16M PHP iterations.
+                        $hexStart = $i + 3;
+                        $closeBrace = strpos($pattern, '}', $hexStart);
+                        $end = $closeBrace === false ? $len : $closeBrace;
+                        // hexLen = run of hex digits starting at $hexStart.
+                        // strspn returns 0 if the first byte isn't a hex digit.
+                        $hexLen = strspn($pattern, '0123456789abcdefABCDEF', $hexStart, $end - $hexStart);
+                        $j = $hexStart + $hexLen;
+                        if ($j < $end) {
+                            // Non-hex byte before close-brace.
+                            if ($unicode) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
+                                );
                             }
-                            $hex .= $pattern[$j];
-                            $j++;
                         }
+                        $hex = $hexLen === 0 ? '' : substr($pattern, $hexStart, $hexLen);
                         if ($unicode && ($j >= $len || $pattern[$j] !== '}' || $hex === '')) {
                             throw new \PhpJs\Exceptions\SyntaxError(
                                 "Invalid regular expression: /{$pattern}/: Invalid Unicode escape",
                             );
                         }
-                        if ($unicode && hexdec($hex) > 0x10FFFF) {
-                            throw new \PhpJs\Exceptions\SyntaxError(
-                                "Invalid regular expression: /{$pattern}/: Code point out of range",
-                            );
+                        // hexdec on a 16 MiB string is itself O(N); use the
+                        // simple "more than 7 leading non-zero hex digits"
+                        // check first since 0x10FFFF fits in 6 nybbles.
+                        if ($unicode) {
+                            $stripped = ltrim($hex, '0');
+                            if (strlen($stripped) > 6 || ($stripped !== '' && hexdec($stripped) > 0x10FFFF)) {
+                                throw new \PhpJs\Exceptions\SyntaxError(
+                                    "Invalid regular expression: /{$pattern}/: Code point out of range",
+                                );
+                            }
                         }
                         $i = $j + 1;
                         $prevAtom = true;
@@ -5689,8 +5730,27 @@ class Parser
         $i = 0;
         $inClass = false;
         $hasNamed = false;
+        // Only `\\`, `[`, `]`, `(` change state — bulk-skip everything else
+        // so a 16 MiB \u{…} body doesn't burn O(N) iterations of $i++.
+        $stopOpen = "\\[(";
+        $stopClass = "\\]";
         while ($i < $len) {
             $c = $pattern[$i];
+            if ($inClass) {
+                if ($c !== '\\' && $c !== ']') {
+                    $skip = strcspn($pattern, $stopClass, $i);
+                    if ($skip > 0) {
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif ($c !== '\\' && $c !== '[' && $c !== '(') {
+                $skip = strcspn($pattern, $stopOpen, $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($c === '\\') {
                 if ($i + 1 < $len && $pattern[$i + 1] === 'k' && !$inClass) {
                     if ($i + 2 < $len && $pattern[$i + 2] === '<') {
@@ -5760,8 +5820,25 @@ class Parser
         $len = strlen($pattern);
         $i = 0;
         $inClass = false;
+        $stopOpen = "\\[(";
+        $stopClass = "\\]";
         while ($i < $len) {
             $c = $pattern[$i];
+            if ($inClass) {
+                if ($c !== '\\' && $c !== ']') {
+                    $skip = strcspn($pattern, $stopClass, $i);
+                    if ($skip > 0) {
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif ($c !== '\\' && $c !== '[' && $c !== '(') {
+                $skip = strcspn($pattern, $stopOpen, $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($c === '\\') {
                 $i += 2;
                 continue;
@@ -5804,8 +5881,25 @@ class Parser
         $i = 0;
         $inClass = false;
         $count = 0;
+        $stopOpen = "\\[(";
+        $stopClass = "\\]";
         while ($i < $len) {
             $c = $pattern[$i];
+            if ($inClass) {
+                if ($c !== '\\' && $c !== ']') {
+                    $skip = strcspn($pattern, $stopClass, $i);
+                    if ($skip > 0) {
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif ($c !== '\\' && $c !== '[' && $c !== '(') {
+                $skip = strcspn($pattern, $stopOpen, $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($c === '\\') {
                 $i += 2;
                 continue;

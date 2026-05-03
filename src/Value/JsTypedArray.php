@@ -404,14 +404,11 @@ class JsTypedArray extends JsObject
         }
 
         $offset = $this->byteOffset + $index * $this->bytesPerElement;
-        $data = $this->buffer->getData();
-
-        // Write packed bytes into the buffer.
-        for ($i = 0; $i < $this->bytesPerElement; $i++) {
-            $data[$offset + $i] = $packed[$i];
-        }
-
-        $this->buffer->setData($data);
+        // Mutate the underlying buffer in place — the previous
+        // getData()/setData() round-trip cloned the entire buffer
+        // string on every typed-array element write, which made
+        // populating large arrays quadratic.
+        $this->buffer->writeBytes($offset, $packed);
     }
 
     /**
@@ -892,9 +889,30 @@ class JsTypedArray extends JsObject
         }
         $end = min($end, $len);
 
-        for ($i = $start; $i < $end; $i++) {
-            $this->setIndex($i, $value);
+        if ($end <= $start) {
+            return $this;
         }
+
+        if ($this->buffer->isDetached()) {
+            return $this;
+        }
+
+        // Coerce + pack the fill value once, then splat the resulting
+        // bytes into the underlying buffer in one writeBytes. This
+        // turns an O((end-start) * bytesPerElement) cycle of pack +
+        // string-offset writes into a single C-level memcpy.
+        $num = $this->coerceValue($value);
+        if ($this->packFormat === 'H') {
+            $packed = pack('v', self::float16Encode((float) $num));
+        } else {
+            $packed = pack($this->packFormat, $num);
+        }
+
+        $count = $end - $start;
+        $this->buffer->writeBytes(
+            $this->byteOffset + $start * $this->bytesPerElement,
+            str_repeat($packed, $count),
+        );
 
         return $this;
     }

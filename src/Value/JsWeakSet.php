@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace PhpJs\Value;
 
 use PhpJs\BuiltIn\SymbolConstructor;
-use PhpJs\Spec\AbstractOperations;
 
 /**
  * JavaScript WeakSet object.
@@ -17,41 +16,58 @@ use PhpJs\Spec\AbstractOperations;
  */
 class JsWeakSet extends JsObject
 {
-    /** @var list<JsValue> */
-    private array $values = [];
+    private \WeakMap $objectMembers;
+    /** @var array<int, true> Indexed by JsSymbol object id. */
+    private array $symbolMembers = [];
 
     public function __construct(?JsObject $prototype = null)
     {
         parent::__construct($prototype);
+        $this->objectMembers = new \WeakMap();
     }
 
     public function weakSetAdd(JsValue $value): void
     {
-        // Per spec: CanBeHeldWeakly: objects, or non-registered symbols.
-        if (
-            !$value instanceof JsObject
-            && !($value instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($value))
-        ) {
-            throw new \PhpJs\Exceptions\TypeError('Invalid value used in weak set');
+        if ($value instanceof JsObject) {
+            $this->objectMembers[$value] = true;
+            return;
         }
-        if (!$this->weakSetHas($value)) {
-            $this->values[] = $value;
+        if ($value instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($value)) {
+            $this->symbolMembers[spl_object_id($value)] = true;
+            return;
         }
+        throw new \PhpJs\Exceptions\TypeError('Invalid value used in weak set');
     }
 
     public function weakSetHas(JsValue $value): bool
     {
-        return $this->findIndex($value) !== -1;
+        if ($value instanceof JsObject) {
+            return isset($this->objectMembers[$value]);
+        }
+        if ($value instanceof JsSymbol) {
+            return isset($this->symbolMembers[spl_object_id($value)]);
+        }
+        return false;
     }
 
     public function weakSetDelete(JsValue $value): bool
     {
-        $index = $this->findIndex($value);
-        if ($index === -1) {
-            return false;
+        if ($value instanceof JsObject) {
+            if (!isset($this->objectMembers[$value])) {
+                return false;
+            }
+            unset($this->objectMembers[$value]);
+            return true;
         }
-        array_splice($this->values, $index, 1);
-        return true;
+        if ($value instanceof JsSymbol) {
+            $id = spl_object_id($value);
+            if (!isset($this->symbolMembers[$id])) {
+                return false;
+            }
+            unset($this->symbolMembers[$id]);
+            return true;
+        }
+        return false;
     }
 
     public function toJsString(): string
@@ -62,18 +78,5 @@ class JsWeakSet extends JsObject
     public function display(): string
     {
         return 'WeakSet { <items unknown> }';
-    }
-
-    /**
-     * Find the index of a value using reference equality for objects.
-     */
-    private function findIndex(JsValue $value): int
-    {
-        foreach ($this->values as $i => $stored) {
-            if (AbstractOperations::sameValueZero($stored, $value)) {
-                return $i;
-            }
-        }
-        return -1;
     }
 }

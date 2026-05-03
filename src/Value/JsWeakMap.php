@@ -17,53 +17,75 @@ use PhpJs\Spec\AbstractOperations;
  */
 class JsWeakMap extends JsObject
 {
-    /** @var list<array{0: JsValue, 1: JsValue}> */
-    private array $entries = [];
+    // PHP has a native WeakMap that hashes object identity, so object
+    // keys land in O(1). The previous list-of-pairs scan was O(N) per
+    // op which made tests like regress-1507322-deep-weakmap that build
+    // a 100k-entry chain quadratic in time and tip the per-test wall
+    // budget.
+    private \WeakMap $objectKeys;
+    /** @var array<int, JsValue> Indexed by JsSymbol::id() for symbol keys. */
+    private array $symbolKeys = [];
 
     public function __construct(?JsObject $prototype = null)
     {
         parent::__construct($prototype);
+        $this->objectKeys = new \WeakMap();
     }
 
     public function weakMapGet(JsValue $key): JsValue
     {
-        $index = $this->findIndex($key);
-        if ($index === -1) {
-            return JsUndefined::instance();
+        if ($key instanceof JsObject) {
+            return $this->objectKeys[$key] ?? JsUndefined::instance();
         }
-        return $this->entries[$index][1];
+        if ($key instanceof JsSymbol) {
+            return $this->symbolKeys[spl_object_id($key)] ?? JsUndefined::instance();
+        }
+        return JsUndefined::instance();
     }
 
     public function weakMapSet(JsValue $key, JsValue $value): void
     {
         // Per spec: CanBeHeldWeakly: objects, or non-registered symbols.
-        if (
-            !$key instanceof JsObject
-            && !($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key))
-        ) {
-            throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
+        if ($key instanceof JsObject) {
+            $this->objectKeys[$key] = $value;
+            return;
         }
-        $index = $this->findIndex($key);
-        if ($index !== -1) {
-            $this->entries[$index][1] = $value;
-        } else {
-            $this->entries[] = [$key, $value];
+        if ($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key)) {
+            $this->symbolKeys[spl_object_id($key)] = $value;
+            return;
         }
+        throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
     }
 
     public function weakMapHas(JsValue $key): bool
     {
-        return $this->findIndex($key) !== -1;
+        if ($key instanceof JsObject) {
+            return isset($this->objectKeys[$key]);
+        }
+        if ($key instanceof JsSymbol) {
+            return isset($this->symbolKeys[spl_object_id($key)]);
+        }
+        return false;
     }
 
     public function weakMapDelete(JsValue $key): bool
     {
-        $index = $this->findIndex($key);
-        if ($index === -1) {
-            return false;
+        if ($key instanceof JsObject) {
+            if (!isset($this->objectKeys[$key])) {
+                return false;
+            }
+            unset($this->objectKeys[$key]);
+            return true;
         }
-        array_splice($this->entries, $index, 1);
-        return true;
+        if ($key instanceof JsSymbol) {
+            $id = spl_object_id($key);
+            if (!isset($this->symbolKeys[$id])) {
+                return false;
+            }
+            unset($this->symbolKeys[$id]);
+            return true;
+        }
+        return false;
     }
 
     public function toJsString(): string
@@ -74,18 +96,5 @@ class JsWeakMap extends JsObject
     public function display(): string
     {
         return 'WeakMap { <items unknown> }';
-    }
-
-    /**
-     * Find the index of a key using reference equality for objects.
-     */
-    private function findIndex(JsValue $key): int
-    {
-        foreach ($this->entries as $i => $entry) {
-            if (AbstractOperations::sameValueZero($entry[0], $key)) {
-                return $i;
-            }
-        }
-        return -1;
     }
 }

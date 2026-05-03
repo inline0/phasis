@@ -1720,14 +1720,31 @@ class Lexer
     private function readRegExp(SourceLocation $start): Token
     {
         $this->advance(); // skip opening /
-        $pattern = '';
+        $patternStart = $this->pos;
+        $segments = [];
         $inCharClass = false;
+        // strcspn jumps past long ASCII runs (e.g. a 16 MiB zero
+        // padded \\u{…} hex sequence) without per-char concat which
+        // is O(N^2) on long patterns.
+        $stopOpen = "\\[/\n\r\xE2"; // 0xE2 catches U+2028/U+2029 leads.
+        $stopClass = "\\]\n\r\xE2";
 
         while ($this->pos < $this->length) {
+            $stop = $inCharClass ? $stopClass : $stopOpen;
+            $skip = strcspn($this->source, $stop, $this->pos);
+            if ($skip > 0) {
+                $segments[] = substr($this->source, $this->pos, $skip);
+                $this->pos += $skip;
+                $this->column += $skip;
+                if ($this->pos >= $this->length) {
+                    break;
+                }
+            }
+
             $ch = $this->source[$this->pos];
 
             if ($ch === '\\') {
-                $pattern .= $ch;
+                $segments[] = $ch;
                 $this->advance();
                 if ($this->pos < $this->length) {
                     // Backslash before a line terminator is illegal in regexp.
@@ -1738,18 +1755,18 @@ class Lexer
                     // Capture a full UTF-8 character (may be multi-byte).
                     $b0 = ord($this->source[$this->pos]);
                     if ($b0 < 0x80) {
-                        $pattern .= $this->source[$this->pos];
+                        $segments[] = $this->source[$this->pos];
                         $this->advance();
                     } elseif ($b0 < 0xE0) {
-                        $pattern .= substr($this->source, $this->pos, 2);
+                        $segments[] = substr($this->source, $this->pos, 2);
                         $this->pos += 2;
                         $this->column++;
                     } elseif ($b0 < 0xF0) {
-                        $pattern .= substr($this->source, $this->pos, 3);
+                        $segments[] = substr($this->source, $this->pos, 3);
                         $this->pos += 3;
                         $this->column++;
                     } else {
-                        $pattern .= substr($this->source, $this->pos, 4);
+                        $segments[] = substr($this->source, $this->pos, 4);
                         $this->pos += 4;
                         $this->column++;
                     }
@@ -1759,14 +1776,14 @@ class Lexer
 
             if ($ch === '[') {
                 $inCharClass = true;
-                $pattern .= $ch;
+                $segments[] = $ch;
                 $this->advance();
                 continue;
             }
 
             if ($ch === ']' && $inCharClass) {
                 $inCharClass = false;
-                $pattern .= $ch;
+                $segments[] = $ch;
                 $this->advance();
                 continue;
             }
@@ -1780,9 +1797,13 @@ class Lexer
                 throw new SyntaxError('Unterminated regular expression', $start);
             }
 
-            $pattern .= $ch;
+            // 0xE2 lead byte that was NOT a U+2028/U+2029 line terminator
+            // (isUnicodeLineTerminator only fires when the trailing two
+            // bytes match): treat as a normal multi-byte character.
+            $segments[] = $ch;
             $this->advance();
         }
+        $pattern = count($segments) === 1 ? $segments[0] : implode('', $segments);
 
         // Read flags (ASCII letters only, not locale-dependent ctype_alpha)
         $flags = '';

@@ -59,6 +59,7 @@ function compatReportMain(array $argv): void
         $fingerprint,
         $discovery,
         $options,
+        $supportConfig,
     );
 
     resetRunningChunksToPending($state);
@@ -262,10 +263,13 @@ function buildCompatFingerprint(
     }
 
     return sha1(json_encode([
-        'version' => 3,
+        'version' => 4,
         'match' => $options['match'],
         'exclude' => $options['exclude'] ?? [],
         'chunkSize' => $options['chunkSize'],
+        // Bumping to v4 picks up the test262_isolated_tests list inside
+        // supportConfig — when that list changes, the chunk fingerprints
+        // must reset so the rebalanced single-file chunks land in state.
         'supportConfig' => sha1(json_encode($supportConfig)),
         'compatReportHash' => hashFileOrEmpty($rootDir . '/bin/compat-report'),
         'test262ScriptHash' => hashFileOrEmpty($rootDir . '/bin/test262'),
@@ -308,6 +312,7 @@ function hashDirectoryRecursive(string $dir): string
 /**
  * @param array{groups: array<string, list<string>>, testFileCount: int} $discovery
  * @param array{jobs: int, match: ?string, chunkSize: int, timeoutSec: int, stateDir: string, reset: bool} $options
+ * @param array<string, mixed> $supportConfig
  * @return array<string, mixed>
  */
 function loadOrCreateCompatState(
@@ -317,6 +322,7 @@ function loadOrCreateCompatState(
     string $fingerprint,
     array $discovery,
     array $options,
+    array $supportConfig = [],
 ): array {
     $stateFile = $stateDir . '/state.json';
 
@@ -339,9 +345,31 @@ function loadOrCreateCompatState(
         ensureDirectory($stateDir . '/manifests');
     }
 
+    // Tests known to take long enough on their own that grouping them
+    // with 24 neighbours risks tipping the chunk over its wall budget.
+    // Promote each one to a single-file chunk so it gets the full
+    // per-chunk timeout.
+    $isolatedSet = [];
+    foreach ((array) ($supportConfig['test262_isolated_tests'] ?? []) as $rel) {
+        $isolatedSet['test262/test/' . $rel] = true;
+    }
+
     $chunks = [];
     foreach ($discovery['groups'] as $group => $files) {
-        foreach (array_chunk($files, $options['chunkSize']) as $chunkFiles) {
+        $bulkFiles = [];
+        foreach ($files as $file) {
+            $rel = relativePath($file, $rootDir . '/');
+            if (isset($isolatedSet[$rel])) {
+                $chunk = createCompatChunk($group, [$file], 0);
+                $chunks[$chunk['id']] = $chunk;
+                continue;
+            }
+            $bulkFiles[] = $file;
+        }
+        foreach (array_chunk($bulkFiles, $options['chunkSize']) as $chunkFiles) {
+            if ($chunkFiles === []) {
+                continue;
+            }
             $chunk = createCompatChunk($group, $chunkFiles, 0);
             $chunks[$chunk['id']] = $chunk;
         }

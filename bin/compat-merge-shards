@@ -64,6 +64,7 @@ $state = loadOrCreateCompatState(
     $fingerprint,
     $discovery,
     $options,
+    $supportConfig,
 );
 
 $shardEntries = glob($shardsDir . '/compat-shard-*', GLOB_ONLYDIR) ?: [];

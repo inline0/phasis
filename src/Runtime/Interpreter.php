@@ -15070,9 +15070,37 @@ class Interpreter
         // `(?s:…)` modifier group).
         $dotAllStack = [$isDotAll];
         $i = 0;
+        // Bytes that interest the per-char transform: `\\`, `[`, `]`,
+        // `(`, `)`, `.` (dot rewrite), `0xED` (raw surrogate detect),
+        // and `$`/`^` for non-class anchors. Plain bytes that match none
+        // of those copy through unchanged — bulk-append them in one
+        // strcspn so a 16 MiB \u{…} body doesn't N-square on $result.
+        $stopOpen = "\\[].()\xED";
+        $stopClass = "\\]\xED";
 
         while ($i < $len) {
             $ch = $pattern[$i];
+            if ($inCharClass) {
+                if ($ch !== '\\' && $ch !== ']' && ord($ch) !== 0xED) {
+                    $skip = strcspn($pattern, $stopClass, $i);
+                    if ($skip > 0) {
+                        $result .= substr($pattern, $i, $skip);
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif (
+                $ch !== '\\' && $ch !== '[' && $ch !== ']'
+                && $ch !== '(' && $ch !== ')' && $ch !== '.'
+                && ord($ch) !== 0xED
+            ) {
+                $skip = strcspn($pattern, $stopOpen, $i);
+                if ($skip > 0) {
+                    $result .= substr($pattern, $i, $skip);
+                    $i += $skip;
+                    continue;
+                }
+            }
 
             // Outside a character class and outside the current dotAll
             // scope, `.` excludes the JS LineTerminator set per spec.
@@ -15843,12 +15871,25 @@ class Interpreter
      */
     public static function rewriteRegExpGroupNames(string $pattern): array
     {
+        // Hot-path fast exit: a pattern with no named-group syntax at all
+        // (no `(?<` outside character classes) cannot need rewriting.
+        // strpos is O(N) in C, beats the byte-by-byte scan below.
+        if (strpos($pattern, '(?<') === false) {
+            return [$pattern, []];
+        }
         $len = strlen($pattern);
         $needsRewrite = false;
         $i = 0;
         $inClass = false;
         while ($i < $len) {
             $c = $pattern[$i];
+            if ($c !== '\\' && $c !== '[' && $c !== ']' && $c !== '(') {
+                $skip = strcspn($pattern, "\\[](", $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($c === '\\') {
                 $i += 2;
                 continue;
@@ -17198,6 +17239,12 @@ class Interpreter
      */
     private static function boundLookbehindQuantifiers(string $pattern): string
     {
+        // Hot-path fast exit: a pattern with no lookbehind syntax can't
+        // need bounding. strpos in C is ~1000x faster than the
+        // byte-by-byte walk below for long literal patterns.
+        if (strpos($pattern, '(?<') === false) {
+            return $pattern;
+        }
         // PCRE2's variable-length lookbehind branch cap is 255 code
         // points (verified empirically on 10.47). Each unbounded
         // quantifier we replace contributes up to its bound, plus any
@@ -17360,7 +17407,18 @@ class Interpreter
         $len = strlen($pattern);
         // Count capturing groups to know which \N are valid backreferences.
         $groupCount = $this->countCapturingGroups($pattern);
+        // Bytes that change validation state: `\\`, `[`, `{`, `}`. Plain
+        // bytes outside those just continue. Skip past long literal runs
+        // (e.g. a 16 MiB \u{…} body) in one strcspn.
         for ($i = 0; $i < $len; $i++) {
+            $c = $pattern[$i];
+            if ($c !== '\\' && $c !== '[' && $c !== '{' && $c !== '}') {
+                $skip = strcspn($pattern, "\\[{}", $i);
+                if ($skip > 1) {
+                    $i += $skip - 1;
+                    continue;
+                }
+            }
             if ($pattern[$i] !== '\\') {
                 // Skip character class contents for bracket tracking.
                 if ($pattern[$i] === '[') {
@@ -17371,11 +17429,8 @@ class Interpreter
                             $next = $pattern[$i + 1];
                             if (($next === 'p' || $next === 'P' || $next === 'q') && $i + 2 < $len && $pattern[$i + 2] === '{') {
                                 // \p{...} / \P{...} / \q{...}: skip to closing brace.
-                                $j = $i + 3;
-                                while ($j < $len && $pattern[$j] !== '}') {
-                                    $j++;
-                                }
-                                $i = $j < $len ? $j : $i + 1;
+                                $closeBrace = strpos($pattern, '}', $i + 3);
+                                $i = $closeBrace !== false ? $closeBrace : $i + 1;
                             } elseif ($next >= '0' && $next <= '9') {
                                 $this->validateUnicodeDecimalEscape($pattern, $i + 1, $len, 0, true);
                                 $i++;
@@ -17383,11 +17438,8 @@ class Interpreter
                                 $this->validateUnicodeControlEscape($pattern, $i + 1, $len);
                                 $i++;
                             } elseif ($next === 'u' && $i + 2 < $len && $pattern[$i + 2] === '{') {
-                                $j = $i + 3;
-                                while ($j < $len && $pattern[$j] !== '}') {
-                                    $j++;
-                                }
-                                $i = $j < $len ? $j : $i + 1;
+                                $closeBrace = strpos($pattern, '}', $i + 3);
+                                $i = $closeBrace !== false ? $closeBrace : $i + 1;
                             } else {
                                 // \p, \P, \q without `{...}` are invalid in /u.
                                 if (in_array($next, ['p', 'P', 'q'], true)) {
@@ -17472,12 +17524,9 @@ class Interpreter
                 // \p{...}, \P{...}, \q{...}: must be followed by `{...}`
                 // in /u mode. \q is /v-only at top level.
                 if ($i + 2 < $len && $pattern[$i + 2] === '{') {
-                    $j = $i + 3;
-                    while ($j < $len && $pattern[$j] !== '}') {
-                        $j++;
-                    }
-                    if ($j < $len) {
-                        $i = $j;
+                    $closeBrace = strpos($pattern, '}', $i + 3);
+                    if ($closeBrace !== false) {
+                        $i = $closeBrace;
                     } else {
                         $i++;
                     }
@@ -17489,12 +17538,9 @@ class Interpreter
             } elseif ($next === 'u') {
                 // \u{HHHH} braced Unicode escape: skip past the closing }.
                 if ($i + 2 < $len && $pattern[$i + 2] === '{') {
-                    $j = $i + 3;
-                    while ($j < $len && $pattern[$j] !== '}') {
-                        $j++;
-                    }
-                    if ($j < $len) {
-                        $i = $j; // position on the closing }
+                    $closeBrace = strpos($pattern, '}', $i + 3);
+                    if ($closeBrace !== false) {
+                        $i = $closeBrace; // position on the closing }
                     } else {
                         $i++; // malformed: PCRE will report it
                     }
@@ -17621,9 +17667,21 @@ class Interpreter
      */
     private function countCapturingGroups(string $pattern): int
     {
+        // Fast exit: no `(` means no groups.
+        if (strpos($pattern, '(') === false) {
+            return 0;
+        }
         $count = 0;
         $len = strlen($pattern);
         for ($i = 0; $i < $len; $i++) {
+            $c = $pattern[$i];
+            if ($c !== '\\' && $c !== '[' && $c !== '(') {
+                $skip = strcspn($pattern, "\\[(", $i);
+                if ($skip > 1) {
+                    $i += $skip - 1;
+                    continue;
+                }
+            }
             if ($pattern[$i] === '\\') {
                 $i++; // skip escaped char
                 continue;
@@ -17663,9 +17721,20 @@ class Interpreter
      */
     private function getCapturingGroupPositions(string $pattern): array
     {
+        if (strpos($pattern, '(') === false) {
+            return [];
+        }
         $positions = [];
         $len = strlen($pattern);
         for ($i = 0; $i < $len; $i++) {
+            $c = $pattern[$i];
+            if ($c !== '\\' && $c !== '[' && $c !== '(') {
+                $skip = strcspn($pattern, "\\[(", $i);
+                if ($skip > 1) {
+                    $i += $skip - 1;
+                    continue;
+                }
+            }
             if ($pattern[$i] === '\\') {
                 $i++;
                 continue;
@@ -18426,6 +18495,12 @@ class Interpreter
      */
     public static function analyzeRepeatedGroups(string $pattern): array
     {
+        // Hot-path fast exit: a pattern with no `(` cannot contain any
+        // repeated or nullable group. strpos in C is faster than the
+        // byte-by-byte walk for long literal patterns.
+        if (strpos($pattern, '(') === false) {
+            return ['repeatedGroups' => [], 'nullableNonCapturingGroups' => []];
+        }
         $len = strlen($pattern);
         $groupStack = []; // stack of [captureIndex|null, openPos, isNonCapturing]
         $groups = []; // captureIndex => [openPos, closePos, quantifier]
@@ -18436,6 +18511,26 @@ class Interpreter
 
         for ($i = 0; $i < $len; $i++) {
             $ch = $pattern[$i];
+            // Fast-skip plain bytes outside a class. Only `\\`, `[`, `]`,
+            // `(`, `)`, `*`, `+`, `?`, `{` change state inside the loop.
+            if (
+                !$inCharClass
+                && $ch !== '\\' && $ch !== '[' && $ch !== ']'
+                && $ch !== '(' && $ch !== ')'
+                && $ch !== '*' && $ch !== '+' && $ch !== '?' && $ch !== '{'
+            ) {
+                $skip = strcspn($pattern, "\\[]()*+?{", $i);
+                if ($skip > 1) {
+                    $i += $skip - 1;
+                    continue;
+                }
+            } elseif ($inCharClass && $ch !== '\\' && $ch !== ']') {
+                $skip = strcspn($pattern, "\\]", $i);
+                if ($skip > 1) {
+                    $i += $skip - 1;
+                    continue;
+                }
+            }
 
             if ($ch === '\\' && $i + 1 < $len) {
                 $i++;
@@ -19289,11 +19384,23 @@ class Interpreter
      */
     public static function validateRegExpModifierGroups(string $pattern): void
     {
+        // Hot-path fast exit: a pattern with no `(?` syntax has no
+        // modifier groups to validate.
+        if (strpos($pattern, '(?') === false) {
+            return;
+        }
         $len = strlen($pattern);
         $i = 0;
         $inClass = false;
         while ($i < $len) {
             $ch = $pattern[$i];
+            if ($ch !== '\\' && $ch !== '[' && $ch !== ']' && $ch !== '(') {
+                $skip = strcspn($pattern, "\\[](", $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($ch === '\\') {
                 $i += 2;
                 continue;
@@ -19402,6 +19509,11 @@ class Interpreter
      */
     public static function hasDuplicateNamedGroupsInSameAlternative(string $pattern): bool
     {
+        // Hot-path fast exit: at least two named-group declarations are
+        // required for a duplicate to exist.
+        if (strpos($pattern, '(?<') === false) {
+            return false;
+        }
         // Collect declared names per alternative, descending into groups but
         // restarting the "seen" set on every top-level `|`. Groups themselves
         // introduce their own alternative scope (their internal `|` splits
@@ -19413,6 +19525,13 @@ class Interpreter
         $topIndex = 0;
         while ($i < $len) {
             $ch = $pattern[$i];
+            if ($ch !== '\\' && $ch !== '[' && $ch !== '(' && $ch !== ')' && $ch !== '|') {
+                $skip = strcspn($pattern, "\\[()|", $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($ch === '\\') {
                 $i += 2;
                 continue;
@@ -19497,11 +19616,22 @@ class Interpreter
     private static function hasDuplicateNamedGroups(
         string $pattern
     ): bool {
+        // Hot-path fast exit.
+        if (strpos($pattern, '(?<') === false) {
+            return false;
+        }
         $seen = [];
         $len = strlen($pattern);
         $i = 0;
         while ($i < $len) {
             $ch = $pattern[$i];
+            if ($ch !== '\\' && $ch !== '[' && $ch !== '(') {
+                $skip = strcspn($pattern, "\\[(", $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($ch === '\\') {
                 $i += 2;
                 continue;
@@ -19616,8 +19746,47 @@ class Interpreter
         $hasQuantifiedCapture = false;
         // Stack of: ['kind' => 'capture' | 'noncapture' | 'lookbehind' | 'lookahead', 'sawCapture' => bool]
         $stack = [];
+        // Most pattern bytes are uninteresting (literal digits, letters,
+        // whitespace) and just advance $i without changing any flag.
+        // Pre-build the byte set strcspn should stop at: control bytes
+        // for grouping/escape plus, when the slow path needs to
+        // inspect non-ASCII for flag updates, every high-bit byte.
+        // This collapses a 16 MiB zero-padded \u{…} pattern from 16M
+        // PHP iterations down to a single C-level strcspn jump.
+        // Either /i+!/u (Unicode case-fold check), /u (astral codepoint
+        // check), or non-/u (raw astral atom check) wants byte-level
+        // inspection of high-bit runs, so always include 0x80..0xFF in
+        // the strcspn stop set: the slow path handles them.
+        $highBytes = '';
+        for ($b = 0x80; $b <= 0xFF; $b++) {
+            $highBytes .= chr($b);
+        }
+        $stopBytes = '\\[].()' . $highBytes;
+        $stopBytesInClass = '\\]' . substr($stopBytes, 6); // drop ".()[" runners
         while ($i < $len) {
             $ch = $pattern[$i];
+            // Inside character classes the only meaningful tokens are
+            // `\`, `]`, and any non-ASCII byte. Plain ASCII content
+            // doesn't change state — jump past it in one strcspn.
+            if ($inClass) {
+                if ($ch !== '\\' && $ch !== ']' && (ord($ch) & 0x80) === 0) {
+                    $skip = strcspn($pattern, $stopBytesInClass, $i);
+                    if ($skip > 0) {
+                        $i += $skip;
+                        continue;
+                    }
+                }
+            } elseif (
+                $ch !== '\\' && $ch !== '[' && $ch !== ']'
+                && $ch !== '.' && $ch !== '(' && $ch !== ')'
+                && (ord($ch) & 0x80) === 0
+            ) {
+                $skip = strcspn($pattern, $stopBytes, $i);
+                if ($skip > 0) {
+                    $i += $skip;
+                    continue;
+                }
+            }
             if ($ch === '\\') {
                 if ($i + 1 < $len) {
                     $next = $pattern[$i + 1];

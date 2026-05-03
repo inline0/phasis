@@ -80,6 +80,38 @@ class JsArrayBuffer extends JsObject
     }
 
     /**
+     * Splice bytes into the buffer in place. Avoids the extra string
+     * copy `getData() + setData()` triggers on the typical
+     * "load buffer, write 1-8 bytes, store buffer" round-trip in
+     * JsTypedArray::setItem, which is O(N) per element-set on large
+     * arrays. Direct overwriting through string offsets is O(L) where
+     * L is the splice length.
+     *
+     * @param string $bytes Bytes to write at $offset.
+     */
+    public function writeBytes(int $offset, string $bytes): void
+    {
+        $blen = strlen($bytes);
+        if ($blen === 0) {
+            return;
+        }
+        // For short writes (typical typed-array element store of 1-8
+        // bytes), per-byte string-offset assignment is the cheapest
+        // path: it mutates the buffer in place without allocating a
+        // new string. For long writes (a typed-array fill that
+        // batches a whole region), substr_replace is much cheaper:
+        // C-level memcpy + a single string allocation, vs $blen PHP
+        // assignments.
+        if ($blen >= 32) {
+            $this->data = substr_replace($this->data, $bytes, $offset, $blen);
+            return;
+        }
+        for ($i = 0; $i < $blen; $i++) {
+            $this->data[$offset + $i] = $bytes[$i];
+        }
+    }
+
+    /**
      * Treat ::isDetached as impure: between two reads, intervening user
      * code (a `valueOf` during ToIndex, a getter during
      * OrdinaryCreateFromConstructor, a species-constructor body) can
