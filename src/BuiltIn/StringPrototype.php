@@ -1055,7 +1055,9 @@ class StringPrototype
             $separator = $args[0] ?? JsUndefined::instance();
             $limitArg = $args[1] ?? JsUndefined::instance();
 
-            // Per spec §21.1.3.20 step 2-3: check Symbol.split on separator
+            // Per spec §21.1.3.20 step 2-3: GetMethod(separator, @@split).
+            // null/undefined → use default; non-callable → TypeError;
+            // callable → invoke.
             if ($separator instanceof JsObject) {
                 $splitSym = SymbolConstructor::split();
                 $splitter = $separator->getBySymbol($splitSym);
@@ -1065,6 +1067,20 @@ class StringPrototype
                 if ($splitter instanceof \PhpJs\Value\JsHTMLDDA) {
                     // HTMLDDA's [[Call]] returns null.
                     return JsNull::instance();
+                }
+                if (
+                    $splitter instanceof \PhpJs\Value\JsProxy
+                    && $splitter->isCallable()
+                ) {
+                    return $splitter->apply($separator, [$this_, $limitArg]);
+                }
+                if (
+                    !$splitter instanceof JsUndefined
+                    && !$splitter instanceof JsNull
+                ) {
+                    throw new \PhpJs\Exceptions\TypeError(
+                        'String.prototype.split: @@split is not callable'
+                    );
                 }
             }
 
