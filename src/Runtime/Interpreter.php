@@ -17280,7 +17280,13 @@ class Interpreter
             if ($c === '(') {
                 if ($k === $groupOpen) {
                     foreach ($stack as $entry) {
-                        if ($entry['kind'] === '!' || $entry['kind'] === '=') {
+                        // Negative lookaround (?!…) / (?<!…) succeeds when its
+                        // body fails, discarding any inner captures. A backref
+                        // sitting after such an ancestor sees the inner group
+                        // as non-participating. Positive lookaround (?=…) /
+                        // (?<=…) keeps captures, so backrefs referring to
+                        // groups inside it must enforce the captured value.
+                        if ($entry['kind'] === '!') {
                             $ancClose = $this->findGroupClose($pattern, $entry['open']);
                             if ($ancClose !== null && $backrefPos > $ancClose) {
                                 return true;
