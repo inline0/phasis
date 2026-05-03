@@ -15970,7 +15970,14 @@ class Interpreter
         if (strlen($text) !== $width) {
             return null;
         }
-        return mb_ord($text, 'UTF-8');
+        // mb_ord stubs declare int but the runtime returns false on
+        // invalid sequences (e.g. lone surrogates passed in via CESU-8).
+        /** @var int|false $cp */
+        $cp = mb_ord($text, 'UTF-8');
+        if ($cp === false) {
+            return null;
+        }
+        return $cp;
     }
 
     /**
