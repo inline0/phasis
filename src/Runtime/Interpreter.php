@@ -14732,7 +14732,7 @@ class Interpreter
                     // (Mongolian Vowel Separator) which Unicode removed
                     // from Space_Separator in v6.3 — JS no longer treats
                     // it as whitespace. Use an explicit class instead.
-                    $wsClass = '\\t\\n\\v\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
+                    $wsClass = '\\t\\n\\x0B\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
                     if ($inCharClass) {
                         $result .= $wsClass;
                     } else {
@@ -14742,7 +14742,7 @@ class Interpreter
                     continue;
                 }
                 if ($next === 'S') {
-                    $wsClass = '\\t\\n\\v\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
+                    $wsClass = '\\t\\n\\x0B\\f\\r \\xA0\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}\\x{FEFF}';
                     if ($inCharClass) {
                         // Inside [...], best-effort fallback to PCRE \S.
                         // Cannot express set complement portably here.
