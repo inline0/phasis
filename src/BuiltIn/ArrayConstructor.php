@@ -1635,23 +1635,20 @@ class ArrayConstructor
                     throw new \PhpJs\Exceptions\RangeError('Invalid array length');
                 }
 
-                $result = new JsArray();
-                $r = 0;
-                // Copy elements before start.
+                // Build the result list densely, then hand it to the JsArray
+                // constructor. Avoids defineOwnProperty per element, which
+                // dominates this method when called in a tight loop.
+                $resultElements = [];
                 for ($i = 0; $i < $actualStart; $i++) {
-                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($o->get((string) $i), true, true, true));
-                    $r++;
+                    $resultElements[] = $o->get((string) $i);
                 }
-                // Insert new items.
                 foreach ($insertItems as $item) {
-                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($item, true, true, true));
-                    $r++;
+                    $resultElements[] = $item;
                 }
-                // Copy elements after the deleted range.
                 for ($i = $actualStart + $actualDeleteCount; $i < $len; $i++) {
-                    $result->defineOwnProperty((string) $r, PropertyDescriptor::data($o->get((string) $i), true, true, true));
-                    $r++;
+                    $resultElements[] = $o->get((string) $i);
                 }
+                $result = new JsArray($resultElements);
                 $result->setLength($newLen);
                 return $result;
             },

@@ -3133,6 +3133,17 @@ class TypedArrayConstructor
                     throw new TypeError('The comparison function must be either a function or undefined');
                 }
                 $comparefn = $isCallable ? $arg0 : null;
+
+                // Fast path: no comparefn, non-BigInt, non-Float16. Avoids
+                // per-element JsNumber allocation and the O(n) buffer-string
+                // copy that setIndex() incurs on every write.
+                if ($comparefn === null) {
+                    $fast = $this_->sortNumericFast();
+                    if ($fast !== null) {
+                        return $fast;
+                    }
+                }
+
                 $elements = $this_->toList();
 
                 usort($elements, function (JsValue $a, JsValue $b) use ($comparefn): int {

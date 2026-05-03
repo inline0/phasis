@@ -80,35 +80,46 @@ class JsArrayBuffer extends JsObject
     }
 
     /**
-     * Splice bytes into the buffer in place. Avoids the extra string
-     * copy `getData() + setData()` triggers on the typical
-     * "load buffer, write 1-8 bytes, store buffer" round-trip in
-     * JsTypedArray::setItem, which is O(N) per element-set on large
-     * arrays. Direct overwriting through string offsets is O(L) where
-     * L is the splice length.
+     * Write `bytes` into the buffer at `offset` without copying the buffer.
      *
-     * @param string $bytes Bytes to write at $offset.
+     * This is a hot path for TypedArray indexed sets: a naive
+     * getData/setData round trip duplicates the entire buffer for every
+     * element write, which is O(n^2) in tight loops on large views.
+     * Mutating the internal string in place keeps the operation O(k)
+     * in the byte width.
      */
     public function writeBytes(int $offset, string $bytes): void
     {
-        $blen = strlen($bytes);
-        if ($blen === 0) {
+        $len = strlen($bytes);
+        if ($len === 0) {
             return;
         }
-        // For short writes (typical typed-array element store of 1-8
-        // bytes), per-byte string-offset assignment is the cheapest
-        // path: it mutates the buffer in place without allocating a
-        // new string. For long writes (a typed-array fill that
-        // batches a whole region), substr_replace is much cheaper:
-        // C-level memcpy + a single string allocation, vs $blen PHP
-        // assignments.
-        if ($blen >= 32) {
-            $this->data = substr_replace($this->data, $bytes, $offset, $blen);
+        // Per-byte assignment is fine when $bytes is short (the typical
+        // single-element setIndex path with 1, 2, 4, or 8 bytes), but for
+        // bulk writes (fill, set) the inner loop dominates. Splice in one
+        // call once the run exceeds a single 8-byte element.
+        if ($len > 8) {
+            $this->data = substr_replace($this->data, $bytes, $offset, $len);
             return;
         }
-        for ($i = 0; $i < $blen; $i++) {
+        for ($i = 0; $i < $len; $i++) {
             $this->data[$offset + $i] = $bytes[$i];
         }
+    }
+
+    /**
+     * Read `length` bytes starting at `offset`.
+     *
+     * Avoids the COW-snapshot round trip of substr(getData(), …) when the
+     * caller only needs a small slice. Returns the empty string for
+     * detached buffers or out-of-bounds reads.
+     */
+    public function readBytes(int $offset, int $length): string
+    {
+        if ($this->detached) {
+            return '';
+        }
+        return substr($this->data, $offset, $length);
     }
 
     /**

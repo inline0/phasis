@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace PhpJs\Value;
 
 use PhpJs\BuiltIn\SymbolConstructor;
-use PhpJs\Spec\AbstractOperations;
 
 /**
  * JavaScript WeakMap object.
@@ -14,78 +13,66 @@ use PhpJs\Spec\AbstractOperations;
  * Map.prototype methods correctly reject it via instanceof checks.
  * PHP does not have weak references for arbitrary values, so entries
  * are stored strongly (no garbage collection of unreferenced keys).
+ *
+ * Keys must be JsObject or non-registered JsSymbol per spec; both are
+ * PHP objects so spl_object_id provides O(1) lookup keyed by identity,
+ * which matches the spec's reference equality requirement for WeakMap.
  */
 class JsWeakMap extends JsObject
 {
-    // PHP has a native WeakMap that hashes object identity, so object
-    // keys land in O(1). The previous list-of-pairs scan was O(N) per
-    // op which made tests like regress-1507322-deep-weakmap that build
-    // a 100k-entry chain quadratic in time and tip the per-test wall
-    // budget.
-    private \WeakMap $objectKeys;
-    /** @var array<int, JsValue> Indexed by JsSymbol::id() for symbol keys. */
-    private array $symbolKeys = [];
+    /** @var array<int, JsValue> Map of spl_object_id(key) => value. */
+    private array $values = [];
+
+    /** @var array<int, JsValue> Map of spl_object_id(key) => key (keeps key alive). */
+    private array $keys = [];
 
     public function __construct(?JsObject $prototype = null)
     {
         parent::__construct($prototype);
-        $this->objectKeys = new \WeakMap();
     }
 
     public function weakMapGet(JsValue $key): JsValue
     {
-        if ($key instanceof JsObject) {
-            return $this->objectKeys[$key] ?? JsUndefined::instance();
+        if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
+            return JsUndefined::instance();
         }
-        if ($key instanceof JsSymbol) {
-            return $this->symbolKeys[spl_object_id($key)] ?? JsUndefined::instance();
-        }
-        return JsUndefined::instance();
+        $id = spl_object_id($key);
+        return $this->values[$id] ?? JsUndefined::instance();
     }
 
     public function weakMapSet(JsValue $key, JsValue $value): void
     {
         // Per spec: CanBeHeldWeakly: objects, or non-registered symbols.
-        if ($key instanceof JsObject) {
-            $this->objectKeys[$key] = $value;
-            return;
+        if (
+            !$key instanceof JsObject
+            && !($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key))
+        ) {
+            throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
         }
-        if ($key instanceof JsSymbol && !SymbolConstructor::isRegisteredSymbol($key)) {
-            $this->symbolKeys[spl_object_id($key)] = $value;
-            return;
-        }
-        throw new \PhpJs\Exceptions\TypeError('Invalid value used as weak map key');
+        $id = spl_object_id($key);
+        $this->keys[$id] = $key;
+        $this->values[$id] = $value;
     }
 
     public function weakMapHas(JsValue $key): bool
     {
-        if ($key instanceof JsObject) {
-            return isset($this->objectKeys[$key]);
+        if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
+            return false;
         }
-        if ($key instanceof JsSymbol) {
-            return isset($this->symbolKeys[spl_object_id($key)]);
-        }
-        return false;
+        return isset($this->values[spl_object_id($key)]) || array_key_exists(spl_object_id($key), $this->values);
     }
 
     public function weakMapDelete(JsValue $key): bool
     {
-        if ($key instanceof JsObject) {
-            if (!isset($this->objectKeys[$key])) {
-                return false;
-            }
-            unset($this->objectKeys[$key]);
-            return true;
+        if (!$key instanceof JsObject && !$key instanceof JsSymbol) {
+            return false;
         }
-        if ($key instanceof JsSymbol) {
-            $id = spl_object_id($key);
-            if (!isset($this->symbolKeys[$id])) {
-                return false;
-            }
-            unset($this->symbolKeys[$id]);
-            return true;
+        $id = spl_object_id($key);
+        if (!array_key_exists($id, $this->values)) {
+            return false;
         }
-        return false;
+        unset($this->values[$id], $this->keys[$id]);
+        return true;
     }
 
     public function toJsString(): string

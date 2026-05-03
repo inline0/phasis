@@ -347,7 +347,7 @@ class JsTypedArray extends JsObject
         }
 
         $offset = $this->byteOffset + $index * $this->bytesPerElement;
-        $bytes = substr($this->buffer->getData(), $offset, $this->bytesPerElement);
+        $bytes = $this->buffer->readBytes($offset, $this->bytesPerElement);
 
         if (strlen($bytes) < $this->bytesPerElement) {
             return JsNumber::of(0.0);
@@ -404,10 +404,11 @@ class JsTypedArray extends JsObject
         }
 
         $offset = $this->byteOffset + $index * $this->bytesPerElement;
-        // Mutate the underlying buffer in place — the previous
-        // getData()/setData() round-trip cloned the entire buffer
-        // string on every typed-array element write, which made
-        // populating large arrays quadratic.
+
+        // Write packed bytes directly into the buffer.
+        // Avoid getData()/setData() round trip which copies the entire
+        // buffer string on every element write (O(n) per call → O(n^2)
+        // across a tight loop on a large view).
         $this->buffer->writeBytes($offset, $packed);
     }
 
@@ -517,9 +518,17 @@ class JsTypedArray extends JsObject
             return JsNumber::of((float) $this->bytesPerElement);
         }
 
-        // Numeric index access: only round-trippable digit strings.
-        if (ctype_digit($name) && self::isCanonicalNumericIndex($name)) {
-            return $this->getIndex((int) $name);
+        // Numeric index access: a digit-only string is always a canonical
+        // numeric index. Skip the toString round-trip (which is what
+        // isCanonicalNumericIndex performs and which dominates ta[i] reads
+        // in tight loops on large views). The exception is a leading zero
+        // that isn't the literal "0" itself: those are NOT canonical (e.g.
+        // "01" stringifies as "1"), and must fall through to the
+        // CanonicalNumericIndexString intercept.
+        if ($name !== '' && ctype_digit($name)) {
+            if ($name === '0' || $name[0] !== '0') {
+                return $this->getIndex((int) $name);
+            }
         }
 
         // CanonicalNumericIndexString: intercept keys like "NaN", "-0", "1.5".
@@ -533,6 +542,17 @@ class JsTypedArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
+        // Fast path: digit-only canonical index ("0" or no leading zero).
+        // Avoids the isCanonicalNumericIndex round trip via JsNumber::toJsString.
+        if ($name !== '' && ctype_digit($name) && ($name === '0' || $name[0] !== '0')) {
+            $coerced = $this->coerceTypedArrayValue($value);
+            $index = (int) $name;
+            if ($index >= 0 && $index < $this->getLength()) {
+                $this->setIndex($index, $coerced);
+            }
+            return;
+        }
+
         // CanonicalNumericIndexString intercept per spec 10.4.5.5: even for
         // invalid integer indices (fractional, NaN, OOB), ToNumber/ToBigInt
         // runs BEFORE the validity check so a throwing valueOf surfaces.
@@ -558,6 +578,20 @@ class JsTypedArray extends JsObject
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
+        // Fast path: digit-only canonical index ("0" or no leading zero) with
+        // self-receiver. Avoids isCanonicalNumericIndex's toString round trip.
+        if (
+            $name !== '' && ctype_digit($name) && ($name === '0' || $name[0] !== '0')
+            && $receiver === $this
+        ) {
+            $coerced = $this->coerceTypedArrayValue($value);
+            $index = (int) $name;
+            if ($index >= 0 && $index < $this->getLength()) {
+                $this->setIndex($index, $coerced);
+            }
+            return true;
+        }
+
         if (self::isCanonicalNumericIndex($name)) {
             $isSelf = $receiver === $this;
             if ($isSelf) {
@@ -893,26 +927,148 @@ class JsTypedArray extends JsObject
             return $this;
         }
 
-        if ($this->buffer->isDetached()) {
+        // Fast path: coerce + pack the fill value once, then memcpy a bulk
+        // run of the byte pattern into the buffer. Avoids re-coercing the
+        // same JsValue thousands of times and skips the per-element pack.
+        if (!$this->buffer->isDetached() && $end <= $this->getLength()) {
+            $num = $this->coerceValue($value);
+            if ($this->packFormat === 'H') {
+                $packed = pack('v', self::float16Encode((float) $num));
+            } else {
+                $packed = pack($this->packFormat, $num);
+            }
+            $count = $end - $start;
+            $bytes = str_repeat($packed, $count);
+            $this->buffer->writeBytes(
+                $this->byteOffset + $start * $this->bytesPerElement,
+                $bytes,
+            );
             return $this;
         }
 
-        // Coerce + pack the fill value once, then splat the resulting
-        // bytes into the underlying buffer in one writeBytes. This
-        // turns an O((end-start) * bytesPerElement) cycle of pack +
-        // string-offset writes into a single C-level memcpy.
-        $num = $this->coerceValue($value);
-        if ($this->packFormat === 'H') {
-            $packed = pack('v', self::float16Encode((float) $num));
-        } else {
-            $packed = pack($this->packFormat, $num);
+        for ($i = $start; $i < $end; $i++) {
+            $this->setIndex($i, $value);
         }
 
-        $count = $end - $start;
-        $this->buffer->writeBytes(
-            $this->byteOffset + $start * $this->bytesPerElement,
-            str_repeat($packed, $count),
-        );
+        return $this;
+    }
+
+    /**
+     * Fast numeric sort for non-BigInt typed arrays without a comparison function.
+     *
+     * Reads the raw view bytes once, unpacks to PHP numbers, sorts in PHP,
+     * packs the sorted run back, and splices it into the buffer in a single
+     * write. This avoids constructing per-element JsNumber objects and the
+     * O(n) string-copy that getData/setData incur on every setIndex call.
+     *
+     * Returns null if this fast path cannot be taken (BigInt array, detached
+     * buffer, or a Float16Array where the half-precision encoding requires
+     * special handling). The caller should fall back to the generic sort.
+     */
+    public function sortNumericFast(): ?self
+    {
+        if ($this->isBigInt) {
+            return null;
+        }
+        if ($this->buffer->isDetached()) {
+            return null;
+        }
+
+        $len = $this->getLength();
+        if ($len < 2) {
+            return $this;
+        }
+
+        $bpe = $this->bytesPerElement;
+        $offset = $this->byteOffset;
+        $byteSize = $len * $bpe;
+
+        $data = $this->buffer->getData();
+        $slice = substr($data, $offset, $byteSize);
+        if (strlen($slice) < $byteSize) {
+            return null;
+        }
+
+        // Float16Array stores half-precision via a custom codec. Decode the
+        // raw u16 values to PHP floats and re-encode after sorting.
+        $isFloat16 = $this->packFormat === 'H';
+
+        if ($isFloat16) {
+            $u16s = unpack('v' . $len, $slice);
+            if ($u16s === false) {
+                return null;
+            }
+            $u16s = array_values($u16s);
+            $values = [];
+            foreach ($u16s as $u16) {
+                $values[] = self::float16Decode($u16);
+            }
+        } else {
+            // Unpack the entire slice in one call.
+            $values = unpack($this->packFormat . $len, $slice);
+            if ($values === false) {
+                return null;
+            }
+            // unpack() returns 1-indexed array; reindex to a flat list.
+            $values = array_values($values);
+        }
+
+        $isFloat = $isFloat16
+            || $this->typeName === 'Float32Array'
+            || $this->typeName === 'Float64Array';
+
+        if ($isFloat) {
+            // Spec sort order: NaN sorts to the end; -0 sorts before +0.
+            // Partition into NaN | sortable | (sort then merge).
+            $sortable = [];
+            $nanCount = 0;
+            foreach ($values as $v) {
+                if (is_nan($v)) {
+                    $nanCount++;
+                } else {
+                    $sortable[] = $v;
+                }
+            }
+            // Use a comparator that orders -0 before +0 (PHP's <=> treats them equal).
+            usort($sortable, static function (float $a, float $b): int {
+                if ($a === 0.0 && $b === 0.0) {
+                    $aNeg = (pack('e', $a) !== pack('e', 0.0));
+                    $bNeg = (pack('e', $b) !== pack('e', 0.0));
+                    if ($aNeg && !$bNeg) {
+                        return -1;
+                    }
+                    if (!$aNeg && $bNeg) {
+                        return 1;
+                    }
+                    return 0;
+                }
+                return $a <=> $b;
+            });
+            // NaN goes at the end. Use the canonical NaN bit pattern.
+            for ($i = 0; $i < $nanCount; $i++) {
+                $sortable[] = NAN;
+            }
+            $values = $sortable;
+        } else {
+            // Integer arrays: native numeric sort is deterministic and fast.
+            sort($values, SORT_NUMERIC);
+        }
+
+        // Pack everything in one call and splice into the buffer.
+        if ($isFloat16) {
+            $u16s = [];
+            foreach ($values as $v) {
+                $u16s[] = self::float16Encode((float) $v);
+            }
+            $packed = pack('v' . $len, ...$u16s);
+        } else {
+            $packed = pack($this->packFormat . $len, ...$values);
+        }
+        if (strlen($packed) !== $byteSize) {
+            return null;
+        }
+        $newData = substr_replace($data, $packed, $offset, $byteSize);
+        $this->buffer->setData($newData);
 
         return $this;
     }
