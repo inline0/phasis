@@ -1662,11 +1662,22 @@ class StringPrototype
         string $replacement,
         array|JsObject|null $namedCaptures = null,
     ): string {
+        // Implementation cap: throw RangeError before exhausting PHP memory on
+        // pathological replacements (e.g. `$1` repeated 2^16 times against a
+        // 2^20-char capture would expand to 2^36 bytes). Spec allows engines
+        // to throw on out-of-memory; SM throws InternalError, V8 throws
+        // RangeError. Match V8 here so the test262 catch-all works.
+        $maxLen = 256 * 1024 * 1024;
         $result = '';
         $len = strlen($replacement);
         $captureLen = count($captures);
         $i = 0;
         while ($i < $len) {
+            if (strlen($result) > $maxLen) {
+                throw new \PhpJs\Exceptions\RangeError(
+                    'Invalid string length'
+                );
+            }
             $ch = $replacement[$i];
             if ($ch !== '$' || $i + 1 >= $len) {
                 $result .= $ch;
