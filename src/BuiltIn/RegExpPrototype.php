@@ -1002,25 +1002,24 @@ class RegExpPrototype
         bool $hasIndices,
     ): ?JsObject {
         $matcher = new \PhpJs\Regex\Matcher($ast, $flags);
-        $startCu = $isSticky ? $lastIndex : $lastIndex;
-        $strCuLen = (int) (strlen(JsString::utf8ToUtf16LE($str)) / 2);
+        $startCu = $lastIndex;
         $stickyOnly = $isSticky;
         $match = null;
         if ($stickyOnly) {
-            // Sticky: only attempt at lastIndex.
+            // Sticky: only attempt at lastIndex; reject any match that
+            // starts past the requested anchor.
             $match = $matcher->match($str, $startCu);
             if ($match === null || $match['index'] !== $startCu) {
                 $match = null;
             }
         } else {
-            // Try each starting code-unit offset until match or end.
-            for ($i = $startCu; $i <= $strCuLen; $i++) {
-                $candidate = $matcher->match($str, $i);
-                if ($candidate !== null && $candidate['index'] === $i) {
-                    $match = $candidate;
-                    break;
-                }
-            }
+            // Matcher::match already advances internally from
+            // $startCu, returning the earliest match at or after
+            // that position. Calling it once is sufficient. Wrapping
+            // it in an outer for-loop that re-tries each successive
+            // start offset would re-walk the whole input on every
+            // iteration (quadratic on long no-match inputs).
+            $match = $matcher->match($str, $startCu);
         }
         if ($match === null) {
             return null;

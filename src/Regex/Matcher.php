@@ -1529,6 +1529,26 @@ class Matcher
             });
             return;
         }
+        // Hot path: when the atom is a plain CharClass (e.g. `\D`, `[a-z]`)
+        // with no inner capture groups, every iteration consumes exactly
+        // one input slot and leaves captures untouched. Walk the input
+        // tightly without re-entering matchNode for each step. This
+        // turns `^\D+$` against a 1M-codepoint input from a million
+        // matchNode dispatches (each charging the step budget) into a
+        // single linear scan. Required to keep approach 3 inside budget.
+        if ($atom instanceof CharClass && empty($innerGroups)) {
+            $this->enumerateCharClassQuantifier(
+                $atom,
+                $min,
+                $max,
+                $pos,
+                $captures,
+                $direction,
+                $iterCount,
+                $positions,
+            );
+            return;
+        }
         // Iterative loop instead of recursion so a quantifier matching
         // 100k+ times (e.g. `.+` against a long input) does not blow
         // the PHP call stack.
@@ -1562,6 +1582,60 @@ class Matcher
                 continue;
             }
             $pos = $newPos;
+            $iterCount++;
+        }
+    }
+
+    /**
+     * Tight CharClass quantifier scan. The atom matches at most one
+     * input slot per iteration and never mutates captures, so we can
+     * walk $this->input directly without re-dispatching through
+     * matchNode (which would charge the step budget per slot).
+     *
+     * Mirrors the standard enumerateQuantifier loop semantics: emit
+     * each reachable end-position once iterCount has met $min, stop
+     * at $max or when the class no longer matches.
+     *
+     * @param array<int, ?array{0:int,1:int}> $captures
+     * @param list<array{0:int,1:array<int, ?array{0:int,1:int}>}> $positions
+     */
+    private function enumerateCharClassQuantifier(
+        CharClass $cc,
+        int $min,
+        ?int $max,
+        int $pos,
+        array $captures,
+        int $direction,
+        int $iterCount,
+        array &$positions,
+    ): void {
+        $end = $direction > 0 ? $this->inputLen : 0;
+        while (true) {
+            if ($iterCount >= $min) {
+                $positions[] = [$pos, $captures];
+            }
+            if ($max !== null && $iterCount >= $max) {
+                return;
+            }
+            if ($direction > 0) {
+                if ($pos >= $end) {
+                    return;
+                }
+                $cu = $this->input[$pos];
+                if (!$this->charClassMatchesCu($cc, $cu)) {
+                    return;
+                }
+                $pos++;
+            } else {
+                if ($pos <= $end) {
+                    return;
+                }
+                $cu = $this->input[$pos - 1];
+                if (!$this->charClassMatchesCu($cc, $cu)) {
+                    return;
+                }
+                $pos--;
+            }
             $iterCount++;
         }
     }

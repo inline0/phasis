@@ -15201,6 +15201,36 @@ class Interpreter
                     $i += 2;
                     continue;
                 }
+                // ECMAScript `\d` is exactly [0-9] regardless of /u or /v,
+                // and `\D` is its complement [^0-9]. PCRE2 in PCRE2_UTF
+                // mode (which we always enable when emitting `/u` to PCRE)
+                // treats `\d` as Unicode-aware `\p{Nd}`, matching e.g.
+                // FULLWIDTH and Arabic-Indic digits. That over-matches and
+                // makes `\D` under-match. Emit explicit ASCII ranges so
+                // the spec semantics survive the trip through PCRE.
+                if ($next === 'd') {
+                    if ($inCharClass) {
+                        $result .= '0-9';
+                    } else {
+                        $result .= '[0-9]';
+                    }
+                    $i += 2;
+                    continue;
+                }
+                if ($next === 'D') {
+                    if ($inCharClass) {
+                        // Inside [...], emit the explicit complement of
+                        // [0-9] over the full Unicode code-point range.
+                        // PCRE \D under /u still excludes Unicode digits
+                        // (\p{Nd}), so a literal `\D` would diverge for
+                        // `[\D]u` matched against e.g. FULLWIDTH ZERO.
+                        $result .= '\\x{0}-\\x{2F}\\x{3A}-\\x{10FFFF}';
+                    } else {
+                        $result .= '[^0-9]';
+                    }
+                    $i += 2;
+                    continue;
+                }
                 // \u{XXXXXX} ES2015 unicode escape with braces — only in
                 // u/v mode. In non-unicode mode `\u` followed by `{` is an
                 // identity escape for `u` plus a quantifier `{N}`.
