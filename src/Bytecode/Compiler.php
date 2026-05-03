@@ -347,11 +347,23 @@ final class Compiler
         ) {
             throw new CompilerBailout('yield/await');
         }
-        // Don't recurse into nested function/arrow/class bodies —
-        // each gets its own compile attempt at call time.
+        // Arrow functions don't have their own arguments / this /
+        // new.target — they capture the enclosing function's bindings
+        // through the lexical environment. The compiled prologue
+        // skips installing those per-call slots when the function's
+        // own body doesn't reference them, so an arrow nested in this
+        // body that DOES reference arguments would resolve through a
+        // stale or missing binding at runtime. Scan the arrow body
+        // for those references and bail compilation if found.
+        if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+            $this->scanBailout($node->body);
+            return;
+        }
+        // Other nested bodies (regular functions, classes) get their
+        // own per-call arguments / this binding scopes, so the outer
+        // function's compile is unaffected by their identifier usage.
         if (
             $node instanceof \PhpJs\Ast\Expression\FunctionExpression
-            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
             || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
             || $node instanceof \PhpJs\Ast\Expression\ClassExpression
             || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
