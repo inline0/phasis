@@ -1527,11 +1527,22 @@ class Parser
             }
         } else {
             // Shorthand: { x } or { x = default }. The key doubles as the
-            // binding identifier, so reserved words (e.g. `class`, `enum`,
-            // `return`) must raise SyntaxError — BindingIdentifier cannot
-            // be a reserved word even in sloppy mode. Check by token type
-            // (Enum, Class_, etc.) and also by decoded value so Unicode
-            // escape forms like `enum` are still rejected.
+            // binding identifier, so it must already BE an
+            // identifier — string literals / numeric literals as the
+            // sole property are SyntaxErrors per spec (no
+            // BindingProperty[Yield, Await] : SingleNameBinding rule
+            // matches a non-identifier PropertyName).
+            if (!$key instanceof Identifier) {
+                throw new ParseError(
+                    'Object pattern shorthand requires an identifier',
+                    $keyToken,
+                );
+            }
+            // Reserved words (e.g. `class`, `enum`, `return`) must raise
+            // SyntaxError — BindingIdentifier cannot be a reserved word
+            // even in sloppy mode. Check by token type (Enum, Class_,
+            // etc.) and also by decoded value so Unicode escape forms
+            // like `enum` are still rejected.
             if (self::isReservedWordKeyword($keyToken->type)) {
                 throw new ParseError(
                     "Unexpected reserved word '{$keyToken->value}' in shorthand destructuring",
