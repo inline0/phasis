@@ -19245,6 +19245,16 @@ class Interpreter
                 // 4-byte UTF-8 = astral codepoint.
                 $hasAstralInUnicode = true;
             }
+            if (!$isUnicode && (ord($ch) & 0xF8) === 0xF0) {
+                // Non-/u: a raw astral character in the pattern is two
+                // UTF-16 code-unit atoms per spec. PCRE2 treats it as
+                // one codepoint, so a quantifier like `🐸?` would
+                // make the whole 4-byte char optional instead of just
+                // its trail surrogate. Route to the custom matcher
+                // whose parser splits raw astrals into a lead atom +
+                // pending-trail atom.
+                $hasLoneSurrogateEscape = true;
+            }
             if (!$inClass && $ch === '[') {
                 // /u patterns with `[^]` (negated empty class — i.e.
                 // "match any code unit including lone surrogates")

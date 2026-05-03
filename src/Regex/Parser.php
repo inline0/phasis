@@ -40,6 +40,14 @@ class Parser
     private bool $unicode;
     private int $groupCount = 0;
     private int $totalGroups = 0;
+    /**
+     * Pending trail surrogate produced when readCodePoint decoded a
+     * 4-byte UTF-8 SourceCharacter in non-/u mode. Per spec the
+     * supplementary codepoint is two UTF-16 code units, so the next
+     * parseAtom must yield the trail half before advancing further.
+     * -1 = none pending.
+     */
+    private int $pendingTrailSurrogate = -1;
     /** @var array<int, string> */
     private array $indexToName = [];
     /** @var list<string> Ordered, distinct named groups. */
@@ -125,10 +133,12 @@ class Parser
     private function parseAlternative(): Node
     {
         $terms = [];
-        while ($this->pos < $this->len) {
-            $ch = $this->src[$this->pos];
-            if ($ch === '|' || $ch === ')') {
-                break;
+        while ($this->pos < $this->len || $this->pendingTrailSurrogate !== -1) {
+            if ($this->pendingTrailSurrogate === -1) {
+                $ch = $this->src[$this->pos];
+                if ($ch === '|' || $ch === ')') {
+                    break;
+                }
             }
             $terms[] = $this->parseTerm();
         }
@@ -141,6 +151,12 @@ class Parser
     private function parseTerm(): Node
     {
         $atom = $this->parseAtom();
+        // When parseAtom split a non-/u astral SourceCharacter, the
+        // trail half is held in $pendingTrailSurrogate and any
+        // quantifier must attach to the trail (not this lead).
+        if ($this->pendingTrailSurrogate !== -1) {
+            return $atom;
+        }
         if ($this->pos >= $this->len) {
             return $atom;
         }
@@ -217,6 +233,11 @@ class Parser
 
     private function parseAtom(): Node
     {
+        if ($this->pendingTrailSurrogate !== -1) {
+            $cp = $this->pendingTrailSurrogate;
+            $this->pendingTrailSurrogate = -1;
+            return new Literal($cp);
+        }
         $ch = $this->src[$this->pos];
         if ($ch === '.') {
             $this->pos++;
@@ -246,6 +267,18 @@ class Parser
     private function parseLiteralChar(): Node
     {
         $cp = $this->readCodePoint();
+        // Non-/u: a 4-byte UTF-8 SourceCharacter is a supplementary
+        // codepoint that the spec treats as two UTF-16 code-unit
+        // atoms. Split into a Literal(highSurrogate) plus a deferred
+        // Literal(lowSurrogate) so a quantifier on the immediately-
+        // following position attaches to the trail half only.
+        if (!$this->unicode && $cp > 0xFFFF) {
+            $cp -= 0x10000;
+            $high = 0xD800 + ($cp >> 10);
+            $low = 0xDC00 + ($cp & 0x3FF);
+            $this->pendingTrailSurrogate = $low;
+            return new Literal($high);
+        }
         return new Literal($cp);
     }
 
@@ -766,7 +799,19 @@ class Parser
                     $ranges[] = [0x2D, 0x2D]; // literal -
                 }
             } elseif ($first !== null) {
-                $ranges[] = [$first, $first];
+                if (!$this->unicode && $first > 0xFFFF) {
+                    // Non-/u: a raw astral SourceCharacter inside a
+                    // class is two UTF-16 code-unit atoms per spec.
+                    // Split into lead/trail so each surrogate is its
+                    // own class member.
+                    $cp = $first - 0x10000;
+                    $high = 0xD800 + ($cp >> 10);
+                    $low = 0xDC00 + ($cp & 0x3FF);
+                    $ranges[] = [$high, $high];
+                    $ranges[] = [$low, $low];
+                } else {
+                    $ranges[] = [$first, $first];
+                }
             }
         }
         if ($this->pos >= $this->len) {
