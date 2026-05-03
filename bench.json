@@ -1,5 +1,5 @@
 {
-    "snapshotTime": "2026-05-01T07:15:55+00:00",
+    "snapshotTime": "2026-05-03T10:30:49+00:00",
     "runs": 5,
     "bench": "bench/microbench.js",
     "host": {
@@ -9,252 +9,252 @@
     },
     "git": {
         "branch": "main",
-        "head": "d1dafc380ff30967bf91fa1460ce745fb6777e34",
+        "head": "e893739f96b3e612d456ecfe9816a41491bcf69f",
         "dirty": false
     },
     "tests": {
         "loop-arith": {
-            "median": 11,
-            "min": 10,
-            "max": 11,
+            "median": 10,
+            "min": 9,
+            "max": 13,
             "samples": [
-                11,
-                11,
-                11,
-                11,
+                9,
+                13,
+                9,
+                12,
                 10
             ]
         },
         "loop-fib": {
-            "median": 6,
+            "median": 3,
             "min": 3,
-            "max": 6,
+            "max": 5,
             "samples": [
-                6,
-                6,
-                6,
+                3,
+                5,
+                3,
                 3,
                 3
             ]
         },
         "fn-recurse": {
-            "median": 20,
-            "min": 20,
-            "max": 21,
+            "median": 18,
+            "min": 18,
+            "max": 34,
             "samples": [
-                21,
-                20,
-                21,
-                20,
-                20
+                18,
+                34,
+                18,
+                19,
+                18
             ]
         },
         "obj-create": {
-            "median": 12,
-            "min": 12,
-            "max": 13,
+            "median": 14,
+            "min": 13,
+            "max": 22,
             "samples": [
-                12,
-                12,
-                12,
-                13,
+                14,
+                22,
+                14,
+                14,
                 13
             ]
         },
         "obj-prop": {
             "median": 16,
             "min": 16,
-            "max": 17,
+            "max": 32,
             "samples": [
+                32,
+                30,
                 16,
-                16,
-                17,
                 16,
                 16
             ]
         },
         "arr-push": {
-            "median": 152,
-            "min": 150,
-            "max": 154,
+            "median": 113,
+            "min": 102,
+            "max": 168,
             "samples": [
-                152,
-                150,
-                154,
-                152,
-                150
+                102,
+                168,
+                121,
+                113,
+                111
             ]
         },
         "arr-map": {
-            "median": 17,
+            "median": 21,
             "min": 17,
-            "max": 19,
+            "max": 24,
             "samples": [
-                17,
-                17,
-                17,
-                19,
-                19
+                21,
+                24,
+                21,
+                18,
+                17
             ]
         },
         "str-concat": {
-            "median": 3,
+            "median": 2,
             "min": 2,
-            "max": 4,
+            "max": 2,
             "samples": [
-                3,
-                4,
-                4,
+                2,
+                2,
+                2,
                 2,
                 2
             ]
         },
         "str-split-join": {
-            "median": 35,
-            "min": 34,
-            "max": 35,
+            "median": 27,
+            "min": 26,
+            "max": 36,
             "samples": [
-                34,
-                35,
-                34,
-                35,
-                35
+                26,
+                36,
+                27,
+                27,
+                27
             ]
         },
         "json-roundtrip": {
-            "median": 68,
-            "min": 66,
-            "max": 79,
+            "median": 65,
+            "min": 63,
+            "max": 83,
             "samples": [
-                79,
-                66,
-                67,
-                68,
-                68
+                63,
+                83,
+                65,
+                69,
+                63
             ]
         },
         "closure": {
-            "median": 26,
-            "min": 25,
-            "max": 28,
+            "median": 21,
+            "min": 21,
+            "max": 26,
             "samples": [
-                27,
-                25,
-                28,
-                25,
-                26
+                22,
+                26,
+                21,
+                21,
+                21
             ]
         },
         "destructure": {
             "median": 2,
-            "min": 2,
-            "max": 3,
+            "min": 1,
+            "max": 2,
             "samples": [
-                3,
+                1,
                 2,
-                3,
+                2,
                 2,
                 2
             ]
         }
     },
     "total": {
-        "median": 489.5,
-        "min": 470,
-        "max": 503.4,
+        "median": 421.3,
+        "min": 404,
+        "max": 572.7,
         "samples": [
-            503.4,
-            489.5,
-            498.2,
-            470,
-            471.3
+            413.2,
+            572.7,
+            427.4,
+            421.3,
+            404
         ]
     },
     "iterations": [
         {
             "tests": {
-                "loop-arith": 11,
-                "loop-fib": 6,
-                "fn-recurse": 21,
-                "obj-create": 12,
-                "obj-prop": 16,
-                "arr-push": 152,
-                "arr-map": 17,
-                "str-concat": 3,
-                "str-split-join": 34,
-                "json-roundtrip": 79,
-                "closure": 27,
-                "destructure": 3
-            },
-            "totalMs": 503.4
-        },
-        {
-            "tests": {
-                "loop-arith": 11,
-                "loop-fib": 6,
-                "fn-recurse": 20,
-                "obj-create": 12,
-                "obj-prop": 16,
-                "arr-push": 150,
-                "arr-map": 17,
-                "str-concat": 4,
-                "str-split-join": 35,
-                "json-roundtrip": 66,
-                "closure": 25,
-                "destructure": 2
-            },
-            "totalMs": 489.5
-        },
-        {
-            "tests": {
-                "loop-arith": 11,
-                "loop-fib": 6,
-                "fn-recurse": 21,
-                "obj-create": 12,
-                "obj-prop": 17,
-                "arr-push": 154,
-                "arr-map": 17,
-                "str-concat": 4,
-                "str-split-join": 34,
-                "json-roundtrip": 67,
-                "closure": 28,
-                "destructure": 3
-            },
-            "totalMs": 498.2
-        },
-        {
-            "tests": {
-                "loop-arith": 11,
+                "loop-arith": 9,
                 "loop-fib": 3,
-                "fn-recurse": 20,
-                "obj-create": 13,
-                "obj-prop": 16,
-                "arr-push": 152,
-                "arr-map": 19,
+                "fn-recurse": 18,
+                "obj-create": 14,
+                "obj-prop": 32,
+                "arr-push": 102,
+                "arr-map": 21,
                 "str-concat": 2,
-                "str-split-join": 35,
-                "json-roundtrip": 68,
-                "closure": 25,
+                "str-split-join": 26,
+                "json-roundtrip": 63,
+                "closure": 22,
+                "destructure": 1
+            },
+            "totalMs": 413.2
+        },
+        {
+            "tests": {
+                "loop-arith": 13,
+                "loop-fib": 5,
+                "fn-recurse": 34,
+                "obj-create": 22,
+                "obj-prop": 30,
+                "arr-push": 168,
+                "arr-map": 24,
+                "str-concat": 2,
+                "str-split-join": 36,
+                "json-roundtrip": 83,
+                "closure": 26,
                 "destructure": 2
             },
-            "totalMs": 470
+            "totalMs": 572.7
+        },
+        {
+            "tests": {
+                "loop-arith": 9,
+                "loop-fib": 3,
+                "fn-recurse": 18,
+                "obj-create": 14,
+                "obj-prop": 16,
+                "arr-push": 121,
+                "arr-map": 21,
+                "str-concat": 2,
+                "str-split-join": 27,
+                "json-roundtrip": 65,
+                "closure": 21,
+                "destructure": 2
+            },
+            "totalMs": 427.4
+        },
+        {
+            "tests": {
+                "loop-arith": 12,
+                "loop-fib": 3,
+                "fn-recurse": 19,
+                "obj-create": 14,
+                "obj-prop": 16,
+                "arr-push": 113,
+                "arr-map": 18,
+                "str-concat": 2,
+                "str-split-join": 27,
+                "json-roundtrip": 69,
+                "closure": 21,
+                "destructure": 2
+            },
+            "totalMs": 421.3
         },
         {
             "tests": {
                 "loop-arith": 10,
                 "loop-fib": 3,
-                "fn-recurse": 20,
+                "fn-recurse": 18,
                 "obj-create": 13,
                 "obj-prop": 16,
-                "arr-push": 150,
-                "arr-map": 19,
+                "arr-push": 111,
+                "arr-map": 17,
                 "str-concat": 2,
-                "str-split-join": 35,
-                "json-roundtrip": 68,
-                "closure": 26,
+                "str-split-join": 27,
+                "json-roundtrip": 63,
+                "closure": 21,
                 "destructure": 2
             },
-            "totalMs": 471.3
+            "totalMs": 404
         }
     ]
 }
