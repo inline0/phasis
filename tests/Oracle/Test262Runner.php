@@ -603,6 +603,39 @@ PHP;
 
         // test262 host function: print (used by some tests as a no-op or to store output).
         $engine->eval('function print() {}');
+
+        // $262.AbstractModuleSource: stub for the source-phase-imports proposal.
+        // The %AbstractModuleSource% intrinsic is a non-instantiable constructor
+        // whose prototype carries a [Symbol.toStringTag] accessor that returns the
+        // [[ModuleSourceClassName]] internal slot of its receiver (or undefined
+        // when absent). We never construct one in this engine, so the getter
+        // always returns undefined. We only need the descriptor shape to satisfy
+        // the AbstractModuleSource property tests: the constructor's "prototype"
+        // is non-writable / non-configurable, and its name/length use the
+        // built-in defaults (configurable: true, writable: false).
+        $engine->eval(<<<'JS'
+        (function() {
+            function AbstractModuleSource() {
+                throw new TypeError('%AbstractModuleSource% is not a constructor');
+            }
+            Object.defineProperty(AbstractModuleSource.prototype, Symbol.toStringTag, {
+                get: function() {
+                    // [[ModuleSourceClassName]] internal slot is never set on
+                    // any object in this engine, so always return undefined.
+                    return undefined;
+                },
+                set: undefined,
+                enumerable: false,
+                configurable: true,
+            });
+            Object.defineProperty(AbstractModuleSource, 'prototype', {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            });
+            $262.AbstractModuleSource = AbstractModuleSource;
+        })();
+        JS);
     }
 
     /**
