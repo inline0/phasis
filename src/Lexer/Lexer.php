@@ -82,12 +82,30 @@ class Lexer
             }
         }
 
+        // Soft cap on token count. Pathological flat programs (e.g.
+        // test262 regress-610026 with 2^21 sibling `{}` blocks) build
+        // millions of Token + SourceLocation objects that exceed PHP's
+        // 1 GB memory_limit before parse even starts. Detect that here
+        // and raise a JS-catchable SyntaxError so eval() callers can
+        // observe a clean failure instead of a PHP fatal.
+        $tokenCountCap = 2_000_000;
+        $tokenCountChecked = 0;
+
         while ($this->pos < $this->length) {
             $this->lineTerminatorBefore = false;
             $this->skipWhitespaceAndComments();
 
             if ($this->pos >= $this->length) {
                 break;
+            }
+            // Only sample every 65k tokens. count() on a 4M-element
+            // array is cheap, but doing this guard on the inner loop
+            // would still measurably slow normal sources.
+            if ((++$tokenCountChecked & 0xFFFF) === 0 && count($this->tokens) > $tokenCountCap) {
+                throw new SyntaxError(
+                    'Program exceeds maximum supported token count',
+                    new SourceLocation($this->line, $this->column, $this->pos),
+                );
             }
 
             // Inside template expression: } at brace depth 0 means template continuation.
@@ -121,14 +139,20 @@ class Lexer
                     }
                 }
             }
-            $token = new Token(
-                $token->type,
-                $token->value,
-                $token->location,
-                $this->lineTerminatorBefore,
-                $token->rawValue,
-                $token->cookedInvalid,
-            );
+            // Only re-wrap when the line-terminator flag actually differs.
+            // For pathological flat sources (e.g. `{}{}{}…` repeated 2M times)
+            // every redundant Token allocation balloons memory; keeping the
+            // already-built Token saves ~50% of token-graph residency.
+            if ($this->lineTerminatorBefore !== $token->lineTerminatorBefore) {
+                $token = new Token(
+                    $token->type,
+                    $token->value,
+                    $token->location,
+                    $this->lineTerminatorBefore,
+                    $token->rawValue,
+                    $token->cookedInvalid,
+                );
+            }
             $this->tokens[] = $token;
         }
 
@@ -1716,6 +1740,13 @@ class Lexer
 
     /**
      * Read a RegExp literal: /pattern/flags
+     *
+     * Char-by-char `$pattern .= $ch; $this->advance();` is fine for
+     * ordinary regex literals but degenerates on pathological 16M-char
+     * patterns (e.g. `/\u{0…01234}/u`). Bulk-copy any run of "boring"
+     * bytes between special characters (`\`, `[`, `]`, `/`, CR, LF) via
+     * `strcspn` so the inner loop iterates O(specials) instead of
+     * O(pattern length).
      */
     private function readRegExp(SourceLocation $start): Token
     {
@@ -1725,8 +1756,10 @@ class Lexer
         $inCharClass = false;
         // strcspn jumps past long ASCII runs (e.g. a 16 MiB zero
         // padded \\u{…} hex sequence) without per-char concat which
-        // is O(N^2) on long patterns.
-        $stopOpen = "\\[/\n\r\xE2"; // 0xE2 catches U+2028/U+2029 leads.
+        // is O(N^2) on long patterns. Class-vs-not-class needs
+        // different stop sets so `]` is recognized only inside `[…]`.
+        // 0xE2 catches U+2028/U+2029 UTF-8 leads.
+        $stopOpen = "\\[/\n\r\xE2";
         $stopClass = "\\]\n\r\xE2";
 
         while ($this->pos < $this->length) {
@@ -1742,6 +1775,23 @@ class Lexer
             }
 
             $ch = $this->source[$this->pos];
+
+            // Fast-path: skip past any run of non-special bytes.
+            if (
+                $ch !== '\\' && $ch !== '[' && $ch !== ']' && $ch !== '/'
+                && $ch !== "\n" && $ch !== "\r" && $ch !== "\xE2"
+            ) {
+                $skip = strcspn($this->source, $stopBytes, $this->pos);
+                if ($skip > 0) {
+                    $pattern .= substr($this->source, $this->pos, $skip);
+                    $this->pos += $skip;
+                    $this->column += $skip;
+                    if ($this->pos >= $this->length) {
+                        break;
+                    }
+                    continue;
+                }
+            }
 
             if ($ch === '\\') {
                 $segments[] = $ch;

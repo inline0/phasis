@@ -14539,6 +14539,22 @@ class Interpreter
 
     private function createRegExpObject(string $pattern, string $flags): JsObject
     {
+        // Pathological `\u{0…0XXXX}` braced escapes (test262
+        // unicode-braced.js / unicode-class-braced.js construct 16M-char
+        // patterns) make every downstream char-by-char scan an O(n)
+        // walk over millions of leading zeros. Pre-collapse them in /u
+        // mode to the canonical short form so validators, transforms,
+        // and the custom-matcher parser all work on a small string.
+        // [[OriginalSource]] is set later from $originalPattern, so the
+        // user-visible `.source` still reflects what the program wrote.
+        $originalPattern = $pattern;
+        if (
+            (str_contains($flags, 'u') || str_contains($flags, 'v'))
+            && strlen($pattern) > 64
+            && str_contains($pattern, '\\u{')
+        ) {
+            $pattern = self::canonicalizeUnicodeBracedEscapes($pattern);
+        }
         // Validate flags per spec 22.2.3.1: only valid flag characters, no duplicates.
         // 'v' is the unicodeSets flag (ES2024), mutually exclusive with 'u'.
         $validFlags = 'dgimsuvy';
@@ -14602,9 +14618,12 @@ class Interpreter
         $noenum = static fn (JsValue $v) => PropertyDescriptor::data($v, false, false, true);
         // Internal slots for compile() and prototype getters.
         // These are not affected by user-visible property overrides.
+        // [[OriginalSource]] preserves the literal pattern text users wrote
+        // (including any pathological leading zeros in `\u{0…0XXXX}` escapes
+        // that the canonical-form pre-pass elided from the working pattern).
         $obj->defineOwnProperty(
             '[[OriginalSource]]',
-            PropertyDescriptor::data(new JsString($pattern), false, false, false),
+            PropertyDescriptor::data(new JsString($originalPattern), false, false, false),
         );
         $obj->defineOwnProperty(
             '[[OriginalFlags]]',
@@ -18468,6 +18487,34 @@ class Interpreter
             $result = $diff . $result;
         }
         return ltrim($result, '0') ?: '0';
+    }
+
+    /**
+     * Collapse leading zeros in `\u{HHHH…}` braced unicode escapes for /u
+     * mode patterns. `\u{0…01234}` and `\u{1234}` denote the same code
+     * point per spec §22.2.1.6, so canonicalising once here lets every
+     * downstream char-by-char scan (validators, transforms, custom-matcher
+     * parser, etc.) operate on a small string. Patterns whose contents are
+     * not pure hex (e.g. `\u{0.0}`) or that exceed the spec-permitted six
+     * hex digits after stripping zeros are preserved verbatim so the
+     * downstream validators still report SyntaxError.
+     */
+    public static function canonicalizeUnicodeBracedEscapes(string $pattern): string
+    {
+        return (string) preg_replace_callback(
+            '/\\\\u\{0+([0-9A-Fa-f]+)\}/',
+            static function (array $m): string {
+                $hex = $m[1];
+                // Cap at 7 hex digits so values ≥ 0x10000000 stay long
+                // enough for downstream "value too large" checks. Six
+                // digits suffice for any valid code point (≤ 0x10FFFF).
+                if (strlen($hex) > 7) {
+                    return $m[0];
+                }
+                return '\\u{' . $hex . '}';
+            },
+            $pattern,
+        );
     }
 
     /**
