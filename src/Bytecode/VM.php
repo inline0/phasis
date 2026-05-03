@@ -1054,6 +1054,25 @@ final class VM
                             $callee = $stack[$base - 1];
                             $sp = $base - 1;
                             if (!$callee instanceof JsFunction) {
+                                // Callable Proxy: dispatch through its
+                                // [[Call]] (apply trap) so a Proxy whose
+                                // target is a function (including a
+                                // ShadowRealm WrappedFunction) can be
+                                // invoked from a non-method call site.
+                                // Without this branch, identifier-form
+                                // calls like `proxy(arg)` reach the
+                                // generic "is not a function" throw even
+                                // though the proxy advertises typeof
+                                // "function". CALL_METHOD already has
+                                // the analogous proxy branch.
+                                if (
+                                    $callee instanceof \PhpJs\Value\JsProxy
+                                    && $callee->isCallable()
+                                ) {
+                                    $stack[$sp++] = $callee->apply($undef, $args);
+                                    $pc += 2;
+                                    break;
+                                }
                                 throw new TypeError(
                                     (TypeConversion::toString($callee) ?: 'value') . ' is not a function'
                                 );
