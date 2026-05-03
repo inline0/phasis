@@ -9,7 +9,7 @@ cd "$ROOT_DIR"
 FAILED=0
 
 echo "=== PHPStan ==="
-if php -d memory_limit=512M vendor/bin/phpstan analyse; then
+if php -d memory_limit=4G vendor/bin/phpstan analyse; then
     echo "PHPStan: PASS"
 else
     echo "PHPStan: FAIL"

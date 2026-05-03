@@ -6312,14 +6312,27 @@ class TemporalObject
         }
         // For named IANA zones, resolve to the primary (canonical)
         // identifier so Link names compare equal to their target.
-        $canonical = $tz;
-        if (class_exists('IntlTimeZone', false)) {
-            try {
-                $icuCanonical = \IntlTimeZone::getCanonicalID($tz);
-                if ($icuCanonical !== '') {
-                    $canonical = $icuCanonical;
+        // Prefer our local backward-link map (tracks tzdata 2024b)
+        // because ICU's canonical mapping lags or diverges from
+        // IANA on several entries (e.g. Antarctica/South_Pole and
+        // Africa/Asmara, where ICU still points the canonical at
+        // the deprecated Asmera form).
+        $linkTarget = self::ianaLinkCanonical($tz);
+        if ($linkTarget !== null) {
+            $canonical = $linkTarget;
+        } elseif (self::isIanaLinkTarget($tz)) {
+            $canonical = $tz;
+        } else {
+            $canonical = $tz;
+            if (class_exists('IntlTimeZone', false)) {
+                try {
+                    $icuCanonical = \IntlTimeZone::getCanonicalID($tz);
+                    if ($icuCanonical !== '') {
+                        $icuLinkTarget = self::ianaLinkCanonical($icuCanonical);
+                        $canonical = $icuLinkTarget ?? $icuCanonical;
+                    }
+                } catch (\Throwable) {
                 }
-            } catch (\Throwable) {
             }
         }
         // Per the IANA backzone override, some Pacific zones canonicalize differently
@@ -11007,6 +11020,24 @@ class TemporalObject
      */
     private static function resolveTimeZone(string $tz): \DateTimeZone
     {
+        // IANA's "backward" file lists deprecated zone names as Link
+        // entries pointing at a canonical zone. PHP's tzdata stores
+        // both names with separate (often divergent pre-1970) offset
+        // histories: e.g. Africa/Asmera carries the LMT for Addis
+        // Ababa (+02:27:16) while the canonical Africa/Asmara uses
+        // its own LMT (+02:35:20). Per the Temporal spec, the link
+        // and target must produce identical offsets at every instant.
+        // Resolve the canonical name and use its zone object for all
+        // offset queries; the original [[TimeZone]] slot continues
+        // to expose the input identifier.
+        $canon = self::ianaLinkCanonical($tz);
+        if ($canon !== null) {
+            try {
+                return new \DateTimeZone($canon);
+            } catch (\Throwable) {
+                // Fall through to direct lookup.
+            }
+        }
         // Try direct timezone ID first (IANA names, UTC, etc.).
         try {
             return new \DateTimeZone($tz);
@@ -11025,6 +11056,210 @@ class TemporalObject
         }
 
         throw new RangeError("Invalid time zone: {$tz}");
+    }
+
+    /**
+     * Resolve a deprecated IANA Link name (from tzdata "backward")
+     * to its canonical Zone target. Returns null when the input is
+     * already canonical or unknown. Comparisons are case-insensitive
+     * to match IANA's own case-folding rules. Tracks tzdata 2024b.
+     */
+    private static function ianaLinkCanonical(string $name): ?string
+    {
+        static $links = null;
+        if ($links === null) {
+            $links = [
+                'africa/asmera' => 'Africa/Asmara',
+                'africa/timbuktu' => 'Africa/Bamako',
+                'america/argentina/comodrivadavia' => 'America/Argentina/Catamarca',
+                'america/atka' => 'America/Adak',
+                'america/buenos_aires' => 'America/Argentina/Buenos_Aires',
+                'america/catamarca' => 'America/Argentina/Catamarca',
+                'america/coral_harbour' => 'America/Atikokan',
+                'america/cordoba' => 'America/Argentina/Cordoba',
+                'america/ensenada' => 'America/Tijuana',
+                'america/fort_wayne' => 'America/Indiana/Indianapolis',
+                'america/godthab' => 'America/Nuuk',
+                'america/indianapolis' => 'America/Indiana/Indianapolis',
+                'america/jujuy' => 'America/Argentina/Jujuy',
+                'america/knox_in' => 'America/Indiana/Knox',
+                'america/louisville' => 'America/Kentucky/Louisville',
+                'america/mendoza' => 'America/Argentina/Mendoza',
+                'america/montreal' => 'America/Toronto',
+                'america/nipigon' => 'America/Toronto',
+                'america/pangnirtung' => 'America/Iqaluit',
+                'america/porto_acre' => 'America/Rio_Branco',
+                'america/rainy_river' => 'America/Winnipeg',
+                'america/rosario' => 'America/Argentina/Cordoba',
+                'america/santa_isabel' => 'America/Tijuana',
+                'america/shiprock' => 'America/Denver',
+                'america/thunder_bay' => 'America/Toronto',
+                'america/virgin' => 'America/St_Thomas',
+                'america/yellowknife' => 'America/Edmonton',
+                'antarctica/south_pole' => 'Antarctica/McMurdo',
+                'asia/ashkhabad' => 'Asia/Ashgabat',
+                'asia/calcutta' => 'Asia/Kolkata',
+                'asia/choibalsan' => 'Asia/Ulaanbaatar',
+                'asia/chongqing' => 'Asia/Shanghai',
+                'asia/chungking' => 'Asia/Shanghai',
+                'asia/dacca' => 'Asia/Dhaka',
+                'asia/harbin' => 'Asia/Shanghai',
+                'asia/istanbul' => 'Europe/Istanbul',
+                'asia/kashgar' => 'Asia/Urumqi',
+                'asia/katmandu' => 'Asia/Kathmandu',
+                'asia/macao' => 'Asia/Macau',
+                'asia/rangoon' => 'Asia/Yangon',
+                'asia/saigon' => 'Asia/Ho_Chi_Minh',
+                'asia/tel_aviv' => 'Asia/Jerusalem',
+                'asia/thimbu' => 'Asia/Thimphu',
+                'asia/ujung_pandang' => 'Asia/Makassar',
+                'asia/ulan_bator' => 'Asia/Ulaanbaatar',
+                'atlantic/faeroe' => 'Atlantic/Faroe',
+                'atlantic/jan_mayen' => 'Arctic/Longyearbyen',
+                'australia/act' => 'Australia/Sydney',
+                'australia/canberra' => 'Australia/Sydney',
+                'australia/currie' => 'Australia/Hobart',
+                'australia/lhi' => 'Australia/Lord_Howe',
+                'australia/nsw' => 'Australia/Sydney',
+                'australia/north' => 'Australia/Darwin',
+                'australia/queensland' => 'Australia/Brisbane',
+                'australia/south' => 'Australia/Adelaide',
+                'australia/tasmania' => 'Australia/Hobart',
+                'australia/victoria' => 'Australia/Melbourne',
+                'australia/west' => 'Australia/Perth',
+                'australia/yancowinna' => 'Australia/Broken_Hill',
+                'brazil/acre' => 'America/Rio_Branco',
+                'brazil/denoronha' => 'America/Noronha',
+                'brazil/east' => 'America/Sao_Paulo',
+                'brazil/west' => 'America/Manaus',
+                'cet' => 'Europe/Brussels',
+                'cst6cdt' => 'America/Chicago',
+                'canada/atlantic' => 'America/Halifax',
+                'canada/central' => 'America/Winnipeg',
+                'canada/eastern' => 'America/Toronto',
+                'canada/mountain' => 'America/Edmonton',
+                'canada/newfoundland' => 'America/St_Johns',
+                'canada/pacific' => 'America/Vancouver',
+                'canada/saskatchewan' => 'America/Regina',
+                'canada/yukon' => 'America/Whitehorse',
+                'chile/continental' => 'America/Santiago',
+                'chile/easterisland' => 'Pacific/Easter',
+                'cuba' => 'America/Havana',
+                'eet' => 'Europe/Athens',
+                'est' => 'America/Panama',
+                'est5edt' => 'America/New_York',
+                'egypt' => 'Africa/Cairo',
+                'eire' => 'Europe/Dublin',
+                'europe/belfast' => 'Europe/London',
+                'europe/kiev' => 'Europe/Kyiv',
+                'europe/nicosia' => 'Asia/Nicosia',
+                'europe/tiraspol' => 'Europe/Chisinau',
+                'europe/uzhgorod' => 'Europe/Kyiv',
+                'europe/zaporozhye' => 'Europe/Kyiv',
+                'gb' => 'Europe/London',
+                'gb-eire' => 'Europe/London',
+                'hst' => 'Pacific/Honolulu',
+                'hongkong' => 'Asia/Hong_Kong',
+                'iceland' => 'Atlantic/Reykjavik',
+                'iran' => 'Asia/Tehran',
+                'israel' => 'Asia/Jerusalem',
+                'jamaica' => 'America/Jamaica',
+                'japan' => 'Asia/Tokyo',
+                'kwajalein' => 'Pacific/Kwajalein',
+                'libya' => 'Africa/Tripoli',
+                'met' => 'Europe/Brussels',
+                'mst' => 'America/Phoenix',
+                'mst7mdt' => 'America/Denver',
+                'mexico/bajanorte' => 'America/Tijuana',
+                'mexico/bajasur' => 'America/Mazatlan',
+                'mexico/general' => 'America/Mexico_City',
+                'nz' => 'Pacific/Auckland',
+                'nz-chat' => 'Pacific/Chatham',
+                'navajo' => 'America/Denver',
+                'prc' => 'Asia/Shanghai',
+                'pst8pdt' => 'America/Los_Angeles',
+                'pacific/enderbury' => 'Pacific/Kanton',
+                'pacific/johnston' => 'Pacific/Honolulu',
+                'pacific/ponape' => 'Pacific/Pohnpei',
+                'pacific/samoa' => 'Pacific/Pago_Pago',
+                'pacific/truk' => 'Pacific/Chuuk',
+                'pacific/yap' => 'Pacific/Chuuk',
+                'poland' => 'Europe/Warsaw',
+                'portugal' => 'Europe/Lisbon',
+                'roc' => 'Asia/Taipei',
+                'rok' => 'Asia/Seoul',
+                'singapore' => 'Asia/Singapore',
+                'turkey' => 'Europe/Istanbul',
+                'us/alaska' => 'America/Anchorage',
+                'us/aleutian' => 'America/Adak',
+                'us/arizona' => 'America/Phoenix',
+                'us/central' => 'America/Chicago',
+                'us/east-indiana' => 'America/Indiana/Indianapolis',
+                'us/eastern' => 'America/New_York',
+                'us/hawaii' => 'Pacific/Honolulu',
+                'us/indiana-starke' => 'America/Indiana/Knox',
+                'us/michigan' => 'America/Detroit',
+                'us/mountain' => 'America/Denver',
+                'us/pacific' => 'America/Los_Angeles',
+                'us/samoa' => 'Pacific/Pago_Pago',
+                'w-su' => 'Europe/Moscow',
+                'wet' => 'Europe/Lisbon',
+            ];
+        }
+        return $links[strtolower($name)] ?? null;
+    }
+
+    /**
+     * Return true when the given name is the canonical target of one
+     * or more deprecated Link entries. Used to bypass ICU's
+     * canonicalization when ICU lags IANA's preferred direction.
+     */
+    private static function isIanaLinkTarget(string $name): bool
+    {
+        static $targets = null;
+        if ($targets === null) {
+            $targets = [
+                'Africa/Asmara' => true, 'Africa/Bamako' => true,
+                'Africa/Cairo' => true, 'Africa/Tripoli' => true,
+                'America/Argentina/Buenos_Aires' => true, 'America/Argentina/Catamarca' => true,
+                'America/Argentina/Cordoba' => true, 'America/Argentina/Jujuy' => true,
+                'America/Argentina/Mendoza' => true,
+                'America/Adak' => true, 'America/Atikokan' => true, 'America/Tijuana' => true,
+                'America/Indiana/Indianapolis' => true, 'America/Indiana/Knox' => true,
+                'America/Kentucky/Louisville' => true, 'America/Toronto' => true,
+                'America/Iqaluit' => true, 'America/Rio_Branco' => true,
+                'America/Winnipeg' => true, 'America/Edmonton' => true, 'America/Denver' => true,
+                'America/Halifax' => true, 'America/St_Johns' => true, 'America/Vancouver' => true,
+                'America/Regina' => true, 'America/Whitehorse' => true, 'America/Santiago' => true,
+                'America/Havana' => true, 'America/Panama' => true, 'America/New_York' => true,
+                'America/Nuuk' => true, 'America/St_Thomas' => true, 'America/Sao_Paulo' => true,
+                'America/Manaus' => true, 'America/Noronha' => true, 'America/Mazatlan' => true,
+                'America/Mexico_City' => true, 'America/Phoenix' => true, 'America/Chicago' => true,
+                'America/Detroit' => true, 'America/Los_Angeles' => true, 'America/Anchorage' => true,
+                'America/Jamaica' => true,
+                'Antarctica/McMurdo' => true,
+                'Asia/Ashgabat' => true, 'Asia/Kolkata' => true, 'Asia/Ulaanbaatar' => true,
+                'Asia/Shanghai' => true, 'Asia/Dhaka' => true, 'Asia/Urumqi' => true,
+                'Asia/Kathmandu' => true, 'Asia/Macau' => true, 'Asia/Yangon' => true,
+                'Asia/Ho_Chi_Minh' => true, 'Asia/Jerusalem' => true, 'Asia/Thimphu' => true,
+                'Asia/Makassar' => true, 'Asia/Hong_Kong' => true, 'Asia/Tehran' => true,
+                'Asia/Tokyo' => true, 'Asia/Taipei' => true, 'Asia/Seoul' => true,
+                'Asia/Singapore' => true, 'Asia/Nicosia' => true,
+                'Atlantic/Faroe' => true, 'Atlantic/Reykjavik' => true,
+                'Arctic/Longyearbyen' => true,
+                'Australia/Sydney' => true, 'Australia/Hobart' => true, 'Australia/Lord_Howe' => true,
+                'Australia/Darwin' => true, 'Australia/Brisbane' => true, 'Australia/Adelaide' => true,
+                'Australia/Melbourne' => true, 'Australia/Perth' => true, 'Australia/Broken_Hill' => true,
+                'Europe/Athens' => true, 'Europe/Brussels' => true, 'Europe/Dublin' => true,
+                'Europe/London' => true, 'Europe/Kyiv' => true, 'Europe/Chisinau' => true,
+                'Europe/Lisbon' => true, 'Europe/Moscow' => true, 'Europe/Warsaw' => true,
+                'Europe/Istanbul' => true,
+                'Pacific/Auckland' => true, 'Pacific/Chatham' => true, 'Pacific/Easter' => true,
+                'Pacific/Honolulu' => true, 'Pacific/Kanton' => true, 'Pacific/Kwajalein' => true,
+                'Pacific/Pago_Pago' => true, 'Pacific/Pohnpei' => true, 'Pacific/Chuuk' => true,
+            ];
+        }
+        return isset($targets[$name]);
     }
 
     /**
