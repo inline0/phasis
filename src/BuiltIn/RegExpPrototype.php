@@ -1619,6 +1619,7 @@ class RegExpPrototype
             // This allows side effects (like Symbol.match getters that recompile the
             // regex) to take effect before splitting begins.
             $splitter = $this_;
+            $unicodeMatching = false;
             $regExpCtor = \PhpJs\Engine::getCurrentInterpreter()
                 ? \PhpJs\Engine::getCurrentInterpreter()->getGlobalValue('RegExp')
                 : null;
@@ -1648,8 +1649,10 @@ class RegExpPrototype
                         );
                     }
                 }
-                // Get flags and add 'y'.
+                // Get flags. Per spec 22.2.5.13 step 5-7: read flags first, then
+                // derive unicodeMatching, then construct newFlags.
                 $flags = TypeConversion::toString($this_->get('flags'));
+                $unicodeMatching = str_contains($flags, 'u') || str_contains($flags, 'v');
                 if (!str_contains($flags, 'y')) {
                     $flags .= 'y';
                 }
@@ -1690,7 +1693,7 @@ class RegExpPrototype
             $execIsIntrinsic = self::$intrinsicExec !== null
                 && self::isIntrinsicExec($splitter);
             if ($pcrePattern === null || !$execIsIntrinsic) {
-                return self::symbolSplitViaExec($splitter, $S, $lim);
+                return self::symbolSplitViaExec($splitter, $S, $lim, $unicodeMatching);
             }
 
             $size = mb_strlen($S, 'UTF-8');
@@ -1792,10 +1795,18 @@ class RegExpPrototype
 
     /**
      * Fallback split using exec for objects without [[PCREPattern]].
+     *
+     * Per spec 22.2.5.13, the split loop indexes the input by UTF-16 code
+     * units, and in unicodeMatching mode advances the cursor with
+     * AdvanceStringIndex (which steps over surrogate pairs as one unit).
+     * sm/RegExp/split-trace observes this exact step pattern via a Proxy
+     * splitter, so we must use UTF-16 indices and AdvanceStringIndex here.
      */
-    private static function symbolSplitViaExec(JsObject $rx, string $S, int $lim): JsArray
+    private static function symbolSplitViaExec(JsObject $rx, string $S, int $lim, bool $unicodeMatching = false): JsArray
     {
-        $size = mb_strlen($S, 'UTF-8');
+        // $size, $p, $q are UTF-16 code unit indices.
+        $u16 = JsString::utf8ToUtf16LE($S);
+        $size = (int) (strlen($u16) / 2);
 
         if ($size === 0) {
             // Per spec 22.2.5.13 step 24: empty target — call regExpExec
@@ -1818,7 +1829,9 @@ class RegExpPrototype
             $z = self::regExpExec($rx, $S);
 
             if ($z instanceof JsNull) {
-                $q++;
+                $q = $unicodeMatching
+                    ? self::advanceStringIndex($S, $q)
+                    : $q + 1;
                 continue;
             }
 
@@ -1829,11 +1842,13 @@ class RegExpPrototype
             $eVal = TypeConversion::toLength($rx->get('lastIndex'));
             $e = min($eVal, $size);
             if ($e === $p) {
-                $q++;
+                $q = $unicodeMatching
+                    ? self::advanceStringIndex($S, $q)
+                    : $q + 1;
                 continue;
             }
 
-            $T = mb_substr($S, $p, $q - $p, 'UTF-8');
+            $T = self::sliceUtf16Range($S, $p, $q);
             $A[] = new JsString($T);
             $lengthA++;
             if ($lengthA === $lim) {
@@ -1855,7 +1870,7 @@ class RegExpPrototype
             $q = $p;
         }
 
-        $A[] = new JsString(mb_substr($S, $p, null, 'UTF-8'));
+        $A[] = new JsString(self::sliceUtf16Range($S, $p, $size));
         return JsArray::fromArray($A);
     }
 
