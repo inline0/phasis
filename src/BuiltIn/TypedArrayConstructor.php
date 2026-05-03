@@ -1261,35 +1261,84 @@ class TypedArrayConstructor
 
                 $hasMapFn = $mapFn instanceof JsFunction;
 
-                // Collect source elements into a list.
-                $elements = [];
-                if ($source instanceof JsTypedArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $elements[] = $source->getIndex($i);
-                    }
-                } elseif ($source instanceof JsArray) {
-                    for ($i = 0; $i < $source->getLength(); $i++) {
-                        $elements[] = $source->get((string) $i);
-                    }
-                } elseif ($source instanceof JsObject) {
-                    $iterSym = SymbolConstructor::iterator();
-                    $iterMethod = $source->getBySymbol($iterSym);
-                    if ($iterMethod instanceof JsFunction) {
-                        $elements = self::consumeIterator($iterMethod, $source);
-                    } elseif ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
-                        throw new TypeError('TypedArray.from: iterator is not an object');
-                    } else {
-                        $len = (int) TypeConversion::toNumber($source->get('length'));
-                        for ($i = 0; $i < $len; $i++) {
-                            $elements[] = $source->get((string) $i);
-                        }
-                    }
+                // ToObject throws on null/undefined per spec; the source must
+                // be coerceable before any iteration begins.
+                if ($source instanceof JsUndefined || $source instanceof \PhpJs\Value\JsNull) {
+                    throw new TypeError(
+                        'TypedArray.from: source is null or undefined'
+                    );
                 }
 
-                $len = count($elements);
+                // Per spec: GetMethod(source, @@iterator). If non-undefined,
+                // iterator path; else ArrayLike path with construct-before-read.
+                $iterSym = SymbolConstructor::iterator();
+                $iterMethod = null;
+                if ($source instanceof JsObject) {
+                    $iterMethod = $source->getBySymbol($iterSym);
+                } elseif ($source instanceof \PhpJs\Value\JsString) {
+                    $strProto = \PhpJs\Value\JsString::getStringPrototype();
+                    $iterMethod = $strProto !== null ? $strProto->getBySymbol($iterSym) : null;
+                }
+                if ($iterMethod instanceof \PhpJs\Value\JsHTMLDDA) {
+                    throw new TypeError('TypedArray.from: iterator is not an object');
+                }
+                // GetMethod: null/undefined → undefined (skip iterator path);
+                // any other non-callable → TypeError.
+                if (
+                    $iterMethod !== null
+                    && !$iterMethod instanceof JsFunction
+                    && !$iterMethod instanceof JsUndefined
+                    && !$iterMethod instanceof \PhpJs\Value\JsNull
+                ) {
+                    throw new TypeError(
+                        'TypedArray.from: @@iterator is not callable'
+                    );
+                }
 
-                // TypedArrayCreate(C, [len]): construct via C and then
-                // ValidateTypedArray on the result.
+                if ($iterMethod instanceof JsFunction) {
+                    // Iterator path: collect → construct(len) → set.
+                    $elements = self::consumeIterator($iterMethod, $source);
+                    $len = count($elements);
+                    $targetObj = $this_->construct([JsNumber::of((float) $len)]);
+                    if (!$targetObj instanceof JsTypedArray) {
+                        throw new TypeError(
+                            'TypedArray.from: constructor did not return a TypedArray'
+                        );
+                    }
+                    if ($targetObj->getLength() < $len) {
+                        throw new TypeError(
+                            'TypedArray.from: constructor returned a smaller TypedArray'
+                        );
+                    }
+                    for ($k = 0; $k < $len; $k++) {
+                        $kValue = $elements[$k];
+                        if ($hasMapFn) {
+                            /** @var JsFunction $mapFn */
+                            $kValue = $mapFn->call($thisArg, [$kValue, JsNumber::of((float) $k)]);
+                        }
+                        $targetObj->set((string) $k, $kValue);
+                    }
+                    return $targetObj;
+                }
+
+                // ArrayLike path: get length → construct → loop(get + set).
+                if ($source instanceof JsTypedArray) {
+                    $len = $source->getLength();
+                } elseif ($source instanceof JsArray) {
+                    $len = $source->getLength();
+                } elseif ($source instanceof JsObject) {
+                    $len = (int) TypeConversion::toNumber($source->get('length'));
+                } elseif ($source instanceof \PhpJs\Value\JsString) {
+                    // ArrayLike fallback: UTF-16 code unit count.
+                    $u16Source = \PhpJs\Value\JsString::utf8ToUtf16LE($source->value);
+                    $len = (int) (strlen($u16Source) / 2);
+                } else {
+                    // Number/Boolean/Symbol after ToObject have no length.
+                    $len = 0;
+                }
+                if ($len < 0) {
+                    $len = 0;
+                }
                 $targetObj = $this_->construct([JsNumber::of((float) $len)]);
                 if (!$targetObj instanceof JsTypedArray) {
                     throw new TypeError(
@@ -1301,19 +1350,25 @@ class TypedArrayConstructor
                         'TypedArray.from: constructor returned a smaller TypedArray'
                     );
                 }
-
-                // Per spec step 12: for each element, map and Set individually.
                 for ($k = 0; $k < $len; $k++) {
-                    $kValue = $elements[$k];
+                    if ($source instanceof JsTypedArray) {
+                        $kValue = $source->getIndex($k);
+                    } elseif ($source instanceof \PhpJs\Value\JsString) {
+                        $cu = ord($u16Source[$k * 2]) | (ord($u16Source[$k * 2 + 1]) << 8);
+                        $kValue = new \PhpJs\Value\JsString(
+                            \PhpJs\Value\JsString::utf16CodeUnitToUtf8($cu),
+                        );
+                    } elseif ($source instanceof JsObject) {
+                        $kValue = $source->get((string) $k);
+                    } else {
+                        $kValue = JsUndefined::instance();
+                    }
                     if ($hasMapFn) {
                         /** @var JsFunction $mapFn */
-                        $mappedValue = $mapFn->call($thisArg, [$kValue, JsNumber::of((float) $k)]);
-                    } else {
-                        $mappedValue = $kValue;
+                        $kValue = $mapFn->call($thisArg, [$kValue, JsNumber::of((float) $k)]);
                     }
-                    $targetObj->set((string) $k, $mappedValue);
+                    $targetObj->set((string) $k, $kValue);
                 }
-
                 return $targetObj;
             },
             1,
@@ -1519,7 +1574,7 @@ class TypedArrayConstructor
      *
      * @return list<JsValue>
      */
-    private static function consumeIterator(JsFunction $iterMethod, JsObject $obj): array
+    private static function consumeIterator(JsFunction $iterMethod, JsValue $obj): array
     {
         $iterator = $iterMethod->call($obj, []);
         // Per spec GetIteratorFromMethod step 4: if iterator is not an
