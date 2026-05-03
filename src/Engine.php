@@ -1313,10 +1313,31 @@ class Engine
             }
             return $result;
         }
+        if ($value instanceof \PhpJs\Value\JsTypedArray) {
+            $result = [];
+            $len = $value->getLength();
+            for ($i = 0; $i < $len; $i++) {
+                $result[] = $this->toPhp($value->getIndex($i));
+            }
+            return $result;
+        }
         if ($value instanceof JsObject) {
             $result = [];
             foreach ($value->getOwnPropertyNames() as $key) {
-                $val = $value->get($key);
+                // Use the property descriptor so an accessor whose
+                // get() throws does not propagate up through the
+                // eval-result conversion. Data slots and accessors
+                // both convert via $value->get($key), which fires the
+                // user-supplied getter and can fail; reading the
+                // descriptor first lets us skip accessors safely.
+                $desc = $value->getOwnPropertyDescriptor($key);
+                if ($desc === null) {
+                    continue;
+                }
+                if ($desc->isAccessorDescriptor()) {
+                    continue;
+                }
+                $val = $desc->value ?? $value->get($key);
                 if ($val instanceof \PhpJs\Value\JsFunction) {
                     continue; // Skip function properties
                 }
