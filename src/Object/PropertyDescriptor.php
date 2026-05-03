@@ -81,11 +81,18 @@ class PropertyDescriptor
             set: $set,
         );
         $desc->isAccessor = true;
-        // Mark both fields as explicitly specified so subsequent merge
-        // operations replace the existing get/set rather than keeping the
-        // previous value (which would mask intentional `set: undefined`).
-        $desc->hasGet = true;
-        $desc->hasSet = true;
+        // Mark only the fields the caller actually supplied so partial
+        // accessor descriptors (e.g. __defineGetter__'s `{get}`-only
+        // descriptor) merge with an existing descriptor instead of
+        // overwriting the unspecified half. Callers that need to clear a
+        // half should construct the descriptor directly and set the
+        // hasGet / hasSet flags explicitly.
+        if ($get !== null) {
+            $desc->hasGet = true;
+        }
+        if ($set !== null) {
+            $desc->hasSet = true;
+        }
         return $desc;
     }
 }
