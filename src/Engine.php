@@ -1275,7 +1275,8 @@ class Engine
         }
     }
 
-    private function toPhp(JsValue $value): mixed
+    /** @param array<int, true> $seen Object-id set used to break self-referential graphs (globalThis). */
+    private function toPhp(JsValue $value, array $seen = []): mixed
     {
         if ($value instanceof JsUndefined || $value instanceof \PhpJs\Value\JsNull) {
             return null;
@@ -1306,10 +1307,15 @@ class Engine
             return null; // Functions don't convert to PHP values
         }
         if ($value instanceof \PhpJs\Value\JsArray) {
+            $oid = spl_object_id($value);
+            if (isset($seen[$oid])) {
+                return null;
+            }
+            $seen[$oid] = true;
             $result = [];
             $len = $value->getLength();
             for ($i = 0; $i < $len; $i++) {
-                $result[] = $this->toPhp($value->get((string) $i));
+                $result[] = $this->toPhp($value->get((string) $i), $seen);
             }
             return $result;
         }
@@ -1317,11 +1323,16 @@ class Engine
             $result = [];
             $len = $value->getLength();
             for ($i = 0; $i < $len; $i++) {
-                $result[] = $this->toPhp($value->getIndex($i));
+                $result[] = $this->toPhp($value->getIndex($i), $seen);
             }
             return $result;
         }
         if ($value instanceof JsObject) {
+            $oid = spl_object_id($value);
+            if (isset($seen[$oid])) {
+                return null;
+            }
+            $seen[$oid] = true;
             $result = [];
             foreach ($value->getOwnPropertyNames() as $key) {
                 // Use the property descriptor so an accessor whose
@@ -1341,7 +1352,7 @@ class Engine
                 if ($val instanceof \PhpJs\Value\JsFunction) {
                     continue; // Skip function properties
                 }
-                $result[$key] = $this->toPhp($val);
+                $result[$key] = $this->toPhp($val, $seen);
             }
             return $result;
         }
