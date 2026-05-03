@@ -37,6 +37,14 @@ class ModuleLoader
     /** @var array<string, true> Set of modules currently being evaluated (cycle detection). */
     private array $evaluating = [];
 
+    /** @var array<string, true> Set of paths currently inside an
+     *  evaluateModuleBodyOnDemand call. Used as a cycle guard so a
+     *  dynamic import that re-enters a cycle member doesn't recurse
+     *  forever. Distinct from the bodyEvaluating flag, which is set
+     *  for every eagerly-reachable module at the top of
+     *  drainBodyQueue and would trigger a false positive here. */
+    private array $onDemandStack = [];
+
     /** @var list<string> Module paths whose bodies are awaiting execution, in link order. */
     private array $bodyQueue = [];
 
@@ -84,7 +92,19 @@ class ModuleLoader
             // returned namespace reflects the post-evaluation state
             // (and any throw the body produces propagates to the
             // caller).
-            if (!$cached->bodyEvaluated && $cached->pendingBody !== null && !$this->linking) {
+            //
+            // A module whose body is already queued for the current
+            // drain pass (bodyEvaluating == true) must NOT be force-
+            // evaluated here — doing so preempts the spec-mandated DFS
+            // order. The drain loop will reach it in source order,
+            // and any pending dynamic-import promise resolves through
+            // microtasks once the body has run.
+            if (
+                !$cached->bodyEvaluated
+                && $cached->pendingBody !== null
+                && !$this->linking
+                && !$cached->bodyEvaluating
+            ) {
                 $this->evaluateModuleBodyOnDemand($cached);
                 if ($cached->evaluationError !== null) {
                     throw new \PhpJs\Exceptions\JsThrowable($cached->evaluationError);
@@ -986,52 +1006,67 @@ class ModuleLoader
             $record->bodyEvaluated = true;
             return;
         }
-        // First, evaluate any of this module's EAGER dependencies that
-        // we skipped during the top-level drain. We must NOT
-        // transitively evaluate deferred edges — those wait for their
-        // own MOP-trigger.
-        foreach (array_keys($record->eagerEdges) as $depPath) {
-            $dep = $this->modules[$depPath] ?? null;
-            if ($dep !== null && !$dep->bodyEvaluated && $dep->pendingBody !== null) {
-                $this->evaluateModuleBodyOnDemand($dep);
-            }
+        // Cycle guard. A dynamic import or deferred-namespace MOP that
+        // touches a record already on the onDemand call stack must
+        // return immediately rather than re-entering the body. Without
+        // it, a cyclic eager graph (A imports B, B imports A) where
+        // a body queued for the top-level drain triggers a dynamic
+        // import recurses through the eager-dep walk forever and
+        // overflows the PHP stack.
+        if (isset($this->onDemandStack[$record->path])) {
+            return;
         }
-        $pending = $record->pendingBody;
-        $record->pendingBody = null;
-        $record->bodyEvaluated = true;
-        $record->bodyEvaluating = true;
-        $prevModulePath = $this->interpreter->getCurrentModulePath();
-        $this->interpreter->setCurrentModulePath($record->path);
+        $this->onDemandStack[$record->path] = true;
         try {
-            $this->interpreter->executeModuleBody(
-                $pending['program']->body,
-                $pending['moduleEnv'],
-                alreadyHoisted: true,
-                onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record): void {
-                    $record->evaluationPromise = $p;
-                    // Drain microtasks until this module's TLA promise
-                    // settles. Lazy triggers run synchronously from the
-                    // host's perspective so the consumer of the
-                    // deferred namespace sees fully-evaluated exports.
-                    $iter = 0;
-                    while ($p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
-                        \PhpJs\Value\JsPromise::drainMicrotasks();
-                    }
-                    if ($p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
-                        $this->interpreter->throwJsValue($p->getResolvedValue());
-                    }
-                },
-            );
-        } catch (\PhpJs\Exceptions\JsThrowable $e) {
-            // Stash the thrown value so subsequent deferred-namespace
-            // accesses re-throw the same JsValue (per spec
-            // EvaluateSync: a rejected evaluation promise propagates
-            // forever).
-            $record->evaluationError = $e->jsValue;
-            throw $e;
+            // First, evaluate any of this module's EAGER dependencies that
+            // we skipped during the top-level drain. We must NOT
+            // transitively evaluate deferred edges — those wait for their
+            // own MOP-trigger.
+            foreach (array_keys($record->eagerEdges) as $depPath) {
+                $dep = $this->modules[$depPath] ?? null;
+                if ($dep !== null && !$dep->bodyEvaluated && $dep->pendingBody !== null) {
+                    $this->evaluateModuleBodyOnDemand($dep);
+                }
+            }
+            $pending = $record->pendingBody;
+            $record->pendingBody = null;
+            $record->bodyEvaluated = true;
+            $record->bodyEvaluating = true;
+            $prevModulePath = $this->interpreter->getCurrentModulePath();
+            $this->interpreter->setCurrentModulePath($record->path);
+            try {
+                $this->interpreter->executeModuleBody(
+                    $pending['program']->body,
+                    $pending['moduleEnv'],
+                    alreadyHoisted: true,
+                    onAsyncStart: function (\PhpJs\Value\JsPromise $p) use ($record): void {
+                        $record->evaluationPromise = $p;
+                        // Drain microtasks until this module's TLA promise
+                        // settles. Lazy triggers run synchronously from the
+                        // host's perspective so the consumer of the
+                        // deferred namespace sees fully-evaluated exports.
+                        $iter = 0;
+                        while ($p->getState() === \PhpJs\Value\JsPromise::STATE_PENDING && $iter++ < 100000) {
+                            \PhpJs\Value\JsPromise::drainMicrotasks();
+                        }
+                        if ($p->getState() === \PhpJs\Value\JsPromise::STATE_REJECTED) {
+                            $this->interpreter->throwJsValue($p->getResolvedValue());
+                        }
+                    },
+                );
+            } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                // Stash the thrown value so subsequent deferred-namespace
+                // accesses re-throw the same JsValue (per spec
+                // EvaluateSync: a rejected evaluation promise propagates
+                // forever).
+                $record->evaluationError = $e->jsValue;
+                throw $e;
+            } finally {
+                $this->interpreter->setCurrentModulePath($prevModulePath);
+                $record->bodyEvaluating = false;
+            }
         } finally {
-            $this->interpreter->setCurrentModulePath($prevModulePath);
-            $record->bodyEvaluating = false;
+            unset($this->onDemandStack[$record->path]);
         }
     }
 
@@ -1731,6 +1766,7 @@ class ModuleLoader
     {
         $this->modules = [];
         $this->evaluating = [];
+        $this->onDemandStack = [];
         $this->bodyQueue = [];
         $this->linking = false;
     }
