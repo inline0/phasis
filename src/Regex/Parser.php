@@ -760,17 +760,27 @@ class Parser
         $ranges = [];
         $negatedRanges = []; // For unioning negative escapes.
         while ($this->pos < $this->len && $this->src[$this->pos] !== ']') {
+            $firstStartPos = $this->pos;
+            $firstWasEscape = $this->src[$this->pos] === '\\';
             $first = $this->parseClassAtom($negatedRanges);
-            // /u mode: an adjacent high+low surrogate pair encodes
-            // a single astral codepoint (UTF16Decode in spec terms).
-            // Combine them so [\\uD834\\uDF06]/u matches U+1D306.
+            // /u mode: an adjacent high+low surrogate pair encodes a
+            // single astral codepoint (UTF16Decode in spec terms).
+            // Combine them so [𝌆]/u matches U+1D306.
+            // Per ECMA-262 22.2.1.4, the codepoint combine applies
+            // only when BOTH halves are RegExpUnicodeEscapeSequences
+            // (`\u`-escapes); a mixed escape+raw or raw+escape pair
+            // stays as two separate atoms because raw surrogates are
+            // already individual SourceCharacters.
+            $nextCh = $this->pos < $this->len ? $this->src[$this->pos] : '';
             if (
                 $this->unicode
                 && $first !== null
                 && $first >= 0xD800 && $first <= 0xDBFF
-                && $this->pos < $this->len
-                && $this->src[$this->pos] !== ']'
-                && $this->src[$this->pos] !== '-'
+                && $nextCh !== ''
+                && $nextCh !== ']'
+                && $nextCh !== '-'
+                && $firstWasEscape
+                && $nextCh === '\\'
             ) {
                 $savePos = $this->pos;
                 $second = $this->parseClassAtom($negatedRanges);
