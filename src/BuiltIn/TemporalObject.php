@@ -5671,7 +5671,10 @@ class TemporalObject
             $startSec = $endSec;
             $endSec = $tmp;
         }
-        $transitions = $tzObj->getTransitions($startSec, $endSec);
+        // Widen by 1 second on each side: getTransitions excludes transitions
+        // that fall exactly on the boundary, but we still need to detect a
+        // DST flip whose instant is the user-supplied ns1 or ns2.
+        $transitions = $tzObj->getTransitions($startSec - 1, $endSec + 1);
         if (count($transitions) < 2) {
             return false;
         }
@@ -6132,11 +6135,15 @@ class TemporalObject
                 !self::isFixedOffset($tz)
                 && self::tzHasTransitionBetween($tz, $ns1, $ns2)
             ) {
+                $years = self::getDurationField($dur, 'years');
+                $months = self::getDurationField($dur, 'months');
+                $weeks = self::getDurationField($dur, 'weeks');
+                $days = self::getDurationField($dur, 'days');
                 $dateOnly = self::createDurationObject(
-                    self::getDurationField($dur, 'years'),
-                    self::getDurationField($dur, 'months'),
-                    self::getDurationField($dur, 'weeks'),
-                    self::getDurationField($dur, 'days'),
+                    $years,
+                    $months,
+                    $weeks,
+                    $days,
                     0,
                     0,
                     0,
@@ -6147,35 +6154,87 @@ class TemporalObject
                 $startObj = self::createZonedDateTimeObject($ns1, $tz, 'iso8601');
                 $afterDates = self::addDurationToZdt($startObj, $dateOnly, 1, 'constrain');
                 $subDayNs = bcsub($ns2, $afterDates, 0);
-                // Sign sanity: date portion and sub-day must agree in sign,
-                // otherwise leave the original PDT-derived duration alone.
                 $dateSign = self::durationSign($dateOnly);
                 $subSign = bccomp($subDayNs, '0', 0);
-                if ($dateSign === 0 || $subSign === 0 || (($dateSign > 0) === ($subSign > 0))) {
-                    $unitNsMap = [
-                        'hour' => '3600000000000',
-                        'minute' => '60000000000',
-                        'second' => '1000000000',
-                        'millisecond' => '1000000',
-                        'microsecond' => '1000',
-                        'nanosecond' => '1',
-                        'day' => '86400000000000',
-                    ];
-                    $rounded = $subDayNs;
-                    $smallest = $smallestUnit ?? 'nanosecond';
-                    if (isset($unitNsMap[$smallest])) {
-                        $unitNs = $unitNsMap[$smallest];
-                        $incNs = bcmul((string) (isset($riNum) ? $riNum : 1), $unitNs, 0);
-                        if ($incNs !== '0' && $incNs !== '1') {
+                // Sign-disagreement case: the calendar walk overshot because
+                // a DST transition or date-line jump made the destination land
+                // past ns2. Per spec DifferenceZonedDateTime, back off one day
+                // and recompute the sub-day portion.
+                if ($dateSign !== 0 && $subSign !== 0 && (($dateSign > 0) !== ($subSign > 0))) {
+                    if ($dateSign > 0) {
+                        $days -= 1;
+                    } else {
+                        $days += 1;
+                    }
+                    $dateOnly = self::createDurationObject(
+                        $years,
+                        $months,
+                        $weeks,
+                        $days,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    $afterDates = self::addDurationToZdt($startObj, $dateOnly, 1, 'constrain');
+                    $subDayNs = bcsub($ns2, $afterDates, 0);
+                }
+                $unitNsMap = [
+                    'hour' => '3600000000000',
+                    'minute' => '60000000000',
+                    'second' => '1000000000',
+                    'millisecond' => '1000000',
+                    'microsecond' => '1000',
+                    'nanosecond' => '1',
+                    'day' => '86400000000000',
+                ];
+                $rounded = $subDayNs;
+                $smallest = $smallestUnit ?? 'nanosecond';
+                if (isset($unitNsMap[$smallest])) {
+                    $unitNs = $unitNsMap[$smallest];
+                    $incNs = bcmul((string) (isset($riNum) ? $riNum : 1), $unitNs, 0);
+                    if ($incNs !== '0' && $incNs !== '1') {
+                        // For day-level rounding, fractional day uses the
+                        // actual calendar day length (which may differ from
+                        // 24h around DST starts/ends or offset transitions).
+                        if ($smallest === 'day') {
+                            $rounded = self::roundDaysWithCalendarLength(
+                                $subDayNs,
+                                $startObj,
+                                $dateOnly,
+                                isset($riNum) ? $riNum : 1,
+                                $rmStr ?? 'trunc',
+                            );
+                        } else {
                             $rounded = self::roundNs($subDayNs, $incNs, $rmStr ?? 'trunc');
                         }
                     }
+                }
+                if ($smallest === 'day') {
+                    // After day rounding, $rounded is an integer number of days.
+                    $extraDays = (int) bcdiv($rounded, '86400000000000', 0);
+                    $days += $extraDays;
+                    $dur = self::createDurationObject(
+                        $years,
+                        $months,
+                        $weeks,
+                        $days,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                } else {
                     $timePart = self::nsToTimeDuration($rounded, 'hour');
                     $dur = self::createDurationObject(
-                        self::getDurationField($dur, 'years'),
-                        self::getDurationField($dur, 'months'),
-                        self::getDurationField($dur, 'weeks'),
-                        self::getDurationField($dur, 'days'),
+                        $years,
+                        $months,
+                        $weeks,
+                        $days,
                         self::getDurationField($timePart, 'hours'),
                         self::getDurationField($timePart, 'minutes'),
                         self::getDurationField($timePart, 'seconds'),
@@ -8201,18 +8260,44 @@ class TemporalObject
                     $endParts['day'],
                     self::getSlotString($relativeTo, '[[Calendar]]'),
                 );
-                $startOfEndDayNs = self::startOfDayInTimeZone(
-                    $endParts['year'],
-                    $endParts['month'],
-                    $endParts['day'],
-                    $tz,
-                );
-                $remNsBc = bcsub($endEpochNs, $startOfEndDayNs, 0);
                 $dateUnitsOrder = ['year', 'month', 'week', 'day'];
                 $dateDiffLU = in_array($largestUnit, $dateUnitsOrder, true) ? $largestUnit : 'day';
                 $dateDiffOpts = new JsObject();
                 $dateDiffOpts->set('largestUnit', new JsString($dateDiffLU));
                 $dateDiff = self::plainDateDifference($refDate, $endDate, $dateDiffOpts, 1);
+                // Compute time remainder as (end - (start + dateDiff)) so that
+                // date-line skips (e.g. Apia 2011-12-30) and DST half-hours
+                // get accounted for correctly. start + dateDiff lands at the
+                // calendar-equivalent wall-clock instant for that many days
+                // forward, and the actual UTC delta to end is the leftover.
+                if (!($relativeTo instanceof JsObject)) {
+                    throw new \LogicException('isZdtRelativeTo implies JsObject');
+                }
+                $relZdt = $relativeTo;
+                $rtAfterDates = self::addDurationToZdt($relZdt, $dateDiff, 1, 'constrain');
+                $remNsBc = bcsub($endEpochNs, $rtAfterDates, 0);
+                // Sign-disagreement (rare): if the calendar walk overshot,
+                // back off one day and recompute. Mirrors the difference
+                // logic in zonedDateTimeDifference.
+                $ddSign = self::durationSign($dateDiff);
+                $remSign = bccomp($remNsBc, '0', 0);
+                if ($ddSign !== 0 && $remSign !== 0 && (($ddSign > 0) !== ($remSign > 0))) {
+                    $adjDays = self::getDurationField($dateDiff, 'days') + ($ddSign > 0 ? -1 : 1);
+                    $dateDiff = self::createDurationObject(
+                        self::getDurationField($dateDiff, 'years'),
+                        self::getDurationField($dateDiff, 'months'),
+                        self::getDurationField($dateDiff, 'weeks'),
+                        $adjDays,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                    );
+                    $rtAfterDates = self::addDurationToZdt($relZdt, $dateDiff, 1, 'constrain');
+                    $remNsBc = bcsub($endEpochNs, $rtAfterDates, 0);
+                }
                 $remTimeFromNs = self::nsToTimeDuration($remNsBc, 'hour');
                 $combined = self::createDurationObject(
                     self::getDurationField($dateDiff, 'years'),
@@ -8506,13 +8591,14 @@ class TemporalObject
                             $yNum = (float) $isoYear;
                         }
                     } elseif ($cal === 'roc') {
-                        $base = $eraLower === 'roc-inverse' || $eraLower === 'before-roc' ? -1 : 1;
-                        $yNum = $base * $eraYearNum + 1911 * ($base > 0 ? 1 : -1);
-                        // Simpler: roc 1 = 1912; before-roc 1 = 1911.
+                        // ROC year fields are calendar-relative (year 1 = ISO
+                        // 1912). For era="roc", the calendar year is the era
+                        // year directly. For "roc-inverse"/"before-roc",
+                        // calendar year 0 = ISO 1911 = before-roc year 1.
                         if ($eraLower === 'roc-inverse' || $eraLower === 'before-roc') {
-                            $yNum = 1912 - $eraYearNum;
+                            $yNum = 1 - $eraYearNum;
                         } else {
-                            $yNum = 1911 + $eraYearNum;
+                            $yNum = $eraYearNum;
                         }
                     } elseif ($cal === 'gregory') {
                         $yNum = in_array($eraLower, ['bc', 'bce', 'gregory-inverse'], true)
@@ -11557,7 +11643,16 @@ class TemporalObject
                 // wall day = exactly 1 day). For larger units (year /
                 // month / week), keep "= dayLen" as time so a no-op
                 // round of e.g. 1Y 24h doesn't bubble into 1Y 1D.
+                // Special case: a zero-length wall day (e.g. Apia's
+                // skipped 2011-12-30) should still consume as one day
+                // when walking forward and there's any time left to
+                // attribute, since the calendar advances even though no
+                // UTC ns elapsed.
                 if (bccomp($dayLenNs, '0', 0) === 0) {
+                    if (bccomp($timeNsBc, '0', 0) > 0) {
+                        $absDays++;
+                        continue;
+                    }
                     break;
                 }
                 $cmp = bccomp($timeNsBc, $dayLenNs, 0);
@@ -12269,6 +12364,25 @@ class TemporalObject
                 'isLeapMonth' => false,
             ];
         }
+        // Hebrew: use the pure-PHP implementation. ICU's IntlCalendar gives
+        // wrong day counts for Cheshvan/Kislev in some years.
+        if ($calendar === 'hebrew') {
+            $h = self::isoToHebrewDate($y, $m, $d);
+            $hYear = $h['year'];
+            $icuMonth = $h['icuMonth'];
+            $hDay = $h['day'];
+            $isLeap = self::isHebrewLeapYear($hYear);
+            $isLeapMonth = $isLeap && $icuMonth === 5;
+            $monthCode = self::calendarMonthToCode($calendar, $hYear, $icuMonth, $isLeapMonth);
+            $monthOneBased = self::calendarMonthToOneBased($calendar, $hYear, $icuMonth, $isLeapMonth);
+            return [
+                'year' => $hYear,
+                'month' => $monthOneBased,
+                'monthCode' => $monthCode,
+                'day' => $hDay,
+                'isLeapMonth' => $isLeapMonth,
+            ];
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12472,6 +12586,12 @@ class TemporalObject
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDayOfYear($isoY, $isoM, $isoD);
         }
+        if ($calendar === 'hebrew') {
+            $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
+            $startDays = self::hebrewElapsedDaysToFirstTishrei($h['year']);
+            $thisDays = self::isoDateToDays($isoY, $isoM, $isoD);
+            return $thisDays - $startDays + 1;
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12503,6 +12623,10 @@ class TemporalObject
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDaysInMonth($isoY, $isoM);
         }
+        if ($calendar === 'hebrew') {
+            $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
+            return self::hebrewDaysInMonth($h['year'], $h['icuMonth']);
+        }
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
@@ -12532,6 +12656,10 @@ class TemporalObject
     {
         if (in_array($calendar, ['iso8601', 'gregory', 'roc', 'japanese', 'buddhist'], true)) {
             return self::isoDaysInYear($isoY);
+        }
+        if ($calendar === 'hebrew') {
+            $h = self::isoToHebrewDate($isoY, $isoM, $isoD);
+            return self::hebrewYearLength($h['year']);
         }
         if (!class_exists('IntlCalendar', false)) {
             return null;
@@ -12794,6 +12922,13 @@ class TemporalObject
         if (!class_exists('IntlCalendar', false)) {
             return null;
         }
+        // islamic-umalqura's astronomical lookup tables only span ~1300-1600 AH.
+        // Outside a generous bound around that range ICU silently extrapolates
+        // and produces results that diverge from the spec. SpiderMonkey's
+        // tests reject such inputs explicitly (see icu4x #4914).
+        if ($calendar === 'islamic-umalqura' && ($year < 1 || $year > 9999)) {
+            return null;
+        }
         // Resolve ICU 0-indexed month from monthCode (preferred) or month number.
         $icuMonth = null;
         $isLeapMonth = false;
@@ -12862,6 +12997,32 @@ class TemporalObject
         if ($icuMonth === null) {
             return null;
         }
+        // Hebrew: bypass ICU. ICU's getActualMaximum reports stale month
+        // lengths for some years, which causes Cheshvan/Kislev to come back
+        // as 29 even when Rosh Hashanah postponement makes them 30.
+        if ($calendar === 'hebrew') {
+            $isLeap = self::isHebrewLeapYear($year);
+            // ICU month indices range 0..12 in both leap and non-leap years;
+            // index 5 is Adar I in leap years and unused in non-leap years.
+            if ($icuMonth < 0 || $icuMonth > 12) {
+                return null;
+            }
+            if (!$isLeap && $icuMonth === 5) {
+                return null;
+            }
+            // Validate leap-month placement: Adar I lives at icuMonth=5
+            // and only exists in leap years (the !$isLeap+icuMonth=5 case
+            // is already short-circuited above, so checking the index is
+            // sufficient here).
+            if ($isLeapMonth && $icuMonth !== 5) {
+                return null;
+            }
+            $dim = self::hebrewDaysInMonth($year, $icuMonth);
+            if ($day < 1 || $day > $dim) {
+                return null;
+            }
+            return self::hebrewToIsoDate($year, $icuMonth, $day);
+        }
         try {
             $icuCal = $calendar;
             static $aliasMap = [
@@ -12914,7 +13075,199 @@ class TemporalObject
     /** True if the Hebrew year has 13 months (leap). */
     private static function isHebrewLeapYear(int $year): bool
     {
-        return in_array($year % 19, [0, 3, 6, 8, 11, 14, 17], true);
+        $r = (7 * $year + 1) % 19;
+        if ($r < 0) {
+            $r += 19;
+        }
+        return $r < 7;
+    }
+
+    /**
+     * Calendar-elapsed-days through 1 Tishrei of the given AM year,
+     * counted from the Hebrew epoch (1 Tishrei AM 1 = day 0).
+     *
+     * This is Reingold-Dershowitz "Calendrical Calculations" §8.2 step 1:
+     * the molad-of-Tishri postponed only by the Lo ADU rule. Year-length
+     * correction (the "no 356-day, no 382-day year" fix) is applied
+     * separately in {@see hebrewNewYearDay}.
+     */
+    private static function hebrewCalendarElapsedDays(int $year): int
+    {
+        $monthsElapsed = intdiv(235 * $year - 234, 19);
+        // Parts of the lunation: 24 hours/day * 1080 parts/hour = 25920 parts/day.
+        // Each lunation: 29d 12h 793p.
+        $partsElapsed = 12084 + 13753 * $monthsElapsed;
+        $day = 29 * $monthsElapsed + intdiv($partsElapsed, 25920);
+        // Lo ADU rosh: postpone by 1 if the molad would fall on Sun/Wed/Fri.
+        // Reingold's compact form: if (3*(day+1)) mod 7 < 3, postpone.
+        $r = (3 * ($day + 1)) % 7;
+        if ($r < 0) {
+            $r += 7;
+        }
+        if ($r < 3) {
+            $day++;
+        }
+        return $day;
+    }
+
+    /**
+     * Day count from the Hebrew epoch to 1 Tishrei of the given AM year,
+     * including the year-length correction (Gatarad / Betutkpat fix-up).
+     *
+     * Per Reingold-Dershowitz, the postponement on year Y depends on both
+     * the (Y-1, Y) gap and the (Y, Y+1) gap:
+     *   - if (Y, Y+1) raw = 356, postpone year Y by 2 days,
+     *   - if (Y-1, Y) raw = 382, postpone year Y by 1 day.
+     */
+    private static function hebrewNewYearDay(int $year): int
+    {
+        $day = self::hebrewCalendarElapsedDays($year);
+        $prevGap = $day - self::hebrewCalendarElapsedDays($year - 1);
+        $nextGap = self::hebrewCalendarElapsedDays($year + 1) - $day;
+        if ($nextGap === 356) {
+            $day += 2;
+        } elseif ($prevGap === 382) {
+            $day += 1;
+        }
+        return $day;
+    }
+
+    /**
+     * Days from ISO 1970-01-01 to 1 Tishrei of the given Hebrew year.
+     * Hebrew epoch = ISO -3760-09-07 proleptic Gregorian = day -2092590.
+     */
+    private static function hebrewElapsedDaysToFirstTishrei(int $year): int
+    {
+        return self::hebrewNewYearDay($year) - 2092590;
+    }
+
+    /** Number of days in a Hebrew year (353/354/355 regular, 383/384/385 leap). */
+    private static function hebrewYearLength(int $year): int
+    {
+        return self::hebrewNewYearDay($year + 1) - self::hebrewNewYearDay($year);
+    }
+
+    /**
+     * Days in the given Hebrew month using ICU's month indexing (which is
+     * stable across leap and non-leap years):
+     *   0=Tishrei, 1=Cheshvan, 2=Kislev, 3=Tevet, 4=Shevat,
+     *   5=Adar I (leap years only), 6=Adar/Adar II,
+     *   7=Nisan, 8=Iyar, 9=Sivan, 10=Tammuz, 11=Av, 12=Elul.
+     * In non-leap years ICU index 5 is invalid (callers must skip it).
+     */
+    private static function hebrewDaysInMonth(int $year, int $icuMonth): int
+    {
+        $isLeap = self::isHebrewLeapYear($year);
+        $yearLen = self::hebrewYearLength($year);
+        // Cheshvan (ICU index 1): 30 only in long years (355 / 385).
+        if ($icuMonth === 1) {
+            return ($yearLen === 355 || $yearLen === 385) ? 30 : 29;
+        }
+        // Kislev (ICU index 2): 29 only in short years (353 / 383).
+        if ($icuMonth === 2) {
+            return ($yearLen === 353 || $yearLen === 383) ? 29 : 30;
+        }
+        // Fixed-length months by ICU index.
+        static $fixed = [
+            0 => 30,  // Tishrei
+            3 => 29,  // Tevet
+            4 => 30,  // Shevat
+            6 => 29,  // Adar / Adar II
+            7 => 30,  // Nisan
+            8 => 29,  // Iyar
+            9 => 30,  // Sivan
+            10 => 29, // Tammuz
+            11 => 30, // Av
+            12 => 29, // Elul
+        ];
+        if (isset($fixed[$icuMonth])) {
+            return $fixed[$icuMonth];
+        }
+        // Adar I (leap years only): 30 days.
+        if ($icuMonth === 5 && $isLeap) {
+            return 30;
+        }
+        return 0;
+    }
+
+    /**
+     * ISO date (y/m/d) for the given Hebrew (year, ICU month index, day).
+     * Returns ['year' => , 'month' => , 'day' => ]. ICU month index 5 is
+     * Adar I (leap years only); in non-leap years the caller must NOT pass
+     * icuMonth=5.
+     */
+    private static function hebrewToIsoDate(int $hYear, int $icuMonth, int $hDay): array
+    {
+        $isLeap = self::isHebrewLeapYear($hYear);
+        if (!$isLeap && $icuMonth === 5) {
+            // Treat as Adar (icuMonth=6) for safety.
+            $icuMonth = 6;
+        }
+        if ($icuMonth < 0 || $icuMonth > 12) {
+            $icuMonth = max(0, min(12, $icuMonth));
+        }
+        $epochDays = self::hebrewElapsedDaysToFirstTishrei($hYear);
+        for ($m = 0; $m < $icuMonth; $m++) {
+            // Skip the Adar I slot (5) in non-leap years; it has no days.
+            if (!$isLeap && $m === 5) {
+                continue;
+            }
+            $epochDays += self::hebrewDaysInMonth($hYear, $m);
+        }
+        $epochDays += $hDay - 1;
+        return self::isoDateFromDays($epochDays);
+    }
+
+    /**
+     * Convert days-since-1970-01-01 to an ISO date.
+     */
+    private static function isoDateFromDays(int $days): array
+    {
+        // Inverse of isoDateToDays (Howard Hinnant civil_from_days).
+        $days += 719468;
+        $era = intdiv($days >= 0 ? $days : $days - 146096, 146097);
+        $doe = $days - $era * 146097;
+        $yoe = intdiv($doe - intdiv($doe, 1460) + intdiv($doe, 36524) - intdiv($doe, 146096), 365);
+        $y = $yoe + $era * 400;
+        $doy = $doe - (365 * $yoe + intdiv($yoe, 4) - intdiv($yoe, 100));
+        $mp = intdiv(5 * $doy + 2, 153);
+        $d = $doy - intdiv(153 * $mp + 2, 5) + 1;
+        $m = $mp < 10 ? $mp + 3 : $mp - 9;
+        $y += $m <= 2 ? 1 : 0;
+        return ['year' => $y, 'month' => $m, 'day' => $d];
+    }
+
+    /**
+     * Convert an ISO date to Hebrew (AM year, ICU month index, day).
+     */
+    private static function isoToHebrewDate(int $isoY, int $isoM, int $isoD): array
+    {
+        $days = self::isoDateToDays($isoY, $isoM, $isoD);
+        // Estimate Hebrew year. Hebrew year ≈ iso + 3760 + (after Tishrei → +1).
+        $approx = $isoY + 3761;
+        // Walk down from approx until 1 Tishrei <= days.
+        $year = $approx + 1;
+        while (self::hebrewElapsedDaysToFirstTishrei($year) > $days) {
+            $year--;
+        }
+        // Year now is the Hebrew year containing the date.
+        $offset = $days - self::hebrewElapsedDaysToFirstTishrei($year);
+        $isLeap = self::isHebrewLeapYear($year);
+        $icuMonth = 0;
+        while ($icuMonth <= 12) {
+            // Skip the Adar I slot (5) in non-leap years.
+            if (!$isLeap && $icuMonth === 5) {
+                $icuMonth++;
+                continue;
+            }
+            $dim = self::hebrewDaysInMonth($year, $icuMonth);
+            if ($dim > 0 && $offset < $dim) {
+                break;
+            }
+            $offset -= $dim;
+            $icuMonth++;
+        }
+        return ['year' => $year, 'icuMonth' => $icuMonth, 'day' => $offset + 1];
     }
 
     /** Convert ICU 0-indexed month to spec monthCode for the given calendar. */
@@ -13120,6 +13473,103 @@ class TemporalObject
     }
 
     /** Round a nanosecond value to the nearest increment. */
+    /**
+     * Round a sub-day ns remainder to whole days using the actual calendar
+     * day length (which can be 23h or 25h around DST transitions, or 24h+24h
+     * around Samoa-style date-line jumps). Returns the rounded value as ns
+     * (always a whole number of days).
+     */
+    private static function roundDaysWithCalendarLength(
+        string $remainingNs,
+        JsObject $startObj,
+        JsObject $dateOnly,
+        int $increment,
+        string $mode,
+    ): string {
+        $sign = bccomp($remainingNs, '0', 0);
+        if ($sign === 0) {
+            return '0';
+        }
+        // Compute the next-day boundary length: add (sign * 1 day) to the
+        // already-walked dateOnly and measure the delta in ns.
+        $nextDate = self::createDurationObject(
+            self::getDurationField($dateOnly, 'years'),
+            self::getDurationField($dateOnly, 'months'),
+            self::getDurationField($dateOnly, 'weeks'),
+            self::getDurationField($dateOnly, 'days') + ($sign > 0 ? 1 : -1),
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        $afterDates = self::addDurationToZdt($startObj, $dateOnly, 1, 'constrain');
+        $afterNext = self::addDurationToZdt($startObj, $nextDate, 1, 'constrain');
+        $dayLenNs = bcsub($afterNext, $afterDates, 0);
+        $absDayLen = bccomp($dayLenNs, '0', 0) < 0 ? bcsub('0', $dayLenNs, 0) : $dayLenNs;
+        if (bccomp($absDayLen, '0', 0) === 0) {
+            return '0';
+        }
+        $absRem = $sign < 0 ? bcsub('0', $remainingNs, 0) : $remainingNs;
+        // Fractional days: $absRem / $absDayLen, rounded by $mode.
+        $cmp = bccomp($absRem, $absDayLen, 0);
+        if ($cmp >= 0) {
+            // Spec invariant: |remainingNs| < dayLength after the back-off
+            // step. If we reach here, the back-off didn't fully resolve;
+            // round to a whole day in the right direction.
+            $whole = bcdiv($absRem, $absDayLen, 0);
+            $remainder = bcmod($absRem, $absDayLen);
+            if ($remainder !== '0') {
+                if ($mode === 'expand' || ($mode === 'ceil' && $sign > 0) || ($mode === 'floor' && $sign < 0) || $mode === 'halfExpand') {
+                    $whole = bcadd($whole, '1', 0);
+                }
+            }
+            $resultDays = $whole;
+        } else {
+            // Standard case: 0 ≤ |rem| < dayLength.
+            $half = bcdiv($absDayLen, '2', 0);
+            $cmpHalf = bccomp($absRem, $half, 0);
+            $up = false;
+            switch ($mode) {
+                case 'trunc':
+                    $up = false;
+                    break;
+                case 'ceil':
+                    $up = $sign > 0;
+                    break;
+                case 'floor':
+                    $up = $sign < 0;
+                    break;
+                case 'expand':
+                    $up = true;
+                    break;
+                case 'halfExpand':
+                    $up = $cmpHalf >= 0;
+                    break;
+                case 'halfCeil':
+                    $up = $cmpHalf > 0 || ($cmpHalf === 0 && $sign > 0);
+                    break;
+                case 'halfFloor':
+                    $up = $cmpHalf > 0 || ($cmpHalf === 0 && $sign < 0);
+                    break;
+                case 'halfTrunc':
+                    $up = $cmpHalf > 0;
+                    break;
+                case 'halfEven':
+                    $up = $cmpHalf > 0;
+                    break;
+            }
+            $resultDays = $up ? '1' : '0';
+        }
+        // Apply increment (only ever 1 for day-level here).
+        if ($increment > 1) {
+            $resultDays = bcmul($resultDays, (string) $increment, 0);
+        }
+        $resultNs = bcmul($resultDays, '86400000000000', 0);
+        return $sign < 0 ? bcsub('0', $resultNs, 0) : $resultNs;
+    }
+
     private static function roundNs(string $ns, string $incrementNs, string $mode): string
     {
         $sign = bccomp($ns, '0', 0) < 0 ? -1 : 1;
