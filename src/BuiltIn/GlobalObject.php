@@ -425,6 +425,39 @@ class GlobalObject
                         'CreateListFromArrayLike called on non-object',
                     );
                 }
+                // Dense JsArray fast path: extract the packed slot
+                // array directly. CreateListFromArrayLike normally
+                // walks `length` worth of `(string) $i` get()s — for
+                // a 10k-element array that's 10k hash lookups plus
+                // string allocations. For a 10000-element apply call
+                // this dominates the test262 CharacterClassEscapes
+                // harness. The dense slot array already has the
+                // values in iteration order.
+                if (
+                    $argsArr instanceof \PhpJs\Value\JsArray
+                    && $argsArr->isDenseMode()
+                ) {
+                    $len = $argsArr->getLength();
+                    $dense = $argsArr->getDenseElements();
+                    if ($len > 0) {
+                        $allDense = true;
+                        for ($i = 0; $i < $len; $i++) {
+                            if (!isset($dense[$i])) {
+                                $allDense = false;
+                                break;
+                            }
+                        }
+                        if ($allDense) {
+                            // Reuse the slot array when contiguous.
+                            $callArgs = $len === count($dense)
+                                ? array_values($dense)
+                                : array_slice($dense, 0, $len);
+                            return $this_->call($thisArg, $callArgs);
+                        }
+                    } else {
+                        return $this_->call($thisArg, []);
+                    }
+                }
                 // Get length and iterate index properties.
                 $lenVal = $argsArr->get('length');
                 $len = (int) TypeConversion::toNumber($lenVal);

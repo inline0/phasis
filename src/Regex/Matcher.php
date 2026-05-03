@@ -52,6 +52,17 @@ class Matcher
     private int $stepsUsed = 0;
 
     /**
+     * Resume-cache for internalIndexToUtf16. The matcher tends to call
+     * the converter in monotonic order (capture[0] start then end, then
+     * sub-captures left-to-right), so caching the previous (idx, cu)
+     * lets us continue the walk from there in O(delta) instead of
+     * O(idx). Cleared on every match()/matchTest() entry so a stale
+     * walk from a prior input doesn't leak into the next.
+     */
+    private int $idxToCuCacheIdx = -1;
+    private int $idxToCuCacheCu = 0;
+
+    /**
      * @param Pattern $pattern Parsed AST.
      * @param string $flags Spec flags (g, i, m, s, u, v, y, d).
      */
@@ -81,6 +92,8 @@ class Matcher
             : self::utf8ToUtf16Units($inputUtf8);
         $this->inputLen = count($this->input);
         $this->stepsUsed = 0;
+        $this->idxToCuCacheIdx = -1;
+        $this->idxToCuCacheCu = 0;
         // In /u mode the caller hands us a UTF-16 code unit offset
         // (per spec 22.2.5.2.1 RegExpBuiltinExec step 6) but our
         // internal positions are codepoint indices. Convert here.
@@ -103,6 +116,69 @@ class Matcher
             }
         }
         return null;
+    }
+
+    /**
+     * Predicate variant of match() for `RegExp.prototype.test`. Returns
+     * true on the first successful match without building the result
+     * record (skips capture-slice extraction and per-group UTF-16
+     * conversion). For inputs in the millions of code points (e.g.
+     * test262's CharacterClassEscapes corpus) this is the difference
+     * between two O(N) post-match walks and zero.
+     */
+    public function matchTest(string $inputUtf8, int $startCodeUnit): bool
+    {
+        $this->input = $this->unicode
+            ? self::utf8ToCodePoints($inputUtf8)
+            : self::utf8ToUtf16Units($inputUtf8);
+        $this->inputLen = count($this->input);
+        $this->stepsUsed = 0;
+        $this->idxToCuCacheIdx = -1;
+        $this->idxToCuCacheCu = 0;
+        $startInternal = $this->unicode
+            ? $this->utf16IndexToInternal($startCodeUnit)
+            : $startCodeUnit;
+        if ($startInternal === null) {
+            return false;
+        }
+        // Linear-scan fast path: body is a bare CharClass (`/\s/`,
+        // `/\d/`, etc.) without case-folding. The outer
+        // matchNode→matchCharClass→charClassMatchesCu chain dispatches
+        // three times per input slot; inlining the per-CU check turns
+        // a no-match scan over 1.1M codepoints from ~3M method calls
+        // into a single tight while-loop.
+        $body = $this->pattern->body;
+        if ($body instanceof CharClass && !$this->ignoreCase) {
+            $ranges = $body->ranges;
+            $negated = $body->negated;
+            $rc = count($ranges);
+            $input = $this->input;
+            $len = $this->inputLen;
+            for ($pos = $startInternal; $pos < $len; $pos++) {
+                $cu = $input[$pos];
+                $hit = false;
+                for ($ri = 0; $ri < $rc; $ri++) {
+                    $r = $ranges[$ri];
+                    if ($cu >= $r[0] && $cu <= $r[1]) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if ($negated ? !$hit : $hit) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        $captures = array_fill(0, $this->pattern->groupCount + 1, null);
+        for ($pos = $startInternal; $pos <= $this->inputLen; $pos++) {
+            $caps = $captures;
+            $end = $this->matchNode($this->pattern->body, $pos, $caps, /*direction=*/+1);
+            if ($end !== null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -177,11 +253,24 @@ class Matcher
         if (!$this->unicode) {
             return $idx;
         }
-        $out = 0;
-        for ($i = 0; $i < $idx && $i < $this->inputLen; $i++) {
-            $cp = $this->input[$i];
-            $out += $cp >= 0x10000 ? 2 : 1;
+        // Resume from the cached watermark when the new index is at or
+        // beyond it; capture-build emits indices in roughly increasing
+        // order so this hits often. A cache miss (idx behind watermark)
+        // restarts from zero — same cost as the original loop.
+        if ($idx >= $this->idxToCuCacheIdx && $this->idxToCuCacheIdx >= 0) {
+            $i = $this->idxToCuCacheIdx;
+            $out = $this->idxToCuCacheCu;
+        } else {
+            $i = 0;
+            $out = 0;
         }
+        $cap = min($idx, $this->inputLen);
+        $input = $this->input;
+        for (; $i < $cap; $i++) {
+            $out += $input[$i] >= 0x10000 ? 2 : 1;
+        }
+        $this->idxToCuCacheIdx = $i;
+        $this->idxToCuCacheCu = $out;
         return $out;
     }
 
@@ -890,29 +979,40 @@ class Matcher
 
     private function charClassMatchesCu(CharClass $cc, int $cu): bool
     {
-        $candidates = [$cu];
-        if ($this->ignoreCase) {
-            // Spec CharacterSetMatcher canonicalizes both the candidate
-            // and each set member. For ASCII letters we just check
-            // both the case-shifted candidate and its Canonicalize
-            // result against each range; that covers the bulk of
-            // tests without needing an exhaustive fold expansion of
-            // the range.
-            $candidates[] = $this->canonicalize($cu);
-            if ($cu >= 0x41 && $cu <= 0x5A) {
-                $candidates[] = $cu + 0x20;
-            } elseif ($cu >= 0x61 && $cu <= 0x7A) {
-                $candidates[] = $cu - 0x20;
+        // Hot path: no case-folding, single-candidate. Skip the
+        // candidates array allocation and inner-loop dispatch — the
+        // CharacterClassEscapes corpus tests `\D+` / `\W+` / `\S+`
+        // against >1M codepoints, so per-call array overhead matters.
+        if (!$this->ignoreCase) {
+            $matched = false;
+            foreach ($cc->ranges as $range) {
+                if ($cu >= $range[0] && $cu <= $range[1]) {
+                    $matched = true;
+                    break;
+                }
             }
-            if ($this->unicode && $cu >= 0x80 && class_exists(\IntlChar::class)) {
-                $upper = \IntlChar::toupper($cu);
-                if (is_int($upper)) {
-                    $candidates[] = $upper;
-                }
-                $lower = \IntlChar::tolower($cu);
-                if (is_int($lower)) {
-                    $candidates[] = $lower;
-                }
+            return $cc->negated ? !$matched : $matched;
+        }
+        // Spec CharacterSetMatcher canonicalizes both the candidate
+        // and each set member. For ASCII letters we just check both
+        // the case-shifted candidate and its Canonicalize result
+        // against each range; that covers the bulk of tests without
+        // needing an exhaustive fold expansion of the range. The
+        // no-/i case is handled by the early return above.
+        $candidates = [$cu, $this->canonicalize($cu)];
+        if ($cu >= 0x41 && $cu <= 0x5A) {
+            $candidates[] = $cu + 0x20;
+        } elseif ($cu >= 0x61 && $cu <= 0x7A) {
+            $candidates[] = $cu - 0x20;
+        }
+        if ($this->unicode && $cu >= 0x80 && class_exists(\IntlChar::class)) {
+            $upper = \IntlChar::toupper($cu);
+            if (is_int($upper)) {
+                $candidates[] = $upper;
+            }
+            $lower = \IntlChar::tolower($cu);
+            if (is_int($lower)) {
+                $candidates[] = $lower;
             }
         }
         $matched = false;
@@ -1318,6 +1418,38 @@ class Matcher
             $captures = $savedAll;
             return null;
         }
+        // Streaming fast path: when the atom is a plain CharClass with
+        // no inner capture groups, the per-iteration captures snapshot
+        // is the same on every position and the only thing that
+        // changes is $pos. Walk to the greedy maximum first, then
+        // back-track one step at a time trying the continuation. This
+        // avoids materialising a 1.1M-entry positions array (one per
+        // iteration) for patterns like `^\D+$` over the test262
+        // CharacterClassEscapes corpus.
+        if (
+            ($q->atom instanceof CharClass || $q->atom instanceof \PhpJs\Regex\Ast\Dot)
+            && empty($innerGroups)
+        ) {
+            $cc = $q->atom instanceof CharClass
+                ? $q->atom
+                : ($this->dotAll ? CharClass::any() : CharClass::dotNoDotAll());
+            $rest = $this->matchCharClassQuantifierStreaming(
+                $cc,
+                $q->min,
+                $q->max,
+                $q->greedy,
+                $pos,
+                $captures,
+                $direction,
+                $terms,
+                $idx,
+            );
+            if ($rest !== null) {
+                return $rest;
+            }
+            $captures = $savedAll;
+            return null;
+        }
         // Generate all reachable iteration end-positions in order.
         // Each entry is [endPos, capturesSnapshot].
         $positions = [];
@@ -1343,6 +1475,152 @@ class Matcher
             }
         }
         $captures = $savedAll;
+        return null;
+    }
+
+    /**
+     * Greedy / lazy CharClass quantifier driver that streams the
+     * continuation instead of materialising a positions array. The
+     * atom matches at most one input slot per iteration with no
+     * capture-state side effects, so backtracking is just a position
+     * decrement (greedy) or increment (lazy). Caller is
+     * matchQuantifiedInSequence after it has confirmed the atom is
+     * CharClass / Dot with no inner capture groups.
+     *
+     * @param list<Node> $terms
+     * @param array<int, ?array{0:int,1:int}> $captures
+     */
+    private function matchCharClassQuantifierStreaming(
+        CharClass $cc,
+        int $min,
+        ?int $max,
+        bool $greedy,
+        int $pos,
+        array &$captures,
+        int $direction,
+        array $terms,
+        int $idx,
+    ): ?int {
+        $startPos = $pos;
+        $end = $direction > 0 ? $this->inputLen : 0;
+        $maxOrSentinel = $max ?? PHP_INT_MAX;
+        // Walk forward (or backward) until $max iterations or until
+        // the class no longer matches. Track the iteration count so
+        // we can compare against $min when trying continuations. The
+        // tight-loop variants below inline the range check for common
+        // shapes (`\D`, `\W`, `\S` after the build step rewrite into
+        // negated single-range ASCII classes) so we don't pay the
+        // method-dispatch + candidates-array cost on every byte.
+        $ranges = $cc->ranges;
+        $negated = $cc->negated;
+        $rangeCount = count($ranges);
+        $iter = 0;
+        $cur = $pos;
+        if (
+            !$this->ignoreCase
+            && $rangeCount === 1
+            && $direction > 0
+        ) {
+            // Single-range hot path. `\D` (negated [0-9]) and `\d`
+            // (positive [0-9]) both fit. Walking 1.1M codepoints this
+            // way is roughly 3x faster than the per-call helper.
+            $lo = $ranges[0][0];
+            $hi = $ranges[0][1];
+            $input = $this->input;
+            if ($negated) {
+                while ($iter < $maxOrSentinel && $cur < $end) {
+                    $cu = $input[$cur];
+                    if ($cu >= $lo && $cu <= $hi) {
+                        break;
+                    }
+                    $cur++;
+                    $iter++;
+                }
+            } else {
+                while ($iter < $maxOrSentinel && $cur < $end) {
+                    $cu = $input[$cur];
+                    if ($cu < $lo || $cu > $hi) {
+                        break;
+                    }
+                    $cur++;
+                    $iter++;
+                }
+            }
+        } elseif (!$this->ignoreCase && $direction > 0) {
+            // Multi-range hot path. Inline the range loop so we save
+            // one method dispatch per input slot for `\W` (4 ranges)
+            // and `\S` (10 ranges). The match condition has to test
+            // every range until one hits, but the per-iteration
+            // overhead of charClassMatchesCu (candidates array
+            // alloc + nested foreach) is gone.
+            $input = $this->input;
+            while ($iter < $maxOrSentinel && $cur < $end) {
+                $cu = $input[$cur];
+                $hit = false;
+                for ($ri = 0; $ri < $rangeCount; $ri++) {
+                    $r = $ranges[$ri];
+                    if ($cu >= $r[0] && $cu <= $r[1]) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if ($negated ? $hit : !$hit) {
+                    break;
+                }
+                $cur++;
+                $iter++;
+            }
+        } else {
+            while (true) {
+                if ($iter >= $maxOrSentinel) {
+                    break;
+                }
+                if ($direction > 0) {
+                    if ($cur >= $end) {
+                        break;
+                    }
+                    if (!$this->charClassMatchesCu($cc, $this->input[$cur])) {
+                        break;
+                    }
+                    $cur++;
+                } else {
+                    if ($cur <= $end) {
+                        break;
+                    }
+                    if (!$this->charClassMatchesCu($cc, $this->input[$cur - 1])) {
+                        break;
+                    }
+                    $cur--;
+                }
+                $iter++;
+            }
+        }
+        // $iter = greedy maximum; $cur = position after greedy walk.
+        if ($greedy) {
+            // Try the longest first, then peel back one iteration at
+            // a time until $min. Each retry passes a fresh captures
+            // snapshot — same as the positions-array path.
+            for ($k = $iter; $k >= $min; $k--) {
+                $tryPos = $direction > 0 ? $startPos + $k : $startPos - $k;
+                $caps = $captures;
+                $rest = $this->matchSequenceFrom($terms, $idx + 1, $tryPos, $caps, $direction);
+                if ($rest !== null) {
+                    $captures = $caps;
+                    return $rest;
+                }
+            }
+            return null;
+        }
+        // Lazy: try shortest first, walk up to greedy max.
+        for ($k = $min; $k <= $iter; $k++) {
+            $tryPos = $direction > 0 ? $startPos + $k : $startPos - $k;
+            $caps = $captures;
+            $rest = $this->matchSequenceFrom($terms, $idx + 1, $tryPos, $caps, $direction);
+            if ($rest !== null) {
+                $captures = $caps;
+                return $rest;
+            }
+        }
         return null;
     }
 

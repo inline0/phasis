@@ -309,6 +309,15 @@ class RegExpPrototype
                 );
             }
             $str = TypeConversion::toString($args[0] ?? JsUndefined::instance());
+            // Fast path: when exec is unmodified, run the underlying
+            // matcher with a bool return so we can skip building the
+            // result array (capture slicing, internalIndexToUtf16
+            // conversion of every group) entirely. Falls through to
+            // the spec-shaped slow path for anything custom.
+            $bool = self::regExpTestFast($this_, $str);
+            if ($bool !== null) {
+                return new JsBoolean($bool);
+            }
             $result = self::regExpExec($this_, $str);
             return new JsBoolean(!$result instanceof JsNull);
         }, 1);
@@ -1871,6 +1880,133 @@ class RegExpPrototype
 
         $A[] = new JsString(self::sliceUtf16Range($S, $p, $size));
         return JsArray::fromArray($A);
+    }
+
+    /**
+     * Predicate fast path for `RegExp.prototype.test`. Returns true /
+     * false when the receiver still has the intrinsic exec and a
+     * [[CustomRegexAst]] internal slot, so we can decide the boolean
+     * without materialising the JsObject result (capture slicing,
+     * indices array, named groups). Returns null to signal the caller
+     * should fall back to the spec-shaped slow path — anything with
+     * a custom exec override, sticky/global lastIndex side effects,
+     * or only-PCRE2 routing where Annex B legacy recording is still
+     * required.
+     *
+     * For a 1.1M-codepoint input matched by `/^\D+$/u`, the slow path
+     * would call internalIndexToUtf16 twice (start + end) and slice
+     * the entire input — three O(N) walks that don't influence the
+     * boolean. This path skips them.
+     */
+    private static function regExpTestFast(JsObject $rx, string $S): ?bool
+    {
+        if (!self::isIntrinsicExec($rx)) {
+            return null;
+        }
+        $pcreDesc = $rx->getOwnPropertyDescriptor('[[PCREPattern]]');
+        if ($pcreDesc === null || !$pcreDesc->value instanceof JsString) {
+            return null;
+        }
+        $origFlagsDesc = $rx->getOwnPropertyDescriptor('[[OriginalFlags]]');
+        $origFlags = ($origFlagsDesc !== null && $origFlagsDesc->value instanceof JsString)
+            ? $origFlagsDesc->value->value
+            : '';
+        // Sticky / global write to lastIndex on every call (and on no
+        // match, reset to 0). Annex B legacy state recording on a
+        // successful match is also observable. Both are intentional
+        // side effects of the spec's RegExpExec abstract op; defer to
+        // the slow path so those observable effects stay correct.
+        if (
+            str_contains($origFlags, 'g')
+            || str_contains($origFlags, 'y')
+        ) {
+            return null;
+        }
+        // Custom matcher path: this is the only branch in the slow
+        // path that already skips Annex B legacy state recording, so
+        // bypassing the JsObject build here matches existing
+        // observable behaviour exactly. Short-circuiting the PCRE2
+        // branch would also have to update the legacy slots after a
+        // successful match, so that case stays on the slow path.
+        $customAstDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexAst]]');
+        $customFlagsDesc = $rx->getOwnPropertyDescriptor('[[CustomRegexFlags]]');
+        if (
+            $customAstDesc !== null
+            && $customAstDesc->value instanceof \PhpJs\Value\JsHostValue
+            && $customFlagsDesc !== null
+            && $customFlagsDesc->value instanceof JsString
+        ) {
+            try {
+                $matcher = new \PhpJs\Regex\Matcher(
+                    $customAstDesc->value->value,
+                    $customFlagsDesc->value->value,
+                );
+                return $matcher->matchTest($S, 0);
+            } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+                // Pattern triggered catastrophic backtracking in the
+                // tree-walker; let the slow path try PCRE2 instead.
+                return null;
+            }
+        }
+        // PCRE2-first-attempt fast path: try preg_match. If PCRE2
+        // accepts the input, no Annex B legacy state recording was
+        // observable yet on this receiver (see slow path), so a
+        // successful preg_match is the same predicate-only outcome
+        // — but recording legacy state is a real spec side effect
+        // even for `.test()`. Skip the bool result on PCRE2 success
+        // and let the slow path record. On PCRE2 failure with a bad
+        // UTF-8 input we compile the AST once (caching it on the
+        // receiver), then use matchTest. This is the case that
+        // dominates the test262 CharacterClassEscapes corpus where
+        // every input is a 1.1M-codepoint string with lone
+        // surrogates that PCRE2 refuses under /u.
+        $pcrePattern = $pcreDesc->value->value;
+        $pregResult = @preg_match($pcrePattern, $S);
+        if ($pregResult === 1) {
+            // Defer to slow path so Annex B legacy slots get the
+            // capture data. Skipping that would silently drop
+            // RegExp.lastMatch updates the slow path makes.
+            return null;
+        }
+        if ($pregResult === false && preg_last_error() === PREG_BAD_UTF8_ERROR) {
+            // Compile the AST once and cache it so subsequent test()
+            // calls on the same receiver hit the cached-AST branch
+            // above without re-parsing. Mirrors the cache the slow
+            // path installs after its first PCRE2 failure.
+            $sourceVal = $rx->get('source');
+            $flagsVal = $rx->get('flags');
+            $patternStr = $sourceVal instanceof JsString ? $sourceVal->value : '';
+            $patFlags = $flagsVal instanceof JsString ? $flagsVal->value : '';
+            try {
+                $regexAst = (new \PhpJs\Regex\Parser($patternStr, $patFlags))->parse();
+                $rx->defineOwnProperty(
+                    '[[CustomRegexAst]]',
+                    PropertyDescriptor::data(
+                        new \PhpJs\Value\JsHostValue($regexAst),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+                $rx->defineOwnProperty(
+                    '[[CustomRegexFlags]]',
+                    PropertyDescriptor::data(
+                        new JsString($patFlags),
+                        false,
+                        false,
+                        false,
+                    ),
+                );
+                $matcher = new \PhpJs\Regex\Matcher($regexAst, $patFlags);
+                return $matcher->matchTest($S, 0);
+            } catch (\PhpJs\Regex\MatcherBudgetExceeded) {
+                return null;
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+        // 0 (no match) or any other outcome: slow path decides.
+        return null;
     }
 
     /**

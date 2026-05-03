@@ -592,6 +592,27 @@ final class JsToPhp
             // param of the same name; conservatively bail.
             return false;
         }
+        // Non-computed member expressions (`args.x`) carry the property
+        // name as an Identifier under .property, but it isn't a
+        // variable read — `args.foo` doesn't read a binding called
+        // `foo`. Skip it so `const foo = args.foo;` doesn't get
+        // flagged as a self-referential init. Also skip the .key of
+        // a non-computed object-literal Property for the same reason.
+        if ($node instanceof \PhpJs\Ast\Expression\MemberExpression) {
+            if (self::initReadsName($node->object, $name)) {
+                return true;
+            }
+            if ($node->computed && self::initReadsName($node->property, $name)) {
+                return true;
+            }
+            return false;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\Property) {
+            if ($node->computed && self::initReadsName($node->key, $name)) {
+                return true;
+            }
+            return self::initReadsName($node->value, $name);
+        }
         foreach ((array) $node as $value) {
             if ($value instanceof Node) {
                 if (self::initReadsName($value, $name)) {
