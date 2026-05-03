@@ -720,7 +720,7 @@ class ModuleLoader
         if ($rootRecord !== null) {
             $tlaModules = [];
             $seen = [];
-            $this->gatherAsyncTransitiveDeps($rootRecord, $seen, $tlaModules);
+            $this->gatherAsyncTransitiveDepsByRecord($rootRecord, $seen, $tlaModules);
             foreach ($tlaModules as $tlaRecord) {
                 if ($tlaRecord->bodyEvaluated || $tlaRecord->pendingBody === null) {
                     continue;
@@ -746,7 +746,7 @@ class ModuleLoader
      * @param array<string, true> $seen
      * @param list<ModuleRecord>  $result
      */
-    private function gatherAsyncTransitiveDeps(
+    private function gatherAsyncTransitiveDepsByRecord(
         ModuleRecord $record,
         array &$seen,
         array &$result,
@@ -765,13 +765,13 @@ class ModuleLoader
         foreach (array_keys($record->eagerEdges) as $depPath) {
             $dep = $this->modules[$depPath] ?? null;
             if ($dep !== null) {
-                $this->gatherAsyncTransitiveDeps($dep, $seen, $result);
+                $this->gatherAsyncTransitiveDepsByRecord($dep, $seen, $result);
             }
         }
         foreach (array_keys($record->deferEdges) as $depPath) {
             $dep = $this->modules[$depPath] ?? null;
             if ($dep !== null) {
-                $this->gatherAsyncTransitiveDeps($dep, $seen, $result);
+                $this->gatherAsyncTransitiveDepsByRecord($dep, $seen, $result);
             }
         }
     }
