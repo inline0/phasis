@@ -1064,10 +1064,13 @@ class Matcher
         array &$captures,
         int $direction,
     ): ?int {
-        // Wrap the body as a single-term sequence so we get the
-        // multi-end-position machinery. Then for each yielded end
-        // position, set the capture and try the rest.
-        $bodyTerms = [$g->body];
+        // Pass the body's own terms (or the body itself for non-Sequence
+        // bodies) so the multi-end-position machinery sees each inner
+        // term and can backtrack into shorter alternatives. Wrapping a
+        // Sequence as `[$g->body]` would funnel it through the
+        // single-end-position single-term path and lose backtracking
+        // when the rest of the outer sequence rejects the greedy match.
+        $bodyTerms = $g->body instanceof Sequence ? $g->body->terms : [$g->body];
         $savedAll = $captures;
         $result = $this->matchSequenceWithContinuation(
             $bodyTerms,
@@ -1152,6 +1155,28 @@ class Matcher
             $saved = $captures;
             foreach ($term->alternatives as $alt) {
                 $captures = $saved;
+                // Alternatives with variable-length bodies need to be
+                // routed through the multi-end-position enumerator so
+                // the rest of the outer sequence can backtrack into a
+                // shorter inner choice. matchNode would only yield one
+                // (typically greedy-max) end position.
+                $altTerms = $this->atomToSequenceTerms($alt);
+                if ($altTerms !== null) {
+                    $rest = $this->matchSeqWithCont(
+                        $altTerms,
+                        0,
+                        $pos,
+                        $captures,
+                        $direction,
+                        function (int $end, array &$caps) use ($terms, $idx, $direction, $cont): ?int {
+                            return $this->matchSeqWithCont($terms, $idx + 1, $end, $caps, $direction, $cont);
+                        },
+                    );
+                    if ($rest !== null) {
+                        return $rest;
+                    }
+                    continue;
+                }
                 $end = $this->matchNode($alt, $pos, $captures, $direction);
                 if ($end === null) {
                     continue;
@@ -1173,8 +1198,12 @@ class Matcher
             )
         ) {
             $startPos = $pos;
+            // Unwrap a Sequence body so its terms participate directly
+            // in the multi-end-position machinery instead of going
+            // through the single-end-position single-term path.
+            $bodyTerms = $term->body instanceof Sequence ? $term->body->terms : [$term->body];
             return $this->matchSeqWithCont(
-                [$term->body],
+                $bodyTerms,
                 0,
                 $pos,
                 $captures,
@@ -1396,6 +1425,33 @@ class Matcher
                 $positions,
             );
         }
+    }
+
+    /**
+     * Convert an alt/atom into a list of sequence terms for the
+     * multi-end-position machinery. Returns null when the node is a
+     * single-end-position match (Literal, CharClass, Anchor, ...) where
+     * the caller's matchNode path is fine.
+     *
+     * @return list<Node>|null
+     */
+    private function atomToSequenceTerms(Node $node): ?array
+    {
+        if ($node instanceof Sequence) {
+            return $node->terms;
+        }
+        if ($node instanceof Group) {
+            if (!$this->bodyCanVary($node->body)) {
+                return null;
+            }
+            // Synthesise a one-term wrapper so the Group still gets
+            // its capture set inside matchSeqWithCont's Group branch.
+            return [$node];
+        }
+        if ($node instanceof Quantified || $node instanceof Disjunction) {
+            return [$node];
+        }
+        return null;
     }
 
     /**
