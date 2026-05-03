@@ -56,6 +56,20 @@ final class CompiledFunction
      */
     public array $classNodes = [];
 
+    /**
+     * Source-style display strings for method-call sites, keyed by the
+     * PC of the CALL_METHOD opcode. When the dispatched method turns
+     * out not to be callable, the VM uses the stored display
+     * (e.g. `[].__proto__` or `obj.foo`) in the TypeError message
+     * instead of falling back to the value's stringification, which
+     * is empty for plain objects/arrays. Only populated for call
+     * sites whose callee shape the compiler can render literally;
+     * other sites keep the legacy fallback.
+     *
+     * @var array<int, string>
+     */
+    public array $callMethodDisplays = [];
+
 
     /**
      * @param list<int>     $code        Flat instruction stream.

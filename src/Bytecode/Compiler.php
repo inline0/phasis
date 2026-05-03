@@ -127,6 +127,18 @@ final class Compiler
     private array $classNodes = [];
 
     /**
+     * Source-like display string for each CALL_METHOD opcode emitted,
+     * keyed by the PC of the opcode. The VM reads this on the
+     * "is not a function" error path so the message matches V8 /
+     * SpiderMonkey ("[].__proto__ is not a function") rather than
+     * collapsing to "value is not a function" when the callee's
+     * toString is empty (arrays, plain objects, etc.).
+     *
+     * @var array<int, string>
+     */
+    private array $callMethodDisplays = [];
+
+    /**
      * Per-function tracking of operand-stack depth at the start of
      * each compiled statement. The compiler doesn't otherwise track
      * stack depth, so we approximate by snapshotting the depth
@@ -208,7 +220,7 @@ final class Compiler
             $this->compileExpression($body);
             $this->emit(Op::RET);
             $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
-            return new CompiledFunction(
+            $cf = new CompiledFunction(
                 code: $this->code,
                 consts: $this->consts,
                 names: $this->names,
@@ -220,6 +232,8 @@ final class Compiler
                 needsArgsBinding: false,
                 canSkipEnvAlloc: !$needsThis,
             );
+            $cf->callMethodDisplays = $this->callMethodDisplays;
+            return $cf;
         }
 
         // Pre-walk: collect every var/let/const/function name in
@@ -263,6 +277,7 @@ final class Compiler
         );
         $cf->handlers = $this->handlers;
         $cf->classNodes = $this->classNodes;
+        $cf->callMethodDisplays = $this->callMethodDisplays;
         return $cf;
     }
 
@@ -700,6 +715,53 @@ final class Compiler
         foreach ($operands as $o) {
             $this->code[] = $o;
         }
+    }
+
+    /**
+     * Best-effort source rendering for a method-call callee
+     * (`obj.prop`). Mirrors Interpreter::renderCalleeNode so the
+     * VM-compiled and tree-walker paths produce the same TypeError
+     * text. Returns null when the receiver shape doesn't have an
+     * obvious literal form, in which case the VM falls back to its
+     * legacy stringification.
+     */
+    private function renderMethodCallDisplay(MemberExpression $callee): ?string
+    {
+        if ($callee->computed) {
+            return null;
+        }
+        if (!($callee->property instanceof Identifier)) {
+            return null;
+        }
+        $obj = $this->renderCalleeObject($callee->object);
+        if ($obj === null) {
+            return null;
+        }
+        return $obj . '.' . $callee->property->name;
+    }
+
+    private function renderCalleeObject(Node $node): ?string
+    {
+        if ($node instanceof Identifier) {
+            return $node->name;
+        }
+        if ($node instanceof ThisExpression) {
+            return 'this';
+        }
+        if ($node instanceof MemberExpression && !$node->computed && $node->property instanceof Identifier) {
+            $parent = $this->renderCalleeObject($node->object);
+            if ($parent === null) {
+                return null;
+            }
+            return $parent . '.' . $node->property->name;
+        }
+        if ($node instanceof ArrayExpression && $node->elements === []) {
+            return '[]';
+        }
+        if ($node instanceof ObjectExpression && $node->properties === []) {
+            return '({})';
+        }
+        return null;
     }
 
     /**
@@ -1987,7 +2049,15 @@ final class Compiler
             foreach ($node->arguments as $arg) {
                 $this->compileExpression($arg);
             }
+            // Render the call-site source for the "is not a function"
+            // error before emit so the PC we record actually points at
+            // the CALL_METHOD opcode.
+            $display = $this->renderMethodCallDisplay($node->callee);
+            $callMethodPc = count($this->code);
             $this->emit(Op::CALL_METHOD, count($node->arguments));
+            if ($display !== null) {
+                $this->callMethodDisplays[$callMethodPc] = $display;
+            }
             return;
         }
 

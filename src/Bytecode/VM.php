@@ -1215,9 +1215,17 @@ final class VM
                                 break;
                             }
                             if (!$method instanceof JsFunction) {
-                                throw new TypeError(
-                                    (TypeConversion::toString($method) ?: 'value') . ' is not a function'
-                                );
+                                // Prefer the compiler-rendered call-site
+                                // source (e.g. `[].__proto__`) so the
+                                // TypeError matches V8 / SpiderMonkey
+                                // wording. Fall back to the value's
+                                // toString and finally a generic 'value'
+                                // when no display was recorded.
+                                $display = $cf->callMethodDisplays[$pc] ?? null;
+                                if ($display === null) {
+                                    $display = TypeConversion::toString($method) ?: 'value';
+                                }
+                                throw new TypeError($display . ' is not a function');
                             }
                             // Inline path for tagged hot built-ins: when the
                             // receiver shape matches what the built-in's spec
