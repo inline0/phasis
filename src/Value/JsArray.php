@@ -196,7 +196,14 @@ class JsArray extends JsObject
      */
     public function tryDenseWrite(int $index, JsValue $value): bool
     {
-        if ($index < 0 || !$this->denseMode) {
+        // Spec ToUint32(P) bounds the array-index space at [0, 2^32 - 2].
+        // 0xFFFFFFFF (=4294967295) and above are NOT array indices: they
+        // become plain string properties whose write doesn't touch length.
+        // Without this cap the VM's STORE_COMPUTED hot path would silently
+        // extend length to 2^32 for assignments like `a[0xFFFFFFFF] = v`,
+        // diverging from the tree-walker's set() path which honours the
+        // spec bound via isArrayIndex.
+        if ($index < 0 || $index > 4294967294 || !$this->denseMode) {
             return false;
         }
         $hasOwnDense = ($this->denseElements[$index] ?? null) !== null;

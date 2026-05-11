@@ -294,6 +294,258 @@ final class Compiler
     }
 
     /**
+     * Top-level Program compile entry. Mirrors compile() but operates on a
+     * Program node instead of a JsFunction. Returns a CompiledFunction whose
+     * Frame is meant to run with env = globalEnv. Free identifier lookups
+     * (LOAD_NAME / STORE_NAME) route through that env chain — top-level
+     * function declarations are NOT emitted by the bytecode because
+     * Interpreter::execute pre-hoists them into globalEnv before invoking
+     * the VM.
+     *
+     * Throws CompilerBailout when the program shape is unsupported (any
+     * top-level let/const, classes, modules, with, eval-tainted references,
+     * destructuring, etc.). The caller is expected to fall back to the
+     * tree-walker on bailout.
+     *
+     * @param \PhpJs\Ast\Program $program
+     */
+    public function compileProgram(\PhpJs\Ast\Program $program): CompiledFunction
+    {
+        // Only accept a feature subset that's safe to lower to the VM at
+        // top level. Any reference to `eval`/`arguments`, `with`,
+        // yield/await, etc. is caught here and propagates as a bailout to
+        // the caller.
+        $this->scanBailout($program->body);
+
+        // Reject top-level features the slot-based compiler can't model
+        // correctly at script level. `let`/`const` would need a separate
+        // Script Lexical Environment so closures could observe them; the
+        // VM frame doesn't reify one. Modules / imports / exports / classes
+        // at top level have their own env semantics that the bytecode VM
+        // doesn't honour. Top-level TryStatement is rejected because the
+        // catch body's last ExpressionStatement is the completion value
+        // of the whole try-catch — but the VM's POP-after-ExpressionStatement
+        // path inside compileTryCatch drops that value, so the program
+        // result would silently diverge from the tree-walker.
+        foreach ($program->body as $stmt) {
+            if ($stmt instanceof VariableDeclaration) {
+                if ($stmt->kind !== 'var') {
+                    throw new CompilerBailout('top-level let/const/using');
+                }
+            }
+            if (
+                $stmt instanceof \PhpJs\Ast\Declaration\ImportDeclaration
+                || $stmt instanceof \PhpJs\Ast\Declaration\ExportDeclaration
+                || $stmt instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+            ) {
+                throw new CompilerBailout('top-level module/class decl');
+            }
+            if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+                throw new CompilerBailout('top-level try statement');
+            }
+        }
+
+        // Collect every top-level var name so each is assigned a frame slot.
+        // Function declarations are deliberately skipped: hoistDeclarations
+        // (in Interpreter::execute) already installs them onto globalEnv,
+        // and accessing them through LOAD_NAME lets nested closures resolve
+        // them through the env chain rather than via frame slots that the
+        // closures cannot see.
+        foreach ($program->body as $stmt) {
+            $this->collectProgramVarLocals($stmt);
+        }
+
+        // Closure-capture safety: top-level FunctionDeclarations are hoisted
+        // onto globalEnv at execute time, so their closure env is globalEnv
+        // — they cannot see the bytecode's frame slots. If any such function
+        // body references a top-level var name (which we just mapped to a
+        // frame slot), the call would resolve through globalEnv and find an
+        // undefined hoisted placeholder, silently diverging from the
+        // tree-walker. The same capturesOuterLocal scan already runs on
+        // nested function/arrow EXPRESSIONS via compileNestedFunction; here
+        // we cover the DECLARATION case the skip-in-emit loop would miss.
+        if ($this->localSlots !== []) {
+            foreach ($program->body as $stmt) {
+                if (
+                    $stmt instanceof FunctionDeclaration
+                    && $this->capturesOuterLocal($stmt)
+                ) {
+                    throw new CompilerBailout('top-level fn-decl captures top-level var');
+                }
+            }
+        }
+
+        // Reserve a slot to hold the program's completion value. Each
+        // ExpressionStatement compiles to STORE_LOCAL[resultSlot] instead
+        // of POP so the trailing LOAD_LOCAL+RET surfaces the last
+        // expression statement's value, matching executeStatements.
+        $resultSlot = count($this->localNames);
+        $this->localNames[] = '[[programResult]]';
+
+        // Snapshot top-level var slots BEFORE statement compilation so the
+        // end-of-program mirror loop only touches names that were truly
+        // top-level vars (not catch params, not the result slot, not
+        // inner-let slots discovered by collectStatementLocals during
+        // statement compile). Each (name, slot) entry will trigger one
+        // LOAD_LOCAL + STORE_NAME at program exit so subsequent
+        // engine->eval() calls see the latest values via globalEnv —
+        // matching the tree-walker's behaviour where every top-level
+        // var is a property of the global object.
+        $topLevelVarSlots = $this->localSlots;
+
+        foreach ($program->body as $stmt) {
+            // Top-level FunctionDeclarations are pre-hoisted onto
+            // globalEnv by Interpreter::execute; the bytecode does NOT
+            // re-bind them. A duplicate MAKE_FUNCTION here would create a
+            // second JsFunction with a different identity and overwrite
+            // the env binding — but its closure env still points at
+            // globalEnv, so a `Test262Error.thrower = function () { throw
+            // new Test262Error(...) }`-style nested capture would resolve
+            // against the new instance (or worse, against a stale one).
+            // Skip to keep the single hoisted instance authoritative.
+            if ($stmt instanceof FunctionDeclaration) {
+                continue;
+            }
+            if ($stmt instanceof ExpressionStatement) {
+                $this->compileExpression($stmt->expression);
+                $this->emit(Op::STORE_LOCAL, $resultSlot);
+                continue;
+            }
+            $this->compileStatement($stmt);
+        }
+
+        // Mirror each top-level var slot's final value back onto
+        // globalEnv. Without this, a `var $262 = {}` at top level would
+        // populate the frame slot only; the binding is gone the moment
+        // VM execution returns, and the next engine->eval() sees the
+        // hoisted undefined placeholder. The capturesOuterLocal scan
+        // already excluded the case where a still-pending closure
+        // reads these names mid-execution, so a final write is enough
+        // to keep subsequent eval()s consistent with the tree-walker.
+        foreach ($topLevelVarSlots as $name => $slot) {
+            $this->emit(Op::LOAD_LOCAL, $slot);
+            $this->emit(Op::STORE_NAME, $this->internName($name));
+        }
+
+        $this->emit(Op::LOAD_LOCAL, $resultSlot);
+        $this->emit(Op::RET);
+
+        $needsThis = in_array(Op::LOAD_THIS, $this->code, true);
+        $cf = new CompiledFunction(
+            code: $this->code,
+            consts: $this->consts,
+            names: $this->names,
+            localNames: $this->localNames,
+            paramSlots: $this->paramSlots,
+            slotCount: max(1, count($this->localNames)),
+            nestedFns: $this->nestedFns,
+            needsThis: $needsThis,
+            // Top-level frame is the globalEnv directly; no per-call
+            // child env is allocated by the program runner, so the
+            // canSkipEnvAlloc bit on JsFunction call paths doesn't
+            // apply here.
+            needsArgsBinding: false,
+            canSkipEnvAlloc: false,
+        );
+        $cf->handlers = $this->handlers;
+        $cf->classNodes = $this->classNodes;
+        $cf->callMethodDisplays = $this->callMethodDisplays;
+        return $cf;
+    }
+
+    /**
+     * Walk a top-level statement and reserve frame slots for every var
+     * binding it introduces. Differs from collectStatementLocals in that
+     * FunctionDeclaration is intentionally NOT assigned a frame slot:
+     * function-decl bindings live on globalEnv (installed by
+     * Interpreter::hoistDeclarations before the VM runs), so closures
+     * inside the function body can resolve them via the env chain.
+     */
+    private function collectProgramVarLocals(Node $stmt): void
+    {
+        if ($stmt instanceof VariableDeclaration) {
+            if ($stmt->kind !== 'var') {
+                // compileProgram already validated; defensive only.
+                throw new CompilerBailout('non-var top-level decl');
+            }
+            foreach ($stmt->declarations as $decl) {
+                if (!($decl->id instanceof Identifier)) {
+                    throw new CompilerBailout('top-level destructuring var');
+                }
+                $this->varDeclaredNames[$decl->id->name] = true;
+                $this->declareLocal($decl->id->name);
+            }
+            return;
+        }
+        if ($stmt instanceof FunctionDeclaration) {
+            // Skip: pre-hoisted onto globalEnv by Interpreter::execute.
+            return;
+        }
+        if ($stmt instanceof BlockStatement) {
+            foreach ($stmt->body as $inner) {
+                $this->collectProgramVarLocals($inner);
+            }
+            return;
+        }
+        if ($stmt instanceof IfStatement) {
+            $this->collectProgramVarLocals($stmt->consequent);
+            if ($stmt->alternate !== null) {
+                $this->collectProgramVarLocals($stmt->alternate);
+            }
+            return;
+        }
+        if ($stmt instanceof ForStatement) {
+            if ($stmt->init instanceof VariableDeclaration) {
+                if ($stmt->init->kind !== 'var') {
+                    throw new CompilerBailout('top-level let/const for-init');
+                }
+                foreach ($stmt->init->declarations as $decl) {
+                    if (!($decl->id instanceof Identifier)) {
+                        throw new CompilerBailout('top-level destructuring for-init');
+                    }
+                    $this->varDeclaredNames[$decl->id->name] = true;
+                    $this->declareLocal($decl->id->name);
+                }
+            }
+            $this->collectProgramVarLocals($stmt->body);
+            return;
+        }
+        if ($stmt instanceof WhileStatement || $stmt instanceof DoWhileStatement) {
+            $this->collectProgramVarLocals($stmt->body);
+            return;
+        }
+        if ($stmt instanceof \PhpJs\Ast\Statement\LabeledStatement) {
+            $this->collectProgramVarLocals($stmt->body);
+            return;
+        }
+        if ($stmt instanceof \PhpJs\Ast\Statement\TryStatement) {
+            foreach ($stmt->block->body as $inner) {
+                $this->collectProgramVarLocals($inner);
+            }
+            if ($stmt->handler !== null) {
+                if ($stmt->handler->param instanceof Identifier) {
+                    $catchName = $stmt->handler->param->name;
+                    if (isset($this->localSlots[$catchName])) {
+                        throw new CompilerBailout('catch param shadows top-level var');
+                    }
+                    $this->declareLocal($catchName);
+                }
+                foreach ($stmt->handler->body->body as $inner) {
+                    $this->collectProgramVarLocals($inner);
+                }
+            }
+            if ($stmt->finalizer !== null) {
+                foreach ($stmt->finalizer->body as $inner) {
+                    $this->collectProgramVarLocals($inner);
+                }
+            }
+            return;
+        }
+        // ExpressionStatement / ReturnStatement / ThrowStatement / etc.
+        // introduce no new bindings; nothing to declare here.
+    }
+
+    /**
      * Walk the body looking for features the compiler refuses to
      * handle. Mirrors the tree-walker's lazy-arguments / no-eval
      * guarantees so the VM's optimised resolution paths stay safe.
@@ -1191,9 +1443,13 @@ final class Compiler
         $localSlot = $this->localSlots[$left->name];
 
         if ($right instanceof Literal && (is_int($right->value) || is_float($right->value))) {
+            // Match compileLiteral's full-precision dedupe key so the
+            // fused for-loop test never collides with the canonical
+            // literal slot (e.g. `for (i = 0; i < 1; ...)` vs a stray
+            // 1.0000000000000001 elsewhere in the same Program).
             $constIdx = $this->internConst(
                 JsNumber::of((float) $right->value),
-                'n:' . $right->value,
+                'n:' . serialize((float) $right->value),
             );
             $opcodePc = count($this->code);
             $this->code[] = $op === '<' ? Op::JUMP_IF_LOCAL_GE_CONST : Op::JUMP_IF_LOCAL_GT_CONST;
@@ -1572,6 +1828,15 @@ final class Compiler
                 // Named function expression's own name shadows
                 // outer bindings inside the body.
                 $shadow[$node->name] = true;
+            }
+        } elseif ($node instanceof FunctionDeclaration) {
+            // Reached only from compileProgram's top-level safety scan:
+            // function declarations are hoisted to globalEnv but their
+            // bodies may still reference frame-slot top-level vars.
+            $params = $node->params;
+            $body = $node->body;
+            if ($node->id !== null) {
+                $shadow[$node->id->name] = true;
             }
         } elseif ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
             $params = $node->params;
@@ -1991,7 +2256,18 @@ final class Compiler
             return;
         }
         if (is_int($value) || is_float($value)) {
-            $idx = $this->internConst(JsNumber::of((float) $value), 'n:' . $value);
+            // Use a full-precision round-trippable string as the dedupe
+            // key. Plain string concat ((string)$value) goes through
+            // PHP's `precision` ini (default 14 digits), so a numerically
+            // distinct float like 1.000000000000001 and a plain `1` would
+            // both stringify to "1" and share a constant slot — making
+            // `a[1] = -1.000000000000001` read back as -1 because the
+            // dedupe handed the second literal the JsNumber stored for
+            // the first. serialize() emits the IEEE 754 round-trip form.
+            $idx = $this->internConst(
+                JsNumber::of((float) $value),
+                'n:' . serialize((float) $value),
+            );
             $this->emit(Op::LOAD_CONST, $idx);
             return;
         }

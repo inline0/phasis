@@ -401,7 +401,79 @@ class Interpreter
         \PhpJs\BuiltIn\GlobalObject::rejectPrivateIdentifiersInProgramPublic($program);
         $this->hoistDeclarations($program->body, $this->globalEnv);
         $this->hoistEvalLexicalDeclarations($program->body, $this->globalEnv);
+        // Top-level bytecode fast path: if the program body lowers to
+        // VM bytecode (predominantly `var` + control flow + calls into
+        // hoisted functions), execute via the bytecode dispatcher. The
+        // tree-walker per-iteration overhead is what otherwise makes
+        // stress tests like decodeURI's 4-byte UTF-8 sweep time out at
+        // top level. Falls back to the tree-walker on any bailout.
+        $vmResult = $this->tryRunProgramOnVm($program);
+        if ($vmResult !== null) {
+            return $vmResult;
+        }
         return $this->executeStatements($program->body, $this->globalEnv);
+    }
+
+    /**
+     * Best-effort lowering of the top-level Program to bytecode. Returns
+     * null when the Compiler refuses (top-level let/const, module
+     * syntax, classes, eval-tainted identifiers, etc.) so the caller
+     * falls back to the tree-walker. On success the VM runs the
+     * compiled bytecode with Frame::env = globalEnv directly; nested
+     * closures capture globalEnv as expected.
+     */
+    private function tryRunProgramOnVm(\PhpJs\Ast\Program $program): ?JsValue
+    {
+        // The Interpreter::$programIsEvalFree flag is intentionally
+        // not consulted here: it is set false for the LIFETIME of an
+        // Engine after the first program that references `eval`, so a
+        // single tainted program (e.g. the test262 `$262.agent` shim
+        // that does `(0, eval)(...)`) would force every subsequent
+        // engine->eval() call back onto the tree-walker. Per-program
+        // safety is enforced by Compiler::scanBailout, which rejects
+        // any individual Program whose body still references `eval`
+        // or `arguments` at top level. A program without those
+        // identifiers is safe to lower even if the engine ran other
+        // eval-tainted programs earlier.
+        //
+        // Modules carry import/export declarations the bytecode path
+        // refuses; route them straight to the tree-walker.
+        foreach ($program->body as $stmt) {
+            if (
+                $stmt instanceof \PhpJs\Ast\Declaration\ImportDeclaration
+                || $stmt instanceof \PhpJs\Ast\Declaration\ExportDeclaration
+            ) {
+                return null;
+            }
+        }
+        try {
+            $compiler = new \PhpJs\Bytecode\Compiler();
+            $cf = $compiler->compileProgram($program);
+        } catch (\PhpJs\Bytecode\CompilerBailout) {
+            return null;
+        } catch (\Throwable) {
+            // Defensive: a compile bug must never break the
+            // tree-walker fallback. Skip compile and let the body run
+            // normally through the interpreter.
+            return null;
+        }
+
+        if ($this->vm === null) {
+            $this->vm = new \PhpJs\Bytecode\VM($this);
+        }
+        $undef = JsUndefined::instance();
+        // Top-level `this` resolves through env->get('this') which
+        // Engine seeds with the global object on the globalEnv.
+        $thisValue = $this->globalEnv->has('this')
+            ? $this->globalEnv->get('this')
+            : $undef;
+        $frame = new \PhpJs\Bytecode\Frame(
+            env: $this->globalEnv,
+            thisValue: $thisValue,
+            slotCount: $cf->slotCount,
+            undefined: $undef,
+        );
+        return $this->vm->execute($cf, $frame);
     }
 
     /**
