@@ -99,23 +99,9 @@ class Test262Runner
             );
         }
 
-        // Tests using $262.createRealm or SpiderMonkey's createNewGlobal
-        // need a separate ECMAScript realm, which the engine doesn't
-        // model: there's a single shared global and Reflect.construct
-        // uses the host constructor, so error identity across realms
-        // can't be distinguished. Mark them as skipped instead of
-        // failing for the same reason every time.
-        if (
-            strpos($source, '$262.createRealm') !== false
-            || strpos($source, 'createNewGlobal') !== false
-            || strpos($source, 'newGlobal(') !== false
-        ) {
-            return new TestResult(
-                $testPath,
-                TestStatus::Skip,
-                'Cross-realm test (single-realm runner)',
-            );
-        }
+        // Cross-realm (`$262.createRealm` + SM aliases) and DST cache
+        // stress are now supported by install262HostObject() + the
+        // DateConstructor offset cache. No blanket skip needed.
 
         // The decodeURI / decodeURIComponent A2.5_T1 stress tests sweep
         // every 4-byte UTF-8 sequence (~1.1M iterations of a tight outer
@@ -594,6 +580,15 @@ PHP;
      * Install the $262 host object for test262.
      *
      * Provides createRealm, detachArrayBuffer, evalScript, and gc.
+     *
+     * createRealm builds a fresh child Engine (its own global object and
+     * its own intrinsic prototype graph) and returns a realm wrapper
+     * object with `{global, evalScript, detachArrayBuffer, $262}`.
+     * The returned wrapper is constructed in PHP so that:
+     *   - realm.global is the CHILD realm's globalThis (not the parent's)
+     *   - realm.evalScript invokes the child Engine's eval
+     *   - cross-realm object identity tests can distinguish prototypes
+     *     between the parent and child realm
      */
     private function install262HostObject(Engine $engine): void
     {
@@ -602,23 +597,21 @@ PHP;
         var $262 = {};
         JS);
 
-        // $262.createRealm() - create a fresh Engine and return its $262
-        $engine->setGlobal('__262_createRealm', function () use ($runner) {
-            $realm = new Engine();
-            $realm->setLimit('maxLoopIterations', 2_000_000);
-            $runner->install262HostObject($realm);
-            // Load standard harness in the new realm
-            try {
-                $runner->loadHarnessPublic($realm, 'sta.js');
-                $runner->loadHarnessPublic($realm, 'assert.js');
-            } catch (\Throwable) {
-            }
-            return $realm->eval('$262');
-        });
+        // Build the createRealm host function in PHP so it returns a
+        // JsObject wrapper directly (no PhpToJs round-trip that would
+        // flatten the child realm's globalThis into a plain PHP array).
+        $createRealmFn = \PhpJs\Value\JsFunction::fromCallable(
+            '__262_createRealm',
+            function (
+                \PhpJs\Value\JsValue $this_,
+                array $args
+            ) use ($runner): \PhpJs\Value\JsValue {
+                return $runner->buildRealmWrapper();
+            },
+        );
+        $engine->setGlobalJsValue('__262_createRealm', $createRealmFn);
         $engine->eval(<<<'JS'
-        $262.createRealm = function() {
-            return { global: globalThis, $262: __262_createRealm() };
-        };
+        $262.createRealm = __262_createRealm;
         JS);
 
         // $262.detachArrayBuffer(buffer) - detach an ArrayBuffer
@@ -652,6 +645,15 @@ PHP;
         $262.evalScript = function(code) {
             return __262_evalScript(code);
         };
+        JS);
+
+        // SpiderMonkey shell extension shims. Tests under staging/sm/ assume
+        // newGlobal() / createNewGlobal() exist as global functions returning
+        // the new realm's globalThis. Wire them to $262.createRealm().global
+        // so the same isolated child Engine is reused.
+        $engine->eval(<<<'JS'
+        var newGlobal = function() { return $262.createRealm().global; };
+        var createNewGlobal = function() { return $262.createRealm().global; };
         JS);
 
         // $262.gc() - no-op (PHP has no manual GC trigger useful here)
@@ -711,6 +713,98 @@ PHP;
     public function loadHarnessPublic(Engine $engine, string $filename): void
     {
         $this->loadHarness($engine, $filename);
+    }
+
+    /**
+     * Build a test262 realm wrapper object backed by a fresh child Engine.
+     *
+     * Returned object shape (matches the test262 INTERPRETING.md spec):
+     *   {
+     *     global:             child realm's globalThis,
+     *     evalScript(src):    eval `src` in the child realm,
+     *     detachArrayBuffer:  detach an ArrayBuffer in the child realm,
+     *     $262:               the child realm's $262 host object,
+     *   }
+     *
+     * The child Engine's own install262HostObject() runs recursively so
+     * that nested $262.createRealm() calls also work. The outer engine's
+     * current-interpreter pointer is snapshot before constructing the
+     * child (which re-installs it on creation) and restored afterwards
+     * so the parent realm keeps controlling Symbol-prototype lookups
+     * etc. for the rest of the current eval.
+     */
+    public function buildRealmWrapper(): \PhpJs\Value\JsObject
+    {
+        $outerInterp = Engine::getCurrentInterpreter();
+        $childEngine = new Engine();
+        $childEngine->setLimit('maxLoopIterations', 2_000_000);
+        $this->install262HostObject($childEngine);
+        try {
+            $this->loadHarness($childEngine, 'sta.js');
+            $this->loadHarness($childEngine, 'assert.js');
+        } catch (\Throwable) {
+        }
+        if ($outerInterp !== null) {
+            Engine::setCurrentInterpreter($outerInterp);
+        }
+
+        $wrapper = new \PhpJs\Value\JsObject();
+
+        $childGlobal = $childEngine->getGlobalEnv()->get('globalThis');
+        if (!$childGlobal instanceof \PhpJs\Value\JsValue) {
+            $childGlobal = \PhpJs\Value\JsUndefined::instance();
+        }
+        $wrapper->set('global', $childGlobal);
+
+        $child262 = $childEngine->getGlobalEnv()->has('$262')
+            ? $childEngine->getGlobalEnv()->get('$262')
+            : \PhpJs\Value\JsUndefined::instance();
+        $wrapper->set('$262', $child262);
+
+        // evalScript runs the source in the CHILD realm, switching the
+        // active interpreter pointer for the duration so any built-ins
+        // that consult Engine::getCurrentInterpreter() resolve against
+        // the child realm's intrinsic graph.
+        $evalScriptFn = \PhpJs\Value\JsFunction::fromCallable(
+            'evalScript',
+            function (
+                \PhpJs\Value\JsValue $this_,
+                array $args
+            ) use ($childEngine): \PhpJs\Value\JsValue {
+                $codeArg = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                if ($codeArg instanceof \PhpJs\Value\JsString) {
+                    $src = $codeArg->value;
+                } else {
+                    $src = \PhpJs\Spec\TypeConversion::toString($codeArg);
+                }
+                $prev = Engine::getCurrentInterpreter();
+                Engine::setCurrentInterpreter($childEngine->getInterpreter());
+                try {
+                    $childEngine->getInterpreter()->execute(
+                        (new \PhpJs\Parser\Parser($src))->parse(),
+                    );
+                    \PhpJs\Value\JsPromise::drainMicrotasks();
+                } finally {
+                    Engine::setCurrentInterpreter($prev);
+                }
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+        );
+        $wrapper->set('evalScript', $evalScriptFn);
+
+        $detachFn = \PhpJs\Value\JsFunction::fromCallable(
+            'detachArrayBuffer',
+            function (\PhpJs\Value\JsValue $this_, array $args): \PhpJs\Value\JsValue {
+                $buf = $args[0] ?? null;
+                if ($buf instanceof \PhpJs\Value\JsArrayBuffer) {
+                    $buf->detach();
+                }
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+        );
+        $wrapper->set('detachArrayBuffer', $detachFn);
+
+        return $wrapper;
     }
 
     private function loadHarness(Engine $engine, string $filename): void
