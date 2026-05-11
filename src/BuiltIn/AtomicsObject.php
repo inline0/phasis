@@ -40,6 +40,29 @@ class AtomicsObject
      */
     private static array $waitAsyncQueue = [];
 
+    /**
+     * Whether the current agent can suspend on Atomics.wait.
+     *
+     * Default false: a non-blocking host (the typical CanBlockIsFalse path)
+     * throws TypeError when wait would suspend. Test262 tests carrying the
+     * CanBlockIsTrue flag toggle this to true through setAgentCanSuspend()
+     * so wait returns "timed-out" instead. PHP is single-threaded, so a
+     * positive timeout is sleep-then-return-"timed-out" rather than a
+     * real notify-driven wake-up.
+     */
+    private static bool $agentCanSuspend = false;
+
+    /**
+     * Toggle the agent-can-suspend flag.
+     *
+     * Used by Test262Runner around tests with the CanBlockIsTrue flag.
+     * Callers should reset to false after the test completes.
+     */
+    public static function setAgentCanSuspend(bool $canSuspend): void
+    {
+        self::$agentCanSuspend = $canSuspend;
+    }
+
     /** Integer typed array type names that Atomics operates on. */
     private const INTEGER_TYPES = [
         'Int8Array', 'Uint8Array', 'Int16Array', 'Uint16Array',
@@ -362,11 +385,12 @@ class AtomicsObject
         }
 
         // Per spec step 4: ToNumber(timeout) must be evaluated
-        // (may throw for poisoned objects).
+        // (may throw for poisoned objects). Capture the coerced result so
+        // we can drive the suspend-and-return-"timed-out" path below.
         $timeoutArg = $args[3] ?? JsUndefined::instance();
-        if (!$timeoutArg instanceof JsUndefined) {
-            TypeConversion::toNumber($timeoutArg);
-        }
+        $timeoutNum = $timeoutArg instanceof JsUndefined
+            ? NAN
+            : TypeConversion::toNumber($timeoutArg);
 
         // Compare current value with expected. Single-threaded: no real blocking.
         $current = $ta->getIndex($index);
@@ -386,12 +410,28 @@ class AtomicsObject
             }
         }
 
-        // Per spec: when AgentCanSuspend() is false, Atomics.wait must
-        // throw TypeError on a value match (regardless of timeout). Our
-        // runtime is the main thread and never blocks, so AgentCanSuspend
-        // is always false. CanBlockIsTrue tests are skipped earlier so
-        // we never reach here in a context where suspension is expected.
-        throw new TypeError('Atomics.wait cannot suspend the current agent');
+        // Per spec step 12: if AgentCanSuspend() is false, throw TypeError.
+        // PHP is single-threaded, so by default we refuse to suspend. The
+        // test262 CanBlockIsTrue runner toggles $agentCanSuspend on for
+        // suspend-permitted tests; those wait calls fall through to the
+        // single-threaded approximation below.
+        if (!self::$agentCanSuspend) {
+            throw new TypeError('Atomics.wait cannot suspend the current agent');
+        }
+
+        // Single-threaded "suspend": no other agent can notify us. Honour
+        // ToNumber(timeout) per spec by treating NaN as +Infinity, then
+        // max(q, 0) as the wait budget. Cap any actual sleep at 5ms to
+        // keep tests fast (the value match has already been observed).
+        // Real ECMAScript would block the agent; the only outcome we can
+        // produce single-threaded is "timed-out".
+        $waitMs = is_nan($timeoutNum) ? INF : max(0.0, $timeoutNum);
+        if ($waitMs > 0.0 && is_finite($waitMs)) {
+            $sleepMs = min($waitMs, 5.0);
+            usleep((int) ($sleepMs * 1000));
+        }
+
+        return new JsString('timed-out');
     }
 
     /**

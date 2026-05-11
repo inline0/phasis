@@ -100,10 +100,13 @@ class Test262Runner
 
         $flags = $meta['flags'] ?? [];
 
-        // Skip CanBlockIsTrue tests: our single-threaded agent cannot block.
-        if (in_array('CanBlockIsTrue', $flags, true)) {
-            return new TestResult($testPath, TestStatus::Skip, 'CanBlockIsTrue');
-        }
+        // CanBlockIsTrue tests assert the spec behaviour for hosts whose
+        // agent can suspend on Atomics.wait. Our PHP runtime is
+        // single-threaded, so we can't really block. We emulate it: when
+        // the flag is set, Atomics.wait returns "timed-out" (single-threaded
+        // approximation) instead of throwing TypeError. The toggle is
+        // scoped via try/finally so it never leaks into the next test.
+        $canBlock = in_array('CanBlockIsTrue', $flags, true);
 
         // Skip raw tests (no harness)
         $isRaw = in_array('raw', $flags, true);
@@ -129,10 +132,19 @@ class Test262Runner
             // We'll start with sloppy only for now
         }
 
-        foreach ($modes as $mode) {
-            $result = $this->executeTest($testPath, $source, $meta, $mode, $includes, $negative, $isRaw, $isAsync);
-            if ($result->status !== TestStatus::Pass) {
-                return $result;
+        if ($canBlock) {
+            \PhpJs\BuiltIn\AtomicsObject::setAgentCanSuspend(true);
+        }
+        try {
+            foreach ($modes as $mode) {
+                $result = $this->executeTest($testPath, $source, $meta, $mode, $includes, $negative, $isRaw, $isAsync);
+                if ($result->status !== TestStatus::Pass) {
+                    return $result;
+                }
+            }
+        } finally {
+            if ($canBlock) {
+                \PhpJs\BuiltIn\AtomicsObject::setAgentCanSuspend(false);
             }
         }
 
