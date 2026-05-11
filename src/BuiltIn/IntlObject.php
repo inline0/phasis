@@ -5306,9 +5306,13 @@ class IntlObject
     ): JsArray {
         $parts = new JsArray();
         $idx = 0;
-        $emit = static function (string $type, string $value) use (&$parts, &$idx): void {
+        $calendar = self::extractInternalString($dtf, '[[Calendar]]', 'gregory');
+        $emit = static function (string $type, string $value) use (&$parts, &$idx, $calendar): void {
             if ($value === '') {
                 return;
+            }
+            if ($type === 'era') {
+                $value = self::mapEraToIcu4xCode($calendar, $value);
             }
             $part = new JsObject();
             self::defineDataProp($part, 'type', new JsString($type));
@@ -5485,6 +5489,15 @@ class IntlObject
             $value = substr($formatted, $cursor, $endPos - $cursor);
             if ($value !== '') {
                 $emit($tok['type'], $value);
+            } elseif (
+                $tok['type'] === 'era'
+                && self::calendarHasIcu4xPreEra($calendar)
+            ) {
+                // ICU4C does not emit an era marker for dates before
+                // the Coptic/Ethiopic epoch (year 1 AM), but ICU4X (V8)
+                // emits the spec-defined ERA0 code. Inject it so
+                // formatToParts matches V8/test262 expectations.
+                $emit('era', 'ERA0');
             }
             $cursor = $endPos;
         }
@@ -5493,6 +5506,70 @@ class IntlObject
         }
         $parts->set('length', JsNumber::of((float) $idx));
         return $parts;
+    }
+
+    /**
+     * Normalise the era abbreviation emitted by ICU4C to the
+     * spec-aligned ICU4X identifier (ERA0/ERA1/...) for non-ISO
+     * calendars. ICU4C ships localized era names like "AM" for
+     * coptic/ethiopic; ICU4X (which V8 ships in Node 22+) uses
+     * stable identifiers. Mirror V8's mapping so test262 fixtures
+     * authored against ICU4X output keep passing.
+     */
+    private static function mapEraToIcu4xCode(string $calendar, string $era): string
+    {
+        $normCalendar = $calendar;
+        if ($normCalendar === 'ethiopic-amete-alem') {
+            $normCalendar = 'ethioaa';
+        }
+        static $map = [
+            'coptic' => [
+                'AM' => 'ERA1',
+                'A.M.' => 'ERA1',
+                'Anno Martyrum' => 'ERA1',
+                'BAM' => 'ERA0',
+                'A.M.E.' => 'ERA1',
+            ],
+            'ethiopic' => [
+                'AM' => 'ERA1',
+                'A.M.' => 'ERA1',
+                'Amete Mihret' => 'ERA1',
+                'ERA0' => 'ERA0',
+            ],
+            'ethioaa' => [
+                'AA' => 'ERA0',
+                'A.A.' => 'ERA0',
+                'Amete Alem' => 'ERA0',
+                'AM' => 'ERA0',
+            ],
+            'indian' => [
+                // ICU4C ships the indian-era abbreviation with the
+                // Latin Capital Letter S With Acute (U+015A); V8 /
+                // ICU4X drop the diacritic.
+                "\u{015A}aka" => 'Saka',
+            ],
+        ];
+        if (!isset($map[$normCalendar])) {
+            return $era;
+        }
+        return $map[$normCalendar][$era] ?? $era;
+    }
+
+    /**
+     * Calendars where ICU4C reports an empty era for dates before
+     * the calendar epoch but ICU4X (V8) emits "ERA0".
+     */
+    private static function calendarHasIcu4xPreEra(string $calendar): bool
+    {
+        $normCalendar = $calendar;
+        if ($normCalendar === 'ethiopic-amete-alem') {
+            $normCalendar = 'ethioaa';
+        }
+        return in_array(
+            $normCalendar,
+            ['coptic', 'ethiopic'],
+            true,
+        );
     }
 
     /**
@@ -5570,7 +5647,179 @@ class IntlObject
         if ($result === false) {
             return date('Y-m-d H:i:s', $secFallback);
         }
-        return self::normalizeDateTimeSpaces($result);
+        $result = self::normalizeDateTimeSpaces($result);
+        $calendar = self::extractInternalString($dtf, '[[Calendar]]', 'gregory');
+        return self::rewriteEraForIcu4x($formatter, $result, $calendar);
+    }
+
+    /**
+     * Replace ICU4C-style era abbreviations in the formatted output
+     * with the ICU4X identifiers that Node 22+ / V8 emit. Match the
+     * era position via the formatter pattern's `G` token so the
+     * substitution doesn't accidentally rewrite other glyphs.
+     */
+    private static function rewriteEraForIcu4x(
+        \IntlDateFormatter $formatter,
+        string $formatted,
+        string $calendar,
+    ): string {
+        $normCalendar = $calendar;
+        if ($normCalendar === 'ethiopic-amete-alem') {
+            $normCalendar = 'ethioaa';
+        }
+        if (
+            !in_array(
+                $normCalendar,
+                ['coptic', 'ethiopic', 'ethioaa', 'indian'],
+                true,
+            )
+        ) {
+            return $formatted;
+        }
+        $pattern = $formatter->getPattern();
+        if ($pattern === false || strpos($pattern, 'G') === false) {
+            return $formatted;
+        }
+        $eraSlice = self::extractEraSubstring($pattern, $formatted);
+        if ($eraSlice === null) {
+            return $formatted;
+        }
+        [$start, $length, $value] = $eraSlice;
+        $mapped = self::mapEraToIcu4xCode($calendar, $value);
+        if ($mapped === $value && $value !== '') {
+            return $formatted;
+        }
+        if (
+            $value === ''
+            && self::calendarHasIcu4xPreEra($calendar)
+        ) {
+            $mapped = 'ERA0';
+        }
+        if ($mapped === $value) {
+            return $formatted;
+        }
+        return substr($formatted, 0, $start) . $mapped . substr($formatted, $start + $length);
+    }
+
+    /**
+     * Locate the era substring in $formatted by walking the same
+     * CLDR pattern tokens that formatToParts uses. Returns
+     * [startOffset, length, value] for the era run, or null when
+     * the pattern has no era token or alignment fails. The value
+     * may be the empty string when ICU emitted no era glyphs.
+     *
+     * @return array{0:int,1:int,2:string}|null
+     */
+    private static function extractEraSubstring(string $pattern, string $formatted): ?array
+    {
+        $tokens = [];
+        $patLen = strlen($pattern);
+        $p = 0;
+        while ($p < $patLen) {
+            $ch = $pattern[$p];
+            if ($ch === "'") {
+                $p++;
+                $literal = '';
+                while ($p < $patLen) {
+                    if ($pattern[$p] === "'") {
+                        if ($p + 1 < $patLen && $pattern[$p + 1] === "'") {
+                            $literal .= "'";
+                            $p += 2;
+                            continue;
+                        }
+                        $p++;
+                        break;
+                    }
+                    $literal .= $pattern[$p];
+                    $p++;
+                }
+                $tokens[] = ['type' => 'literal', 'value' => $literal];
+                continue;
+            }
+            $isAscii = ord($ch) < 0x80;
+            $isAsciiAlpha = $isAscii && ctype_alpha($ch);
+            if ($isAsciiAlpha) {
+                $j = $p;
+                while ($j < $patLen && $pattern[$j] === $ch) {
+                    $j++;
+                }
+                $tokens[] = ['type' => self::patternLetterToPartType($ch), 'letter' => $ch];
+                $p = $j;
+                continue;
+            }
+            $j = $p;
+            while ($j < $patLen) {
+                $b = $pattern[$j];
+                $isB = ord($b) < 0x80 && ctype_alpha($b);
+                if ($isB || $b === "'") {
+                    break;
+                }
+                $j++;
+            }
+            $tokens[] = ['type' => 'literal', 'value' => substr($pattern, $p, $j - $p)];
+            $p = $j;
+        }
+        $cursor = 0;
+        $outLen = strlen($formatted);
+        for ($ti = 0; $ti < count($tokens); $ti++) {
+            $tok = $tokens[$ti];
+            if ($tok['type'] === 'literal') {
+                $lit = $tok['value'] ?? '';
+                if ($lit === '') {
+                    continue;
+                }
+                if (substr($formatted, $cursor, strlen($lit)) === $lit) {
+                    $cursor += strlen($lit);
+                } elseif (
+                    preg_match('/^[\s\x{00A0}\x{202F}]/u', $lit) === 1
+                    && preg_match(
+                        '/^[\s\x{00A0}\x{202F}]+/u',
+                        substr($formatted, $cursor),
+                        $wsMatch,
+                    ) === 1
+                ) {
+                    $cursor += strlen($wsMatch[0]);
+                } else {
+                    return null;
+                }
+                continue;
+            }
+            $lookahead = '';
+            for ($k = $ti + 1; $k < count($tokens); $k++) {
+                if (
+                    $tokens[$k]['type'] === 'literal'
+                    && isset($tokens[$k]['value'])
+                    && $tokens[$k]['value'] !== ''
+                ) {
+                    $lookahead = $tokens[$k]['value'];
+                    break;
+                }
+            }
+            $endPos = $outLen;
+            if ($lookahead !== '') {
+                $found = strpos($formatted, $lookahead, $cursor);
+                if ($found === false && preg_match('/^[\s\x{00A0}\x{202F}]/u', $lookahead) === 1) {
+                    if (
+                        preg_match(
+                            '/[\s\x{00A0}\x{202F}]/u',
+                            substr($formatted, $cursor),
+                            $wsAfter,
+                            PREG_OFFSET_CAPTURE,
+                        ) === 1
+                    ) {
+                        $found = $cursor + $wsAfter[0][1];
+                    }
+                }
+                if ($found !== false) {
+                    $endPos = $found;
+                }
+            }
+            if ($tok['type'] === 'era') {
+                return [$cursor, $endPos - $cursor, substr($formatted, $cursor, $endPos - $cursor)];
+            }
+            $cursor = $endPos;
+        }
+        return null;
     }
 
     /**

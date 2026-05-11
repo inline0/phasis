@@ -635,16 +635,39 @@ final class Compiler
         // stale or missing binding at runtime. Scan the arrow body
         // for those references and bail compilation if found.
         if ($node instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+            // Arrows still need their body scanned for the outer
+            // function's arguments / this / new.target usage (see
+            // comment above) AND for an indirect/direct eval call
+            // that would observe top-level vars the program-exit
+            // mirror loop hasn't written yet.
+            if (self::nodeReferencesEval($node)) {
+                throw new CompilerBailout('nested arrow references eval');
+            }
             $this->scanBailout($node->body);
             return;
         }
         // Other nested bodies (regular functions, classes) get their
         // own per-call arguments / this binding scopes, so the outer
         // function's compile is unaffected by their identifier usage.
+        // BUT: an `eval` reference inside a nested body is still a
+        // compile-blocker for the top-level program, because direct
+        // or indirect eval at runtime needs to observe top-level var
+        // bindings via globalEnv. The compiler mirrors those bindings
+        // only at program exit (after RET), so a function body that
+        // calls eval (directly or as `(1, eval)(...)`) at runtime
+        // would see stale globals. Recurse just enough to detect any
+        // eval reference and bail compilation if found.
         if (
             $node instanceof \PhpJs\Ast\Expression\FunctionExpression
             || $node instanceof \PhpJs\Ast\Declaration\FunctionDeclaration
-            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+        ) {
+            if (self::nodeReferencesEval($node)) {
+                throw new CompilerBailout('nested function references eval');
+            }
+            return;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\ClassExpression
             || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
         ) {
             return;
@@ -656,6 +679,38 @@ final class Compiler
                 $this->scanBailout($value);
             }
         }
+    }
+
+    /**
+     * Walk $node and any nested functions/classes looking for an
+     * Identifier whose name is `eval`. Used to detect indirect or
+     * direct eval references inside nested function bodies so the
+     * top-level program compile can bail before mirroring vars too
+     * late for the runtime eval.
+     */
+    private static function nodeReferencesEval(Node $node): bool
+    {
+        if ($node instanceof Identifier && $node->name === 'eval') {
+            return true;
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties() as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if (self::nodeReferencesEval($value)) {
+                    return true;
+                }
+                continue;
+            }
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && self::nodeReferencesEval($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -1641,6 +1696,14 @@ final class Compiler
             $name = $decl->id->name;
             $slot = $this->localSlots[$name] ?? $this->declareLocal($name);
             if ($decl->init !== null) {
+                // NamedEvaluation: per spec 14.3.2.1, when the initializer
+                // is an anonymous function/class definition, the declared
+                // binding name becomes the function's .name. The bytecode
+                // emit path stores the value verbatim with no rename hook,
+                // so bail to the tree-walker (which calls JsFunction::setName).
+                if (self::initNeedsNamedEvaluation($decl->init)) {
+                    throw new CompilerBailout('var init needs named evaluation');
+                }
                 $this->compileExpression($decl->init);
                 $this->emit(Op::STORE_LOCAL, $slot);
             } else {
@@ -1652,6 +1715,32 @@ final class Compiler
                 $this->constSlots[$slot] = true;
             }
         }
+    }
+
+    /**
+     * Return true when the spec's IsAnonymousFunctionDefinition is
+     * true for $init, i.e. a NamedEvaluation should fire on the
+     * binding name. Anonymous function expressions, arrow functions
+     * and anonymous class expressions all qualify.
+     */
+    private static function initNeedsNamedEvaluation(Node $init): bool
+    {
+        if (
+            $init instanceof \PhpJs\Ast\Expression\FunctionExpression
+            && $init->name === null
+        ) {
+            return true;
+        }
+        if ($init instanceof \PhpJs\Ast\Expression\ArrowFunction) {
+            return true;
+        }
+        if (
+            $init instanceof \PhpJs\Ast\Expression\ClassExpression
+            && $init->id === null
+        ) {
+            return true;
+        }
+        return false;
     }
 
     private function compileExpression(Node $node): void
