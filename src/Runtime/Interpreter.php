@@ -16300,6 +16300,10 @@ class Interpreter
             'C' => 'C', 'Cc' => 'Cc', 'Cf' => 'Cf', 'Cs' => 'Cs',
             'Co' => 'Co', 'Cn' => 'Cn',
             'cntrl' => 'Cc', 'digit' => 'Nd', 'punct' => 'P',
+            // Unicode "loose" alias for Mark / M (PropertyValueAliases.txt
+            // lists Combining_Mark as a synonym for the Mark general
+            // category). Required by the test262 generated suite.
+            'Combining_Mark' => 'M',
         ];
         return $map[$value] ?? null;
     }

@@ -907,6 +907,9 @@ class Matcher
             'cntrl' => 'Control',
             'digit' => 'Decimal_Number',
             'punct' => 'Punctuation',
+            // Unicode "loose" alias for Mark (Combining_Mark per
+            // PropertyValueAliases.txt).
+            'Combining_Mark' => 'Mark',
         ];
         if (isset($aliases[$name])) {
             // Translate the alias to its long form so subsequent
