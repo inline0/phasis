@@ -15,6 +15,133 @@ class Test262Runner
     /** @var array<string, string> Cached harness source (stripped frontmatter) */
     private array $harnessCache = [];
 
+    /**
+     * test262 paths (relative to test262/test/) that scaffold
+     * via $262.agent.start but pass under a single-threaded runner
+     * because they assert behaviour that holds without preemptive
+     * concurrency (e.g. "notify with no waiters returns 0", input
+     * validation that throws before the worker schedules).
+     *
+     * @var list<string>
+     */
+    private const AGENT_ALLOWLIST = [
+        'built-ins/Atomics/notify/notify-with-no-agents-waiting.js',
+        'built-ins/Atomics/notify/notify-with-no-matching-agents-waiting.js',
+        'built-ins/Atomics/wait/bigint/value-not-equal.js',
+        'built-ins/Atomics/wait/poisoned-object-for-timeout-throws-agent.js',
+        'built-ins/Atomics/wait/symbol-for-index-throws-agent.js',
+        'built-ins/Atomics/wait/symbol-for-timeout-throws-agent.js',
+        'built-ins/Atomics/wait/symbol-for-value-throws-agent.js',
+        'built-ins/Atomics/wait/value-not-equal.js',
+        'built-ins/Atomics/wait/wait-index-value-not-equal.js',
+    ];
+
+    /**
+     * test262 paths (relative to test262/test/) that genuinely need
+     * cross-realm semantics. Every entry was confirmed to fail with the
+     * skip bypassed; tests merely referencing $262.createRealm but
+     * passing under the single-realm runner are intentionally excluded.
+     * Tracked under "structural gaps" in CLAUDE.md.
+     *
+     * @var list<string>
+     */
+    private const CROSS_REALM_BLOCKLIST = [
+        'annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/legacy-accessors/input/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/legacy-accessors/lastMatch/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/legacy-accessors/leftContext/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/legacy-accessors/rightContext/this-cross-realm-constructor.js',
+        'annexB/built-ins/RegExp/prototype/compile/this-cross-realm-instance.js',
+        'built-ins/Array/from/proto-from-ctor-realm.js',
+        'built-ins/Array/of/proto-from-ctor-realm.js',
+        'built-ins/Array/proto-from-ctor-realm-one.js',
+        'built-ins/Array/proto-from-ctor-realm-two.js',
+        'built-ins/Array/proto-from-ctor-realm-zero.js',
+        'built-ins/Array/prototype/concat/create-proto-from-ctor-realm-array.js',
+        'built-ins/Array/prototype/filter/create-proto-from-ctor-realm-array.js',
+        'built-ins/Array/prototype/map/create-proto-from-ctor-realm-array.js',
+        'built-ins/Array/prototype/slice/create-proto-from-ctor-realm-array.js',
+        'built-ins/Array/prototype/splice/create-proto-from-ctor-realm-array.js',
+        'built-ins/AsyncGeneratorFunction/proto-from-ctor-realm-prototype.js',
+        'built-ins/Function/call-bind-this-realm-undef.js',
+        'built-ins/Function/call-bind-this-realm-value.js',
+        'built-ins/Function/proto-from-ctor-realm-prototype.js',
+        'built-ins/Function/proto-from-ctor-realm.js',
+        'built-ins/Function/prototype/bind/proto-from-ctor-realm.js',
+        'built-ins/GeneratorFunction/proto-from-ctor-realm-prototype.js',
+        'built-ins/JSON/stringify/value-bigint-cross-realm.js',
+        'built-ins/Proxy/apply/arguments-realm.js',
+        'built-ins/Proxy/construct/arguments-realm.js',
+        'built-ins/Proxy/construct/trap-is-undefined-proto-from-newtarget-realm.js',
+        'built-ins/Proxy/defineProperty/desc-realm.js',
+        'built-ins/Proxy/get-fn-realm.js',
+        'built-ins/Proxy/revocable/tco-fn-realm.js',
+        'built-ins/RegExp/prototype/Symbol.split/splitter-proto-from-ctor-realm.js',
+        'built-ins/RegExp/prototype/dotAll/cross-realm.js',
+        'built-ins/RegExp/prototype/global/cross-realm.js',
+        'built-ins/RegExp/prototype/hasIndices/cross-realm.js',
+        'built-ins/RegExp/prototype/ignoreCase/cross-realm.js',
+        'built-ins/RegExp/prototype/multiline/cross-realm.js',
+        'built-ins/RegExp/prototype/source/cross-realm.js',
+        'built-ins/RegExp/prototype/sticky/cross-realm.js',
+        'built-ins/RegExp/prototype/unicode/cross-realm.js',
+        'built-ins/RegExp/prototype/unicodeSets/cross-realm.js',
+        'built-ins/ShadowRealm/prototype/evaluate/wrapped-function-proto-from-caller-realm.js',
+        'built-ins/Symbol/for/cross-realm.js',
+        'built-ins/Symbol/keyFor/cross-realm.js',
+        'harness/assert-throws-same-realm.js',
+        'harness/asyncHelpers-throwsAsync-same-realm.js',
+        'language/eval-code/indirect/realm.js',
+        'language/expressions/async-generator/eval-body-proto-realm.js',
+        'language/expressions/call/eval-realm-indirect.js',
+        'language/expressions/generators/eval-body-proto-realm.js',
+        'language/expressions/super/realm.js',
+        'language/types/reference/get-value-prop-base-primitive-realm.js',
+        'language/types/reference/put-value-prop-base-primitive-realm.js',
+        'staging/sm/Array/change-array-by-copy-cross-compartment-create.js',
+        'staging/sm/Array/change-array-by-copy-errors-from-correct-realm.js',
+        'staging/sm/Array/from_realms.js',
+        'staging/sm/Array/species.js',
+        'staging/sm/ArrayBuffer/slice-species.js',
+        'staging/sm/Error/AggregateError.js',
+        'staging/sm/Function/arguments-iterator.js',
+        'staging/sm/Iterator/from/wrap-new-global.js',
+        'staging/sm/Iterator/prototype/every/error-from-correct-realm.js',
+        'staging/sm/Iterator/prototype/find/error-from-correct-realm.js',
+        'staging/sm/Iterator/prototype/forEach/error-from-correct-realm.js',
+        'staging/sm/Iterator/prototype/reduce/error-from-correct-realm.js',
+        'staging/sm/Iterator/prototype/some/error-from-correct-realm.js',
+        'staging/sm/Iterator/prototype/toArray/create-in-current-realm.js',
+        'staging/sm/JSON/parse-with-source.js',
+        'staging/sm/Proxy/proxy-with-revoked-arguments.js',
+        'staging/sm/Reflect/set.js',
+        'staging/sm/RegExp/constructor-constructor.js',
+        'staging/sm/RegExp/prototype-different-global.js',
+        'staging/sm/TypedArray/at.js',
+        'staging/sm/TypedArray/constructor-ArrayBuffer-species-wrap.js',
+        'staging/sm/TypedArray/constructor-buffer-sequence.js',
+        'staging/sm/TypedArray/constructor-typedarray-species-other-global.js',
+        'staging/sm/TypedArray/entries.js',
+        'staging/sm/TypedArray/every-and-some.js',
+        'staging/sm/TypedArray/fill.js',
+        'staging/sm/TypedArray/forEach.js',
+        'staging/sm/TypedArray/from_realms.js',
+        'staging/sm/TypedArray/includes.js',
+        'staging/sm/TypedArray/iterator.js',
+        'staging/sm/TypedArray/join.js',
+        'staging/sm/TypedArray/keys.js',
+        'staging/sm/TypedArray/map-and-filter.js',
+        'staging/sm/TypedArray/of.js',
+        'staging/sm/TypedArray/reduce-and-reduceRight.js',
+        'staging/sm/TypedArray/reverse.js',
+        'staging/sm/TypedArray/slice-bitwise-same.js',
+        'staging/sm/TypedArray/slice.js',
+        'staging/sm/TypedArray/toLocaleString.js',
+        'staging/sm/TypedArray/values.js',
+        'staging/sm/extensions/cross-global-eval-is-indirect.js',
+    ];
+
     public function __construct(string $suiteDir)
     {
         $this->suiteDir = rtrim($suiteDir, '/');
@@ -44,22 +171,9 @@ class Test262Runner
         }
 
         // Tests that orchestrate multiple agents via the $262.agent host
-        // are simulated cooperatively (see AgentHost). Real preemptive
-        // concurrency would interleave Atomics.wait and Atomics.notify
-        // across threads, but for deterministic test262 patterns the
-        // worker source runs synchronously on broadcast and suspends on
-        // Atomics.wait via PHP Fibers, then is resumed by Atomics.notify
-        // on the main agent. Fair-scheduling and true race tests do not
-        // work, but the bulk of the Atomics suite is deterministic
-        // enough to pass.
-
-        // Tests whose worker source spin-loops on a shared atomic
-        // (waiting for the main agent to flip a flag) cannot run in our
-        // cooperative model: the fiber that enters the spin loop never
-        // yields, so we can never run the main agent that would unstick
-        // it. These tests require true preemptive concurrency. The
-        // patterns are spin-loops on Atomics.load / compareExchange /
-        // exchange inside an agent.start() body.
+        // are simulated cooperatively (see AgentHost). Spin-loop on
+        // shared atomic and waitAsync patterns can't be simulated, so
+        // skip those. Everything else runs through the fiber simulator.
         if (
             (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
@@ -74,15 +188,6 @@ class Test262Runner
                 'Worker spin-loop on shared atomic needs preemptive scheduling',
             );
         }
-
-        // Multi-agent async tests interleave Atomics.waitAsync promise
-        // chains with main-thread microtask draining; the worker is
-        // expected to run additional turns concurrently while the main
-        // awaits getReportAsync. Our cooperative fiber simulator only
-        // models synchronous Atomics.wait suspension and cannot weave
-        // microtask resolution into a worker-fiber's await sequence
-        // mid-flight. Skip these so they don't hang on the runner's
-        // 30s clock.
         if (
             (strpos($source, '$262.agent.start') !== false
                 || strpos($source, '$262.agent.broadcast') !== false)
@@ -97,6 +202,26 @@ class Test262Runner
                 TestStatus::Skip,
                 'Multi-agent waitAsync needs cross-fiber microtask scheduling',
             );
+        }
+
+        // Audited cross-realm blocklist: only these specific paths
+        // genuinely depend on multi-realm semantics our single-realm
+        // child-Engine model can't satisfy (identity-of-intrinsics
+        // across realms, %FooPrototype% lookup, etc.). The blanket
+        // string-match skip from before was too broad — many tests
+        // reference $262.createRealm to scaffold but assert behaviour
+        // invariant across realms; the cross-realm impl now lets those
+        // run.
+        if (!getenv('PHPJS_AUDIT_BYPASS_CROSSREALM')) {
+            foreach (self::CROSS_REALM_BLOCKLIST as $rel) {
+                if (str_ends_with($testPath, '/' . $rel)) {
+                    return new TestResult(
+                        $testPath,
+                        TestStatus::Skip,
+                        'Cross-realm test (single-realm runner)',
+                    );
+                }
+            }
         }
 
         // Cross-realm (`$262.createRealm` + SM aliases) and DST cache
