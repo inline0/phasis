@@ -68,15 +68,14 @@ jobs:
           # subprefixes resolve to distinct groups.
           - { id: 'builtins-RegExp-prototype', prefix: 'built-ins/RegExp/prototype', exclude: '' }
           # property-escapes/generated holds 432 procedurally generated
-          # unicode property tests — most rely on regex features outside
-          # PCRE's reach (Script_Extensions, Bidi properties, etc.) and
-          # trip the engine's per-test timeout. They are intentionally
-          # left out of the CI matrix so the rest of the suite finishes
-          # under the 45-minute shard cap; they show up as "pending" in
-          # the merged compat snapshot. Tracking work to enable them
-          # would require a custom regex engine (per the structural
-          # gaps documented in CLAUDE.md).
-          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: 'built-ins/RegExp/property-escapes/generated' }
+          # unicode property tests. The custom regex matcher routes
+          # \p{...} through ICU via IntlChar (see src/Regex/Matcher.php),
+          # so they run alongside the rest of the suite. A handful of
+          # tests still fail because PHP's ICU build is one Unicode
+          # revision ahead of the test data (e.g. U+A7D2 is Alphabetic
+          # in Unicode 17 but not in Unicode 16); those are out of
+          # reach without shipping Unicode-16 data files.
+          - { id: 'builtins-RegExp-property-escapes', prefix: 'built-ins/RegExp/property-escapes', exclude: '' }
           - { id: 'builtins-RegExp-rest', prefix: 'built-ins/RegExp', exclude: 'built-ins/RegExp/prototype built-ins/RegExp/property-escapes' }
           - { id: 'builtins-S', prefix: 'built-ins/S', exclude: '' }
           # Temporal has 4165 tests; split by top-level type.

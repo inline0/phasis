@@ -627,7 +627,7 @@ class Matcher
             return false;
         }
         $utf8 = \IntlChar::chr($cp);
-        if (!is_string($utf8) || $utf8 === '') {
+        if ($utf8 === '') {
             return false;
         }
         static $cache = [];
@@ -720,7 +720,7 @@ class Matcher
             $buf = '';
             for ($cp = $blockStart; $cp <= $blockEnd; $cp++) {
                 $u = \IntlChar::chr($cp);
-                if (is_string($u) && $u !== '') {
+                if ($u !== '') {
                     $buf .= $u;
                 }
             }
