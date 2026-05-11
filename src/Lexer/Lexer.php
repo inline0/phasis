@@ -1776,23 +1776,6 @@ class Lexer
 
             $ch = $this->source[$this->pos];
 
-            // Fast-path: skip past any run of non-special bytes.
-            if (
-                $ch !== '\\' && $ch !== '[' && $ch !== ']' && $ch !== '/'
-                && $ch !== "\n" && $ch !== "\r" && $ch !== "\xE2"
-            ) {
-                $skip = strcspn($this->source, $stopBytes, $this->pos);
-                if ($skip > 0) {
-                    $pattern .= substr($this->source, $this->pos, $skip);
-                    $this->pos += $skip;
-                    $this->column += $skip;
-                    if ($this->pos >= $this->length) {
-                        break;
-                    }
-                    continue;
-                }
-            }
-
             if ($ch === '\\') {
                 $segments[] = $ch;
                 $this->advance();

@@ -2126,7 +2126,7 @@ class Parser
         // must be the unparenthesized AssignmentElement form `a = init`.
         // (The outer `([a]) = ...` case is rejected before this is called.)
         if (
-            $this->parenthesized->contains($node)
+            $this->parenthesized->offsetExists($node)
             && (
                 $node instanceof ObjectExpression
                 || $node instanceof ArrayExpression
@@ -2188,7 +2188,7 @@ class Parser
                 $this->validateAsAssignmentPattern($el);
             }
             // Reject trailing comma after a rest element in patterns.
-            if ($this->arrayExpressionsWithTrailingCommaAfterRest->contains($node)) {
+            if ($this->arrayExpressionsWithTrailingCommaAfterRest->offsetExists($node)) {
                 throw new \PhpJs\Exceptions\SyntaxError(
                     'Trailing comma not allowed after rest element in pattern',
                 );
@@ -2579,7 +2579,7 @@ class Parser
         if ($node === null) {
             return;
         }
-        if ($node instanceof Literal && $this->stringsWithLegacyOctal->contains($node)) {
+        if ($node instanceof Literal && $this->stringsWithLegacyOctal->offsetExists($node)) {
             throw new \PhpJs\Exceptions\SyntaxError(
                 'Octal escape sequences are not allowed in strict mode',
             );
@@ -2672,7 +2672,7 @@ class Parser
                 ($superClass instanceof \PhpJs\Ast\Expression\ArrowFunction
                     || $superClass instanceof \PhpJs\Ast\Expression\AssignmentExpression
                     || $superClass instanceof \PhpJs\Ast\Expression\ConditionalExpression)
-                && !$this->parenthesized->contains($superClass)
+                && !$this->parenthesized->offsetExists($superClass)
             ) {
                 throw new ParseError(
                     'Invalid class heritage expression',
@@ -3776,7 +3776,7 @@ class Parser
                 !$isAwait
                 && $init instanceof Identifier
                 && $init->name === 'async'
-                && !$this->parenthesized->contains($init)
+                && !$this->parenthesized->offsetExists($init)
                 && substr($this->source, $init->location->offset, 5) === 'async'
             ) {
                 throw new ParseError(
@@ -4281,7 +4281,7 @@ class Parser
             if (
                 $op->value === '='
                 && ($left instanceof ObjectExpression || $left instanceof \PhpJs\Ast\Expression\ArrayExpression)
-                && $this->parenthesized->contains($left)
+                && $this->parenthesized->offsetExists($left)
             ) {
                 throw new ParseError(
                     'Invalid left-hand side in assignment: parenthesized pattern',
@@ -4297,7 +4297,7 @@ class Parser
             ) {
                 $this->validateAsAssignmentPattern($left);
             }
-            $leftParenthesized = $this->parenthesized->contains($left);
+            $leftParenthesized = $this->parenthesized->offsetExists($left);
             $right = $this->parseAssignmentExpression();
             // For destructuring assignment (LHS is an object/array literal),
             // validate that shorthand properties cannot use reserved words.
@@ -4431,7 +4431,7 @@ class Parser
                     $left instanceof UnaryExpression
                     || $left instanceof AwaitExpression
                 )
-                && !$this->parenthesized->contains($left)
+                && !$this->parenthesized->offsetExists($left)
             ) {
                 throw new ParseError(
                     'Unary operator used immediately before exponentiation expression. '
@@ -4453,7 +4453,7 @@ class Parser
                     if (
                         $left instanceof LogicalExpression
                         && ($left->operator === '&&' || $left->operator === '||')
-                        && !$this->parenthesized->contains($left)
+                        && !$this->parenthesized->offsetExists($left)
                     ) {
                         throw new ParseError(
                             "?? cannot be chained with && or || without grouping",
@@ -4465,7 +4465,7 @@ class Parser
                     if (
                         $left instanceof LogicalExpression
                         && $left->operator === '??'
-                        && !$this->parenthesized->contains($left)
+                        && !$this->parenthesized->offsetExists($left)
                     ) {
                         throw new ParseError(
                             "&& or || cannot be chained with ?? without grouping",
@@ -4480,7 +4480,7 @@ class Parser
                     if (
                         $right instanceof LogicalExpression
                         && ($right->operator === '&&' || $right->operator === '||')
-                        && !$this->parenthesized->contains($right)
+                        && !$this->parenthesized->offsetExists($right)
                     ) {
                         throw new ParseError(
                             "?? cannot be chained with && or || without grouping",
@@ -4492,7 +4492,7 @@ class Parser
                     if (
                         $right instanceof LogicalExpression
                         && $right->operator === '??'
-                        && !$this->parenthesized->contains($right)
+                        && !$this->parenthesized->offsetExists($right)
                     ) {
                         throw new ParseError(
                             "&& or || cannot be chained with ?? without grouping",
@@ -4557,7 +4557,7 @@ class Parser
                 // Per spec, an ArrowFunction is at AssignmentExpression
                 // level — `()=>{}` cannot be extended directly with member
                 // access. Parens force LHS shape: `(()=>{})[0]` is valid.
-                if ($left instanceof ArrowFunction && !$this->parenthesized->contains($left)) {
+                if ($left instanceof ArrowFunction && !$this->parenthesized->offsetExists($left)) {
                     $this->pos--;
                     return $left;
                 }
@@ -4569,7 +4569,7 @@ class Parser
             }
 
             if ($token->type === TokenType::LeftParen) {
-                if ($left instanceof ArrowFunction && !$this->parenthesized->contains($left)) {
+                if ($left instanceof ArrowFunction && !$this->parenthesized->offsetExists($left)) {
                     $this->pos--;
                     return $left;
                 }
@@ -4792,7 +4792,7 @@ class Parser
         // (and therefore valid LHS continuations). The existing tests we
         // care about wrap arrows in parens before extending.
         $isUnparenthesizedArrow = $expr instanceof ArrowFunction
-            && !$this->parenthesized->contains($expr);
+            && !$this->parenthesized->offsetExists($expr);
 
         while (true) {
             if ($isUnparenthesizedArrow) {
@@ -7668,7 +7668,7 @@ class Parser
                 ($superClass instanceof \PhpJs\Ast\Expression\ArrowFunction
                     || $superClass instanceof \PhpJs\Ast\Expression\AssignmentExpression
                     || $superClass instanceof \PhpJs\Ast\Expression\ConditionalExpression)
-                && !$this->parenthesized->contains($superClass)
+                && !$this->parenthesized->offsetExists($superClass)
             ) {
                 throw new ParseError(
                     'Invalid class heritage expression',
@@ -7792,7 +7792,7 @@ class Parser
             // PrimaryExpression, i.e. MemberExpression).
             if (
                 $callee instanceof \PhpJs\Ast\Expression\ImportExpression
-                && !$this->parenthesized->contains($callee)
+                && !$this->parenthesized->offsetExists($callee)
             ) {
                 throw new ParseError(
                     'import() cannot be preceded by the new keyword',
