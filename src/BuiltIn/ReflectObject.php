@@ -400,17 +400,20 @@ class ReflectObject
                 // GetPrototypeFromConstructor → GetFunctionRealm.
                 $isNativeTarget = $target->isNative();
                 if ($isNativeTarget) {
-                    // Use newTarget's prototype if it's an Object,
-                    // otherwise fall back to GetFunctionRealm(newTarget)
-                    // and look up the target's intrinsic prototype name.
-                    $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
-                        $newTarget,
-                        static fn ($env) => null, // built-ins resolve via [[NewTarget]] inside the body
-                    );
-                    if ($useProto === null) {
-                        $targetProto = $target->get('prototype');
-                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
-                    }
+                    // For native constructors, the body itself decides
+                    // when to read newTarget.prototype (via [[NewTarget]]
+                    // and OrdinaryCreateFromConstructor at the spec-
+                    // mandated step). Reading it eagerly here would fire
+                    // a poisoned getter before the body has had a chance
+                    // to validate arguments — e.g. ArrayBuffer's spec
+                    // mandates byteLength > maxByteLength RangeError
+                    // BEFORE OrdinaryCreateFromConstructor. Seed
+                    // $useProto with the target's own prototype so the
+                    // intermediate JsObject is well-formed; the
+                    // post-body block applies newTarget.prototype if it
+                    // differs.
+                    $targetProto = $target->get('prototype');
+                    $useProto = $targetProto instanceof JsObject ? $targetProto : null;
                 } else {
                     $ntProto = $newTarget->get('prototype');
                     if (

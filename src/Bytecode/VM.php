@@ -965,6 +965,15 @@ final class VM
                             }
                             $pc++;
                             break;
+                        case Op::TO_STRING:
+                            $v = $stack[--$sp];
+                            if ($v instanceof JsString) {
+                                $stack[$sp++] = $v;
+                            } else {
+                                $stack[$sp++] = new JsString(TypeConversion::toString($v));
+                            }
+                            $pc++;
+                            break;
 
                 // ---- Control flow ---------------------------------------
                         case Op::JUMP:

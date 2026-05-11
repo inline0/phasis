@@ -198,6 +198,20 @@ final class Compiler
      * JsThrowable with that value.
      */
 
+    /**
+     * Slot indices that represent top-level `var` bindings. When set,
+     * every STORE_LOCAL into one of these slots is followed by an
+     * eager LOAD_LOCAL + STORE_NAME pair so the global object's
+     * property stays in lock-step with the frame slot. The end-of-
+     * program mirror loop alone is not enough: a Function-constructor
+     * body or any nested call that reads `globalThis.<name>` mid-
+     * program would observe the hoisted-undefined placeholder
+     * otherwise (the test262 S15.3_A3_T2 / T6 regression).
+     *
+     * @var array<int,string>
+     */
+    private array $programVarSlots = [];
+
     public function compile(JsFunction $fn): CompiledFunction
     {
         if ($fn->isGenerator() || $fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
@@ -435,6 +449,17 @@ final class Compiler
         // matching the tree-walker's behaviour where every top-level
         // var is a property of the global object.
         $topLevelVarSlots = $this->localSlots;
+
+        // Enable eager STORE_NAME mirroring for every write to a
+        // top-level var slot during statement compile, so functions
+        // created during the program (Function-constructor bodies,
+        // setTimeout-style callbacks, nested closures invoked
+        // mid-script) see live values on globalThis rather than the
+        // hoisted-undefined placeholder. The end-of-program mirror
+        // loop alone is not sufficient.
+        foreach ($topLevelVarSlots as $name => $slot) {
+            $this->programVarSlots[$slot] = $name;
+        }
 
         foreach ($program->body as $stmt) {
             // Top-level FunctionDeclarations are pre-hoisted onto
@@ -1227,6 +1252,24 @@ final class Compiler
     }
 
     /**
+     * Emit a STORE_LOCAL to $slot. When $slot is a top-level program
+     * var slot, also mirror the value onto globalEnv via STORE_NAME so
+     * mid-program reads of globalThis.<name> (e.g. from Function-
+     * constructor bodies) see the live value. Spec-required: per ES,
+     * top-level `var` creates a property on the global object whose
+     * value is updated synchronously by the var initializer / any
+     * subsequent assignment.
+     */
+    private function emitStoreLocal(int $slot): void
+    {
+        $this->emit(Op::STORE_LOCAL, $slot);
+        if (isset($this->programVarSlots[$slot])) {
+            $this->emit(Op::LOAD_LOCAL, $slot);
+            $this->emit(Op::STORE_NAME, $this->internName($this->programVarSlots[$slot]));
+        }
+    }
+
+    /**
      * Best-effort source rendering for a method-call callee
      * (`obj.prop`). Mirrors Interpreter::renderCalleeNode so the
      * VM-compiled and tree-walker paths produce the same TypeError
@@ -1827,7 +1870,7 @@ final class Compiler
                     }
                     $this->emit(Op::LOAD_MEMBER, $this->internName($keyName));
                     $slot = $this->localSlots[$prop->value->name] ?? $this->declareLocal($prop->value->name);
-                    $this->emit(Op::STORE_LOCAL, $slot);
+                    $this->emitStoreLocal($slot);
                     if ($node->kind === 'const') {
                         $this->constSlots[$slot] = true;
                     }
@@ -1872,7 +1915,7 @@ final class Compiler
                     throw new CompilerBailout('var init needs named evaluation');
                 }
                 $this->compileExpression($decl->init);
-                $this->emit(Op::STORE_LOCAL, $slot);
+                $this->emitStoreLocal($slot);
             } else {
                 if ($node->kind === 'const') {
                     throw new CompilerBailout('const without initializer');
@@ -2364,6 +2407,16 @@ final class Compiler
             }
             if ($i < count($expressions)) {
                 $this->compileExpression($expressions[$i]);
+                // Per spec 13.2.8.6 SubstitutionTemplate evaluation:
+                // each ${expr} is coerced via ToString directly (which
+                // uses ToPrimitive("string") for objects), NOT via
+                // `+`'s default hint. The distinction is observable
+                // when @@toPrimitive is monkey-patched (e.g. Symbol
+                // wrapper with @@toPrimitive=null should reach
+                // Symbol.prototype.toString and yield "Symbol()"
+                // rather than the default-hint path that surfaces a
+                // raw JsSymbol primitive and throws on ToString).
+                $this->emit(Op::TO_STRING);
                 $this->emit(Op::ADD);
             }
         }
@@ -2448,7 +2501,7 @@ final class Compiler
                 if ($node->prefix) {
                     $this->emit(Op::DUP);
                 }
-                $this->emit(Op::STORE_LOCAL, $slot);
+                $this->emitStoreLocal($slot);
                 return;
             }
             // Free variable: bail to tree-walker (Reference path is
@@ -2765,7 +2818,7 @@ final class Compiler
                 $this->compileExpression($node->right);
                 $this->emit(Op::DUP);
                 if ($isLocal) {
-                    $this->emit(Op::STORE_LOCAL, $this->localSlots[$name]);
+                    $this->emitStoreLocal($this->localSlots[$name]);
                 } else {
                     $this->emit(Op::STORE_NAME, $this->internName($name));
                 }
@@ -2782,7 +2835,7 @@ final class Compiler
             $this->emit($binaryOpcode);
             $this->emit(Op::DUP);
             if ($isLocal) {
-                $this->emit(Op::STORE_LOCAL, $this->localSlots[$name]);
+                $this->emitStoreLocal($this->localSlots[$name]);
             } else {
                 $this->emit(Op::STORE_NAME, $this->internName($name));
             }

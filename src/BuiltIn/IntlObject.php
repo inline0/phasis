@@ -340,9 +340,18 @@ class IntlObject
      * runtime allocates an instance with the subclass's prototype and
      * passes it as `this`; we should populate that object in place
      * rather than creating a fresh JsObject with the built-in prototype.
+     *
+     * The `$intrinsicName` argument enables spec-compliant
+     * GetPrototypeFromConstructor cross-realm fallback: when
+     * `NewTarget.prototype` is not an Object, the prototype is taken
+     * from `GetFunctionRealm(NewTarget).Intl.<intrinsicName>.prototype`
+     * instead of the current realm's installed prototype.
      */
-    private static function instanceFromConstructor(JsValue $this_, JsObject $proto): JsObject
-    {
+    private static function instanceFromConstructor(
+        JsValue $this_,
+        JsObject $proto,
+        ?string $intrinsicName = null,
+    ): JsObject {
         if (
             $this_ instanceof JsObject
             && !$this_->get('[[NewTarget]]') instanceof JsUndefined
@@ -353,14 +362,50 @@ class IntlObject
             // any option validation in the constructor body.
             $newTarget = $this_->get('[[NewTarget]]');
             if ($newTarget instanceof JsObject) {
-                $ntProto = $newTarget->get('prototype');
-                if ($ntProto instanceof JsObject) {
-                    $this_->setPrototype($ntProto);
+                $resolved = self::resolveProtoFromCtor($newTarget, $intrinsicName);
+                if ($resolved !== null) {
+                    $this_->setPrototype($resolved);
                 }
             }
             return $this_;
         }
         return new JsObject($proto);
+    }
+
+    /**
+     * Spec GetPrototypeFromConstructor for Intl constructors: returns
+     * `NewTarget.prototype` when it's an Object, otherwise falls back to
+     * `GetFunctionRealm(NewTarget).Intl.<intrinsicName>.prototype`.
+     * Returns null when no lookup yields an object, in which case the
+     * caller leaves the current prototype in place.
+     */
+    private static function resolveProtoFromCtor(JsValue $newTarget, ?string $intrinsicName): ?JsObject
+    {
+        $ntProto = $newTarget instanceof JsObject ? $newTarget->get('prototype') : JsUndefined::instance();
+        if ($ntProto instanceof JsObject) {
+            return $ntProto;
+        }
+        if ($intrinsicName === null) {
+            return null;
+        }
+        $realm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+        if ($realm === null) {
+            return null;
+        }
+        $globalEnv = $realm->getGlobalEnv();
+        if (!$globalEnv->has('Intl')) {
+            return null;
+        }
+        $intl = $globalEnv->get('Intl');
+        if (!$intl instanceof JsObject) {
+            return null;
+        }
+        $ctor = $intl->get($intrinsicName);
+        if (!$ctor instanceof JsObject) {
+            return null;
+        }
+        $proto = $ctor->get('prototype');
+        return $proto instanceof JsObject ? $proto : null;
     }
 
     private static function coerceOptions(JsValue $arg): JsObject
@@ -855,7 +900,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'Collator');
                 $obj->defineOwnProperty('[[InitializedCollator]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -1179,7 +1224,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'NumberFormat');
                 $obj->defineOwnProperty('[[InitializedNumberFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -3943,7 +3988,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'DateTimeFormat');
                 $obj->defineOwnProperty('[[InitializedDateTimeFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -7031,7 +7076,7 @@ class IntlObject
                 $options = self::coerceOptions($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'PluralRules');
                 $obj->defineOwnProperty('[[InitializedPluralRules]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -7670,7 +7715,7 @@ class IntlObject
                     $parsed['firstDayOfWeek'] = $firstDayOfWeek;
                 }
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'Locale');
 
                 // Store parsed components as internal slots.
                 foreach ($parsed as $key => $val) {
@@ -9590,7 +9635,7 @@ class IntlObject
                 // Per spec: OrdinaryCreateFromConstructor (which calls
                 // Get(NewTarget, "prototype")) runs before reading options,
                 // so a poisoned prototype getter must throw first.
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'DisplayNames');
 
                 $localesArg = $args[0] ?? JsUndefined::instance();
                 $optionsArg = $args[1] ?? JsUndefined::instance();
@@ -10066,7 +10111,7 @@ class IntlObject
                 $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'ListFormat');
                 $obj->defineOwnProperty('[[InitializedListFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -10520,7 +10565,7 @@ class IntlObject
                     $numeric = $n;
                 }
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'RelativeTimeFormat');
                 $obj->defineOwnProperty('[[InitializedRelativeTimeFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -10798,7 +10843,7 @@ class IntlObject
                 $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'Segmenter');
                 $obj->defineOwnProperty('[[InitializedSegmenter]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,
@@ -11105,7 +11150,7 @@ class IntlObject
                 $options = self::getOptionsObject($optionsArg);
                 self::validateLocaleMatcher($options);
 
-                $obj = self::instanceFromConstructor($this_, $proto);
+                $obj = self::instanceFromConstructor($this_, $proto, 'DurationFormat');
                 $obj->defineOwnProperty('[[InitializedDurationFormat]]', PropertyDescriptor::data(
                     new JsBoolean(true),
                     false,

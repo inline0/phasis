@@ -44,12 +44,37 @@ class ShadowRealmConstructor
                 // leave the static pointing at the inner realm after the
                 // SR is constructed.
                 $outerInterp = Engine::getCurrentInterpreter();
+                // The "outer realm" is the realm of the constructor that
+                // produced this ShadowRealm, not the currently executing
+                // realm. For `new OtherRealm.ShadowRealm()` or
+                // `Reflect.construct(OtherShadowRealm, [], …)`, the
+                // active realm during the body is still the test runner's
+                // primary realm — so we fish out `[[NewTarget]].realm`
+                // instead. Falls back to the active realm on the (rare)
+                // case where NewTarget isn't a JsFunction.
+                $outerRealm = null;
+                $newTarget = $this_->get('[[NewTarget]]');
+                if ($newTarget instanceof JsFunction && $newTarget->realm !== null) {
+                    $outerRealm = $newTarget->realm;
+                }
+                if ($outerRealm === null) {
+                    $outerRealm = Engine::getCurrentRealm();
+                }
                 $engine = new Engine();
                 $engine->setLimit('maxLoopIterations', 2_000_000);
                 if ($outerInterp !== null) {
                     Engine::setCurrentInterpreter($outerInterp);
                 }
                 $realm->setInternalProperty('[[ShadowRealmEngine]]', $engine);
+                // Remember the realm this ShadowRealm was created in so
+                // evaluate() / importValue() can wrap inner-realm errors
+                // as TypeError instances from the constructing realm
+                // (per spec: errors are reported in the caller realm,
+                // which for `evaluate` is the realm whose %ShadowRealm%
+                // intrinsic produced this instance).
+                if ($outerRealm !== null) {
+                    $realm->setInternalProperty('[[ShadowRealmOuterRealm]]', $outerRealm);
+                }
                 return $realm;
             },
         );
@@ -104,35 +129,72 @@ class ShadowRealmConstructor
 
     private static function installEvaluate(JsObject $proto): void
     {
+        // Capture the realm where evaluate is being installed. This
+        // becomes the "callerRealm" for spec step 4 of
+        // ShadowRealm.prototype.evaluate so wrapper-machinery
+        // TypeErrors / SyntaxErrors come from the realm of the
+        // EVALUATE FUNCTION (not the SR receiver). When
+        // OtherShadowRealm.prototype.evaluate.call(thirdRealmInstance, …)
+        // crosses two unrelated realms, the spec mandates that the
+        // wrapper errors take the realm of `other`, not the realm of
+        // the SR receiver.
+        $installRealm = Engine::getCurrentRealm();
         $evaluateFn = JsFunction::fromCallable(
             'evaluate',
-            function (JsValue $this_, array $args): JsValue {
-                // Validate this is a ShadowRealm instance.
+            function (JsValue $this_, array $args) use ($installRealm): JsValue {
+                // Validate this is a ShadowRealm instance. The
+                // brand-check itself must throw a TypeError in the
+                // realm whose ShadowRealm.prototype.evaluate was
+                // invoked (the "outer" realm captured at construction
+                // time), so the assertion happens via JsThrowable
+                // wrapping a realm-specific TypeError instance.
+                $outerRealm = $installRealm;
+                if (
+                    $outerRealm === null
+                    && $this_ instanceof JsObject
+                    && $this_->getInternalProperty('[[ShadowRealmOuterRealm]]') instanceof Engine
+                ) {
+                    $outerRealm = $this_->getInternalProperty('[[ShadowRealmOuterRealm]]');
+                }
                 if (!$this_ instanceof JsObject) {
-                    throw new TypeError('ShadowRealm.prototype.evaluate called on non-object');
+                    throw self::makeOuterRealmTypeError(
+                        $outerRealm,
+                        'ShadowRealm.prototype.evaluate called on non-object',
+                    );
                 }
                 $engine = $this_->getInternalProperty('[[ShadowRealmEngine]]');
                 if (!$engine instanceof Engine) {
-                    throw new TypeError(
+                    throw self::makeOuterRealmTypeError(
+                        $outerRealm,
                         'ShadowRealm.prototype.evaluate called on incompatible receiver',
                     );
                 }
 
                 $sourceText = $args[0] ?? JsUndefined::instance();
                 if (!$sourceText instanceof JsString) {
-                    throw new TypeError('ShadowRealm.prototype.evaluate requires a string argument');
+                    throw self::makeOuterRealmTypeError(
+                        $outerRealm,
+                        'ShadowRealm.prototype.evaluate requires a string argument',
+                    );
                 }
 
                 try {
-                    $result = self::evaluateInRealm($engine, $sourceText->value);
+                    $result = self::evaluateInRealm($engine, $sourceText->value, $outerRealm);
                 } catch (\PhpJs\Exceptions\SyntaxError $e) {
-                    throw new \PhpJs\Exceptions\SyntaxError($e->getMessage());
+                    // SyntaxError must surface in the OUTER realm so a
+                    // cross-realm ShadowRealm exposes
+                    // OtherRealm.SyntaxError, not the inner engine's.
+                    throw self::makeOuterRealmError(
+                        $outerRealm,
+                        'SyntaxError',
+                        $e->getMessage(),
+                    );
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
                     // Per spec: errors from the other realm are wrapped into a TypeError
                     // from the caller's realm.
-                    throw new TypeError($e->getMessage());
+                    throw self::makeOuterRealmTypeError($outerRealm, $e->getMessage());
                 } catch (\Throwable $e) {
-                    throw new TypeError($e->getMessage());
+                    throw self::makeOuterRealmTypeError($outerRealm, $e->getMessage());
                 }
 
                 return $result;
@@ -235,9 +297,20 @@ class ShadowRealmConstructor
      * Evaluate source text in the shadow realm and wrap the result.
      * Per spec, only primitive values and callable objects can cross realm boundaries.
      * Callable objects are wrapped into WrappedFunction objects.
+     *
+     * `$callerRealm` is the realm that the surrounding spec algorithm
+     * (PerformShadowRealmEval) labels "callerRealm" — the realm of the
+     * method invocation that produced this evaluate call (e.g. `other`
+     * for `OtherShadowRealm.prototype.evaluate.call(realm, src)`).
+     * When non-null, wrapped functions / argument-rejection TypeErrors
+     * thrown by the wrapper machinery are taken from that realm so the
+     * test262 cross-realm assertions resolve.
      */
-    private static function evaluateInRealm(Engine $engine, string $sourceText): JsValue
-    {
+    private static function evaluateInRealm(
+        Engine $engine,
+        string $sourceText,
+        ?Engine $callerRealm = null,
+    ): JsValue {
         $parser = new \PhpJs\Parser\Parser($sourceText);
         $program = $parser->parse();
         $callerInterpreter = Engine::getCurrentInterpreter();
@@ -277,7 +350,7 @@ class ShadowRealmConstructor
             Engine::setCurrentInterpreter($innerInterpreter);
         }
         try {
-            return self::getWrappedValue($rawResult);
+            return self::getWrappedValue($rawResult, $callerRealm);
         } finally {
             // Restore the caller's interpreter before returning.
             Engine::setCurrentInterpreter($callerInterpreter);
@@ -287,8 +360,12 @@ class ShadowRealmConstructor
     /**
      * Per spec GetWrappedValue: primitive values pass through,
      * callable objects become wrapped functions, non-callable objects throw TypeError.
+     *
+     * `$callerRealm` is the realm that should own any TypeError thrown
+     * when the value is non-wrappable, and the realm wrapped functions
+     * adopt as their [[Realm]] for nested wrapper TypeErrors.
      */
-    private static function getWrappedValue(JsValue $value): JsValue
+    private static function getWrappedValue(JsValue $value, ?Engine $callerRealm = null): JsValue
     {
         // Primitive values pass through directly.
         if (
@@ -305,16 +382,17 @@ class ShadowRealmConstructor
 
         // Callable objects: wrap into a function in the caller's realm.
         if ($value instanceof JsFunction) {
-            return self::createWrappedFunction($value);
+            return self::createWrappedFunction($value, $callerRealm);
         }
 
         // Callable Proxy objects are also callable.
         if ($value instanceof \PhpJs\Value\JsProxy && $value->isCallable()) {
-            return self::createWrappedCallable($value);
+            return self::createWrappedCallable($value, $callerRealm);
         }
 
-        // Non-callable objects throw TypeError.
-        throw new TypeError(
+        // Non-callable objects throw TypeError in the caller's realm.
+        throw self::makeOuterRealmTypeError(
+            $callerRealm,
             'ShadowRealm evaluate result is not a primitive or callable object',
         );
     }
@@ -326,18 +404,19 @@ class ShadowRealmConstructor
      * @param list<JsValue> $args
      * @return list<JsValue>
      */
-    private static function wrapArguments(array $args): array
+    private static function wrapArguments(array $args, ?Engine $callerRealm = null): array
     {
         $wrappedArgs = [];
         foreach ($args as $arg) {
             if (self::isPrimitive($arg)) {
                 $wrappedArgs[] = $arg;
             } elseif ($arg instanceof JsFunction) {
-                $wrappedArgs[] = self::createWrappedFunction($arg);
+                $wrappedArgs[] = self::createWrappedFunction($arg, $callerRealm);
             } elseif ($arg instanceof \PhpJs\Value\JsProxy && $arg->isCallable()) {
-                $wrappedArgs[] = self::createWrappedCallable($arg);
+                $wrappedArgs[] = self::createWrappedCallable($arg, $callerRealm);
             } else {
-                throw new TypeError(
+                throw self::makeOuterRealmTypeError(
+                    $callerRealm,
                     'Arguments of a wrapped function must be primitives or callable objects',
                 );
             }
@@ -354,6 +433,59 @@ class ShadowRealmConstructor
             || $value instanceof JsString
             || $value instanceof JsSymbol
             || $value instanceof \PhpJs\Value\JsBigInt;
+    }
+
+    /**
+     * Throw a TypeError instance that belongs to the ShadowRealm's
+     * outer realm. When $outerRealm is null (the ShadowRealm has no
+     * captured outer realm, or the receiver brand check happened on a
+     * non-SR object), fall back to the current realm's TypeError so
+     * existing behaviour is preserved.
+     */
+    private static function makeOuterRealmTypeError(
+        ?Engine $outerRealm,
+        string $message,
+    ): \PhpJs\Exceptions\RuntimeError {
+        return self::makeOuterRealmError($outerRealm, 'TypeError', $message);
+    }
+
+    /**
+     * Throw an Error-of-kind-$name belonging to $outerRealm. Used by
+     * ShadowRealm.prototype.evaluate to surface SyntaxError /
+     * TypeError instances in the realm that *called* evaluate (which
+     * per spec is the realm of the ShadowRealm instance's
+     * constructor) rather than the realm currently executing.
+     */
+    private static function makeOuterRealmError(
+        ?Engine $outerRealm,
+        string $name,
+        string $message,
+    ): \PhpJs\Exceptions\RuntimeError {
+        if ($outerRealm === null) {
+            // No outer realm captured (legacy SR or non-SR brand-check
+            // path): fall back to the current realm's PHP exception
+            // class so existing harness expectations still pass.
+            return match ($name) {
+                'TypeError' => new TypeError($message),
+                'SyntaxError' => new \PhpJs\Exceptions\SyntaxError($message),
+                default => new \PhpJs\Exceptions\RuntimeError($message),
+            };
+        }
+        $globalEnv = $outerRealm->getGlobalEnv();
+        $err = new JsObject();
+        $err->set('message', new JsString($message));
+        $err->set('name', new JsString($name));
+        $err->set('stack', new JsString($name . ': ' . $message));
+        if ($globalEnv->has($name)) {
+            $ctor = $globalEnv->get($name);
+            if ($ctor instanceof JsFunction) {
+                $proto = $ctor->get('prototype');
+                if ($proto instanceof JsObject) {
+                    $err->setPrototype($proto);
+                }
+            }
+        }
+        return new \PhpJs\Exceptions\JsThrowable($err, $name . ': ' . $message);
     }
 
     /**
@@ -388,22 +520,56 @@ class ShadowRealmConstructor
     /**
      * Create a wrapped function that proxies calls across realm boundaries.
      * Per spec, arguments are wrapped going in, return values are wrapped coming out.
+     *
+     * `$callerRealm` becomes the wrapper's [[Realm]] (spec
+     * WrappedFunctionCreate step 5). It's the realm whose TypeError
+     * surfaces when arguments fail wrappability, when the target
+     * throws, or when the return value isn't wrappable
+     * (WrappedFunction.[[Call]] steps 8 and 9.b.iii).
+     *
+     * The TARGET function's realm (`$targetFn->realm`) is the realm
+     * inside which the target itself executes; the spec uses it as
+     * the "target realm" passed to GetWrappedValue when re-wrapping
+     * arguments and return values for the next crossing.
      */
-    private static function createWrappedFunction(JsFunction $targetFn): JsFunction
-    {
+    private static function createWrappedFunction(
+        JsFunction $targetFn,
+        ?Engine $callerRealm = null,
+    ): JsFunction {
         // Snapshot the realm interpreter where the target function was
         // captured so cross-realm calls run with the correct globalEnv
         // (Symbol.prototype lookups, error wrapping, etc.). Without this,
         // the wrapped function uses whatever Engine wrote the static
         // currentInterpreter last, which leaks the outer realm into SR.
         $targetInterp = Engine::getCurrentInterpreter();
+        $targetRealm = $targetFn->realm;
         $wrapped = JsFunction::fromCallable(
             '',
-            function (JsValue $this_, array $args) use ($targetFn, $targetInterp): JsValue {
-                $wrappedArgs = self::wrapArguments($args);
+            function (JsValue $this_, array $args) use ($targetFn, $targetInterp, $callerRealm, $targetRealm): JsValue {
+                // Spec WrappedFunction.[[Call]]: arguments cross from
+                // callerRealm into targetRealm. Argument-wrapping
+                // failures (non-callable Object args) are surfaced as
+                // TypeError of callerRealm (the wrapper's [[Realm]]),
+                // matching V8 / SpiderMonkey. New wrappers minted for
+                // callable args still receive targetRealm as their
+                // [[Realm]] so that, when the target body invokes
+                // them, the further re-wrapping uses targetRealm
+                // (which becomes "callerRealm" for the nested call).
+                try {
+                    $wrappedArgs = self::wrapArguments($args, $targetRealm);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    // The non-wrappable TypeError was minted in
+                    // targetRealm by the wrap helper. Re-throw it in
+                    // callerRealm so the outer assertion sees the
+                    // wrapper's [[Realm]] error.
+                    throw self::makeOuterRealmTypeError(
+                        $callerRealm,
+                        $e->getMessage(),
+                    );
+                }
                 $interp = $targetInterp ?? Engine::getCurrentInterpreter();
                 if ($interp === null) {
-                    throw new TypeError('No interpreter available');
+                    throw self::makeOuterRealmTypeError($callerRealm, 'No interpreter available');
                 }
                 $previous = Engine::getCurrentInterpreter();
                 Engine::setCurrentInterpreter($interp);
@@ -414,13 +580,25 @@ class ShadowRealmConstructor
                         $wrappedArgs,
                     );
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    throw new TypeError($e->getMessage());
+                    // Spec step 8: abrupt completion from Call →
+                    // throw a TypeError of callerRealm.
+                    throw self::makeOuterRealmTypeError($callerRealm, $e->getMessage());
                 } finally {
                     Engine::setCurrentInterpreter($previous);
                 }
-                return self::getWrappedValue($result);
+                // Spec step 9: GetWrappedValue(callerRealm, result).
+                // Return-value wrapping uses callerRealm so the new
+                // wrapper executes in callerRealm and reports failures
+                // there.
+                return self::getWrappedValue($result, $callerRealm);
             },
         );
+        // Tag the wrapper with [[Realm]] = callerRealm so further
+        // wrappings of THIS wrapper (e.g. when it crosses another SR
+        // boundary as an argument) propagate the correct realm.
+        if ($callerRealm !== null) {
+            $wrapped->realm = $callerRealm;
+        }
 
         // Per spec WrappedFunctionCreate: copy length and name from target.
         // Length defaults to 0, name defaults to "".
@@ -432,20 +610,32 @@ class ShadowRealmConstructor
     /**
      * Create a wrapped function for a callable Proxy.
      */
-    private static function createWrappedCallable(\PhpJs\Value\JsProxy $target): JsFunction
-    {
+    private static function createWrappedCallable(
+        \PhpJs\Value\JsProxy $target,
+        ?Engine $callerRealm = null,
+    ): JsFunction {
+        // For a callable Proxy we don't have a single resolved
+        // [[Realm]] on the target; ProxyTarget could itself be a
+        // function in some other realm, but in practice ShadowRealm
+        // wrapping of Proxy callables is rare. Fall back to the
+        // caller realm for both wrap-in and wrap-out — the realm
+        // round-trip is the dominant case (target was just
+        // round-tripped through callerRealm anyway).
         $wrapped = JsFunction::fromCallable(
             '',
-            function (JsValue $this_, array $args) use ($target): JsValue {
-                $wrappedArgs = self::wrapArguments($args);
+            function (JsValue $this_, array $args) use ($target, $callerRealm): JsValue {
+                $wrappedArgs = self::wrapArguments($args, $callerRealm);
                 try {
                     $result = $target->apply(JsUndefined::instance(), $wrappedArgs);
                 } catch (\PhpJs\Exceptions\RuntimeError $e) {
-                    throw new TypeError($e->getMessage());
+                    throw self::makeOuterRealmTypeError($callerRealm, $e->getMessage());
                 }
-                return self::getWrappedValue($result);
+                return self::getWrappedValue($result, $callerRealm);
             },
         );
+        if ($callerRealm !== null) {
+            $wrapped->realm = $callerRealm;
+        }
 
         self::copyWrappedProperties($wrapped, $target);
 

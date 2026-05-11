@@ -71,6 +71,14 @@ final class Op
     public const SNEQ = 57;         // !== strict
     public const NOT = 58;          // logical !
     public const TYPEOF = 59;
+    // ToString coercion. Pops, runs TypeConversion::toString (which
+    // invokes ToPrimitive("string") for objects), and pushes a
+    // JsString. Used by template literal lowering so untagged
+    // ${expr} segments match the spec's ToString semantics rather
+    // than the `+` operator's "default" hint (which would let a
+    // wrapped Symbol fall through to Symbol → string conversion and
+    // throw, breaking the @@toPrimitive=null fallback path).
+    public const TO_STRING = 67;
 
     // ---- Bitwise -------------------------------------------------------
     public const BAND = 60;
