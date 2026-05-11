@@ -110,6 +110,18 @@ final class Compiler
     private array $varDeclaredNames = [];
 
     /**
+     * Set of top-level names that already have a FunctionDeclaration at
+     * program scope. compileProgram populates this BEFORE allocating
+     * frame slots for top-level vars so a `var x; function x() {}` pair
+     * leaves `x` on globalEnv (where the FD hoists it) rather than
+     * shadowing it with an undefined frame slot. Empty in all non-program
+     * compilation paths.
+     *
+     * @var array<string,bool>
+     */
+    private array $fnDeclShadowedVarNames = [];
+
+    /**
      * Stack of (continueTargetPc, breakPatchOperandIndices). Each
      * loop / switch entry pushes; break/continue inside the body
      * read the top entry to emit jumps. Patched at scope close.
@@ -345,6 +357,22 @@ final class Compiler
             }
         }
 
+        // First pass: collect every top-level function-declaration name.
+        // These bind on globalEnv (via hoistDeclarations) and must NOT
+        // also get a frame slot — otherwise a `var __func; function
+        // __func() {}; __func()` shape would resolve `__func` through
+        // the frame slot (still undefined because var initializes to
+        // undefined; the function-decl hoist only writes to globalEnv),
+        // diverging from the tree-walker where the function-decl wins.
+        // §B.3.3 / §15.2.1.21 require the FD-name to shadow the var.
+        $topLevelFnDeclNames = [];
+        foreach ($program->body as $stmt) {
+            if ($stmt instanceof FunctionDeclaration && $stmt->id instanceof Identifier) {
+                $topLevelFnDeclNames[$stmt->id->name] = true;
+            }
+        }
+        $this->fnDeclShadowedVarNames = $topLevelFnDeclNames;
+
         // Collect every top-level var name so each is assigned a frame slot.
         // Function declarations are deliberately skipped: hoistDeclarations
         // (in Interpreter::execute) already installs them onto globalEnv,
@@ -372,6 +400,21 @@ final class Compiler
                 ) {
                     throw new CompilerBailout('top-level fn-decl captures top-level var');
                 }
+            }
+
+            // Writes through globalThis / this at program scope can
+            // clobber the globalEnv binding of a top-level var. The
+            // bytecode keeps top-level vars in frame slots, so e.g.
+            // `this['x'] = 1; ... ; var x;` would set the global binding
+            // to 1 but reads of `x` still see the frame-slot undefined.
+            // We can't model that statically without IR alias tracking,
+            // so bail conservatively when the program contains any
+            // assignment whose target is rooted at `this` or
+            // `globalThis` (member or computed-member). Pure reads
+            // (`this.x`, `globalThis.foo`) are fine and stay on the VM
+            // path.
+            if ($this->programWritesThroughGlobalAlias($program->body)) {
+                throw new CompilerBailout('top-level write through this/globalThis');
             }
         }
 
@@ -472,8 +515,21 @@ final class Compiler
                 if (!($decl->id instanceof Identifier)) {
                     throw new CompilerBailout('top-level destructuring var');
                 }
-                $this->varDeclaredNames[$decl->id->name] = true;
-                $this->declareLocal($decl->id->name);
+                $name = $decl->id->name;
+                $this->varDeclaredNames[$name] = true;
+                // §B.3.2: A FunctionDeclaration with the same name as a
+                // var shadows the var binding (the FD writes globalEnv,
+                // the var binding is a no-op except for any initializer).
+                // If we assign a frame slot here, LOAD_NAME(name) inside
+                // bytecode would read the slot (undefined) and miss the
+                // hoisted function on globalEnv. Leave it to globalEnv
+                // entirely; the VariableDeclarator's optional initializer
+                // is handled at statement-compile time via a normal
+                // STORE_NAME path.
+                if (isset($this->fnDeclShadowedVarNames[$name])) {
+                    continue;
+                }
+                $this->declareLocal($name);
             }
             return;
         }
@@ -503,8 +559,12 @@ final class Compiler
                     if (!($decl->id instanceof Identifier)) {
                         throw new CompilerBailout('top-level destructuring for-init');
                     }
-                    $this->varDeclaredNames[$decl->id->name] = true;
-                    $this->declareLocal($decl->id->name);
+                    $name = $decl->id->name;
+                    $this->varDeclaredNames[$name] = true;
+                    if (isset($this->fnDeclShadowedVarNames[$name])) {
+                        continue;
+                    }
+                    $this->declareLocal($name);
                 }
             }
             $this->collectProgramVarLocals($stmt->body);
@@ -555,6 +615,90 @@ final class Compiler
     private function ensureNoBailoutFeatures(BlockStatement $body): void
     {
         $this->scanBailout($body->body);
+    }
+
+    /**
+     * Recursive scan for AssignmentExpression nodes whose target is a
+     * MemberExpression rooted at `this`, `globalThis`, `window`,
+     * `self`, or `global`. These writes go through the global object
+     * which is the SAME binding store that holds the engine's top-level
+     * var bindings; if we keep those vars in frame slots, subsequent
+     * reads of the var name would see the frame slot rather than the
+     * just-written global. Returns true on the first match. Nested
+     * functions are skipped because their writes go to the FUNCTION's
+     * local env first.
+     *
+     * @param Node[] $body
+     */
+    private function programWritesThroughGlobalAlias(array $body): bool
+    {
+        foreach ($body as $stmt) {
+            if ($this->nodeWritesThroughGlobalAlias($stmt)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private function nodeWritesThroughGlobalAlias(?Node $node): bool
+    {
+        if ($node === null) {
+            return false;
+        }
+        if (
+            $node instanceof \PhpJs\Ast\Expression\FunctionExpression
+            || $node instanceof \PhpJs\Ast\Expression\ArrowFunction
+            || $node instanceof FunctionDeclaration
+            || $node instanceof \PhpJs\Ast\Expression\ClassExpression
+            || $node instanceof \PhpJs\Ast\Declaration\ClassDeclaration
+        ) {
+            // Writes inside a nested function bind that function's
+            // local env, not the program scope. Stop here.
+            return false;
+        }
+        if ($node instanceof \PhpJs\Ast\Expression\AssignmentExpression) {
+            if (self::isGlobalAliasMember($node->left)) {
+                return true;
+            }
+        }
+        $ref = new \ReflectionObject($node);
+        foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
+            $value = $prop->getValue($node);
+            if ($value instanceof Node) {
+                if ($this->nodeWritesThroughGlobalAlias($value)) {
+                    return true;
+                }
+            } elseif (is_array($value)) {
+                foreach ($value as $item) {
+                    if ($item instanceof Node && $this->nodeWritesThroughGlobalAlias($item)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True when $node is a MemberExpression whose base resolves to the
+     * global object (this in sloppy program scope, or one of the named
+     * aliases). The classic test262 pattern is
+     * `this['__declared_var'] = "v"` followed by a `var __declared_var`
+     * that the bytecode would lower to a frame slot.
+     */
+    private static function isGlobalAliasMember(Node $node): bool
+    {
+        if (!($node instanceof \PhpJs\Ast\Expression\MemberExpression)) {
+            return false;
+        }
+        $obj = $node->object;
+        if ($obj instanceof \PhpJs\Ast\Expression\ThisExpression) {
+            return true;
+        }
+        if ($obj instanceof Identifier && in_array($obj->name, ['globalThis', 'window', 'self', 'global'], true)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -1694,6 +1838,29 @@ final class Compiler
                 throw new CompilerBailout('destructuring var');
             }
             $name = $decl->id->name;
+            // §B.3.2 var-vs-function-decl name conflict at program scope:
+            // collectProgramVarLocals deliberately left this name OFF the
+            // localSlots table because the FunctionDeclaration hoists it
+            // onto globalEnv. Emit the var binding via the env path so
+            // a later read sees the hoisted function rather than an
+            // undefined frame-slot. Pure declarations (no init) become
+            // a no-op because the FD hoist already created the binding;
+            // declarations with an initializer (e.g. `var f = 1; function
+            // f() {}` — initializer order matters per source-order
+            // execution) emit a STORE_NAME so the var-init clobbers the
+            // FD-installed value, matching the tree-walker's behaviour
+            // where statement-list evaluation reaches the var initializer
+            // after both have been hoisted.
+            if ($node->kind === 'var' && isset($this->fnDeclShadowedVarNames[$name])) {
+                if ($decl->init !== null) {
+                    if (self::initNeedsNamedEvaluation($decl->init)) {
+                        throw new CompilerBailout('var init needs named evaluation');
+                    }
+                    $this->compileExpression($decl->init);
+                    $this->emit(Op::STORE_NAME, $this->internName($name));
+                }
+                continue;
+            }
             $slot = $this->localSlots[$name] ?? $this->declareLocal($name);
             if ($decl->init !== null) {
                 // NamedEvaluation: per spec 14.3.2.1, when the initializer
@@ -1938,6 +2105,20 @@ final class Compiler
         }
         if ($body instanceof BlockStatement) {
             $this->collectInnerDeclaredNames($body->body, $shadow);
+        }
+        // Param defaults are evaluated before the body and resolve in
+        // the enclosing scope minus the param names introduced strictly
+        // before this slot. For capture safety it's enough to use the
+        // already-populated shadow set: an outer-local Identifier in
+        // any default expression (e.g. `function f(x = outerVar)`) is
+        // a real capture and must trigger the bailout. Without this
+        // scan, `function* f([x] = iter)` with top-level `var iter` at
+        // program scope compiles, then the call resolves `iter` via
+        // globalEnv and finds the hoisted undefined placeholder.
+        foreach ($params as $param) {
+            if ($this->scanForOuterCapture($param, $shadow)) {
+                return true;
+            }
         }
         return $this->scanForOuterCapture($body, $shadow);
     }
@@ -2247,6 +2428,17 @@ final class Compiler
                     throw new CompilerBailout('update of const');
                 }
                 $this->emit(Op::LOAD_LOCAL, $slot);
+                // Per §13.4 (UpdateExpression) and §6.1.6.1.10 NumericAdd:
+                // both ++x and x++ start with ToNumber(oldValue). Op::ADD
+                // on a JsString left operand is a string-concat, so emit
+                // Op::POS first to coerce the loaded value to a numeric.
+                // For postfix, we DUP after coercion so the expression
+                // result is the ToNumber(oldValue) (e.g. y = x-- with x=true
+                // returns 1, not JsBoolean). For prefix, the post-ADD/SUB
+                // value is the result. Op::POS on JsNumber is a no-op so
+                // the steady-state numeric path is unchanged. BigInt is
+                // covered by the wider compileUpdate bailout above.
+                $this->emit(Op::POS);
                 if (!$node->prefix) {
                     $this->emit(Op::DUP);
                 }

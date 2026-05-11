@@ -18351,6 +18351,17 @@ class Interpreter
         return $xPlus1[0] === '-' ? substr($xPlus1, 1) : '-' . $xPlus1;
     }
 
+    /**
+     * Public wrapper so the bytecode VM's BNOT opcode can compute the
+     * BigInt path without duplicating the decimal-string arithmetic. The
+     * tree-walker's UnaryExpression handler calls the private form via
+     * self:: but the VM lives outside the class.
+     */
+    public static function bigIntBitwiseNotPublic(string $value): string
+    {
+        return self::bigIntBitwiseNot($value);
+    }
+
     /** Convert a JsBigInt value string (possibly hex/oct/bin-prefixed) to decimal. */
     private static function bigIntLiteralToDecimal(string $value): string
     {

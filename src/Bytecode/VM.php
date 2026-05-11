@@ -913,6 +913,22 @@ final class VM
                             $stack[$sp++] = $this->interp->bitwiseShift($l, $r, '>>>');
                             $pc++;
                             break;
+                        case Op::BNOT:
+                            // ~x per §13.5.6.1: ToNumeric, then ~ToInt32 for
+                            // Number / bigInt bitwise-not for BigInt. Boxed
+                            // wrappers (new Boolean(true)) are unboxed by
+                            // ToNumeric/ToInt32. Match tree-walker semantics.
+                            $v = $stack[--$sp];
+                            $numeric = TypeConversion::toNumeric($v);
+                            if ($numeric instanceof \PhpJs\Value\JsBigInt) {
+                                $stack[$sp++] = new \PhpJs\Value\JsBigInt(
+                                    Interpreter::bigIntBitwiseNotPublic($numeric->value)
+                                );
+                            } else {
+                                $stack[$sp++] = JsNumber::of((float) (~TypeConversion::toInt32($numeric)));
+                            }
+                            $pc++;
+                            break;
 
                 // ---- Unary ----------------------------------------------
                         case Op::NOT:

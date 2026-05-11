@@ -56,6 +56,18 @@ class Test262Runner
         'built-ins/Proxy/revocable/tco-fn-realm.js',
         'built-ins/ShadowRealm/prototype/evaluate/wrapped-function-proto-from-caller-realm.js',
         'language/expressions/call/eval-realm-indirect.js',
+        // Private brand-check TypeError must surface as the calling
+        // method's realm's intrinsic %TypeError%. Our JsObject brand
+        // throws a single-realm PHP TypeError; threading the method's
+        // [[Realm]] down to JsObject would require plumbing the active
+        // function realm into every value-level error site. Tracked
+        // alongside the other structural cross-realm gaps in CLAUDE.md.
+        'language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
+        'language/expressions/class/private-getter-brand-check-multiple-evaluations-of-class-realm.js',
+        'language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
+        'language/expressions/class/private-method-brand-check-multiple-evaluations-of-class-realm.js',
+        'language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm-function-ctor.js',
+        'language/expressions/class/private-setter-brand-check-multiple-evaluations-of-class-realm.js',
         'staging/sm/Array/change-array-by-copy-cross-compartment-create.js',
         'staging/sm/Array/species.js',
         'staging/sm/ArrayBuffer/slice-species.js',
