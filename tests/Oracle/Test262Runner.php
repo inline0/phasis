@@ -79,20 +79,6 @@ class Test262Runner
             );
         }
 
-        // SpiderMonkey's DST cache stress harness exhaustively tries
-        // every 4-tuple of test timestamps (~O(n^4) iterations). It
-        // requires SpiderMonkey-internal cache plumbing to validate
-        // and consistently exceeds our 30s per-test budget on portable
-        // PHP. Skip it rather than burning runner time on a guaranteed
-        // crash.
-        if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
-            return new TestResult(
-                $testPath,
-                TestStatus::Skip,
-                'SpiderMonkey DST cache stress harness',
-            );
-        }
-
         // The decodeURI / decodeURIComponent A2.5_T1 stress tests sweep
         // every 4-byte UTF-8 sequence (~1.1M iterations of a tight outer
         // loop) to verify supplementary-plane decoding. They time out under
@@ -168,8 +154,17 @@ class Test262Runner
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
-        // Hard time limit per test: 30 seconds. Prevents infinite loops.
-        set_time_limit(30);
+        // Hard time limit per test: 30 seconds by default. A handful of
+        // SpiderMonkey-derived stress harnesses (notably the DST offset
+        // caching tests, which deliberately drive an O(n^4) probe over
+        // ~40 timestamps) need more headroom even with the offset cache
+        // implemented; we bump those to 120s so the cache gets exercised
+        // end-to-end rather than aborted mid-run.
+        $timeLimit = 30;
+        if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
+            $timeLimit = 120;
+        }
+        set_time_limit($timeLimit);
 
         // Set the module path so that import() can resolve relative specifiers.
         $realTestPath = realpath($testPath);

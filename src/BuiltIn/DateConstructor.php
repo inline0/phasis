@@ -112,6 +112,18 @@ class DateConstructor
         if ($argc === 1) {
             $val = $args[0];
 
+            // Fast path: numeric argument (the common case, and the path
+            // the SpiderMonkey DST stress harness exercises via
+            // new Date(NaN) on every probe). Skips the full
+            // ToPrimitive / ToNumber dance.
+            if ($val instanceof JsNumber) {
+                $tv = $val->value;
+                if (!is_finite($tv)) {
+                    return NAN;
+                }
+                return self::timeClip($tv);
+            }
+
             // If the argument is another Date object, copy its time value.
             if ($val instanceof JsObject && self::isDateObject($val)) {
                 $inner = $val->get('[[DateValue]]');
@@ -730,7 +742,232 @@ class DateConstructor
     {
         $ts = (int) floor($tv / 1000);
         $dt = new \DateTimeImmutable('@' . $ts);
-        return $dt->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+        return $dt->setTimezone(self::cachedLocalTimeZone());
+    }
+
+    /**
+     * Currently cached IANA name (matches date_default_timezone_get()).
+     */
+    private static ?string $tzCacheName = null;
+
+    /** Reusable DateTimeZone for the cached IANA name. */
+    private static ?\DateTimeZone $tzCacheObject = null;
+
+    /**
+     * Sorted list of DST transition timestamps (Unix seconds) for the
+     * cached time zone. Transition i is in effect during
+     * [tsBoundaries[i], tsBoundaries[i+1]).
+     *
+     * @var list<int>
+     */
+    private static array $tzCacheTsBoundaries = [];
+
+    /**
+     * Parallel list of offsets (in seconds) that apply at and after each
+     * boundary in $tzCacheTsBoundaries.
+     *
+     * @var list<int>
+     */
+    private static array $tzCacheOffsets = [];
+
+    /** Lower bound (Unix seconds) of the cached transition window. */
+    private static int $tzCacheRangeFrom = 0;
+
+    /** Upper bound (Unix seconds) of the cached transition window. */
+    private static int $tzCacheRangeTo = 0;
+
+    /**
+     * Two most recently observed (rangeStart, rangeEnd, offset) hits, with
+     * "young" probed first. This mirrors SpiderMonkey's DST cache: a fresh
+     * timestamp that falls inside a known constant-offset interval bypasses
+     * the binary search entirely. Decisive for the dst-offset-caching
+     * harness, whose four-deep loop hammers a handful of distinct
+     * timestamps over and over.
+     *
+     * Layout: [from0, to0, offset0, from1, to1, offset1]. Set to PHP_INT_MAX
+     * for "from" and PHP_INT_MIN for "to" so empty slots never match.
+     */
+    private static int $tzHotFrom0 = PHP_INT_MAX;
+    private static int $tzHotTo0 = PHP_INT_MIN;
+    private static int $tzHotOff0 = 0;
+    private static int $tzHotFrom1 = PHP_INT_MAX;
+    private static int $tzHotTo1 = PHP_INT_MIN;
+    private static int $tzHotOff1 = 0;
+
+    /**
+     * Default expansion of the transition window on a cache miss, in seconds.
+     * 30 years on each side keeps the cached array small (~60 transitions for
+     * any DST-using zone) while spanning the vast majority of the inputs the
+     * SpiderMonkey DST stress harness probes.
+     */
+    private const TZ_CACHE_EXPANSION = 30 * 365 * 86400;
+
+    /**
+     * Return a reusable DateTimeZone for the current default time zone.
+     *
+     * Constructing DateTimeZone is cheap individually but the SpiderMonkey
+     * DST stress harness invokes getTimezoneOffset ~2.6M times per fraction,
+     * so memoizing this saves measurable time. The cache is invalidated when
+     * date_default_timezone_get() changes (e.g., via setTimezone host hook
+     * inside the SM shell harness).
+     */
+    private static function cachedLocalTimeZone(): \DateTimeZone
+    {
+        $name = date_default_timezone_get();
+        if (self::$tzCacheObject === null || self::$tzCacheName !== $name) {
+            self::$tzCacheName = $name;
+            self::$tzCacheObject = new \DateTimeZone($name);
+            self::$tzCacheTsBoundaries = [];
+            self::$tzCacheOffsets = [];
+            self::$tzCacheRangeFrom = 0;
+            self::$tzCacheRangeTo = 0;
+            self::$tzHotFrom0 = PHP_INT_MAX;
+            self::$tzHotTo0 = PHP_INT_MIN;
+            self::$tzHotFrom1 = PHP_INT_MAX;
+            self::$tzHotTo1 = PHP_INT_MIN;
+        }
+        return self::$tzCacheObject;
+    }
+
+    /**
+     * Return the local-time offset in seconds (UTC + offset = local time)
+     * for the given time value in ms.
+     *
+     * Performs a binary search over a cached, lazily-expanded transition
+     * table for the active time zone. SpiderMonkey ships a per-realm DST
+     * offset cache for exactly this purpose; without it the SM dst-offset
+     * caching stress tests time out under a tree-walking interpreter.
+     */
+    private static function localOffsetSeconds(float $tv): int
+    {
+        $tsSec = (int) floor($tv / 1000);
+
+        // SpiderMonkey-style hot-window probes: most consecutive calls fall
+        // inside a recently seen constant-offset interval, so check those
+        // first before re-resolving the time zone or binary-searching the
+        // transition table.
+        if ($tsSec >= self::$tzHotFrom0 && $tsSec <= self::$tzHotTo0) {
+            return self::$tzHotOff0;
+        }
+        if ($tsSec >= self::$tzHotFrom1 && $tsSec <= self::$tzHotTo1) {
+            // Promote the matched slot to "young" so subsequent hits stay
+            // in the fastest path.
+            $f = self::$tzHotFrom1;
+            $t = self::$tzHotTo1;
+            $o = self::$tzHotOff1;
+            self::$tzHotFrom1 = self::$tzHotFrom0;
+            self::$tzHotTo1 = self::$tzHotTo0;
+            self::$tzHotOff1 = self::$tzHotOff0;
+            self::$tzHotFrom0 = $f;
+            self::$tzHotTo0 = $t;
+            self::$tzHotOff0 = $o;
+            return $o;
+        }
+
+        $tz = self::cachedLocalTimeZone();
+        if ($tsSec < self::$tzCacheRangeFrom || $tsSec > self::$tzCacheRangeTo) {
+            self::expandTzCache($tz, $tsSec);
+        }
+
+        $boundaries = self::$tzCacheTsBoundaries;
+        $offsets = self::$tzCacheOffsets;
+        $hi = count($boundaries) - 1;
+        if ($hi < 0) {
+            // Empty cache (unsupported tz?). Fall back to PHP native lookup.
+            return (int) (new \DateTimeImmutable('@' . $tsSec))->setTimezone($tz)->format('Z');
+        }
+        if ($tsSec < $boundaries[0]) {
+            $offset = $offsets[0];
+            $segFrom = self::$tzCacheRangeFrom;
+            $segTo = $boundaries[0] - 1;
+        } elseif ($tsSec >= $boundaries[$hi]) {
+            $offset = $offsets[$hi];
+            $segFrom = $boundaries[$hi];
+            $segTo = self::$tzCacheRangeTo;
+        } else {
+            $lo = 0;
+            while ($lo < $hi) {
+                $mid = ($lo + $hi + 1) >> 1;
+                if ($boundaries[$mid] <= $tsSec) {
+                    $lo = $mid;
+                } else {
+                    $hi = $mid - 1;
+                }
+            }
+            $offset = $offsets[$lo];
+            $segFrom = $boundaries[$lo];
+            $segTo = ($lo + 1 < count($boundaries)) ? $boundaries[$lo + 1] - 1 : self::$tzCacheRangeTo;
+        }
+
+        // Record the constant-offset segment so the next adjacent lookup
+        // skips both the time-zone resolve and the binary search.
+        self::$tzHotFrom1 = self::$tzHotFrom0;
+        self::$tzHotTo1 = self::$tzHotTo0;
+        self::$tzHotOff1 = self::$tzHotOff0;
+        self::$tzHotFrom0 = $segFrom;
+        self::$tzHotTo0 = $segTo;
+        self::$tzHotOff0 = $offset;
+
+        return $offset;
+    }
+
+    /**
+     * Expand the cached transition window to include $tsSec.
+     *
+     * Uses DateTimeZone::getTransitions over a wide window (±30y by default)
+     * and stores the boundary timestamps and resulting offsets in parallel
+     * arrays for cheap binary search.
+     */
+    private static function expandTzCache(\DateTimeZone $tz, int $tsSec): void
+    {
+        $from = $tsSec - self::TZ_CACHE_EXPANSION;
+        $to = $tsSec + self::TZ_CACHE_EXPANSION;
+
+        // Union with the existing window if any, so callers walking
+        // outwards don't repeatedly thrash the cache.
+        if (self::$tzCacheRangeTo > self::$tzCacheRangeFrom) {
+            if (self::$tzCacheRangeFrom < $from) {
+                $from = self::$tzCacheRangeFrom;
+            }
+            if (self::$tzCacheRangeTo > $to) {
+                $to = self::$tzCacheRangeTo;
+            }
+        }
+
+        // DateTimeZone::getTransitions returns an array starting with a
+        // synthetic entry at the lower bound describing the offset already
+        // in effect at $from, followed by every offset change up to $to.
+        // PHP stubs annotate the return as list<array>, but at runtime
+        // fixed-offset zones (like "+05:30") yield false; the @ suppresses
+        // the warning and the empty/false branch falls back to a single
+        // synthetic entry.
+        /** @var list<array{ts: int, offset: int}>|false $transitions */
+        $transitions = @$tz->getTransitions($from, $to);
+        $boundaries = [];
+        $offsets = [];
+        if ($transitions !== false && count($transitions) > 0) {
+            foreach ($transitions as $t) {
+                $boundaries[] = (int) $t['ts'];
+                $offsets[] = (int) $t['offset'];
+            }
+        } else {
+            // Fixed-offset zone: compute the constant offset once.
+            $offsetSec = (int) (new \DateTimeImmutable('@' . $tsSec))->setTimezone($tz)->format('Z');
+            $boundaries[] = $from;
+            $offsets[] = $offsetSec;
+        }
+
+        self::$tzCacheTsBoundaries = $boundaries;
+        self::$tzCacheOffsets = $offsets;
+        self::$tzCacheRangeFrom = $from;
+        self::$tzCacheRangeTo = $to;
+        // Boundary positions may have shifted; clear the hot slots so the
+        // next probe re-records a segment that is now consistent with the
+        // refreshed transition table.
+        self::$tzHotFrom0 = PHP_INT_MAX;
+        self::$tzHotTo0 = PHP_INT_MIN;
+        self::$tzHotFrom1 = PHP_INT_MAX;
+        self::$tzHotTo1 = PHP_INT_MIN;
     }
 
     /**
@@ -909,9 +1146,14 @@ class DateConstructor
             if (is_nan($tv)) {
                 return JsNumber::of(NAN);
             }
-            $local = self::localDateTime($tv);
-            // Offset in seconds from UTC, JS returns minutes with sign inverted.
-            $offsetSec = (int) $local->format('Z');
+            // Avoid the DateTimeImmutable + setTimezone + format('Z') dance:
+            // a cached, lazily-expanded transition table answers offset
+            // lookups in a single binary search, mirroring SpiderMonkey's
+            // per-realm DST offset cache. Decisive for the SM
+            // dst-offset-caching stress tests, which would otherwise call
+            // this method ~2.6M times per fraction.
+            $offsetSec = self::localOffsetSeconds($tv);
+            // JS returns minutes with sign inverted.
             return JsNumber::of((float) (-$offsetSec / 60));
         });
 
@@ -991,10 +1233,21 @@ class DateConstructor
             if (!$this_ instanceof JsObject || !self::isDateObject($this_)) {
                 throw new TypeError('this is not a Date object');
             }
-            $tv = isset($args[0]) ? TypeConversion::toNumber($args[0]) : NAN;
+            // Hot path: numeric argument bypasses ToNumber. The SM DST
+            // stress harness drives setTime millions of times with plain
+            // numeric inputs.
+            $arg0 = $args[0] ?? null;
+            if ($arg0 instanceof JsNumber) {
+                $tv = $arg0->value;
+            } elseif ($arg0 === null) {
+                $tv = NAN;
+            } else {
+                $tv = TypeConversion::toNumber($arg0);
+            }
             $tv = self::timeClip($tv);
-            $this_->set('[[DateValue]]', JsNumber::of($tv));
-            return JsNumber::of($tv);
+            $clamped = JsNumber::of($tv);
+            $this_->set('[[DateValue]]', $clamped);
+            return $clamped;
         }, 1);
 
         $d('setMilliseconds', function (JsValue $this_, array $args): JsValue {
