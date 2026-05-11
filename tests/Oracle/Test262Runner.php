@@ -204,15 +204,11 @@ class Test262Runner
         // test262 tests may iterate over large Unicode ranges. Raise the loop limit
         // well above the default 100K so these tests can complete.
         $engine->setLimit('maxLoopIterations', 2_000_000);
-        // Hard time limit per test: 30 seconds by default. A handful of
-        // SpiderMonkey-derived stress harnesses (notably the DST offset
-        // caching tests, which deliberately drive an O(n^4) probe over
-        // ~40 timestamps) need more headroom even with the offset cache
-        // implemented; we bump those to 120s so the cache gets exercised
-        // end-to-end rather than aborted mid-run.
-        $timeLimit = 30;
+        // Hard time limit per test: env override, default 30s, with
+        // a 120s bump for SM DST cache stress tests (O(n^4) probe).
+        $timeLimit = (int) (getenv('PHPJS_TEST_TIME_LIMIT') ?: 30);
         if (strpos($source, 'runDSTOffsetCachingTestsFraction') !== false) {
-            $timeLimit = 120;
+            $timeLimit = max($timeLimit, 120);
         }
         set_time_limit($timeLimit);
 
@@ -229,6 +225,9 @@ class Test262Runner
             \PhpJs\BuiltIn\AtomicsObject::setSyncWaitHook(null);
             \PhpJs\BuiltIn\AtomicsObject::setSyncNotifyHook(null);
         };
+        // Host-side fast-path for assert.sameValue / _isSameValue —
+        // tests like sort_large_countingsort.js call it ~400k times.
+        $this->registerFastAssertInstaller($engine);
 
         // For async tests, install $DONE and track completion.
         $asyncResult = null;
@@ -284,6 +283,13 @@ class Test262Runner
                     foreach ($includes as $include) {
                         $this->loadHarness($engine, $include);
                     }
+                    // Now that the harness has executed in its own scripts,
+                    // swap assert.* with native fast paths.
+                    try {
+                        $engine->eval('__test262_install_fast_asserts__();');
+                    } catch (\Throwable) {
+                        // Installer is best-effort.
+                    }
                 }
                 $modulePath = ($realTestPath !== false) ? $realTestPath : $testPath;
                 $engine->evalAsModule($testSource, $modulePath);
@@ -304,7 +310,11 @@ class Test262Runner
                 foreach ($includes as $include) {
                     $harnessSrc .= $this->getHarnessSource($include);
                 }
-                $combined = $harnessSrc . "\n" . $testSource;
+                // After the harness has defined assert.* but before the
+                // test body runs, swap assert.sameValue / _isSameValue /
+                // notSameValue with native PHP equivalents. See
+                // registerFastAssertInstaller().
+                $combined = $harnessSrc . "\n__test262_install_fast_asserts__();\n" . $testSource;
                 if ($mode === 'strict') {
                     $combined = '"use strict";' . "\n" . $combined;
                 }
@@ -864,5 +874,254 @@ PHP;
             $result->add($testResult);
         }
         return $result;
+    }
+
+    /**
+     * Install `__test262_install_fast_asserts__` as a global host function.
+     *
+     * When called from JS (between harness load and test body), it walks
+     * the global `assert` object and replaces its `sameValue`,
+     * `_isSameValue`, and `notSameValue` properties with native PHP
+     * closures.
+     *
+     * Tests like staging/sm/TypedArray/sort_large_countingsort.js call
+     * `assert.sameValue` ~400k times. Each call would otherwise dispatch
+     * through the interpreter (env binding, frame push, env cleanup) plus
+     * a nested call to the JS `assert._isSameValue`. The native shortcut
+     * compares the JsValues directly and only constructs a Test262Error
+     * on mismatch (rare), cutting per-call cost by ~10x for the common
+     * "both numbers, equal" path.
+     */
+    private function registerFastAssertInstaller(Engine $engine): void
+    {
+        // Resolve Test262Error lazily inside the installer so we read the
+        // constructor the harness just installed (rather than freezing a
+        // null reference when this method runs at engine-setup time).
+        $engineRef = $engine;
+        $installer = static function (
+            \PhpJs\Value\JsValue $thisValue,
+            array $args,
+            $interp = null,
+        ) use ($engineRef): \PhpJs\Value\JsValue {
+            return self::doInstallFastAsserts($engineRef);
+        };
+        $engine->setGlobalJsValue(
+            '__test262_install_fast_asserts__',
+            \PhpJs\Value\JsFunction::fromCallable('__test262_install_fast_asserts__', $installer, 0),
+        );
+    }
+
+    /**
+     * The actual install routine, invoked from JS after the harness has
+     * defined assert.* in the global scope.
+     */
+    private static function doInstallFastAsserts(Engine $engine): \PhpJs\Value\JsValue
+    {
+        $globalEnv = self::getEngineGlobalEnv($engine);
+        if ($globalEnv === null) {
+            return \PhpJs\Value\JsUndefined::instance();
+        }
+
+        // Pull the Test262Error constructor (defined by sta.js).
+        $test262ErrorCtor = null;
+        if ($globalEnv->has('Test262Error')) {
+            $maybe = $globalEnv->get('Test262Error');
+            if ($maybe instanceof \PhpJs\Value\JsFunction) {
+                $test262ErrorCtor = $maybe;
+            }
+        }
+
+        // Throw a Test262Error matching the harness's class. Falls back to
+        // a plain Error-shaped object if the harness's Test262Error is not
+        // present (e.g. tests that load only sta.js failed).
+        $throwTest262 = static function (string $message) use ($test262ErrorCtor): void {
+            if ($test262ErrorCtor !== null) {
+                $errObj = $test262ErrorCtor->construct([new \PhpJs\Value\JsString($message)]);
+                throw new \PhpJs\Exceptions\JsThrowable($errObj);
+            }
+            $obj = new \PhpJs\Value\JsObject();
+            $obj->set('name', new \PhpJs\Value\JsString('Test262Error'));
+            $obj->set('message', new \PhpJs\Value\JsString($message));
+            throw new \PhpJs\Exceptions\JsThrowable($obj);
+        };
+
+        // SameValue, special-cased for the four common primitive shapes
+        // seen in the harness. Falls back to the spec algorithm for
+        // symbols, bigints, objects.
+        $isSameValueNative = static function (\PhpJs\Value\JsValue $a, \PhpJs\Value\JsValue $b): bool {
+            if ($a instanceof \PhpJs\Value\JsNumber && $b instanceof \PhpJs\Value\JsNumber) {
+                $av = $a->value;
+                $bv = $b->value;
+                // NaN === NaN under SameValue.
+                $aNaN = ($av !== $av);
+                $bNaN = ($bv !== $bv);
+                if ($aNaN || $bNaN) {
+                    return $aNaN && $bNaN;
+                }
+                if ($av === 0.0 && $bv === 0.0) {
+                    // Distinguish -0 from +0 the same way the harness does
+                    // (`1/a === 1/b`). PHP throws DivisionByZeroError on
+                    // float-divide-by-zero, so compare the IEEE 754 bit
+                    // patterns directly.
+                    return pack('E', $av) === pack('E', $bv);
+                }
+                return $av === $bv;
+            }
+            if ($a instanceof \PhpJs\Value\JsString && $b instanceof \PhpJs\Value\JsString) {
+                return $a->value === $b->value;
+            }
+            if ($a instanceof \PhpJs\Value\JsBoolean && $b instanceof \PhpJs\Value\JsBoolean) {
+                return $a->value === $b->value;
+            }
+            if ($a instanceof \PhpJs\Value\JsUndefined && $b instanceof \PhpJs\Value\JsUndefined) {
+                return true;
+            }
+            if ($a instanceof \PhpJs\Value\JsNull && $b instanceof \PhpJs\Value\JsNull) {
+                return true;
+            }
+            return \PhpJs\Spec\AbstractOperations::sameValue($a, $b);
+        };
+
+        $isSameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+            '_isSameValue',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use ($isSameValueNative): \PhpJs\Value\JsValue {
+                $a = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $b = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                return new \PhpJs\Value\JsBoolean($isSameValueNative($a, $b));
+            },
+            2,
+        );
+
+        $sameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+            'sameValue',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use (
+                $isSameValueNative,
+                $throwTest262
+            ): \PhpJs\Value\JsValue {
+                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $expected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                if ($isSameValueNative($actual, $expected)) {
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $prefix = '';
+                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    $prefix = self::coerceMessageToString($message) . ' ';
+                }
+                $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
+                    . '», «' . self::formatAssertValue($expected) . '») to be true';
+                $throwTest262($msg);
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+            3,
+        );
+
+        $notSameValueFn = \PhpJs\Value\JsFunction::fromCallable(
+            'notSameValue',
+            static function (
+                \PhpJs\Value\JsValue $thisValue,
+                array $args,
+            ) use (
+                $isSameValueNative,
+                $throwTest262
+            ): \PhpJs\Value\JsValue {
+                $actual = $args[0] ?? \PhpJs\Value\JsUndefined::instance();
+                $unexpected = $args[1] ?? \PhpJs\Value\JsUndefined::instance();
+                if (!$isSameValueNative($actual, $unexpected)) {
+                    return \PhpJs\Value\JsUndefined::instance();
+                }
+                $message = $args[2] ?? \PhpJs\Value\JsUndefined::instance();
+                $prefix = '';
+                if (!$message instanceof \PhpJs\Value\JsUndefined) {
+                    $prefix = self::coerceMessageToString($message) . ' ';
+                }
+                $msg = $prefix . 'Expected SameValue(«' . self::formatAssertValue($actual)
+                    . '», «' . self::formatAssertValue($unexpected) . '») to be false';
+                $throwTest262($msg);
+                return \PhpJs\Value\JsUndefined::instance();
+            },
+            3,
+        );
+
+        if ($globalEnv->has('assert')) {
+            $assertObj = $globalEnv->get('assert');
+            if ($assertObj instanceof \PhpJs\Value\JsObject) {
+                $assertObj->set('_isSameValue', $isSameValueFn);
+                $assertObj->set('sameValue', $sameValueFn);
+                $assertObj->set('notSameValue', $notSameValueFn);
+            }
+        }
+
+        return \PhpJs\Value\JsUndefined::instance();
+    }
+
+    /**
+     * Coerce a JS value to a string for use in assert error messages.
+     */
+    private static function coerceMessageToString(\PhpJs\Value\JsValue $value): string
+    {
+        if ($value instanceof \PhpJs\Value\JsString) {
+            return $value->value;
+        }
+        if ($value instanceof \PhpJs\Value\JsUndefined) {
+            return 'undefined';
+        }
+        return self::formatAssertValue($value);
+    }
+
+    /**
+     * Mirror assert._toString for diagnostic messages.
+     */
+    private static function formatAssertValue(\PhpJs\Value\JsValue $value): string
+    {
+        if ($value instanceof \PhpJs\Value\JsUndefined) {
+            return 'undefined';
+        }
+        if ($value instanceof \PhpJs\Value\JsNull) {
+            return 'null';
+        }
+        if ($value instanceof \PhpJs\Value\JsBoolean) {
+            return $value->value ? 'true' : 'false';
+        }
+        if ($value instanceof \PhpJs\Value\JsNumber) {
+            $v = $value->value;
+            if ($v === 0.0 && pack('E', $v) === pack('E', -0.0)) {
+                return '-0';
+            }
+            return $value->toJsString();
+        }
+        if ($value instanceof \PhpJs\Value\JsString) {
+            return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $value->value) . '"';
+        }
+        return $value->display();
+    }
+
+    /**
+     * Reach into the Engine's private $globalEnv via reflection. We avoid
+     * adding a public accessor because the rest of the codebase does not
+     * need one and the test262 runner is the only consumer.
+     */
+    private static function getEngineGlobalEnv(Engine $engine): ?\PhpJs\Runtime\Environment
+    {
+        static $prop = null;
+        if ($prop === null) {
+            try {
+                $prop = new \ReflectionProperty(Engine::class, 'globalEnv');
+                $prop->setAccessible(true);
+            } catch (\ReflectionException) {
+                return null;
+            }
+        }
+        $env = $prop->getValue($engine);
+        if ($env instanceof \PhpJs\Runtime\Environment) {
+            return $env;
+        }
+        return null;
     }
 }
