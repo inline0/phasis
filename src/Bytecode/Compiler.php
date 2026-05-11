@@ -212,6 +212,18 @@ final class Compiler
      */
     private array $programVarSlots = [];
 
+    /**
+     * Whether the program currently being compiled has a `"use strict"`
+     * directive in its prologue (or was wrapped with one by the host).
+     * Used by compileAssignment to bail when a non-local identifier is
+     * the LHS: per spec, the LHS reference resolves BEFORE the RHS, so
+     * a strict-mode unresolvable LHS must throw ReferenceError even
+     * when the RHS happens to add the property to the global object as
+     * a side effect (test262 language/identifier-resolution/
+     * assign-to-global-undefined.js).
+     */
+    private bool $programIsStrict = false;
+
     public function compile(JsFunction $fn): CompiledFunction
     {
         if ($fn->isGenerator() || $fn->isAsync() || $fn->isNative() || $fn->isClassConstructor()) {
@@ -337,6 +349,14 @@ final class Compiler
      */
     public function compileProgram(\PhpJs\Ast\Program $program): CompiledFunction
     {
+        // Detect "use strict" prologue so compileAssignment can bail
+        // for non-local identifier writes. The spec requires LHS
+        // reference resolution to occur BEFORE the RHS is evaluated,
+        // and the bytecode VM evaluates RHS first then performs
+        // STORE_NAME — a difference that only matters in strict mode
+        // when the RHS itself creates the global property.
+        $this->programIsStrict = self::programHasUseStrictDirective($program->body);
+
         // Only accept a feature subset that's safe to lower to the VM at
         // top level. Any reference to `eval`/`arguments`, `with`,
         // yield/await, etc. is caught here and propagates as a bailout to
@@ -2814,6 +2834,18 @@ final class Compiler
             if ($isLocal && isset($this->constSlots[$this->localSlots[$name]])) {
                 throw new CompilerBailout('assignment to const');
             }
+
+            // Strict-mode write to a non-local identifier: bail so the
+            // tree-walker can pre-resolve the LHS reference per spec
+            // (12.15.4 step 1: lref is evaluated BEFORE the RHS).
+            // The VM's STORE_NAME runs after RHS, so a side-effecting
+            // RHS that creates the global property would mask the
+            // unresolvable LHS — strict mode must surface ReferenceError
+            // (test262 language/identifier-resolution/
+            // assign-to-global-undefined.js).
+            if (!$isLocal && $this->programIsStrict) {
+                throw new CompilerBailout('strict-mode non-local identifier assignment');
+            }
             if ($op === '=') {
                 $this->compileExpression($node->right);
                 $this->emit(Op::DUP);
@@ -2939,6 +2971,36 @@ final class Compiler
      * through to the tree-walker. Doesn't descend into nested
      * functions (those have their own tail-position scope).
      */
+    /**
+     * Scan the directive prologue of a Program body for a "use strict"
+     * directive. Matches Interpreter::hasUseStrictDirective — only
+     * leading ExpressionStatement literals count, and only the exact
+     * verbatim string `"use strict"`.
+     *
+     * @param array<int, \PhpJs\Ast\Node> $statements
+     */
+    private static function programHasUseStrictDirective(array $statements): bool
+    {
+        foreach ($statements as $stmt) {
+            if (!$stmt instanceof \PhpJs\Ast\Statement\ExpressionStatement) {
+                return false;
+            }
+            $expr = $stmt->expression;
+            if (!$expr instanceof \PhpJs\Ast\Expression\Literal) {
+                return false;
+            }
+            if (!is_string($expr->value)) {
+                return false;
+            }
+            // Only verbatim "use strict" (no escape sequences /
+            // line continuations) counts as a directive per spec.
+            if ($expr->value === 'use strict' && $expr->verbatim) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static function bytecodeBailsForTailCall(\PhpJs\Ast\Node $body): bool
     {
         if ($body instanceof ReturnStatement) {

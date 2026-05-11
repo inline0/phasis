@@ -102,11 +102,37 @@ final class AbstractOperations
      * global environment. Handles the common case where a constructor is
      * stored under its conventional name (e.g. 'Array') and exposes a
      * `.prototype` data property. Returns null when the lookup fails.
+     *
+     * Some intrinsics (AsyncFunction, GeneratorFunction,
+     * AsyncGeneratorFunction, Function.prototype) are not exposed as
+     * named globals per spec, but each realm stashes their prototypes
+     * under reserved `__*Prototype__` bindings in its global env.
+     * Consult those slots so cross-realm GetPrototypeFromConstructor
+     * targets the constructor's [[Realm]] intrinsic and not the active
+     * realm's copy.
      */
     public static function realmIntrinsicPrototype(
         \PhpJs\Runtime\Environment $globalEnv,
         string $constructorName,
     ): ?JsObject {
+        // Map well-known constructor names that are not exposed as
+        // globals to their per-realm prototype slot. Each entry maps the
+        // constructor's [[Name]] to the reserved env binding holding
+        // realm's %ConstructorName.prototype% intrinsic.
+        static $hiddenIntrinsics = [
+            'AsyncFunction' => '__AsyncFunctionPrototype__',
+            'GeneratorFunction' => '__GeneratorFunctionPrototype__',
+            'AsyncGeneratorFunction' => '__AsyncGeneratorFunctionPrototype__',
+        ];
+        if (isset($hiddenIntrinsics[$constructorName])) {
+            $slot = $hiddenIntrinsics[$constructorName];
+            if ($globalEnv->has($slot)) {
+                $proto = $globalEnv->get($slot);
+                if ($proto instanceof JsObject) {
+                    return $proto;
+                }
+            }
+        }
         if (!$globalEnv->has($constructorName)) {
             return null;
         }

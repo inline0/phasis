@@ -4705,11 +4705,22 @@ class Interpreter
         array $args,
     ): JsValue|TailCallThunk {
         // Per spec: class constructors cannot be called without `new`.
+        // The TypeError must come from the class's realm, not the caller's
+        // realm — per spec class-ctor-realm: assert.throws(realm.TypeError, …)
+        // requires `TE === other.TypeError`.
         if ($fn->isClassConstructor()) {
             $calledAsNew = $thisValue instanceof JsObject
                 && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
             if (!$calledAsNew) {
-                throw new TypeError("Class constructor {$fn->getName()} cannot be invoked without 'new'");
+                $msg = "Class constructor {$fn->getName()} cannot be invoked without 'new'";
+                $fnRealm = $fn->realm;
+                if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
+                    $realmInterp = $fnRealm->getInterpreter();
+                    throw new \PhpJs\Exceptions\JsThrowable(
+                        $realmInterp->phpExceptionToJsValue(new TypeError($msg))
+                    );
+                }
+                throw new TypeError($msg);
             }
         }
 

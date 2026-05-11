@@ -212,11 +212,20 @@ final class VM
                     if (!$startArg instanceof JsNumber) {
                         return null;
                     }
-                    $startN = (int) $startArg->value;
-                    if ($startN < 0) {
-                        $startN = max($len + $startN, 0);
+                    $sv = $startArg->value;
+                    // ToIntegerOrInfinity: +Infinity -> return -1 (range
+                    // [Infinity, len) is empty); -Infinity / NaN -> 0.
+                    if (is_nan($sv) || $sv === -INF) {
+                        $start = 0;
+                    } elseif ($sv === INF) {
+                        return JsNumber::of(-1.0);
+                    } else {
+                        $startN = (int) $sv;
+                        if ($startN < 0) {
+                            $startN = max($len + $startN, 0);
+                        }
+                        $start = $startN;
                     }
-                    $start = $startN;
                 }
                 $elements = $receiver->getDenseElements();
                 for ($i = $start; $i < $len; $i++) {
@@ -248,8 +257,19 @@ final class VM
                     if ($startArg instanceof JsUndefined) {
                         // start defaults to 0; nothing to do.
                     } elseif ($startArg instanceof JsNumber) {
-                        $sv = (int) $startArg->value;
-                        $startN = $sv < 0 ? max($len + $sv, 0) : min($sv, $len);
+                        // Spec: ToIntegerOrInfinity. +Infinity clamps
+                        // to length, -Infinity clamps to 0; NaN -> 0.
+                        $sv = $startArg->value;
+                        if (is_nan($sv)) {
+                            $startN = 0;
+                        } elseif ($sv === INF) {
+                            $startN = $len;
+                        } elseif ($sv === -INF) {
+                            $startN = 0;
+                        } else {
+                            $si = (int) $sv;
+                            $startN = $si < 0 ? max($len + $si, 0) : min($si, $len);
+                        }
                     } else {
                         return null;
                     }
@@ -259,8 +279,17 @@ final class VM
                     if ($endArg instanceof JsUndefined) {
                         $endN = $len;
                     } elseif ($endArg instanceof JsNumber) {
-                        $ev = (int) $endArg->value;
-                        $endN = $ev < 0 ? max($len + $ev, 0) : min($ev, $len);
+                        $ev = $endArg->value;
+                        if (is_nan($ev)) {
+                            $endN = 0;
+                        } elseif ($ev === INF) {
+                            $endN = $len;
+                        } elseif ($ev === -INF) {
+                            $endN = 0;
+                        } else {
+                            $ei = (int) $ev;
+                            $endN = $ei < 0 ? max($len + $ei, 0) : min($ei, $len);
+                        }
                     } else {
                         return null;
                     }
@@ -291,11 +320,20 @@ final class VM
                     if (!$startArg instanceof JsNumber) {
                         return null;
                     }
-                    $startN = (int) $startArg->value;
-                    if ($startN < 0) {
-                        $startN = max($len + $startN, 0);
+                    $sv = $startArg->value;
+                    // ToIntegerOrInfinity: +Infinity skips the search
+                    // (k >= len); -Infinity / NaN -> 0.
+                    if (is_nan($sv) || $sv === -INF) {
+                        $start = 0;
+                    } elseif ($sv === INF) {
+                        return new JsBoolean(false);
+                    } else {
+                        $startN = (int) $sv;
+                        if ($startN < 0) {
+                            $startN = max($len + $startN, 0);
+                        }
+                        $start = $startN;
                     }
-                    $start = $startN;
                 }
                 $elements = $receiver->getDenseElements();
                 for ($i = $start; $i < $len; $i++) {

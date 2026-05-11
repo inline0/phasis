@@ -110,6 +110,16 @@ class JsArray extends JsObject
 
     public function setLength(int $length): void
     {
+        // Truncate trailing dense elements when shrinking. Spec
+        // §10.4.2.4 ArraySetLength deletes [length, oldLength) before
+        // committing the new length. VM fast paths (array.pop) use
+        // setLength($len-1) directly, so they need the trim or the
+        // dropped indices stay reachable as own properties.
+        if ($length < $this->length && $this->denseMode) {
+            for ($i = $length; $i < $this->length; $i++) {
+                unset($this->denseElements[$i]);
+            }
+        }
         $this->length = $length;
     }
 

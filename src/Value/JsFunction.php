@@ -713,17 +713,47 @@ class JsFunction extends JsObject
     public function call(JsValue $thisValue, array $args): JsValue
     {
         // Per spec: class constructors cannot be called without `new`.
+        // The TypeError comes from the callee's realm so cross-realm
+        // class-ctor-realm tests see the matching constructor identity.
         if ($this->isClassConstructor) {
             $calledAsNew = $thisValue instanceof JsObject
                 && !($thisValue->get('[[NewTarget]]') instanceof JsUndefined);
             if (!$calledAsNew) {
-                throw new \PhpJs\Exceptions\TypeError(
-                    "Class constructor {$this->name} cannot be invoked without 'new'"
-                );
+                $msg = "Class constructor {$this->name} cannot be invoked without 'new'";
+                $fnRealm = $this->realm;
+                $currentRealm = \PhpJs\Engine::getCurrentRealm();
+                if ($fnRealm !== null && $fnRealm !== $currentRealm) {
+                    throw new \PhpJs\Exceptions\JsThrowable(
+                        $fnRealm->getInterpreter()->phpExceptionToJsValue(
+                            new \PhpJs\Exceptions\TypeError($msg)
+                        )
+                    );
+                }
+                throw new \PhpJs\Exceptions\TypeError($msg);
             }
         }
 
         if ($this->nativeCallable !== null) {
+            // Per spec: PHP RuntimeError escaping a native body of a
+            // cross-realm function must surface as the callee realm's
+            // TypeError. otherFn.call(undefined, …) -> other.TypeError.
+            $fnRealm = $this->realm;
+            $currentRealm = \PhpJs\Engine::getCurrentRealm();
+            if ($fnRealm !== null && $fnRealm !== $currentRealm) {
+                try {
+                    $result = ($this->nativeCallable)($thisValue, $args);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    throw $e;
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    throw new \PhpJs\Exceptions\JsThrowable(
+                        $fnRealm->getInterpreter()->phpExceptionToJsValue($e)
+                    );
+                }
+                if ($result instanceof JsValue) {
+                    return $result;
+                }
+                return JsUndefined::instance();
+            }
             $result = ($this->nativeCallable)($thisValue, $args);
             if ($result instanceof JsValue) {
                 return $result;
