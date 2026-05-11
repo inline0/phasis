@@ -72,6 +72,7 @@ class Engine
         $this->globalEnv = new Environment();
         $this->console = new ConsoleObject();
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+        $this->interpreter->setRealm($this);
         self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
@@ -985,6 +986,10 @@ class Engine
 
         // Store AsyncFunction.prototype so async function instances can find their constructor.
         JsFunction::setAsyncFunctionPrototype($asyncFuncProto);
+        // Stash on globalEnv so the realm-aware JsFunction::getPrototype
+        // lookup can find the per-realm copy after sibling Engines have
+        // overwritten the process-wide static.
+        $this->globalEnv->defineVar('__AsyncFunctionPrototype__', $asyncFuncProto);
     }
 
     /**
@@ -1254,6 +1259,7 @@ class Engine
         $this->console = new ConsoleObject();
         $this->callStack = new CallStack();
         $this->interpreter = new Interpreter($this->globalEnv, $this->callStack);
+        $this->interpreter->setRealm($this);
         self::$currentInterpreter = $this->interpreter;
 
         $this->installBuiltins();
@@ -1291,6 +1297,17 @@ class Engine
     public static function getCurrentInterpreter(): ?\PhpJs\Runtime\Interpreter
     {
         return self::$currentInterpreter;
+    }
+
+    /**
+     * The Engine (realm) backing the currently-active interpreter. Used
+     * by GetFunctionRealm so new JsFunction instances and host built-ins
+     * are tagged with their creating realm. Returns null only when no
+     * interpreter is bound (e.g. during very early static initialisation).
+     */
+    public static function getCurrentRealm(): ?\PhpJs\Engine
+    {
+        return self::$currentInterpreter?->getRealm();
     }
 
     /**

@@ -37,74 +37,28 @@ class Test262Runner
     ];
 
     /**
-     * test262 paths (relative to test262/test/) that genuinely need
-     * cross-realm semantics. Every entry was confirmed to fail with the
-     * skip bypassed; tests merely referencing $262.createRealm but
-     * passing under the single-realm runner are intentionally excluded.
-     * Tracked under "structural gaps" in CLAUDE.md.
+     * test262 paths (relative to test262/test/) that still need richer
+     * cross-realm semantics than we implement. The list was originally
+     * the audited 94 tests that depended on multi-realm intrinsics; the
+     * realm-tracking layer (GetFunctionRealm, per-realm intrinsic
+     * lookup in builtins) brought 63 of them green. The remaining
+     * entries assert deeper semantics (Function constructor's prototype
+     * coming from the new-target realm, species across realms in
+     * TypedArray/ArrayBuffer, ShadowRealm wrapped-function realm
+     * inheritance, etc.). Tracked under "structural gaps" in CLAUDE.md.
      *
      * @var list<string>
      */
     private const CROSS_REALM_BLOCKLIST = [
-        'annexB/built-ins/RegExp/legacy-accessors/index/this-cross-realm-constructor.js',
-        'annexB/built-ins/RegExp/legacy-accessors/input/this-cross-realm-constructor.js',
-        'annexB/built-ins/RegExp/legacy-accessors/lastMatch/this-cross-realm-constructor.js',
-        'annexB/built-ins/RegExp/legacy-accessors/lastParen/this-cross-realm-constructor.js',
-        'annexB/built-ins/RegExp/legacy-accessors/leftContext/this-cross-realm-constructor.js',
-        'annexB/built-ins/RegExp/legacy-accessors/rightContext/this-cross-realm-constructor.js',
         'annexB/built-ins/RegExp/prototype/compile/this-cross-realm-instance.js',
-        'built-ins/Array/from/proto-from-ctor-realm.js',
-        'built-ins/Array/of/proto-from-ctor-realm.js',
-        'built-ins/Array/proto-from-ctor-realm-one.js',
-        'built-ins/Array/proto-from-ctor-realm-two.js',
-        'built-ins/Array/proto-from-ctor-realm-zero.js',
-        'built-ins/Array/prototype/concat/create-proto-from-ctor-realm-array.js',
-        'built-ins/Array/prototype/filter/create-proto-from-ctor-realm-array.js',
-        'built-ins/Array/prototype/map/create-proto-from-ctor-realm-array.js',
-        'built-ins/Array/prototype/slice/create-proto-from-ctor-realm-array.js',
-        'built-ins/Array/prototype/splice/create-proto-from-ctor-realm-array.js',
         'built-ins/AsyncGeneratorFunction/proto-from-ctor-realm-prototype.js',
-        'built-ins/Function/call-bind-this-realm-undef.js',
-        'built-ins/Function/call-bind-this-realm-value.js',
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
-        'built-ins/Function/proto-from-ctor-realm.js',
-        'built-ins/Function/prototype/bind/proto-from-ctor-realm.js',
-        'built-ins/GeneratorFunction/proto-from-ctor-realm-prototype.js',
-        'built-ins/JSON/stringify/value-bigint-cross-realm.js',
-        'built-ins/Proxy/apply/arguments-realm.js',
-        'built-ins/Proxy/construct/arguments-realm.js',
-        'built-ins/Proxy/construct/trap-is-undefined-proto-from-newtarget-realm.js',
-        'built-ins/Proxy/defineProperty/desc-realm.js',
-        'built-ins/Proxy/get-fn-realm.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
-        'built-ins/RegExp/prototype/Symbol.split/splitter-proto-from-ctor-realm.js',
-        'built-ins/RegExp/prototype/dotAll/cross-realm.js',
-        'built-ins/RegExp/prototype/global/cross-realm.js',
-        'built-ins/RegExp/prototype/hasIndices/cross-realm.js',
-        'built-ins/RegExp/prototype/ignoreCase/cross-realm.js',
-        'built-ins/RegExp/prototype/multiline/cross-realm.js',
-        'built-ins/RegExp/prototype/source/cross-realm.js',
-        'built-ins/RegExp/prototype/sticky/cross-realm.js',
-        'built-ins/RegExp/prototype/unicode/cross-realm.js',
-        'built-ins/RegExp/prototype/unicodeSets/cross-realm.js',
         'built-ins/ShadowRealm/prototype/evaluate/wrapped-function-proto-from-caller-realm.js',
-        'built-ins/Symbol/for/cross-realm.js',
-        'built-ins/Symbol/keyFor/cross-realm.js',
-        'harness/assert-throws-same-realm.js',
-        'harness/asyncHelpers-throwsAsync-same-realm.js',
-        'language/eval-code/indirect/realm.js',
-        'language/expressions/async-generator/eval-body-proto-realm.js',
         'language/expressions/call/eval-realm-indirect.js',
-        'language/expressions/generators/eval-body-proto-realm.js',
-        'language/expressions/super/realm.js',
-        'language/types/reference/get-value-prop-base-primitive-realm.js',
-        'language/types/reference/put-value-prop-base-primitive-realm.js',
         'staging/sm/Array/change-array-by-copy-cross-compartment-create.js',
-        'staging/sm/Array/change-array-by-copy-errors-from-correct-realm.js',
-        'staging/sm/Array/from_realms.js',
         'staging/sm/Array/species.js',
         'staging/sm/ArrayBuffer/slice-species.js',
-        'staging/sm/Error/AggregateError.js',
         'staging/sm/Function/arguments-iterator.js',
         'staging/sm/Iterator/from/wrap-new-global.js',
         'staging/sm/Iterator/prototype/every/error-from-correct-realm.js',
@@ -117,28 +71,15 @@ class Test262Runner
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/RegExp/constructor-constructor.js',
-        'staging/sm/RegExp/prototype-different-global.js',
-        'staging/sm/TypedArray/at.js',
         'staging/sm/TypedArray/constructor-ArrayBuffer-species-wrap.js',
         'staging/sm/TypedArray/constructor-buffer-sequence.js',
         'staging/sm/TypedArray/constructor-typedarray-species-other-global.js',
-        'staging/sm/TypedArray/entries.js',
         'staging/sm/TypedArray/every-and-some.js',
-        'staging/sm/TypedArray/fill.js',
         'staging/sm/TypedArray/forEach.js',
-        'staging/sm/TypedArray/from_realms.js',
-        'staging/sm/TypedArray/includes.js',
         'staging/sm/TypedArray/iterator.js',
-        'staging/sm/TypedArray/join.js',
-        'staging/sm/TypedArray/keys.js',
         'staging/sm/TypedArray/map-and-filter.js',
-        'staging/sm/TypedArray/of.js',
-        'staging/sm/TypedArray/reduce-and-reduceRight.js',
-        'staging/sm/TypedArray/reverse.js',
         'staging/sm/TypedArray/slice-bitwise-same.js',
-        'staging/sm/TypedArray/slice.js',
         'staging/sm/TypedArray/toLocaleString.js',
-        'staging/sm/TypedArray/values.js',
         'staging/sm/extensions/cross-global-eval-is-indirect.js',
     ];
 
@@ -842,6 +783,14 @@ PHP;
     public function buildRealmWrapper(): \PhpJs\Value\JsObject
     {
         $outerInterp = Engine::getCurrentInterpreter();
+        // Save the JsFunction static back-references too: every Engine
+        // constructor clobbers these (last-write-wins). Without restoring,
+        // calls into JS code defined in the OUTER realm after createRealm
+        // would dispatch through the CHILD interpreter, picking up the
+        // child's globalEnv intrinsics (TypeError prototype, etc.) and
+        // breaking cross-realm identity tests.
+        $outerCallback = \PhpJs\Value\JsFunction::getInterpreterCallback();
+        $outerInstance = \PhpJs\Value\JsFunction::getInterpreterInstance();
         $childEngine = new Engine();
         $childEngine->setLimit('maxLoopIterations', 2_000_000);
         $this->install262HostObject($childEngine);
@@ -852,6 +801,12 @@ PHP;
         }
         if ($outerInterp !== null) {
             Engine::setCurrentInterpreter($outerInterp);
+        }
+        if ($outerCallback !== null) {
+            \PhpJs\Value\JsFunction::setInterpreterCallback($outerCallback);
+        }
+        if ($outerInstance !== null) {
+            \PhpJs\Value\JsFunction::setInterpreterInstance($outerInstance);
         }
 
         $wrapper = new \PhpJs\Value\JsObject();
@@ -884,7 +839,19 @@ PHP;
                     $src = \PhpJs\Spec\TypeConversion::toString($codeArg);
                 }
                 $prev = Engine::getCurrentInterpreter();
+                $prevCallback = \PhpJs\Value\JsFunction::getInterpreterCallback();
+                $prevInstance = \PhpJs\Value\JsFunction::getInterpreterInstance();
                 Engine::setCurrentInterpreter($childEngine->getInterpreter());
+                // Re-bind the JsFunction statics so JS-level calls within
+                // the eval'd source route through the child interpreter.
+                \PhpJs\Value\JsFunction::setInterpreterInstance($childEngine->getInterpreter());
+                \PhpJs\Value\JsFunction::setInterpreterCallback(function (
+                    \PhpJs\Value\JsFunction $fn,
+                    \PhpJs\Value\JsValue $thisValue,
+                    array $args
+                ) use ($childEngine): \PhpJs\Value\JsValue {
+                    return $childEngine->getInterpreter()->callFunction($fn, $thisValue, $args);
+                });
                 try {
                     $childEngine->getInterpreter()->execute(
                         (new \PhpJs\Parser\Parser($src))->parse(),
@@ -892,6 +859,12 @@ PHP;
                     \PhpJs\Value\JsPromise::drainMicrotasks();
                 } finally {
                     Engine::setCurrentInterpreter($prev);
+                    if ($prevCallback !== null) {
+                        \PhpJs\Value\JsFunction::setInterpreterCallback($prevCallback);
+                    }
+                    if ($prevInstance !== null) {
+                        \PhpJs\Value\JsFunction::setInterpreterInstance($prevInstance);
+                    }
                 }
                 return \PhpJs\Value\JsUndefined::instance();
             },

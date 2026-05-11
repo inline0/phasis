@@ -400,8 +400,17 @@ class ReflectObject
                 // GetPrototypeFromConstructor → GetFunctionRealm.
                 $isNativeTarget = $target->isNative();
                 if ($isNativeTarget) {
-                    $targetProto = $target->get('prototype');
-                    $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    // Use newTarget's prototype if it's an Object,
+                    // otherwise fall back to GetFunctionRealm(newTarget)
+                    // and look up the target's intrinsic prototype name.
+                    $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                        $newTarget,
+                        static fn ($env) => null, // built-ins resolve via [[NewTarget]] inside the body
+                    );
+                    if ($useProto === null) {
+                        $targetProto = $target->get('prototype');
+                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                    }
                 } else {
                     $ntProto = $newTarget->get('prototype');
                     if (
@@ -415,8 +424,19 @@ class ReflectObject
                     }
                     $useProto = $ntProto instanceof JsObject ? $ntProto : null;
                     if ($useProto === null) {
-                        $targetProto = $target->get('prototype');
-                        $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                        // Per GetPrototypeFromConstructor: fall back to
+                        // GetFunctionRealm(newTarget).[[%Object.prototype%]].
+                        $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+                        if ($ntRealm !== null) {
+                            $useProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                                $ntRealm->getGlobalEnv(),
+                                'Object',
+                            );
+                        }
+                        if ($useProto === null) {
+                            $targetProto = $target->get('prototype');
+                            $useProto = $targetProto instanceof JsObject ? $targetProto : null;
+                        }
                     }
                 }
                 $newObj = new JsObject($useProto);
@@ -446,6 +466,23 @@ class ReflectObject
                     }
                     if ($ntProto instanceof JsObject) {
                         $finalObj->setPrototype($ntProto);
+                    } else {
+                        // Per GetPrototypeFromConstructor: if newTarget.prototype is
+                        // not an Object, use GetFunctionRealm(newTarget)'s intrinsic.
+                        // Look up the intrinsic by the target constructor's own name:
+                        // Reflect.construct(realm3.Array, [], newTargetProxy) should
+                        // resolve to GetFunctionRealm(newTargetProxy).Array.prototype.
+                        $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($newTarget);
+                        if ($ntRealm !== null) {
+                            $intrinsicName = $target->getName();
+                            $resolved = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                                $ntRealm->getGlobalEnv(),
+                                $intrinsicName,
+                            );
+                            if ($resolved instanceof JsObject) {
+                                $finalObj->setPrototype($resolved);
+                            }
+                        }
                     }
                 }
                 return $result instanceof JsObject ? $finalObj : $newObj;

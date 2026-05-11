@@ -1500,7 +1500,7 @@ class JsProxy extends JsObject
         $handler = $this->handler;
         $trap = $this->getTrap('apply');
         if ($trap !== null) {
-            $argsArray = JsArray::fromArray($args);
+            $argsArray = self::createArrayInCurrentRealm($args);
             return $trap->call($handler, [$target, $thisArg, $argsArray]);
         }
         // Forward to target. If target is also a Proxy, recursively invoke apply.
@@ -1525,7 +1525,7 @@ class JsProxy extends JsObject
         $nt = $newTarget ?? $this;
         $trap = $this->getTrap('construct');
         if ($trap !== null) {
-            $argsArray = JsArray::fromArray($args);
+            $argsArray = self::createArrayInCurrentRealm($args);
             $result = $trap->call($this->handler, [$this->target, $argsArray, $nt]);
             if (!$result instanceof JsObject) {
                 throw new TypeError('\'construct\' on proxy: trap returned non-object');
@@ -1566,7 +1566,17 @@ class JsProxy extends JsObject
                 if ($this->isRevoked()) {
                     throw new TypeError('Cannot perform Construct on a proxy that has been revoked');
                 }
-                $proto = $this->target->get('prototype');
+                // Per spec: GetFunctionRealm(newTarget).%Object.prototype%.
+                $ntRealm = \PhpJs\Spec\AbstractOperations::getFunctionRealm($nt);
+                if ($ntRealm !== null) {
+                    $proto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                        $ntRealm->getGlobalEnv(),
+                        'Object',
+                    );
+                }
+                if (!$proto instanceof JsObject) {
+                    $proto = $this->target->get('prototype');
+                }
             }
             // Construct manually so [[NewTarget]] is the user-supplied
             // newTarget rather than the underlying target. Mirrors what
@@ -1632,7 +1642,17 @@ class JsProxy extends JsObject
      */
     private static function descriptorToObject(PropertyDescriptor $desc): JsObject
     {
-        $obj = new JsObject();
+        // Per spec 6.2.4.4 FromPropertyDescriptor: ObjectCreate(%ObjectPrototype%)
+        // — the *current realm's* Object.prototype, not the proxy target's.
+        $thisRealm = \PhpJs\Engine::getCurrentRealm();
+        $objProto = null;
+        if ($thisRealm !== null) {
+            $objProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                $thisRealm->getGlobalEnv(),
+                'Object',
+            );
+        }
+        $obj = new JsObject($objProto);
         if ($desc->value !== null) {
             $obj->set('value', $desc->value);
         }
@@ -1708,5 +1728,27 @@ class JsProxy extends JsObject
             enumerable: $enumerable,
             configurable: $configurable,
         );
+    }
+
+    /**
+     * CreateArrayFromList in the current Realm. JsArray::fromArray uses
+     * the process-wide globalPrototype static which a sibling realm may
+     * have overwritten; the spec says proxy traps see the array built in
+     * the *current* realm. Pin its [[Prototype]] to the realm-aware
+     * %Array.prototype% to satisfy that invariant.
+     *
+     * @param list<JsValue> $args
+     */
+    private static function createArrayInCurrentRealm(array $args): JsArray
+    {
+        $thisRealm = \PhpJs\Engine::getCurrentRealm();
+        $arrProto = null;
+        if ($thisRealm !== null) {
+            $arrProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                $thisRealm->getGlobalEnv(),
+                'Array',
+            );
+        }
+        return new JsArray($args, $arrProto);
     }
 }

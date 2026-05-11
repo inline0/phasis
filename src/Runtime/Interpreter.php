@@ -229,6 +229,23 @@ class Interpreter
         return $this->currentModulePath;
     }
 
+    /**
+     * The Engine (realm) this interpreter belongs to. Set by Engine::__construct
+     * via setRealm(). Used by GetFunctionRealm so native built-ins constructed
+     * during installBuiltins can be tagged with the realm that's building them.
+     */
+    private ?\PhpJs\Engine $engineRealm = null;
+
+    public function setRealm(\PhpJs\Engine $engine): void
+    {
+        $this->engineRealm = $engine;
+    }
+
+    public function getRealm(): ?\PhpJs\Engine
+    {
+        return $this->engineRealm;
+    }
+
     public function __construct(
         private Environment $globalEnv,
         ?CallStack $callStack = null,
@@ -4639,18 +4656,45 @@ class Interpreter
         JsValue $thisValue,
         array $args,
     ): JsValue {
-        // Trampoline loop for proper tail call optimization.
-        // When a strict-mode function returns a TailCallThunk, we retry
-        // with the thunk's function/args instead of recursing.
-        while (true) {
-            $result = $this->callFunctionInner($fn, $thisValue, $args);
-            if ($result instanceof TailCallThunk) {
-                $fn = $result->function;
-                $thisValue = $result->thisValue;
-                $args = $result->args;
-                continue;
+        // Switch the currently-active realm (interpreter) to the function's
+        // realm for the duration of the call so that any new JsFunction
+        // instances created inside the body, plus realm-aware lookups, are
+        // attributed to the callee's realm. Cross-realm tests rely on
+        // GetFunctionRealm seeing the same answer for a function whether
+        // looked up directly or after it has been called.
+        $previousInterp = \PhpJs\Engine::getCurrentInterpreter();
+        $targetInterp = $fn->realm?->getInterpreter();
+        $switched = false;
+        if ($targetInterp !== null && $targetInterp !== $previousInterp) {
+            \PhpJs\Engine::setCurrentInterpreter($targetInterp);
+            $switched = true;
+        }
+        try {
+            // Trampoline loop for proper tail call optimization.
+            // When a strict-mode function returns a TailCallThunk, we retry
+            // with the thunk's function/args instead of recursing.
+            while (true) {
+                $result = $this->callFunctionInner($fn, $thisValue, $args);
+                if ($result instanceof TailCallThunk) {
+                    $fn = $result->function;
+                    $thisValue = $result->thisValue;
+                    $args = $result->args;
+                    // Tail-call to a function in a different realm: switch
+                    // again. Common across realm-aware bound functions and
+                    // species hooks.
+                    $nextInterp = $fn->realm?->getInterpreter();
+                    if ($nextInterp !== null && $nextInterp !== \PhpJs\Engine::getCurrentInterpreter()) {
+                        \PhpJs\Engine::setCurrentInterpreter($nextInterp);
+                        $switched = true;
+                    }
+                    continue;
+                }
+                return $result;
             }
-            return $result;
+        } finally {
+            if ($switched) {
+                \PhpJs\Engine::setCurrentInterpreter($previousInterp);
+            }
         }
     }
 
@@ -4672,6 +4716,25 @@ class Interpreter
         // Native (PHP callable) function
         $nativeFn = $fn->getNativeCallable();
         if ($nativeFn !== null) {
+            // When the function belongs to a different realm than the
+            // caller, wrap any PHP RuntimeError that escapes the native
+            // body using the *callee's* realm. Per spec, the error
+            // surfaces from the realm of the function being invoked, so
+            // `otherFn.call(undefined, ...)` throws `other.TypeError`
+            // even when the caller is in the parent realm.
+            $fnRealm = $fn->realm;
+            if ($fnRealm !== null && $fnRealm !== $this->engineRealm) {
+                try {
+                    return $nativeFn($thisValue, $args, $this);
+                } catch (\PhpJs\Exceptions\JsThrowable $e) {
+                    throw $e;
+                } catch (\PhpJs\Exceptions\RuntimeError $e) {
+                    $realmInterp = $fnRealm->getInterpreter();
+                    throw new \PhpJs\Exceptions\JsThrowable(
+                        $realmInterp->phpExceptionToJsValue($e)
+                    );
+                }
+            }
             return $nativeFn($thisValue, $args, $this);
         }
 
@@ -5023,7 +5086,7 @@ class Interpreter
             // Per spec 9.2.1.2 OrdinaryCallBindThis:
             // In strict mode, this is passed as-is (no wrapping).
             // In sloppy mode:
-            //   - null/undefined this -> globalThis
+            //   - null/undefined this -> globalThis (of the callee's realm)
             //   - primitive this -> ToObject(this)
             if (!$fn->isArrow()) {
                 if ($this->strictMode) {
@@ -5032,7 +5095,11 @@ class Interpreter
                 } else {
                     // Sloppy mode: wrap null/undefined to global, primitives to Object.
                     if ($thisValue instanceof JsUndefined || $thisValue instanceof \PhpJs\Value\JsNull) {
-                        $thisValue = $this->getGlobalObject();
+                        // Per spec, the global object substituted here is
+                        // the function's *home* realm, not the caller's.
+                        // Without this, `h.f.call(undefined)` would see
+                        // the parent realm's globalThis.
+                        $thisValue = $this->getFunctionGlobalObject($fn);
                     } elseif (
                         !$thisValue instanceof JsObject
                         && ($thisValue instanceof JsNumber
@@ -18019,6 +18086,26 @@ class Interpreter
             $this->globalObject = new JsObject();
         }
         return $this->globalObject;
+    }
+
+    /**
+     * Return the globalThis the spec wants for OrdinaryCallBindThis in
+     * sloppy mode: when this is undefined/null, substitute the *callee's*
+     * realm's global object. Falls back to this interpreter's global if
+     * the function has no realm tag (legacy paths).
+     */
+    public function getFunctionGlobalObject(JsFunction $fn): JsObject
+    {
+        if ($fn->realm !== null && $fn->realm !== $this->engineRealm) {
+            $env = $fn->realm->getGlobalEnv();
+            if ($env->has('this')) {
+                $obj = $env->get('this');
+                if ($obj instanceof JsObject) {
+                    return $obj;
+                }
+            }
+        }
+        return $this->getGlobalObject();
     }
 
     /**

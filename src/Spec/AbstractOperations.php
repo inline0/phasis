@@ -24,6 +24,101 @@ use PhpJs\Value\JsValue;
 final class AbstractOperations
 {
     /**
+     * 7.3.22 GetFunctionRealm(obj).
+     *
+     * Returns the Engine (realm) associated with a function-like value.
+     * - For an ordinary or built-in JsFunction, returns its [[Realm]] slot.
+     * - For a bound function, recurs into [[BoundTargetFunction]].
+     * - For a Proxy, recurs into [[ProxyTarget]]. If the proxy has been
+     *   revoked, a TypeError is thrown (per spec step 3).
+     * - Otherwise falls back to the currently active realm.
+     */
+    public static function getFunctionRealm(JsValue $obj): ?\PhpJs\Engine
+    {
+        $seen = [];
+        while (true) {
+            $id = spl_object_id($obj);
+            if (isset($seen[$id])) {
+                break;
+            }
+            $seen[$id] = true;
+
+            if ($obj instanceof JsFunction) {
+                $bound = $obj->getBoundTarget();
+                if ($bound !== null) {
+                    $obj = $bound;
+                    continue;
+                }
+                return $obj->realm;
+            }
+            if ($obj instanceof \PhpJs\Value\JsProxy) {
+                if ($obj->isRevoked()) {
+                    throw new TypeError(
+                        'Cannot perform GetFunctionRealm on a proxy that has been revoked'
+                    );
+                }
+                $obj = $obj->getTarget();
+                continue;
+            }
+            break;
+        }
+        return \PhpJs\Engine::getCurrentRealm();
+    }
+
+    /**
+     * Spec helper: GetPrototypeFromConstructor(constructor, intrinsicLookup).
+     *
+     * Reads constructor.prototype; if it is an Object, returns it. Otherwise
+     * looks up the named intrinsic on GetFunctionRealm(constructor)'s
+     * global environment via $intrinsicLookup($globalEnv).
+     *
+     * @param callable(\PhpJs\Runtime\Environment): ?JsObject $intrinsicLookup
+     *   Closure that resolves the intrinsic in the target realm's
+     *   global environment. Returns null when the intrinsic is not
+     *   installed (callers fall back to the current realm).
+     */
+    public static function getPrototypeFromConstructor(
+        JsValue $constructor,
+        callable $intrinsicLookup,
+    ): ?JsObject {
+        if ($constructor instanceof JsObject) {
+            $proto = $constructor->get('prototype');
+            if ($proto instanceof JsObject) {
+                return $proto;
+            }
+        }
+        $realm = self::getFunctionRealm($constructor);
+        if ($realm !== null) {
+            $resolved = $intrinsicLookup($realm->getGlobalEnv());
+            if ($resolved instanceof JsObject) {
+                return $resolved;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Look up a constructor's prototype intrinsic in the given realm's
+     * global environment. Handles the common case where a constructor is
+     * stored under its conventional name (e.g. 'Array') and exposes a
+     * `.prototype` data property. Returns null when the lookup fails.
+     */
+    public static function realmIntrinsicPrototype(
+        \PhpJs\Runtime\Environment $globalEnv,
+        string $constructorName,
+    ): ?JsObject {
+        if (!$globalEnv->has($constructorName)) {
+            return null;
+        }
+        $ctor = $globalEnv->get($constructorName);
+        if (!$ctor instanceof JsObject) {
+            return null;
+        }
+        $proto = $ctor->get('prototype');
+        return $proto instanceof JsObject ? $proto : null;
+    }
+
+    /**
      * 7.2.14 Abstract Equality Comparison (x == y).
      *
      * Follows the spec table exactly. Returns true or false.

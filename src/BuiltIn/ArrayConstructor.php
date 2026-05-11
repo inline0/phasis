@@ -39,16 +39,16 @@ class ArrayConstructor
         );
         $constructor = JsFunction::fromCallable('Array', function (JsValue $this_, array $args): JsValue {
             // Resolve the prototype to install on the new array: subclasses carry a
-            // [[NewTarget]] slot whose prototype should be used.
+            // [[NewTarget]] slot whose prototype should be used. Per spec
+            // GetPrototypeFromConstructor: when newTarget.prototype is not an
+            // Object, fall back to GetFunctionRealm(newTarget).[[%Array.prototype%]].
             $protoToUse = null;
             if ($this_ instanceof JsObject && $this_->has('[[NewTarget]]')) {
                 $newTarget = $this_->get('[[NewTarget]]');
-                if ($newTarget instanceof JsFunction) {
-                    $ntProto = $newTarget->get('prototype');
-                    if ($ntProto instanceof JsObject) {
-                        $protoToUse = $ntProto;
-                    }
-                }
+                $protoToUse = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                    $newTarget,
+                    static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Array'),
+                );
             }
             if (count($args) === 1 && $args[0] instanceof JsNumber) {
                 $n = $args[0]->value;
@@ -174,7 +174,18 @@ class ArrayConstructor
             if ($len < 0 || $len > 4294967295) {
                 throw new \PhpJs\Exceptions\RangeError('Invalid array length');
             }
-            $arr = new JsArray();
+            // Pin the prototype to the CURRENT realm's %Array.prototype% so
+            // a previously-created sibling realm cannot leak its prototype
+            // through JsArray::$globalPrototype (which is process-wide).
+            $thisRealm = \PhpJs\Engine::getCurrentRealm();
+            $arrProto = null;
+            if ($thisRealm !== null) {
+                $arrProto = \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype(
+                    $thisRealm->getGlobalEnv(),
+                    'Array',
+                );
+            }
+            $arr = new JsArray([], $arrProto);
             $arr->setLength($len);
             return $arr;
         };
@@ -185,6 +196,27 @@ class ArrayConstructor
         $c = $originalArray->get('constructor');
         if ($c instanceof JsUndefined) {
             return $makeArray($length);
+        }
+        // Spec 7.3.20 step 6.a–c: if C is a constructor from a different
+        // realm and SameValue(C, realmC.[[Intrinsics]].[[%Array%]]) is true,
+        // let C be undefined (so we create a plain Array of the *current*
+        // realm). Without this, cross-realm `array.constructor = OArray`
+        // would build OArray instances even when the user meant the
+        // current realm's Array.
+        if (
+            $c instanceof JsFunction
+            && $c->isConstructable()
+        ) {
+            $thisRealm = \PhpJs\Engine::getCurrentRealm();
+            $realmC = \PhpJs\Spec\AbstractOperations::getFunctionRealm($c);
+            if ($thisRealm !== null && $realmC !== null && $thisRealm !== $realmC) {
+                $otherArray = $realmC->getGlobalEnv()->has('Array')
+                    ? $realmC->getGlobalEnv()->get('Array')
+                    : null;
+                if ($otherArray === $c) {
+                    return $makeArray($length);
+                }
+            }
         }
         if ($c instanceof JsObject) {
             $speciesSym = SymbolConstructor::species();
@@ -1913,11 +1945,18 @@ class ArrayConstructor
 
     /**
      * Construct an object using a constructor function, mimicking `new C(args)`.
+     *
+     * Falls back to %Object.prototype% from the constructor's realm when
+     * `ctor.prototype` is not an Object (per GetPrototypeFromConstructor
+     * step 4: GetFunctionRealm → realm's intrinsic).
      */
     private static function constructWith(JsFunction $ctor, array $args): JsObject
     {
-        $proto = $ctor->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        $proto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+            $ctor,
+            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+        );
+        $newObj = new JsObject($proto);
         $newObj->defineOwnProperty('[[NewTarget]]', PropertyDescriptor::data($ctor, false, false, false));
         $result = $ctor->call($newObj, $args);
         return $result instanceof JsObject ? $result : $newObj;

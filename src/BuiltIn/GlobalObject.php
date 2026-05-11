@@ -358,6 +358,10 @@ class GlobalObject
         // This must happen before any further JsFunction creation so that
         // Object.getPrototypeOf(anyFn) === Function.prototype holds.
         JsFunction::setFunctionPrototype($fnProto);
+        // Stash on the env so JsFunction::getPrototype can look up the
+        // per-realm Function.prototype via this->realm->getGlobalEnv()
+        // even after a sibling Engine has overwritten the static.
+        $env->defineVar('__FunctionPrototype__', $fnProto);
 
         // Per ES spec 10.2.4 AddRestrictedFunctionProperties, Function.prototype
         // has "caller" and "arguments" as thrower accessor pairs. Accessing them
@@ -607,12 +611,17 @@ class GlobalObject
                             $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
                                 ? $activeNewTarget
                                 : $target;
-                            $ntProto = $ntObj->get('prototype');
-                            $useProto = $ntProto instanceof \PhpJs\Value\JsObject
-                                ? $ntProto
-                                : ($target->get('prototype') instanceof \PhpJs\Value\JsObject
-                                    ? $target->get('prototype')
-                                    : null);
+                            // Per GetPrototypeFromConstructor: when
+                            // newTarget.prototype is not an Object, fall back
+                            // to GetFunctionRealm(newTarget)'s %Object.prototype%.
+                            $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                                $ntObj,
+                                static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+                            );
+                            if ($useProto === null) {
+                                $tp = $target->get('prototype');
+                                $useProto = $tp instanceof \PhpJs\Value\JsObject ? $tp : null;
+                            }
                             $newObj = new \PhpJs\Value\JsObject($useProto);
                             $newObj->defineOwnProperty(
                                 '[[NewTarget]]',
@@ -636,12 +645,17 @@ class GlobalObject
                         $ntObj = $activeNewTarget instanceof \PhpJs\Value\JsObject
                             ? $activeNewTarget
                             : $target;
-                        $ntProto = $ntObj->get('prototype');
-                        $useProto = $ntProto instanceof \PhpJs\Value\JsObject
-                            ? $ntProto
-                            : ($target->get('prototype') instanceof \PhpJs\Value\JsObject
-                                ? $target->get('prototype')
-                                : null);
+                        // Per GetPrototypeFromConstructor: when
+                        // newTarget.prototype is not an Object, fall back
+                        // to GetFunctionRealm(newTarget)'s %Object.prototype%.
+                        $useProto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+                            $ntObj,
+                            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+                        );
+                        if ($useProto === null) {
+                            $tp = $target->get('prototype');
+                            $useProto = $tp instanceof \PhpJs\Value\JsObject ? $tp : null;
+                        }
                         $newObj = new \PhpJs\Value\JsObject($useProto);
                         $newObj->defineOwnProperty(
                             '[[NewTarget]]',

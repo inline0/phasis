@@ -189,6 +189,15 @@ class JsFunction extends JsObject
     private bool $strict = false;
 
     /**
+     * [[Realm]] internal slot: the Engine (realm) this function belongs to.
+     * Set at construction from the currently-active Engine. Used by
+     * GetFunctionRealm so cross-realm constructs (Reflect.construct,
+     * GetPrototypeFromConstructor) can look up the correct realm's
+     * intrinsic prototypes.
+     */
+    public ?\PhpJs\Engine $realm = null;
+
+    /**
      * @param list<mixed> $params AST param nodes.
      * @param mixed $body AST node (BlockStatement or expression).
      */
@@ -205,6 +214,10 @@ class JsFunction extends JsObject
         bool $strict = false,
     ) {
         parent::__construct($prototype);
+        // Tag with the currently-active realm. Engine::getCurrentRealm
+        // resolves to whichever Engine's interpreter is on the stack
+        // (i.e. the realm that's installing this function).
+        $this->realm = \PhpJs\Engine::getCurrentRealm();
         $this->strict = $strict;
         $this->name = $name;
         $this->params = $params;
@@ -396,7 +409,52 @@ class JsFunction extends JsObject
     public function getPrototype(): ?JsObject
     {
         if (self::$functionPrototype !== null && $this !== self::$functionPrototype && !$this->hasCustomPrototype) {
-            // Async generator functions use %AsyncGeneratorFunction.prototype%.
+            // Realm-aware lookup: prefer the function's own [[Realm]] for
+            // Function.prototype / GeneratorFunction.prototype / etc.
+            // intrinsics. Without this, sibling Engines overwrite the
+            // process-wide static and parent-realm functions reach for
+            // the child's Function.prototype.call, routing all dispatch
+            // through the child interpreter.
+            if ($this->realm !== null) {
+                $env = $this->realm->getGlobalEnv();
+                if (
+                    $this->isAsync
+                    && $this->isGenerator
+                    && $env->has('__AsyncGeneratorFunctionPrototype__')
+                ) {
+                    $p = $env->get('__AsyncGeneratorFunctionPrototype__');
+                    if ($p instanceof JsObject && $this !== $p) {
+                        return $p;
+                    }
+                }
+                if (
+                    $this->isGenerator
+                    && !$this->isAsync
+                    && $env->has('__GeneratorFunctionPrototype__')
+                ) {
+                    $p = $env->get('__GeneratorFunctionPrototype__');
+                    if ($p instanceof JsObject && $this !== $p) {
+                        return $p;
+                    }
+                }
+                if (
+                    $this->isAsync
+                    && !$this->isGenerator
+                    && $env->has('__AsyncFunctionPrototype__')
+                ) {
+                    $p = $env->get('__AsyncFunctionPrototype__');
+                    if ($p instanceof JsObject) {
+                        return $p;
+                    }
+                }
+                if ($env->has('__FunctionPrototype__')) {
+                    $p = $env->get('__FunctionPrototype__');
+                    if ($p instanceof JsObject) {
+                        return $p;
+                    }
+                }
+            }
+            // Fall back to the process-wide statics (last-write-wins).
             if (
                 $this->isAsync
                 && $this->isGenerator
@@ -405,7 +463,6 @@ class JsFunction extends JsObject
             ) {
                 return self::$asyncGeneratorFunctionPrototype;
             }
-            // Generator functions use %GeneratorFunction.prototype%.
             if (
                 $this->isGenerator
                 && !$this->isAsync
@@ -414,7 +471,6 @@ class JsFunction extends JsObject
             ) {
                 return self::$generatorFunctionPrototype;
             }
-            // Async functions use %AsyncFunction.prototype%.
             if (
                 $this->isAsync
                 && !$this->isGenerator
@@ -694,8 +750,14 @@ class JsFunction extends JsObject
      */
     public function construct(array $args): JsValue
     {
-        $proto = $this->get('prototype');
-        $newObj = new JsObject($proto instanceof JsObject ? $proto : null);
+        // Per spec OrdinaryCreateFromConstructor → GetPrototypeFromConstructor:
+        // when newTarget.prototype is not an Object, use the constructor's
+        // realm's %Object.prototype% (GetFunctionRealm + intrinsic lookup).
+        $proto = \PhpJs\Spec\AbstractOperations::getPrototypeFromConstructor(
+            $this,
+            static fn ($env) => \PhpJs\Spec\AbstractOperations::realmIntrinsicPrototype($env, 'Object'),
+        );
+        $newObj = new JsObject($proto);
         $newObj->defineOwnProperty(
             '[[NewTarget]]',
             \PhpJs\Object\PropertyDescriptor::data($this, false, false, false),
