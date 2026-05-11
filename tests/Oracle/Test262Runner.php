@@ -44,20 +44,58 @@ class Test262Runner
         }
 
         // Tests that orchestrate multiple agents via the $262.agent host
-        // hooks need real preemptive concurrency to interleave Atomics.wait
-        // and Atomics.notify across threads. Our single-threaded stub can
-        // collect agent sources but can't actually run them in parallel,
-        // so the wait calls deadlock and the test never returns. Skip
-        // them instead of letting each one burn 30 seconds at the wall
-        // clock max_execution_time limit.
+        // are simulated cooperatively (see AgentHost). Real preemptive
+        // concurrency would interleave Atomics.wait and Atomics.notify
+        // across threads, but for deterministic test262 patterns the
+        // worker source runs synchronously on broadcast and suspends on
+        // Atomics.wait via PHP Fibers, then is resumed by Atomics.notify
+        // on the main agent. Fair-scheduling and true race tests do not
+        // work, but the bulk of the Atomics suite is deterministic
+        // enough to pass.
+
+        // Tests whose worker source spin-loops on a shared atomic
+        // (waiting for the main agent to flip a flag) cannot run in our
+        // cooperative model: the fiber that enters the spin loop never
+        // yields, so we can never run the main agent that would unstick
+        // it. These tests require true preemptive concurrency. The
+        // patterns are spin-loops on Atomics.load / compareExchange /
+        // exchange inside an agent.start() body.
         if (
-            strpos($source, '$262.agent.start') !== false
-            || strpos($source, '$262.agent.broadcast') !== false
+            (strpos($source, '$262.agent.start') !== false
+                || strpos($source, '$262.agent.broadcast') !== false)
+            && preg_match(
+                '/while\s*\(\s*Atomics\.(load|compareExchange|exchange)\(/',
+                $source
+            ) === 1
         ) {
             return new TestResult(
                 $testPath,
                 TestStatus::Skip,
-                'Multi-agent test (single-threaded runner cannot orchestrate)',
+                'Worker spin-loop on shared atomic needs preemptive scheduling',
+            );
+        }
+
+        // Multi-agent async tests interleave Atomics.waitAsync promise
+        // chains with main-thread microtask draining; the worker is
+        // expected to run additional turns concurrently while the main
+        // awaits getReportAsync. Our cooperative fiber simulator only
+        // models synchronous Atomics.wait suspension and cannot weave
+        // microtask resolution into a worker-fiber's await sequence
+        // mid-flight. Skip these so they don't hang on the runner's
+        // 30s clock.
+        if (
+            (strpos($source, '$262.agent.start') !== false
+                || strpos($source, '$262.agent.broadcast') !== false)
+            && (
+                strpos($source, 'waitAsync') !== false
+                || strpos($source, 'getReportAsync') !== false
+                || strpos($source, 'safeBroadcastAsync') !== false
+            )
+        ) {
+            return new TestResult(
+                $testPath,
+                TestStatus::Skip,
+                'Multi-agent waitAsync needs cross-fiber microtask scheduling',
             );
         }
 
@@ -184,8 +222,13 @@ class Test262Runner
             $engine->setCurrentModulePath($realTestPath);
         }
 
-        // Install $262 host object for test262 harness.
+        // Install $262 host object for test262 harness. The AgentHost
+        // installs static Atomics hooks; clear them in the finally below.
         $this->install262HostObject($engine);
+        $agentCleanup = static function (): void {
+            \PhpJs\BuiltIn\AtomicsObject::setSyncWaitHook(null);
+            \PhpJs\BuiltIn\AtomicsObject::setSyncNotifyHook(null);
+        };
 
         // For async tests, install $DONE and track completion.
         $asyncResult = null;
@@ -203,6 +246,34 @@ class Test262Runner
             JS);
         }
 
+        try {
+            return $this->runTestBody(
+                $engine,
+                $testPath,
+                $source,
+                $mode,
+                $includes,
+                $negative,
+                $isRaw,
+                $isAsync,
+                $realTestPath,
+            );
+        } finally {
+            $agentCleanup();
+        }
+    }
+
+    private function runTestBody(
+        Engine $engine,
+        string $testPath,
+        string $source,
+        string $mode,
+        array $includes,
+        ?array $negative,
+        bool $isRaw,
+        bool $isAsync,
+        string|false $realTestPath,
+    ): TestResult {
         try {
             $testSource = preg_replace('/\/\*---.*?---\*\//s', '', $source);
 
@@ -581,51 +652,11 @@ PHP;
         $engine->setGlobalJsValue('__262_IsHTMLDDA', new \PhpJs\Value\JsHTMLDDA());
         $engine->eval('$262.IsHTMLDDA = __262_IsHTMLDDA;');
 
-        // $262.agent: stub for multi-agent tests. Single-threaded PHP cannot
-        // run real agent threads, but this stub executes agent code inline
-        // when broadcast is called, allowing tests that check counters to pass.
-        $engine->eval(<<<'JS'
-        $262.agent = {
-            _reports: [],
-            _agentSources: [],
-            _callbacks: [],
-            start: function(src) {
-                $262.agent._agentSources.push(src);
-            },
-            broadcast: function(sab) {
-                // Execute all pending agent sources, which will call receiveBroadcast.
-                var sources = $262.agent._agentSources.splice(0);
-                for (var i = 0; i < sources.length; i++) {
-                    try {
-                        // The agent source typically calls $262.agent.receiveBroadcast(fn).
-                        // Save and restore callbacks to handle this.
-                        var prevCallbacks = $262.agent._callbacks;
-                        $262.agent._callbacks = [];
-                        (0, eval)(sources[i]);
-                        var cbs = $262.agent._callbacks;
-                        $262.agent._callbacks = prevCallbacks;
-                        // Invoke the registered callbacks with the shared buffer.
-                        for (var j = 0; j < cbs.length; j++) {
-                            try { cbs[j](sab); } catch(e) {}
-                        }
-                    } catch(e) {}
-                }
-            },
-            getReport: function() {
-                if ($262.agent._reports.length > 0) {
-                    return $262.agent._reports.shift();
-                }
-                return null;
-            },
-            sleep: function(ms) {},
-            leaving: function() {},
-            receiveBroadcast: function(cb) {
-                $262.agent._callbacks.push(cb);
-            },
-            report: function(msg) { $262.agent._reports.push(String(msg)); },
-            monotonicNow: function() { return Date.now(); },
-        };
-        JS);
+        // $262.agent: cooperative single-threaded simulation. See AgentHost
+        // for details. Each call to install262HostObject builds a fresh
+        // AgentHost so tests don't bleed state into each other.
+        $agentHost = new AgentHost($engine);
+        $agentHost->install();
 
         // test262 host function: print (used by some tests as a no-op or to store output).
         $engine->eval('function print() {}');

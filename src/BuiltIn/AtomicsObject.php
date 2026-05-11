@@ -42,25 +42,37 @@ class AtomicsObject
 
     /**
      * Whether the current agent can suspend on Atomics.wait.
-     *
-     * Default false: a non-blocking host (the typical CanBlockIsFalse path)
-     * throws TypeError when wait would suspend. Test262 tests carrying the
-     * CanBlockIsTrue flag toggle this to true through setAgentCanSuspend()
-     * so wait returns "timed-out" instead. PHP is single-threaded, so a
-     * positive timeout is sleep-then-return-"timed-out" rather than a
-     * real notify-driven wake-up.
      */
     private static bool $agentCanSuspend = false;
 
-    /**
-     * Toggle the agent-can-suspend flag.
-     *
-     * Used by Test262Runner around tests with the CanBlockIsTrue flag.
-     * Callers should reset to false after the test completes.
-     */
+    /** Toggle the agent-can-suspend flag (Test262Runner for CanBlockIsTrue). */
     public static function setAgentCanSuspend(bool $canSuspend): void
     {
         self::$agentCanSuspend = $canSuspend;
+    }
+
+    /**
+     * Optional hook invoked by Atomics.wait after the value-match check.
+     *
+     * @var \Closure(JsTypedArray, int, float): ?JsValue|null
+     */
+    private static ?\Closure $syncWaitHook = null;
+
+    /**
+     * Optional hook invoked by Atomics.notify before walking the waitAsync queue.
+     *
+     * @var \Closure(\PhpJs\Value\JsArrayBuffer, int, int): int|null
+     */
+    private static ?\Closure $syncNotifyHook = null;
+
+    public static function setSyncWaitHook(?\Closure $hook): void
+    {
+        self::$syncWaitHook = $hook;
+    }
+
+    public static function setSyncNotifyHook(?\Closure $hook): void
+    {
+        self::$syncNotifyHook = $hook;
     }
 
     /** Integer typed array type names that Atomics operates on. */
@@ -410,27 +422,26 @@ class AtomicsObject
             }
         }
 
-        // Per spec step 12: if AgentCanSuspend() is false, throw TypeError.
-        // PHP is single-threaded, so by default we refuse to suspend. The
-        // test262 CanBlockIsTrue runner toggles $agentCanSuspend on for
-        // suspend-permitted tests; those wait calls fall through to the
-        // single-threaded approximation below.
+        // Test262 agent simulator sync hook: cooperatively suspends
+        // worker fibers on a matching wait if installed.
+        if (self::$syncWaitHook !== null) {
+            $hookResult = (self::$syncWaitHook)($ta, $index, $timeoutNum);
+            if ($hookResult instanceof JsValue) {
+                return $hookResult;
+            }
+        }
+
+        // CanBlockIsTrue path: when the test262 runner has flagged the
+        // test as suspend-permitted via setAgentCanSuspend(true), do a
+        // bounded usleep then return "timed-out". Otherwise throw.
         if (!self::$agentCanSuspend) {
             throw new TypeError('Atomics.wait cannot suspend the current agent');
         }
-
-        // Single-threaded "suspend": no other agent can notify us. Honour
-        // ToNumber(timeout) per spec by treating NaN as +Infinity, then
-        // max(q, 0) as the wait budget. Cap any actual sleep at 5ms to
-        // keep tests fast (the value match has already been observed).
-        // Real ECMAScript would block the agent; the only outcome we can
-        // produce single-threaded is "timed-out".
         $waitMs = is_nan($timeoutNum) ? INF : max(0.0, $timeoutNum);
         if ($waitMs > 0.0 && is_finite($waitMs)) {
             $sleepMs = min($waitMs, 5.0);
             usleep((int) ($sleepMs * 1000));
         }
-
         return new JsString('timed-out');
     }
 
@@ -458,8 +469,8 @@ class AtomicsObject
         if (!$buffer instanceof JsSharedArrayBuffer) {
             return JsNumber::of(0.0);
         }
-        // Walk the queue in registration order; resolve up to $count waiters
-        // whose buffer + index match.
+        // Walk the waitAsync queue in registration order; resolve up to
+        // $count waiters whose buffer + index match.
         $remaining = [];
         foreach (self::$waitAsyncQueue as $entry) {
             if (
@@ -475,6 +486,13 @@ class AtomicsObject
             $remaining[] = $entry;
         }
         self::$waitAsyncQueue = $remaining;
+
+        // Allow the test262 agent simulator to wake additional suspended
+        // worker fibers waiting synchronously on the same (buffer, index).
+        if (self::$syncNotifyHook !== null && $woken < $count) {
+            $woken += (self::$syncNotifyHook)($buffer, $index, $count - $woken);
+        }
+
         return JsNumber::of((float) $woken);
     }
 

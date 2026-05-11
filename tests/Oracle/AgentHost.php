@@ -1,0 +1,540 @@
+<?php
+
+declare(strict_types=1);
+
+namespace PhpJs\Tests\Oracle;
+
+use PhpJs\BuiltIn\AtomicsObject;
+use PhpJs\Engine;
+use PhpJs\Value\JsArrayBuffer;
+use PhpJs\Value\JsFunction;
+use PhpJs\Value\JsNumber;
+use PhpJs\Value\JsObject;
+use PhpJs\Value\JsSharedArrayBuffer;
+use PhpJs\Value\JsString;
+use PhpJs\Value\JsTypedArray;
+use PhpJs\Value\JsUndefined;
+use PhpJs\Value\JsValue;
+
+/**
+ * Single-threaded cooperative simulation of the test262 `$262.agent` host.
+ *
+ * Real test262 hosts run each agent on a separate OS thread; this engine has
+ * no preemption, so we approximate the behaviour with PHP Fibers:
+ *
+ *   - $262.agent.start(src)          captures worker source for later run
+ *   - $262.agent.broadcast(buf)      starts each worker in its own Fiber and
+ *                                    invokes its registered receiveBroadcast
+ *                                    callback with the buffer. Each Fiber
+ *                                    runs until it completes or hits
+ *                                    Atomics.wait, at which point it
+ *                                    suspends.
+ *   - Atomics.wait                   when called from inside a worker fiber
+ *                                    on a value that matches the expected
+ *                                    word, suspends the fiber and waits to
+ *                                    be resumed by Atomics.notify.
+ *   - Atomics.notify                 wakes up the next N suspended fibers on
+ *                                    the matching (buffer, index) and runs
+ *                                    them until they next suspend or finish.
+ *   - $262.agent.report(value)       enqueues a string for getReport.
+ *   - $262.agent.getReport()         pops the next report (or null).
+ *   - $262.agent.sleep(ms)           noop; we never block wall-clock.
+ *
+ * This covers the deterministic Atomics agent tests where:
+ *
+ *   - The main agent allocates a SharedArrayBuffer.
+ *   - It spawns N workers that bump a "running" counter, then Atomics.wait.
+ *   - It calls Atomics.notify or stores a different value to wake them.
+ *   - It collects reports.
+ *
+ * It does not model preemption, fair scheduling, or wall-clock timeouts.
+ * Finite-timeout waits resolve to "timed-out" only when no notify wakes them
+ * before getReport drains the queue (we run any remaining workers to
+ * completion at the start of getReport so their timed-out reports show up).
+ */
+final class AgentHost
+{
+    /** @var list<string> Pending agent source bodies, FIFO. */
+    private array $pendingSources = [];
+
+    /**
+     * Active worker fibers paired with their receiveBroadcast callback. A
+     * fiber is created in broadcast() but the callback may be registered
+     * later from inside the fiber's body via $262.agent.receiveBroadcast,
+     * so we store both: the fiber and the (initially null) callback.
+     *
+     * @var list<array{fiber: \Fiber, callback: ?JsFunction}>
+     */
+    private array $agents = [];
+
+    /**
+     * Suspended workers waiting on Atomics.wait. Each entry records the
+     * shared buffer + word index + the fiber that is suspended.
+     *
+     * @var list<array{buffer: JsSharedArrayBuffer, index: int, fiber: \Fiber, timedOut: bool}>
+     */
+    private array $waiting = [];
+
+    /** @var list<string> FIFO of reports from $262.agent.report. */
+    private array $reports = [];
+
+    /**
+     * The currently running worker fiber (or null when on the main agent).
+     * Used by the Atomics.wait hook to decide whether to suspend.
+     */
+    private ?\Fiber $currentFiber = null;
+
+    /** Track callback registration target per-fiber. */
+    private ?\Fiber $callbackTarget = null;
+
+    /**
+     * Virtual monotonic clock value in milliseconds. We start at the
+     * current wall time so absolute values look plausible, but advance
+     * deterministically when a worker's wait times out so the post-wait
+     * - pre-wait duration spans the requested timeout. Real wall time
+     * cannot do this because our entire test runs in microseconds.
+     */
+    private float $virtualNowMs;
+
+    /**
+     * Pending suspended fibers' timeouts. When the host drains a worker
+     * fiber via timeout, we advance virtualNowMs by the worker's
+     * timeout so duration measurements reflect the simulated wait.
+     *
+     * @var \SplObjectStorage<\Fiber, float>
+     */
+    private \SplObjectStorage $fiberTimeouts;
+
+    public function __construct(private readonly Engine $engine)
+    {
+        $this->virtualNowMs = microtime(true) * 1000.0;
+        $this->fiberTimeouts = new \SplObjectStorage();
+    }
+
+    /**
+     * Install $262.agent and the cooperative Atomics hooks for this engine.
+     */
+    public function install(): void
+    {
+        $host = $this;
+
+        // start(src): queue worker source for later broadcast.
+        $startFn = JsFunction::fromCallable(
+            'start',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                $src = $args[0] ?? JsUndefined::instance();
+                $srcStr = $src instanceof JsString ? $src->value : '';
+                $host->pendingSources[] = $srcStr;
+                return JsUndefined::instance();
+            },
+            1,
+        );
+
+        // broadcast(buffer, _int32): kick off pending workers.
+        $broadcastFn = JsFunction::fromCallable(
+            'broadcast',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                $buf = $args[0] ?? JsUndefined::instance();
+                $sab = self::resolveSharedBuffer($buf);
+                if ($sab !== null) {
+                    $host->doBroadcast($sab);
+                }
+                return JsUndefined::instance();
+            },
+            2,
+        );
+
+        // getReport(): pop next report (or null). When the report queue
+        // is empty we first try to make forward progress: if the test
+        // started workers without ever calling broadcast (some tests
+        // have the worker allocate its own SharedArrayBuffer and report
+        // directly), spawn them now. If that did not produce a report
+        // either, drain any still-suspended worker fibers as
+        // timed-out. We only drain when the queue is genuinely empty so
+        // that notify+getReport pairs don't lose still-waiting workers.
+        $getReportFn = JsFunction::fromCallable(
+            'getReport',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                if (count($host->reports) === 0 && count($host->pendingSources) > 0) {
+                    $host->runStandalonePending();
+                }
+                if (count($host->reports) === 0) {
+                    $host->drainTimedOutFibers();
+                }
+                if (count($host->reports) === 0) {
+                    return \PhpJs\Value\JsNull::instance();
+                }
+                return new JsString((string) array_shift($host->reports));
+            },
+            0,
+        );
+
+        // sleep(ms): noop. We deliberately do NOT drain timed-out fibers
+        // here, because atomicsHelper.js calls sleep() in spin loops
+        // (e.g. tryYield, getReport's busy-poll) and prematurely waking
+        // suspended worker fibers would resolve them as "timed-out"
+        // before a subsequent Atomics.notify has a chance to wake them
+        // as "ok". Real timeouts only fire from getReport() once we know
+        // the main agent has finished issuing notify calls and is just
+        // waiting on reports.
+        $sleepFn = JsFunction::fromCallable(
+            'sleep',
+            static function (JsValue $this_, array $args): JsValue {
+                return JsUndefined::instance();
+            },
+            1,
+        );
+
+        // monotonicNow(): use a virtual clock so that wait timeouts can
+        // satisfy the duration assertions in no-spurious-wakeup tests
+        // even though we never actually sleep.
+        $monotonicFn = JsFunction::fromCallable(
+            'monotonicNow',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                return JsNumber::of($host->virtualNowMs);
+            },
+            0,
+        );
+
+        // leaving(): worker-side termination signal. Noop here.
+        $leavingFn = JsFunction::fromCallable(
+            'leaving',
+            static function (JsValue $this_, array $args): JsValue {
+                return JsUndefined::instance();
+            },
+            0,
+        );
+
+        // receiveBroadcast(cb): register a callback for the current worker.
+        $receiveBroadcastFn = JsFunction::fromCallable(
+            'receiveBroadcast',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                $cb = $args[0] ?? JsUndefined::instance();
+                if (!$cb instanceof JsFunction) {
+                    return JsUndefined::instance();
+                }
+                // The currently running fiber is the worker whose body called
+                // this. Attach the callback to that fiber's entry.
+                $target = $host->callbackTarget;
+                if ($target === null) {
+                    return JsUndefined::instance();
+                }
+                foreach ($host->agents as $i => $entry) {
+                    if ($entry['fiber'] === $target) {
+                        $host->agents[$i]['callback'] = $cb;
+                        break;
+                    }
+                }
+                return JsUndefined::instance();
+            },
+            1,
+        );
+
+        // report(value): push a string to the report queue.
+        $reportFn = JsFunction::fromCallable(
+            'report',
+            static function (JsValue $this_, array $args) use ($host): JsValue {
+                $v = $args[0] ?? JsUndefined::instance();
+                $s = $v instanceof JsString
+                    ? $v->value
+                    : \PhpJs\Spec\TypeConversion::toString($v);
+                $host->reports[] = $s;
+                return JsUndefined::instance();
+            },
+            1,
+        );
+
+        // Build the agent object with our methods.
+        $agent = new JsObject();
+        $agent->set('start', $startFn);
+        $agent->set('broadcast', $broadcastFn);
+        $agent->set('getReport', $getReportFn);
+        $agent->set('sleep', $sleepFn);
+        $agent->set('monotonicNow', $monotonicFn);
+        $agent->set('leaving', $leavingFn);
+        $agent->set('receiveBroadcast', $receiveBroadcastFn);
+        $agent->set('report', $reportFn);
+
+        // Install it onto the existing $262 object. We must read $262
+        // directly from the global environment rather than via Engine::eval
+        // (which would auto-convert it to a PHP array and drop the JsObject
+        // identity we need to mutate).
+        $existing = $this->engine->getGlobalEnv()->get('$262');
+        if ($existing instanceof JsObject) {
+            $existing->set('agent', $agent);
+        }
+
+        // Wire the cooperative Atomics hooks. These are installed for the
+        // lifetime of this engine, so the AtomicsObject knows to defer the
+        // current Atomics.wait inside a worker fiber and to wake fibers on
+        // Atomics.notify.
+        AtomicsObject::setSyncWaitHook(
+            static fn(JsTypedArray $ta, int $i, float $t): ?JsValue => $host->onAtomicsWait($ta, $i, $t),
+        );
+        AtomicsObject::setSyncNotifyHook(
+            static fn(JsArrayBuffer $b, int $i, int $c): int => $host->onAtomicsNotify($b, $i, $c),
+        );
+    }
+
+    /**
+     * Clear the global hooks. Idempotent — safe to call from a teardown
+     * even if install() did not run.
+     */
+    public function uninstall(): void
+    {
+        AtomicsObject::setSyncWaitHook(null);
+        AtomicsObject::setSyncNotifyHook(null);
+        $this->pendingSources = [];
+        $this->agents = [];
+        $this->waiting = [];
+        $this->reports = [];
+        $this->currentFiber = null;
+        $this->callbackTarget = null;
+        $this->fiberTimeouts = new \SplObjectStorage();
+    }
+
+    /**
+     * Hook called by AtomicsObject::waitFn after the value-match check.
+     *
+     * Return:
+     *   - JsString "ok" / "timed-out" when this wait has been simulated.
+     *   - null when the caller should fall through to the default
+     *     "cannot suspend" TypeError (e.g. wait invoked from the main
+     *     agent rather than from inside a worker fiber).
+     */
+    public function onAtomicsWait(JsTypedArray $ta, int $index, float $timeoutMs): ?JsValue
+    {
+        $fiber = $this->currentFiber;
+        if ($fiber === null) {
+            return null;
+        }
+        $buffer = $ta->getBuffer();
+        if (!$buffer instanceof JsSharedArrayBuffer) {
+            return null;
+        }
+
+        // Zero or negative timeout: don't suspend, return "timed-out".
+        if (!is_nan($timeoutMs) && $timeoutMs <= 0.0) {
+            return new JsString('timed-out');
+        }
+
+        // Record timeout (finite values only) so drainTimedOutFibers can
+        // advance our virtual clock by the expected duration.
+        if (!is_nan($timeoutMs) && is_finite($timeoutMs) && $timeoutMs > 0.0) {
+            $this->fiberTimeouts[$fiber] = $timeoutMs;
+        }
+
+        // Register this fiber as waiting.
+        $this->waiting[] = [
+            'buffer' => $buffer,
+            'index' => $index,
+            'fiber' => $fiber,
+            'timedOut' => false,
+        ];
+
+        // Suspend the worker. Resume returns "ok" (notified) or "timed-out".
+        $resumed = \Fiber::suspend();
+        if (is_string($resumed)) {
+            return new JsString($resumed);
+        }
+        return new JsString('timed-out');
+    }
+
+    /**
+     * Hook called by AtomicsObject::notifyFn to wake suspended workers.
+     *
+     * Returns the number of additional waiters woken (added to the
+     * Atomics.waitAsync count handled in AtomicsObject itself).
+     */
+    public function onAtomicsNotify(JsArrayBuffer $buf, int $index, int $count): int
+    {
+        if (!$buf instanceof JsSharedArrayBuffer) {
+            return 0;
+        }
+        $woken = 0;
+        $remaining = [];
+        foreach ($this->waiting as $entry) {
+            if (
+                $woken < $count
+                && $entry['buffer'] === $buf
+                && $entry['index'] === $index
+            ) {
+                $woken++;
+                $fiber = $entry['fiber'];
+                // Clear timeout tracking since this fiber was woken, not
+                // timed out. virtualNowMs is therefore not advanced for
+                // notified workers.
+                if (isset($this->fiberTimeouts[$fiber])) {
+                    unset($this->fiberTimeouts[$fiber]);
+                }
+                $this->resumeFiber($fiber, 'ok');
+                continue;
+            }
+            $remaining[] = $entry;
+        }
+        $this->waiting = $remaining;
+        return $woken;
+    }
+
+    /**
+     * Resolve the argument passed to $262.agent.broadcast into the shared
+     * buffer the workers should see. Accepts either the SharedArrayBuffer
+     * directly or an Int32Array / BigInt64Array view over one (the
+     * atomicsHelper.js safeBroadcast wrapper hands us the view).
+     */
+    private static function resolveSharedBuffer(JsValue $arg): ?JsSharedArrayBuffer
+    {
+        if ($arg instanceof JsSharedArrayBuffer) {
+            return $arg;
+        }
+        if ($arg instanceof JsTypedArray) {
+            $buf = $arg->getBuffer();
+            if ($buf instanceof JsSharedArrayBuffer) {
+                return $buf;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Drain any pending worker sources that didn't go through a
+     * broadcast. The worker is expected to allocate its own
+     * SharedArrayBuffer (or report directly without using one).
+     */
+    public function runStandalonePending(): void
+    {
+        if (count($this->pendingSources) === 0) {
+            return;
+        }
+        $sources = $this->pendingSources;
+        $this->pendingSources = [];
+
+        foreach ($sources as $src) {
+            $engine = $this->engine;
+            $fiber = new \Fiber(static function () use ($engine, $src): void {
+                $engine->eval($src);
+            });
+            $this->agents[] = ['fiber' => $fiber, 'callback' => null];
+            $this->runFiber($fiber, null);
+        }
+    }
+
+    /**
+     * Start each pending worker in its own fiber and run it until it
+     * either suspends on Atomics.wait or completes.
+     */
+    private function doBroadcast(JsSharedArrayBuffer $sab): void
+    {
+        $sources = $this->pendingSources;
+        $this->pendingSources = [];
+
+        foreach ($sources as $src) {
+            $host = $this;
+            $engine = $this->engine;
+            $fiber = new \Fiber(static function () use ($engine, $src, $host, $sab): void {
+                // Evaluate the worker source. Inside it the worker will
+                // call $262.agent.receiveBroadcast(fn) which registers a
+                // callback on $host->callbackTarget (the current fiber).
+                // After the source returns, we invoke that callback with
+                // the shared buffer.
+                $engine->eval($src);
+                $cb = $host->getCurrentCallback();
+                if ($cb instanceof JsFunction) {
+                    $cb->call(JsUndefined::instance(), [$sab]);
+                }
+            });
+            $this->agents[] = ['fiber' => $fiber, 'callback' => null];
+
+            // The receiveBroadcast handler needs to know which fiber is
+            // currently executing in order to attach the callback. We set
+            // both currentFiber (used by Atomics.wait) and callbackTarget
+            // (used by receiveBroadcast) to this fiber, then start it.
+            $this->runFiber($fiber, null);
+        }
+    }
+
+    /**
+     * Start or resume a fiber with worker-context bookkeeping. When the
+     * fiber suspends or finishes, the main agent context is restored.
+     */
+    private function runFiber(\Fiber $fiber, ?string $resumeValue): void
+    {
+        $prevFiber = $this->currentFiber;
+        $prevTarget = $this->callbackTarget;
+        $this->currentFiber = $fiber;
+        $this->callbackTarget = $fiber;
+        try {
+            if (!$fiber->isStarted()) {
+                $fiber->start();
+            } elseif ($fiber->isSuspended()) {
+                $fiber->resume($resumeValue);
+            }
+        } catch (\Throwable $e) {
+            // Worker threw uncaught: silently swallow. The main agent's
+            // assertions on the report queue will fail the test naturally.
+        } finally {
+            $this->currentFiber = $prevFiber;
+            $this->callbackTarget = $prevTarget;
+        }
+    }
+
+    /**
+     * Resume a previously suspended fiber, signalling its wait result.
+     */
+    private function resumeFiber(\Fiber $fiber, string $resumeValue): void
+    {
+        $this->runFiber($fiber, $resumeValue);
+    }
+
+    /**
+     * Time out any still-suspended worker fibers. Called from getReport so
+     * tests that expect "timed-out" results eventually receive them, and
+     * from sleep().
+     */
+    private function drainTimedOutFibers(): void
+    {
+        if (count($this->waiting) === 0) {
+            return;
+        }
+        $entries = $this->waiting;
+        $this->waiting = [];
+        // Advance the virtual clock by the longest pending timeout so any
+        // duration measurements the worker performs after wait() satisfy
+        // their (lapse >= TIMEOUT) assertions. If multiple fibers waited
+        // with different timeouts, the conservative move is to take the
+        // max — any individual fiber's reported duration will still be
+        // >= its own timeout.
+        $maxTimeout = 0.0;
+        foreach ($entries as $entry) {
+            $fiber = $entry['fiber'];
+            if (isset($this->fiberTimeouts[$fiber])) {
+                $maxTimeout = max($maxTimeout, $this->fiberTimeouts[$fiber]);
+                unset($this->fiberTimeouts[$fiber]);
+            }
+        }
+        if ($maxTimeout > 0.0) {
+            $this->virtualNowMs += $maxTimeout;
+        }
+        foreach ($entries as $entry) {
+            $this->resumeFiber($entry['fiber'], 'timed-out');
+        }
+    }
+
+    /**
+     * Return the callback registered by the currently running fiber, if
+     * any.
+     */
+    public function getCurrentCallback(): ?JsFunction
+    {
+        $target = $this->callbackTarget;
+        if ($target === null) {
+            return null;
+        }
+        foreach ($this->agents as $entry) {
+            if ($entry['fiber'] === $target) {
+                return $entry['callback'];
+            }
+        }
+        return null;
+    }
+}
