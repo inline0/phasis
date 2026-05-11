@@ -82,13 +82,14 @@ class Lexer
             }
         }
 
-        // Soft cap on token count. Pathological flat programs (e.g.
-        // test262 regress-610026 with 2^21 sibling `{}` blocks) build
-        // millions of Token + SourceLocation objects that exceed PHP's
-        // 1 GB memory_limit before parse even starts. Detect that here
-        // and raise a JS-catchable SyntaxError so eval() callers can
-        // observe a clean failure instead of a PHP fatal.
-        $tokenCountCap = 2_000_000;
+        // Soft cap on token count. The empty-block coalescing fast path
+        // below absorbs the test262 regress-610026 pathological `{}{}...`
+        // shape (2^21 sibling empty blocks at top level) without emitting
+        // tokens, so the cap here only guards programs whose token graph
+        // is genuinely large after coalescing. Raised to keep headroom
+        // since coalescing now keeps the common pathological cases from
+        // ever approaching it.
+        $tokenCountCap = 8_000_000;
         $tokenCountChecked = 0;
 
         while ($this->pos < $this->length) {
@@ -106,6 +107,44 @@ class Lexer
                     'Program exceeds maximum supported token count',
                     new SourceLocation($this->line, $this->column, $this->pos),
                 );
+            }
+
+            // Fast path for runs of empty `{}` blocks in statement context
+            // (test262 regress-610026 builds 2^21 sibling `{}` at top
+            // level and evals the result). An empty BlockStatement has
+            // no observable effect on the surrounding program, so we
+            // can drop both braces without emitting tokens or AST nodes.
+            //
+            // Conservative whitelist: previous token is either absent
+            // (start of source) or a Semicolon. After a coalesce the
+            // emitted-token state is unchanged, so the next `{` (with
+            // only whitespace before it) also coalesces, collapsing the
+            // entire `{}{}...` run to nothing. Anywhere `{` could
+            // plausibly start an ObjectExpression (after `=`, `(`, `,`,
+            // `:`, `=>`, unary operators, etc.) we fall through to the
+            // normal tokenization path and emit `{`/`}` as usual.
+            if (
+                $this->source[$this->pos] === '{'
+                && $this->templateDepth === 0
+                && $this->canCoalesceEmptyBlock()
+            ) {
+                $savedPos = $this->pos;
+                $savedLine = $this->line;
+                $savedColumn = $this->column;
+                $savedLtb = $this->lineTerminatorBefore;
+                $this->advance(); // tentatively consume '{'
+                $this->skipWhitespaceAndComments();
+                if ($this->pos < $this->length && $this->source[$this->pos] === '}') {
+                    $this->advance(); // consume '}'
+                    continue;
+                }
+                // Not an empty block. Restore state and fall through to
+                // the normal token-reading path so `{` is emitted as
+                // LeftBrace with the correct source location.
+                $this->pos = $savedPos;
+                $this->line = $savedLine;
+                $this->column = $savedColumn;
+                $this->lineTerminatorBefore = $savedLtb;
             }
 
             // Inside template expression: } at brace depth 0 means template continuation.
@@ -1697,6 +1736,24 @@ class Lexer
             $this->pos += 4;
             $this->column++;
         }
+    }
+
+    /**
+     * Whether a `{` at the current position is allowed to be coalesced
+     * into a no-token empty BlockStatement. Conservative: only fires
+     * when the previous emitted token is absent (start of source) or a
+     * `;`. Both positions can only begin a Statement, so `{` here cannot
+     * plausibly begin an ObjectExpression. Coalescing emits zero tokens,
+     * so the previous token remains the same across an entire `{}{}...`
+     * run.
+     */
+    private function canCoalesceEmptyBlock(): bool
+    {
+        if (empty($this->tokens)) {
+            return true;
+        }
+        $prev = $this->tokens[count($this->tokens) - 1];
+        return $prev->type === TokenType::Semicolon;
     }
 
     /**

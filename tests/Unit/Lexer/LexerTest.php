@@ -157,9 +157,13 @@ class LexerTest extends TestCase
 
     public function testPunctuators(): void
     {
-        $tokens = $this->tokenize('{ } ( ) [ ] ; , . ... => ?.');
-        $this->assertSame(TokenType::LeftBrace, $tokens[0][0]);
-        $this->assertSame(TokenType::RightBrace, $tokens[1][0]);
+        // Note: a leading `{ }` at the start of source is coalesced by
+        // the lexer's empty-block fast path (see regress-610026: 2^21
+        // sibling `{}` blocks). Use a leading sentinel identifier to
+        // observe the bare punctuator emission instead.
+        $tokens = $this->tokenize('x ; { } ( ) [ ] ; , . ... => ?.');
+        $this->assertSame(TokenType::Identifier, $tokens[0][0]);
+        $this->assertSame(TokenType::Semicolon, $tokens[1][0]);
         $this->assertSame(TokenType::LeftParen, $tokens[2][0]);
         $this->assertSame(TokenType::RightParen, $tokens[3][0]);
         $this->assertSame(TokenType::LeftBracket, $tokens[4][0]);
@@ -170,6 +174,35 @@ class LexerTest extends TestCase
         $this->assertSame(TokenType::Ellipsis, $tokens[9][0]);
         $this->assertSame(TokenType::Arrow, $tokens[10][0]);
         $this->assertSame(TokenType::OptionalChaining, $tokens[11][0]);
+    }
+
+    public function testEmptyBlockCoalescedAtStatementContext(): void
+    {
+        // At the start of source: `{}` is a no-op BlockStatement, and
+        // the lexer drops both braces without emitting tokens.
+        $tokens = $this->tokenize('{}');
+        $this->assertSame([], $tokens);
+
+        // After a Semicolon: same.
+        $tokens = $this->tokenize(';{};{}');
+        $this->assertSame([
+            [TokenType::Semicolon, ';'],
+            [TokenType::Semicolon, ';'],
+        ], $tokens);
+
+        // Coalescing chains across runs of empty blocks separated only
+        // by whitespace, because no token is emitted between them.
+        $tokens = $this->tokenize('{}{}{}');
+        $this->assertSame([], $tokens);
+    }
+
+    public function testEmptyBlockNotCoalescedInExpressionContext(): void
+    {
+        // After `=`: `{}` is an ObjectExpression and must lex as
+        // LeftBrace / RightBrace so the parser can build the object.
+        $tokens = $this->tokenize('var x = {}');
+        $this->assertSame(TokenType::LeftBrace, $tokens[3][0]);
+        $this->assertSame(TokenType::RightBrace, $tokens[4][0]);
     }
 
     public function testLineComments(): void
