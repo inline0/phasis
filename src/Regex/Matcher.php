@@ -552,9 +552,14 @@ class Matcher
         if (!class_exists(\IntlChar::class)) {
             return false;
         }
-        // No `=` form: name is either a binary property or a
+        // No `=` form: name is either a binary property, a special
+        // ECMA-only property (Any, ASCII, Assigned), or a
         // General_Category alias.
         if ($value === null) {
+            $special = self::specialEcmaProperty($name, $cp);
+            if ($special !== null) {
+                return $special;
+            }
             $bin = self::resolveBinaryProperty($name);
             if ($bin !== null) {
                 return \IntlChar::hasBinaryProperty($cp, $bin);
@@ -564,7 +569,13 @@ class Matcher
                 $cat = \IntlChar::charType($cp);
                 return self::generalCategoryMatches($gc, $cat);
             }
-            return false;
+            // PHP's IntlChar omits a handful of binary-property
+            // constants even on modern ICU (e.g. PROPERTY_EMOJI*,
+            // PROPERTY_EXTENDED_PICTOGRAPHIC). Fall back to a
+            // single-codepoint PCRE2 probe for those — PCRE2's
+            // built-in Unicode tables generally know these
+            // properties even when our IntlChar wrapper does not.
+            return self::pcreBinaryPropertyProbe($name, $cp);
         }
         // Property=Value form (Script, General_Category, etc.).
         if (in_array($name, ['gc', 'General_Category'], true)) {
@@ -579,13 +590,178 @@ class Matcher
             return \IntlChar::getIntPropertyValue($cp, \IntlChar::PROPERTY_SCRIPT) === $sc;
         }
         if (in_array($name, ['scx', 'Script_Extensions'], true)) {
+            return self::matchesScriptExtensions($value, $cp);
+        }
+        return false;
+    }
+
+    /**
+     * ECMAScript-only "binary" property aliases that aren't backed by
+     * a Unicode binary property: Any (every code point), ASCII (cp in
+     * 0x0..0x7F), Assigned (general category != Cn). Returns null if
+     * $name is not one of these.
+     */
+    private static function specialEcmaProperty(string $name, int $cp): ?bool
+    {
+        return match ($name) {
+            'Any' => true,
+            'ASCII' => $cp <= 0x7F,
+            'Assigned' => \IntlChar::charType($cp) !== \IntlChar::CHAR_CATEGORY_UNASSIGNED,
+            default => null,
+        };
+    }
+
+    /**
+     * Single-codepoint PCRE2 probe for a binary property that
+     * IntlChar's wrapper does not expose (PROPERTY_EMOJI*,
+     * PROPERTY_EXTENDED_PICTOGRAPHIC). Caches the compiled probe
+     * pattern per property alias. Returns false if PCRE2 also
+     * does not know the property (we already tried IntlChar; if
+     * neither knows it, the property simply does not match).
+     */
+    private static function pcreBinaryPropertyProbe(string $name, int $cp): bool
+    {
+        if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            // Surrogate code points aren't valid UTF-8 input to
+            // PCRE2; treat them as not in any Unicode property.
+            return false;
+        }
+        $utf8 = \IntlChar::chr($cp);
+        if (!is_string($utf8) || $utf8 === '') {
+            return false;
+        }
+        static $cache = [];
+        if (!array_key_exists($name, $cache)) {
+            $probe = sprintf('/\\p{%s}/u', preg_quote($name, '/'));
+            $ok = @preg_match($probe, '') !== false;
+            $cache[$name] = $ok
+                ? sprintf('/^\\p{%s}$/u', preg_quote($name, '/'))
+                : null;
+        }
+        $pattern = $cache[$name];
+        if ($pattern === null) {
+            return false;
+        }
+        return (bool) @preg_match($pattern, $utf8);
+    }
+
+    /**
+     * Per-codepoint Script_Extensions check. IntlChar exposes Script
+     * but no direct Script_Extensions accessor; PCRE2 does, so we
+     * precompute the matching code-point ranges once via PCRE2
+     * (single preg_match_all over a long synthetic input) and then
+     * answer each per-codepoint query with a binary search in
+     * O(log ranges). Without the precomputation the matcher would
+     * do one PCRE2 round-trip per input codepoint, which scales
+     * O(input length) and times out on the test262 generated
+     * Script_Extensions sweeps.
+     */
+    private static function matchesScriptExtensions(string $value, int $cp): bool
+    {
+        if ($cp >= 0xD800 && $cp <= 0xDFFF) {
+            return false;
+        }
+        $ranges = self::scriptExtensionsRanges($value);
+        if ($ranges === null) {
+            // PCRE2 rejected the value alias. Fall back to primary
+            // Script enum so we still produce a sensible answer.
             $sc = \IntlChar::getPropertyValueEnum(\IntlChar::PROPERTY_SCRIPT, $value);
             if ($sc < 0) {
                 return false;
             }
-            // Approximation via primary script — IntlChar lacks a
-            // direct Script_Extensions accessor.
             return \IntlChar::getIntPropertyValue($cp, \IntlChar::PROPERTY_SCRIPT) === $sc;
+        }
+        return self::codePointInRanges($cp, $ranges);
+    }
+
+    /**
+     * @return list<array{0:int,1:int}>|null
+     */
+    private static function scriptExtensionsRanges(string $value): ?array
+    {
+        static $cache = [];
+        if (array_key_exists($value, $cache)) {
+            return $cache[$value];
+        }
+        $probe = sprintf('/\\p{scx=%s}/u', preg_quote($value, '/'));
+        if (@preg_match($probe, '') === false) {
+            $cache[$value] = null;
+            return null;
+        }
+        $cache[$value] = self::buildPropertyRanges('scx=' . $value);
+        return $cache[$value];
+    }
+
+    /**
+     * Build the sorted list of [start, end] code-point ranges that
+     * match the given PCRE2 \p{...} expression body. Walks all
+     * code points 0..0x10FFFF (skipping surrogates) once via
+     * IntlChar::chr to build a UTF-8 representation, then runs a
+     * single preg_match_all per Unicode plane, decoding each
+     * matched substring back to its leading code point. This
+     * costs one PCRE2 invocation per plane (3 invocations total)
+     * instead of one per code point.
+     *
+     * @return list<array{0:int,1:int}>
+     */
+    private static function buildPropertyRanges(string $propertyBody): array
+    {
+        $pattern = sprintf('/\\p{%s}+/u', $propertyBody);
+        $ranges = [];
+        // Three blocks: BMP up to surrogates, BMP past surrogates, and
+        // supplementary planes. Surrogates can never be in any Unicode
+        // property and don't UTF-8 encode anyway.
+        $blocks = [
+            [0x0000, 0xD7FF],
+            [0xE000, 0xFFFF],
+            [0x10000, 0x10FFFF],
+        ];
+        foreach ($blocks as [$blockStart, $blockEnd]) {
+            $buf = '';
+            for ($cp = $blockStart; $cp <= $blockEnd; $cp++) {
+                $u = \IntlChar::chr($cp);
+                if (is_string($u) && $u !== '') {
+                    $buf .= $u;
+                }
+            }
+            $matches = [];
+            if (@preg_match_all($pattern, $buf, $matches, PREG_OFFSET_CAPTURE) === false) {
+                continue;
+            }
+            foreach ($matches[0] as [$matchStr, $byteOffset]) {
+                // Decode the run of UTF-8 inside the match into a
+                // start and end code point. Because the buffer was
+                // built by encoding sequential integers, the
+                // matched bytes always decode cleanly.
+                $cps = self::utf8ToCodePoints($matchStr);
+                if ($cps === []) {
+                    continue;
+                }
+                $ranges[] = [$cps[0], $cps[count($cps) - 1]];
+            }
+        }
+        return $ranges;
+    }
+
+    /**
+     * Binary search a code-point in sorted disjoint ranges.
+     *
+     * @param list<array{0:int,1:int}> $ranges
+     */
+    private static function codePointInRanges(int $cp, array $ranges): bool
+    {
+        $lo = 0;
+        $hi = count($ranges) - 1;
+        while ($lo <= $hi) {
+            $mid = intdiv($lo + $hi, 2);
+            [$s, $e] = $ranges[$mid];
+            if ($cp < $s) {
+                $hi = $mid - 1;
+            } elseif ($cp > $e) {
+                $lo = $mid + 1;
+            } else {
+                return true;
+            }
         }
         return false;
     }
@@ -597,57 +773,105 @@ class Matcher
         // constant() so ICU builds without newer property constants
         // (e.g. PROPERTY_EMOJI on older PHP) cleanly fall through.
         $aliasToConstant = [
-            'ASCII' => 'PROPERTY_ASCII_HEX_DIGIT',
+            // ECMA-only ASCII / Any / Assigned are handled in
+            // specialEcmaProperty(); ASCII is NOT a Unicode binary
+            // property despite the alias key making it look like one.
             'ASCII_Hex_Digit' => 'PROPERTY_ASCII_HEX_DIGIT',
+            'AHex' => 'PROPERTY_ASCII_HEX_DIGIT',
             'Alphabetic' => 'PROPERTY_ALPHABETIC',
             'Alpha' => 'PROPERTY_ALPHABETIC',
             'Bidi_Control' => 'PROPERTY_BIDI_CONTROL',
+            'Bidi_C' => 'PROPERTY_BIDI_CONTROL',
             'Bidi_Mirrored' => 'PROPERTY_BIDI_MIRRORED',
+            'Bidi_M' => 'PROPERTY_BIDI_MIRRORED',
             'Case_Ignorable' => 'PROPERTY_CASE_IGNORABLE',
+            'CI' => 'PROPERTY_CASE_IGNORABLE',
             'Cased' => 'PROPERTY_CASED',
             'Changes_When_Casefolded' => 'PROPERTY_CHANGES_WHEN_CASEFOLDED',
+            'CWCF' => 'PROPERTY_CHANGES_WHEN_CASEFOLDED',
             'Changes_When_Casemapped' => 'PROPERTY_CHANGES_WHEN_CASEMAPPED',
+            'CWCM' => 'PROPERTY_CHANGES_WHEN_CASEMAPPED',
             'Changes_When_Lowercased' => 'PROPERTY_CHANGES_WHEN_LOWERCASED',
+            'CWL' => 'PROPERTY_CHANGES_WHEN_LOWERCASED',
             'Changes_When_NFKC_Casefolded' => 'PROPERTY_CHANGES_WHEN_NFKC_CASEFOLDED',
+            'CWKCF' => 'PROPERTY_CHANGES_WHEN_NFKC_CASEFOLDED',
             'Changes_When_Titlecased' => 'PROPERTY_CHANGES_WHEN_TITLECASED',
+            'CWT' => 'PROPERTY_CHANGES_WHEN_TITLECASED',
             'Changes_When_Uppercased' => 'PROPERTY_CHANGES_WHEN_UPPERCASED',
+            'CWU' => 'PROPERTY_CHANGES_WHEN_UPPERCASED',
             'Dash' => 'PROPERTY_DASH',
             'Default_Ignorable_Code_Point' => 'PROPERTY_DEFAULT_IGNORABLE_CODE_POINT',
+            'DI' => 'PROPERTY_DEFAULT_IGNORABLE_CODE_POINT',
             'Deprecated' => 'PROPERTY_DEPRECATED',
+            'Dep' => 'PROPERTY_DEPRECATED',
             'Diacritic' => 'PROPERTY_DIACRITIC',
+            'Dia' => 'PROPERTY_DIACRITIC',
             'Emoji' => 'PROPERTY_EMOJI',
             'Emoji_Component' => 'PROPERTY_EMOJI_COMPONENT',
+            'EComp' => 'PROPERTY_EMOJI_COMPONENT',
             'Emoji_Modifier' => 'PROPERTY_EMOJI_MODIFIER',
+            'EMod' => 'PROPERTY_EMOJI_MODIFIER',
             'Emoji_Modifier_Base' => 'PROPERTY_EMOJI_MODIFIER_BASE',
+            'EBase' => 'PROPERTY_EMOJI_MODIFIER_BASE',
             'Emoji_Presentation' => 'PROPERTY_EMOJI_PRESENTATION',
+            'EPres' => 'PROPERTY_EMOJI_PRESENTATION',
+            'Extended_Pictographic' => 'PROPERTY_EXTENDED_PICTOGRAPHIC',
+            'ExtPict' => 'PROPERTY_EXTENDED_PICTOGRAPHIC',
             'Extender' => 'PROPERTY_EXTENDER',
+            'Ext' => 'PROPERTY_EXTENDER',
             'Grapheme_Base' => 'PROPERTY_GRAPHEME_BASE',
+            'Gr_Base' => 'PROPERTY_GRAPHEME_BASE',
             'Grapheme_Extend' => 'PROPERTY_GRAPHEME_EXTEND',
+            'Gr_Ext' => 'PROPERTY_GRAPHEME_EXTEND',
             'Hex_Digit' => 'PROPERTY_HEX_DIGIT',
+            'Hex' => 'PROPERTY_HEX_DIGIT',
             'IDS_Binary_Operator' => 'PROPERTY_IDS_BINARY_OPERATOR',
+            'IDSB' => 'PROPERTY_IDS_BINARY_OPERATOR',
             'IDS_Trinary_Operator' => 'PROPERTY_IDS_TRINARY_OPERATOR',
+            'IDST' => 'PROPERTY_IDS_TRINARY_OPERATOR',
             'ID_Continue' => 'PROPERTY_ID_CONTINUE',
+            'IDC' => 'PROPERTY_ID_CONTINUE',
             'ID_Start' => 'PROPERTY_ID_START',
+            'IDS' => 'PROPERTY_ID_START',
             'Ideographic' => 'PROPERTY_IDEOGRAPHIC',
+            'Ideo' => 'PROPERTY_IDEOGRAPHIC',
             'Join_Control' => 'PROPERTY_JOIN_CONTROL',
+            'Join_C' => 'PROPERTY_JOIN_CONTROL',
             'Logical_Order_Exception' => 'PROPERTY_LOGICAL_ORDER_EXCEPTION',
+            'LOE' => 'PROPERTY_LOGICAL_ORDER_EXCEPTION',
             'Lowercase' => 'PROPERTY_LOWERCASE',
+            'Lower' => 'PROPERTY_LOWERCASE',
             'Math' => 'PROPERTY_MATH',
             'Noncharacter_Code_Point' => 'PROPERTY_NONCHARACTER_CODE_POINT',
+            'NChar' => 'PROPERTY_NONCHARACTER_CODE_POINT',
             'Pattern_Syntax' => 'PROPERTY_PATTERN_SYNTAX',
+            'Pat_Syn' => 'PROPERTY_PATTERN_SYNTAX',
             'Pattern_White_Space' => 'PROPERTY_PATTERN_WHITE_SPACE',
+            'Pat_WS' => 'PROPERTY_PATTERN_WHITE_SPACE',
             'Quotation_Mark' => 'PROPERTY_QUOTATION_MARK',
+            'QMark' => 'PROPERTY_QUOTATION_MARK',
             'Radical' => 'PROPERTY_RADICAL',
             'Regional_Indicator' => 'PROPERTY_REGIONAL_INDICATOR',
+            'RI' => 'PROPERTY_REGIONAL_INDICATOR',
             'Sentence_Terminal' => 'PROPERTY_S_TERM',
+            'STerm' => 'PROPERTY_S_TERM',
             'Soft_Dotted' => 'PROPERTY_SOFT_DOTTED',
+            'SD' => 'PROPERTY_SOFT_DOTTED',
             'Terminal_Punctuation' => 'PROPERTY_TERMINAL_PUNCTUATION',
+            'Term' => 'PROPERTY_TERMINAL_PUNCTUATION',
             'Unified_Ideograph' => 'PROPERTY_UNIFIED_IDEOGRAPH',
+            'UIdeo' => 'PROPERTY_UNIFIED_IDEOGRAPH',
             'Uppercase' => 'PROPERTY_UPPERCASE',
+            'Upper' => 'PROPERTY_UPPERCASE',
             'Variation_Selector' => 'PROPERTY_VARIATION_SELECTOR',
+            'VS' => 'PROPERTY_VARIATION_SELECTOR',
             'White_Space' => 'PROPERTY_WHITE_SPACE',
+            'space' => 'PROPERTY_WHITE_SPACE',
+            'WSpace' => 'PROPERTY_WHITE_SPACE',
             'XID_Continue' => 'PROPERTY_XID_CONTINUE',
+            'XIDC' => 'PROPERTY_XID_CONTINUE',
             'XID_Start' => 'PROPERTY_XID_START',
+            'XIDS' => 'PROPERTY_XID_START',
         ];
         if (!isset($aliasToConstant[$name])) {
             return null;
@@ -678,9 +902,16 @@ class Matcher
             'So' => 'Other_Symbol',
             'Z' => 'Separator', 'Zl' => 'Line_Separator',
             'Zp' => 'Paragraph_Separator', 'Zs' => 'Space_Separator',
+            // POSIX-style legacy aliases accepted by ECMA's
+            // CanonicalizeUnicodePropertyName for General_Category.
+            'cntrl' => 'Control',
+            'digit' => 'Decimal_Number',
+            'punct' => 'Punctuation',
         ];
         if (isset($aliases[$name])) {
-            return $name;
+            // Translate the alias to its long form so subsequent
+            // lookups (in generalCategoryMatches) can resolve it.
+            return $aliases[$name];
         }
         // Allow long names too.
         return in_array(

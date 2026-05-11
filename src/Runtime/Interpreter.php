@@ -19967,6 +19967,14 @@ class Interpreter
         // Both routes rely on the custom matcher's UTF-16 walk.
         $hasLoneSurrogateEscape = false;
         $needSurrogateScan = true;
+        // \p{...} / \P{...} Unicode property escapes need the custom
+        // matcher: PCRE2's built-in Unicode tables ship with
+        // whatever Unicode version PHP's PCRE was built against
+        // (often older than ICU's), and many test262 property tests
+        // fail at codepoints PCRE2 and ICU disagree on. The custom
+        // matcher routes all lookups through IntlChar (ICU) for a
+        // consistent data source.
+        $hasUnicodePropertyEscape = false;
         // Track which group has captures inside it for quantifier
         // detection. We approximate by scanning for `(...){n,m}`-like
         // shapes that contain captures.
@@ -20111,6 +20119,18 @@ class Interpreter
                         && ($next === 'b' || $next === 'B' || $next === 'w' || $next === 'W')
                     ) {
                         $hasWordToken = true;
+                    }
+                    // \p{...} / \P{...} present in the pattern. Only
+                    // applicable in /u or /v mode; outside Unicode
+                    // mode \p has no special meaning and the
+                    // translator already lowers it to a literal.
+                    if (
+                        $isUnicode
+                        && ($next === 'p' || $next === 'P')
+                        && $i + 2 < $len
+                        && $pattern[$i + 2] === '{'
+                    ) {
+                        $hasUnicodePropertyEscape = true;
                     }
                 }
                 $i += 2;
@@ -20257,6 +20277,16 @@ class Interpreter
             // Inline-modifier patterns route through the custom
             // matcher (which honours per-group flag overrides via
             // ModifierGroup AST nodes).
+            return true;
+        }
+        if ($hasUnicodePropertyEscape) {
+            // Unicode property escapes use ICU's Unicode tables via
+            // IntlChar in the custom matcher. PCRE2's built-in
+            // tables can lag behind ICU (and the test262 generated
+            // data) by several Unicode versions, producing
+            // category mismatches on codepoints whose
+            // Bidi_Mirrored / Script / Script_Extensions /
+            // Alphabetic / ... state changed.
             return true;
         }
         // Patterns with duplicate named groups also route through the
