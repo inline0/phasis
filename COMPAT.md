@@ -4,30 +4,30 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-05-11T21:32:34+00:00`
+- Snapshot time: `2026-05-11T23:34:06+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `e22a376` (dirty)
+- Git: `main` @ `41cd6e1` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 49850 | 90 | 91 | 16 | 559 | 0 | 49940 | 50047 | 50606 | 99.8% |
+| 49917 | 16 | 97 | 17 | 559 | 0 | 49933 | 50047 | 50606 | 100.0% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | PASS | 1078 | 0 | 1 | 0 | 0 | 0 | 100.0% |
-| built-ins | INCOMPLETE | 22182 | 28 | 58 | 2 | 509 | 0 | 99.9% |
+| built-ins | INCOMPLETE | 22200 | 10 | 58 | 2 | 509 | 0 | 100.0% |
 | harness | PASS | 116 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402 | PARTIAL | 1555 | 11 | 0 | 0 | 0 | 0 | 99.3% |
-| language | PARTIAL | 23341 | 42 | 1 | 0 | 0 | 0 | 99.8% |
-| staging | INCOMPLETE | 1578 | 9 | 31 | 14 | 50 | 0 | 99.4% |
+| intl402 | PARTIAL | 1565 | 1 | 0 | 0 | 0 | 0 | 99.9% |
+| language | PARTIAL | 23376 | 1 | 7 | 0 | 0 | 0 | 100.0% |
+| staging | INCOMPLETE | 1582 | 4 | 31 | 15 | 50 | 0 | 99.7% |
 
 ## Group Coverage
 
@@ -51,7 +51,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | annexB/language/statements | PASS | 22 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AbstractModuleSource | PASS | 8 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Array | PARTIAL | 3071 | 4 | 0 | 0 | 0 | 0 | 99.9% |
-| built-ins/ArrayBuffer | PARTIAL | 191 | 1 | 0 | 0 | 0 | 0 | 99.5% |
+| built-ins/ArrayBuffer | PASS | 192 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/ArrayIteratorPrototype | PASS | 27 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AsyncDisposableStack | PASS | 52 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/AsyncFromSyncIteratorPrototype | PASS | 38 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -62,12 +62,12 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Atomics | PASS | 322 | 0 | 54 | 0 | 0 | 0 | 100.0% |
 | built-ins/BigInt | PASS | 75 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Boolean | PASS | 51 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/DataView | PARTIAL | 549 | 1 | 0 | 0 | 0 | 0 | 99.8% |
+| built-ins/DataView | PASS | 550 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Date | PASS | 594 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/DisposableStack | PASS | 52 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Error | PASS | 53 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/FinalizationRegistry | PASS | 47 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Function | PARTIAL | 504 | 4 | 1 | 0 | 0 | 0 | 99.2% |
+| built-ins/Function | PARTIAL | 507 | 1 | 1 | 0 | 0 | 0 | 99.8% |
 | built-ins/GeneratorFunction | PASS | 23 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/GeneratorPrototype | PASS | 61 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Infinity | PASS | 6 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -80,7 +80,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/NativeErrors | PASS | 139 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Number | PASS | 335 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Object | PASS | 3410 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Promise | PARTIAL | 630 | 1 | 0 | 0 | 0 | 0 | 99.8% |
+| built-ins/Promise | PASS | 631 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Proxy | PASS | 310 | 0 | 1 | 0 | 0 | 0 | 100.0% |
 | built-ins/Reflect | PASS | 153 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp | PARTIAL | 487 | 1 | 0 | 0 | 0 | 0 | 99.8% |
@@ -99,11 +99,11 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExpStringIteratorPrototype | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Set | PASS | 381 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/SetIteratorPrototype | PASS | 11 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/ShadowRealm | PARTIAL | 55 | 8 | 1 | 0 | 0 | 0 | 87.3% |
-| built-ins/SharedArrayBuffer | PARTIAL | 103 | 1 | 0 | 0 | 0 | 0 | 99.0% |
+| built-ins/ShadowRealm | PASS | 63 | 0 | 1 | 0 | 0 | 0 | 100.0% |
+| built-ins/SharedArrayBuffer | PASS | 104 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/String | PARTIAL | 1210 | 2 | 0 | 0 | 0 | 0 | 99.8% |
 | built-ins/StringIteratorPrototype | PASS | 7 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/Symbol | PARTIAL | 93 | 1 | 0 | 0 | 0 | 0 | 98.9% |
+| built-ins/Symbol | PASS | 94 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/Duration | PASS | 473 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Temporal/Instant | PASS | 434 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -117,7 +117,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/Temporal/toStringTag | PASS | 2 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/ThrowTypeError | PASS | 14 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/TypedArray | PASS | 1426 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/TypedArrayConstructors | PARTIAL | 735 | 1 | 0 | 0 | 0 | 0 | 99.9% |
+| built-ins/TypedArrayConstructors | PASS | 736 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/Uint8Array | PASS | 64 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/WeakMap | PASS | 102 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/WeakRef | PASS | 29 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -127,7 +127,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/encodeURI | PASS | 31 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/encodeURIComponent | PASS | 31 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/eval | PASS | 10 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| built-ins/global | PARTIAL | 28 | 1 | 0 | 0 | 0 | 0 | 96.6% |
+| built-ins/global | PASS | 29 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/isFinite | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/isNaN | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/parseFloat | PASS | 59 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -137,19 +137,19 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | intl402 | PASS | 22 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Array | PASS | 2 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/BigInt | PASS | 11 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/Collator | PARTIAL | 61 | 1 | 0 | 0 | 0 | 0 | 98.4% |
+| intl402/Collator | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Date | PASS | 12 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/DateTimeFormat | PARTIAL | 187 | 1 | 0 | 0 | 0 | 0 | 99.5% |
-| intl402/DisplayNames | PARTIAL | 56 | 1 | 0 | 0 | 0 | 0 | 98.2% |
+| intl402/DateTimeFormat | PASS | 188 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| intl402/DisplayNames | PASS | 57 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/DurationFormat | PASS | 110 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Intl | PASS | 67 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/ListFormat | PARTIAL | 80 | 1 | 0 | 0 | 0 | 0 | 98.8% |
-| intl402/Locale | PARTIAL | 146 | 1 | 0 | 0 | 0 | 0 | 99.3% |
+| intl402/ListFormat | PASS | 81 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| intl402/Locale | PASS | 147 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Number | PASS | 7 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| intl402/NumberFormat | PARTIAL | 251 | 1 | 0 | 0 | 0 | 0 | 99.6% |
-| intl402/PluralRules | PARTIAL | 49 | 1 | 0 | 0 | 0 | 0 | 98.0% |
-| intl402/RelativeTimeFormat | PARTIAL | 78 | 1 | 0 | 0 | 0 | 0 | 98.7% |
-| intl402/Segmenter | PARTIAL | 76 | 2 | 0 | 0 | 0 | 0 | 97.4% |
+| intl402/NumberFormat | PASS | 252 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| intl402/PluralRules | PASS | 50 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| intl402/RelativeTimeFormat | PASS | 79 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+| intl402/Segmenter | PASS | 78 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/String | PASS | 17 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402/Temporal | PARTIAL | 322 | 1 | 0 | 0 | 0 | 0 | 99.7% |
 | intl402/TypedArray | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -162,7 +162,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/directive-prologue | PASS | 62 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/eval-code | PASS | 347 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/export | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/expressions | PARTIAL | 10995 | 27 | 1 | 0 | 0 | 0 | 99.8% |
+| language/expressions | PASS | 11016 | 0 | 7 | 0 | 0 | 0 | 100.0% |
 | language/function-code | PASS | 217 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/future-reserved-words | PASS | 55 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/global-code | PASS | 42 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -178,7 +178,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | language/rest-parameters | PASS | 11 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/source-text | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/statementList | PASS | 80 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| language/statements | PARTIAL | 9140 | 14 | 0 | 0 | 0 | 0 | 99.8% |
+| language/statements | PASS | 9154 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/types | PASS | 113 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | language/white-space | PASS | 67 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -189,7 +189,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/decorators | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/explicit-resource-management | PASS | 54 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/set-methods | PASS | 3 | 0 | 0 | 0 | 0 | 0 | 100.0% |
-| staging/sm | INCOMPLETE | 1376 | 7 | 31 | 14 | 50 | 0 | 99.5% |
+| staging/sm | INCOMPLETE | 1380 | 2 | 31 | 15 | 50 | 0 | 99.9% |
 | staging/source-phase-imports | PASS | 1 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | staging/upsert | PASS | 71 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 
@@ -202,6 +202,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` | `.compat-state-staging/logs/1d8bc8ec59afa4977eac427273dcca4bb1c34b5e.log` |
 | staging/sm | TIMEOUT | 1 | `test262/test/staging/sm/Temporal/PlainMonthDay/from-chinese.js` | `.compat-state-staging/logs/cbd781f5db023f9d346891a593aabab1c5c92008.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` | `.compat-state-staging/logs/655e0e3f8baf6b2fbdfb85776837eb8131d920b4.log` |
+| staging/sm | TIMEOUT | 1 | `test262/test/staging/sm/TypedArray/reduce-and-reduceRight.js` | `.compat-state-staging/logs/40580ebd5df553fba1c2a279135a704b15bec821.log` |
 | staging/sm | TIMEOUT | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` | `.compat-state-staging/logs/f1232104e4d338c7c76a723ace84621f84895ca1.log` |
 | staging/sm | TIMEOUT | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` | `.compat-state-staging/logs/52f623545148a1d44ec09f914a582ab83c001e20.log` |
 | staging/sm | CRASH | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` | `.compat-state-staging/logs/fad83b5e2409a84effda05416199c0acf9fa5248.log` |
@@ -218,26 +219,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| staging/sm | TIMEOUT | 242.119s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
-| staging/sm | TIMEOUT | 241.197s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
-| staging/sm | TIMEOUT | 240.904s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
-| staging/sm | TIMEOUT | 240.873s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
-| staging/sm | TIMEOUT | 239.906s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
-| staging/sm | TIMEOUT | 183.670s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
-| staging/sm | TIMEOUT | 183.423s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
-| staging/sm | TIMEOUT | 180.843s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
-| staging/sm | TIMEOUT | 124.130s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
-| staging/sm | TIMEOUT | 108.613s | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` |
-| staging/sm | TIMEOUT | 100.349s | 1 | `test262/test/staging/sm/Temporal/PlainMonthDay/from-chinese.js` |
-| staging/sm | NORMAL | 86.198s | 1 | `test262/test/staging/sm/RegExp/unicode-ignoreCase.js` |
-| built-ins/decodeURI | CRASH | 71.958s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
-| built-ins/decodeURIComponent | CRASH | 71.448s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
-| built-ins/decodeURIComponent | NORMAL | 66.266s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T2.js` |
-| built-ins/decodeURI | NORMAL | 65.812s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T2.js` |
-| language/expressions | NORMAL | 64.709s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
-| staging/sm | CRASH | 61.235s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
-| staging/sm | CRASH | 60.935s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
-| staging/sm | CRASH | 59.076s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
+| staging/sm | TIMEOUT | 241.736s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js` |
+| staging/sm | TIMEOUT | 241.664s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js` |
+| staging/sm | TIMEOUT | 241.475s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js` |
+| staging/sm | TIMEOUT | 240.720s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js` |
+| staging/sm | TIMEOUT | 240.605s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js` |
+| staging/sm | TIMEOUT | 184.827s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js` |
+| staging/sm | TIMEOUT | 178.900s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js` |
+| staging/sm | TIMEOUT | 177.891s | 1 | `test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js` |
+| staging/sm | TIMEOUT | 120.035s | 1 | `test262/test/staging/sm/TypedArray/sort_large_countingsort.js` |
+| staging/sm | TIMEOUT | 104.346s | 1 | `test262/test/staging/sm/TypedArray/sort_small.js` |
+| staging/sm | TIMEOUT | 95.841s | 1 | `test262/test/staging/sm/Temporal/PlainMonthDay/from-chinese.js` |
+| staging/sm | TIMEOUT | 93.910s | 1 | `test262/test/staging/sm/TypedArray/reduce-and-reduceRight.js` |
+| built-ins/decodeURI | CRASH | 70.648s | 1 | `test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js` |
+| built-ins/decodeURIComponent | CRASH | 70.570s | 1 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js` |
+| built-ins/decodeURI | NORMAL | 66.772s | 12 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T2.js` |
+| built-ins/decodeURIComponent | NORMAL | 66.621s | 12 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T2.js` |
+| staging/sm | CRASH | 60.367s | 1 | `test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js` |
+| staging/sm | CRASH | 60.266s | 1 | `test262/test/staging/sm/Array/toSpliced-dense.js` |
+| staging/sm | CRASH | 59.913s | 1 | `test262/test/staging/sm/expressions/nullish-coalescing.js` |
+| language/expressions | NORMAL | 56.055s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
 
 ## Runner Caveats
 
