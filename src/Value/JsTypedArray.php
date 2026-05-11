@@ -518,14 +518,17 @@ class JsTypedArray extends JsObject
             return JsNumber::of((float) $this->bytesPerElement);
         }
 
-        // Numeric index access: a digit-only string is always a canonical
-        // numeric index. Skip the toString round-trip (which is what
-        // isCanonicalNumericIndex performs and which dominates ta[i] reads
-        // in tight loops on large views). The exception is a leading zero
-        // that isn't the literal "0" itself: those are NOT canonical (e.g.
-        // "01" stringifies as "1"), and must fall through to the
-        // CanonicalNumericIndexString intercept.
-        if ($name !== '' && ctype_digit($name)) {
+        // Numeric index access: a digit-only string is a canonical numeric
+        // index only when its JS ToNumber/ToString round-trips to the same
+        // string. Plain integers up to 15 digits round-trip cleanly (well
+        // below both 2^53 and 1e21), so we can skip the heavier
+        // isCanonicalNumericIndex toString check. Longer digit runs like
+        // "1000000000000000000000" (= 1e21, rendered "1e+21" in JS) are NOT
+        // canonical and must fall through to OrdinaryGet so the prototype
+        // chain still resolves. (As a side bonus, capping at 15 digits also
+        // avoids `(int)$name` silently saturating to PHP_INT_MAX.)
+        $nameLen = strlen($name);
+        if ($nameLen !== 0 && $nameLen <= 15 && ctype_digit($name)) {
             if ($name === '0' || $name[0] !== '0') {
                 return $this->getIndex((int) $name);
             }
@@ -542,9 +545,16 @@ class JsTypedArray extends JsObject
 
     public function set(string $name, JsValue $value, bool $strict = false): void
     {
-        // Fast path: digit-only canonical index ("0" or no leading zero).
-        // Avoids the isCanonicalNumericIndex round trip via JsNumber::toJsString.
-        if ($name !== '' && ctype_digit($name) && ($name === '0' || $name[0] !== '0')) {
+        // Fast path: short digit-only canonical index. See get() for why the
+        // length cap is necessary (long digit strings like
+        // "1000000000000000000000" are not CanonicalNumericIndexStrings and
+        // must fall through to OrdinarySet so prototype-set semantics
+        // still apply, plus (int) on > 19 digits saturates).
+        $nameLen = strlen($name);
+        if (
+            $nameLen !== 0 && $nameLen <= 15 && ctype_digit($name)
+            && ($name === '0' || $name[0] !== '0')
+        ) {
             $coerced = $this->coerceTypedArrayValue($value);
             $index = (int) $name;
             if ($index >= 0 && $index < $this->getLength()) {
@@ -578,10 +588,14 @@ class JsTypedArray extends JsObject
      */
     public function internalSet(string $name, JsValue $value, JsObject $receiver): bool
     {
-        // Fast path: digit-only canonical index ("0" or no leading zero) with
-        // self-receiver. Avoids isCanonicalNumericIndex's toString round trip.
+        // Fast path: short digit-only canonical index with self-receiver.
+        // Cap at 15 digits so we don't mis-classify non-canonical big-int
+        // strings like "1000000000000000000000" (= 1e21) as integer indices.
+        // See get() for the full rationale.
+        $nameLen = strlen($name);
         if (
-            $name !== '' && ctype_digit($name) && ($name === '0' || $name[0] !== '0')
+            $nameLen !== 0 && $nameLen <= 15 && ctype_digit($name)
+            && ($name === '0' || $name[0] !== '0')
             && $receiver === $this
         ) {
             $coerced = $this->coerceTypedArrayValue($value);
