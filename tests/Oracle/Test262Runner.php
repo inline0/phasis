@@ -483,6 +483,54 @@ class Test262Runner
             => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
         'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inherited.js'
             => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        // Additional Script_Extensions and Script drifts surfaced by the
+        // post-shard-split CI run on Ubuntu's ICU 70. The Unicode 16
+        // fixture pulls in code points (e.g. U+01E08F in Cyrillic) that
+        // older host ICU does not yet classify the same way as the
+        // upstream test data. Pattern matches the cluster above.
+        'built-ins/RegExp/property-escapes/generated/Script_-_Cyrillic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Khitan_Small_Script.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Tulu_Tigalari.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Bopomofo.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cherokee.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Cyrillic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Duployan.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gothic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hiragana.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Malayalam.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Meroitic_Hieroglyphs.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Turkic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sharada.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Shavian.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tangut.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Thai.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tifinagh.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        // RGI_Emoji_ZWJ_Sequence: the upstream fixture lists ZWJ
+        // sequences from Unicode 16 emoji data; host ICU does not yet
+        // recognise the newest additions.
+        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_ZWJ_Sequence.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
         // GC tests where matchSymbols is tiny and the regex therefore
         // tests `\P{...}` against ~1.1M codepoints. Each test fully
         // decodes that string via utf8ToCodePoints and dispatches
