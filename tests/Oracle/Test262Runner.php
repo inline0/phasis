@@ -58,11 +58,9 @@ class Test262Runner
         'built-ins/Function/proto-from-ctor-realm-prototype.js',
         'built-ins/Proxy/revocable/tco-fn-realm.js',
         'language/expressions/call/eval-realm-indirect.js',
-        'staging/sm/Array/change-array-by-copy-cross-compartment-create.js',
         'staging/sm/Array/species.js',
         'staging/sm/ArrayBuffer/slice-species.js',
         'staging/sm/Function/arguments-iterator.js',
-        'staging/sm/syntax/yield-as-identifier.js',
         'staging/sm/Proxy/proxy-with-revoked-arguments.js',
         'staging/sm/Reflect/set.js',
         'staging/sm/RegExp/constructor-constructor.js',
@@ -264,18 +262,6 @@ class Test262Runner
         // reference, all 323 ZonedDateTime tests pass.
         'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/specific-tzdb-values.js'
             => 'Specific tzdb transition values differ between CI tzdata and test262 reference',
-        // getTimeZoneTransition('previous') with a +1ns shift across
-        // a DST boundary returns the *next* transition instead of the
-        // boundary just crossed on Ubuntu 24.04 + ICU 74 + tzdata 2026a.
-        // Got Europe/Berlin 2021-03-28T03:00:00+02:00, expected
-        // 2020-10-25T02:00:00+01:00. Root cause is technically an
-        // engine bug in the previous-transition probe but it only
-        // surfaces on ICU < 78; macOS ICU 78 short-circuits the +1ns
-        // path differently and the same test passes locally. Tracked
-        // alongside the other host-data drifts because fixing the
-        // engine codepath requires changes that may regress newer ICU.
-        'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/nanoseconds-subtracted-or-added-at-dst-transition.js'
-            => 'getTimeZoneTransition(previous) +1ns direction flip on ICU 74; passes on macOS ICU 78',
         // staging/Intl402 calendar snapshots that disagree with ICU 74
         // (Ubuntu CI) but match ICU 76+/macOS ICU 78:
         //  - non-iso-calendars-iso8601.js: iso8601 month formatted as
@@ -1113,6 +1099,26 @@ PHP;
         try {
             $this->loadHarness($childEngine, 'sta.js');
             $this->loadHarness($childEngine, 'assert.js');
+            // staging/sm cross-realm tests create a child realm and then
+            // use SpiderMonkey shell helpers (assertEq, assertEqArray,
+            // newGlobal-style probes, native TypedArray / Reflect helper
+            // extensions) inside it. The harness scripts are tiny
+            // (~580 lines combined) so the easiest correct answer is
+            // to load the common ones in every child realm rather than
+            // plumbing the parent test's includes[] all the way down.
+            // Loading is best-effort: tests that don't use these
+            // helpers pay only the parse cost.
+            foreach ([
+                'sm/non262-shell.js',
+                'sm/non262-TypedArray-shell.js',
+                'sm/non262-Reflect-shell.js',
+                'compareArray.js',
+            ] as $shell) {
+                try {
+                    $this->loadHarness($childEngine, $shell);
+                } catch (\Throwable) {
+                }
+            }
         } catch (\Throwable) {
         }
         if ($outerInterp !== null) {

@@ -4768,11 +4768,17 @@ class TemporalObject
                     $cur = $end + 1;
                 }
             } else {
-                // Probing window must include the input second when
-                // ns has a sub-second remainder so "previous" can
-                // locate a transition that fired at the same second.
-                $startProbe = $hasNonZeroSubSec ? $epochSec : $epochSec - 1;
-                $cur = $startProbe;
+                // Probe window upper bound includes the input second
+                // unconditionally — strict "earlier than $ns" is
+                // enforced by the full-nanosecond comparison below,
+                // not by the second-grain window cutoff. The previous
+                // version used a seconds-only predicate gated on
+                // hasNonZeroSubSec, which collapsed three distinct
+                // sub-second positions into two cases and let the
+                // *next* transition leak in for the +1ns case
+                // crossing a DST boundary (Europe/Berlin 2021 spring
+                // returned for an input at 2020 autumn + 1ns).
+                $cur = $epochSec;
                 $chunk = 200 * 365 * 86400;
                 $bound = max($epochSec - $maxSec, PHP_INT_MIN + $chunk);
                 while ($cur > $bound) {
@@ -4782,18 +4788,15 @@ class TemporalObject
                         $candidate = null;
                         for ($j = 1; $j < count($transitions); $j++) {
                             $t = $transitions[$j];
-                            $ts = $t['ts'];
-                            $isStrictlyEarlier = $hasNonZeroSubSec
-                                ? $ts <= $epochSec
-                                : $ts < $epochSec;
-                            if (!$isStrictlyEarlier) {
+                            $tsNs = bcmul((string) $t['ts'], '1000000000', 0);
+                            if (bccomp($tsNs, $ns, 0) >= 0) {
                                 continue;
                             }
                             $prev = $transitions[$j - 1];
                             if ($prev['offset'] === $t['offset']) {
                                 continue;
                             }
-                            $candidate = $ts;
+                            $candidate = $t['ts'];
                         }
                         if ($candidate !== null) {
                             $found = $candidate;
