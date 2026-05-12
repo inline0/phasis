@@ -170,8 +170,12 @@ function extractMatchRanges(string $source): ?array
 }
 
 /**
- * Sort the ranges by start, merge adjacent/overlapping, and remove the
- * surrogate range D800-DFFF entirely.
+ * Sort the ranges by start, then merge adjacent/overlapping ranges.
+ * Preserves surrogate code points D800-DFFF when the fixture lists
+ * them explicitly: \p{Any} and General_Category=Surrogate cover the
+ * surrogate range, so the bundle must too. The matcher's UTF-16
+ * input walk hands us lone surrogates as code units when the regex
+ * runs against a JS string containing them.
  *
  * @param list<array{int, int}> $ranges
  * @return list<array{int, int}>
@@ -187,26 +191,7 @@ function foldRanges(array $ranges): array
             $merged[] = [$start, $end];
         }
     }
-
-    // Strip surrogates: [D800, DFFF] is reserved for UTF-16 surrogate
-    // halves and never appears in a valid Unicode string. The regex
-    // matcher receives codepoints from a UTF-8 decoder that already
-    // rejects lone surrogates.
-    $stripped = [];
-    foreach ($merged as [$start, $end]) {
-        if ($end < 0xD800 || $start > 0xDFFF) {
-            $stripped[] = [$start, $end];
-            continue;
-        }
-        if ($start < 0xD800) {
-            $stripped[] = [$start, 0xD7FF];
-        }
-        if ($end > 0xDFFF) {
-            $stripped[] = [0xE000, $end];
-        }
-    }
-
-    return $stripped;
+    return $merged;
 }
 
 /**
