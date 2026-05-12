@@ -164,13 +164,25 @@ jobs:
           for ex in ${{ matrix.shard.exclude }}; do
             EXCLUDE_ARGS="$EXCLUDE_ARGS --exclude $ex"
           done
+          # property-escapes/generated has 432 \p{...} tests that each
+          # take ~6-8s. With chunk-size 25 a chunk takes ~150-200s and
+          # exceeds the per-chunk 90s timeout, forcing repeated retries.
+          # Drop chunk size + raise job count for that shard specifically.
+          JOBS=4
+          CHUNK=25
+          TIMEOUT=90
+          if [ '${{ matrix.shard.id }}' = 'builtins-RegExp-property-escapes' ]; then
+            JOBS=8
+            CHUNK=5
+            TIMEOUT=60
+          fi
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
             $EXCLUDE_ARGS \
             --state-dir .compat-state-${{ matrix.shard.id }} \
-            --jobs 4 \
-            --timeout 90 \
-            --chunk-size 25
+            --jobs $JOBS \
+            --timeout $TIMEOUT \
+            --chunk-size $CHUNK
           echo "=== After compat-report ==="
           ls -la .compat-state-${{ matrix.shard.id }}
           echo "=== State subtree ==="
