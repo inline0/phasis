@@ -16241,6 +16241,15 @@ class Interpreter
             if ($normalizedName === 'General_Category') {
                 $shortValue = self::mapGeneralCategoryValue($propValue);
                 if ($shortValue === null) {
+                    // Host PCRE2 doesn't know the GC value but our
+                    // Unicode 16 bundle might. Emit a never-match
+                    // sentinel; patternNeedsCustomMatcher routes
+                    // \p{...} patterns through the custom matcher
+                    // which consults the bundled table for the actual
+                    // membership decision.
+                    if (self::bundleKnowsProperty($propName, $propValue)) {
+                        return self::neverMatchSentinel($negated);
+                    }
                     return null;
                 }
                 return $prefix . '{' . $shortValue . '}';
@@ -16248,6 +16257,9 @@ class Interpreter
             if ($normalizedName === 'Script' || $normalizedName === 'Script_Extensions') {
                 $normalizedScript = self::normalizeScriptName($propValue);
                 if ($normalizedScript === null) {
+                    if (self::bundleKnowsProperty($propName, $propValue)) {
+                        return self::neverMatchSentinel($negated);
+                    }
                     return null;
                 }
                 return $prefix . '{' . $normalizedName . '=' . $normalizedScript . '}';
@@ -16270,12 +16282,40 @@ class Interpreter
                 // Substitute a never-matching codepoint (U+FFFE
                 // noncharacter) so the regex compiles and the property
                 // contributes nothing to the match set.
-                return $negated ? '[^\\x{FFFE}]' : '\\x{FFFE}';
+                return self::neverMatchSentinel($negated);
             }
             return $prefix . '{' . $binaryPcre . '}';
         }
 
+        if (self::bundleKnowsProperty($propExpr, null)) {
+            return self::neverMatchSentinel($negated);
+        }
         return null;
+    }
+
+    /**
+     * Whether the bundled Unicode 16 property tables have an entry
+     * for ($name, $value) — either as a property=value pair (Script,
+     * General_Category, Script_Extensions, with alias) or a bare
+     * binary property name. See src/Regex/Unicode16Tables.php for
+     * the keying convention.
+     */
+    private static function bundleKnowsProperty(string $name, ?string $value): bool
+    {
+        $key = $value === null ? $name : $name . '=' . $value;
+        return array_key_exists($key, \PhpJs\Regex\Unicode16Tables::PROPERTIES);
+    }
+
+    /**
+     * PCRE2 sentinel that matches no input — used when the host PCRE2
+     * lacks data for a property the regex pattern names but the custom
+     * matcher's bundled tables can answer. Keeps the regex constructor
+     * from throwing SyntaxError at construct time; the matcher routes
+     * \p{...} through Unicode16Tables anyway.
+     */
+    private static function neverMatchSentinel(bool $negated): string
+    {
+        return $negated ? '[^\\x{FFFE}]' : '\\x{FFFE}';
     }
 
     private static function normalizeEsPropertyName(string $name): ?string
