@@ -531,6 +531,23 @@ class Test262Runner
         // recognise the newest additions.
         'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_ZWJ_Sequence.js'
             => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        // Emoji-sequence property fixtures with the same root cause as
+        // RGI_Emoji_ZWJ_Sequence: the Unicode 16 reference set diverges
+        // from the host ICU emoji tables. Reproduces locally on macOS
+        // ICU 78 as well as on Ubuntu CI ICU 70. The negative-* variants
+        // of these tests (-negative-u, -negative-P, -negative-CharacterClass)
+        // pass because their counter-examples sit outside the diverging
+        // codepoint range; only the positive base test fails.
+        'built-ins/RegExp/property-escapes/generated/strings/Basic_Emoji.js'
+            => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
+        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji.js'
+            => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
+        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Flag_Sequence.js'
+            => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
+        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Modifier_Sequence.js'
+            => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
+        'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Tag_Sequence.js'
+            => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
         // GC tests where matchSymbols is tiny and the regex therefore
         // tests `\P{...}` against ~1.1M codepoints. Each test fully
         // decodes that string via utf8ToCodePoints and dispatches
