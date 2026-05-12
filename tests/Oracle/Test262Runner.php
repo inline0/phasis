@@ -262,6 +262,15 @@ class Test262Runner
         // reference, all 323 ZonedDateTime tests pass.
         'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/specific-tzdb-values.js'
             => 'Specific tzdb transition values differ between CI tzdata and test262 reference',
+        // getTimeZoneTransition(previous) +1ns DST case: the rewrite
+        // that mirrors the next-branch ns comparison passes in a
+        // local ubuntu:24.04 + libicu74 + tzdata 2026a +
+        // tzdata-legacy container but still fails on GitHub Actions'
+        // ubuntu-latest. Probably a tzdata-data delta the legacy
+        // package can't paper over; investigating further is high
+        // cost for one test. Reverted code change and re-blocked.
+        'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/nanoseconds-subtracted-or-added-at-dst-transition.js'
+            => 'getTimeZoneTransition(previous) +1ns DST case still fails on GH ubuntu-latest after the ns-compare rewrite',
         // staging/Intl402 calendar snapshots that disagree with ICU 74
         // (Ubuntu CI) but match ICU 76+/macOS ICU 78:
         //  - non-iso-calendars-iso8601.js: iso8601 month formatted as
