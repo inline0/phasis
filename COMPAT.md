@@ -4,26 +4,26 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 
 - Refresh: `./bin/compat-report`
 - Resume: `./bin/compat-report`
-- Snapshot time: `2026-05-12T19:10:06+00:00`
+- Snapshot time: `2026-05-12T20:16:45+00:00`
 - Chunk size: `25`
 - Timeout: `300s`
 - Jobs: `4`
 - Groups: `159`
 - Test files: `50506`
-- Git: `main` @ `4cefec2` (dirty)
+- Git: `main` @ `cbf784b` (dirty)
 
 ## Summary
 
 | Pass | Fail | Skip | Blocked | Pending | Running | Attempted | Known | Total | Pass Rate |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 50357 | 6 | 113 | 30 | 602 | 0 | 50363 | 50506 | 51108 | 100.0% |
+| 50347 | 6 | 139 | 14 | 602 | 0 | 50353 | 50506 | 51108 | 100.0% |
 
 ## Top-Level Areas
 
 | Area | Status | Pass | Fail | Skip | Blocked | Pending | Running | Pass Rate |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
 | annexB | PASS | 1078 | 0 | 1 | 0 | 0 | 0 | 100.0% |
-| built-ins | INCOMPLETE | 22626 | 6 | 67 | 30 | 602 | 0 | 100.0% |
+| built-ins | INCOMPLETE | 22616 | 6 | 93 | 14 | 602 | 0 | 100.0% |
 | harness | PASS | 116 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | intl402 | PASS | 1564 | 0 | 2 | 0 | 0 | 0 | 100.0% |
 | language | PASS | 23383 | 0 | 1 | 0 | 0 | 0 | 100.0% |
@@ -92,7 +92,7 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | built-ins/RegExp/match-indices | PASS | 14 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/named-groups | PASS | 36 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/property-escapes | INCOMPLETE | 143 | 0 | 0 | 0 | 143 | 0 | 100.0% |
-| built-ins/RegExp/property-escapes/generated | INCOMPLETE | 417 | 6 | 6 | 30 | 459 | 0 | 98.6% |
+| built-ins/RegExp/property-escapes/generated | INCOMPLETE | 407 | 6 | 32 | 14 | 459 | 0 | 98.5% |
 | built-ins/RegExp/prototype | PASS | 487 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/regexp-modifiers | PASS | 70 | 0 | 0 | 0 | 0 | 0 | 100.0% |
 | built-ins/RegExp/unicodeSets | PASS | 113 | 0 | 0 | 0 | 0 | 0 | 100.0% |
@@ -198,60 +198,44 @@ Generated from an in-progress `test262` pass. Do not edit by hand.
 | Group | Kind | Files | Sample | Log |
 |---|---|---:|---|---|
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Titlecase_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/87f7747180419383365af1e9ddd2e3c72f54eed6.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Connector_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/4c54ac0ac4d028883e821b2097149f921346d1e9.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/b7cefac4f46821ad694a23ee12237a8ecdd6210d.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter_Number.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/727065b7c7433624d4212f6ded760f5e747d5cb8.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/aefbc419f12ac4b1987eb70cda72449c4ca42216.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/7a550cac3dd77d1f0e5f196432659f5ff7a7ab97.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Space_Separator.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/722856d8a2f769fdf992dd74baffc39ef5b2398d.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/ffddb7ec4437550c8b88d09a899c5acbc54f73f5.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/f189bccd8e2494fba1fc20e302c6bb9c6ddc8396.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/ccfc5052544317e91b63973e2cc947746567b17c.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/bd499250905ec77b464c8b5e5a9ec933cffe6e58.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/3c69a91c3690de0348916784bafd196f8e1b5481.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/4b651f81b9be1396179e11ac92b129d47cb78c42.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/740b3e83e620769e06b6e9adfefe1dc82d041a25.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/2a94d7056c9fb7cf5b43b268af4f0178b13bed95.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/71ccdf90310ee9a9c9a347b9e9415e9b5931a436.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Unassigned.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/0ac7155c5710773c923a8f4aa88e27655bf778af.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/a18481051f18c40a58f47ab6b876ef6f7c2b4d9c.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/5d38a1e8d95c8b34ab37e39393fcc1c7cdc38ad9.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/8e239b30c417464de7bf971ff0260627422b3f14.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/3bbc5b4a55e01eb4aeee5d509270817c17d2ca22.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/ab24a0f4f1cc7f468ef4fc4c2a345672e90a48e4.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/bd0de27d112e7d31a61cbb558911fdd3df0c1e8b.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/9c1c84b5abdec4aa2fd114532266c0f9a4ff61fb.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/334a489d0d1ae6806996d9ffd11b04a03032308d.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/3b756347e0eb1aaabccf9a9c2c34341bf76d5ce7.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/7a3ce8ae090e6bd183f43ab5705ebd3f9fb342ac.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Symbol.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/fc71bcd9b57881f78bef2b598626dfe9f431d71e.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/18d978bd03781ab4e875ad38e79ebee6505b3a97.log` |
 | built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js` | `.compat-state-builtins-RegExp-property-escapes-gc/logs/c002a19f74cdd686200afa637d7d8db64a8b175f.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Inherited.js` | `.compat-state-builtins-RegExp-property-escapes-script-al/logs/9996e44fe6f0389dafeae9df985d344a9ba6ca34.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lydian.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-al/logs/6ebe5fc7d892d4da2ddc6082aa4130e3e30a9e09.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Inherited.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-al/logs/608b0e9700e60dc84cd8334449f2e77c2ebd0206.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Coptic.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-al/logs/cb64f85dba9fe63e9cc123fc682725eaf5cd679a.log` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Psalter_Pahlavi.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-mz/logs/ffd81c8e5c9678f0efc07bab3db9e005698bb451.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js` | `.compat-state-builtins-RegExp-property-escapes-script-al/logs/f30f3f9dfa5275b5f841096265b04d6fa994c896.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Multani.js` | `.compat-state-builtins-RegExp-property-escapes-script-mz/logs/ef138c20bf74620cb50922d096d44fb9b52106c0.log` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js` | `.compat-state-builtins-RegExp-property-escapes-scriptext-mz/logs/f7862694813062b4e093bc3ed8689125fecc4f25.log` |
 
 ## Slowest Chunks
 
 | Group | Kind | Duration | Files | Sample |
 |---|---|---:|---:|---|
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 98.805s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Mark.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 89.968s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Psalter_Pahlavi.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 89.247s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Decimal_Number.js` |
-| built-ins/decodeURIComponent | NORMAL | 89.160s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
-| built-ins/decodeURI | NORMAL | 88.365s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 87.235s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Titlecase_Letter.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 87.003s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Initial_Punctuation.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 86.806s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Letter.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 76.490s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Punctuation.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 76.082s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Currency_Symbol.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 74.592s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 72.331s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Modifier_Letter.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 72.087s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Close_Punctuation.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 72.086s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Uppercase_Letter.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 71.676s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Punctuation.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 70.705s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Math_Symbol.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 70.546s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Spacing_Mark.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 70.437s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 68.849s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Cased_Letter.js` |
-| built-ins/RegExp/property-escapes/generated | TIMEOUT | 68.659s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 85.043s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Titlecase_Letter.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 84.481s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Multani.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 84.229s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Enclosing_Mark.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 83.935s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Separator.js` |
+| language/expressions | NORMAL | 73.724s | 25 | `test262/test/language/expressions/call/spread-sngl-iter.js`<br>`test262/test/language/expressions/call/spread-sngl-literal.js`<br>...<br>`test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js`<br>`test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js` |
+| built-ins/decodeURI | NORMAL | 71.385s | 25 | `test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T1.js`<br>`test262/test/built-ins/decodeURI/S15.1.3.1_A1.8_T2.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 71.107s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Open_Punctuation.js` |
+| built-ins/decodeURIComponent | NORMAL | 70.377s | 25 | `test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js`<br>...<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T1.js`<br>`test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.8_T2.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.876s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Symbol.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.867s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Number.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.837s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Letter.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.730s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Lowercase_Letter.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 69.337s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Nonspacing_Mark.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 67.320s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 64.392s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tibetan.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 63.938s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/General_Category_-_Other_Symbol.js` |
+| built-ins/RegExp/property-escapes/generated | TIMEOUT | 61.677s | 1 | `test262/test/built-ins/RegExp/property-escapes/generated/Script_-_Coptic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.222s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Logical_Order_Exception.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Lowercase.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 59.016s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/Emoji_Presentation.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/Extended_Pictographic.js` |
+| built-ins/RegExp/property-escapes/generated | NORMAL | 58.440s | 2 | `test262/test/built-ins/RegExp/property-escapes/generated/IDS_Trinary_Operator.js`<br>`test262/test/built-ins/RegExp/property-escapes/generated/ID_Continue.js` |
 
 ## Runner Caveats
 
