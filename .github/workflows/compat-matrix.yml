@@ -81,7 +81,13 @@ jobs:
           #   rest (Binary, Bidi, Emoji, etc.)  (~54 tests)
           - { id: 'builtins-RegExp-property-escapes-script-al', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_A Script_-_B Script_-_C Script_-_D Script_-_E Script_-_F Script_-_G Script_-_H Script_-_I Script_-_J Script_-_K Script_-_L', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-script-mz', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_M Script_-_N Script_-_O Script_-_P Script_-_Q Script_-_R Script_-_S Script_-_T Script_-_U Script_-_V Script_-_W Script_-_X Script_-_Y Script_-_Z', filesExcludePrefix: '' }
-          - { id: 'builtins-RegExp-property-escapes-scriptext', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_Extensions_-_', filesExcludePrefix: '' }
+          # Script_Extensions_-_ has the same 170-test load as Script_-_
+          # and similarly tips over the 45-min cap with the bundled
+          # Unicode 16 tables in the hot path (~1.1M codepoints per
+          # negative-test sweep through PHP-level binary search). Split
+          # A-L / M-Z by the same logic as Script_-_.
+          - { id: 'builtins-RegExp-property-escapes-scriptext-al', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_Extensions_-_A Script_Extensions_-_B Script_Extensions_-_C Script_Extensions_-_D Script_Extensions_-_E Script_Extensions_-_F Script_Extensions_-_G Script_Extensions_-_H Script_Extensions_-_I Script_Extensions_-_J Script_Extensions_-_K Script_Extensions_-_L', filesExcludePrefix: '' }
+          - { id: 'builtins-RegExp-property-escapes-scriptext-mz', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_Extensions_-_M Script_Extensions_-_N Script_Extensions_-_O Script_Extensions_-_P Script_Extensions_-_Q Script_Extensions_-_R Script_Extensions_-_S Script_Extensions_-_T Script_Extensions_-_U Script_Extensions_-_V Script_Extensions_-_W Script_Extensions_-_X Script_Extensions_-_Y Script_Extensions_-_Z', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-gc', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'General_Category_-_', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-rest', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: '', filesExcludePrefix: 'Script_-_ Script_Extensions_-_ General_Category_-_' }
           - { id: 'builtins-RegExp-rest', prefix: 'built-ins/RegExp', exclude: 'built-ins/RegExp/prototype built-ins/RegExp/property-escapes' }
