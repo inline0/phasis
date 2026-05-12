@@ -890,13 +890,22 @@ function finalizeCompatChunk(
     ];
 
     $resultPath = $stateDir . '/results/' . $chunkId . '.json';
-    writeJsonFile($resultPath, [
+    // Persist the FULL file list (not just sampleFiles) for fail-bearing
+    // chunks so CI artifacts let downstream tooling identify every
+    // candidate path without re-deriving chunk membership from the
+    // discovery + chunking algorithm. Passing chunks keep the smaller
+    // sampleFiles representation to bound artifact size.
+    $resultPayload = [
         'chunkId' => $chunkId,
         'group' => $chunk['group'],
         'filesCount' => $chunk['filesCount'],
         'sampleFiles' => $state['chunks'][$chunkId]['sampleFiles'],
         'summary' => $summary,
-    ]);
+    ];
+    if ($summary['fail'] > 0 && isset($chunk['files']) && is_array($chunk['files'])) {
+        $resultPayload['files'] = $chunk['files'];
+    }
+    writeJsonFile($resultPath, $resultPayload);
 
     $state['updatedAt'] = date('c');
 }
