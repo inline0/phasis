@@ -69,13 +69,20 @@ jobs:
           - { id: 'builtins-RegExp-prototype', prefix: 'built-ins/RegExp/prototype', exclude: '' }
           # property-escapes/generated holds 432 procedurally generated
           # unicode property tests, each ~6-8s through the custom regex
-          # matcher's ICU dispatch. Split into 4 parallel runner shards
-          # via the --files-prefix / --files-exclude-prefix flags:
-          #   Script_-_*           (~170 tests, ~3 min)
-          #   Script_Extensions_-_ (~170 tests, ~3 min)
-          #   General_Category_-_  (~38 tests, ~1 min)
-          #   rest (Binary, Bidi, Emoji, etc.) (~54 tests, ~1 min)
-          - { id: 'builtins-RegExp-property-escapes-script', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_', filesExcludePrefix: '' }
+          # matcher's ICU dispatch. Split into 5 parallel runner shards
+          # via the --files-prefix / --files-exclude-prefix flags. The
+          # original Script_-_ shard (170 tests) was tipping over the
+          # 45-min cap with CI runner variance (43m one run, 45m the
+          # next), so it's split alphabetically A-L / M-Z. The
+          # --files-prefix flag accepts multiple values (matches ANY
+          # of them) so a single shard can carve out a letter range.
+          #   Script_-_A through Script_-_L     (~81 tests)
+          #   Script_-_M through Script_-_Z     (~89 tests)
+          #   Script_Extensions_-_              (~170 tests)
+          #   General_Category_-_               (~38 tests)
+          #   rest (Binary, Bidi, Emoji, etc.)  (~54 tests)
+          - { id: 'builtins-RegExp-property-escapes-script-al', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_A Script_-_B Script_-_C Script_-_D Script_-_E Script_-_F Script_-_G Script_-_H Script_-_I Script_-_J Script_-_K Script_-_L', filesExcludePrefix: '' }
+          - { id: 'builtins-RegExp-property-escapes-script-mz', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_-_M Script_-_N Script_-_O Script_-_P Script_-_Q Script_-_R Script_-_S Script_-_T Script_-_U Script_-_V Script_-_W Script_-_X Script_-_Y Script_-_Z', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-scriptext', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'Script_Extensions_-_', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-gc', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: 'General_Category_-_', filesExcludePrefix: '' }
           - { id: 'builtins-RegExp-property-escapes-rest', prefix: 'built-ins/RegExp/property-escapes', exclude: '', filesPrefix: '', filesExcludePrefix: 'Script_-_ Script_Extensions_-_ General_Category_-_' }
@@ -183,12 +190,13 @@ jobs:
               ;;
           esac
           # Build --files-prefix / --files-exclude-prefix from optional
-          # matrix fields. filesExcludePrefix is whitespace-separated so
-          # one shard can carve out multiple prefixes (e.g. "rest" shard).
-          FILES_PREFIX_ARG=""
-          if [ -n '${{ matrix.shard.filesPrefix }}' ]; then
-            FILES_PREFIX_ARG="--files-prefix ${{ matrix.shard.filesPrefix }}"
-          fi
+          # matrix fields. Both are whitespace-separated so one shard can
+          # carve out multiple prefixes (e.g. "rest" shard, A-L / M-Z
+          # alphabetical splits).
+          FILES_PREFIX_ARGS=""
+          for fp in ${{ matrix.shard.filesPrefix }}; do
+            FILES_PREFIX_ARGS="$FILES_PREFIX_ARGS --files-prefix $fp"
+          done
           FILES_EXCLUDE_ARGS=""
           for fx in ${{ matrix.shard.filesExcludePrefix }}; do
             FILES_EXCLUDE_ARGS="$FILES_EXCLUDE_ARGS --files-exclude-prefix $fx"
@@ -196,7 +204,7 @@ jobs:
           ./bin/compat-report \
             --match '${{ matrix.shard.prefix }}' \
             $EXCLUDE_ARGS \
-            $FILES_PREFIX_ARG \
+            $FILES_PREFIX_ARGS \
             $FILES_EXCLUDE_ARGS \
             --state-dir .compat-state-${{ matrix.shard.id }} \
             --jobs $JOBS \

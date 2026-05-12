@@ -40,18 +40,27 @@ function compatReportMain(array $argv): void
     fwrite(STDERR, "Building full compatibility snapshot...\n");
 
     $discovery = discoverCompatGroups($suiteDir, $options['match'], $options['exclude']);
-    if ($options['filesPrefix'] !== null || $options['filesExcludePrefix'] !== []) {
-        $prefix = $options['filesPrefix'];
+    if ($options['filesPrefix'] !== [] || $options['filesExcludePrefix'] !== []) {
+        $prefixes = $options['filesPrefix'];
         $excludePrefixes = $options['filesExcludePrefix'];
         $filteredGroups = [];
         $filteredCount = 0;
         foreach ($discovery['groups'] as $group => $files) {
             $kept = array_values(array_filter(
                 $files,
-                static function (string $path) use ($prefix, $excludePrefixes): bool {
+                static function (string $path) use ($prefixes, $excludePrefixes): bool {
                     $base = basename($path);
-                    if ($prefix !== null && !str_starts_with($base, $prefix)) {
-                        return false;
+                    if ($prefixes !== []) {
+                        $matched = false;
+                        foreach ($prefixes as $p) {
+                            if (str_starts_with($base, $p)) {
+                                $matched = true;
+                                break;
+                            }
+                        }
+                        if (!$matched) {
+                            return false;
+                        }
                     }
                     foreach ($excludePrefixes as $ex) {
                         if (str_starts_with($base, $ex)) {
@@ -137,7 +146,7 @@ function parseCompatOptions(array $argv): array
         'timeoutSec' => 300,
         'stateDir' => '.compat-state',
         'reset' => false,
-        'filesPrefix' => null,
+        'filesPrefix' => [],
         'filesExcludePrefix' => [],
     ];
 
@@ -172,8 +181,12 @@ function parseCompatOptions(array $argv): array
                 // Filter by test filename prefix (first letter or substring
                 // of basename). Used to shard large flat groups like
                 // built-ins/RegExp/property-escapes/generated across multiple
-                // CI runners.
-                $options['filesPrefix'] = $args[++$i] ?? null;
+                // CI runners. Can be passed multiple times to keep files
+                // matching ANY of the listed prefixes.
+                $fp = $args[++$i] ?? null;
+                if ($fp !== null && $fp !== '') {
+                    $options['filesPrefix'][] = $fp;
+                }
                 break;
             case '--files-exclude-prefix':
                 // Exclude tests whose basename starts with this prefix.
@@ -308,10 +321,10 @@ function buildCompatFingerprint(
     }
 
     return sha1(json_encode([
-        'version' => 6,
+        'version' => 7,
         'match' => $options['match'],
         'exclude' => $options['exclude'] ?? [],
-        'filesPrefix' => $options['filesPrefix'] ?? null,
+        'filesPrefix' => $options['filesPrefix'] ?? [],
         'filesExcludePrefix' => $options['filesExcludePrefix'] ?? [],
         'chunkSize' => $options['chunkSize'],
         // Bumping to v4 picks up the test262_isolated_tests list inside
