@@ -1,10 +1,10 @@
 {
-    "generatedAt": "2026-05-11T23:34:06+00:00",
-    "updatedAt": "2026-05-11T23:34:06+00:00",
+    "generatedAt": "2026-05-12T01:05:55+00:00",
+    "updatedAt": "2026-05-12T01:05:55+00:00",
     "complete": false,
     "git": {
         "branch": "main",
-        "commit": "41cd6e1",
+        "commit": "c80af96",
         "isDirty": true
     },
     "environment": {
@@ -19,7 +19,7 @@
     },
     "state": {
         "directory": ".compat-state",
-        "fingerprint": "a84dd28d1189aa371b31ceb45c85481688f2bc5d"
+        "fingerprint": "f61b4d6ae292036ad0df5a4f658dfb13db27deec"
     },
     "discovery": {
         "groupCount": 159,
@@ -196,16 +196,16 @@
     "test262": {
         "skippedFeatures": [],
         "totals": {
-            "pass": 49917,
-            "fail": 16,
-            "skip": 97,
-            "blocked": 17,
-            "pending": 559,
-            "running": 0,
-            "attempted": 49933,
-            "known": 50047,
-            "total": 50606,
-            "passRate": 100
+            "pass": 49885,
+            "fail": 36,
+            "skip": 98,
+            "blocked": 16,
+            "pending": 994,
+            "running": 52,
+            "attempted": 49921,
+            "known": 50035,
+            "total": 51081,
+            "passRate": 99.9
         },
         "areas": [
             {
@@ -224,17 +224,17 @@
             },
             {
                 "name": "built-ins",
-                "status": "incomplete",
-                "pass": 22200,
-                "fail": 10,
+                "status": "running",
+                "pass": 22166,
+                "fail": 32,
                 "skip": 58,
                 "blocked": 2,
-                "pending": 509,
-                "running": 0,
-                "attempted": 22210,
-                "known": 22270,
+                "pending": 944,
+                "running": 52,
+                "attempted": 22198,
+                "known": 22258,
                 "total": 22729,
-                "passRate": 100
+                "passRate": 99.9
             },
             {
                 "name": "harness",
@@ -266,9 +266,9 @@
             },
             {
                 "name": "language",
-                "status": "partial",
-                "pass": 23376,
-                "fail": 1,
+                "status": "pass",
+                "pass": 23377,
+                "fail": 0,
                 "skip": 7,
                 "blocked": 0,
                 "pending": 0,
@@ -281,16 +281,16 @@
             {
                 "name": "staging",
                 "status": "incomplete",
-                "pass": 1582,
-                "fail": 4,
-                "skip": 31,
-                "blocked": 15,
+                "pass": 1583,
+                "fail": 3,
+                "skip": 32,
+                "blocked": 14,
                 "pending": 50,
                 "running": 0,
                 "attempted": 1586,
                 "known": 1632,
                 "total": 1632,
-                "passRate": 99.7
+                "passRate": 99.8
             }
         ],
         "groups": [
@@ -552,9 +552,9 @@
             {
                 "name": "built-ins/Array",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 3071,
-                "fail": 4,
+                "status": "pass",
+                "pass": 3075,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -562,7 +562,7 @@
                 "attempted": 3075,
                 "known": 3075,
                 "total": 3075,
-                "passRate": 99.9
+                "passRate": 100
             },
             {
                 "name": "built-ins/ArrayBuffer",
@@ -627,9 +627,9 @@
             {
                 "name": "built-ins/AsyncFunction",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 17,
-                "fail": 1,
+                "status": "pass",
+                "pass": 18,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -637,14 +637,14 @@
                 "attempted": 18,
                 "known": 18,
                 "total": 18,
-                "passRate": 94.4
+                "passRate": 100
             },
             {
                 "name": "built-ins/AsyncGeneratorFunction",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 21,
-                "fail": 1,
+                "status": "pass",
+                "pass": 22,
+                "fail": 0,
                 "skip": 1,
                 "blocked": 0,
                 "pending": 0,
@@ -652,7 +652,7 @@
                 "attempted": 22,
                 "known": 23,
                 "total": 23,
-                "passRate": 95.5
+                "passRate": 100
             },
             {
                 "name": "built-ins/AsyncGeneratorPrototype",
@@ -807,9 +807,9 @@
             {
                 "name": "built-ins/Function",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 507,
-                "fail": 1,
+                "status": "pass",
+                "pass": 508,
+                "fail": 0,
                 "skip": 1,
                 "blocked": 0,
                 "pending": 0,
@@ -817,7 +817,7 @@
                 "attempted": 508,
                 "known": 509,
                 "total": 509,
-                "passRate": 99.8
+                "passRate": 100
             },
             {
                 "name": "built-ins/GeneratorFunction",
@@ -1167,28 +1167,28 @@
             {
                 "name": "built-ins/RegExp/property-escapes",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 143,
-                "fail": 0,
+                "status": "incomplete",
+                "pass": 130,
+                "fail": 1,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 0,
+                "pending": 37,
                 "running": 0,
-                "attempted": 143,
-                "known": 143,
+                "attempted": 131,
+                "known": 131,
                 "total": 143,
-                "passRate": 100
+                "passRate": 99.2
             },
             {
                 "name": "built-ins/RegExp/property-escapes/generated",
                 "area": "built-ins",
-                "status": "pending",
+                "status": "running",
                 "pass": 0,
                 "fail": 0,
                 "skip": 0,
                 "blocked": 0,
-                "pending": 459,
-                "running": 0,
+                "pending": 857,
+                "running": 52,
                 "attempted": 0,
                 "known": 0,
                 "total": 459,
@@ -1227,9 +1227,9 @@
             {
                 "name": "built-ins/RegExp/unicodeSets",
                 "area": "built-ins",
-                "status": "pass",
-                "pass": 113,
-                "fail": 0,
+                "status": "partial",
+                "pass": 83,
+                "fail": 30,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -1237,7 +1237,7 @@
                 "attempted": 113,
                 "known": 113,
                 "total": 113,
-                "passRate": 100
+                "passRate": 73.5
             },
             {
                 "name": "built-ins/RegExpStringIteratorPrototype",
@@ -1317,9 +1317,9 @@
             {
                 "name": "built-ins/String",
                 "area": "built-ins",
-                "status": "partial",
-                "pass": 1210,
-                "fail": 2,
+                "status": "pass",
+                "pass": 1212,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -1327,7 +1327,7 @@
                 "attempted": 1212,
                 "known": 1212,
                 "total": 1212,
-                "passRate": 99.8
+                "passRate": 100
             },
             {
                 "name": "built-ins/StringIteratorPrototype",
@@ -2292,9 +2292,9 @@
             {
                 "name": "language/identifier-resolution",
                 "area": "language",
-                "status": "partial",
-                "pass": 13,
-                "fail": 1,
+                "status": "pass",
+                "pass": 14,
+                "fail": 0,
                 "skip": 0,
                 "blocked": 0,
                 "pending": 0,
@@ -2302,7 +2302,7 @@
                 "attempted": 14,
                 "known": 14,
                 "total": 14,
-                "passRate": 92.9
+                "passRate": 100
             },
             {
                 "name": "language/identifiers",
@@ -2638,10 +2638,10 @@
                 "name": "staging/sm",
                 "area": "staging",
                 "status": "incomplete",
-                "pass": 1380,
-                "fail": 2,
-                "skip": 31,
-                "blocked": 15,
+                "pass": 1381,
+                "fail": 1,
+                "skip": 32,
+                "blocked": 14,
                 "pending": 50,
                 "running": 0,
                 "attempted": 1382,
@@ -2684,7 +2684,7 @@
             {
                 "group": "built-ins/decodeURI",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/TypeConversion.php on line 131",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 47",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
@@ -2694,7 +2694,7 @@
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 64",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Bytecode/VM.php on line 686",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
@@ -2704,7 +2704,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 1019",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 525",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Array/toSpliced-dense.js"
@@ -2724,7 +2724,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Completion.php on line 26",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsSymbol.php on line 57",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
@@ -2734,17 +2734,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "Chunk exceeded timeout",
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/reduce-and-reduceRight.js"
-                ],
-                "logFile": ".compat-state-staging/logs/40580ebd5df553fba1c2a279135a704b15bec821.log"
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsArrayBuffer.php on line 137",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsTypedArray.php on line 307",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2754,7 +2744,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 9646",
+                "message": "Chunk exceeded timeout",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_small.js"
@@ -2764,7 +2754,7 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Bytecode/VM.php on line 648",
+                "message": "PHP Fatal error:  Maximum execution time of 30 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 52",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/expressions/nullish-coalescing.js"
@@ -2774,7 +2764,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 559",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyDescriptor.php on line 58",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
@@ -2784,7 +2774,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Environment.php on line 533",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1232",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
@@ -2794,7 +2784,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Bytecode/VM.php on line 648",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Spec/TypeConversion.php on line 648",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2804,7 +2794,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsNumber.php on line 259",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyMap.php on line 123",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
@@ -2814,7 +2804,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Object/PropertyDescriptor.php on line 58",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 6983",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
@@ -2824,7 +2814,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/BuiltIn/DateConstructor.php on line 1239",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1290",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
@@ -2834,7 +2824,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 4676",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 1240",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
@@ -2844,7 +2834,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Runtime/Interpreter.php on line 9339",
+                "message": "PHP Fatal error:  Maximum execution time of 120 seconds exceeded in /home/runner/work/php-js/php-js/src/Value/JsObject.php on line 883",
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -2856,34 +2846,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 241.736,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 241.664,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 241.475,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 240.72,
+                "durationSec": 241.896,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-3-of-8.js"
@@ -2892,7 +2855,34 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 240.605,
+                "durationSec": 241.85,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-5-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "timeout",
+                "durationSec": 241.083,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-1-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "timeout",
+                "durationSec": 240.866,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-6-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "timeout",
+                "durationSec": 240.129,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-4-of-8.js"
@@ -2901,16 +2891,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 184.827,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
-                ]
-            },
-            {
-                "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 178.9,
+                "durationSec": 182.958,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-8-of-8.js"
@@ -2919,7 +2900,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 177.891,
+                "durationSec": 181.593,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Date/dst-offset-caching-7-of-8.js"
@@ -2928,7 +2909,16 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 120.035,
+                "durationSec": 180.389,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/staging/sm/Date/dst-offset-caching-2-of-8.js"
+                ]
+            },
+            {
+                "group": "staging/sm",
+                "kind": "timeout",
+                "durationSec": 121.798,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_large_countingsort.js"
@@ -2937,7 +2927,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 104.346,
+                "durationSec": 107.406,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/sort_small.js"
@@ -2946,7 +2936,7 @@
             {
                 "group": "staging/sm",
                 "kind": "timeout",
-                "durationSec": 95.841,
+                "durationSec": 97.81,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Temporal/PlainMonthDay/from-chinese.js"
@@ -2954,70 +2944,44 @@
             },
             {
                 "group": "staging/sm",
-                "kind": "timeout",
-                "durationSec": 93.91,
+                "kind": "normal",
+                "durationSec": 85.802,
                 "filesCount": 1,
                 "sampleFiles": [
-                    "test262/test/staging/sm/TypedArray/reduce-and-reduceRight.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURI",
-                "kind": "crash",
-                "durationSec": 70.648,
-                "filesCount": 1,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                    "test262/test/staging/sm/RegExp/unicode-ignoreCase.js"
                 ]
             },
             {
                 "group": "built-ins/decodeURIComponent",
                 "kind": "crash",
-                "durationSec": 70.57,
+                "durationSec": 62.563,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A2.5_T1.js"
                 ]
             },
             {
-                "group": "built-ins/decodeURI",
-                "kind": "normal",
-                "durationSec": 66.772,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T1.js",
-                    "test262/test/built-ins/decodeURI/S15.1.3.1_A1.15_T2.js"
-                ]
-            },
-            {
-                "group": "built-ins/decodeURIComponent",
-                "kind": "normal",
-                "durationSec": 66.621,
-                "filesCount": 12,
-                "sampleFiles": [
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
-                    "...",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T1.js",
-                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T2.js"
-                ]
-            },
-            {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 60.367,
+                "durationSec": 60.68,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/TypedArray/element-setting-converts-using-ToNumber.js"
                 ]
             },
             {
+                "group": "built-ins/decodeURI",
+                "kind": "crash",
+                "durationSec": 60.498,
+                "filesCount": 1,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURI/S15.1.3.1_A2.5_T1.js"
+                ]
+            },
+            {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 60.266,
+                "durationSec": 59.931,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/Array/toSpliced-dense.js"
@@ -3026,16 +2990,29 @@
             {
                 "group": "staging/sm",
                 "kind": "crash",
-                "durationSec": 59.913,
+                "durationSec": 59.289,
                 "filesCount": 1,
                 "sampleFiles": [
                     "test262/test/staging/sm/expressions/nullish-coalescing.js"
                 ]
             },
             {
+                "group": "language/literals",
+                "kind": "normal",
+                "durationSec": 59.216,
+                "filesCount": 25,
+                "sampleFiles": [
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T1.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A1.1_T2.js",
+                    "...",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.2_T2.js",
+                    "test262/test/language/literals/regexp/S7.8.5_A2.3_T1.js"
+                ]
+            },
+            {
                 "group": "language/expressions",
                 "kind": "normal",
-                "durationSec": 56.055,
+                "durationSec": 57.644,
                 "filesCount": 25,
                 "sampleFiles": [
                     "test262/test/language/expressions/call/spread-sngl-iter.js",
@@ -3043,6 +3020,19 @@
                     "...",
                     "test262/test/language/expressions/class/accessor-name-inst/literal-numeric-zero.js",
                     "test262/test/language/expressions/class/accessor-name-inst/literal-string-char-escape.js"
+                ]
+            },
+            {
+                "group": "built-ins/decodeURIComponent",
+                "kind": "normal",
+                "durationSec": 55.787,
+                "filesCount": 12,
+                "sampleFiles": [
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.11_T2.js",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.12_T1.js",
+                    "...",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T1.js",
+                    "test262/test/built-ins/decodeURIComponent/S15.1.3.2_A1.15_T2.js"
                 ]
             }
         ]
