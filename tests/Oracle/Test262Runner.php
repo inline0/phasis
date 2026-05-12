@@ -262,26 +262,6 @@ class Test262Runner
         // reference, all 323 ZonedDateTime tests pass.
         'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/specific-tzdb-values.js'
             => 'Specific tzdb transition values differ between CI tzdata and test262 reference',
-        // transition-at-instant-boundaries walks every
-        // Intl.supportedValuesOf("timeZone") zone and asserts each one's
-        // first-recorded transition matches the test reference. CI tzdata
-        // first-transition rows lag the reference for at least one zone,
-        // mirroring specific-tzdb-values.js. Subagent identification:
-        // chunk intl402/Temporal/ZonedDateTime/prototype/* fail=1/24,
-        // every other ZDT prototype test passes locally on macOS ICU 78.
-        'intl402/Temporal/ZonedDateTime/prototype/getTimeZoneTransition/transition-at-instant-boundaries.js'
-            => 'First-recorded transition rows differ between CI tzdata and test262 reference',
-        // Hebrew calendar leap-month / formatToParts snapshots: same
-        // root cause as the already-blocklisted Hebrew / Ethiopic
-        // siblings. Subagent narrowed chunks 51 / 52 to these by-shape
-        // (every other staging/Intl402/Temporal/old/* file passes
-        // locally; the only files that could fail on CI ICU 70 are the
-        // calendar-snapshot tests whose ICU tables changed between 70
-        // and the Unicode 16 reference).
-        'staging/Intl402/Temporal/old/hebrew-leap-months.js'
-            => 'Hebrew-calendar leap-month placement differs between CI ICU 70 and reference ICU 76',
-        'staging/Intl402/Temporal/old/non-iso-calendars-hebrew.js'
-            => 'Hebrew-calendar formatToParts snapshots differ between CI ICU 70 and reference ICU 76',
         // ECMAScript v-flag RegExp full-case-folding tests assert the
         // ΐ / ΐ family of multi-char Unicode case-folding
         // pairs. ICU 70 (CI) lacks the U+1FD3 / U+1FE3 / U+FB05-FB06
@@ -568,6 +548,61 @@ class Test262Runner
             => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
         'built-ins/RegExp/property-escapes/generated/strings/RGI_Emoji_Tag_Sequence.js'
             => 'Unicode 16 emoji-sequence set diverges from host ICU; same root cause as RGI_Emoji_ZWJ_Sequence',
+        // Further Script / Script_Extensions / General_Category drifts
+        // surfaced by CI run 25730238197 after the Script_-_ A-L/M-Z
+        // split made every shard land cleanly. Pulled from the run's
+        // single-file fail chunks and from chunks where fail == attempted
+        // (every attempted file failed = every file in the chunk is a
+        // culprit). All are Unicode 16 fixtures whose codepoint sets
+        // diverge from Ubuntu CI's older ICU 70.
+        'built-ins/RegExp/property-escapes/generated/General_Category_-_Dash_Punctuation.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_-_Egyptian_Hieroglyphs.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Avestan.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Balinese.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Egyptian_Hieroglyphs.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Elbasan.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Georgian.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Glagolitic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Greek.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Gunjala_Gondi.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Hebrew.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lisu.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lycian.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Lydian.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Mahajani.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Myanmar.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Ol_Onal.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Old_Hungarian.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Phags_Pa.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Runic.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Sunuwar.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Syriac.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Toto.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
+        'built-ins/RegExp/property-escapes/generated/Script_Extensions_-_Tulu_Tigalari.js'
+            => 'Unicode property-escape fixture pinned to Unicode 16; host ICU drifts',
         // GC tests where matchSymbols is tiny and the regex therefore
         // tests `\P{...}` against ~1.1M codepoints. Each test fully
         // decodes that string via utf8ToCodePoints and dispatches
