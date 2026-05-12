@@ -7,12 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Opt into Node.js 24 for first-party JavaScript actions (checkout,
-# upload-artifact, etc.) so the runner stops emitting the Node 20
-# deprecation warning ahead of the June 2026 default flip.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 jobs:
   test:
     if: >-
@@ -28,7 +22,7 @@ jobs:
         php: ['8.2', '8.3', '8.4', '8.5']
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 

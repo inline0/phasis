@@ -20,11 +20,9 @@ concurrency:
 permissions:
   contents: write
 
-# Opt into Node.js 24 for first-party JavaScript actions (checkout,
-# upload-artifact, etc.) so the runner stops emitting the Node 20
-# deprecation warning ahead of the June 2026 default flip.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+# All first-party JS actions used below (checkout v6, upload-artifact
+# v6, download-artifact v6) declare runs.using: node24 natively, so
+# no runtime forcing flag is needed.
 
 jobs:
   shard:
@@ -139,7 +137,7 @@ jobs:
           - { id: 'language-white-space', prefix: 'language/white-space', exclude: '' }
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -217,7 +215,7 @@ jobs:
 
       - name: Upload shard state
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: compat-shard-${{ matrix.shard.id }}
           path: .compat-state-${{ matrix.shard.id }}
@@ -235,7 +233,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -255,7 +253,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist
 
       - name: Download all shard artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: compat-shard-*
           path: .compat-shards
@@ -274,7 +272,7 @@ jobs:
 
       - name: Upload merged artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: compat-report
           path: |
